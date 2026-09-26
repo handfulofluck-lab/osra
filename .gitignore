@@ -1,0 +1,65 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# Real .env files never belong in git; committed examples (*.env.example) are fine.
+.env
+.env.*
+!*.env.example
+!**/.env.example
+**/agent.config.json
+
+# ── Test distribution bundles (binaries + launcher secrets live only locally) ─
+dist/
+
+# ── Node / pnpm ──────────────────────────────────────────────────────────────
+node_modules/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# ── Build outputs ────────────────────────────────────────────────────────────
+**/dist/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/android/.gradle/
+**/local.properties
+*.iml
+
+# Android / Gradle
+**/.gradle/
+**/build/
+.cxx/
+*.apk
+*.aab
+*.keystore
+
+# .NET
+bin/
+obj/
+pub/
+*.user
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# ── IDE / OS ─────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ── Runtime data ─────────────────────────────────────────────────────────────
+*.log
+pgdata/
+*.db
+*.sqlite3
+
+# ── Cloud-sync staging (Google Drive etc.) ───────────────────────────────────
+.tmp.driveupload/

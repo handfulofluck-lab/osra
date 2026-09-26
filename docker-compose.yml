@@ -1,0 +1,32 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: familyshield
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: familyshield
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  ai-engine:
+    build: ./services/ai-engine
+    ports: ["8000:8000"]
+    environment:
+      MODEL_PATH: /models/distilbert-child-safety
+  api:
+    build: ./services/api
+    ports: ["3000:3000"]
+    depends_on: [postgres, redis, ai-engine]
+    environment:
+      DATABASE_URL: postgres://familyshield:devpass@postgres:5432/familyshield
+      REDIS_URL: redis://redis:6379
+      AI_ENGINE_URL: http://ai-engine:8000
+      # Secrets come from the environment / untracked .env — never commit real values (review 3.7).
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment or .env}
+      INTERNAL_HMAC_SECRET: ${INTERNAL_HMAC_SECRET:?Set INTERNAL_HMAC_SECRET in your environment or .env}
+      VAULT_KEY: ${VAULT_KEY:?Set VAULT_KEY (base64, 32 bytes) in your environment or .env}
+volumes:
+  pgdata:

@@ -1,0 +1,150 @@
+package com.familyshield.agent.telemetry
+
+import android.app.usage.UsageStatsManager
+import android.content.Context
+import android.os.BatteryManager
+import android.util.Log
+import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.data.db.AgentStateEntity
+import com.familyshield.agent.data.db.FamilyShieldDatabase
+import com.familyshield.agent.data.db.UsageEventEntity
+import com.familyshield.agent.network.ApiService
+import com.familyshield.agent.network.dto.ActivityEventBatchDto
+import com.familyshield.agent.network.dto.TelemetryDto
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+/**
+ * Records foreground-app transitions (Room `usage_events`) and periodically aggregates
+ * per-app minutes, total minutes and an unlock counter into POST /v1/devices/<id>/telemetry.
+ * Minutes are computed from consecutive event gaps capped at 5 min. A UsageStatsManager
+ * backfill runs behind try/catch because the PACKAGE_USAGE_STATS permission is not guaranteed.
+ * Also posts the Feature #29 live-activity app_usage event from the LocationService 60 s loop.
+ */
+@Singleton
+class UsageReporter @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val db: FamilyShieldDatabase,
+    private val api: ApiService,
+    private val settings: AgentSettings,
+    private val rules: RuleRepository,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile private var lastPkg: String? = null
+    @Volatile private var lastTs: Long = 0L
+    private val unlockCounter = AtomicInteger(0)
+
+    /** Records one foreground transition at [ts] (epoch millis); safe to call on the main thread. */
+    fun recordForeground(pkg: String, ts: Long) {
+        val prevPkg = lastPkg
+        val prevTs = lastTs
+        lastPkg = pkg
+        lastTs = ts
+        // NOTE: the accessibility stream has no screen-on/off events, so a "new session"
+        // (counted as an unlock) is a package change or the first event after a >60 s gap.
+        if (prevPkg == null || prevPkg != pkg || ts - prevTs > 60_000L) {
+            unlockCounter.incrementAndGet()
+        }
+        rules.onForegroundEvent(pkg, ts)
+        scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts)) }
+    }
+
+    /** Aggregates the usage since the last successful run and uploads the delta; no-op without a device id. */
+    suspend fun aggregateAndUpload() {
+        val deviceId = settings.deviceId() ?: return
+        val dao = db.usageEventDao()
+        val stateDao = db.agentStateDao()
+        val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return
+        val windowEnd = System.currentTimeMillis()
+        val events = dao.since(watermark)
+
+        val perApp = computePerAppMinutes(events, windowEnd).toMutableMap()
+        backfillFromUsageStats(perApp)
+
+        val unlocks = unlockCounter.getAndSet(0)
+        val total = perApp.values.sum()
+        // NOTE: anchor the cleanup to the last aggregated event. Events arriving between the
+        // snapshot above and this delete would otherwise be removed unsent (previously the
+        // delete/watermark used windowEnd, which raced with concurrent inserts).
+        val newWatermark = (events.lastOrNull()?.timestamp ?: windowEnd) + 1
+        // Always POST: even idle, batteryPct is the device heartbeat that keeps
+        // lastSeen/battery fresh for the parent app.
+        try {
+            api.postTelemetry(deviceId, TelemetryDto(perAppMinutes = perApp, totalMinutes = total, unlockCount = unlocks, batteryPct = currentBatteryPct()))
+            // NOTE: watermark moves only on success...
+            dao.deleteOlderThan(newWatermark)
+            stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
+        } catch (e: CancellationException) {
+            unlockCounter.addAndGet(unlocks) // ...and the unlock counter is restored on failure
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            unlockCounter.addAndGet(unlocks) // re-count on the next cycle
+        }
+    }
+
+    /**
+     * Posts a live-activity snapshot (Feature #29) to POST /v1/devices/<id>/activity every ~60 s
+     * from the LocationService flush loop: one app_usage event with the foreground package (or
+     * "idle") and today's total minutes across apps. Failures are logged and swallowed.
+     */
+    suspend fun postLiveActivity() {
+        val deviceId = settings.deviceId() ?: return
+        val event = liveActivityPayload(rules.minutesSnapshot(), currentForeground())
+        try {
+            api.postActivityEvents(deviceId, ActivityEventBatchDto(listOf(event)))
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            Log.w(TAG, "live activity post failed", e)
+        }
+    }
+
+    /** Last foreground package recorded by the accessibility stream, or null before the first transition. */
+    fun currentForeground(): String? = lastPkg
+
+    /** Current battery percentage from the system BatteryManager, or null when unknown. */
+    private fun currentBatteryPct(): Int? {
+        return try {
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Adds UsageStatsManager totals for packages missing from the event stream (best effort). */
+    private fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
+        try {
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val start = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, System.currentTimeMillis())
+            for (s in stats ?: emptyList()) {
+                if (!perApp.containsKey(s.packageName)) {
+                    val minutes = (s.totalTimeInForeground / 60_000L).toInt()
+                    if (minutes > 0) perApp[s.packageName] = minutes
+                }
+            }
+        } catch (t: Throwable) {
+            // Stats permission not granted (or OEM restriction) — event-based numbers only.
+        }
+    }
+
+    companion object {
+        /** Unique work name for the 15-min aggregation job. */
+        const val WORK_NAME: String = "telemetry_upload"
+
+        private const val KEY_WATERMARK = "telemetry_watermark"
+        private const val TAG = "UsageReporter"
+    }
+}

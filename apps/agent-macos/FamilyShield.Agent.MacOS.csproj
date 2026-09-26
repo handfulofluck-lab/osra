@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    FamilyShield macOS child agent — proven scaffolding (#25).
+    Compiles ONLY the platform-pure services; no Titanium.Web.Proxy (macOS
+    filtering requires the NetworkExtension content-filter entitlement, not a
+    local WinINET-style proxy). See README.md for the full porting map.
+    NOTE: net8.0-macos builds require a Mac with the .NET 8 SDK; this csproj
+    was verified by XML inspection on Windows only (docs in dist explain).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-macos</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>
+    <RootNamespace>FamilyShield.Agent.MacOS</RootNamespace>
+    <AssemblyName>FamilyShield.Agent.MacOS</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Carried over from agent-desktop for the ported pure services. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.6" />
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
+  </ItemGroup>
+
+</Project>

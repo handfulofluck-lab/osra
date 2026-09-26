@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSRA Test — Step-by-Step Setup Guide</title>
+<style>
+  :root {
+    --indigo: #3f51b5; --indigo-dark: #303f9f; --green: #2e7d32; --amber: #f9a825;
+    --red: #c62828; --grey: #666; --bg: #f4f6fb; --card: #ffffff; --line: #e0e4f0;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: #222;
+         margin: 0; padding: 0 0 60px; line-height: 1.6; }
+  header { background: linear-gradient(135deg, var(--indigo), var(--indigo-dark)); color: #fff;
+           padding: 34px 20px 26px; text-align: center; }
+  header h1 { margin: 0 0 6px; font-size: 1.9em; }
+  header p { margin: 0; opacity: .92; }
+  main { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 22px 24px; margin: 26px 0; box-shadow: 0 1px 4px rgba(30,40,90,.06); }
+  .card h2 { margin-top: 0; font-size: 1.45em; color: var(--indigo-dark);
+             border-bottom: 3px solid var(--indigo); padding-bottom: 8px; }
+  .card h2 .part { display: inline-block; background: var(--indigo); color: #fff; border-radius: 8px;
+                   font-size: .68em; padding: 3px 10px; vertical-align: middle; margin-right: 10px; }
+
+  .step { display: flex; margin: 18px 0; }
+  .step .num { flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--indigo);
+               color: #fff; font-weight: bold; font-size: 1.15em; display: flex;
+               align-items: center; justify-content: center; margin-right: 14px; }
+  .step .body { flex: 1; }
+  .step .body p:first-child { margin-top: 6px; }
+  .step .body p { margin: 6px 0; }
+
+  code, .mono { background: #eef1fa; border: 1px solid var(--line); border-radius: 6px;
+                padding: 2px 7px; font-family: Consolas, "Courier New", monospace; font-size: .93em;
+                word-break: break-all; }
+  .cmd { display: block; background: #1e2433; color: #d5e0ff; border-radius: 8px;
+         padding: 12px 16px; font-family: Consolas, monospace; font-size: .95em;
+         margin: 10px 0; overflow-x: auto; user-select: all; }
+  .srv { background: #e7f4e8; border: 1px dashed var(--green); color: var(--green);
+         font-weight: bold; padding: 2px 8px; }
+
+  .box { border-radius: 10px; padding: 14px 18px; margin: 16px 0; }
+  .info    { background: #e8f0fe; border-left: 6px solid var(--indigo); }
+  .warning { background: #fff8e1; border-left: 6px solid var(--amber); }
+  .danger  { background: #fdecea; border-left: 6px solid var(--red); }
+  .success { background: #e8f5e9; border-left: 6px solid var(--green); }
+  .box strong:first-child { display: block; margin-bottom: 4px; }
+
+  ul.check { list-style: none; padding-left: 4px; }
+  ul.check li { margin: 8px 0; padding-left: 30px; position: relative; }
+  ul.check li::before { content: "☐"; position: absolute; left: 4px; color: var(--indigo);
+                        font-size: 1.15em; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: .97em; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: #eef1fa; }
+
+  .urlbox { background: var(--card); border: 2px solid var(--indigo); border-radius: 12px;
+            padding: 18px 20px; margin: 22px 0; }
+  .urlbox h3 { margin-top: 0; color: var(--indigo-dark); }
+  .urlbox input { width: 100%; padding: 12px; font-size: 1.05em; border: 2px solid var(--line);
+                  border-radius: 8px; font-family: Consolas, monospace; }
+  .urlbox button { margin-top: 10px; background: var(--indigo); color: #fff; border: 0;
+                   padding: 11px 22px; font-size: 1em; border-radius: 8px; cursor: pointer; }
+  .urlbox button:hover { background: var(--indigo-dark); }
+  .urlbox small { color: var(--grey); }
+
+  .roles { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+  .role { flex: 1 1 200px; background: #eef1fa; border-radius: 10px; padding: 14px; text-align: center; }
+  .role .ico { font-size: 2em; }
+  .role b { display: block; margin-top: 6px; }
+  .arrow { text-align: center; color: var(--grey); margin: 2px 0; }
+  footer { text-align: center; color: var(--grey); font-size: .9em; margin-top: 40px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>👨‍👩‍👧 OSRA Test Setup</h1>
+  <p>Step-by-step guide — no technical knowledge needed. Android + Windows.</p>
+</header>
+
+<main>
+
+<!-- ============ URL FILL-IN ============ -->
+<div class="urlbox" id="urlbox">
+  <h3>📋 First: paste your Server Address here</h3>
+  <p>You'll get this address in <b>Part 2</b> of this guide. Once you paste it below and click
+     <b>Save</b>, every step in this guide will show <b>your</b> address automatically.</p>
+  <input type="text" id="serverUrl" placeholder="https://example.trycloudflare.com" />
+  <button onclick="saveUrl()">Save my address</button>
+  <small id="urlStatus"></small>
+</div>
+
+<!-- ============ OVERVIEW ============ -->
+<div class="card">
+  <h2>🧭 What we are setting up</h2>
+  <p>OSRA has <b>three pieces</b>. This guide sets up each one:</p>
+  <div class="roles">
+    <div class="role"><div class="ico">🖥️</div><b>1. The Hub</b>Your (the organizer's) Windows PC.<br>Runs the OSRA server and connects to the internet through Cloudflare.</div>
+    <div class="role"><div class="ico">📱</div><b>2. Parent Phone</b>An Android phone for the parent.<br>Used to see the child's activity and set rules.</div>
+    <div class="role"><div class="ico">🧒</div><b>3. Child Devices</b>The child's Android phone<br>and/or a Windows PC.</div>
+  </div>
+  <div class="info box">
+    <strong>ℹ️ Good to know</strong>
+    Everything runs in test mode: no payment, no app stores — apps are installed directly
+    ("sideloaded"). It takes about <b>30–45 minutes</b> the first time.
+  </div>
+
+  <div class="success box">
+    <strong>🆕 What's new in this release (Sep 16)</strong>
+    Recommended 13-category protection is ON by default · one-tap <b>pause internet</b> ·
+    <b>WhatsApp/social AI monitoring</b> with an encrypted snippet vault · calls &amp; texts
+    timeline · install alerts with one-tap block · <b>bonus time</b> &amp; wind-down ·
+    child <b>SOS</b> (phone quick-tile / PC Shift+F11) · <b>Family members</b> invites ·
+    tamper &amp; VPN alerts · <b>Reports</b> with charts · wellbeing score · live
+    "● app · minutes today" chip · coach cards in English and العربية.
+    Full recipes: <code>SHIP-NOTES.md</code>.
+  </div>
+</div>
+
+<!-- ============ PART 1 ============ -->
+<div class="card">
+  <h2><span class="part">PART 1</span> Start the Hub (your PC)</h2>
+
+  <div class="step"><div class="num">1</div><div class="body">
+    <p><b>Protect your test (1 minute, recommended).</b> The server will be visible on the
+       internet, so let's set secret passwords for it.</p>
+    <p>Right-click <code>start-backend.bat</code> → <b>Edit</b> (opens in Notepad). Find these three lines:</p>
+    <span class="cmd">set JWT_SECRET=CHANGE_ME...<br>set INTERNAL_HMAC_SECRET=CHANGE_ME...<br>set VAULT_KEY=CHANGE_ME...</span>
+    <p>Replace each value with <b>20+ random letters and numbers</b> (just mash your keyboard —
+       no spaces). Then save and close Notepad.</p>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div class="body">
+    <p><b>Start the server.</b> Double-click <code>start-backend.bat</code>.</p>
+    <p>The first time, a black window will show some setup text and then say the server is
+       starting. <b>Leave this window open</b> — the server runs inside it.</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div class="body">
+    <p><b>Check it's alive.</b> Open your web browser and go to:</p>
+    <p><code>http://localhost:3000/health</code></p>
+    <p>You should see <code>{"ok":true,"version":"0.1.0"}</code>. ✅ Part 1 done!</p>
+    <p><i>Technical helper note: <code>/health</code> only proves the API process is up.
+       If apps ever fail while it looks fine, check <code>http://localhost:3000/health/deep</code> —
+       a <code>503</code> or <code>"db":"down"</code> there means the database service
+       (<code>OSRA-Postgres</code>) stopped; run <code>net start OSRA-Postgres</code>.</i></p>
+  </div></div>
+
+  <div class="warning box"><strong>⚠️ Keep the window open</strong>
+    If you close the black window, the server stops and the apps will go offline. If the PC
+    restarts, just double-click <code>start-backend.bat</code> again.</div>
+</div>
+
+<!-- ============ PART 2 ============ -->
+<div class="card">
+  <h2><span class="part">PART 2</span> Put the Hub online with Cloudflare</h2>
+  <p>Your home internet doesn't give the server a public address, so we use a free tool from
+     <b>Cloudflare</b> that creates a secure public link (<code>https://…</code>) to your PC.
+     This is completely free and takes ~5 minutes.</p>
+
+  <div class="step"><div class="num">1</div><div class="body">
+    <p><b>Download the tool.</b> Open this page in your browser:</p>
+    <p><code>https://github.com/cloudflare/cloudflared/releases/latest</code></p>
+    <p>Under <b>Assets</b>, click the file named:</p>
+    <p><code>cloudflared-windows-amd64.exe</code></p>
+    <p>Save it to your <b>Downloads</b> folder.</p>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div class="body">
+    <p><b>Open a command window in Downloads.</b> Open File Explorer, go to <b>Downloads</b>,
+       then in the folder's address bar type <code>cmd</code> and press <b>Enter</b>.
+       A black window opens.</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div class="body">
+    <p><b>Start the tunnel.</b> Copy this whole line, paste it into the black window with
+       right-click, then press <b>Enter</b>:</p>
+    <span class="cmd">cloudflared-windows-amd64.exe tunnel --url http://localhost:3000</span>
+    <p>Wait about 10 seconds. You'll see lots of text, then a line like:</p>
+    <span class="cmd">https://acm-julian-manitoba-engaged.trycloudflare.com</span>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div class="body">
+    <p><b>Copy your address.</b> The <code>https://…trycloudflare.com</code> address is
+       <b>yours</b>. Write it down and paste it into the green box at the top of this page
+       (📋), then click <b>Save my address</b>.</p>
+    <p>This window must also stay open while you test.</p>
+  </div></div>
+
+  <div class="info box"><strong>ℹ️ About the address</strong>
+    It's randomly generated and <b>changes every time you restart the tunnel</b>. That's fine
+    for a single test day — if you restart it, just share the new address with your testers.
+    For a multi-day test you can get a fixed address with a free ngrok account instead
+    (ask your technical helper, or see the Troubleshooting section).</div>
+
+  <div class="success box"><strong>✅ Quick check</strong>
+    On your phone's browser, open <span class="srv"><span class="placeholder">https://your-address.trycloudflare.com</span></span>
+    with <code>/health</code> at the end. Seeing <code>{"ok":true}</code> means the whole
+    online path works!</div>
+</div>
+
+<!-- ============ PART 3 ============ -->
+<div class="card">
+  <h2><span class="part">PART 3</span> Install the Parent app 📱 (parent's phone)</h2>
+
+  <div class="step"><div class="num">1</div><div class="body">
+    <p>Copy <code>OSRA-Parent.apk</code> to the parent's phone
+       (email it, WhatsApp it, USB cable — any way works).</p>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div class="body">
+    <p>Tap the file. The phone will warn about "unknown apps" — tap
+       <b>Settings</b> on that popup and allow installs from that app (e.g. your file
+       manager or browser). Then go back and tap <b>Install</b>.</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div class="body">
+    <p>Open <b>OSRA</b>. You'll see a login screen with three boxes. Fill them in:</p>
+    <ul>
+      <li><b>Server</b>: <span class="srv"><span class="placeholder">https://your-address.trycloudflare.com</span></span> (your address from Part 2)</li>
+      <li><b>Email</b>: <code>demo@familyshield.dev</code></li>
+      <li><b>Password</b>: <code>CorrectHorseBatteryStaple!</code></li>
+    </ul>
+    <p>Tap <b>Sign in</b>.</p>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div class="body">
+    <p>You should see a dashboard with a child named <b>Alex</b> and a device. 🎉
+       (Or tap <b>Create account</b> on the login screen to make your own family instead.)</p>
+  </div></div>
+</div>
+
+<!-- ============ PART 4 ============ -->
+<div class="card">
+  <h2><span class="part">PART 4</span> Set up the child's Android phone 🧒📱</h2>
+
+  <div class="step"><div class="num">1</div><div class="body">
+    <p><b>Get a pairing code.</b> On the <b>parent phone</b>, open Alex's page → tap
+       <b>Pair a device</b>. A big 6-digit code appears — it's valid for 10 minutes.</p>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div class="body">
+    <p>On the <b>child's phone</b>, install <code>OSRA-ChildAgent.apk</code>
+       the same way you installed the parent app (allow unknown apps → Install).</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div class="body">
+    <p>Open the app. Fill in:</p>
+    <ul>
+      <li><b>Server URL</b>: <span class="srv"><span class="placeholder">https://your-address.trycloudflare.com</span></span></li>
+      <li><b>Pairing code</b>: the 6 digits from step 1</li>
+    </ul>
+    <p>Tap <b>Pair this device</b>. If it says the code is invalid, the 10 minutes may have
+       passed — just generate a fresh code on the parent phone.</p>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div class="body">
+    <p><b>Turn on the supervision service.</b> On the success screen, tap
+       <b>Open accessibility settings</b> → find <b>OSRA</b> in the list → turn it
+       <b>On</b> → confirm. This is what lets the app block other apps.</p>
+  </div></div>
+
+  <div class="step"><div class="num">5</div><div class="body">
+    <p><b>Allow location.</b> When asked, choose <b>Allow all the time</b> (not just "while
+       using the app") so location updates keep working.</p>
+    <p>A persistent notification "Location sharing is active" tells you everything is running.</p>
+  </div></div>
+
+  <div class="step"><div class="num">6</div><div class="body">
+    <p>Back on the <b>parent phone</b>, the device now appears on Alex's page within a
+       minute, showing status and battery. ✅ Done!</p>
+  </div></div>
+
+  <div class="info box"><strong>ℹ️ Phone tip</strong>
+    Some phones (Xiaomi, Huawei, Samsung) aggressively kill background apps. If the child
+    phone stops reporting later, open the agent app once — and in the phone's battery
+    settings, set OSRA to "No restrictions".</div>
+</div>
+
+<!-- ============ PART 5 ============ -->
+<div class="card">
+  <h2><span class="part">PART 5</span> Set up the child's Windows PC 🧒🖥️</h2>
+
+  <div class="step"><div class="num">1</div><div class="body">
+    <p>On the <b>parent phone</b>, generate a fresh pairing code (child's page →
+       <b>Pair a device</b>).</p>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div class="body">
+    <p>Copy the folder <code>OSRA-Agent-Windows</code> to the child's PC
+       (USB stick, shared folder, etc.).</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div class="body">
+    <p>Double-click <code>OSRA.Agent.exe</code>. The first time, a pairing window
+       opens. Enter:</p>
+    <ul>
+      <li><b>Server URL</b>: <span class="srv"><span class="placeholder">https://your-address.trycloudflare.com</span></span></li>
+      <li><b>Pairing code</b>: the 6 digits from step 1</li>
+    </ul>
+    <p>Tap <b>Pair</b>. The window closes and the agent keeps running in the background
+       (a console window — <b>leave it open</b>).</p>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div class="body">
+    <p>The PC is now supervised: its web browsing is filtered, blocked apps are closed,
+       and screen-time limits apply. The device appears in the parent app within a minute.</p>
+  </div></div>
+
+  <div class="info box"><strong>ℹ️ Details for the curious</strong>
+    The screen-time lock screen unlocks with PIN <code>0000</code> (ask your technical
+    helper to change it via the <code>DESKTOP_PARENT_PIN</code> setting if needed).
+    To uninstall later: delete the <code>OSRA-Agent-Windows</code> folder and
+    remove the proxy in Windows Settings → Network → Proxy (it turns off automatically
+    when the agent exits).</div>
+</div>
+
+<!-- ============ PART 6 ============ -->
+<div class="card">
+  <h2><span class="part">PART 6</span> Try it out! 🎉</h2>
+  <p>Everything is set up. Here's a fun checklist to see OSRA in action:</p>
+  <ul class="check">
+    <li><b>Block an app:</b> parent app → Alex → Rules → Apps → set an app (e.g. YouTube) to
+        <b>Block</b> → Save. Within ~1 minute, opening it on the child's phone shows
+        "This app is blocked by your parent".</li>
+    <li><b>Control the device:</b> on the child's page, each device card has
+        <b>Ring</b>, <b>Lock</b> and <b>Unlock</b> buttons. Tap <b>Lock</b> — within
+        ~1 minute the PC shows a full-screen "locked by parent" screen that only a
+        parent PIN (default <code>0000</code>) can dismiss; <b>Unlock</b> releases it
+        remotely. <b>Ring</b> makes the device beep.</li>
+    <li><b>Web filter:</b> on the child PC, try opening a gambling site — you get the
+        "Blocked by OSRA" page immediately. Google searches run in SafeSearch.</li>
+    <li><b>See alerts:</b> everything the child tries generates an alert on the parent's
+        <b>Alerts</b> screen in real time. Swipe one away to acknowledge it.</li>
+    <li><b>Watch the map:</b> the <b>Map</b> screen shows the child's live location and
+        the Home/School geofences. (If the map area looks empty, the Google Maps key is
+        not configured — locations and all controls still work from the child's page.)</li>
+    <li><b>New in this release:</b> tap the <b>Internet</b> pill on a child card to
+        <b>pause the internet</b>; open the child's <b>Social</b> tab and try the test
+        phrase "kill yourself" on the child's WhatsApp — an alert with the snippet and a
+        coach card arrives within a minute; grant <b>Bonus time</b> (+30) from the
+        child's page; try the child's <b>SOS</b> quick-settings tile; invite a co-parent
+        from the dashboard menu → <b>Family members</b>. All 29 features:
+        <code>SHIP-NOTES.md</code>.</li>
+    <li><b>Bedtime:</b> set the bedtime window to cover the current time → both the phone
+        and the PC lock the child out.</li>
+  </ul>
+</div>
+
+<!-- ============ TROUBLESHOOTING ============ -->
+<div class="card">
+  <h2>🛠️ If something goes wrong</h2>
+  <table>
+    <tr><th>Problem</th><th>What to do</th></tr>
+    <tr><td>Apps say "Internal Server Error" but the health test works</td><td>The API is running but the database behind it stopped. On the PC, open a command window and run <code>net start OSRA-Postgres</code>, then close and re-open <code>start-backend.bat</code>. (Prevention: it normally runs as an automatic Windows service.)</td></tr>
+    <tr><td>Phone says "can't connect" or "timeout"</td><td>The server or tunnel stopped. Check both black windows on the PC are still open. Re-open <code>start-backend.bat</code>, restart the tunnel, and re-check the <b>/health</b> test from Part 2.</td></tr>
+    <tr><td>The address stopped working after a PC restart</td><td>The tunnel address changes when restarted. Use the new address in the app's <b>Server</b> field (parent app login screen; on the child phone use <b>Re-pair</b>; on the child PC delete <code>agent.config.json</code> next to the exe and run it again).</td></tr>
+    <tr><td>"Invalid or expired code" when pairing</td><td>Codes last 10 minutes and work once. Generate a new code on the parent phone.</td></tr>
+    <tr><td>Child phone isn't blocking apps</td><td>The accessibility service is off — open the agent app on the child phone and tap "Open accessibility settings" to re-enable it. Also make sure the agent app isn't force-stopped.</td></tr>
+    <tr><td>Child PC isn't filtering websites</td><td>The agent's console window must be open. Plain-HTTP pages are filtered out of the box; real sites use HTTPS, which is filtered after a <b>one-time opt-in</b> — see "HTTPS sites not blocked on the PC" below. To see blocking right away: add a domain to the child's blocked list in Rules, then open its <code>http://</code> version (e.g. <code>http://neverssl.com</code>). On Firefox also set Settings → General → Network Settings → <b>Use system proxy settings</b>. Blocked attempts show up as alerts.</td></tr>
+    <tr><td>Map shows no location</td><td>On the child phone, location permission must be "Allow all the time", and GPS must be on. <b>Testing on an emulator?</b> GPS injection doesn't reach the agent reliably — verify location on a physical phone.</td></tr>
+    <tr><td>Everything is slow to react (up to a minute)</td><td>Normal! Test builds don't use push notifications — devices check in with the server every ~60 seconds.</td></tr>
+    <tr><td>Social concerns don't appear</td><td>WhatsApp monitoring must be ON (child's Social tab), the accessibility service enabled, and the message from a monitored app — allow a minute for the phone's check-in loop.</td></tr>
+    <tr><td>Paused device still opens some apps</td><td>Those apps are in "Always allowed" (Rules → Apps). Remove them to block everything while paused.</td></tr>
+    <tr><td>Calls/texts list is empty</td><td>Grant "Call &amp; SMS permissions" from the agent app's completion screen (optional). iOS can't monitor calls/texts.</td></tr>
+    <tr><td>HTTPS sites not blocked on the PC</td><td>HTTPS filtering is opt-in: run <code>setx FS_HTTPS_INSPECT 1</code> on the child PC, restart the agent, approve the certificate prompt once.</td></tr>
+    <tr><td>I need the same address for several days</td><td>Quick tunnels change address on restart. Ask your technical helper to set up a free <b>ngrok</b> static domain or a Cloudflare named tunnel — instructions are in the README for technical helpers.</td></tr>
+  </table>
+</div>
+
+<!-- ============ SAFETY ============ -->
+<div class="card">
+  <h2>🔒 Safety notes for the test</h2>
+  <div class="danger box"><strong>Please read</strong>
+    <ul style="margin:6px 0 0; padding-left:22px;">
+      <li>This is a <b>test build</b> — don't use it with real, sensitive family data.</li>
+      <li>The address is unlisted but public — share it only with your testers, like a password.</li>
+      <li>When the test is over: close the two black windows on the PC (the tunnel, then the server). Done.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>OSRA test release · Android + Windows · iOS coming later<br>Guide last updated 2026-09-19 — matches the APKs/agent in this folder</footer>
+</main>
+
+<script>
+(function () {
+  var input = document.getElementById('serverUrl');
+  var status = document.getElementById('urlStatus');
+  var saved = null;
+  try { saved = localStorage.getItem('fs_server_url'); } catch (e) {}
+  if (saved) { input.value = saved; apply(saved); }
+
+  function normalize(u) {
+    u = (u || '').trim().replace(/\/+$/, '');
+    return u;
+  }
+  function apply(u) {
+    var spans = document.querySelectorAll('.srv .placeholder');
+    for (var i = 0; i < spans.length; i++) { spans[i].textContent = u; }
+  }
+  window.saveUrl = function () {
+    var u = normalize(input.value);
+    if (!/^https?:\/\/.+\..+/.test(u)) {
+      status.textContent = ' ⚠️ Please paste the full address starting with https:// (from Part 2).';
+      return;
+    }
+    try { localStorage.setItem('fs_server_url', u); } catch (e) {}
+    apply(u);
+    status.textContent = ' ✅ Saved — every address in this guide now shows: ' + u;
+  };
+})();
+</script>
+</body>
+</html>

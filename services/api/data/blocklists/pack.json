@@ -1,0 +1,367 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-16T00:00:00.000Z",
+  "categories": [
+    {
+      "category": "pornography",
+      "domains": [
+        "pornhub.com",
+        "xvideos.com",
+        "xnxx.com",
+        "xhamster.com",
+        "redtube.com",
+        "youporn.com",
+        "chaturbate.com",
+        "stripchat.com",
+        "onlyfans.com",
+        "fansly.com"
+      ],
+      "appsAndroid": [
+        "com.pornhub.app",
+        "com.xhamster.app",
+        "com.chaturbate.app",
+        "com.stripchat.app",
+        "com.onlyfans.android"
+      ],
+      "appsWindows": [
+        "pornhub.exe",
+        "xvideos.exe",
+        "chaturbate.exe",
+        "stripchat.exe",
+        "onlyfans.exe"
+      ]
+    },
+    {
+      "category": "gambling",
+      "domains": [
+        "bet365.com",
+        "draftkings.com",
+        "fanduel.com",
+        "888casino.com",
+        "pokerstars.com",
+        "betfair.com",
+        "williamhill.com",
+        "bovada.lv",
+        "unibet.com",
+        "casumo.com"
+      ],
+      "appsAndroid": [
+        "com.bet365.bet365",
+        "com.draftkings.dkng",
+        "com.fanduel.android",
+        "com.pokerstars.mobile",
+        "com.casino888.mobile"
+      ],
+      "appsWindows": [
+        "bet365.exe",
+        "draftkings.exe",
+        "fanduel.exe",
+        "pokerstars.exe",
+        "casumo.exe"
+      ]
+    },
+    {
+      "category": "drugs",
+      "domains": [
+        "leafly.com",
+        "erowid.org",
+        "weedmaps.com",
+        "hightimes.com",
+        "icmag.com",
+        "rollitup.org",
+        "shroomery.org",
+        "dmt-nexus.me",
+        "drugs-forum.com",
+        "cannabis.info"
+      ],
+      "appsAndroid": [
+        "com.leafly.android",
+        "com.weedmaps.app",
+        "org.erowid.android",
+        "com.hightimes.app",
+        "org.shroomery.app"
+      ],
+      "appsWindows": [
+        "leafly.exe",
+        "weedmaps.exe",
+        "erowid.exe",
+        "hightimes.exe",
+        "shroomery.exe"
+      ]
+    },
+    {
+      "category": "violence",
+      "domains": [
+        "bestgore.com",
+        "kaotic.com",
+        "theync.com",
+        "goregrish.com",
+        "documentingreality.com",
+        "hoodsite.com",
+        "crazyshit.com",
+        "livegore.com"
+      ],
+      "appsAndroid": [
+        "com.bestgore.app",
+        "com.kaotic.app",
+        "com.theync.app",
+        "com.livegore.app"
+      ],
+      "appsWindows": [
+        "bestgore.exe",
+        "kaotic.exe",
+        "theync.exe",
+        "livegore.exe"
+      ]
+    },
+    {
+      "category": "weapons",
+      "domains": [
+        "palmettostatearmory.com",
+        "budsgunshop.com",
+        "cheaperthandirt.com",
+        "midwayusa.com",
+        "brownells.com",
+        "gunbroker.com",
+        "armslist.com",
+        "classicfirearms.com",
+        "impactguns.com",
+        "sportsmansguide.com"
+      ],
+      "appsAndroid": [
+        "com.palmettostatearmory.app",
+        "com.budsgunshop.app",
+        "com.midwayusa.app",
+        "com.brownells.android",
+        "com.gunbroker.android"
+      ],
+      "appsWindows": [
+        "palmettostatearmory.exe",
+        "budsgunshop.exe",
+        "gunbroker.exe",
+        "brownells.exe",
+        "midwayusa.exe"
+      ]
+    },
+    {
+      "category": "hate",
+      "domains": [
+        "stormfront.org",
+        "dailystormer.name",
+        "vnnforum.com",
+        "nationalvanguard.org",
+        "dailyarchives.org",
+        "gab.com",
+        "bitchute.com"
+      ],
+      "appsAndroid": [
+        "com.gab.android",
+        "com.bitchute.app",
+        "com.stormfront.app",
+        "com.dailystormer.app"
+      ],
+      "appsWindows": [
+        "gab.exe",
+        "bitchute.exe",
+        "stormfront.exe",
+        "dailystormer.exe"
+      ]
+    },
+    {
+      "category": "self_harm",
+      "domains": [
+        "myproana.com",
+        "proana.co.uk",
+        "sanctionedsuicide.com",
+        "lostallhope.com",
+        "thinandbeautiful.com",
+        "anamia.org",
+        "xoxothin.com",
+        "eatingdisordercentral.com"
+      ],
+      "appsAndroid": [
+        "com.myproana.app",
+        "com.proana.app",
+        "com.thinspiration.app",
+        "org.selfharm.app"
+      ],
+      "appsWindows": [
+        "myproana.exe",
+        "proana.exe",
+        "thinspiration.exe",
+        "selfharm.exe"
+      ]
+    },
+    {
+      "category": "dating",
+      "domains": [
+        "tinder.com",
+        "grindr.com",
+        "bumble.com",
+        "hinge.co",
+        "okcupid.com",
+        "match.com",
+        "zoosk.com",
+        "plentyoffish.com",
+        "badoo.com",
+        "coffeemeetsbagel.com"
+      ],
+      "appsAndroid": [
+        "com.tinder",
+        "com.grindr.android",
+        "com.bumble.app",
+        "com.hinge.app",
+        "com.okcupid.okcupid"
+      ],
+      "appsWindows": [
+        "tinder.exe",
+        "grindr.exe",
+        "bumble.exe",
+        "okcupid.exe",
+        "match.exe"
+      ]
+    },
+    {
+      "category": "social_media_nsfw",
+      "domains": [
+        "reddit.com",
+        "tumblr.com",
+        "x.com",
+        "imgur.com",
+        "newgrounds.com",
+        "deviantart.com",
+        "furaffinity.net",
+        "rule34.xxx"
+      ],
+      "appsAndroid": [
+        "com.reddit.frontpage",
+        "com.tumblr",
+        "com.twitter.android",
+        "com.imgur.mobile",
+        "com.newgrounds.app"
+      ],
+      "appsWindows": [
+        "reddit.exe",
+        "tumblr.exe",
+        "x.exe",
+        "imgur.exe",
+        "newgrounds.exe"
+      ]
+    },
+    {
+      "category": "chat_random",
+      "domains": [
+        "omegle.com",
+        "chatroulette.com",
+        "ometv.tv",
+        "chatrandom.com",
+        "camsurf.com",
+        "shagle.com",
+        "bazoocam.org",
+        "chatspin.com",
+        "tinychat.com",
+        "chatki.com"
+      ],
+      "appsAndroid": [
+        "com.omegle.android",
+        "com.chatroulette.app",
+        "com.ometv.android",
+        "com.chatrandom.app",
+        "com.camsurf.app"
+      ],
+      "appsWindows": [
+        "omegle.exe",
+        "chatroulette.exe",
+        "ometv.exe",
+        "chatrandom.exe",
+        "camsurf.exe"
+      ]
+    },
+    {
+      "category": "proxies_vpn",
+      "domains": [
+        "proxysite.com",
+        "hide.me",
+        "torproject.org",
+        "hidemyass.com",
+        "tunnelbear.com",
+        "windscribe.com",
+        "cyberghostvpn.com",
+        "expressvpn.com",
+        "nordvpn.com",
+        "privateinternetaccess.com"
+      ],
+      "appsAndroid": [
+        "com.nordvpn.android",
+        "org.torproject.torbrowser",
+        "com.expressvpn.vpn",
+        "com.hidemyass.hmaapp",
+        "com.windscribe.vpn"
+      ],
+      "appsWindows": [
+        "nordvpn.exe",
+        "torbrowser.exe",
+        "expressvpn.exe",
+        "hidemyass.exe",
+        "windscribe.exe"
+      ]
+    },
+    {
+      "category": "warez",
+      "domains": [
+        "thepiratebay.org",
+        "1337x.to",
+        "limetorrents.lol",
+        "torrentz2.eu",
+        "kickasstorrents.to",
+        "eztv.re",
+        "nyaa.si",
+        "fitgirl-repacks.site",
+        "steamunlocked.net",
+        "rarbg.to"
+      ],
+      "appsAndroid": [
+        "com.utorrent.client",
+        "com.bittorrent.client",
+        "com.delphicoder.flud",
+        "org.transdroid.full"
+      ],
+      "appsWindows": [
+        "utorrent.exe",
+        "bittorrent.exe",
+        "qbittorrent.exe",
+        "deluge.exe",
+        "jdownloader.exe"
+      ]
+    },
+    {
+      "category": "ai_chatbots",
+      "domains": [
+        "character.ai",
+        "chatgpt.com",
+        "janitorai.com",
+        "replika.com",
+        "kindroid.ai",
+        "paradot.ai",
+        "nomi.ai",
+        "chai-research.com",
+        "poe.com",
+        "you.com"
+      ],
+      "appsAndroid": [
+        "ai.character.app",
+        "com.openai.chat.android",
+        "com.replika.app",
+        "com.chai.app",
+        "com.kindroid.ai"
+      ],
+      "appsWindows": [
+        "characterai.exe",
+        "chatgpt.exe",
+        "replika.exe",
+        "chai.exe",
+        "kindroid.exe"
+      ]
+    }
+  ]
+}

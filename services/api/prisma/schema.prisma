@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Family {
+  id        String   @id @default(uuid())
+  name      String
+  region    String
+  createdAt DateTime @default(now())
+  parents   Parent[]
+  children  Child[]
+}
+
+model Parent {
+  id           String          @id @default(uuid())
+  familyId     String
+  email        String          @unique
+  passwordHash String
+  displayName  String
+  role         String          @default("owner")
+  // Free-text permission tags granted via FamilyInvite accept (Feature #13, e.g. "location", "controls").
+  permissions  String[]        @default([])
+  mfaEnabled   Boolean         @default(false)
+  mfaSecret    String?
+  createdAt    DateTime        @default(now())
+  family       Family          @relation(fields: [familyId], references: [id])
+  consents     ConsentRecord[]
+}
+
+model Child {
+  id          String          @id @default(uuid())
+  familyId    String
+  displayName String
+  birthYear   Int
+  avatarUrl   String?
+  createdAt   DateTime        @default(now())
+  family      Family          @relation(fields: [familyId], references: [id])
+  devices     Device[]
+  ruleSet     RuleSet?
+  locations   LocationPing[]
+  geofences   Geofence[]
+  alerts      Alert[]
+  consents    ConsentRecord[]
+}
+
+model Device {
+  id         String         @id @default(uuid())
+  childId    String
+  platform   String
+  model      String
+  osVersion  String
+  status     String         @default("offline")
+  batteryPct Int            @default(0)
+  lastSeen   DateTime       @default(now())
+  pushToken  String?
+  // Per-device internal HMAC secret (minted at pair/claim; handoff item 5).
+  internalSecret String?
+  child      Child          @relation(fields: [childId], references: [id])
+  locations  LocationPing[]
+  alerts     Alert[]
+}
+
+model RuleSet {
+  id                  String   @id @default(uuid())
+  childId             String   @unique
+  dailyLimitMinutes   Int      @default(180)
+  weekendLimitMinutes Int      @default(300)
+  bedtimeStart        String   @default("21:00")
+  bedtimeEnd          String   @default("07:00")
+  schoolHoursStart    String   @default("08:00")
+  schoolHoursEnd      String   @default("15:00")
+  schoolDays          Int[]    @default([1,2,3,4,5])
+  blockedCategories   String[]
+  allowedDomains      String[]
+  blockedDomains      String[]
+  safeSearchEnforced  Boolean  @default(true)
+  alwaysAllowedApps   String[] @default([])
+  bonusMinutesToday   Int      @default(0)
+  socialMonitoring    Json     @default("{}")
+  contactAllowlist    String[] @default([])
+  appRules            Json     @default("[]")
+  routines            Json     @default("[]")
+  updatedAt           DateTime @updatedAt
+  child               Child    @relation(fields: [childId], references: [id])
+}
+
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  childId   String
+  deviceId  String?
+  ts        DateTime @default(now())
+  type      String
+  payload   Json     @default("{}")
+  @@index([childId, ts])
+}
+
+model SocialEvent {
+  id            String   @id @default(uuid())
+  childId       String
+  app           String
+  contact       String   @default("")
+  severity      String   @default("warning")
+  previewCipher String   @default("")
+  concernTypes  String[] @default([])
+  createdAt     DateTime @default(now())
+  @@index([childId, createdAt])
+}
+
+model FamilyInvite {
+  id          String   @id @default(uuid())
+  familyId    String
+  email       String
+  role        String   @default("co-parent")
+  permissions String[] @default([])
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  @@index([familyId])
+}
+
+model DigestPrefs {
+  familyId    String   @id
+  dailyEmail  Boolean  @default(true)
+  weeklyEmail Boolean  @default(true)
+  pushEnabled Boolean  @default(true)
+  emails      String[] @default([])
+}
+
+model InstallRequest {
+  id        String   @id @default(uuid())
+  childId   String
+  packageId String
+  appName   String   @default("")
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  @@index([childId])
+}
+
+model LocationPing {
+  id        String   @id @default(uuid())
+  childId   String
+  deviceId  String
+  lat       Float
+  lng       Float
+  accuracyM Float
+  timestamp DateTime @default(now())
+  child     Child    @relation(fields: [childId], references: [id])
+  device    Device   @relation(fields: [deviceId], references: [id])
+  @@index([childId, timestamp])
+}
+
+model Geofence {
+  id            String  @id @default(uuid())
+  childId       String
+  label         String
+  lat           Float
+  lng           Float
+  radiusM       Int
+  notifyOnEnter Boolean @default(true)
+  notifyOnExit  Boolean @default(true)
+  routineId     String?
+  child         Child   @relation(fields: [childId], references: [id])
+}
+
+model Alert {
+  id           String   @id @default(uuid())
+  childId      String
+  deviceId     String?
+  severity     String
+  category     String
+  title        String
+  body         String
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  acknowledged Boolean  @default(false)
+  child        Child    @relation(fields: [childId], references: [id])
+  device       Device?  @relation(fields: [deviceId], references: [id])
+  @@index([childId, createdAt])
+}
+
+model ConsentRecord {
+  id                String   @id @default(uuid())
+  childId           String
+  parentId          String
+  method            String
+  jurisdiction      String
+  grantedAt         DateTime @default(now())
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  thirdPartySharing Boolean  @default(false)
+  child             Child    @relation(fields: [childId], references: [id])
+  parent            Parent   @relation(fields: [parentId], references: [id])
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST BUILD ONLY: permits cleartext HTTP so agents can pair against LAN/dev servers
+     (e.g. http://192.168.x.x:3000, http://10.0.2.2:3000). Production builds must ship
+     HTTPS-only and REMOVE this config. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

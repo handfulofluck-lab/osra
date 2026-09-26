@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST BUILDS ONLY — permits cleartext HTTP for local/LAN test backends
+     (127.0.0.1, 10.0.2.2 emulator loopback, 192.168.0.0/16 LAN). Android's
+     network-security-config matches IP literals exactly and cannot wildcard an
+     IP range, so base-config is used instead of per-domain rules. Remove this
+     config (restore cleartextTrafficPermitted="false") for production builds. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

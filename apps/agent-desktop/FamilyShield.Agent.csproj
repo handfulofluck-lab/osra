@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- agent.config.json intentionally unchanged (avoids orphaning paired PCs). -->
+    <AssemblyName>OSRA.Agent</AssemblyName>
+    <Product>OSRA</Product>
+    <AssemblyTitle>OSRA Agent</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.6" />
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
+    <PackageReference Include="Titanium.Web.Proxy" Version="3.2.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The xunit test project lives under tests/; keep it out of the worker assembly. -->
+    <Compile Remove="tests/**/*.cs" />
+    <EmbeddedResource Remove="tests/**/*" />
+    <None Remove="tests/**/*" />
+    <!-- Emergency proxy reset shipped beside the exe (BUG-007). -->
+    <None Include="reset-proxy.bat" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Command dispatch mapping (Feature #11) is tested from the xunit project. -->
+    <InternalsVisibleTo Include="FamilyShield.Agent.Tests" />
+  </ItemGroup>
+</Project>
