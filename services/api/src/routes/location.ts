@@ -4,7 +4,8 @@ import { prisma } from "../db.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { isInsideFence } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
-import { registerRawBodyParser, verifyInternalSignature } from "../lib/internalAuth.js";
+import { getRedis } from "../redis.js";
+import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 
 const PingSchema = z.object({
@@ -33,24 +34,44 @@ const HistoryQuerySchema = z.object({
   to: z.string().datetime().optional(),
 });
 
-type AuthedUser = { familyId: string };
+type AuthedUser = { familyId: string; sub?: string; role?: string; deviceId?: string; childId?: string };
 
 /**
  * preHandler for POST /ping: accepts a parent JWT, or falls back to the
  * X-FamilyShield-Signature HMAC scheme used by device/agent internal calls.
  */
-// NOTE: simplest scheme per spec — any verified JWT (parent or device role) when present,
-// otherwise the same HMAC check as /v1/alerts/internal (spec §14.1: ping accepts any verified
-// JWT). A production deployment would use per-device credentials.
 async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     await req.jwtVerify();
+    const user = req.user as AuthedUser | undefined;
+    if (user?.role === "device" && user.deviceId) {
+      const redis = getRedis();
+      const revoked = await redis.get(`revoked:device:${user.deviceId}`).catch(() => null);
+      if (revoked) {
+        await reply.code(401).send({ error: "device_revoked" });
+        return;
+      }
+    }
     return;
   } catch {
     /* fall through to HMAC */
   }
   const rawBody = (req as { rawBody?: string }).rawBody;
-  if (await verifyInternalSignature(rawBody, req.headers["x-familyshield-signature"])) return;
+  const auth = await authenticateInternalRequest(
+    rawBody,
+    req.headers["x-familyshield-signature"],
+    req.headers as Record<string, string | string[] | undefined>,
+  );
+  if (auth.valid) {
+    if (auth.device) {
+      if (auth.device.revokedAt) {
+        await reply.code(401).send({ error: "device_revoked" });
+        return;
+      }
+      (req as unknown as { authDevice: unknown }).authDevice = auth.device;
+    }
+    return;
+  }
   await reply.code(401).send({ error: "unauthorized" });
 }
 
@@ -113,12 +134,34 @@ export async function locationRoutes(app: FastifyInstance) {
     if (user?.familyId && child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
     }
+    const authDevice = (req as unknown as { authDevice?: { id: string; childId: string } }).authDevice;
+    if (user?.role === "device") {
+      if (user.deviceId && user.deviceId !== deviceId) {
+        return reply.code(403).send({ error: "device_mismatch" });
+      }
+      if (user.childId && user.childId !== childId) {
+        return reply.code(403).send({ error: "cross_child_forbidden" });
+      }
+    } else if (authDevice) {
+      if (authDevice.id !== deviceId) {
+        return reply.code(403).send({ error: "device_mismatch" });
+      }
+      if (authDevice.childId && authDevice.childId !== childId) {
+        return reply.code(403).send({ error: "cross_child_forbidden" });
+      }
+    }
 
     // Evaluate transitions against the previous latest ping before inserting this one.
     await evaluateGeofences(childId, child.familyId, lat, lng, deviceId);
-    const ping = await prisma.locationPing.create({
-      data: { childId, deviceId, lat, lng, accuracyM, timestamp: timestamp ? new Date(timestamp) : undefined },
-    });
+
+    let ping;
+    try {
+      ping = await prisma.locationPing.create({
+        data: { childId, deviceId, lat, lng, accuracyM, timestamp: timestamp ? new Date(timestamp) : undefined },
+      });
+    } catch {
+      return reply.code(401).send({ error: "device_revoked" });
+    }
     // A device that pings is alive — keep lastSeen fresh for the parent app.
     try {
       await prisma.device.update({ where: { id: deviceId }, data: { lastSeen: new Date(), status: "online" } });

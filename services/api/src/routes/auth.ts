@@ -224,7 +224,13 @@ export async function authRoutes(app: FastifyInstance) {
       const used = await redis.get(usedKey(hash)).catch(() => null);
       if (used) {
         const parentId = await redis.get(`refresh:owner:${hash}`).catch(() => null);
-        if (parentId) await revokeAllRefreshTokens(parentId);
+        if (parentId) {
+          await revokeAllRefreshTokens(parentId);
+          const jti = await redis.get(`refresh:jwt:${hash}`).catch(() => null);
+          if (jti) {
+            await redis.set(`revoked:token:${jti}`, "1", "EX", 86400);
+          }
+        }
         return reply.code(401).send({ error: "refresh_token_reused" });
       }
       return reply.code(401).send({ error: "invalid_refresh_token" });
@@ -241,7 +247,9 @@ export async function authRoutes(app: FastifyInstance) {
     await redis.srem(indexKey(stored.parentId), hash);
     const parent = await prisma.parent.findUnique({ where: { id: stored.parentId } });
     if (!parent) return reply.code(401).send({ error: "invalid_refresh_token" });
-    const token = app.jwt.sign({ sub: parent.id, familyId: parent.familyId, role: "parent" }, { expiresIn: PARENT_TOKEN_TTL });
+    const jti = randomBytes(16).toString("hex");
+    const token = app.jwt.sign({ sub: parent.id, familyId: parent.familyId, role: "parent", jti }, { expiresIn: PARENT_TOKEN_TTL });
+    await redis.set(`refresh:jwt:${hash}`, jti, "EX", Math.floor(REFRESH_TTL_MS / 1000));
     return { token, refreshToken: await issueRefreshToken(parent.id) };
   });
 

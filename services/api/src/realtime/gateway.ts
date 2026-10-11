@@ -20,8 +20,18 @@ export function registerRealtime(app: FastifyInstance) {
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }
+    const user = req.user as { role?: string; familyId?: string; deviceId?: string };
+    if (user.role === "device" && user.deviceId) {
+      const revoked = await getRedis().get(`revoked:device:${user.deviceId}`).catch(() => null);
+      if (revoked) {
+        return reply.code(401).send({ error: "device_revoked" });
+      }
+    }
+    if (user.role !== "parent") {
+      return reply.code(403).send({ error: "parent_role_required" });
+    }
     const ticket = randomUUID();
-    const familyId = (req.user as { familyId?: string }).familyId ?? "";
+    const familyId = user.familyId ?? "";
     await getRedis().set(`ws:ticket:${ticket}`, familyId, "EX", 60);
     return { ticket, expiresIn: 60 };
   });

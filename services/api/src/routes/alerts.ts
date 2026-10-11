@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
-import { registerRawBodyParser, verifyInternalSignature } from "../lib/internalAuth.js";
+import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
@@ -29,6 +29,10 @@ const InternalAlertSchema = z.object({
     "cyberbullying",
     "self_harm",
     "grooming",
+    "tamper",
+    "vpn_detected",
+    "install_request",
+    "unknown_contact",
   ]),
   title: z.string().min(1),
   body: z.string().min(1),
@@ -86,18 +90,40 @@ export async function alertsRoutes(app: FastifyInstance) {
   /** HMAC-signed endpoint for device/AI-originated alerts (ai-engine, child agents). */
   app.post("/internal", async (req, reply) => {
     const rawBody = (req as { rawBody?: string }).rawBody;
-    if (!(await verifyInternalSignature(rawBody, req.headers["x-familyshield-signature"]))) {
+    const auth = await authenticateInternalRequest(
+      rawBody,
+      req.headers["x-familyshield-signature"],
+      req.headers as Record<string, string | string[] | undefined>,
+    );
+    if (!auth.valid) {
       return reply.code(401).send({ error: "invalid_signature" });
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { childId, deviceId, severity, category, title, body, metadata } = parsed.data;
 
+    if (auth.device) {
+      // P0-5: Verify device is not revoked
+      if (auth.device.revokedAt) {
+        return reply.code(401).send({ error: "device_revoked" });
+      }
+      // P0-4: Prevent cross-child injection: signing device must belong to this child
+      if (auth.device.childId && auth.device.childId !== childId) {
+        return reply.code(400).send({ error: "cross_child_alert_forbidden" });
+      }
+      // If a deviceId was explicitly passed in body, it must match the signing device
+      if (deviceId && deviceId !== auth.device.id) {
+        return reply.code(400).send({ error: "device_mismatch" });
+      }
+    }
+
     const child = await prisma.child.findUnique({ where: { id: childId } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
 
+    const effectiveDeviceId = deviceId ?? auth.device?.id;
+
     const alert = await prisma.alert.create({
-      data: { childId, deviceId, severity, category, title, body, metadata: (metadata ?? {}) as Prisma.InputJsonValue },
+      data: { childId, deviceId: effectiveDeviceId, severity, category, title, body, metadata: (metadata ?? {}) as Prisma.InputJsonValue },
     });
 
     const event = { type: "alert", payload: alert, ts: new Date().toISOString() };
@@ -107,4 +133,5 @@ export async function alertsRoutes(app: FastifyInstance) {
     await push.sendToFamily(child.familyId, { title, body, data: alert });
     return reply.code(201).send({ alert });
   });
+
 }
