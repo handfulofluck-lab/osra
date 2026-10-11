@@ -37,6 +37,55 @@ INTERNAL_HMAC_SECRET=<from dist/start-backend.bat> node scripts/qa-probe.mjs
 
 # P0 — safety-critical (do these first)
 
+## P0-6 · AND-13 · critical · the Android agent crash-loops on real devices (FGS started without permission)
+
+**Found by:** physical-device pass 2026-10-11 (Samsung SM-F721B, Android 16). **Not visible on the emulator.**
+**Evidence (live):**
+
+```
+java.lang.SecurityException: Starting FGS with type location … targetSDK=34 requires permissions:
+allOf=true [FOREGROUND_SERVICE_LOCATION] any of [ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION]
+and the app must be in the eligible state/exemptions to access the foreground only permission
+  at com.familyshield.agent.services.LocationService.startForegroundCompat(LocationService.kt:201)
+  at com.familyshield.agent.services.LocationService.onStartCommand(LocationService.kt:92)
+```
+
+`startAgent()` (PairingActivity) starts the location FGS immediately after a successful claim, before
+any location permission exists — the first-run path for every child device. The manifest is correct
+(`FOREGROUND_SERVICE_LOCATION` + `foregroundServiceType="location"`), so this is an unguarded start
+plus Android 14+/16 FGS rules. Because the service is sticky, the system restarts it and it crashes
+again: **7 FATAL exceptions** observed, live PID, no foreground service — it never self-recovers.
+Note `pm grant` reported `granted=true` while `appops` still showed `FINE_LOCATION: ignore`: handle
+"granted but not effective".
+
+**Fix direction:** request permission before starting the service; wrap `startForeground` and degrade
+(or stop with a user-visible notification) instead of throwing; don't return `START_STICKY` while the
+FGS cannot legally run; re-assert the service when location is granted.
+**Acceptance:** new instrumentation/UI test + the agent starts and stays up on a real device with no
+location permission, showing the permission prompt instead of crashing.
+
+## P0-7 · BUG-001 (Antigravity) · critical · Android location uploads can never succeed
+
+**Found by:** Antigravity; **independently verified and extended by Kimi on hardware.**
+**Evidence (code):** `LocationPingDto` is `{lat, lng, accuracyM, timestamp}` — **no `childId`, no
+`deviceId`** — wrapped by both senders (`LocationService.kt:184`, `PendingPingWorker.kt:35`) as
+`LocationPingBatchDto(pings: […])`, while `PingSchema` in `routes/location.ts` expects a *flat*
+`{childId, deviceId, lat, lng, …}`.
+**Evidence (live):** 16 `POST /v1/location/ping` attempts reached the API; every completed one —
+**7 of 7 — returned 500**:
+
+```
+Invalid `prisma.locationPing.create()` invocation:
+Foreign key constraint violated (deviceId does not exist)
+```
+
+The pending-ping worker replays stale rows carrying a `deviceId` from an earlier pairing, so even a
+schema-compatible request dies on the FK — and the retry loop feeds AND-10's unbounded growth.
+**Impact:** Android live location and geofences are 100% non-functional.
+**Acceptance:** probe checks for both shapes (see ask 11 in `DISCUSSION-LOG.md`); a real device pairing
+then producing `201` and a row in `LocationPing`; revoked/re-paired device ids never replayed.
+
+
 ## P0-1 · API-02 · high · per-device signing secrets leak to parents *and* to any device JWT
 **Probe checks:** `F5`, `F6`, `F7`, `G3`, `G4`, `G5`, `G6b`
 **Evidence (verified live):** `GET /v1/family/me`, `GET /v1/family/export`, `GET /v1/devices`,
