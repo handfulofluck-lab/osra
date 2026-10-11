@@ -119,4 +119,22 @@ class RuleRepositoryTest {
         assertEquals(Decision.TIME_LIMIT_REACHED, engine.evaluate(rs, "com.game", at(DayOfWeek.MONDAY, 16), used))
         assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", at(DayOfWeek.SATURDAY, 16), used))
     }
+
+    @Test
+    fun `isEssentialApp identifies essential system apps and exempts them`() {
+        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.familyshield.agent"))
+        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.systemui"))
+        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.settings"))
+        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.dialer"))
+        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.google.android.dialer"))
+        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.launcher3"))
+    }
+
+    @Test
+    fun `isEssentialApp correctly classifies third-party apps as non-exempt`() {
+        org.junit.Assert.assertFalse(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.game"))
+        org.junit.Assert.assertFalse(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.instagram.android"))
+        org.junit.Assert.assertFalse(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.zhiliaoapp.musically"))
+        org.junit.Assert.assertFalse(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.google.android.youtube"))
+    }
 }

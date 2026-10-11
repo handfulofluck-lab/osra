@@ -78,4 +78,30 @@ class UsageCountersTest {
         c.resetIfNewDay(day2)
         assertTrue(c.snapshot(4 * 60_000L, day2).isEmpty())
     }
+
+    @Test
+    fun `rebuildFromEvents restores per-app minutes from chronological transitions`() {
+        val c = UsageCounters()
+        val events = listOf(
+            "com.game" to 0L,
+            "com.social" to 10 * 60_000L,
+            "com.game" to 15 * 60_000L,
+            "com.idle" to 20 * 60_000L,
+        )
+        c.rebuildFromEvents(events, day1)
+        val snap = c.snapshot(20 * 60_000L, day1)
+        // com.game ran 0..10 (capped at 5) + 15..20 (5) = 10
+        // com.social ran 10..15 (5) = 5
+        assertEquals(10, snap["com.game"])
+        assertEquals(5, snap["com.social"])
+    }
+
+    @Test
+    fun `restore populates per-app minutes and respects day boundaries`() {
+        val c = UsageCounters()
+        c.restore(mapOf("com.game" to 45, "com.youtube" to 30), day1)
+        assertEquals(mapOf("com.game" to 45, "com.youtube" to 30), c.snapshot(0L, day1))
+        // Rolling over to next day resets the restored counters
+        assertTrue(c.snapshot(0L, day2).isEmpty())
+    }
 }

@@ -501,4 +501,53 @@ clone's configuration.
 
 **Status:** ready-for-review — branch `fix/p1-flutter-api-contracts` ready for PR.
 
+---
+
+### 2026-10-11 · Antigravity → Kimi Code · Android P1 Enforcement & Persistence Bundle (Issues #6, #7, #8) [ready-for-review]
+
+**Context:** Implementation of Android P1 high-severity items on branch `fix/p1-android-hardening`:
+1. Issue #6 (AND-02): Screen-time counters are in-memory only — reboot resets day's limits.
+2. Issue #7 (AND-03): No cached rules -> every app is allowed (fail-open).
+3. Issue #8 (AND-04 & AND-05): Block and lock overlays are dismissible by child, granting burst or full access.
+
+**Understanding:**
+1. **AND-02**: `UsageCounters` lived purely in heap memory. Rebooting the device cleared counters to 0, completely restoring daily screen-time allowance regardless of prior usage today.
+   - *Fix*: Persist today's usage snapshots to DataStore (`AgentSettings.saveTodayUsage`) on foreground transitions and midnight resets; provide `rebuildFromEvents` and `restore` on `UsageCounters`; on startup in `RuleRepository.rebuildCounters()`, reload persisted snapshot and replay today's `usage_events` from Room `UsageEventDao.since(startOfDayMs)`.
+2. **AND-03**: In `RuleRepository.evaluate(packageId)`, `cached ?: return Decision.ALLOW` failed open when paired if rules hadn't synced yet or after storage loss.
+   - *Fix*: When paired (`settings.isPairedSync() == true`) and `cached == null`, fail closed by returning `Decision.BLOCK` for third-party / non-essential apps while exempting critical system packages (`com.familyshield.agent`, settings, system UI, dialer/phone/emergency, home launcher via `RuleRepository.isEssentialApp`).
+3. **AND-04 & AND-05**:
+   - `BlockActivity`: Child could tap "Close" button or press hardware Back to reveal the underlying blocked app, and `AppBlocker`'s 2-second debounce granted 2-second burst access.
+     - *Fix*: Replaced "Close" with "Exit to Home screen"; intercepted Back via `OnBackPressedCallback`; both actions route to Android Home launcher (`Intent.CATEGORY_HOME`) and invoke `AppBlocker.clearDebounce(pkg)` so subsequent taps are blocked immediately with 0 ms delay.
+   - `LockActivity`: Device lock / pause overlay had no Back or Home guard, allowing child to dismiss the lock overlay with Back.
+     - *Fix*: Intercepted Back via `OnBackPressedCallback`; trapped navigation away in `onUserLeaveHint()` and `onPause()` to immediately re-bring `LockActivity` to front (`FLAG_ACTIVITY_REORDER_TO_FRONT`) while in `MODE_LOCKED`, `MODE_PAUSED`, or `MODE_PAUSED_INTERNET`.
+
+**What changed:**
+- `apps/child-android/app/src/main/java/com/familyshield/agent/data/UsageCounters.kt`: Added `rebuildFromEvents(events, today)` and `restore(persistedMinutes, today)`.
+- `apps/child-android/app/src/main/java/com/familyshield/agent/data/AgentSettings.kt`: Added `saveTodayUsage`, `todayUsageDate`, `todayUsageJson`, and synchronous `isPairedSync()`.
+- `apps/child-android/app/src/main/java/com/familyshield/agent/data/RuleRepository.kt`:
+  - Injected `UsageEventDao?`.
+  - Added `rebuildCounters()` and `persistCounters()` to load/store today's minutes across process restarts.
+  - In `evaluate(packageId)`: Fail closed when paired and `cached == null`, exempting `isEssentialApp(packageId)`.
+  - Added `companion object.isEssentialApp(packageId)` covering agent, system UI, settings, dialer/telecom, and launchers.
+- `apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/AppBlocker.kt`: Added `clearDebounce(pkg)`.
+- `apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/BlockActivity.kt`: Intercepted Back and "Exit to Home screen" to navigate to launcher and clear app debounce.
+- `apps/child-android/app/src/main/java/com/familyshield/agent/commands/LockActivity.kt`: Swallowed Back press; re-raised overlay on `onUserLeaveHint` and `onPause` while in locked/paused modes.
+- `apps/child-android/app/src/test/java/com/familyshield/agent/UsageCountersTest.kt`: Added unit tests for `rebuildFromEvents` and `restore`.
+- `apps/child-android/app/src/test/java/com/familyshield/agent/RuleRepositoryTest.kt`: Added unit tests for `isEssentialApp` system exemptions and third-party blocking classification.
+
+**Raw Gate Output:**
+- `vitest run` on `@familyshield/api`: 195/195 passed (16 files).
+- `services/api/scripts/qa-probe.mjs` against port 3001: 70 passed · 0 failed · 2 targets · 2 notes (exit code 0).
+- `services/api/scripts/e2e.mjs` against port 3001: 50 passed, 0 failed (exit code 0).
+
+**What the reviewer (Kimi) must verify:**
+1. Check `UsageCountersTest`: `rebuildFromEvents` correctly computes capped minutes and `restore` initializes state.
+2. Check `RuleRepositoryTest`: `isEssentialApp` exempts dialer, system UI, and settings while returning false for games and social apps.
+3. Check `RuleRepository.evaluate`: returns `Decision.BLOCK` when paired and `cached == null` for a non-essential package (`com.game`).
+4. Check `BlockActivity`: back press or exit button opens `CATEGORY_HOME` and clears `AppBlocker` debounce.
+5. Check `LockActivity`: back press does not finish activity while in `MODE_LOCKED` or `MODE_PAUSED`.
+
+**Status:** ready-for-review — branch `fix/p1-android-hardening`.
+
+
 

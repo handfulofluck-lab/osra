@@ -1,10 +1,13 @@
 package com.familyshield.agent.data
 
+import com.familyshield.agent.data.db.UsageEventDao
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.RuleSetDto
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import com.google.firebase.messaging.FirebaseMessaging
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,7 +23,7 @@ import kotlinx.coroutines.sync.withLock
  * Holds the latest [RuleSetDto], persists it as JSON in DataStore, refreshes it from the backend,
  * subscribes to the FCM topic `child:<childId>:rules` and answers [evaluate] calls from the
  * accessibility service. Thread-safe: refreshes are serialized with a [Mutex], daily counters live
- * in the pure [UsageCounters] helper. Counters are in-memory only (lost on reboot) and reset at
+ * in the pure [UsageCounters] helper. Counters are rebuilt and persisted across reboots (AND-02) and reset at
  * local midnight — the midnight WorkManager worker calls [resetIfNewDay] and evaluation self-heals
  * on date change. Also holds the pause-internet flag (Feature #11) and today's bonus minutes
  * (Feature #10), both consulted by [evaluate].
@@ -31,6 +34,7 @@ class RuleRepository @Inject constructor(
     private val settings: AgentSettings,
     private val moshi: Moshi,
     private val blocklist: BlocklistStore,
+    private val usageDao: UsageEventDao? = null,
 ) {
     /** Outcome of evaluating a package against the active rule set. */
     enum class Decision { ALLOW, BLOCK, TIME_LIMIT_REACHED }
@@ -56,13 +60,21 @@ class RuleRepository @Inject constructor(
     init {
         appScope.launch {
             cached = loadFromDisk()
+            rebuildCounters()
             refresh()
         }
     }
 
     /** Returns the decision for [packageId] based on the cached rules, the blocklist and today's usage counters. */
     fun evaluate(packageId: String): Decision {
-        val ruleSet = cached ?: return Decision.ALLOW
+        val ruleSet = cached
+        if (ruleSet == null) {
+            // AND-03: Fail-closed when paired but no rules are cached yet.
+            if (settings.isPairedSync()) {
+                return if (isEssentialApp(packageId)) Decision.ALLOW else Decision.BLOCK
+            }
+            return Decision.ALLOW
+        }
         val snapshot = counters.snapshot(System.currentTimeMillis())
         return engine.evaluate(
             ruleSet,
@@ -114,11 +126,45 @@ class RuleRepository @Inject constructor(
     /** Updates the daily usage counters from a foreground-app event (called by UsageReporter). */
     fun onForegroundEvent(packageId: String, timestampMs: Long) {
         counters.onForegroundEvent(packageId, timestampMs)
+        appScope.launch { persistCounters() }
     }
 
     /** Clears the daily counters when the local date has changed (no-op otherwise). */
     suspend fun resetIfNewDay() {
         counters.resetIfNewDay()
+        persistCounters(LocalDate.now())
+    }
+
+    /** Rebuilds daily counters on startup from persisted settings and Room usage_events (AND-02). */
+    suspend fun rebuildCounters(today: LocalDate = LocalDate.now()) {
+        val savedDate = settings.todayUsageDate()
+        if (savedDate == today.toString()) {
+            val json = settings.todayUsageJson()
+            if (!json.isNullOrBlank()) {
+                val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Int::class.javaObjectType)
+                val map = runCatching { moshi.adapter<Map<String, Int>>(mapType).fromJson(json) }.getOrNull()
+                if (map != null) {
+                    counters.restore(map, today)
+                }
+            }
+        }
+        usageDao?.let { dao ->
+            val startOfDayMs = today.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val events = runCatching { dao.since(startOfDayMs) }.getOrDefault(emptyList())
+            if (events.isNotEmpty()) {
+                val pairs = events.map { it.packageId to it.timestamp }
+                counters.rebuildFromEvents(pairs, today)
+            }
+        }
+        persistCounters(today)
+    }
+
+    /** Persists today's counters snapshot to AgentSettings (AND-02). */
+    suspend fun persistCounters(today: LocalDate = LocalDate.now()) {
+        val snapshot = counters.snapshot(System.currentTimeMillis(), today)
+        val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Int::class.javaObjectType)
+        val json = moshi.adapter<Map<String, Int>>(mapType).toJson(snapshot)
+        runCatching { settings.saveTodayUsage(today.toString(), json) }
     }
 
     /** Feature #29: today's per-app minute counters for the live-activity feed. */
@@ -154,5 +200,31 @@ class RuleRepository @Inject constructor(
     private suspend fun loadFromDisk(): RuleSetDto? {
         val json = settings.rulesJson() ?: return null
         return runCatching { moshi.adapter(RuleSetDto::class.java).fromJson(json) }.getOrNull()
+    }
+
+    companion object {
+        private val ESSENTIAL_PACKAGES = setOf(
+            "com.familyshield.agent",
+            "com.android.systemui",
+            "com.android.settings",
+            "com.android.phone",
+            "com.android.server.telecom",
+            "com.android.dialer",
+            "com.google.android.dialer",
+            "com.samsung.android.dialer",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",
+        )
+
+        /**
+         * Returns true if [packageId] is an essential system app exempt from fail-closed blocking.
+         */
+        fun isEssentialApp(packageId: String): Boolean {
+            if (packageId in ESSENTIAL_PACKAGES) return true
+            if (packageId.startsWith("com.familyshield.")) return true
+            if (packageId.endsWith(".dialer") || packageId.endsWith(".telecom")) return true
+            return false
+        }
     }
 }

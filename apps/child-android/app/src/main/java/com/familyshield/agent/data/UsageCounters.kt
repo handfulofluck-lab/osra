@@ -51,6 +51,41 @@ class UsageCounters {
         resetIfNewDayLocked(today)
     }
 
+    /**
+     * Rebuilds the counter state from a chronological sequence of foreground transitions for [today].
+     * Capped per-gap at [MAX_GAP_MINUTES].
+     */
+    fun rebuildFromEvents(
+        events: List<Pair<String, Long>>,
+        today: LocalDate = LocalDate.now(),
+    ) {
+        synchronized(lock) {
+            resetIfNewDayLocked(today)
+            storedMinutes.clear()
+            currentPkg = null
+            currentSinceMs = 0L
+            for ((pkg, ts) in events) {
+                onForegroundEvent(pkg, ts, today)
+            }
+        }
+    }
+
+    /**
+     * Restores counters from a previously saved snapshot of per-app minutes for [today].
+     */
+    fun restore(
+        persistedMinutes: Map<String, Int>,
+        today: LocalDate = LocalDate.now(),
+    ) {
+        synchronized(lock) {
+            resetIfNewDayLocked(today)
+            storedMinutes.clear()
+            storedMinutes.putAll(persistedMinutes)
+            currentPkg = null
+            currentSinceMs = 0L
+        }
+    }
+
     private fun resetIfNewDayLocked(today: LocalDate) {
         if (counterDay != today) {
             storedMinutes.clear()
