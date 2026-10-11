@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,8 +29,11 @@ import androidx.compose.ui.unit.dp
  * MODE_UNLOCK requests keyguard dismissal and finishes; MODE_DISMISS just finishes (used by
  * resume_internet to tear the paused-internet overlay down). Single-task: repeat commands
  * re-deliver via onNewIntent and re-apply, so resume/pause always lands on the visible overlay.
+ * Cannot be dismissed with Back or Home (AND-05): back is swallowed and navigation away re-raises.
  */
 class LockActivity : ComponentActivity() {
+
+    @Volatile private var currentMode: String = MODE_LOCKED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +42,11 @@ class LockActivity : ComponentActivity() {
             android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
         )
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // Intercept and swallow back press: lock/pause overlay cannot be dismissed by child (AND-05)
+            }
+        })
         applyMode(intent)
     }
 
@@ -46,16 +55,43 @@ class LockActivity : ComponentActivity() {
         applyMode(intent)
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (currentMode in setOf(MODE_LOCKED, MODE_PAUSED, MODE_PAUSED_INTERNET)) {
+            val reRaise = Intent(this, LockActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra(EXTRA_MODE, currentMode)
+            }
+            startActivity(reRaise)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (!isFinishing && currentMode in setOf(MODE_LOCKED, MODE_PAUSED, MODE_PAUSED_INTERNET)) {
+            val reRaise = Intent(this, LockActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra(EXTRA_MODE, currentMode)
+            }
+            startActivity(reRaise)
+        }
+    }
+
     private fun applyMode(intent: Intent) {
-        when (intent.getStringExtra(EXTRA_MODE) ?: MODE_LOCKED) {
+        val mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_LOCKED
+        when (mode) {
             MODE_UNLOCK -> {
+                currentMode = MODE_UNLOCK
                 val km = getSystemService(KeyguardManager::class.java)
                 km.requestDismissKeyguard(this, null)
                 finish()
             }
-            MODE_DISMISS -> finish()
+            MODE_DISMISS -> {
+                currentMode = MODE_DISMISS
+                finish()
+            }
             else -> {
-                val mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_LOCKED
+                currentMode = mode
                 setContent {
                     MaterialTheme {
                         Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {

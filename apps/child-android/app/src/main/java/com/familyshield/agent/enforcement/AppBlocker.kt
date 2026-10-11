@@ -23,6 +23,13 @@ class AppBlocker @Inject constructor(
     /** Shows the "daily limit reached" screen for [pkg]. */
     fun showTimeLimitScreen(pkg: String) = show(pkg, BlockActivity.REASON_TIME_LIMIT)
 
+    /** Clears the debounce timestamp for [pkg] so the overlay can be immediately reshown (AND-04). */
+    fun clearDebounce(pkg: String) {
+        synchronized(lock) {
+            lastShownMs.remove(pkg)
+        }
+    }
+
     private fun show(pkg: String, reason: String) {
         if (pkg.isBlank() || pkg == context.packageName) return
         synchronized(lock) {

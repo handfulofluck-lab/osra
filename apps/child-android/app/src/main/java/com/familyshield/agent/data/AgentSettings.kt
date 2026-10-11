@@ -182,6 +182,23 @@ class AgentSettings @Inject constructor(
         store.edit { it[stringPreferencesKey(AlertThrottlePolicy.throttleKey(type))] = nowMs.toString() }
     }
 
+    /** Persists today's usage counters snapshot for persistence across reboots (AND-02). */
+    suspend fun saveTodayUsage(date: String, json: String) {
+        store.edit {
+            it[KEY_TODAY_USAGE_DATE] = date
+            it[KEY_TODAY_USAGE_JSON] = json
+        }
+    }
+
+    /** Returns the date string for the persisted today-usage snapshot, or null. */
+    suspend fun todayUsageDate(): String? = read(KEY_TODAY_USAGE_DATE)
+
+    /** Returns the persisted today-usage snapshot JSON, or null. */
+    suspend fun todayUsageJson(): String? = read(KEY_TODAY_USAGE_JSON)
+
+    /** Synchronous snapshot of pairing status (device token present). */
+    fun isPairedSync(): Boolean = !deviceTokenSync().isNullOrBlank()
+
     private suspend fun read(key: Preferences.Key<String>): String? = store.data.first()[key]
 
     companion object {
@@ -192,5 +209,7 @@ class AgentSettings @Inject constructor(
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BASE_URL = stringPreferencesKey("base_url")
+        private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
+        private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
     }
 }

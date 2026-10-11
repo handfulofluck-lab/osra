@@ -1,7 +1,9 @@
 package com.familyshield.agent.enforcement
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -38,12 +40,15 @@ import kotlinx.coroutines.launch
 /**
  * Full-screen overlay shown when the parent blocks an app or its daily limit is reached.
  * "Request access" POSTs an app_blocked alert to /v1/alerts/internal (HMAC-signed).
+ * Cannot be dismissed to reveal the blocked app (AND-04): Back and "Exit to Home screen"
+ * navigate directly to the home launcher and clear the app debounce.
  */
 @AndroidEntryPoint
 class BlockActivity : ComponentActivity() {
 
     @Inject lateinit var api: ApiService
     @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var appBlocker: AppBlocker
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -56,6 +61,12 @@ class BlockActivity : ComponentActivity() {
         )
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                goHome()
+            }
+        })
+
         val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
         val reason = intent.getStringExtra(EXTRA_REASON) ?: REASON_BLOCKED
 
@@ -66,11 +77,24 @@ class BlockActivity : ComponentActivity() {
                         appLabel = pkg,
                         timeLimit = reason == REASON_TIME_LIMIT,
                         onRequestAccess = { requestAccess(pkg, reason) },
-                        onClose = { finish() },
+                        onExit = { goHome() },
                     )
                 }
             }
         }
+    }
+
+    private fun goHome() {
+        val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
+        if (pkg.isNotBlank()) {
+            runCatching { appBlocker.clearDebounce(pkg) }
+        }
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(homeIntent)
+        finish()
     }
 
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */
@@ -112,7 +136,7 @@ private fun BlockScreen(
     appLabel: String,
     timeLimit: Boolean,
     onRequestAccess: () -> Unit,
-    onClose: () -> Unit,
+    onExit: () -> Unit,
 ) {
     var sent by remember { mutableStateOf(false) }
     Column(
@@ -140,8 +164,8 @@ private fun BlockScreen(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        TextButton(onClick = onClose) {
-            Text("Close", color = Color.White)
+        TextButton(onClick = onExit) {
+            Text("Exit to Home screen", color = Color.White)
         }
     }
 }
