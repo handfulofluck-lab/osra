@@ -1,0 +1,18 @@
+# Normalise line endings so shell scripts and workflow files stay executable on every platform.
+# Without this, a Windows checkout converts .githooks/pre-push to CRLF and the guard silently breaks.
+* text=auto eol=lf
+
+# Shell scripts MUST stay LF (a CRLF shebang/hook fails at runtime).
+*.sh   text eol=lf
+.githooks/* text eol=lf
+
+# Windows batch files must keep CRLF.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary-ish artifacts: never touch.
+*.png  binary
+*.jpg  binary
+*.jar  binary
+*.apk  binary
+*.exe  binary
