@@ -103,19 +103,34 @@ your terminal or your reasoning: write what you saw, verbatim where it matters.
 ### 6.4 Enforcement (and its honest limits)
 
 GitHub branch protection is **unavailable on private repos on the free plan** — the API returns
-`403 Upgrade to GitHub Pro or make this repository public to enable this feature`. Until that
-changes, the rule is enforced by the strongest free combination available:
+`403 Upgrade to GitHub Pro or make this repository public to enable this feature`. So the rule is
+enforced by the combination below. **Read the install note: two ways of installing the hook look
+correct and silently do nothing.**
 
 | Mechanism | What it does | Limit |
 |---|---|---|
-| `.githooks/pre-push` | Refuses a push whose destination is `refs/heads/main`; tells you to push a branch instead | Local: needs `git config core.hooksPath .githooks` once per clone; `--no-verify` or a clone without the config bypasses it |
-| `.github/workflows/main-guard.yml` | On every push to `main`, verifies an associated PR exists; fails the run and files a `needs-human` issue if not | Detection, not prevention — it reports the violation loudly rather than blocking it |
-| `AGENTS.md` (this file) + PR review | The real control: the two agents review each other before merge | Relies on both agents honouring it |
+| `scripts/install-git-hooks.sh` → copies `.githooks/*` into `.git/hooks/` | Refuses a push whose destination is `refs/heads/main` | Per clone; must be run once. Verified working (see below) |
+| `.githooks/pre-push` + `git config core.hooksPath <ABSOLUTE path>` | Same, driven from the versioned file | The path **must be absolute** — a relative `core.hooksPath` silently resolves to nothing on Git for Windows. Also, the file only exists in checkouts that contain it (i.e. not on `main` before this PR merges) |
+| `.github/workflows/main-guard.yml` | Server-side: on every push to `main`, asserts an associated PR exists; fails the run and files a `needs-human` issue otherwise | Detection, not prevention; only active once merged to `main` |
+| This file + PR review | The real control | Relies on both agents honouring it |
+
+**Install (recommended, works regardless of which branch is checked out):**
+
+```bash
+scripts/install-git-hooks.sh          # copies .githooks/* into .git/hooks/ and chmod +x
+git config --unset core.hooksPath     # make sure no stale/relative hooksPath overrides it
+```
+
+**Verified 2026-10-11** (recorded in `docs/QA/DISCUSSION-LOG.md`): with the hook in `.git/hooks/`,
+a push to `main` prints `BLOCKED: direct push to main is disabled (AGENTS.md §6 — main is PR-only)`
+and exits 1; a branch push exits 0. Two earlier attempts *looked* installed but did nothing — a
+relative `core.hooksPath`, and the file being absent from the checked-out ref. Both are documented
+above so nobody repeats them.
 
 **For hard enforcement** the maintainer picks one: make the repository public (free protection), or
 upgrade to GitHub Pro. That is the human's call.
 
-Maintainer override for the hook (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main`.
+Maintainer override (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main`.
 
 ### 6.5 Merge rules
 

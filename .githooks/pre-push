@@ -2,12 +2,19 @@
 # AGENTS.md §6 — main is PR-only.
 # Refuses any push that would update refs/heads/main on the remote.
 #
-# Enable once per clone:   git config core.hooksPath .githooks
-# Maintainer escape hatch: OSRA_ALLOW_MAIN_PUSH=1 git push ...
+# Install (see scripts/install-git-hooks.sh — it copies this file into .git/hooks/):
+#     scripts/install-git-hooks.sh
+#     git config --unset core.hooksPath      # a relative hooksPath silently does nothing
+# Prefer an ABSOLUTE path if you drive it via core.hooksPath:
+#     git config core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
+# Maintainer escape hatch:
+#     OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main
 #
-# Why this exists: GitHub branch protection is unavailable on private repos on the free
-# plan (403 "Upgrade to GitHub Pro or make this repository public"), so the rule is
-# enforced locally here and detected server-side by .github/workflows/main-guard.yml.
+# Why this file exists at all: GitHub branch protection is unavailable on private repos on the
+# free plan (403 "Upgrade to GitHub Pro or make this repository public"), so the rule is enforced
+# locally here and detected server-side by .github/workflows/main-guard.yml.
+# NOTE: this file must be present in the checked-out ref; on `main` it only exists after this
+# guard is merged, which is why .git/hooks/ is the reliable location.
 if [ "${OSRA_ALLOW_MAIN_PUSH}" = "1" ]; then
   exit 0
 fi
