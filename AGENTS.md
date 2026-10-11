@@ -100,7 +100,24 @@ your terminal or your reasoning: write what you saw, verbatim where it matters.
 - Never merge over an unresolved objection. Never re-open a settled decision without new evidence —
   cite the decision (date + where it was recorded) instead.
 
-### 6.4 Merge rules
+### 6.4 Enforcement (and its honest limits)
+
+GitHub branch protection is **unavailable on private repos on the free plan** — the API returns
+`403 Upgrade to GitHub Pro or make this repository public to enable this feature`. Until that
+changes, the rule is enforced by the strongest free combination available:
+
+| Mechanism | What it does | Limit |
+|---|---|---|
+| `.githooks/pre-push` | Refuses a push whose destination is `refs/heads/main`; tells you to push a branch instead | Local: needs `git config core.hooksPath .githooks` once per clone; `--no-verify` or a clone without the config bypasses it |
+| `.github/workflows/main-guard.yml` | On every push to `main`, verifies an associated PR exists; fails the run and files a `needs-human` issue if not | Detection, not prevention — it reports the violation loudly rather than blocking it |
+| `AGENTS.md` (this file) + PR review | The real control: the two agents review each other before merge | Relies on both agents honouring it |
+
+**For hard enforcement** the maintainer picks one: make the repository public (free protection), or
+upgrade to GitHub Pro. That is the human's call.
+
+Maintainer override for the hook (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main`.
+
+### 6.5 Merge rules
 
 A PR may merge only when: the discussion is fully answered, the gates in §3 are green **on the
 branch**, and the PR restatement matches what was actually built. Merging is not approval of the

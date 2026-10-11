@@ -1,0 +1,38 @@
+name: main-guard
+
+# AGENTS.md §6: main is PR-only. Branch protection needs GitHub Pro on private repos, so this
+# workflow provides the server-side half of the enforcement: if a commit reaches main without an
+# associated pull request, the run fails loudly and files a needs-human issue.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the pushed commit landed through a pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          count=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq 'length' 2>/dev/null || echo 0)
+          echo "pull requests associated with $SHA: $count"
+          if [ "$count" -gt 0 ]; then
+            echo "OK — reached main through a pull request."
+            exit 0
+          fi
+
+          echo "::error::Direct push to main detected ($SHA) — AGENTS.md §6 requires a pull request."
+          gh api "repos/$REPO/issues" \
+            -f title="Process violation: direct push to main (${SHA:0:7})" \
+            -f body="Commit $SHA was pushed straight to main without a pull request. AGENTS.md §6 requires every change to land through a reviewed PR. The local hook .githooks/pre-push blocks this when configured with: git config core.hooksPath .githooks. Action: review the commit and either open a follow-up PR or revert it deliberately." \
+            -f "labels[]=needs-human" >/dev/null || \
+            echo "note: could not file the issue (label missing or token scope); failing anyway."
+          exit 1

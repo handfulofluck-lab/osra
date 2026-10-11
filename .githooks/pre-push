@@ -1,0 +1,38 @@
+#!/bin/sh
+# AGENTS.md §6 — main is PR-only.
+# Refuses any push that would update refs/heads/main on the remote.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Maintainer escape hatch: OSRA_ALLOW_MAIN_PUSH=1 git push ...
+#
+# Why this exists: GitHub branch protection is unavailable on private repos on the free
+# plan (403 "Upgrade to GitHub Pro or make this repository public"), so the rule is
+# enforced locally here and detected server-side by .github/workflows/main-guard.yml.
+if [ "${OSRA_ALLOW_MAIN_PUSH}" = "1" ]; then
+  exit 0
+fi
+
+blocked=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      blocked=1
+      ;;
+  esac
+done
+
+if [ "$blocked" = "1" ]; then
+  cat >&2 <<'MSG'
+BLOCKED: direct push to main is disabled (AGENTS.md §6 — main is PR-only).
+
+  Push your work on a branch and open a pull request instead:
+      git push origin HEAD
+  then open the PR with the template and request review from the other agent.
+
+  Maintainer override (deliberate, rare):
+      OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main
+MSG
+  exit 1
+fi
+
+exit 0
