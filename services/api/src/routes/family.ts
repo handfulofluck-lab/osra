@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 
 const ConsentCreateSchema = z.object({
@@ -45,18 +45,14 @@ export async function familyRoutes(app: FastifyInstance) {
     if (!family) return reply.code(404).send({ error: "family_not_found" });
     const parents = family.parents.map(sanitizeParent);
     const parent = parents.find((p) => p.id === user.sub) ?? parents[0];
-    // Strip push tokens (review API-10): any parent in the family must not see device
-    // push tokens in the envelope.
+    // Strip internal secrets and push tokens from parent-facing payloads.
     const children = family.children.map((c) => ({
       ...c,
-      devices: c.devices.map((d) => {
-        const { pushToken: _t, ...rest } = d;
-        return rest;
-      }),
+      devices: c.devices.map(sanitizeDevice),
     }));
     const devices = children.flatMap((c) => c.devices);
     const { parents: _parents, ...familyRest } = family;
-    return { family: familyRest, parent, parents, children, devices };
+    return { family: { ...familyRest, children }, parent, parents, children, devices };
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */
@@ -179,13 +175,10 @@ export async function familyRoutes(app: FastifyInstance) {
     });
     if (!family) return reply.code(404).send({ error: "family_not_found" });
     reply.header("Content-Disposition", `attachment; filename="familyshield-export-${family.id}.json"`);
-    // Strip push tokens from the export too (review API-10).
+    // Strip internal secrets and push tokens from the export too.
     const exportChildren = family.children.map((c) => ({
       ...c,
-      devices: c.devices.map((d) => {
-        const { pushToken: _t, ...rest } = d;
-        return rest;
-      }),
+      devices: c.devices.map(sanitizeDevice),
     }));
     return {
       exportedAt: new Date().toISOString(),

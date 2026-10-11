@@ -27,12 +27,30 @@ function resourceFamilyId(resource: { familyId?: string; child?: { familyId: str
   return resource.familyId ?? resource.child?.familyId;
 }
 
+import { getRedis } from "../redis.js";
+
+export function sanitizeDevice<T extends Record<string, any>>(device: T): Omit<T, "internalSecret" | "pushToken"> {
+  if (!device) return device;
+  const { internalSecret: _s, pushToken: _t, ...rest } = device;
+  return rest as any;
+}
+
 /** Fastify preHandler that only requires a valid parent JWT (no resource scoping). */
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     await req.jwtVerify();
   } catch {
     await reply.code(401).send({ error: "unauthorized" });
+    return;
+  }
+  const user = req.user as { sub?: string; role?: string; iat?: number; jti?: string } | undefined;
+  if (user?.jti) {
+    const redis = getRedis();
+    const revokedToken = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
+    if (revokedToken) {
+      await reply.code(401).send({ error: "session_revoked" });
+      return;
+    }
   }
 }
 
@@ -46,10 +64,21 @@ export async function requireParent(req: FastifyRequest, reply: FastifyReply): P
     await reply.code(401).send({ error: "unauthorized" });
     return;
   }
-  if ((req.user as { role?: string } | undefined)?.role !== "parent") {
+  const user = req.user as { sub?: string; role?: string; iat?: number; jti?: string } | undefined;
+  if (user?.role !== "parent") {
     await reply.code(403).send({ error: "parent_role_required" });
+    return;
+  }
+  if (user?.jti) {
+    const redis = getRedis();
+    const revokedToken = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
+    if (revokedToken) {
+      await reply.code(401).send({ error: "session_revoked" });
+      return;
+    }
   }
 }
+
 
 /**
  * preHandler factory: loads a family-scoped resource, verifies it belongs to the

@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
-import { requireAuth, requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireAuth, requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 
@@ -75,7 +75,7 @@ const ActivityBatchSchema = z.object({
     .max(500),
 });
 
-type AuthedUser = { sub: string; familyId: string };
+type AuthedUser = { sub: string; familyId: string; role?: string; deviceId?: string; childId?: string };
 
 /** Generate a 6-digit pairing code and store its payload with a 600 s TTL, retrying on SET NX collision. */
 async function createPairingCode(payload: { childId: string; familyId: string }): Promise<{ code: string; expiresAt: string }> {
@@ -160,24 +160,30 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** List all devices belonging to the authenticated family's children. */
-  app.get("/", { preHandler: requireAuth }, async (req) => {
+  app.get("/", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
     const devices = await prisma.device.findMany({
       where: { child: { familyId: user.familyId } },
       include: { child: true },
       orderBy: { lastSeen: "desc" },
     });
-    return { devices };
+    return { devices: devices.map(sanitizeDevice) };
   });
 
   /** Return one device with its latest telemetry payload merged in. */
   // NOTE: there is no telemetry table in the schema; agents POST to /:id/telemetry and the
   // latest payload is kept in Redis under `device:<id>:telemetry`, merged into this response.
-  app.get("/:id", { preHandler: requireFamily({ model: "device" }) }, async (req) => {
+  app.get("/:id", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+    const user = req.user as AuthedUser;
+    const { id } = req.params as { id: string };
+    if (user.role === "device" && user.deviceId !== id) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
     const device = (req as unknown as { device: { id: string } }).device;
     const telemetry = await getJson(`device:${device.id}:telemetry`);
-    return { device, telemetry };
+    return { device: sanitizeDevice(device), telemetry };
   });
+
 
   /** Publish a lock/unlock/ring/sos_clear command to the device's Redis command channel and queue. */
   app.post("/:id/command", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req, reply) => {

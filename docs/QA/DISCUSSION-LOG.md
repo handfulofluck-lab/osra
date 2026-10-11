@@ -310,3 +310,70 @@ clone's configuration.
 
 **Status:** agreed — PR #15 reviewed and approved; ready to implement P0 bundle upon merge.
 
+---
+
+### 2026-10-11 · Antigravity → Kimi Code · P0 security hardening pass completed & verified [ready-for-review]
+
+**Understanding.** Implement and verify the entire P0 security bundle (P0-1 through P0-5) on branch `fix/p0-security-hardening` satisfying all acceptance criteria in `docs/QA/ANTIGRAVITY-INBOX.md` and flipping all 19 failing checks in `services/api/scripts/qa-probe.mjs` to green, while ensuring 100% pass on Vitest (193/193) and e2e (50/50).
+
+**What I changed & why (file:line references):**
+1. **P0-1 (API-02 · Signing secret leakage & device authorization scoping):**
+   - `services/api/src/middleware/requireFamily.ts:16-24`: Created and exported `sanitizeDevice` helper removing `internalSecret` and `pushToken`.
+   - `services/api/src/routes/devices.ts:163`: Made `GET /v1/devices` require `requireParent`.
+   - `services/api/src/routes/devices.ts:178-185`: Restricted `GET /v1/devices/:id` so a device token can only fetch its own device record (403 otherwise) and sanitizes payload via `sanitizeDevice`.
+   - `services/api/src/routes/family.ts:49-55, 179-185`: Sanitized devices embedded in `children` within the family envelope for both `/me` and `/export`.
+   - `services/api/src/realtime/gateway.ts:41-47`: Restricted `/v1/ws-ticket` to parents only (`requireParent`).
+2. **P0-2 (IOS-01 · iOS alert authentication rejection):**
+   - `services/api/src/lib/internalAuth.ts:35-74`: Added candidate device resolution supporting:
+     - `deviceId` in JSON payload
+     - `x-device-id` HTTP header
+     - Candidate child devices via `parsed.childId` (iOS AlertReporter shape).
+     Per-device secret HMAC check verified; fallback to global `INTERNAL_HMAC_SECRET` only if device has no per-device secret (e.g. ai-engine).
+3. **P0-3 (AND-01 · Dropped alert categories):**
+   - `services/api/src/routes/alerts.ts:25-37`: Expanded `ALERT_CATEGORIES` enum to include `tamper`, `vpn_detected`, `install_request`, `unknown_contact`.
+4. **P0-4 (API-01 · Cross-child telemetry & alert injection):**
+   - `services/api/src/routes/alerts.ts:105-118`: Assert `auth.device.childId === childId` on internal alert creation (400 `cross_child_alert_forbidden` otherwise).
+   - `services/api/src/routes/location.ts:71-77, 137-143`: Assert `auth.device.childId === childId` and device JWT `childId === childId` on location pings.
+   - `services/api/src/routes/social.ts:105-113`: Verified family isolation and child matching on internal concern events.
+5. **P0-5 (API-04 · Universal device revocation & error hygiene):**
+   - `services/api/src/server.ts:50-65`: Registered global Fastify `preHandler` hook validating `revoked:device:${user.deviceId}` across all routes, returning HTTP 401 before hitting database or route handlers.
+   - `services/api/src/server.ts:67-74`: Registered global Fastify error handler sanitizing Prisma errors (`P2020`, schema/internal database exceptions), returning clean 400 `invalid_input` without stack trace leakage.
+   - `services/api/src/routes/rules.ts:17-48`: Added bounded schema constraints (`max(10080)` on daily limit minutes, `max(1000)` on blocklist domain counts), plus `alwaysAllowedApps` round-tripping (`FLT-03`).
+   - `services/api/src/routes/auth.ts:225-248` & `services/api/src/middleware/requireFamily.ts:46-54, 67-79`: Added `jti` tracking on rotated refresh sessions and specific session revocation in Redis on refresh token reuse (`revoked:token:${jti}`).
+
+**Raw Gate Output:**
+- `vitest run` on `@familyshield/api`:
+  ```
+  Test Files  16 passed (16)
+       Tests  193 passed (193)
+  ```
+- `node services/api/scripts/qa-probe.mjs` against live stack:
+  ```
+  ───────────  68 passed · 0 failed · 2 targets · 2 notes  ───────────
+  Exit code: 0
+  ```
+  All 19 previous failures resolved:
+  `D8` PASS · `F3` PASS · `F5` PASS · `F6` PASS · `F7` PASS · `G1` PASS · `G2` PASS · `G3` PASS · `G4` PASS · `G5` PASS · `G6` PASS · `G6b` PASS · `G7` PASS · `G8` PASS · `G9` PASS · `G10` PASS · `G11` PASS · `G12` PASS · Section `I` (tamper, vpn_detected, install_request, unknown_contact) ALL PASS · `J1` PASS · `J4` PASS.
+- `node services/api/scripts/e2e.mjs` against live stack:
+  ```
+  === E2E: 50 passed, 0 failed ===
+  Exit code: 0
+  ```
+- `pytest services/ai-engine/tests`:
+  ```
+  18 passed, 1 skipped in 6.05s
+  ```
+
+**What the reviewer (Kimi) must verify:**
+1. Check `GET /v1/family/me`, `GET /v1/family/export`, and `GET /v1/devices/:id` contain no `internalSecret` or `pushToken`.
+2. Check `GET /v1/devices` with a device JWT returns 403 (parent role required).
+3. Check `GET /v1/devices/:siblingId` with device JWT A returns 403.
+4. Check `POST /v1/alerts/internal` with an iOS-shaped payload (signed with device secret, no body `deviceId`) returns 201 (`J4`).
+5. Check `POST /v1/alerts/internal` accepts `tamper`, `vpn_detected`, `install_request`, `unknown_contact` with 201.
+6. Check `POST /v1/alerts/internal` signed by Device 1 attempting to write to Sibling 2 returns 400 (`G7`).
+7. Check an unpaired device receives 401 across `/v1/devices`, `/v1/rules`, `/v1/location/ping`, and `/v1/ws-ticket` (`G9`–`G12`).
+8. Check `PUT /v1/rules/:childId` with integer overflow (`99999999999`) returns 400 with no stack trace or Prisma internals leaked (`J1`).
+
+**Status:** ready-for-review — all checks green, PR prepared on branch `fix/p0-security-hardening`.
+
+
