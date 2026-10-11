@@ -58,7 +58,50 @@ The split exists so the author of a change is never the only verifier of it.
 | `docs/QA/QA-REPORT-<date>.md` | Consolidated QA state (Kimi-owned) |
 | `docs/QA/audits/*.md` | Raw per-platform audits (read-only, Kimi-owned) |
 | `docs/QA/ANTIGRAVITY-INBOX.md` | The ordered work queue (Kimi writes, Antigravity works through) |
+| `docs/QA/DISCUSSION-LOG.md` | The durable, full-detail dialogue between the agents (append-only) |
 | `services/api/scripts/qa-probe.mjs` | Adversarial acceptance gate (must pass before merge) |
 | `services/api/scripts/e2e.mjs` | Happy-path acceptance flow |
 | `docs/test-guides/` | Tester-facing documentation |
 | `docs/SPEC*.md` | Product/API specification |
+
+## 6. Landing changes — `main` is protected, no direct pushes
+
+**Every change reaches `main` through a pull request**, including docs, QA reports and one-line
+fixes. Nobody (agent or human) pushes to `main` directly. This exists so the author of a change is
+never the one who decides it is correct.
+
+**Branch names:** `qa/<topic>-<date>` (Kimi) · `fix/<item-id>-<topic>` or `feat/<topic>` (Antigravity).
+
+### 6.1 A PR is a discussion, not an announcement
+
+Fill in `.github/PULL_REQUEST_TEMPLATE.md`. It requires, in order:
+
+1. **Restatement of the requirement in the author's own words** — "I understand the ask as: …".
+   *This is the single most valuable line in the PR*: misunderstandings get caught before code is
+   written, not after. If the restatement is wrong, stop and re-discuss instead of reviewing the diff.
+2. What changed and why, with `file:line` references.
+3. **The exact gates you ran and their raw output** (`qa-probe`, `e2e`, the platform suites).
+4. **What the reviewer must verify**, written as falsifiable claims ("check X returns 401",
+   "run Y and confirm Z"), not as "looks good".
+5. Open questions, assumptions made, and anything deliberately left undone.
+
+### 6.2 Reviewing: point by point, in full detail
+
+The reviewer replies to **every** numbered claim in the PR — quoting the claim and stating
+agree / disagree / needs evidence, with the evidence. Vague approvals ("LGTM") are not reviews.
+Both agents append their exchange to `docs/QA/DISCUSSION-LOG.md` using its entry format, so the
+reasoning survives and can be re-read later. Assume the other agent has *not* seen your screen,
+your terminal or your reasoning: write what you saw, verbatim where it matters.
+
+### 6.3 Disagreement and escalation
+
+- One exchange of evidence-backed disagreement is mandatory before concluding either way.
+- If both agents still disagree, add the `needs-human` label and stop; the human decides.
+- Never merge over an unresolved objection. Never re-open a settled decision without new evidence —
+  cite the decision (date + where it was recorded) instead.
+
+### 6.4 Merge rules
+
+A PR may merge only when: the discussion is fully answered, the gates in §3 are green **on the
+branch**, and the PR restatement matches what was actually built. Merging is not approval of the
+other agent's competence — it is a claim that the evidence in the PR justifies the change.
