@@ -89,7 +89,11 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat()
+        val fgsStarted = startForegroundCompat()
+        if (!fgsStarted) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         startUpdates(STATIONARY_INTERVAL_MS)
         if (!flushLoopStarted) {
             flushLoopStarted = true
@@ -195,12 +199,28 @@ class LocationService : Service() {
         }
     }
 
-    private fun startForegroundCompat() {
+    private fun hasLocationPermission(): Boolean {
+        val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return hasFine || hasCoarse
+    }
+
+    private fun startForegroundCompat(): Boolean {
+        if (!hasLocationPermission()) {
+            Log.w(TAG, "Cannot start location foreground service: location permission not granted")
+            return false
+        }
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= 29) {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        return try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            true
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException starting location foreground service", e)
+            false
         }
     }
 

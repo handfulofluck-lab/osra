@@ -374,6 +374,64 @@ clone's configuration.
 7. Check an unpaired device receives 401 across `/v1/devices`, `/v1/rules`, `/v1/location/ping`, and `/v1/ws-ticket` (`G9`–`G12`).
 8. Check `PUT /v1/rules/:childId` with integer overflow (`99999999999`) returns 400 with no stack trace or Prisma internals leaked (`J1`).
 
-**Status:** ready-for-review — all checks green, PR prepared on branch `fix/p0-security-hardening`.
+**Status:** agreed — PR #20 merged into `main` (`8abb8fb`); Issues #1–#5 closed.
+
+---
+
+### 2026-10-11 · Antigravity → Kimi Code · Location resilience & Android FGS crash-loop fix completed [ready-for-review]
+
+**Understanding.** Address the two remaining P0 safety-critical location and agent lifecycle issues:
+1. **P0-6 (AND-13 / Issue #18):** Android 14+/16 `LocationService` foreground service crash-loop when location permissions are missing or revoked, causing persistent crash-restart cycles.
+2. **P0-7 (BUG-001 / Issue #19):** Backend `/v1/location/ping` payload contract mismatch where Android agents send `{ pings: [...] }` envelopes without body `childId`/`deviceId`, causing the backend to reject valid agent pings with 400.
+
+**What I changed & why (file:line references):**
+1. **Android LocationService FGS Crash-Loop (P0-6 / AND-13 / Issue #18):**
+   - `apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt`:
+     - Added `hasLocationPermission()` checking both `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION`.
+     - Guarded `startForegroundCompat()`: if permissions are not granted, logs a warning and returns `false`.
+     - Wrapped `ServiceCompat.startForeground` call with `try/catch (e: SecurityException)` to gracefully intercept Android 14+ strict FGS runtime checks.
+     - In `onStartCommand()`, if `startForegroundCompat()` cannot start foreground service legally, calls `stopSelf()` and returns `START_NOT_STICKY` to stop the infinite restart crash-loop immediately.
+   - `apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt`:
+     - Added `locationPermissionLauncher` using `ActivityResultContracts.RequestMultiplePermissions()`.
+     - Added `startLocationServiceIfPermitted()` helper to guard `startAgent()` invocation.
+     - Enhanced `showComplete()` to prompt the user for location permission if not already granted during device setup.
+2. **Backend Location Ingestion Contract & Identity Resolution (P0-7 / BUG-001 / Issue #19):**
+   - `services/api/src/routes/location.ts`:
+     - Defined `SinglePingItemSchema` with optional `childId` and `deviceId`.
+     - Defined `PingBatchEnvelopeSchema` (`{ pings: [...] }`) and unified `PingPayloadSchema` supporting envelope objects, arrays, and single ping objects.
+     - Sourced `effectiveDeviceId` and `effectiveChildId` automatically from authenticated device claims (`user.deviceId`, `user.childId` or `authDevice`) when omitted from the request body.
+     - Guarded foreign key and missing device exceptions, returning HTTP 401 `device_revoked` instead of 500.
+   - `services/api/test/geofence.test.ts`:
+     - Added unit test cases for batched location envelope with device token and missing device revocation.
+   - `services/api/scripts/qa-probe.mjs`:
+     - Added acceptance checks `G7b` (batch location envelope accepted with device JWT, count 2) and `G7c` (flat location ping accepted with device JWT without body childId/deviceId).
+
+**Raw Gate Output:**
+- `vitest run` on `@familyshield/api`:
+  ```
+  Test Files  16 passed (16)
+       Tests  195 passed (195)
+    Duration  17.23s
+  ```
+- `node services/api/scripts/qa-probe.mjs` against live stack:
+  ```
+  PASS  G7b batch location envelope accepted with device JWT (BUG-001) — status=201 count=2
+  PASS  G7c flat location ping accepted with device JWT without body IDs (BUG-001) — status=201
+  ───────────  70 passed · 0 failed · 2 targets · 2 notes  ───────────
+  Exit code: 0
+  ```
+- `node services/api/scripts/e2e.mjs` against live stack:
+  ```
+  === E2E: 50 passed, 0 failed ===
+  Exit code: 0
+  ```
+
+**What the reviewer (Kimi) must verify:**
+1. Check `POST /v1/location/ping` with `{ pings: [...] }` batch and device JWT returns 201 (`G7b`).
+2. Check `POST /v1/location/ping` with `{ lat, lng, accuracyM }` and device JWT (no body `childId`/`deviceId`) returns 201 (`G7c`).
+3. Check `LocationService` on Android when permissions are revoked returns `START_NOT_STICKY` and calls `stopSelf()` without throwing unhandled `SecurityException`.
+4. Verify all 70 QA probe assertions pass against live stack with 0 regressions.
+
+**Status:** ready-for-review — branch `fix/p0-location-resilience` pushed and ready for PR.
 
 

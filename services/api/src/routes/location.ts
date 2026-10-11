@@ -8,14 +8,26 @@ import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 
-const PingSchema = z.object({
-  childId: z.string().min(1),
-  deviceId: z.string().min(1),
+const SinglePingItemSchema = z.object({
+  childId: z.string().min(1).optional(),
+  deviceId: z.string().min(1).optional(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   accuracyM: z.number().min(0).default(0),
   timestamp: z.string().datetime().optional(),
 });
+
+const PingBatchEnvelopeSchema = z.object({
+  childId: z.string().min(1).optional(),
+  deviceId: z.string().min(1).optional(),
+  pings: z.array(SinglePingItemSchema).min(1).max(500),
+});
+
+const PingPayloadSchema = z.union([
+  PingBatchEnvelopeSchema,
+  z.array(SinglePingItemSchema).min(1).max(500),
+  SinglePingItemSchema,
+]);
 
 const GeofenceCreateSchema = z.object({
   childId: z.string().min(1),
@@ -122,53 +134,113 @@ async function evaluateGeofences(
 export async function locationRoutes(app: FastifyInstance) {
   registerRawBodyParser(app);
 
-  /** Ingest a location ping (parent JWT or HMAC device auth) and evaluate geofences. */
+  /** Ingest a location ping or batch (parent JWT or HMAC device auth) and evaluate geofences. */
   app.post("/ping", { preHandler: pingAuth }, async (req, reply) => {
-    const parsed = PingSchema.safeParse(req.body);
+    const parsed = PingPayloadSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, lat, lng, accuracyM, timestamp } = parsed.data;
 
-    const child = await prisma.child.findUnique({ where: { id: childId } });
-    if (!child) return reply.code(404).send({ error: "child_not_found" });
+    let pingsList: z.infer<typeof SinglePingItemSchema>[] = [];
+    let topChildId: string | undefined;
+    let topDeviceId: string | undefined;
+
+    if (Array.isArray(parsed.data)) {
+      pingsList = parsed.data;
+    } else if ("pings" in parsed.data && Array.isArray(parsed.data.pings)) {
+      pingsList = parsed.data.pings;
+      topChildId = parsed.data.childId;
+      topDeviceId = parsed.data.deviceId;
+    } else {
+      const single = parsed.data as z.infer<typeof SinglePingItemSchema>;
+      pingsList = [single];
+      topChildId = single.childId;
+      topDeviceId = single.deviceId;
+    }
+
+    if (pingsList.length === 0) {
+      return reply.code(400).send({ error: "no_pings_in_payload" });
+    }
+
     const user = req.user as AuthedUser | undefined;
+    const authDevice = (req as unknown as { authDevice?: { id: string; childId: string } }).authDevice;
+
+    // Resolve device and child identity from token/HMAC or top-level/ping items
+    const effectiveDeviceId = (user?.role === "device" ? user.deviceId : undefined)
+      ?? authDevice?.id
+      ?? topDeviceId
+      ?? pingsList[0]?.deviceId;
+
+    const effectiveChildId = (user?.role === "device" ? user.childId : undefined)
+      ?? authDevice?.childId
+      ?? topChildId
+      ?? pingsList[0]?.childId;
+
+    if (!effectiveDeviceId || !effectiveChildId) {
+      return reply.code(400).send({ error: "missing_device_or_child_identity" });
+    }
+
+    // Verify child exists
+    const child = await prisma.child.findUnique({ where: { id: effectiveChildId } });
+    if (!child) return reply.code(404).send({ error: "child_not_found" });
+
+    // Verify family matching
     if (user?.familyId && child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
     }
-    const authDevice = (req as unknown as { authDevice?: { id: string; childId: string } }).authDevice;
+
+    // Verify token identity claims vs body
     if (user?.role === "device") {
-      if (user.deviceId && user.deviceId !== deviceId) {
+      if (user.deviceId && topDeviceId && user.deviceId !== topDeviceId) {
         return reply.code(403).send({ error: "device_mismatch" });
       }
-      if (user.childId && user.childId !== childId) {
+      if (user.childId && topChildId && user.childId !== topChildId) {
         return reply.code(403).send({ error: "cross_child_forbidden" });
       }
     } else if (authDevice) {
-      if (authDevice.id !== deviceId) {
+      if (authDevice.id && topDeviceId && authDevice.id !== topDeviceId) {
         return reply.code(403).send({ error: "device_mismatch" });
       }
-      if (authDevice.childId && authDevice.childId !== childId) {
+      if (authDevice.childId && topChildId && authDevice.childId !== topChildId) {
         return reply.code(403).send({ error: "cross_child_forbidden" });
       }
     }
 
-    // Evaluate transitions against the previous latest ping before inserting this one.
-    await evaluateGeofences(childId, child.familyId, lat, lng, deviceId);
+    // Evaluate transitions against the latest ping in the batch
+    const latestPing = pingsList[pingsList.length - 1];
+    await evaluateGeofences(effectiveChildId, child.familyId, latestPing.lat, latestPing.lng, effectiveDeviceId);
 
-    let ping;
+    let createdPings;
     try {
-      ping = await prisma.locationPing.create({
-        data: { childId, deviceId, lat, lng, accuracyM, timestamp: timestamp ? new Date(timestamp) : undefined },
-      });
+      createdPings = await Promise.all(
+        pingsList.map((p) =>
+          prisma.locationPing.create({
+            data: {
+              childId: effectiveChildId,
+              deviceId: effectiveDeviceId,
+              lat: p.lat,
+              lng: p.lng,
+              accuracyM: p.accuracyM,
+              timestamp: p.timestamp ? new Date(p.timestamp) : undefined,
+            },
+          }),
+        ),
+      );
     } catch {
+      // Foreign key violation or missing device record -> 401 device_revoked
       return reply.code(401).send({ error: "device_revoked" });
     }
+
     // A device that pings is alive — keep lastSeen fresh for the parent app.
     try {
-      await prisma.device.update({ where: { id: deviceId }, data: { lastSeen: new Date(), status: "online" } });
+      await prisma.device.update({
+        where: { id: effectiveDeviceId },
+        data: { lastSeen: new Date(), status: "online" },
+      });
     } catch {
-      // lastSeen refresh is best-effort and must never fail the ping
+      // best-effort
     }
-    return reply.code(201).send({ ping });
+
+    const last = createdPings[createdPings.length - 1];
+    return reply.code(201).send({ ping: last, pings: createdPings, count: createdPings.length });
   });
 
   /** Return the child's most recent location ping. */
