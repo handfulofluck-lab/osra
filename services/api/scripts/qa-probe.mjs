@@ -355,6 +355,24 @@ if (d1.token) {
     check("G7 device HMAC cannot write an alert for a sibling child", inj.status >= 400, `got ${inj.status}`);
   }
 
+  // BUG-001 / Issue #19: Android LocationPingBatchDto envelope and device-token ID resolution
+  const batchPing = await call("POST", "/v1/location/ping", {
+    token: d1.token,
+    body: {
+      pings: [
+        { lat: 37.7749, lng: -122.4194, accuracyM: 10, timestamp: new Date().toISOString() },
+        { lat: 37.7750, lng: -122.4195, accuracyM: 8, timestamp: new Date().toISOString() },
+      ],
+    },
+  });
+  check("G7b batch location envelope accepted with device JWT (BUG-001)", [200, 201].includes(batchPing.status) && batchPing.data?.count === 2, `status=${batchPing.status} count=${batchPing.data?.count}`);
+
+  const flatPingNoBodyIds = await call("POST", "/v1/location/ping", {
+    token: d1.token,
+    body: { lat: 37.7751, lng: -122.4196, accuracyM: 5 },
+  });
+  check("G7c flat location ping accepted with device JWT without body IDs (BUG-001)", [200, 201].includes(flatPingNoBodyIds.status), `status=${flatPingNoBodyIds.status}`);
+
   // Revocation must hold on every route, not just under /v1/devices.
   const unpair = await call("DELETE", `/v1/devices/${d1.deviceId}`, { token: tokenA });
   check("G8 unpair succeeds", unpair.status < 300, `got ${unpair.status}`);

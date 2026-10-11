@@ -619,4 +619,44 @@ describe("geofence CRUD", () => {
     expect(prismaMock.geofence.findUnique).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it("accepts a batched location ping envelope from a device token deriving identity claims (201) (BUG-001)", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.geofence.findMany.mockResolvedValue([]);
+    prismaMock.locationPing.create.mockResolvedValue({ id: "ping-batch-1" });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: deviceHeader(app),
+      payload: {
+        pings: [
+          { lat: 40.7128, lng: -74.006, accuracyM: 10, timestamp: "2026-10-11T12:00:00Z" },
+          { lat: 40.7138, lng: -74.007, accuracyM: 5, timestamp: "2026-10-11T12:01:00Z" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().count).toBe(2);
+    expect(res.json().ping).toBeDefined();
+    await app.close();
+  });
+
+  it("returns 401 device_revoked if device record is not found in database (BUG-001 / FK-500 fix)", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.geofence.findMany.mockResolvedValue([]);
+    prismaMock.locationPing.create.mockRejectedValue(new Error("Foreign key constraint violated (deviceId does not exist)"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: deviceHeader(app),
+      payload: { lat: 40.7128, lng: -74.006, accuracyM: 5 },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe("device_revoked");
+    await app.close();
+  });
 });

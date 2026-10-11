@@ -49,6 +49,16 @@ class PairingActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { /* granted or not, CommsLogger starts harvesting once permission exists */ }
 
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        val granted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            startLocationServiceIfPermitted()
+        }
+    }
+
     private lateinit var root: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -155,6 +165,35 @@ class PairingActivity : ComponentActivity() {
                     setOnClickListener { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
                 },
             )
+            val hasFine = ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val hasCoarse = ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (!hasFine && !hasCoarse) {
+                addView(
+                    label(
+                        "Location permission is required for live GPS tracking and geofence alerts.",
+                    ),
+                )
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = "Grant location permission"
+                        setOnClickListener {
+                            val perms = if (Build.VERSION.SDK_INT >= 33) {
+                                arrayOf(
+                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    android.Manifest.permission.POST_NOTIFICATIONS,
+                                )
+                            } else {
+                                arrayOf(
+                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                                )
+                            }
+                            locationPermissionLauncher.launch(perms)
+                        }
+                    },
+                )
+            }
             addView(
                 Button(this@PairingActivity).apply {
                     text = "Open accessibility settings"
@@ -243,9 +282,17 @@ class PairingActivity : ComponentActivity() {
         else -> "Pairing failed: ${e.message ?: "network error"}"
     }
 
-    /** Starts LocationService and schedules all periodic workers plus an immediate rules sync. */
+    private fun startLocationServiceIfPermitted() {
+        val hasFine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasFine || hasCoarse) {
+            ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
+        }
+    }
+
+    /** Starts LocationService (if permitted) and schedules all periodic workers plus an immediate rules sync. */
     private fun startAgent() {
-        ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
+        startLocationServiceIfPermitted()
         WorkScheduler.scheduleAll(this)
         WorkScheduler.syncNow(this)
     }
