@@ -71,7 +71,7 @@ final locationHistoryProvider = FutureProvider.family<List<LocationPing>, String
         lat: (p['lat'] as num?)?.toDouble() ?? 0,
         lng: (p['lng'] as num?)?.toDouble() ?? 0,
         accuracyM: (p['accuracyM'] as num?)?.toDouble() ?? 0,
-        timestamp: DateTime.tryParse(p['ts']?.toString() ?? ''),
+        timestamp: DateTime.tryParse((p['timestamp'] ?? p['ts'])?.toString() ?? ''),
       ),
   ];
   pings.sort((a, b) {

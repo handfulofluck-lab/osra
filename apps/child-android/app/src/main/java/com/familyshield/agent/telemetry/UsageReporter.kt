@@ -101,8 +101,9 @@ class UsageReporter @Inject constructor(
     suspend fun postLiveActivity() {
         val deviceId = settings.deviceId() ?: return
         val event = liveActivityPayload(rules.minutesSnapshot(), currentForeground())
+        val liveEvent = event.copy(payload = event.payload + ("live" to true))
         try {
-            api.postActivityEvents(deviceId, ActivityEventBatchDto(listOf(event)))
+            api.postActivityEvents(deviceId, ActivityEventBatchDto(listOf(liveEvent)))
         } catch (e: CancellationException) {
             throw e // NOTE: never swallow coroutine cancellation
         } catch (e: Exception) {

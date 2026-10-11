@@ -245,15 +245,21 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
-    await prisma.activityEvent.createMany({
-      data: parsed.data.events.map((e) => ({
-        childId: device.childId,
-        deviceId: id,
-        ts: e.ts ? new Date(e.ts) : new Date(),
-        type: e.type,
-        payload: e.payload as Prisma.InputJsonValue,
-      })),
-    });
+    // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002)
+    const persistentEvents = parsed.data.events.filter(
+      (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),
+    );
+    if (persistentEvents.length > 0) {
+      await prisma.activityEvent.createMany({
+        data: persistentEvents.map((e) => ({
+          childId: device.childId,
+          deviceId: id,
+          ts: e.ts ? new Date(e.ts) : new Date(),
+          type: e.type,
+          payload: e.payload as Prisma.InputJsonValue,
+        })),
+      });
+    }
     // Live activity (#29): broadcast the latest app_usage event of the batch so the
     // parent dashboard's live chip updates without polling.
     const latestAppUsage = [...parsed.data.events].reverse().find((e) => e.type === "app_usage");

@@ -172,6 +172,7 @@ describe("family invites (Feature #13)", () => {
     expect(res.json().family.id).toBe("fam-1");
     expect(res.json().parent.familyId).toBe("fam-1");
     expect(res.json().parent.passwordHash).toBeUndefined();
+    expect(res.json().token).toBeDefined();
     await app.close();
   });
 

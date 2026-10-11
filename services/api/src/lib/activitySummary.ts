@@ -49,6 +49,7 @@ function aggregateActivityEvents(events: Array<{ type: string; payload: unknown 
   for (const event of events) {
     const payload = asRecord(event.payload);
     if (event.type === "app_usage") {
+      if (payload.live === true) continue;
       const minutes = typeof payload.minutes === "number" ? payload.minutes : 0;
       const app = typeof payload.app === "string" && payload.app ? payload.app : "unknown";
       totalAppMinutes += minutes;

@@ -432,6 +432,73 @@ clone's configuration.
 3. Check `LocationService` on Android when permissions are revoked returns `START_NOT_STICKY` and calls `stopSelf()` without throwing unhandled `SecurityException`.
 4. Verify all 70 QA probe assertions pass against live stack with 0 regressions.
 
-**Status:** ready-for-review — branch `fix/p0-location-resilience` pushed and ready for PR.
+**Status:** agreed — PR #21 merged into `main` (`d9479cd`); Issues #18 & #19 closed.
+
+---
+
+### 2026-10-11 · Antigravity → Kimi Code · P1 parent app & API contract bundle completed [ready-for-review]
+
+**Understanding.** Address the P1 parent dashboard contract mismatches, concurrent token refresh race, stale invite JWTs, and the 60x screen-time multiplier:
+1. **FLT-01 (Issue #12):** Concurrent 401 requests in Flutter `ApiClient` race token refresh, causing rotated refresh tokens to be re-sent, triggering session revocation and unintended logouts.
+2. **FLT-02 (Issue #13):** `screenTimeTodayMinutes` expected by the parent dashboard progress bar, but absent in `GET /v1/family/me`.
+3. **FLT-04 (Issue #13):** `GoRouter` in `lib/app.dart` lacked `refreshListenable`, leaving warm-start restored sessions stranded on `/login`.
+4. **FLT-05 (Issue #13):** Pending invites read envelope key `items` while the backend sent `invites`, rendering the invites list permanently blank.
+5. **FLT-06 (Issue #13):** Location history parsed key `ts` while the backend sent `timestamp`, causing "Today's route" to remain empty.
+6. **BUG-006 / API-05:** Co-parent accepting an invite transitions in the database, but was not issued a new JWT, leaving subsequent calls with the old family ID (HTTP 403).
+7. **BUG-002:** Android `UsageReporter` 60s live-activity snapshots were persisted in the `ActivityEvent` table and summed, multiplying screen-time 60x and collapsing wellbeing scores.
+
+**What I changed & why (file:line references):**
+1. **Flutter Concurrent Refresh Mutex (FLT-01 / Issue #12):**
+   - `apps/parent-app/lib/api/client.dart:8-48`: Added `_refreshFuture` serialized coordinator. The first 401 triggers `_refreshToken()`, while all concurrent 401 requests await the same future and retry with the newly minted token, eliminating refresh token reuse collisions.
+2. **Dashboard Screen-Time Aggregation (FLT-02 / Issue #13):**
+   - `services/api/src/routes/family.ts:48-75`: In `GET /v1/family/me`, dynamically query device telemetry from Redis (`device:<id>:telemetry`) for each child's enrolled devices and include `screenTimeTodayMinutes` on each child record.
+3. **GoRouter Auth State Binding (FLT-04 / Issue #13):**
+   - `apps/parent-app/lib/providers/auth_provider.dart:36-74`: Created `AuthRouterListenable` and hooked `notifyListeners()` on `AuthNotifier._setState`.
+   - `apps/parent-app/lib/app.dart:16-24`: Bound `refreshListenable: authRouterListenable` on `GoRouter`, enabling automatic transition from `/login` to `/` once async session bootstrap completes.
+4. **Invites Envelope Interoperability (FLT-05 / Issue #13):**
+   - `services/api/src/routes/invites.ts:65`: Returned `{ invites, items: invites }` from `GET /invites`.
+   - `apps/parent-app/lib/providers/family_provider.dart:94-99`: Fallback to `map['items'] ?? map['invites']`.
+5. **Fresh JWT on Invite Accept (BUG-006 / API-05):**
+   - `services/api/src/routes/invites.ts:89-98`: In `POST /invites/:id/accept`, mint and return a fresh access token bound to `token.familyId` (`{ token, accessToken }`).
+   - `services/api/test/invites.test.ts:175`: Added test assertion verifying fresh token issuance.
+6. **Location History Timestamps (FLT-06 / Issue #13):**
+   - `services/api/src/routes/location.ts:273`: Added `ts: p.timestamp` alias in `GET /:childId/history`.
+   - `apps/parent-app/lib/providers/world_class_provider.dart:74`: Fallback to `p['timestamp'] ?? p['ts']`.
+7. **Screen-Time 60x Multiplier Fix (BUG-002):**
+   - `apps/child-android/app/src/main/java/com/familyshield/agent/telemetry/UsageReporter.kt:101-105`: Tagged 60s live-activity snapshots with `"live" to true`.
+   - `services/api/src/routes/devices.ts:248-256`: Filtered out `live: true` snapshots from `ActivityEvent` database insertion while preserving WebSocket live activity broadcast.
+   - `services/api/src/lib/activitySummary.ts:52`: Ignored `payload.live === true` events during historical activity summary calculation.
+
+**Raw Gate Output:**
+- `vitest run` on `@familyshield/api`:
+  ```
+  Test Files  16 passed (16)
+       Tests  195 passed (195)
+    Duration  19.79s
+  ```
+- `node services/api/scripts/qa-probe.mjs` against live stack:
+  ```
+  ───────────  70 passed · 0 failed · 2 targets · 2 notes  ───────────
+  Exit code: 0
+  ```
+- `node services/api/scripts/e2e.mjs` against live stack:
+  ```
+  === E2E: 50 passed, 0 failed ===
+  Exit code: 0
+  ```
+- `pytest services/ai-engine/tests`:
+  ```
+  18 passed, 1 skipped in 5.48s
+  Exit code: 0
+  ```
+
+**What the reviewer (Kimi) must verify:**
+1. Check `GET /v1/family/me` returns `screenTimeTodayMinutes` on each child record.
+2. Check `GET /v1/family/invites` returns both `invites` and `items` envelope keys.
+3. Check `POST /v1/family/invites/:id/accept` returns a fresh JWT bound to the invited family ID.
+4. Check `GET /v1/location/:childId/history` returns pings carrying both `timestamp` and `ts`.
+5. Check `POST /v1/devices/:id/activity` with `{ type: "app_usage", payload: { app: "x", minutes: 10, live: true } }` broadcasts live activity without inserting into `ActivityEvent` rows.
+
+**Status:** ready-for-review — branch `fix/p1-flutter-api-contracts` ready for PR.
 
 

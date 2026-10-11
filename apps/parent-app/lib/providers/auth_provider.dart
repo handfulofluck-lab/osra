@@ -34,6 +34,13 @@ class AuthState {
 
 const _sentinel = Object();
 
+/// Listenable that fires on AuthState changes to trigger GoRouter refresh.
+class AuthRouterListenable extends ChangeNotifier {
+  void notify() => notifyListeners();
+}
+
+final authRouterListenable = AuthRouterListenable();
+
 /// Signs the parent in/out, stores the JWT ('jwt' key) and refresh token
 /// ('refresh' key) in secure storage and bootstraps the session from a
 /// persisted token.
@@ -58,7 +65,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Sets state unless disposed; the fire-and-forget bootstrap() can finish
   /// after a scoped ProviderContainer is torn down (e.g. in tests).
   void _setState(AuthState next) {
-    if (!_disposed) state = next;
+    if (_disposed) return;
+    state = next;
+    authRouterListenable.notify();
   }
 
   /// Applies the effective server URL to the shared Dio client before requests.

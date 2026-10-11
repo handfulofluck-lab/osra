@@ -270,7 +270,12 @@ export async function locationRoutes(app: FastifyInstance) {
       orderBy: { timestamp: "desc" },
       take: 500,
     });
-    return { pings };
+    return {
+      pings: pings.map((p) => ({
+        ...p,
+        ts: p.timestamp,
+      })),
+    };
   });
 
   /** List geofences for a child. */

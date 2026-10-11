@@ -62,7 +62,7 @@ export async function inviteRoutes(app: FastifyInstance) {
       where: { familyId: user.familyId },
       orderBy: { createdAt: "desc" },
     });
-    return { invites };
+    return { invites, items: invites };
   });
 
   /** Accept an invite: attach the authenticated parent to the inviting family. */
@@ -88,7 +88,17 @@ export async function inviteRoutes(app: FastifyInstance) {
     });
     await prisma.familyInvite.update({ where: { id }, data: { status: "accepted" } });
     const family = await prisma.family.findUnique({ where: { id: token.familyId } });
-    return { family, parent: sanitizeParent(updated as unknown as Record<string, unknown>) };
+    // Issue a fresh access token bound to the new family ID (BUG-006 / API-05)
+    const freshToken = app.jwt.sign(
+      { sub: parent.id, familyId: token.familyId, role: token.role },
+      { expiresIn: "15m" },
+    );
+    return {
+      family,
+      parent: sanitizeParent(updated as unknown as Record<string, unknown>),
+      token: freshToken,
+      accessToken: freshToken,
+    };
   });
 
   /** Revoke a pending invite (owner only). */
