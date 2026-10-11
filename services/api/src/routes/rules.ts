@@ -14,8 +14,8 @@ export { toApiRuleSet };
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const ScreenTimeSchema = z.object({
-  dailyLimitMinutes: z.number().int().min(0),
-  weekendLimitMinutes: z.number().int().min(0),
+  dailyLimitMinutes: z.number().int().min(0).max(10080),
+  weekendLimitMinutes: z.number().int().min(0).max(10080),
   bedtimeStart: z.string().regex(HHMM),
   bedtimeEnd: z.string().regex(HHMM),
   schoolHours: z.object({
@@ -28,9 +28,9 @@ const ScreenTimeSchema = z.object({
 });
 
 const WebFilterSchema = z.object({
-  blockedCategories: z.array(z.string()),
-  allowedDomains: z.array(z.string()),
-  blockedDomains: z.array(z.string()),
+  blockedCategories: z.array(z.string().max(255)).max(100),
+  allowedDomains: z.array(z.string().max(255)).max(1000),
+  blockedDomains: z.array(z.string().max(255)).max(1000),
   safeSearchEnforced: z.boolean(),
 });
 
@@ -38,7 +38,7 @@ const AppRuleSchema = z.object({
   packageId: z.string().min(1),
   appName: z.string().min(1),
   action: z.enum(["allow", "block", "time_limit"]),
-  dailyLimitMinutes: z.number().int().min(0).optional(),
+  dailyLimitMinutes: z.number().int().min(0).max(10080).optional(),
 });
 
 const RoutineSchema = z.object({
@@ -56,6 +56,7 @@ const RuleSetInputSchema = z.object({
   webFilter: WebFilterSchema,
   appRules: z.array(AppRuleSchema),
   routines: z.array(RoutineSchema),
+  alwaysAllowedApps: z.array(z.string()).default([]),
   allowOverlap: z.boolean().optional(),
   // NOTE: socialMonitoring maps app names (whatsapp, tiktok, ...) to capture-enabled flags;
   // contactAllowlist holds normalized phone numbers that bypass social scanning (#27).
@@ -68,6 +69,7 @@ const RuleSetPatchSchema = z.object({
   webFilter: WebFilterSchema.partial().optional(),
   appRules: z.array(AppRuleSchema).optional(),
   routines: z.array(RoutineSchema).optional(),
+  alwaysAllowedApps: z.array(z.string()).optional(),
   allowOverlap: z.boolean().optional(),
   socialMonitoring: z.record(z.boolean()).optional(),
   contactAllowlist: z.array(z.string()).optional(),
@@ -118,6 +120,7 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     safeSearchEnforced: data.webFilter.safeSearchEnforced,
     appRules: data.appRules,
     routines: data.routines,
+    alwaysAllowedApps: data.alwaysAllowedApps,
     socialMonitoring: data.socialMonitoring,
     contactAllowlist: data.contactAllowlist,
   };
@@ -174,6 +177,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       webFilter: { ...(current.webFilter as object), ...(patch.webFilter as object) },
       appRules: patch.appRules ?? current.appRules,
       routines: patch.routines ?? current.routines,
+      alwaysAllowedApps: patch.alwaysAllowedApps ?? current.alwaysAllowedApps ?? [],
       socialMonitoring: patch.socialMonitoring ?? current.socialMonitoring,
       contactAllowlist: patch.contactAllowlist ?? current.contactAllowlist,
     };

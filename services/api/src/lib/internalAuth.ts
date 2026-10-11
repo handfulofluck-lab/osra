@@ -10,30 +10,79 @@ import { prisma } from "../db.js";
  * Device.internalSecret). Only callers without a device context (the ai-engine) fall back
  * to the global INTERNAL_HMAC_SECRET.
  */
-export async function verifyInternalSignature(
-  rawBody: string | Buffer | undefined,
-  signature: string | string[] | undefined,
-): Promise<boolean> {
-  if (!signature || rawBody === undefined) return false;
-  const sig = Array.isArray(signature) ? signature[0] : signature;
+export interface InternalAuthResult {
+  valid: boolean;
+  device?: {
+    id: string;
+    childId: string;
+    internalSecret?: string | null;
+    revokedAt?: Date | null;
+  } | null;
+  isGlobalSecret?: boolean;
+}
 
-  let deviceSecret: string | null = null;
-  try {
-    const parsed = JSON.parse(rawBody.toString()) as { deviceId?: string };
-    if (parsed.deviceId) {
-      const device = await prisma.device.findUnique({ where: { id: parsed.deviceId } });
-      deviceSecret = device?.internalSecret ?? null;
-    }
-  } catch {
-    // Unparseable body: fall through to the global-secret check.
-  }
-  const secret = deviceSecret ?? process.env.INTERNAL_HMAC_SECRET;
-  if (!secret) return false;
+function checkHmac(secret: string, rawBody: string | Buffer, sig: string): boolean {
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(sig, "utf8");
   const b = Buffer.from(expected, "utf8");
   return a.length === b.length && timingSafeEqual(a, b);
 }
+
+/**
+ * Authenticate an internal request via HMAC signature against per-device secret or global secret.
+ * Resolves candidate device by deviceId, x-device-id header, or childId candidates (e.g. iOS payload).
+ */
+export async function authenticateInternalRequest(
+  rawBody: string | Buffer | undefined,
+  signature: string | string[] | undefined,
+  headers?: Record<string, string | string[] | undefined>,
+): Promise<InternalAuthResult> {
+  if (!signature || rawBody === undefined) return { valid: false };
+  const sig = Array.isArray(signature) ? signature[0] : signature;
+
+  try {
+    const parsed = JSON.parse(rawBody.toString()) as { deviceId?: string; childId?: string };
+    const deviceId = parsed.deviceId ?? (headers?.["x-device-id"] as string | undefined);
+
+    if (deviceId) {
+      const device = await prisma.device.findUnique({ where: { id: deviceId } });
+      if (device?.internalSecret) {
+        if (checkHmac(device.internalSecret, rawBody, sig)) {
+          return { valid: true, device };
+        }
+        return { valid: false };
+      }
+    }
+
+    if (parsed.childId) {
+      const childDevices = await prisma.device.findMany({ where: { childId: parsed.childId } });
+      for (const dev of childDevices) {
+        if (dev.internalSecret && checkHmac(dev.internalSecret, rawBody, sig)) {
+          return { valid: true, device: dev };
+        }
+      }
+    }
+  } catch {
+    // Unparseable body: proceed to check global secret
+  }
+
+  const globalSecret = process.env.INTERNAL_HMAC_SECRET;
+  if (globalSecret && checkHmac(globalSecret, rawBody, sig)) {
+    return { valid: true, isGlobalSecret: true };
+  }
+
+  return { valid: false };
+}
+
+export async function verifyInternalSignature(
+  rawBody: string | Buffer | undefined,
+  signature: string | string[] | undefined,
+  headers?: Record<string, string | string[] | undefined>,
+): Promise<boolean> {
+  const result = await authenticateInternalRequest(rawBody, signature, headers);
+  return result.valid;
+}
+
 
 /** Register a JSON parser that keeps the raw body string for HMAC verification. */
 export function registerRawBodyParser(app: FastifyInstance): void {

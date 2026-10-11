@@ -31,6 +31,9 @@ if (!process.env.VAULT_KEY && process.env.NODE_ENV === "production") {
   throw new Error("VAULT_KEY must be set in production (snippet vault encryption key)");
 }
 
+import { getRedis } from "./redis.js";
+import { prisma } from "./db.js";
+
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
 // Review API-1: CORS allowlist via env (comma-separated); unset = reflect (dev/test only, NOTE).
@@ -42,7 +45,43 @@ await app.register(cors, {
 await app.register(jwt, { secret: JWT_SECRET ?? "dev-insecure-jwt-secret" });
 await app.register(rateLimit, { max: 200, timeWindow: "1 minute" });
 await app.register(websocket);
+
+// Global device revocation hook: any authenticated device whose token was revoked gets 401 across all routes.
+app.addHook("preHandler", async (req, reply) => {
+  try {
+    await req.jwtVerify();
+  } catch {
+    return; // unauthenticated requests fall through to route-specific handlers
+  }
+  const user = req.user as { role?: string; deviceId?: string; jti?: string } | undefined;
+  if (user?.role === "device" && user.deviceId) {
+    const redis = getRedis();
+    const revoked = await redis.get(`revoked:device:${user.deviceId}`).catch(() => null);
+    if (revoked) {
+      return reply.code(401).send({ error: "device_revoked" });
+    }
+  }
+  if (user?.jti) {
+    const redis = getRedis();
+    const revoked = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
+    if (revoked) {
+      return reply.code(401).send({ error: "session_revoked" });
+    }
+  }
+});
+
+// Global error handler: sanitize database / Prisma internal errors to avoid leaking stack traces or schema internals
+app.setErrorHandler((error, req, reply) => {
+  const errStr = String(error?.message ?? "") + String(error?.stack ?? "");
+  if (/prisma|invocation|P2020|P2002|P2003/i.test(errStr) || error.name === "PrismaClientKnownRequestError") {
+    req.log.error(error);
+    return reply.code(400).send({ error: "invalid_input" });
+  }
+  return reply.send(error);
+});
+
 await app.register(healthRoutes);
+
 
 // Auth routes get a stricter bucket (review API-11): brute-force protection on register/login/reset.
 await app.register(authRoutes, {
