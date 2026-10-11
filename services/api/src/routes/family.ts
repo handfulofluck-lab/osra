@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
+import { getRedis } from "../redis.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -45,11 +46,29 @@ export async function familyRoutes(app: FastifyInstance) {
     if (!family) return reply.code(404).send({ error: "family_not_found" });
     const parents = family.parents.map(sanitizeParent);
     const parent = parents.find((p) => p.id === user.sub) ?? parents[0];
-    // Strip internal secrets and push tokens from parent-facing payloads.
-    const children = family.children.map((c) => ({
-      ...c,
-      devices: c.devices.map(sanitizeDevice),
-    }));
+    // Strip internal secrets and push tokens from parent-facing payloads, and include screenTimeTodayMinutes (FLT-02)
+    const redis = getRedis();
+    const children = await Promise.all(
+      family.children.map(async (c) => {
+        let screenTimeTodayMinutes = 0;
+        for (const d of c.devices) {
+          const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
+          if (raw) {
+            try {
+              const tel = JSON.parse(raw);
+              if (typeof tel.totalMinutes === "number") {
+                screenTimeTodayMinutes += tel.totalMinutes;
+              }
+            } catch {}
+          }
+        }
+        return {
+          ...c,
+          screenTimeTodayMinutes,
+          devices: c.devices.map(sanitizeDevice),
+        };
+      }),
+    );
     const devices = children.flatMap((c) => c.devices);
     const { parents: _parents, ...familyRest } = family;
     return { family: { ...familyRest, children }, parent, parents, children, devices };

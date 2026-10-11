@@ -23,13 +23,16 @@
 
 | ID | Component | Severity | Description | Status |
 |---|---|---|---|---|
-| **BUG-001** | `services/api` & `child-android` | **Critical** | **Location Ping Schema Break**: Android posts `{"pings": [...]}` batch while API expects a flat single object with mandatory `childId`/`deviceId`. All pings fail with HTTP 400. | Fixed (`fix/p0-location-resilience`) |
-| **AND-13** | `child-android` | **Critical** | **Android 14+ FGS Crash-Loop**: `LocationService` throws `SecurityException` on missing permissions, crash-looping under `START_STICKY`. | Fixed (`fix/p0-location-resilience`) |
-| **BUG-002** | `services/api` & agents | **Critical** | **Screen-Time 60x Multiplier**: Android sends cumulative total in 60s heartbeats; server sums all rows, inflating 30 min into 15+ hours and crashing wellbeing score to 0. | Ready for Fix (P1) |
+| **BUG-001** | `services/api` & `child-android` | **Critical** | **Location Ping Schema Break**: Android posts `{"pings": [...]}` batch while API expects a flat single object with mandatory `childId`/`deviceId`. All pings fail with HTTP 400. | Fixed in PR #21 (`main`) |
+| **AND-13** | `child-android` | **Critical** | **Android 14+ FGS Crash-Loop**: `LocationService` throws `SecurityException` on missing permissions, crash-looping under `START_STICKY`. | Fixed in PR #21 (`main`) |
+| **BUG-002** | `services/api` & `child-android` | **Critical** | **Screen-Time 60x Multiplier**: Android sends cumulative total in 60s heartbeats; server sums all rows, inflating 30 min into 15+ hours. | Fixed (`fix/p1-flutter-api-contracts`) |
 | **BUG-003** | `services/api` | **Critical** | **Rejected Security Alerts**: `InternalAlertSchema.category` rejects `tamper`, `vpn_detected`, `install_request`, `unknown_contact`, and `social_concern` (HTTP 400). | Fixed in PR #20 (`main`) |
 | **BUG-004** | `services/api` | **High** | **`alwaysAllowedApps` Wiped**: Zod schema strips `alwaysAllowedApps` on PUT/PATCH, deleting whitelisted apps on every rules save. | Fixed in PR #20 (`main`) |
-| **BUG-005** | `parent-app` | **Medium** | **Pending Invites UI Blank**: API returns `{ invites: [...] }` while Flutter provider looks for `items`, permanently showing "No pending invites". | Ready for Fix (P1) |
-| **BUG-006** | `services/api` | **High** | **Stale Family JWT on Invite Accept**: Co-parent accepts invite but receives no new JWT; subsequent calls use the old family ID (HTTP 403). | Ready for Fix (P1) |
+| **BUG-005** | `parent-app` & `services/api` | **Medium** | **Pending Invites UI Blank**: API returns `{ invites: [...] }` while Flutter provider looks for `items`, permanently showing "No pending invites". | Fixed (`fix/p1-flutter-api-contracts`) |
+| **BUG-006** | `services/api` | **High** | **Stale Family JWT on Invite Accept**: Co-parent accepts invite but receives no new JWT; subsequent calls use the old family ID (HTTP 403). | Fixed (`fix/p1-flutter-api-contracts`) |
+| **FLT-01** | `parent-app` | **High** | **Concurrent 401 Refresh Race**: Multiple parallel 401s race token refresh and trigger session revocation / forced logout. | Fixed (`fix/p1-flutter-api-contracts`) |
+| **FLT-04** | `parent-app` | **High** | **GoRouter Restored Session Stranded**: Router lacked `refreshListenable`, stranding restored sessions on `/login`. | Fixed (`fix/p1-flutter-api-contracts`) |
+| **FLT-06** | `parent-app` & `services/api` | **High** | **Location History Timestamp Discrepancy**: History parsed `ts`, API returned `timestamp`; today's route empty. | Fixed (`fix/p1-flutter-api-contracts`) |
 | **BUG-007** | `agent-desktop` | **Critical** | **Windows HTTPS Filtering Bypass**: Titanium proxy only hooks `BeforeRequest`; all HTTPS `CONNECT` tunnels bypass web filtering without root CA MITM. | Ready for Fix (P1) |
 | **BUG-008** | `child-android` | **High** | **Reboot Screen-Time Counter Reset**: `UsageCounters` stores daily usage in an in-memory map; restarting the phone resets usage to 0. | Ready for Fix (P1) |
 | **BUG-009** | `child-android` | **High** | **SOS Missing GPS Coordinates**: SOS emergency alert payload omits GPS coordinates. | Ready for Fix (P1) |

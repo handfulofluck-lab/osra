@@ -94,7 +94,8 @@ final geofencesProvider = FutureProvider.family<List<Geofence>, String>((ref, ch
 final familyInvitesProvider = FutureProvider<List<FamilyInvite>>((ref) async {
   final api = ref.watch(apiClientProvider);
   final res = await api.raw.get('/v1/family/invites');
-  final raw = res.data is Map ? (res.data as Map)['items'] : res.data;
+  final map = res.data is Map ? res.data as Map : const {};
+  final raw = map['items'] ?? map['invites'] ?? res.data;
   return [for (final i in (raw as List? ?? const [])) FamilyInvite.fromJson(Map<String, dynamic>.from(i as Map))];
 });
 

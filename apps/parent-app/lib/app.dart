@@ -15,6 +15,7 @@ import 'providers/auth_provider.dart';
 
 final router = GoRouter(
   initialLocation: '/login',
+  refreshListenable: authRouterListenable,
   redirect: (context, state) {
     final auth = ProviderScope.containerOf(context).read(authProvider);
     if (!auth.isAuthenticated && state.matchedLocation != '/login') return '/login';
