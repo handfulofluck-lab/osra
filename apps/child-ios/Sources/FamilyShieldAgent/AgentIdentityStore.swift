@@ -24,20 +24,23 @@ public enum AgentIdentityStore {
         static let familyId = "agent.familyId"
     }
 
-    /// Persists the identity and force-syncs so extension processes see it immediately.
-    public static func save(_ identity: AgentIdentity) {
-        let defaults = UserDefaults(suiteName: suiteName)
-        defaults?.set(identity.apiBaseURL.absoluteString, forKey: Keys.apiBaseURL)
-        defaults?.set(identity.childId, forKey: Keys.childId)
-        defaults?.set(identity.deviceToken, forKey: Keys.deviceToken)
-        defaults?.set(identity.deviceId, forKey: Keys.deviceId)
-        defaults?.set(identity.familyId, forKey: Keys.familyId)
-        if let secret = identity.hmacSecret, !secret.isEmpty {
-            defaults?.set(secret, forKey: Keys.hmacSecret)
-        } else {
-            defaults?.removeObject(forKey: Keys.hmacSecret)
+    /// Persists the identity and returns true on success, or false if the app group suite is unavailable (IOS-09).
+    @discardableResult
+    public static func save(_ identity: AgentIdentity) -> Bool {
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return false
         }
-        defaults?.synchronize()
+        defaults.set(identity.apiBaseURL.absoluteString, forKey: Keys.apiBaseURL)
+        defaults.set(identity.childId, forKey: Keys.childId)
+        defaults.set(identity.deviceToken, forKey: Keys.deviceToken)
+        defaults.set(identity.deviceId, forKey: Keys.deviceId)
+        defaults.set(identity.familyId, forKey: Keys.familyId)
+        if let secret = identity.hmacSecret, !secret.isEmpty {
+            defaults.set(secret, forKey: Keys.hmacSecret)
+        } else {
+            defaults.removeObject(forKey: Keys.hmacSecret)
+        }
+        return true
     }
 
     /// Returns the persisted identity, or nil when the device has not been paired.
@@ -65,10 +68,9 @@ public enum AgentIdentityStore {
     /// Clears the identity (re-pair flow). Rules/keys written by other components
     /// (bedtime bundle ids, blocked apps) are left untouched.
     public static func clear() {
-        let defaults = UserDefaults(suiteName: suiteName)
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
         for key in [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId] {
-            defaults?.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         }
-        defaults?.synchronize()
     }
 }

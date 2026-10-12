@@ -85,4 +85,32 @@ final class FamilyShieldAgentTests: XCTestCase {
         XCTAssertTrue(window.contains(lateEvening, calendar: calendar))
         XCTAssertFalse(window.contains(midday, calendar: calendar))
     }
+
+    // Schedule components conversion tests (IOS-06).
+    func testScheduleComponentsHandlesOvernightWrap() {
+        let window = RoutineWindow(startHour: 21, startMinute: 30, endHour: 7, endMinute: 0)
+        let (start, end) = window.toScheduleComponents()
+        XCTAssertEqual(21, start.hour)
+        XCTAssertEqual(30, start.minute)
+        XCTAssertEqual(7, end.hour)
+        XCTAssertEqual(0, end.minute)
+    }
+
+    func testScheduleComponentsHandlesUnboundedEndOfDay() {
+        let window = RoutineWindow(startHour: 20, startMinute: 0, endHour: 24, endMinute: 0)
+        let (start, end) = window.toScheduleComponents()
+        XCTAssertEqual(20, start.hour)
+        XCTAssertEqual(0, start.minute)
+        XCTAssertEqual(23, end.hour)
+        XCTAssertEqual(59, end.minute)
+    }
+
+    func testScheduleComponentsHandlesWholeDay() {
+        let window = RoutineWindow(startMinutes: 0, endMinutes: 0)
+        let (start, end) = window.toScheduleComponents()
+        XCTAssertEqual(0, start.hour)
+        XCTAssertEqual(0, start.minute)
+        XCTAssertEqual(23, end.hour)
+        XCTAssertEqual(59, end.minute)
+    }
 }

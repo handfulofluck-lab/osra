@@ -54,4 +54,29 @@ public struct RoutineWindow: Equatable {
         if start >= end { return t >= start || t < end } // wraps around local midnight
         return t >= start && t < end
     }
+
+    /// Converts this RoutineWindow into valid DateComponents for DeviceActivitySchedule (IOS-06).
+    /// Clamps hours/minutes (0..23, 0..59) and handles midnight wrap and end-of-day (1440).
+    public func toScheduleComponents() -> (start: DateComponents, end: DateComponents) {
+        let sHour = min(23, max(0, startMinutes / 60))
+        let sMin = min(59, max(0, startMinutes % 60))
+
+        let eHour: Int
+        let eMin: Int
+        if endMinutes >= 1440 {
+            eHour = 23
+            eMin = 59
+        } else if startMinutes == endMinutes {
+            // Whole day coverage: start at 00:00 and end at 23:59
+            return (DateComponents(hour: 0, minute: 0), DateComponents(hour: 23, minute: 59))
+        } else {
+            eHour = min(23, max(0, endMinutes / 60))
+            eMin = min(59, max(0, endMinutes % 60))
+        }
+
+        return (
+            DateComponents(hour: sHour, minute: sMin),
+            DateComponents(hour: eHour, minute: eMin)
+        )
+    }
 }

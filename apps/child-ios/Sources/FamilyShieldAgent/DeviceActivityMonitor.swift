@@ -21,9 +21,8 @@ struct AlertReporter {
         self.hmacSecret = hmacSecret
     }
 
-    /// Fires a spec-conformant alert to POST /v1/alerts/internal; fire-and-forget with
-    /// logged errors. The internal route requires childId/title/body and the
-    /// X-FamilyShield-Signature header (spec §12.3).
+    /// Fires a spec-conformant alert to POST /v1/alerts/internal with retry and backoff (IOS-08).
+    /// Includes deviceId in the payload so the server resolves the per-device HMAC secret (IOS-01).
     func report(
         category: String,
         severity: String = "warning",
@@ -40,7 +39,7 @@ struct AlertReporter {
             AlertReporter.logger.error("alert '\(category)' skipped: childId unknown (agent not paired)")
             return
         }
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "childId": childId,
             "category": category,
             "severity": severity,
@@ -48,11 +47,15 @@ struct AlertReporter {
             "body": body,
             "metadata": metadata,
         ]
+        if let deviceId = AlertReporter.pairedDeviceId() {
+            payload["deviceId"] = deviceId
+        }
         guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return }
         var request = URLRequest(url: apiBaseURL.appendingPathComponent("v1/alerts/internal"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
+        request.timeoutInterval = 15.0
         if let hmacSecret, let key = hmacSecret.data(using: .utf8) {
             let signature = HMAC<SHA256>.authenticationCode(for: bodyData, using: SymmetricKey(data: key))
             let hex = signature.map { String(format: "%02x", $0) }.joined()
@@ -60,19 +63,40 @@ struct AlertReporter {
         } else {
             AlertReporter.logger.warning("no HMAC secret configured; the API will reject this alert (401)")
         }
+
+        Self.sendWithRetry(request: request, category: category, attemptsLeft: 3)
+    }
+
+    private static func sendWithRetry(request: URLRequest, category: String, attemptsLeft: Int) {
         URLSession.shared.dataTask(with: request) { _, response, error in
             if let error {
                 AlertReporter.logger.error("alert '\(category)' failed: \(error.localizedDescription)")
+                if attemptsLeft > 1 {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
+                        sendWithRetry(request: request, category: category, attemptsLeft: attemptsLeft - 1)
+                    }
+                }
             } else if let http = response as? HTTPURLResponse, http.statusCode >= 300 {
                 AlertReporter.logger.error("alert '\(category)' rejected with HTTP \(http.statusCode)")
+                if http.statusCode >= 500 && attemptsLeft > 1 {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
+                        sendWithRetry(request: request, category: category, attemptsLeft: attemptsLeft - 1)
+                    }
+                }
+            } else {
+                AlertReporter.logger.info("alert '\(category)' delivered successfully")
             }
         }.resume()
     }
 
     /// Reads the paired child id from the shared app group (written at pairing), if any.
     static func pairedChildId() -> String? {
-        // NOTE: the app-group identifier is a placeholder until the Xcode project defines one.
         UserDefaults(suiteName: "group.dev.familyshield.agent")?.string(forKey: "agent.childId")
+    }
+
+    /// Reads the paired device id from the shared app group (written at pairing), if any (IOS-01).
+    static func pairedDeviceId() -> String? {
+        UserDefaults(suiteName: "group.dev.familyshield.agent")?.string(forKey: "agent.deviceId")
     }
 
     /// Reads the pairing API base URL from the shared app group, if any.
@@ -94,38 +118,30 @@ import DeviceActivity
 import ManagedSettings
 
 /// Device-activity monitor for FamilyShield (spec §6.4): applies the bedtime shield
-/// when a bedtime interval starts, restores the rule-blocked shield when it ends, and
-/// reports screen-time threshold events to the backend.
-///
-/// NOTE: takes effect as the NSExtensionPrincipalClass of a Device Activity monitor
-/// extension target. One `DeviceActivityName` per routine ID is registered by
-/// `ScreenTimeController.scheduleBedtime(start:end:routineID:)`.
+/// when a bedtime interval starts in a routine-specific named store, and clears only that
+/// routine store when it ends without unshielding parent rules (IOS-05).
 final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
-
-    private let store = ManagedSettingsStore()
 
     /// Reporter rebuilt per use so it picks up the `agent.apiBaseURL` value the pairing
     /// flow writes into the shared app group (nil until then — reports are skipped).
     private var reporter: AlertReporter { AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret()) }
 
-    /// Shields the union of the bedtime and rule-blocked app selections while the
-    /// bedtime interval is active — applying only the bedtime tokens here would
-    /// clobber apps that the parent's rules keep shielded.
+    /// Shields the bedtime apps in a dedicated named store for this routine (IOS-05).
+    /// Using a routine-specific named store ensures overlapping routines do not clobber
+    /// each other, and rule-blocked apps managed in `parentRules` store remain shielded.
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
+        let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.bedtimeBundleIdentifiers())
-            .union(TokenResolver.applicationTokens(forBundleIdentifiers: Self.ruleBlockedBundleIdentifiers()))
-        store.shield.applications = tokens.isEmpty ? nil : tokens
+        routineStore.shield.applications = tokens.isEmpty ? nil : tokens
     }
 
-    /// Restores the rule-blocked shield when the bedtime interval ends.
+    /// Clears only the routine-specific named store when bedtime interval ends (IOS-05).
+    /// Does NOT clear `parentRules` or other overlapping routines.
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
-        // NOTE: do NOT clear to nil here — that would un-shield apps blocked by the
-        // parent's app rules while bedtime happens to be active. Re-apply the rule
-        // selection instead (persisted by the main agent app in the shared app group).
-        let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.ruleBlockedBundleIdentifiers())
-        store.shield.applications = tokens.isEmpty ? nil : tokens
+        let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
+        routineStore.clearAllSettings()
     }
 
     /// Reports a screen-time threshold breach with category "screen_time_exceeded".
@@ -143,8 +159,6 @@ final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Bundle identifiers to shield during bedtime, read from the shared app-group store.
     private static func bedtimeBundleIdentifiers() -> [String] {
-        // NOTE: stub — production reads the synced RuleSet bedtime app selection,
-        // persisted in the shared app group by the main agent app.
         UserDefaults(suiteName: "group.dev.familyshield.agent")?
             .stringArray(forKey: "bedtime.blockedBundleIdentifiers") ?? []
     }

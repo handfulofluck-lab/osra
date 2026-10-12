@@ -23,17 +23,17 @@ final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
         Self.makeConfiguration()
     }
 
-    /// Shared shield layout used for every block reason.
+    /// Shared shield layout used for every block reason (IOS-04).
     private static func makeConfiguration() -> ShieldConfiguration {
         ShieldConfiguration(
             backgroundBlurStyle: nil,
             backgroundColor: nil,
             icon: nil,
-            title: ShieldConfiguration.Label(text: "Blocked by OSRA", color: nil),
-            subtitle: ShieldConfiguration.Label(text: Self.subtitle, color: nil),
-            primaryButtonLabel: ShieldConfiguration.Label(text: "Ask parent", color: nil),
+            title: ShieldConfiguration.Label(text: "Blocked by OSRA", color: .label),
+            subtitle: ShieldConfiguration.Label(text: Self.subtitle, color: .secondaryLabel),
+            primaryButtonLabel: ShieldConfiguration.Label(text: "Ask parent", color: .systemBlue),
             primaryButtonBackgroundColor: nil,
-            secondaryButtonLabel: ShieldConfiguration.Label(text: "OK", color: nil)
+            secondaryButtonLabel: ShieldConfiguration.Label(text: "OK", color: .systemGray)
         )
     }
 

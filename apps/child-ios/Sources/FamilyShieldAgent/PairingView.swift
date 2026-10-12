@@ -75,7 +75,10 @@ public struct PairingView: View {
         do {
             let client = PairingClient()
             let claimed = try await client.claim(baseURL: baseURL, code: code, deviceName: deviceName)
-            AgentIdentityStore.save(claimed)
+            guard AgentIdentityStore.save(claimed) else {
+                errorMessage = "Failed to persist identity: shared app group is unavailable. Verify app group provisioning."
+                return
+            }
             identity = claimed
             onPaired(claimed)
         } catch {

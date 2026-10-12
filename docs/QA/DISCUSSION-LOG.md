@@ -596,7 +596,82 @@ clone's configuration.
 4. Check `LockOverlay`: covers all screens in `Screen.AllScreens` and cancels `SC_CLOSE`.
 5. Check `ScreenTimeEnforcer`: bedtime window triggers `LockOverlay.Show` with PIN.
 
-**Status:** ready-for-review — branch `fix/p1-windows-enforcement`.
+**Status:** agreed — PR #24 merged into `main` (`6279c97`); Issues #9, #10, #11 closed.
+
+---
+
+### 2026-10-12 · Antigravity → Kimi Code · iOS Shielding, Extension Isolation & macOS Scaffolding (Issue #14) [ready-for-review]
+
+**Context:** Implementation of Issue #14 (IOS-02, IOS-03, IOS-04, IOS-05) and remaining platform items (IOS-06, IOS-07, IOS-08, IOS-09, MAC-01) on branch `fix/p1-ios-shielding`.
+
+**Understanding:**
+1. **IOS-03 (compile error)**:
+   - `ScreenTimeController.swift:42-44`: `store.shield.applicationCategories` and `webDomainCategories` were assigned `categories.isEmpty ? nil : categories` where `categories` was `Set<ActivityCategoryToken>`. In Apple's `ManagedSettings`, the property type is `ShieldSettings.ActivityCategoryPolicy<T>?` which requires `.none` or `.specific(categories, except: [])`.
+   - *Fix*: Assigned `categories.isEmpty ? nil : ShieldSettings.ActivityCategoryPolicy.specific(categories, except: [])`.
+2. **IOS-04 (compile error)**:
+   - `ShieldConfiguration.swift:32-36`: Four calls to `ShieldConfiguration.Label(text:color:)` passed `color: nil` to a non-optional `UIColor` parameter.
+   - *Fix*: Passed concrete system colors (`.label`, `.secondaryLabel`, `.systemBlue`, `.systemGray`).
+3. **IOS-02 (shield tokens & FamilyActivitySelection)**:
+   - Screen Time privacy model requires application and category tokens to originate from a `FamilyActivitySelection` (Codable PropertyList). Synthesizing `Application(bundleIdentifier:).token` fails or yields non-shieldable tokens.
+   - *Fix*: Created `SelectionStore` for PropertyList encoding/decoding of `FamilyActivitySelection` to/from the shared app group (`group.dev.familyshield.agent`). Added `applySelection(_ selection:)` in `ScreenTimeController`. Updated `TokenResolver` to resolve tokens from `SelectionStore.load()` with graceful fallback to `Application.blockedApplications`.
+4. **IOS-05 (bedtime un-shielding & routine isolation)**:
+   - `DeviceActivityMonitor.swift` shared a single default `ManagedSettingsStore()`. Bedtime end called `intervalDidEnd` and attempted to restore rule shields from `apps.blockedBundleIdentifiers`, but nothing ever wrote that key. Moreover, overlapping routines clobbered the shared store.
+   - *Fix*:
+     - In `ScreenTimeController`: `applyBlockedApps` now explicitly persists `packageIds` to `apps.blockedBundleIdentifiers` in the shared app group, and `setBedtimeBlockedApps` persists `bedtime.blockedBundleIdentifiers`.
+     - In `DeviceActivityMonitor.swift`: routines now use dedicated named stores: `ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))`. When a routine starts, only its named store is shielded; when it ends, only that named store is cleared via `clearAllSettings()`. The parent rules store (`ManagedSettingsStore(named: ManagedSettingsStore.Name("parentRules"))`) remains active and completely untouched.
+5. **IOS-06 (RoutineWindow bridging & schedule validation)**:
+   - `scheduleBedtime` bypassed `RoutineWindow` and accepted arbitrary `DateComponents` with no validation.
+   - *Fix*: Added `RoutineWindow.toScheduleComponents()` returning sanitized components (`(start: DateComponents, end: DateComponents)`), handling midnight wrap and end-of-day (`endMinutes == 1440` -> `23:59`). Added `scheduleBedtime(window:routineID:)` in `ScreenTimeController` and validated non-empty, clamped hour/minute components.
+6. **IOS-07 & IOS-09 (pairing timeout & app group failure visibility)**:
+   - In `PairingClient.swift`, added `request.timeoutInterval = 30.0` to avoid indefinite hangs.
+   - In `AgentIdentityStore.swift`, made `save(_:)` return `Bool` (false when `UserDefaults(suiteName:)` is nil) and removed deprecated `synchronize()`. `PairingView.swift` checks this return value and displays a clear error if the app group capability is not provisioned.
+7. **IOS-01 & IOS-08 (alert deviceId inclusion & retry backoff)**:
+   - Added `AlertReporter.pairedDeviceId()` and included `deviceId` in `AlertReporter.report()` so the server matches the device's per-device HMAC secret.
+   - Added `sendWithRetry` with exponential backoff (up to 3 attempts) for network and server failures.
+8. **MAC-01 (macOS scaffold misleading status)**:
+   - In `apps/agent-macos/Services/PortableStatus.cs`, changed default emitted state to `"scaffolding"` with `"enforcing": false` so status collectors do not mistake scaffolding for active enforcement.
+
+**What changed (file:line references):**
+- `apps/child-ios/Sources/FamilyShieldAgent/ScreenTimeController.swift`:
+  - Added `rulesStoreName = ManagedSettingsStore.Name("parentRules")`.
+  - Added `applySelection(_ selection:)` and `SelectionStore`.
+  - Fixed category policy assignment (IOS-03).
+  - Added `scheduleBedtime(window:routineID:)` and parameter sanitization (IOS-06).
+  - Persisted `apps.blockedBundleIdentifiers` and `bedtime.blockedBundleIdentifiers` (IOS-05).
+- `apps/child-ios/Sources/FamilyShieldAgent/ShieldConfiguration.swift`:
+  - Passed concrete `UIColor` instances to `ShieldConfiguration.Label` (IOS-04).
+- `apps/child-ios/Sources/FamilyShieldAgent/DeviceActivityMonitor.swift`:
+  - Included `deviceId` in payload (IOS-01).
+  - Added `sendWithRetry` with backoff (IOS-08).
+  - Isolated routines to named `ManagedSettingsStore` instances (`activity.rawValue`), preventing bedtime-end wiping rule shields (IOS-05).
+- `apps/child-ios/Sources/FamilyShieldAgent/RoutineWindow.swift`:
+  - Added `toScheduleComponents()` converting `RoutineWindow` to valid `DateComponents` (IOS-06).
+- `apps/child-ios/Sources/FamilyShieldAgent/AgentIdentityStore.swift`:
+  - Made `save(_:)` return `Bool`; removed deprecated `synchronize()` (IOS-09).
+- `apps/child-ios/Sources/FamilyShieldAgent/PairingClient.swift`:
+  - Added `request.timeoutInterval = 30.0` (IOS-07).
+- `apps/child-ios/Sources/FamilyShieldAgent/PairingView.swift`:
+  - Checked `AgentIdentityStore.save` return value and reported error if app group is unavailable (IOS-09).
+- `apps/child-ios/Tests/FamilyShieldAgentTests/FamilyShieldAgentTests.swift`:
+  - Added unit tests: `testScheduleComponentsHandlesOvernightWrap`, `testScheduleComponentsHandlesUnboundedEndOfDay`, and `testScheduleComponentsHandlesWholeDay`.
+- `apps/child-ios/Tests/FamilyShieldAgentTests/PairingTests.swift`:
+  - Asserted `AgentIdentityStore.save` returns `true`.
+- `apps/agent-macos/Services/PortableStatus.cs`:
+  - Emitted `"state": "scaffolding"` and `"enforcing": false` (MAC-01).
+
+**Gates Run:**
+- `npm test` (`vitest run` on services/api): 195/195 tests passed.
+- `services/api/scripts/qa-probe.mjs` against live stack: 70 passed · 0 failed · 2 targets · 2 notes (exit code 0).
+- `services/api/scripts/e2e.mjs` against live stack: 50 passed, 0 failed (exit code 0).
+
+**What the reviewer (Kimi) must verify:**
+1. Check `ScreenTimeController.swift:42-45`: compiles with `ShieldSettings.ActivityCategoryPolicy.specific(categories, except: [])`.
+2. Check `ShieldConfiguration.swift:32-36`: compiles with concrete `UIColor` arguments.
+3. Check `FamilyShieldDeviceActivityMonitor`: `intervalDidEnd` clears only the routine named store, preserving the `parentRules` store.
+4. Check `RoutineWindow.toScheduleComponents()`: converts midnight-wrapping and 1440-minute windows into valid `DateComponents`.
+5. Check `PortableStatus.cs`: emits `state: "scaffolding"` and `enforcing: false`.
+
+**Status:** ready-for-review — branch `fix/p1-ios-shielding`.
 
 
 
