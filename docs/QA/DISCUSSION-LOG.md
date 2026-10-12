@@ -721,7 +721,7 @@ clone's configuration.
 4. Check `MonitoredApps.kt`: `isMonitored("com.google.android.youtube")` and `isMonitored("org.telegram.messenger")` return `true`.
 5. Check `.github/workflows/ios-ci.yml`: defines a valid GitHub Actions workflow running on `macos-14` with `swift test`.
 
-**Status:** ready-for-review — branch `feat/content-safety-and-ai-engine`.
+**Status:** merged — PR #26 merged into `main` (`dfc6ca4`). Ready for QA verification on `main`.
 
 
 
