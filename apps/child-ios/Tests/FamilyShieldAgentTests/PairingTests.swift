@@ -81,7 +81,8 @@ final class PairingTests: XCTestCase {
             familyId: "fam-1",
             hmacSecret: "secret-1"
         )
-        AgentIdentityStore.save(identity)
+        let saved = AgentIdentityStore.save(identity)
+        XCTAssertTrue(saved)
         XCTAssertTrue(AgentIdentityStore.isPaired())
         XCTAssertEqual(AgentIdentityStore.load(), identity)
 

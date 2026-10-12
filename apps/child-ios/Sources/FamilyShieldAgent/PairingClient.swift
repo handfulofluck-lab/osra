@@ -64,6 +64,7 @@ public struct PairingClient {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/devices/pair/claim"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0 // 30s timeout so pairing never hangs indefinitely (IOS-07)
         var payload: [String: Any] = [
             "code": code,
             "platform": "ios",

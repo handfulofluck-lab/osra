@@ -25,17 +25,18 @@ public sealed class PortableStatus
         using var timer = new PeriodicTimer(Interval);
         do
         {
-            Write("ok");
+            Write("scaffolding");
         }
         while (await timer.WaitForNextTickAsync(ct));
     }
 
-    /// <summary>Persists the placeholder status payload; real pause/telemetry fields land with the ported services.</summary>
+    /// <summary>Persists the placeholder status payload; real pause/telemetry fields land with the ported services (MAC-01).</summary>
     internal static void Write(string state, DateTimeOffset? now = null)
     {
         var payload = new Dictionary<string, object?>
         {
             ["state"] = state,
+            ["enforcing"] = false, // scaffolding only; not actively enforcing rules
             ["paused"] = false, // placeholder until pause_internet (#11) is ported onto NetworkExtension
             ["updatedAt"] = (now ?? DateTimeOffset.UtcNow).ToString("O"),
         };
