@@ -251,6 +251,23 @@ public sealed class WebFilterProxy : BackgroundService
         _log.LogInformation("WinINET system proxy set to 127.0.0.1:{Port}", Port);
     }
 
+    /// <summary>Re-applies the WinINET system proxy if tampered (WIN-06 self-healing).</summary>
+    public static void EnsureSystemProxy(int port = 8877)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true);
+            if (key is null) return;
+            key.SetValue("ProxyEnable", 1);
+            key.SetValue("ProxyServer", $"127.0.0.1:{port}");
+            RefreshWininet();
+        }
+        catch (Exception)
+        {
+            // best-effort
+        }
+    }
+
     private void RevertSystemProxy()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true);

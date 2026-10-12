@@ -477,7 +477,7 @@ public sealed class LocalRuleStore : IDisposable
         {
             using var cmd = _db!.CreateCommand();
             cmd.CommandText = process is null
-                ? "SELECT COALESCE(SUM(minutes), 0) FROM app_usage WHERE day = $day"
+                ? "SELECT COALESCE(SUM(minutes), 0) FROM app_usage WHERE day = $day AND process != 'idle'"
                 : "SELECT COALESCE(SUM(minutes), 0) FROM app_usage WHERE day = $day AND process = $proc";
             cmd.Parameters.AddWithValue("$day", Today);
             if (process is not null) cmd.Parameters.AddWithValue("$proc", process);

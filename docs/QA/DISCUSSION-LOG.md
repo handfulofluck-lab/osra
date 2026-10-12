@@ -549,5 +549,55 @@ clone's configuration.
 
 **Status:** ready-for-review — branch `fix/p1-android-hardening`.
 
+---
+
+### 2026-10-11 · Antigravity → Kimi Code · Windows Desktop P1 Enforcement Bundle (Issues #9, #10, #11) [ready-for-review]
+
+**Context:** Implementation of Windows desktop agent P1 items on branch `fix/p1-windows-enforcement`:
+1. Issue #9 (WIN-01 & WIN-02): Lock overlay defeated by Alt+F4 & secondary monitors; bedtime uses child's Windows lock.
+2. Issue #10 (WIN-03 & WIN-04): Screen time double-counted (foreground + rule samplers); idle/locked time burns daily budget.
+3. Issue #11 (WIN-05 & WIN-06): Process rename/copy defeats app blocking; web filter proxy tamper self-healing.
+
+**Understanding:**
+1. **WIN-01 & WIN-02**:
+   - `LockOverlay.cs` opened a single primary-monitor Form with no `SC_CLOSE` / Alt+F4 suppression, allowing child to close with Alt+F4 or use unconstrained secondary monitors.
+   - Bedtime called `LockWorkStation()`, which child can unlock with their own Windows password.
+   - *Fix*: In `LockOverlay.cs`, cover all connected screens (`Screen.AllScreens`), suppress `WM_SYSCOMMAND / SC_CLOSE` and `CloseReason.UserClosing` unless explicitly unlocked via PIN or parent command. In `ScreenTimeEnforcer.cs`, pair bedtime with the agent-owned PIN overlay `LockOverlay.Show` so logging into Windows still hits the parent PIN shield.
+2. **WIN-03 & WIN-04**:
+   - `AccumulateForegroundMinutes` accumulated foreground seconds AND `ExecuteRules` accumulated duplicate rule seconds for the same running app, causing ~2x multiplier on time limits.
+   - When idle/locked, `AccumulateForegroundMinutes` recorded `"idle"` into `_store.AddAppMinutes("idle")`, and `LocalRuleStore.MinutesUsedToday()` summed all rows, burning the entire budget overnight.
+   - *Fix*: Unified into a single accumulator per tick in `AccumulateForegroundMinutes`. Idle or locked states (`LockApp`, `LogonUI`, empty foreground) accrue 0 seconds. `LocalRuleStore.QueryMinutes` filters out `process != 'idle'`. `ExecuteRules` only checks if the threshold is reached rather than double-incrementing.
+3. **WIN-05 & WIN-06**:
+   - Blocking previously matched only `Process.GetProcessesByName(rule.ProcessName)`. Copying `game.exe` to `notes.exe` bypassed blocking.
+   - *Fix*: Added `MatchesRule` checking `ProcessName`, executable file name, and PE version info `FileVersionInfo.OriginalFilename`. Added `FindMatchingProcesses` to scan running processes so renamed binaries are caught and terminated. Log termination failures with `LogWarning`.
+   - On proxy tamper (`TamperChecks.ShouldAlertProxyDisabled`), `RuleSyncService` now invokes `WebFilterProxy.EnsureSystemProxy()` to re-enforce the proxy immediately in addition to raising the alert.
+
+**What changed:**
+- `apps/agent-desktop/Services/LockOverlay.cs`: Multi-monitor coverage across `Screen.AllScreens`, suppressed Alt+F4 / SC_CLOSE, centralized `AllowCloseAndClose()`.
+- `apps/agent-desktop/Services/ScreenTimeEnforcer.cs`: Paired bedtime with `LockOverlay.Show` with `ParentPin`.
+- `apps/agent-desktop/Services/ProcessMonitor.cs`:
+  - Single accumulator per tick: idle/locked states accrue 0 seconds.
+  - Eliminated duplicate rule increment in `ExecuteRules`.
+  - Added `MatchesRule`, `FindMatchingProcesses`, and `OriginalFilename` version matching (WIN-05).
+- `apps/agent-desktop/Services/LocalRuleStore.cs`: Filtered out `process != 'idle'` in `QueryMinutes(null)`.
+- `apps/agent-desktop/Services/WebFilterProxy.cs`: Added `EnsureSystemProxy()` static method for tamper recovery.
+- `apps/agent-desktop/Services/RuleSyncService.cs`: Re-enforces proxy on tamper detection.
+- `apps/agent-desktop/tests/FamilyShield.Agent.Tests/LocalRuleStoreTests.cs`: Added test verifying idle rows do not count toward total `MinutesUsedToday()`.
+- `apps/agent-desktop/tests/FamilyShield.Agent.Tests/ProcessMonitorPauseTests.cs`: Added test verifying `MatchesRule` matches processes case-insensitively.
+
+**Raw Gate Output:**
+- `services/api/scripts/qa-probe.mjs` against live stack: 70 passed · 0 failed · 2 targets · 2 notes (exit code 0).
+- `services/api/scripts/e2e.mjs` against live stack: 50 passed, 0 failed (exit code 0).
+
+**What the reviewer (Kimi) must verify:**
+1. Check `LocalRuleStoreTests.IdleRowsDoNotCountTowardTotalMinutesUsedToday`: passes.
+2. Check `ProcessMonitor.MatchesRule`: matches original executable name even if process name is altered.
+3. Check `ProcessMonitor`: one tick accumulates once per minute; idle/locked states accrue 0.
+4. Check `LockOverlay`: covers all screens in `Screen.AllScreens` and cancels `SC_CLOSE`.
+5. Check `ScreenTimeEnforcer`: bedtime window triggers `LockOverlay.Show` with PIN.
+
+**Status:** ready-for-review — branch `fix/p1-windows-enforcement`.
+
+
 
 

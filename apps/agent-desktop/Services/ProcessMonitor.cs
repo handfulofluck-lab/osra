@@ -124,20 +124,11 @@ public sealed class ProcessMonitor : BackgroundService
         foreach (var rule in rules.AppRules)
         {
             if (rule.ProcessName.Length == 0) continue;
-            Process[] processes;
-            try
-            {
-                processes = Process.GetProcessesByName(rule.ProcessName);
-            }
-            catch (Exception ex)
-            {
-                _log.LogDebug(ex, "Could not enumerate processes for {Name}", rule.ProcessName);
-                continue;
-            }
+            var processes = FindMatchingProcesses(rule.ProcessName);
 
             try
             {
-                if (rule.Action == "block" && processes.Length > 0)
+                if (rule.Action == "block" && processes.Count > 0)
                 {
                     // NOTE: simplest enforcement per spec — always kill + alert; an overlay per
                     // blocked app is not implemented on desktop.
@@ -147,23 +138,10 @@ public sealed class ProcessMonitor : BackgroundService
                         $"OSRA terminated the blocked process '{rule.ProcessName}'.",
                         foregroundTitle);
                 }
-                else if (rule.Action == "time_limit" && processes.Length > 0)
+                else if (rule.Action == "time_limit" && processes.Count > 0)
                 {
-                    // NOTE: a minute is counted when the process is running at sample time; the
-                    // 5 s samples are accumulated and whole minutes are flushed to the store.
-                    // Duplicate rules for the same process must not count the same 5 s twice.
-                    if (countedThisTick.Add(rule.ProcessName))
-                    {
-                        var seconds = _accumulatedSeconds.GetValueOrDefault(rule.ProcessName) + PollInterval.TotalSeconds;
-                        if (seconds >= 60)
-                        {
-                            var minutes = (int)(seconds / 60);
-                            _store.AddAppMinutes(rule.ProcessName, minutes);
-                            seconds -= minutes * 60;
-                        }
-                        _accumulatedSeconds[rule.ProcessName] = seconds;
-                    }
-
+                    // WIN-03: Single accumulator per tick — time is accrued by AccumulateForegroundMinutes
+                    // for active foreground usage. We check if the limit is reached and enforce it.
                     if (TimeLimitReached(rule))
                     {
                         KillAll(processes, rule.ProcessName);
@@ -302,24 +280,90 @@ public sealed class ProcessMonitor : BackgroundService
         return used >= rule.DailyLimitMinutes.Value;
     }
 
-    /// <summary>Kills every running process with the given name; returns how many were found.</summary>
-    private int KillByName(string processName)
+    /// <summary>
+    /// Matches a process against a rule name by ProcessName, executable file name,
+    /// or PE OriginalFilename version info so renames/copies do not bypass blocking (WIN-05).
+    /// </summary>
+    internal static bool MatchesRule(Process process, string ruleProcessName)
     {
-        Process[] processes;
+        if (string.Equals(process.ProcessName, ruleProcessName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
         try
         {
-            processes = Process.GetProcessesByName(processName);
+            var mainModule = process.MainModule;
+            if (mainModule is not null)
+            {
+                var fileName = Path.GetFileNameWithoutExtension(mainModule.FileName);
+                if (string.Equals(fileName, ruleProcessName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                var vi = mainModule.FileVersionInfo;
+                if (!string.IsNullOrEmpty(vi.OriginalFilename))
+                {
+                    var orig = Path.GetFileNameWithoutExtension(vi.OriginalFilename);
+                    if (string.Equals(orig, ruleProcessName, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+        catch
+        {
+            // Access denied on system/elevated processes
+        }
+        return false;
+    }
+
+    /// <summary>Finds all running processes matching the rule name or binary origin (WIN-05).</summary>
+    private List<Process> FindMatchingProcesses(string ruleProcessName)
+    {
+        var result = new List<Process>();
+        try
+        {
+            var byName = Process.GetProcessesByName(ruleProcessName);
+            result.AddRange(byName);
         }
         catch (Exception ex)
         {
-            _log.LogDebug(ex, "Could not enumerate processes for {Name}", processName);
-            return 0;
+            _log.LogDebug(ex, "Could not get processes by name {Name}", ruleProcessName);
         }
 
         try
         {
+            var all = Process.GetProcesses();
+            foreach (var p in all)
+            {
+                if (result.Any(r => r.Id == p.Id))
+                {
+                    p.Dispose();
+                    continue;
+                }
+                if (MatchesRule(p, ruleProcessName))
+                {
+                    result.Add(p);
+                }
+                else
+                {
+                    p.Dispose();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Could not scan processes for rule matching {Name}", ruleProcessName);
+        }
+
+        return result;
+    }
+
+    /// <summary>Kills every running process with the given name or matching binary; returns how many were found.</summary>
+    private int KillByName(string processName)
+    {
+        var processes = FindMatchingProcesses(processName);
+        try
+        {
             KillAll(processes, processName);
-            return processes.Length;
+            return processes.Count;
         }
         finally
         {
@@ -327,7 +371,7 @@ public sealed class ProcessMonitor : BackgroundService
         }
     }
 
-    private void KillAll(Process[] processes, string processName)
+    private void KillAll(IEnumerable<Process> processes, string processName)
     {
         foreach (var process in processes)
         {
@@ -338,7 +382,7 @@ public sealed class ProcessMonitor : BackgroundService
             }
             catch (Exception ex)
             {
-                _log.LogDebug(ex, "Could not kill {Name} (pid {Pid})", processName, process.Id);
+                _log.LogWarning(ex, "Could not kill {Name} (pid {Pid})", processName, process.Id);
             }
         }
     }
@@ -379,17 +423,29 @@ public sealed class ProcessMonitor : BackgroundService
     internal static string ForegroundAppLabel(string? processName) =>
         string.IsNullOrEmpty(processName) ? "idle" : processName;
 
-    /// <summary>Accumulates the 5 s foreground sample and flushes whole minutes to app_usage.</summary>
+    /// <summary>
+    /// Accumulates the 5 s foreground sample and flushes whole minutes to app_usage (WIN-03 & WIN-04).
+    /// Single accumulator per tick: only active foreground user applications accrue screen time.
+    /// Never accrues when idle or locked (idle/locked ticks accrue 0 minutes).
+    /// </summary>
     private void AccumulateForegroundMinutes()
     {
-        var seconds = _foregroundSeconds + PollInterval.TotalSeconds;
+        var fg = LastForegroundProcess;
+        var isIdleOrLocked = string.IsNullOrEmpty(fg) ||
+                             string.Equals(fg, "idle", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(fg, "LockApp", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(fg, "LogonUI", StringComparison.OrdinalIgnoreCase);
+
+        if (isIdleOrLocked || fg is null) return;
+
+        var seconds = _accumulatedSeconds.GetValueOrDefault(fg) + PollInterval.TotalSeconds;
         if (seconds >= 60)
         {
             var minutes = (int)(seconds / 60);
-            _store.AddAppMinutes(ForegroundAppLabel(LastForegroundProcess), minutes);
+            _store.AddAppMinutes(fg, minutes);
             seconds -= minutes * 60;
         }
-        _foregroundSeconds = seconds;
+        _accumulatedSeconds[fg] = seconds;
     }
 
     private static string? GetForegroundProcessName()

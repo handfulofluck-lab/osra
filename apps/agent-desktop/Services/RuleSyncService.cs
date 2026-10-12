@@ -144,21 +144,26 @@ public sealed class RuleSyncService : BackgroundService
         try
         {
             var settings = TamperChecks.ReadProxySettings(ReadRegistryValue);
-            if (TamperChecks.ShouldAlertProxyDisabled(ProxyRunningReader(), settings) &&
-                (DateTime.UtcNow - LastTamperAlertUtc) >= TimeSpan.FromHours(1))
+            if (TamperChecks.ShouldAlertProxyDisabled(ProxyRunningReader(), settings))
             {
-                LastTamperAlertUtc = DateTime.UtcNow;
-                _log.LogWarning("OSRA proxy disabled in Windows settings; raising tamper alert");
-                _ = _api.PostAlert(new AlertDto
+                // Re-enforce proxy automatically if disabled by child (WIN-06 self-healing)
+                WebFilterProxy.EnsureSystemProxy();
+
+                if ((DateTime.UtcNow - LastTamperAlertUtc) >= TimeSpan.FromHours(1))
                 {
-                    ChildId = _config.ChildId,
-                    DeviceId = _config.DeviceId,
-                    Severity = "critical",
-                    Category = "tamper",
-                    Title = "Web filter was bypassed",
-                    Body = "The OSRA proxy was disabled in Windows settings",
-                    Metadata = new Dictionary<string, object> { ["type"] = "proxy_disabled" },
-                });
+                    LastTamperAlertUtc = DateTime.UtcNow;
+                    _log.LogWarning("OSRA proxy disabled in Windows settings; re-enforced and raising tamper alert");
+                    _ = _api.PostAlert(new AlertDto
+                    {
+                        ChildId = _config.ChildId,
+                        DeviceId = _config.DeviceId,
+                        Severity = "critical",
+                        Category = "tamper",
+                        Title = "Web filter was bypassed",
+                        Body = "The OSRA proxy was disabled in Windows settings",
+                        Metadata = new Dictionary<string, object> { ["type"] = "proxy_disabled" },
+                    });
+                }
             }
         }
         catch (Exception ex)
