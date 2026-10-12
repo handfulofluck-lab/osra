@@ -44,4 +44,13 @@ public sealed class ProcessMonitorPauseTests
         Assert.True(ProcessMonitor.ShouldKillWhenPaused("DISCORD", new[] { "chrome" }, paused: true));
         Assert.True(ProcessMonitor.ShouldKillWhenPaused("discord.exe", new[] { "chrome" }, paused: true));
     }
+
+    [Fact]
+    public void MatchesRuleMatchesCurrentProcessByName()
+    {
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        Assert.True(ProcessMonitor.MatchesRule(current, current.ProcessName));
+        Assert.True(ProcessMonitor.MatchesRule(current, current.ProcessName.ToUpperInvariant()));
+        Assert.False(ProcessMonitor.MatchesRule(current, "definitely_not_running_app_xyz"));
+    }
 }

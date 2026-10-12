@@ -184,5 +184,15 @@ public sealed class LocalRuleStoreTests : IDisposable
         Assert.Equal(15, row.Minutes);
     }
 
+    [Fact]
+    public void IdleRowsDoNotCountTowardTotalMinutesUsedToday()
+    {
+        _store.AddAppMinutes("game", 15);
+        _store.AddAppMinutes("idle", 60);
+        Assert.Equal(15, _store.MinutesUsedToday());
+        Assert.Equal(15, _store.MinutesUsedToday("game"));
+        Assert.Equal(60, _store.MinutesUsedToday("idle"));
+    }
+
     public void Dispose() => _store.Dispose();
 }

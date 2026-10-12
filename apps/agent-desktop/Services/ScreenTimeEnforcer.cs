@@ -54,16 +54,26 @@ public sealed class ScreenTimeEnforcer : BackgroundService
 
         var now = DateTime.Now;
 
-        if (rules.BedtimeStart is { } bedtimeStart && rules.BedtimeEnd is { } bedtimeEnd &&
-            TimeWindows.IsInWindow(TimeOnly.FromDateTime(now), bedtimeStart, bedtimeEnd))
+        // Bedtime enforcement (WIN-02): lock workstation AND assert agent-owned PIN overlay
+        var inBedtime = rules.BedtimeStart is { } bedtimeStart && rules.BedtimeEnd is { } bedtimeEnd &&
+            TimeWindows.IsInWindow(TimeOnly.FromDateTime(now), bedtimeStart, bedtimeEnd);
+
+        if (inBedtime)
         {
-            _log.LogInformation("Bedtime window active ({Start}-{End}); locking the workstation",
-                bedtimeStart, bedtimeEnd);
+            _log.LogInformation("Bedtime window active ({Start}-{End}); locking workstation and asserting PIN overlay",
+                rules.BedtimeStart, rules.BedtimeEnd);
             LockWorkStation();
+            LockOverlay.Show(ParentPin, "OSRA",
+                "Bedtime active. Ask a parent to enter the PIN to unlock.");
+            return;
         }
 
         var limit = EffectiveLimit(rules, now.DayOfWeek);
-        if (limit <= 0) return; // NOTE: limit <= 0 means "no daily cap configured".
+        if (limit <= 0)
+        {
+            LockOverlay.Hide();
+            return; // NOTE: limit <= 0 means "no daily cap configured".
+        }
 
         var used = _store.MinutesUsedToday();
         if (used >= limit)
