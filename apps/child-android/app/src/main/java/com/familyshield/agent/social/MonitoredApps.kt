@@ -16,6 +16,10 @@ object MonitoredApps {
         "com.discord" -> "discord"
         "com.roblox.client" -> "roblox"
         "jp.naver.line.android" -> "line"
+        "com.google.android.youtube", "com.google.android.apps.youtube.kids" -> "youtube"
+        "org.telegram.messenger", "org.telegram.plus" -> "telegram"
+        "com.reddit.frontpage" -> "reddit"
+        "com.facebook.orca" -> "messenger"
         else -> null
     }
 }

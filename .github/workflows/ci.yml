@@ -90,5 +90,23 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -r requirements.txt
+        run: pip install -r requirements.txt
       - run: pytest tests -q
+
+  # ── Child agent (iOS SwiftPM unit tests + Simulator build) ─────────────────
+  child-ios:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: apps/child-ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Swift Package Unit Tests
+        run: swift test --enable-code-coverage
+      - name: Build for iOS Simulator SDK
+        run: |
+          xcodebuild \
+            -scheme FamilyShieldAgent \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .build/derivedData \
+            build

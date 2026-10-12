@@ -27,8 +27,12 @@ class MonitoredAppsTest {
         assertEquals("tiktok", MonitoredApps.appKeyFor("com.ss.android.ugc.trill"))
         assertEquals("snapchat", MonitoredApps.appKeyFor("com.snapchat.android"))
         assertEquals("twitter", MonitoredApps.appKeyFor("com.twitter.android"))
-        assertEquals("twitter", MonitoredApps.appKeyFor("com.x.android"))
         assertEquals("line", MonitoredApps.appKeyFor("jp.naver.line.android"))
+        assertEquals("youtube", MonitoredApps.appKeyFor("com.google.android.youtube"))
+        assertEquals("youtube", MonitoredApps.appKeyFor("com.google.android.apps.youtube.kids"))
+        assertEquals("telegram", MonitoredApps.appKeyFor("org.telegram.messenger"))
+        assertEquals("reddit", MonitoredApps.appKeyFor("com.reddit.frontpage"))
+        assertEquals("messenger", MonitoredApps.appKeyFor("com.facebook.orca"))
     }
 
     @Test

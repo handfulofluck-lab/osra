@@ -168,10 +168,27 @@ public sealed class WebFilterProxy : BackgroundService
             var category = _store.LookupCategory(host);
             var blocked = _store.ShouldBlock(host, url);
 
-            if (!blocked && _store.Current?.SafeSearchEnforced == true &&
-                SafeSearch.TryRewrite(host, url, out var rewritten))
+            if (!blocked && _store.Current?.SafeSearchEnforced == true)
             {
-                e.Redirect(rewritten);
+                if (SafeSearch.IsYouTubeHost(host))
+                {
+                    request.Headers.AddHeader(new HttpHeader("YouTube-Restrict", "Strict"));
+                }
+                else if (SafeSearch.IsGoogleHost(host))
+                {
+                    request.Headers.AddHeader(new HttpHeader("X-SafeSearch", "true"));
+                }
+
+                if (SafeSearch.TryRewrite(host, url, out var rewritten))
+                {
+                    e.Redirect(rewritten);
+                }
+            }
+
+            if (SafeSearch.ExtractSearchQuery(host, url, out var engine, out var query) && !string.IsNullOrWhiteSpace(query))
+            {
+                _log.LogInformation("Search query on {Engine}: {Query}", engine, query);
+                category ??= $"search:{engine}";
             }
 
             _store.LogUrl(host, url, category, blocked);

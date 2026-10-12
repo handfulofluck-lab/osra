@@ -14,6 +14,7 @@ import { locationRoutes } from "./routes/location.js";
 import { reportsRoutes } from "./routes/reports.js";
 import { digestRoutes } from "./routes/digests.js";
 import { socialRoutes } from "./routes/social.js";
+import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { registerRealtime } from "./realtime/gateway.js";
@@ -99,6 +100,7 @@ await app.register(locationRoutes, { prefix: "/v1/location" });
 await app.register(reportsRoutes, { prefix: "/v1/reports" });
 await app.register(digestRoutes, { prefix: "/v1/digests" });
 await app.register(socialRoutes, { prefix: "/v1/social" });
+await app.register(contentRoutes, { prefix: "/v1/content" });
 await app.register(insightsRoutes, { prefix: "/v1/insights" });
 
 registerRealtime(app);

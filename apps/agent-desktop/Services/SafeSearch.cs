@@ -66,6 +66,83 @@ public static class SafeSearch
         return $"{path}?{string.Join("&", kept)}{fragment}";
     }
 
+    /// <summary>Checks if a host is a YouTube domain.</summary>
+    public static bool IsYouTubeHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        var h = host.Trim().TrimEnd('.').ToLowerInvariant();
+        return IsHostOrSubdomain(h, "youtube.com") ||
+               IsHostOrSubdomain(h, "youtu.be") ||
+               IsHostOrSubdomain(h, "youtubei.googleapis.com");
+    }
+
+    /// <summary>Checks if a host is a Google domain.</summary>
+    public static bool IsGoogleHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        var h = host.Trim().TrimEnd('.').ToLowerInvariant();
+        return h.StartsWith("google.", StringComparison.Ordinal) ||
+               h.Contains(".google.", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Extracts the search query and engine name from a search URL.
+    /// Supports Google, YouTube, Bing, DuckDuckGo (Track 1).
+    /// </summary>
+    public static bool ExtractSearchQuery(string host, string url, out string? engine, out string? query)
+    {
+        engine = null;
+        query = null;
+        if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(url)) return false;
+        var h = host.Trim().TrimEnd('.').ToLowerInvariant();
+
+        var qIndex = url.IndexOf('?');
+        if (qIndex < 0) return false;
+        var queryString = url[(qIndex + 1)..];
+        var hashIndex = queryString.IndexOf('#');
+        if (hashIndex >= 0) queryString = queryString[..hashIndex];
+
+        if (IsGoogleHost(h))
+        {
+            engine = "google";
+            return TryGetQueryParam(queryString, "q", out query);
+        }
+        if (IsYouTubeHost(h))
+        {
+            engine = "youtube";
+            return TryGetQueryParam(queryString, "search_query", out query);
+        }
+        if (IsHostOrSubdomain(h, "bing.com"))
+        {
+            engine = "bing";
+            return TryGetQueryParam(queryString, "q", out query);
+        }
+        if (IsHostOrSubdomain(h, "duckduckgo.com"))
+        {
+            engine = "duckduckgo";
+            return TryGetQueryParam(queryString, "q", out query);
+        }
+
+        return false;
+    }
+
+    private static bool TryGetQueryParam(string queryString, string paramName, out string? value)
+    {
+        value = null;
+        foreach (var pair in queryString.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq <= 0) continue;
+            var key = pair[..eq];
+            if (string.Equals(key, paramName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = Uri.UnescapeDataString(pair[(eq + 1)..].Replace('+', ' '));
+                return !string.IsNullOrWhiteSpace(value);
+            }
+        }
+        return false;
+    }
+
     private static bool IsHostOrSubdomain(string host, string domain) =>
         host == domain || host.EndsWith("." + domain, StringComparison.Ordinal);
 }

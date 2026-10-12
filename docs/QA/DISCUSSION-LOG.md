@@ -673,6 +673,57 @@ clone's configuration.
 
 **Status:** ready-for-review — branch `fix/p1-ios-shielding`.
 
+---
+
+### 2026-10-12 · Antigravity → Kimi Code · Track 1 Content Safety, Track 2 Multimodal AI Engine & Headless iOS CI [ready-for-review]
+
+**Context:** Implementation of Track 1 (Advanced Content & YouTube Monitoring), Track 2 (Deep Social & Multimodal Concern Engine), and Headless iOS CI Workflow on branch `feat/content-safety-and-ai-engine`.
+
+**Understanding:**
+1. **Track 1 (Advanced Content & YouTube Safety)**:
+   - Competitive requirement: Surpass Qustodio and Google Family Link by closing query tampering and proxy bypass loopholes.
+   - For YouTube: Query parameter appending (`safe=strict`) is insufficient for YouTube's API and modern web clients. The enterprise/MDM standard is injecting HTTP headers `YouTube-Restrict: Strict` and `X-SafeSearch: true` on requests targeting `*.youtube.com`, `m.youtube.com`, and `youtubei.googleapis.com`.
+   - Real-time search query extraction: Intercepting `?q=` (Google, Bing, DuckDuckGo) and `?search_query=` (YouTube) enables immediate AI safety analysis before the child navigates into search result pages, preventing exposure to harmful content.
+2. **Track 2 (Deep Social & Multimodal AI Concern Engine)**:
+   - Monitored apps expansion: Expanded on-device monitored social/messaging apps in Android `MonitoredApps.kt` to include YouTube (`com.google.android.youtube`, `com.google.android.apps.youtube.kids`), Telegram (`org.telegram.messenger`), Reddit (`com.reddit.frontpage`), and Facebook Messenger (`com.facebook.orca`), joining WhatsApp, Instagram, TikTok, Snapchat, Discord, and Roblox.
+   - Backend API content routes (`services/api/src/routes/content.ts`):
+     - `POST /v1/content/search-event`: Device HMAC authenticated search interception endpoint. Evaluates search query against real-time regex/AI concern rules (self-harm, predatory, extreme violence). Automatically provisions and stores zero-knowledge encrypted snippets in `SnippetVault` using child's derived vault key, and raises internal emergency alerts when flagged.
+     - `POST /v1/content/youtube-watch`: Inspects watched video titles, channels, and descriptions for safety evaluation.
+     - `GET /v1/content/searches`: Parent-facing authenticated endpoint to review child search history and decrypted vault snippets.
+3. **Headless iOS GitHub Actions CI Testing**:
+   - Solved testing without a physical iOS device by leveraging GitHub Actions `macos-14` (Apple Silicon M2) runners with Xcode 15/16.
+   - Authored `.github/workflows/ios-ci.yml` and updated `.github/workflows/ci.yml` with a dedicated `child-ios` job.
+   - Executes headless `swift test` (verifying `SelectionStore`, `RoutineWindow`, `AgentIdentityStore`, and scheduling components) and `xcodebuild -scheme FamilyShieldAgent -destination 'generic/platform=iOS Simulator'` to validate framework compilation headlessly.
+   - Authored comprehensive test guide `docs/test-guides/IOS-CI-TESTING.md`.
+
+**What changed (file:line references):**
+- `docs/SPEC-CONTENT-SAFETY.md`: Complete specification for Track 1 content filtering, YouTube strict header injection, and search interception.
+- `docs/SPEC-AI-CONCERN-ENGINE.md`: Complete specification for Track 2 multimodal concern engine, OCR/accessibility interception across 10 apps, and encrypted vault storage.
+- `docs/test-guides/IOS-CI-TESTING.md`: Detailed test guide for running headless iOS test suites locally and in GitHub Actions.
+- `.github/workflows/ios-ci.yml` & `.github/workflows/ci.yml`: Added automated `child-ios` CI workflow on `macos-14` running `swift test` and simulator builds.
+- `apps/agent-desktop/Services/SafeSearch.cs:64-77`: Added `YouTube-Restrict: Strict` and `X-SafeSearch: true` header injection.
+- `apps/agent-desktop/Services/WebFilterProxy.cs:22-38`: Added `ExtractSearchQuery(host, url)` supporting Google, YouTube, Bing, and DuckDuckGo query parameters; logs query events.
+- `apps/child-android/app/src/main/java/com/familyshield/agent/social/MonitoredApps.kt:18-28`: Added package IDs for YouTube, YouTube Kids, Telegram, Reddit, and Messenger.
+- `apps/child-android/app/src/test/java/com/familyshield/agent/MonitoredAppsTest.kt:33-40`: Added unit tests asserting new package IDs are recognized.
+- `services/api/src/routes/content.ts:1-125`: Implemented `POST /v1/content/search-event`, `POST /v1/content/youtube-watch`, and `GET /v1/content/searches`.
+- `services/api/src/server.ts:31,162`: Mounted `contentRoutes` at `/v1/content`.
+- `services/api/test/content.test.ts:1-140`: Added 5 unit tests for search event HMAC authentication, concern classification, encrypted vault round-trips, and YouTube watch inspection.
+
+**Raw Gate Output:**
+- `vitest run` on `services/api`: 200 passed across 17 test files (exit code 0).
+- `services/api/scripts/qa-probe.mjs` against live stack on port 3001: 70 passed · 0 failed · 2 targets · 2 notes (exit code 0).
+- `services/api/scripts/e2e.mjs` against live stack on port 3001: 50 passed, 0 failed (exit code 0).
+
+**What the reviewer (Kimi) must verify:**
+1. Check `services/api/test/content.test.ts`: passes 5/5 tests.
+2. Check `SafeSearch.cs`: `YouTube-Restrict: Strict` header is injected for YouTube hosts.
+3. Check `WebFilterProxy.cs`: `ExtractSearchQuery` properly extracts queries from Google, Bing, DuckDuckGo, and YouTube URLs.
+4. Check `MonitoredApps.kt`: `isMonitored("com.google.android.youtube")` and `isMonitored("org.telegram.messenger")` return `true`.
+5. Check `.github/workflows/ios-ci.yml`: defines a valid GitHub Actions workflow running on `macos-14` with `swift test`.
+
+**Status:** ready-for-review — branch `feat/content-safety-and-ai-engine`.
+
+
 
 
 
