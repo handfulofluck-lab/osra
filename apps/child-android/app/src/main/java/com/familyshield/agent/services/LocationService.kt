@@ -91,9 +91,11 @@ class LocationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val fgsStarted = startForegroundCompat()
         if (!fgsStarted) {
+            isServiceRunning = false
             stopSelf()
             return START_NOT_STICKY
         }
+        isServiceRunning = true
         startUpdates(STATIONARY_INTERVAL_MS)
         if (!flushLoopStarted) {
             flushLoopStarted = true
@@ -134,6 +136,7 @@ class LocationService : Service() {
     }
 
     override fun onDestroy() {
+        isServiceRunning = false
         fused.removeLocationUpdates(callback)
         serviceScope.cancel()
         super.onDestroy()
@@ -301,6 +304,11 @@ class LocationService : Service() {
     companion object {
         /** Action that triggers an immediate single ping + flush (locate_now command). */
         const val ACTION_PING_NOW: String = "com.familyshield.agent.action.PING_NOW"
+
+        /** True while LocationService is active in foreground with updates running. */
+        @Volatile
+        var isServiceRunning: Boolean = false
+            internal set
 
         /**
          * Serializes ping flushes across LocationService and PendingPingWorker (same process):

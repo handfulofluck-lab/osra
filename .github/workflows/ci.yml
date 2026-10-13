@@ -88,7 +88,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
         # Handoff ask 12: allow pass when transformers/torch are omitted in CI (dev mode fallback)
       - run: pytest tests -q
 
@@ -105,6 +105,5 @@ jobs:
           xcodebuild test \
             -scheme FamilyShieldAgent \
             -destination 'platform=iOS Simulator,name=iPhone 15' \
-            -derivedDataPath .build/derivedData \
-            || echo "Completed simulator test execution"
+            -derivedDataPath .build/derivedData
 

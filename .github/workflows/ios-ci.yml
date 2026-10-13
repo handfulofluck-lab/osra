@@ -46,6 +46,6 @@ jobs:
           xcodebuild test \
             -scheme FamilyShieldAgent \
             -destination 'platform=iOS Simulator,name=iPhone 15' \
-            -derivedDataPath .build/derivedData \
-            || echo "Completed simulator test execution"
+            -derivedDataPath .build/derivedData
+
 
