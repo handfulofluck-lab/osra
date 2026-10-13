@@ -39,7 +39,7 @@ type Severity = "info" | "warning" | "critical";
 interface Verdict { flagged: boolean; severity: Severity; concernTypes: string[] }
 
 const SEARCH_LOCAL_PATTERNS: Array<{ pattern: RegExp; concern: string }> = [
-  { pattern: /\b(how to (kill myself|commit suicide|end my life)|suicide methods|ways to die|painless death)\b/i, concern: "self_harm" },
+  { pattern: /\b((how (to|can I|do I)|ways to|want to)\s+(kill myself|commit suicide|end my life)|suicide methods|painless (ways to die|death|suicide)|ways to die|kill myself)\b/i, concern: "self_harm" },
   { pattern: /\b(buy (guns?|glock|ammo|drugs|weed|fentanyl)|how to make a bomb|pipe bomb)\b/i, concern: "substance_abuse" },
   { pattern: /\b(free porn|hentai|xxx|sex video|nude pics)\b/i, concern: "adult_content" },
   { pattern: /\b(how to hack|ddos tool|dox someone)\b/i, concern: "cyberbullying" },
@@ -108,6 +108,19 @@ export async function contentRoutes(app: FastifyInstance) {
     }
 
     const { childId, deviceId, engine, query, url } = parsed.data;
+
+    if (auth.device) {
+      if (auth.device.revokedAt) {
+        return reply.code(401).send({ error: "device_revoked" });
+      }
+      if (auth.device.childId && auth.device.childId !== childId) {
+        return reply.code(400).send({ error: "cross_child_content_forbidden" });
+      }
+      if (deviceId && deviceId !== auth.device.id) {
+        return reply.code(400).send({ error: "device_mismatch" });
+      }
+    }
+
     const child = await prisma.child.findUnique({
       where: { id: childId },
       select: { id: true, familyId: true, birthYear: true },
@@ -142,11 +155,13 @@ export async function contentRoutes(app: FastifyInstance) {
     const throttled = (await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX")) !== "OK";
     let alertId: string | undefined;
 
+    const effectiveDeviceId = deviceId ?? auth.device?.id;
+
     if (!throttled) {
       const alert = await prisma.alert.create({
         data: {
           childId,
-          deviceId,
+          deviceId: effectiveDeviceId,
           severity: verdict.severity,
           category: verdict.concernTypes.includes("self_harm") ? "self_harm" : "ai_concern",
           title: `Search query concern on ${engine}`,
@@ -188,6 +203,19 @@ export async function contentRoutes(app: FastifyInstance) {
     }
 
     const { childId, deviceId, videoId, title, channel } = parsed.data;
+
+    if (auth.device) {
+      if (auth.device.revokedAt) {
+        return reply.code(401).send({ error: "device_revoked" });
+      }
+      if (auth.device.childId && auth.device.childId !== childId) {
+        return reply.code(400).send({ error: "cross_child_content_forbidden" });
+      }
+      if (deviceId && deviceId !== auth.device.id) {
+        return reply.code(400).send({ error: "device_mismatch" });
+      }
+    }
+
     const child = await prisma.child.findUnique({
       where: { id: childId },
       select: { id: true, familyId: true, birthYear: true },
@@ -211,10 +239,12 @@ export async function contentRoutes(app: FastifyInstance) {
       },
     });
 
+    const effectiveDeviceId = deviceId ?? auth.device?.id;
+
     const alert = await prisma.alert.create({
       data: {
         childId,
-        deviceId,
+        deviceId: effectiveDeviceId,
         severity: verdict.severity,
         category: "ai_concern",
         title: `YouTube video flagged: ${title.slice(0, 40)}`,

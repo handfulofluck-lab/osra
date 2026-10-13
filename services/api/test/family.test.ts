@@ -405,4 +405,29 @@ describe("family routes", () => {
     expect(res.json().error).toBe("family_not_found");
     await app.close();
   });
+
+  it("issue #31: GET /me returns accumulated daily screenTimeTodayMinutes from Redis", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: FAMILY.id,
+      name: "Demo",
+      region: "US",
+      parents: [{ id: "parent-1", email: "demo@familyshield.dev" }],
+      children: [{ id: CHILD_ID, displayName: "Alex", devices: [], consents: [] }],
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const redis = MockRedis.instances[MockRedis.instances.length - 1];
+    redis.get.mockImplementation(async (key: string) => {
+      if (key === `usage:child:${CHILD_ID}:${today}`) return "45";
+      return null;
+    });
+
+    const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.children[0].screenTimeTodayMinutes).toBe(45);
+    await app.close();
+  });
 });
+

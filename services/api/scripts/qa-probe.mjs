@@ -353,6 +353,17 @@ if (d1.token) {
     const sig = createHmac("sha256", d1.secret).update(body).digest("hex");
     const inj = await call("POST", "/v1/alerts/internal", { rawBody: body, headers: { "x-familyshield-signature": sig } });
     check("G7 device HMAC cannot write an alert for a sibling child", inj.status >= 400, `got ${inj.status}`);
+
+    // Issue #29: A device's signature must not write search-event or youtube-watch for a sibling child.
+    const searchBody = JSON.stringify({ childId: kidA2, deviceId: d1.deviceId, engine: "google", query: "how to kill myself" });
+    const searchSig = createHmac("sha256", d1.secret).update(searchBody).digest("hex");
+    const searchInj = await call("POST", "/v1/content/search-event", { rawBody: searchBody, headers: { "x-familyshield-signature": searchSig } });
+    check("G7d device HMAC cannot inject search-event for a sibling child (#29)", searchInj.status >= 400, `got ${searchInj.status}`);
+
+    const ytBody = JSON.stringify({ childId: kidA2, deviceId: d1.deviceId, videoId: "xyz123", title: "how to commit suicide", channel: "c" });
+    const ytSig = createHmac("sha256", d1.secret).update(ytBody).digest("hex");
+    const ytInj = await call("POST", "/v1/content/youtube-watch", { rawBody: ytBody, headers: { "x-familyshield-signature": ytSig } });
+    check("G7e device HMAC cannot inject youtube-watch for a sibling child (#29)", ytInj.status >= 400, `got ${ytInj.status}`);
   }
 
   // BUG-001 / Issue #19: Android LocationPingBatchDto envelope and device-token ID resolution

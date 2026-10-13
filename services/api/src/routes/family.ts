@@ -51,15 +51,22 @@ export async function familyRoutes(app: FastifyInstance) {
     const children = await Promise.all(
       family.children.map(async (c) => {
         let screenTimeTodayMinutes = 0;
-        for (const d of c.devices) {
-          const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
-          if (raw) {
-            try {
-              const tel = JSON.parse(raw);
-              if (typeof tel.totalMinutes === "number") {
-                screenTimeTodayMinutes += tel.totalMinutes;
-              }
-            } catch {}
+        const today = new Date().toISOString().slice(0, 10);
+        const childUsageKey = `usage:child:${c.id}:${today}`;
+        const accumulated = await redis.get(childUsageKey).catch(() => null);
+        if (accumulated !== null) {
+          screenTimeTodayMinutes = parseInt(accumulated, 10) || 0;
+        } else {
+          for (const d of c.devices) {
+            const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
+            if (raw) {
+              try {
+                const tel = JSON.parse(raw);
+                if (typeof tel.totalMinutes === "number") {
+                  screenTimeTodayMinutes += tel.totalMinutes;
+                }
+              } catch {}
+            }
           }
         }
         return {

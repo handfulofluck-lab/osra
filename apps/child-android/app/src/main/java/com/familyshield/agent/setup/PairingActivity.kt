@@ -57,6 +57,7 @@ class PairingActivity : ComponentActivity() {
             permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
             startLocationServiceIfPermitted()
+            showComplete()
         }
     }
 

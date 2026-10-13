@@ -77,6 +77,8 @@ export class MockRedis {
   sadd = vi.fn(async (_key: string, ..._members: string[]) => 1);
   srem = vi.fn(async (..._args: unknown[]) => 1);
   smembers = vi.fn(async (_key: string) => [] as string[]);
+  incrby = vi.fn(async (_key: string, _increment: number) => 1);
+  expire = vi.fn(async (_key: string, _seconds: number) => 1);
   constructor() {
     MockRedis.instances.push(this);
   }

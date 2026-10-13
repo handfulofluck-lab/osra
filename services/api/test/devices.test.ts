@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { getRedis } from "../src/redis.js";
-import { authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -322,4 +322,25 @@ describe("device enrollment & management", () => {
     expect(missing.statusCode).toBe(404);
     await app.close();
   });
+
+  it("issue #31: accumulates daily screen time minutes on telemetry reports", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const redis = MockRedis.instances[MockRedis.instances.length - 1];
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { totalMinutes: 15 },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(redis.incrby).toHaveBeenCalledWith(`usage:child:child-1:${today}`, 15);
+    expect(redis.expire).toHaveBeenCalledWith(`usage:child:child-1:${today}`, 86400 * 2);
+    await app.close();
+  });
 });
+
