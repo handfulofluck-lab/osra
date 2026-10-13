@@ -137,3 +137,22 @@ Maintainer override (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote
 A PR may merge only when: the discussion is fully answered, the gates in §3 are green **on the
 branch**, and the PR restatement matches what was actually built. Merging is not approval of the
 other agent's competence — it is a claim that the evidence in the PR justifies the change.
+
+## 7. Device and environment hygiene (standing rule, human-mandated 2026-10-11)
+
+Every test — automated or on hardware — ends with the environment as it was found. Specifically:
+
+- **Physical device:** uninstall the app(s) under test (`adb uninstall <pkg>`), remove port forwards
+  (`adb reverse --remove-all`), force-stop anything left, and confirm no package or data directory
+  remains (`adb shell pm list packages | grep -i familyshield` → empty).
+- **Test database:** delete the rows a run created. Keep the seeded demo family
+  (`demo@familyshield.dev` / child `Alex` / device `Pixel 7a`) and nothing else:
+  `psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql`
+  (dry run without `-v apply=1`).
+- **Cache:** check Redis for keys belonging to deleted entities; anything persistent (TTL `-1`) must be
+  removed or explained. Keys that expire on their own need no action.
+- **Report it:** say in the run's log/PR what you cleaned, with the verification command output. "I
+  cleaned up" without evidence is not cleanup.
+
+Rationale: the phone belongs to the human and carries real notifications/accounts; the database is what
+the human and testers look at for demos and decisions. Test residue in either one is misleading.

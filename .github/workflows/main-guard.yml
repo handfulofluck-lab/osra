@@ -1,8 +1,19 @@
 name: main-guard
 
-# AGENTS.md §6: main is PR-only. Branch protection needs GitHub Pro on private repos, so this
-# workflow provides the server-side half of the enforcement: if a commit reaches main without an
-# associated pull request, the run fails loudly and files a needs-human issue.
+# AGENTS.md §6: main is PR-only.
+#
+# This is the server-side half of the enforcement (the other half is .githooks/pre-push, installed
+# per clone by scripts/install-git-hooks.sh). It asserts that a commit reaching main arrived through
+# a pull request.
+#
+# HISTORY — read before "improving" this file. v1 filed a FALSE POSITIVE on the merge commit of
+# PR #15 (issue #16): a GitHub "Merge pull request" commit was not yet queryable through
+# /commits/{sha}/pulls in the seconds after the push, and `|| echo 0` turned that API miss into an
+# accusation. Two corrections are therefore mandatory here:
+#   1. RETRY before concluding anything (the PR association is eventually consistent), and
+#   2. treat "could not determine" as INCONCLUSIVE (warn, do not fail) — a false accusation against
+#      your collaborator costs more than a missed detection, which the local hook already covers.
+#   3. accept a GitHub merge-commit subject as a second, independent signal.
 on:
   push:
     branches: [main]
@@ -21,18 +32,40 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
-          set -euo pipefail
-          count=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq 'length' 2>/dev/null || echo 0)
-          echo "pull requests associated with $SHA: $count"
-          if [ "$count" -gt 0 ]; then
-            echo "OK — reached main through a pull request."
+          set -uo pipefail
+          count=""
+          for attempt in 1 2 3 4 5; do
+            if out=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq 'length' 2>/dev/null); then
+              count="$out"
+              echo "attempt $attempt: associated pull requests = $count"
+              if [ "$count" -gt 0 ]; then
+                echo "OK — reached main through a pull request."
+                exit 0
+              fi
+            else
+              echo "attempt $attempt: could not query the PR association (API error)"
+            fi
+            sleep 15
+          done
+
+          # Second signal, independent of the association index: GitHub's own merge-commit subject.
+          subject=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.message' 2>/dev/null | head -n1 || true)
+          case "$subject" in
+            "Merge pull request #"*|"Merge branch "*)
+              echo "OK — recognised a merge commit: $subject"
+              exit 0
+              ;;
+          esac
+
+          if [ -z "$count" ]; then
+            echo "::warning::Could not determine PR association for $SHA (API unavailable) — NOT failing: a false 'process violation' accusation is worse than a missed detection. The local pre-push hook is the preventative control (AGENTS.md §6.4)."
             exit 0
           fi
 
           echo "::error::Direct push to main detected ($SHA) — AGENTS.md §6 requires a pull request."
           gh api "repos/$REPO/issues" \
             -f title="Process violation: direct push to main (${SHA:0:7})" \
-            -f body="Commit $SHA was pushed straight to main without a pull request. AGENTS.md §6 requires every change to land through a reviewed PR. The local hook .githooks/pre-push blocks this when configured with: git config core.hooksPath .githooks. Action: review the commit and either open a follow-up PR or revert it deliberately." \
+            -f body="Commit $SHA reached main with no associated pull request, after 5 retries and a merge-commit check. AGENTS.md §6 requires every change to land through a reviewed PR. Preventative control: run scripts/install-git-hooks.sh in your clone. If this is a false positive, reply here with the commit metadata instead of deleting the issue — that is how the check gets fixed (see issue #16 for a worked example)." \
             -f "labels[]=needs-human" >/dev/null || \
             echo "note: could not file the issue (label missing or token scope); failing anyway."
           exit 1

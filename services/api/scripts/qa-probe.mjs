@@ -422,6 +422,37 @@ if (d2?.secret && kidA2) {
   const iosSig = createHmac("sha256", d2.secret).update(iosBody).digest("hex");
   const iosRes = await call("POST", "/v1/alerts/internal", { rawBody: iosBody, headers: { "x-familyshield-signature": iosSig } });
   check("J4 iOS-shaped alert (per-device secret, no body deviceId) accepted", [200, 201].includes(iosRes.status), `got ${iosRes.status}`);
+
+  // J5 (gate): while devices may carry their own secret, the global secret must NOT be able to sign
+  // as that device — the per-device secret is the thing that makes an agent alert trustworthy.
+  // Verified 2026-10-11: after the P0 bundle this is fail-closed (401). Keep it that way.
+  const gBody = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, category: "sos", severity: "info", title: "global-secret-check", body: "x" });
+  const gRes = await call("POST", "/v1/alerts/internal", {
+    rawBody: gBody,
+    headers: { "x-familyshield-signature": createHmac("sha256", HMAC_SECRET).update(gBody).digest("hex") },
+  });
+  check("J5 global secret cannot sign as a device that has its own secret", gRes.status === 401, `got ${gRes.status}`);
+
+  // J6 (target, NON-GATING): the global-secret fallback still applies to devices with no per-device
+  // secret (the parent `POST /v1/devices/register` path), and candidates are resolved from the BODY
+  // childId — so the global secret can write into any child that owns such a device. No shipped
+  // client uses that path today (only e2e), so this is a design decision, not a live regression:
+  // see DISCUSSION-LOG ask 16. Promote to a gate check if the fallback is removed.
+  const regd = await call("POST", "/v1/devices/register", {
+    token: tokenA,
+    body: { childId: kidA2, platform: "windows", model: "probe-nosecret", osVersion: "10" },
+  });
+  if (regd.status === 201) {
+    const nBody = JSON.stringify({ childId: kidA2, category: "sos", severity: "info", title: "global-fallback-check", body: "x" });
+    const nRes = await call("POST", "/v1/alerts/internal", {
+      rawBody: nBody,
+      headers: { "x-familyshield-signature": createHmac("sha256", HMAC_SECRET).update(nBody).digest("hex") },
+    });
+    target(
+      "J6 global-secret fallback for secret-less devices",
+      `HTTP ${nRes.status} when signing with the global secret for a child whose device has no per-device secret (201 = the fallback is still open; see ask 16)`,
+    );
+  }
 }
 
 // ── H. misc surface ─────────────────────────────────────────────────────────
