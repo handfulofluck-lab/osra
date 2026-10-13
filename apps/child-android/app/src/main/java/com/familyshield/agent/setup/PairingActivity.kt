@@ -55,9 +55,13 @@ class PairingActivity : ComponentActivity() {
     ) { permissions ->
         val granted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) {
-            startLocationServiceIfPermitted()
-            showComplete()
+        lifecycleScope.launch {
+            if (granted) {
+                // Short yield so the activity window is fully resumed before starting FGS
+                kotlinx.coroutines.delay(200)
+                startLocationServiceIfPermitted()
+            }
+            if (settings.isPaired()) showStatus() else showComplete()
         }
     }
 
@@ -74,6 +78,16 @@ class PairingActivity : ComponentActivity() {
         showLoading()
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            if (settings.isPaired()) {
+                startLocationServiceIfPermitted()
+                showStatus()
+            }
+        }
     }
 
     // ---- states ----
@@ -178,23 +192,11 @@ class PairingActivity : ComponentActivity() {
                 addView(
                     Button(this@PairingActivity).apply {
                         text = "Grant location permission"
-                        setOnClickListener {
-                            val perms = if (Build.VERSION.SDK_INT >= 33) {
-                                arrayOf(
-                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                                    android.Manifest.permission.POST_NOTIFICATIONS,
-                                )
-                            } else {
-                                arrayOf(
-                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                                )
-                            }
-                            locationPermissionLauncher.launch(perms)
-                        }
+                        setOnClickListener { requestLocationPermission() }
                     },
                 )
+            } else {
+                addView(label("✓ Location permission granted"))
             }
             addView(
                 Button(this@PairingActivity).apply {
@@ -210,9 +212,58 @@ class PairingActivity : ComponentActivity() {
             val childId = settings.childId() ?: "-"
             val deviceId = settings.deviceId() ?: "-"
             val server = settings.baseUrl() ?: "-"
+            val hasFine = ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val hasCoarse = ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val hasLocation = hasFine || hasCoarse
+
+            if (hasLocation) {
+                startLocationServiceIfPermitted()
+            }
+
+            val isRunning = LocationService.isServiceRunning
+
             replaceWith {
                 addView(label("This device is paired · أسرة"))
                 addView(label("Child: $childId\nDevice: $deviceId\nServer: $server"))
+
+                if (!hasLocation) {
+                    addView(
+                        label("\n⚠️ Location permission is required for live GPS tracking and geofence alerts.").apply {
+                            setTextColor(0xFFB00020.toInt())
+                        },
+                    )
+                    addView(
+                        Button(this@PairingActivity).apply {
+                            text = "Grant location permission"
+                            setOnClickListener { requestLocationPermission() }
+                        },
+                    )
+                } else if (!isRunning) {
+                    addView(
+                        label("\n⚠️ Location service is not running.").apply {
+                            setTextColor(0xFFE65100.toInt())
+                        },
+                    )
+                    addView(
+                        Button(this@PairingActivity).apply {
+                            text = "Start location service"
+                            setOnClickListener {
+                                startLocationServiceIfPermitted()
+                                lifecycleScope.launch {
+                                    kotlinx.coroutines.delay(500)
+                                    showStatus()
+                                }
+                            }
+                        },
+                    )
+                } else {
+                    addView(
+                        label("\n✓ Location tracking: Active").apply {
+                            setTextColor(0xFF2E7D32.toInt())
+                        },
+                    )
+                }
+
                 addView(
                     Button(this@PairingActivity).apply {
                         text = "Open accessibility settings"
@@ -284,11 +335,31 @@ class PairingActivity : ComponentActivity() {
         else -> "Pairing failed: ${e.message ?: "network error"}"
     }
 
+    private fun requestLocationPermission() {
+        val perms = if (Build.VERSION.SDK_INT >= 33) {
+            arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                android.Manifest.permission.POST_NOTIFICATIONS,
+            )
+        } else {
+            arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        }
+        locationPermissionLauncher.launch(perms)
+    }
+
     private fun startLocationServiceIfPermitted() {
         val hasFine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val hasCoarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (hasFine || hasCoarse) {
-            ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
+            try {
+                ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
+            } catch (e: Exception) {
+                android.util.Log.e("PairingActivity", "Failed to start LocationService", e)
+            }
         }
     }
 
