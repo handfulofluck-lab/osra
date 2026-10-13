@@ -291,6 +291,21 @@ public sealed class WebFilterProxy : BackgroundService
         if (key is null) return;
         RestoreValue(key, "ProxyEnable", _previousProxyEnable);
         RestoreValue(key, "ProxyServer", _previousProxyServer);
+
+        try
+        {
+            using var connKey = Registry.CurrentUser.OpenSubKey(RegistryPath + @"\Connections", writable: true);
+            if (connKey != null)
+            {
+                connKey.DeleteValue("DefaultConnectionSettings", throwOnMissingValue: false);
+                connKey.DeleteValue("SavedLegacySettings", throwOnMissingValue: false);
+            }
+        }
+        catch
+        {
+            // best-effort
+        }
+
         RefreshWininet();
     }
 

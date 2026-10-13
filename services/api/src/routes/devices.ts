@@ -54,6 +54,7 @@ const PAIR_MAX_ATTEMPTS = 5;
 const TelemetrySchema = z
   .object({
     batteryPct: z.number().int().min(0).max(100).optional(),
+    totalMinutes: z.number().int().min(0).optional(),
     appUsage: z
       .array(z.object({ packageId: z.string().min(1), minutes: z.number().min(0) }))
       .optional(),
@@ -225,7 +226,18 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = TelemetrySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
+    const device = (req as unknown as { device: { id: string; childId: string } }).device;
     await setJson(`device:${id}:telemetry`, { ...parsed.data, receivedAt: new Date().toISOString() }, 86400);
+
+    // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
+    if (parsed.data.totalMinutes && parsed.data.totalMinutes > 0 && device?.childId) {
+      const today = new Date().toISOString().slice(0, 10);
+      const childUsageKey = `usage:child:${device.childId}:${today}`;
+      const redis = getRedis();
+      await redis.incrby(childUsageKey, parsed.data.totalMinutes);
+      await redis.expire(childUsageKey, 86400 * 2);
+    }
+
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
     // parent app shows a meaningful "online" state.
     await prisma.device.update({

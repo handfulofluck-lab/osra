@@ -184,4 +184,87 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(body.items[0].engine).toBe("google");
     expect(body.items[0].severity).toBe("critical");
   });
+
+  it("issue #29: rejects search-event when signing device belongs to another child (400)", async () => {
+    const devSecret = "device-secret-1";
+    prismaMock.device.findUnique.mockResolvedValue({
+      id: "dev-a",
+      childId: "child-a",
+      internalSecret: devSecret,
+      revokedAt: null,
+    });
+
+    const body = {
+      deviceId: "dev-a",
+      childId: "child-b", // mismatched target child
+      engine: "google",
+      query: "how to kill myself",
+    };
+    const raw = JSON.stringify(body);
+    const sig = createHmac("sha256", devSecret).update(raw).digest("hex");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/content/search-event",
+      headers: {
+        "content-type": "application/json",
+        "x-familyshield-signature": sig,
+      },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "cross_child_content_forbidden" });
+  });
+
+  it("issue #29: rejects youtube-watch when signing device belongs to another child (400)", async () => {
+    const devSecret = "device-secret-1";
+    prismaMock.device.findUnique.mockResolvedValue({
+      id: "dev-a",
+      childId: "child-a",
+      internalSecret: devSecret,
+      revokedAt: null,
+    });
+
+    const body = {
+      deviceId: "dev-a",
+      childId: "child-b", // mismatched target child
+      videoId: "xyz987",
+      title: "bad video",
+      channel: "bad channel",
+    };
+    const raw = JSON.stringify(body);
+    const sig = createHmac("sha256", devSecret).update(raw).digest("hex");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/content/youtube-watch",
+      headers: {
+        "content-type": "application/json",
+        "x-familyshield-signature": sig,
+      },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "cross_child_content_forbidden" });
+  });
+
+  it("issue #30: flags 'how can I kill myself tonight' via expanded self-harm regex (201)", async () => {
+    prismaMock.alert.create.mockResolvedValue({ id: "alert-sh", childId: CHILD.id });
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "event-sh" });
+
+    const res = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how can I kill myself tonight",
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.flagged).toBe(true);
+    expect(body.severity).toBe("critical");
+    expect(body.concernTypes).toContain("self_harm");
+  });
 });
+
