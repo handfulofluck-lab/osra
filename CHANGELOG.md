@@ -52,8 +52,14 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **Open by design** (need a human decision, tracked as probe targets): agent-request replay protection
   (`J2`), consent revocation enforcement (`J3`), and the global-secret fallback for devices without a
   per-device secret (`J6` / ask 16).
-- **Not verified on hardware yet** (needs the physical device): the location service starting without an
-  app relaunch (`#18` / `#38`).
+- **Verified on the physical device (SM-F721B, Android 16, build `main@6818244`)**: the agent no longer
+  crashes on first run without location permission (`0` fatals), the location service starts **from the
+  permission dialog without relaunching** (`isForeground=true types=0x00000008`), a relaunch of a paired
+  app resumes tracking, and location actually reaches the server — `POST /v1/location/ping` → `201` with
+  a persisted `LocationPing` row. Issues `#18` and `#38` closed with that evidence.
+  *Lesson recorded:* my first two measurements said "no service"; the real cause was a **second**
+  permission dialog (notifications) still holding the app behind a modal, so `onResume()` never ran. The
+  harness, not the product — worth knowing because a tester will hit the same two dialogs.
 
 ---
 
