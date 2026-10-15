@@ -49,7 +49,14 @@ jobs:
           done
 
           # Second signal, independent of the association index: GitHub's own merge-commit subject.
-          subject=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.message' 2>/dev/null | head -n1 || true)
+          # NOTE: written without `|| true` on purpose — a swallowed failure here would mask itself,
+          # and the workflow-lint gate (scripts/check-workflows.mjs --strict) flags that pattern.
+          subject=""
+          if out=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.message' 2>/dev/null); then
+            subject=$(printf '%s\n' "$out" | head -n1)
+          else
+            echo "note: could not read the commit subject (continuing)"
+          fi
           case "$subject" in
             "Merge pull request #"*|"Merge branch "*)
               echo "OK — recognised a merge commit: $subject"

@@ -7,6 +7,13 @@
 Parent dashboard · Child agents · Web filtering · Screen-time & bedtime enforcement ·
 AI social-safety monitoring with an encrypted snippet vault · Location & geofences · SOS
 
+[![CI](https://github.com/handfulofluck-lab/osra/actions/workflows/ci.yml/badge.svg)](https://github.com/handfulofluck-lab/osra/actions/workflows/ci.yml)
+[![iOS CI](https://github.com/handfulofluck-lab/osra/actions/workflows/ios-ci.yml/badge.svg)](https://github.com/handfulofluck-lab/osra/actions/workflows/ios-ci.yml)
+[![workflow-lint](https://github.com/handfulofluck-lab/osra/actions/workflows/workflow-lint.yml/badge.svg)](https://github.com/handfulofluck-lab/osra/actions/workflows/workflow-lint.yml)
+
+[Changelog](CHANGELOG.md) · [Testing guide](docs/TESTING.md) · [Decisions](docs/adr/README.md) ·
+[QA state](docs/QA/QA-REPORT-2026-10-11.md) · [Working agreement](AGENTS.md) · [Doc map](docs/README.md)
+
 </div>
 
 ---
@@ -93,23 +100,38 @@ cd apps/agent-desktop && dotnet run           # Windows agent (pairing window on
 
 ## Testing
 
-| Suite | Scope | Status (2026-09-19) |
+Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-adversarial-acceptance-gate.md)):
+
+- **Feature suites** confirm the behaviour we intended.
+- **The adversarial probe** tries to break the documented invariants against a live stack. It is the
+  **merge gate** — a green unit suite is not evidence that an invariant holds.
+
+| Suite | Scope | Status (2026-10-15) |
 |---|---|---|
-| API vitest | routes, auth, token hygiene, blocklists | 193/193 |
-| Flutter `flutter test` | parent app widgets/providers | 94/94 |
-| Android JVM tests | agent policies (block/allow/routines/HMAC) | 151/151 |
-| Desktop xunit | Windows agent services | 168/168 |
-| AI pytest | classifier + API | 18 passed / 1 skipped |
-| Live e2e (`services/api/scripts/e2e.mjs`) | pairing → alerts → rules against a running stack | 50/50 |
+| **Adversarial probe** (`services/api/scripts/qa-probe.mjs`) | family isolation, per-device identity, consent gate, revocation, token hygiene, alert coverage, input bounds, error hygiene | **73 passed · 0 failed · 3 targets** |
+| API vitest | routes, auth, token hygiene, blocklists, content | 205/205 |
+| Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568 | 94/94, analyze clean |
+| Android JVM tests | rule engine, counters, monitored apps, HMAC logic | 151/151 |
+| Desktop xunit | Windows agent services | 170/170 |
+| AI pytest | classifier + API smoke | 21 passed |
+| Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 50/50 |
+| Hardware (physical device) | first-run crash, FGS start, location upload, overlays | procedure in [`docs/TESTING.md`](docs/TESTING.md) §5 |
 
 ```bash
 pnpm --filter @familyshield/api test        # API unit suites
-cd services/api && node scripts/e2e.mjs     # live e2e (needs stack + INTERNAL_HMAC_SECRET, VAULT_KEY)
-flutter test                                 # parent app
-./gradlew testDebugUnitTest                  # Android agent (ANDROID_HOME required)
-dotnet test tests/FamilyShield.Agent.Tests   # Windows agent
-pytest services/ai-engine/tests              # AI engine
+cd services/api
+INTERNAL_HMAC_SECRET=<...> node scripts/qa-probe.mjs   # the merge gate
+INTERNAL_HMAC_SECRET=<...> VAULT_KEY=<...> node scripts/e2e.mjs
+cd ../parent-app && flutter test && flutter analyze
+cd ../child-android && ANDROID_HOME=... ./gradlew testDebugUnitTest
+cd ../agent-desktop && dotnet test tests/FamilyShield.Agent.Tests
+cd ../../services/ai-engine && pytest tests -q
+node scripts/check-workflows.mjs --strict   # a rejected workflow file means zero jobs run
 ```
+
+Full procedure, failure interpretation and the environment traps that have cost time here:
+[`docs/TESTING.md`](docs/TESTING.md).
+
 
 ## Security model
 
@@ -129,31 +151,49 @@ pytest services/ai-engine/tests              # AI engine
 
 ## Documentation
 
+Start at [`docs/README.md`](docs/README.md) — the full map. The essentials:
+
 | Document | Contents |
 |---|---|
-| `docs/SPEC.md` | Full product & API specification |
-| `docs/SPEC-ADDENDUM-WORLD-CLASS.md` | The 29 world-class features + implementation contracts |
-| `docs/COMPETITIVE-ANALYSIS.md` | Qustodio / Family Link feature mapping |
-| `docs/test-guides/README-TESTERS.md` | Test-release readme (what's included, known limits) |
-| `docs/test-guides/INSTALLATION-GUIDE.md` / `.html` | Step-by-step tester setup (backend → pairing → checklist) |
-| `docs/test-guides/SHIP-NOTES.md` | Per-feature test recipes |
-| `docs/test-guides/WORLD-CLASS-CHANGELOG.md` | Feature changelog |
-| `docs/test-guides/PUBLISHING-READINESS.md` | Store/publishing checklist |
-| `docs/test-guides/HANDOFF-FOR-TESTING.md` | Engineering handoff, incident log, suite state |
-| `apps/child-ios/QA-IOS.md` · `IOS-BUILD-NOTES.md` | iOS status (requires macOS/Xcode) |
-| `docs/test-guides/CHROMEBOOK-KINDLE-PATH.md` | Chromebook / Kindle roadmap |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed, when, in which PR, and what is verified vs not |
+| [`docs/TESTING.md`](docs/TESTING.md) | Every suite and gate: how to run, how to read failures, hardware procedure, environment traps |
+| [`docs/adr/`](docs/adr/README.md) | Architecture decision records — the **reasoning** behind decisions, with rejected alternatives and costs |
+| [`AGENTS.md`](AGENTS.md) | Binding working agreement (roles, definition of done, PR/review protocol, device hygiene) |
+| [`docs/SPEC.md`](docs/SPEC.md) | Full product & API specification |
+| [`docs/SPEC-ADDENDUM-WORLD-CLASS.md`](docs/SPEC-ADDENDUM-WORLD-CLASS.md) | The 29 world-class features + implementation contracts |
+| [`docs/SPEC-CONTENT-SAFETY.md`](docs/SPEC-CONTENT-SAFETY.md) · [`docs/SPEC-AI-CONCERN-ENGINE.md`](docs/SPEC-AI-CONCERN-ENGINE.md) | Track 1 (content filtering) and Track 2 (concern engine) designs |
+| [`docs/COMPETITIVE-ANALYSIS.md`](docs/COMPETITIVE-ANALYSIS.md) | Qustodio / Family Link feature mapping |
+| [`docs/QA/`](docs/QA/) | QA report, prioritised work queue, raw platform audits, agent discussion log |
+| [`docs/test-guides/`](docs/test-guides/) | Tester-facing guides (install, per-feature recipes, publishing readiness, iOS CI) |
+| [`apps/child-ios/QA-IOS.md`](apps/child-ios/QA-IOS.md) | iOS status and what still requires a Mac |
+
+## How we work
+
+Implementation and verification are separate roles, and the process controls are engineered rather than
+promised: `main` is PR-only, a PR opens with a **restatement of the ask in the author's own words**, the
+review answers point by point with evidence, gates must be able to fail, and anything that cannot be
+verified where it was written is stated as such. Details:
+[`AGENTS.md`](AGENTS.md) and [`docs/adr/0007`](docs/adr/0007-engineered-process-controls.md).
 
 ## Honest current limitations
 
-- **iOS agent is source-complete but not compiled** — Apple Screen Time APIs require a
-  macOS + Xcode build host; pairing flow and agent sources are in `apps/child-ios`.
+- **Location works but has limits.** On the physical device (Android 16) the foreground service starts
+  from the permission dialog and on relaunch, and pings reach the server (`201` + a persisted row).
+  Still open: geofence/GPS *quality* has not been assessed (only that samples flow), Android's
+  pause-internet is overlay-based, and iOS location is unverified.
+- **Android shows two permission dialogs in a row** during pairing (location, then notifications); the
+  location service starts once the last one is dismissed. Correct, but easy to misread as "nothing
+  happened" — a tester-facing note, not a defect.
+- **iOS is compiled only by CI** (SwiftPM + simulator build on a macOS runner). No Screen Time
+  behaviour has been verified on a real device.
+- Three security items are **open by design** and tracked as probe targets: agent-request replay
+  protection (`J2`), consent revocation enforcement (`J3`), and the global-secret fallback for devices
+  without a per-device secret (`J6`).
 - No push notifications in test builds (agents poll ~60 s); FCM/APNs is a roadmap item.
-- Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the
-  production path. HTTPS inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`).
-- Location was verified functionally but needs a physical-phone GPS check (emulator
-  GPS injection never reaches the agent).
-- Test APKs are debug-signed; store signing, AABs, privacy policy and permission
-  declarations are tracked in `PUBLISHING-READINESS.md`.
+- Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the production path. HTTPS
+  inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`).
+- Test APKs are debug-signed; store signing, AABs, privacy policy and permission declarations are
+  tracked in [`docs/test-guides/PUBLISHING-READINESS.md`](docs/test-guides/PUBLISHING-READINESS.md).
 
 ## License
 
