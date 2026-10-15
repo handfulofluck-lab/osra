@@ -36,8 +36,9 @@ The split exists so the author of a change is never the only verifier of it.
       (`ANDROID_HOME` required) · `apps/agent-desktop` → `dotnet test` ·
       `services/ai-engine` → `pytest tests`.
 - [ ] New/changed behaviour has a test in the same suite that failed before the fix.
-- [ ] Docs touched by the change are updated (`docs/`, `docs/test-guides/`, this file if the
-      workflow changes).
+- [ ] **Documentation is updated in the same PR** (§8): a `CHANGELOG.md` entry for anything
+      user-visible, an ADR for an architectural decision, and `docs/TESTING.md` when the procedure,
+      a suite or a gate changes.
 
 ## 4. Hard rules
 
@@ -61,8 +62,35 @@ The split exists so the author of a change is never the only verifier of it.
 | `docs/QA/DISCUSSION-LOG.md` | The durable, full-detail dialogue between the agents (append-only) |
 | `services/api/scripts/qa-probe.mjs` | Adversarial acceptance gate (must pass before merge) |
 | `services/api/scripts/e2e.mjs` | Happy-path acceptance flow |
+| `CHANGELOG.md` | What changed, when, in which PR — with the verification state |
+| `docs/README.md` | Documentation index (start here when looking for anything) |
+| `docs/TESTING.md` | How to run every suite/gate, read failures, and verify on hardware |
+| `docs/adr/` | Architecture decision records — reasoning, alternatives, costs |
 | `docs/test-guides/` | Tester-facing documentation |
 | `docs/SPEC*.md` | Product/API specification |
+
+## 8. Documentation is part of the deliverable
+
+Code without the reasoning behind it is a liability for the next person (or agent). So every change
+carries its documentation **in the same PR**:
+
+- **`CHANGELOG.md`** — any user-visible change (feature, fix, behaviour, dependency, CI gate). Include
+  the PR/issue number and, where relevant, the measured evidence. If something could not be verified
+  where you wrote it, **say so** — an unqualified "fixed" is a documentation bug.
+- **`docs/adr/NNNN-*.md`** — an architectural decision, or a decision that closes off an option for the
+  future. Record context, the decision, the reasoning, the alternatives you rejected and why, and the
+  costs (including the bad ones). Never edit an accepted ADR to reflect a new decision: add a new one
+  that supersedes it.
+- **`docs/TESTING.md`** — when a suite, a gate, a procedure or an environment trap changes.
+- **`docs/README.md`** — when a document is added or moves.
+- **`README.md`** — when the product surface, suite list/status, security model or limitations change.
+- **`docs/QA/`** — the verifying agent owns the report, the queue and the discussion log; the
+  implementing agent answers in the log rather than rewriting the report.
+
+**Writing rules.** Prefer the concrete over the general (a command, a status code, a `file:line`); state
+what you verified and where; keep the *why* next to the *what*; and never delete a record of a past
+state — supersede it. A reviewer may ask for documentation changes the same way they ask for code
+changes.
 
 ## 6. Landing changes — `main` is protected, no direct pushes
 

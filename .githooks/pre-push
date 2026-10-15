@@ -36,6 +36,15 @@ MSG
   fi
 fi
 
+# Documentation links: keeps the doc index navigable (cheap, ~0.5 s).
+if command -v node >/dev/null 2>&1 && [ -f "$root/scripts/check-docs-links.mjs" ]; then
+  if ! node "$root/scripts/check-docs-links.mjs" --quiet >/tmp/osra-doc-check.log 2>&1; then
+    echo "BLOCKED: broken documentation link(s) — run: node scripts/check-docs-links.mjs" >&2
+    cat /tmp/osra-doc-check.log >&2
+    exit 1
+  fi
+fi
+
 blocked=0
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in

@@ -22,3 +22,8 @@ jobs:
         # --strict: warnings (failure-swallowing steps) also fail the gate. Remove the flag if a
         # deliberate `|| true` is ever needed; do not add one without saying why in the PR.
         run: node scripts/check-workflows.mjs --strict
+
+      - name: Check documentation links resolve
+        # A documentation set is only navigable if its links work; a moved guide rots the index
+        # silently. Also catches links to files that were never committed.
+        run: node scripts/check-docs-links.mjs
