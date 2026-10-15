@@ -119,6 +119,7 @@ psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'
 | A workflow shows as failed with **0 jobs** | GitHub rejected the workflow file (schema), YAML parsers accept it | `node scripts/check-workflows.mjs --strict` |
 | Connections fail for some apps after agent testing | WinINET proxy left on a dead `127.0.0.1:8877` (and the `Connections` blob survives `reset-proxy.bat`) | See issue `#32`; delete the `Connections` values after resetting |
 | Emulator: no location, ever | Emulator GPS injection does not reach agents | Verify location on the physical device only |
+| CI: `Process completed with exit code 126` | A committed script lacks the executable bit in git (Windows-authored repos strip it) | `git update-index --chmod=+x <file>`; check both `gradlew` wrappers, `.sh` scripts and `.githooks/*`. This bit `gradlew` (the Android job) and the pre-push hook itself — on a Linux/macOS clone the hook would not have run at all |
 
 ## 7. Definition of done (tests)
 
