@@ -1168,4 +1168,51 @@ will re-verify on the physical device, including whether a ping finally returns 
 
 **Status:** ready-for-review — branch `feat/parent-app-content-safety`.
 
+---
+
+### 2026-10-15 · Antigravity → Kimi Code · Issue #45 Fix & Evidence [ready-for-review]
+
+**Context:** Resolution of Issue #45 (`[P1-13] YouTube Restricted Mode toggle is decorative: the API drops it on write and the Windows agent hardcodes 'Strict'`).
+
+**Understanding:** I understand the ask as satisfying the three acceptance criteria defined in #45:
+1. API must persist and round-trip `youtubeRestrictedMode` ("strict" | "moderate" | "off") on `PUT /v1/rules/:childId` and `GET /v1/rules/:childId` (covered by vitest PUT → GET).
+2. Windows Desktop Agent must dynamically enforce YouTube Restricted Mode via pure header selector (`strict` → `YouTube-Restrict: Strict`, `moderate` → `YouTube-Restrict: Moderate`, `off` → no header; covered by unit tests in `SafeSearchTests.cs`).
+3. Parent App Flutter editor must reflect what the API returns on reload (`youtubeRestrictedMode: 'off'` keeps the SegmentedButton selected state on Off; covered by widget test).
+
+**What I did / observed:**
+1. **API Database & Schema Migration (`services/api`):**
+   - Added `youtubeRestrictedMode String @default("strict")` to `model RuleSet` in `prisma/schema.prisma`.
+   - Created migration `prisma/migrations/0008_youtube_restricted_mode/migration.sql` (`ALTER TABLE "RuleSet" ADD COLUMN "youtubeRestrictedMode" TEXT NOT NULL DEFAULT 'strict';`).
+   - Updated `services/api/src/lib/defaultRules.ts` (`DEFAULT_RULESET.webFilter` and `defaultRuleSetRow`).
+   - Updated `services/api/src/routes/rules.ts` (`toRow` now maps `youtubeRestrictedMode: data.webFilter.youtubeRestrictedMode ?? "strict"`).
+   - Updated `services/api/src/lib/ruleSync.ts` (`toApiRuleSet` maps `youtubeRestrictedMode: (row.youtubeRestrictedMode as string) ?? "strict"`).
+   - Added unit test in `services/api/test/rules.test.ts` verifying `PUT` persists and `GET` round-trips `strict`, `moderate`, and `off` modes.
+
+2. **Windows Desktop Agent Dynamic Header Selection (`apps/agent-desktop`):**
+   - Added `YoutubeRestrictedMode` to `RuleSetSnapshot` in `Services/Dtos.cs` and mapped it from `WebFilterRuleDto` in `RuleSetMapper.FromDto`.
+   - Added pure static method `SafeSearch.GetYouTubeRestrictHeaderValue(string? mode)` in `Services/SafeSearch.cs` returning `"Strict"` for `strict`, `"Moderate"` for `moderate`, and `null` for `off`, null, empty, or unrecognized values.
+   - Updated `Services/WebFilterProxy.cs` (lines 168-195) to dynamically resolve the header value via `SafeSearch.GetYouTubeRestrictHeaderValue(_store.Current?.YoutubeRestrictedMode ?? (_store.Current?.SafeSearchEnforced == true ? "strict" : "off"))`, setting `YouTube-Restrict: <val>` when non-null and omitting when null (or mode is `off`).
+   - Added xUnit Theory tests in `tests/FamilyShield.Agent.Tests/SafeSearchTests.cs` testing `YouTubeRestrictHeaderValueMapsActiveModes` and `YouTubeRestrictHeaderValueReturnsNullForOffOrUnrecognized`.
+
+3. **Parent App Reload Verification (`apps/parent-app`):**
+   - Verified that `WebFilterRule.fromJson` in `lib/api/models.dart` maps `youtubeRestrictedMode: _str(json['youtubeRestrictedMode'], 'strict')` correctly preserving `'off'` when returned by the API.
+   - Added widget test `renders off selected when API returns off on reload` in `test/content_safety_test.dart` asserting that pumping `RulesEditorScreen` with `youtubeRestrictedMode: 'off'` selects `{'off'}` in the `SegmentedButton`.
+
+**Raw Gate Output:**
+- `vitest run` on `services/api`: **206/206 passed across 17 test files** (exit code 0).
+- `dotnet test` on `apps/agent-desktop`: **183 passed, 0 failed, 0 skipped** (exit code 0).
+- `flutter test` on `apps/parent-app`: **103 passed, 0 failed** (exit code 0).
+- `flutter analyze` on `apps/parent-app`: **No issues found!** (ran in 9.6s, exit code 0).
+- `node scripts/check-workflows.mjs --strict`: **0 error(s), 0 warning(s) across 4 workflow file(s)** (exit code 0).
+- `node scripts/check-docs-links.mjs`: **0 broken link(s) out of 69 checked in 43 Markdown file(s)** (exit code 0).
+- Test database cleanup verified: **1 family, 1 parent, 1 child, 1 device, 0 pings, 0 alerts** (seeded demo state).
+
+**What the reviewer (Kimi) must verify:**
+1. Check that `services/api` vitest passes 206/206 including `persists and round-trips youtubeRestrictedMode (strict, moderate, off) (#45)`.
+2. Check that `apps/agent-desktop` dotnet test passes 183/183 including `YouTubeRestrictHeaderValueMapsActiveModes` and `YouTubeRestrictHeaderValueReturnsNullForOffOrUnrecognized`.
+3. Check that `apps/parent-app` flutter test passes 103/103 including `renders off selected when API returns off on reload`.
+4. Verify that CI remains green across all workflows on branch `fix/45-youtube-restricted-mode`.
+
+**Status:** ready-for-review — branch `fix/45-youtube-restricted-mode`.
+
 

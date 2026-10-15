@@ -307,6 +307,9 @@ public sealed class RuleSetSnapshot
     /// <summary>Whether SafeSearch rewrite is enforced.</summary>
     public bool SafeSearchEnforced { get; init; }
 
+    /// <summary>YouTube restricted mode enforcement (strict|moderate|off).</summary>
+    public string? YoutubeRestrictedMode { get; init; }
+
     /// <summary>App rules.</summary>
     public List<AppRuleSnapshot> AppRules { get; init; } = [];
 
@@ -382,6 +385,7 @@ public static class RuleSetMapper
             AllowedDomains = CleanList(wf.AllowedDomains),
             BlockedDomains = CleanList(wf.BlockedDomains),
             SafeSearchEnforced = wf.SafeSearchEnforced,
+            YoutubeRestrictedMode = wf.YoutubeRestrictedMode,
             AppRules = dto.AppRules?
                 .Where(r => !string.IsNullOrWhiteSpace(r.PackageId))
                 .Select(r => new AppRuleSnapshot

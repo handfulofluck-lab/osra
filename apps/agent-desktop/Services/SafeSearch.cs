@@ -66,6 +66,23 @@ public static class SafeSearch
         return $"{path}?{string.Join("&", kept)}{fragment}";
     }
 
+    /// <summary>
+    /// Pure header selector mapping youtubeRestrictedMode wire strings to the
+    /// canonical YouTube-Restrict header value (strict -> "Strict", moderate -> "Moderate", off -> null).
+    /// Returns null for unrecognized, off, empty, or null modes.
+    /// </summary>
+    public static string? GetYouTubeRestrictHeaderValue(string? mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode)) return null;
+        return mode.Trim().ToLowerInvariant() switch
+        {
+            "strict" => "Strict",
+            "moderate" => "Moderate",
+            "off" => null,
+            _ => null,
+        };
+    }
+
     /// <summary>Checks if a host is a YouTube domain.</summary>
     public static bool IsYouTubeHost(string host)
     {

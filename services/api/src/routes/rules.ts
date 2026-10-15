@@ -119,6 +119,7 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     allowedDomains: data.webFilter.allowedDomains,
     blockedDomains: data.webFilter.blockedDomains,
     safeSearchEnforced: data.webFilter.safeSearchEnforced,
+    youtubeRestrictedMode: data.webFilter.youtubeRestrictedMode ?? "strict",
     appRules: data.appRules,
     routines: data.routines,
     alwaysAllowedApps: data.alwaysAllowedApps,
