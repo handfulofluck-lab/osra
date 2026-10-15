@@ -1,0 +1,24 @@
+name: workflow-lint
+
+# Guards against the class of failure that took CI down for a day (issue #37): `ci.yml` contained a
+# step with both `uses:` and `run:`, YAML parsers accept it, GitHub rejects the whole file, and
+# **every job was skipped** — so `main` had no CI signal at all.
+#
+# This lives in its own file on purpose: it still runs when another workflow file is invalid.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check .github/workflows for schema traps and gates that cannot fail
+        # --strict: warnings (failure-swallowing steps) also fail the gate. Remove the flag if a
+        # deliberate `|| true` is ever needed; do not add one without saying why in the PR.
+        run: node scripts/check-workflows.mjs --strict

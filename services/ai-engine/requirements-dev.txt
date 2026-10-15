@@ -1,0 +1,9 @@
+# Test-only dependencies for services/ai-engine.
+#
+# The heavy runtime deps (torch, transformers) live in requirements.txt and are imported
+# lazily inside model.py, so the test suite runs in seconds without them. CI installs THIS file
+# for the pytest job; production images keep using requirements.txt.
+pytest>=8
+fastapi==0.111.0
+pydantic==2.7.0
+httpx>=0.27
