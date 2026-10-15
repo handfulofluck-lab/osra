@@ -211,8 +211,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify bilingual coach card toggle
-      expect(find.byKey(const ValueKey('coachLangToggle')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('coachLangToggle')));
+      final toggle = find.byKey(const ValueKey('coachLangToggle'));
+      await tester.scrollUntilVisible(toggle, 150, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      expect(toggle, findsOneWidget);
+      await tester.tap(toggle);
       await tester.pumpAndSettle();
       expect(find.text('كيف تتحدث مع طفلك عن هذا'), findsOneWidget);
     });
