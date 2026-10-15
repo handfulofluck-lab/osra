@@ -40,6 +40,12 @@ class ChildDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.insights),
               onPressed: () => context.push('/child/$childId/reports'),
             ),
+            IconButton(
+              key: const ValueKey('searchSafetyButton'),
+              tooltip: 'Search & web safety',
+              icon: const Icon(Icons.saved_search_outlined),
+              onPressed: () => context.push('/child/$childId/searches'),
+            ),
             TextButton.icon(
               onPressed: () => context.push('/child/$childId/rules'),
               icon: const Icon(Icons.rule),

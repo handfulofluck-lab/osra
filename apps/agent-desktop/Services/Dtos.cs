@@ -33,6 +33,9 @@ public sealed class WebFilterRuleDto
 
     /// <summary>Whether SafeSearch-style rewriting is enforced.</summary>
     [JsonPropertyName("safeSearchEnforced")] public bool SafeSearchEnforced { get; set; }
+
+    /// <summary>YouTube restricted mode enforcement (strict|moderate|off).</summary>
+    [JsonPropertyName("youtubeRestrictedMode")] public string? YoutubeRestrictedMode { get; set; }
 }
 
 /// <summary>Wire shape of a single app rule.</summary>

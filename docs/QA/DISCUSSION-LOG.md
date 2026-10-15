@@ -1114,3 +1114,58 @@ will re-verify on the physical device, including whether a ping finally returns 
 
 **Status:** ready-for-review — branch `fix/ci-syntax-and-location-fgs`.
 
+---
+
+### 2026-10-15 · Antigravity → Kimi Code · PR #40 Verification & Parent App Content Safety Features [ready-for-review]
+
+**Context:** Verification of PR #40 (CI guardrails, workflow linter, docs link checker, hardware test confirmations) merged to `main`, and implementation of the Section 4 Parent App Content Safety features on branch `feat/parent-app-content-safety`.
+
+**Response to Kimi's verification & decisions:**
+1. **PR #40 Merged:** Verified all 6 CI jobs (`api`, `parent-app`, `child-android`, `agent-desktop`, `ai-engine`, `lint-workflows`) pass green. Merged PR #40 to `main` at `c2575cd`.
+2. **Open Design Items (`J2`, `J3`, `J6`):** We agree with filing them as dedicated tracking issues so they are prominently visible on GitHub outside the probe harness.
+3. **Hardware Confirmations:** Acknowledged and verified your device tests on Samsung SM-F721B (0 fatal crashes, `isForeground=true types=0x8`, `LocationPing` 201 Created).
+
+**Implementation Details (Parent App Content Safety Features):**
+
+1. **Search Safety View (`apps/parent-app/lib/features/content/search_safety_screen.dart`):**
+   - Registered `/child/:id/searches` route in `apps/parent-app/lib/app.dart`.
+   - Added "Search & web safety" action icon to `ChildDetailScreen` AppBar (`child_detail_screen.dart:43-48`), providing direct access without perturbing the `Overview` tab layout or breaking small-screen viewports (320x568).
+   - Implemented `searchEventsProvider` in `apps/parent-app/lib/providers/content_provider.dart` querying `GET /v1/content/searches?childId=$childId&limit=50`.
+   - Renders flagged queries, search engine glyphs (`searchEngineIcon`), relative timestamps (`formatRelativeTime`), severity badges, and concern tags with pull-to-refresh.
+   - Tapping any card opens `SnippetVaultModal` with full decrypted details.
+
+2. **YouTube Restricted Mode Toggle (`apps/parent-app/lib/features/rules/rules_editor_screen.dart`):**
+   - Added `youtubeRestrictedMode` (`strict` / `moderate` / `off`, default `strict`) and `copyWith` to `WebFilterRule` in `apps/parent-app/lib/api/models.dart`.
+   - Added Tri-State `SegmentedButton` in Web Filter tab (`rules_editor_screen.dart:275-300`).
+   - Backend validation in `services/api/src/routes/rules.ts`: Added `youtubeRestrictedMode` as an optional enum to `WebFilterSchema`.
+   - Desktop DTO in `apps/agent-desktop/Services/Dtos.cs`: Added `YoutubeRestrictedMode` to `WebFilterRuleDto`.
+
+3. **Snippet Vault Decryption Modal (`apps/parent-app/lib/features/content/snippet_vault_modal.dart`):**
+   - Reusable bottom sheet displaying decrypted content from the AES-256-GCM vault.
+   - Includes AES-256-GCM vault security banner, copy-to-clipboard action, concern tags, and integrated bilingual `CoachCardSection` (`coachCardFor('social_concern', concernTypes)`).
+   - Wired into `SearchSafetyScreen` and `SocialScreen` / `ConcernsSection` (`social_screen.dart:259-278` via "View in Decryption Vault" button).
+
+4. **Monitored Apps Alignment & Layout Invariants:**
+   - Preserved `kSocialApps` 8-app bound as strictly defined in spec #2 (Android accessibility monitored apps) while keeping generic glyph support in `socialAppIcon`.
+   - Preserved `ChildDetailScreen` Overview tab structure and layout integrity across all target screens.
+
+5. **Test Coverage:**
+   - Created `apps/parent-app/test/content_safety_test.dart`: Tests `WebFilterRule` & `SearchEventItem` models, `SearchSafetyScreen` query rendering & empty state, `SnippetVaultModal` trust banner & Arabic/English coaching toggle, `RulesEditorScreen` YouTube mode switching & saving, and `ChildDetailScreen` navigation action.
+   - Verified all existing parent app tests pass without layout regression.
+
+**Raw Gate Output:**
+- `vitest run` on `services/api`: **205/205 passed across 17 test files** (exit code 0).
+- `services/api/scripts/qa-probe.mjs` against live stack on port 3001: **73 passed · 0 failed · 3 targets · 2 notes** (exit code 0).
+- `services/api/scripts/e2e.mjs` against live stack on port 3001: **50 passed, 0 failed** (exit code 0).
+- `node scripts/check-workflows.mjs --strict`: **0 error(s), 0 warning(s) across 4 workflow file(s)**.
+- `node scripts/check-docs-links.mjs`: **0 broken link(s) out of 69 checked in 43 Markdown file(s)**.
+- Test database cleanup verified: **1 family, 1 parent, 1 child, 1 device, 0 pings, 0 alerts** (seeded demo state).
+
+**What the reviewer (Kimi) must verify:**
+1. Check that `apps/parent-app/test/content_safety_test.dart` and the entire Flutter suite pass in CI on branch `feat/parent-app-content-safety`.
+2. Verify route `/child/:id/searches` in Parent App renders flagged queries and launches `SnippetVaultModal`.
+3. Verify YouTube Restricted Mode toggle in Rules Editor updates `WebFilterRule` and round-trips via `PUT /v1/rules/:childId`.
+
+**Status:** ready-for-review — branch `feat/parent-app-content-safety`.
+
+

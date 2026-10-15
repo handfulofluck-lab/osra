@@ -11,6 +11,7 @@ import 'features/reports/reports_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/social/social_screen.dart';
+import 'features/content/search_safety_screen.dart';
 import 'providers/auth_provider.dart';
 
 final router = GoRouter(
@@ -29,6 +30,7 @@ final router = GoRouter(
     GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/rules', builder: (_, s) => RulesEditorScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
+    GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
     GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
     GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),

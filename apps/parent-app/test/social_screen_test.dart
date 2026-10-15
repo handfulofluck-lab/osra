@@ -126,7 +126,7 @@ void main() {
       expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'LINE')).value, isTrue);
     });
 
-    testWidgets('all eight apps default to ON when the payload has no socialMonitoring', (tester) async {
+    testWidgets('all apps default to ON when the payload has no socialMonitoring', (tester) async {
       final api = FakeApiClient(socialRoutes());
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
@@ -151,7 +151,7 @@ void main() {
       expect(puts, hasLength(1));
       final social = Map<String, dynamic>.from(puts.single.body['socialMonitoring'] as Map);
       expect(social['whatsapp'], isFalse);
-      expect(social.keys, hasLength(8));
+      expect(social.keys, hasLength(kSocialApps.length));
       expect(puts.single.body.keys, containsAll(['screenTime', 'webFilter', 'appRules', 'routines', 'socialMonitoring']));
       expect(find.text('Monitoring saved'), findsOneWidget);
     });
@@ -177,6 +177,13 @@ void main() {
       await tester.tap(find.text('Maya'));
       await tester.pumpAndSettle();
       expect(find.text(preview), findsOneWidget);
+
+      // Verify View in Decryption Vault button opens the vault modal
+      expect(find.text('View in Decryption Vault'), findsOneWidget);
+      await tester.tap(find.text('View in Decryption Vault'));
+      await tester.pumpAndSettle();
+      expect(find.text('Encrypted Family Vault'), findsOneWidget);
+      expect(find.text('Decrypted content'), findsOneWidget);
     });
 
     testWidgets('shows the empty state when there are no concerns', (tester) async {

@@ -219,12 +219,14 @@ class WebFilterRule {
   final List<String> allowedDomains;
   final List<String> blockedDomains;
   final bool safeSearchEnforced;
+  final String youtubeRestrictedMode;
 
   const WebFilterRule({
     this.blockedCategories = const [],
     this.allowedDomains = const [],
     this.blockedDomains = const [],
     this.safeSearchEnforced = true,
+    this.youtubeRestrictedMode = 'strict',
   });
 
   factory WebFilterRule.fromJson(Map<String, dynamic> json) => WebFilterRule(
@@ -232,6 +234,7 @@ class WebFilterRule {
         allowedDomains: _strList(json['allowedDomains']),
         blockedDomains: _strList(json['blockedDomains']),
         safeSearchEnforced: _bool(json['safeSearchEnforced'], true),
+        youtubeRestrictedMode: _str(json['youtubeRestrictedMode'], 'strict'),
       );
 
   Map<String, dynamic> toJson() => {
@@ -239,7 +242,23 @@ class WebFilterRule {
         'allowedDomains': allowedDomains,
         'blockedDomains': blockedDomains,
         'safeSearchEnforced': safeSearchEnforced,
+        'youtubeRestrictedMode': youtubeRestrictedMode,
       };
+
+  WebFilterRule copyWith({
+    List<String>? blockedCategories,
+    List<String>? allowedDomains,
+    List<String>? blockedDomains,
+    bool? safeSearchEnforced,
+    String? youtubeRestrictedMode,
+  }) =>
+      WebFilterRule(
+        blockedCategories: blockedCategories ?? this.blockedCategories,
+        allowedDomains: allowedDomains ?? this.allowedDomains,
+        blockedDomains: blockedDomains ?? this.blockedDomains,
+        safeSearchEnforced: safeSearchEnforced ?? this.safeSearchEnforced,
+        youtubeRestrictedMode: youtubeRestrictedMode ?? this.youtubeRestrictedMode,
+      );
 }
 
 /// Per-app policy. `action` is allow/block/time_limit; `dailyLimitMinutes`
@@ -399,6 +418,44 @@ class SocialConcernEvent {
         concernTypes: _strList(json['concernTypes']),
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
       );
+}
+
+/// A flagged search query event (Track 1 & 2 content monitoring).
+@immutable
+class SearchEventItem {
+  final String id;
+  final String engine;
+  final String query;
+  final String severity;
+  final List<String> concernTypes;
+  final DateTime? createdAt;
+
+  const SearchEventItem({
+    required this.id,
+    required this.engine,
+    required this.query,
+    required this.severity,
+    this.concernTypes = const [],
+    this.createdAt,
+  });
+
+  factory SearchEventItem.fromJson(Map<String, dynamic> json) => SearchEventItem(
+        id: _str(json['id']),
+        engine: _str(json['engine'], 'search'),
+        query: _str(json['query']),
+        severity: _str(json['severity'], 'info'),
+        concernTypes: _strList(json['concernTypes']),
+        createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'engine': engine,
+        'query': query,
+        'severity': severity,
+        'concernTypes': concernTypes,
+        if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+      };
 }
 
 /// One persisted call/SMS activity entry (feature #6). `payload` holds
