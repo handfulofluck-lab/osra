@@ -12,11 +12,10 @@ environment where it was written — see `docs/QA/` for the verification state.
 ## [Unreleased]
 
 ### Added — Parent App Content Safety Features
-- **Search Safety View (`apps/parent-app`)**: Dedicated screen (`/child/:id/searches`, accessible from `ChildDetailScreen` Overview tab) consuming `GET /v1/content/searches?childId=...` (contract: `{ items: [...] }`). Renders flagged search queries with engine glyphs (Google, YouTube, Bing, DuckDuckGo), relative time, severity badges, and concern tags with pull-to-refresh.
+- **Search Safety View (`apps/parent-app`)**: Dedicated screen (`/child/:id/searches`, accessible from `ChildDetailScreen` AppBar action) consuming `GET /v1/content/searches?childId=...` (contract: `{ items: [...] }`). Renders flagged search queries with engine glyphs (Google, YouTube, Bing, DuckDuckGo), relative time, severity badges, and concern tags with pull-to-refresh.
 - **YouTube Restricted Mode Toggle (`apps/parent-app`)**: Tri-state control (`Strict` / `Moderate` / `Off`) in `RulesEditorScreen` Web Filter tab. Enables parents to configure YouTube restriction levels, synchronizing via `WebFilterRule` to the backend rules API and Windows agent DTO.
 - **Snippet Vault Decryption Modal (`apps/parent-app`)**: Reusable `SnippetVaultModal` displaying decrypted content from the AES-256-GCM vault, with encryption trust verification banner, clipboard copy utility, concern tags, and integrated bilingual `CoachCardSection` (EN/عربي). Wired into `SearchSafetyScreen` and `SocialScreen` / `ConcernsSection`.
-- **Monitored Apps Expansion (`apps/parent-app`)**: `kSocialApps` expanded to 12 apps (including YouTube, Telegram, Reddit, and Messenger) with dedicated Material glyphs and settings toggle support.
-- **Unit & Widget Test Suites**: Added `apps/parent-app/test/content_safety_test.dart` testing models, `SearchSafetyScreen`, `SnippetVaultModal` (including Arabic/English coaching toggle), and `RulesEditorScreen` YouTube mode switching. Updated `social_screen_test.dart` to verify `kSocialApps.length` and vault modal launch.
+- **Unit & Widget Test Suites**: Added `apps/parent-app/test/content_safety_test.dart` testing models, `SearchSafetyScreen`, `SnippetVaultModal` (including Arabic/English coaching toggle), `RulesEditorScreen` YouTube mode switching, and `ChildDetailScreen` navigation action. Maintained strict `kSocialApps` 8-app bound as per spec #2.
 
 ### Added — CI becomes a real gate
 - **`scripts/check-workflows.mjs`** — a dependency-free validator for `.github/workflows/*.yml` that
