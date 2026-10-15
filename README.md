@@ -177,10 +177,13 @@ verified where it was written is stated as such. Details:
 
 ## Honest current limitations
 
-- **Location does not yet start in the normal flow on Android** (`#18`/`#38`): the agent no longer
-  crashes without permission, but after granting it the foreground service is not started
-  (`showStatus()` never starts it, and `startForegroundCompat()` swallows the failure), so no pings are
-  produced. Fix in progress; hardware re-verification pending.
+- **Location works but has limits.** On the physical device (Android 16) the foreground service starts
+  from the permission dialog and on relaunch, and pings reach the server (`201` + a persisted row).
+  Still open: geofence/GPS *quality* has not been assessed (only that samples flow), Android's
+  pause-internet is overlay-based, and iOS location is unverified.
+- **Android shows two permission dialogs in a row** during pairing (location, then notifications); the
+  location service starts once the last one is dismissed. Correct, but easy to misread as "nothing
+  happened" — a tester-facing note, not a defect.
 - **iOS is compiled only by CI** (SwiftPM + simulator build on a macOS runner). No Screen Time
   behaviour has been verified on a real device.
 - Three security items are **open by design** and tracked as probe targets: agent-request replay
