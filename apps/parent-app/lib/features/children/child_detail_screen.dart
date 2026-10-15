@@ -40,6 +40,12 @@ class ChildDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.insights),
               onPressed: () => context.push('/child/$childId/reports'),
             ),
+            IconButton(
+              key: const ValueKey('searchSafetyButton'),
+              tooltip: 'Search & web safety',
+              icon: const Icon(Icons.saved_search_outlined),
+              onPressed: () => context.push('/child/$childId/searches'),
+            ),
             TextButton.icon(
               onPressed: () => context.push('/child/$childId/rules'),
               icon: const Icon(Icons.rule),
@@ -91,15 +97,6 @@ class _OverviewTab extends ConsumerWidget {
             title: const Text('Social monitoring'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => DefaultTabController.of(context).animateTo(2),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.saved_search_outlined),
-            title: const Text('Search & web safety'),
-            subtitle: const Text('Flagged queries & SafeSearch history'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/child/$childId/searches'),
           ),
         ),
         const SizedBox(height: 8),

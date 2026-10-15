@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/content/snippet_vault_modal.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
@@ -155,7 +156,19 @@ void main() {
       expect(find.text('Encrypted Family Vault'), findsOneWidget);
       expect(find.text('Decrypted content'), findsOneWidget);
       expect(find.text('secret proxy bypass'), findsWidgets);
-      expect(find.text('How to talk about this'), findsOneWidget);
+
+      final coachFinder = find.text('How to talk about this');
+      await tester.scrollUntilVisible(coachFinder, 150, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      expect(coachFinder, findsOneWidget);
+    });
+
+    testWidgets('ChildDetailScreen AppBar action provides access to SearchSafetyScreen', (tester) async {
+      final api = FakeApiClient(standardRoutes());
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      expect(find.byKey(const ValueKey('searchSafetyButton')), findsOneWidget);
     });
   });
 
@@ -187,7 +200,11 @@ void main() {
       expect(find.textContaining('AES-256-GCM encryption'), findsOneWidget);
       expect(find.text('how to hurt myself tonight'), findsOneWidget);
       expect(find.text('self_harm'), findsOneWidget);
-      expect(find.text('How to talk about this'), findsOneWidget);
+
+      final coachFinder = find.text('How to talk about this');
+      await tester.scrollUntilVisible(coachFinder, 150, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      expect(coachFinder, findsOneWidget);
 
       // Verify bilingual coach card toggle
       expect(find.byKey(const ValueKey('coachLangToggle')), findsOneWidget);
@@ -219,7 +236,11 @@ void main() {
       await tester.tap(find.text('Web filter'));
       await tester.pumpAndSettle();
 
-      expect(find.text('YouTube Restricted Mode'), findsOneWidget);
+      final ytSection = find.text('YouTube Restricted Mode');
+      await tester.scrollUntilVisible(ytSection, 150, scrollable: find.byKey(const ValueKey('webFilterList')));
+      await tester.pumpAndSettle();
+
+      expect(ytSection, findsOneWidget);
       expect(find.text('Strict'), findsOneWidget);
       expect(find.text('Moderate'), findsOneWidget);
       expect(find.text('Off'), findsOneWidget);

@@ -11,7 +11,7 @@ import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../content/snippet_vault_modal.dart';
 
-/// The social apps the agent can monitor via Accessibility / Content APIs
+/// The eight social apps the Android agent can monitor via Accessibility
 /// (spec #2); apps absent from the RuleSet default to ON.
 const kSocialApps = [
   (appKey: 'whatsapp', label: 'WhatsApp'),
@@ -22,10 +22,6 @@ const kSocialApps = [
   (appKey: 'discord', label: 'Discord'),
   (appKey: 'roblox', label: 'Roblox'),
   (appKey: 'line', label: 'LINE'),
-  (appKey: 'youtube', label: 'YouTube'),
-  (appKey: 'telegram', label: 'Telegram'),
-  (appKey: 'reddit', label: 'Reddit'),
-  (appKey: 'messenger', label: 'Messenger'),
 ];
 
 /// Standalone social-monitoring screen (route `/child/:id/social`).
