@@ -50,7 +50,11 @@ jobs:
 
   # ── Child agent (Android JVM unit tests — no emulator needed) ─────────────
   child-android:
-    runs-on: macos-13
+    # NOTE: this job used `macos-13`, which GitHub has since retired — the job sat "queued" forever
+    # and never ran, so the Android suite and the assembleDebug guard were never actually exercised
+    # in CI (same class as #37: a gate that looks configured but never executes). Ubuntu runners ship
+    # the Android SDK, and nothing here needs macOS.
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/child-android

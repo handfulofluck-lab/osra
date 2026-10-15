@@ -23,6 +23,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   lazily, so the CI job runs in seconds.
 
 ### Fixed — CI
+- **`child-android` never actually ran.** The job targeted `runs-on: macos-13`, a runner GitHub has
+  retired, so it sat `queued` indefinitely — the Android suite and the `assembleDebug` guard were
+  configured but never executed (the same class of failure as #37: a gate that looks present and does
+  nothing). Moved to `ubuntu-latest`, which ships the Android SDK and needs no macOS.
 - **`api` job green again**: CI never generated the Prisma client (`pnpm install` does not); locally
   `node_modules/.prisma` existed, which hid it. Added an explicit `prisma generate` step before the
   type-check. Symptom was `TS2694`/`TS7006` on every Prisma-touching route.
