@@ -206,6 +206,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(coachFinder, findsOneWidget);
 
+      // Expand the coach card ExpansionTile to reveal the language toggle
+      await tester.tap(coachFinder);
+      await tester.pumpAndSettle();
+
       // Verify bilingual coach card toggle
       expect(find.byKey(const ValueKey('coachLangToggle')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('coachLangToggle')));
@@ -237,7 +241,11 @@ void main() {
       await tester.pumpAndSettle();
 
       final ytSection = find.text('YouTube Restricted Mode');
-      await tester.scrollUntilVisible(ytSection, 150, scrollable: find.byKey(const ValueKey('webFilterList')));
+      final scrollable = find.descendant(
+        of: find.byKey(const ValueKey('webFilterList')),
+        matching: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical),
+      );
+      await tester.scrollUntilVisible(ytSection, 150, scrollable: scrollable);
       await tester.pumpAndSettle();
 
       expect(ytSection, findsOneWidget);
