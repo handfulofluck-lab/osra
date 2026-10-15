@@ -9,8 +9,9 @@ import '../../providers/family_provider.dart';
 import '../../providers/social_provider.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import '../content/snippet_vault_modal.dart';
 
-/// The eight social apps the Android agent can monitor via Accessibility
+/// The social apps the agent can monitor via Accessibility / Content APIs
 /// (spec #2); apps absent from the RuleSet default to ON.
 const kSocialApps = [
   (appKey: 'whatsapp', label: 'WhatsApp'),
@@ -21,6 +22,10 @@ const kSocialApps = [
   (appKey: 'discord', label: 'Discord'),
   (appKey: 'roblox', label: 'Roblox'),
   (appKey: 'line', label: 'LINE'),
+  (appKey: 'youtube', label: 'YouTube'),
+  (appKey: 'telegram', label: 'Telegram'),
+  (appKey: 'reddit', label: 'Reddit'),
+  (appKey: 'messenger', label: 'Messenger'),
 ];
 
 /// Standalone social-monitoring screen (route `/child/:id/social`).
@@ -74,6 +79,10 @@ IconData socialAppIcon(String appKey) => switch (appKey) {
       'discord' => Icons.headset_mic_outlined,
       'roblox' => Icons.sports_esports,
       'line' => Icons.message_outlined,
+      'youtube' => Icons.smart_display_outlined,
+      'telegram' => Icons.send_outlined,
+      'reddit' => Icons.forum_outlined,
+      'messenger' => Icons.chat_bubble_outline,
       _ => Icons.apps,
     };
 
@@ -247,8 +256,27 @@ class ConcernsSection extends ConsumerWidget {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                                 child: Text(e.preview.isEmpty ? 'No preview available' : e.preview),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  icon: const Icon(Icons.lock_open, size: 16),
+                                  label: const Text('View in Decryption Vault'),
+                                  onPressed: () => SnippetVaultModal.show(
+                                    context,
+                                    title: e.contact.isEmpty ? 'Social message' : e.contact,
+                                    snippet: e.preview,
+                                    severity: e.severity,
+                                    concernTypes: e.concernTypes,
+                                    sourceLabel: socialAppLabel(e.app),
+                                    timestamp: e.createdAt,
+                                  ),
+                                ),
                               ),
                             ),
                             // Feature #16: same coaching card as alert details,

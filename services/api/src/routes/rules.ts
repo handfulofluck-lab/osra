@@ -32,6 +32,7 @@ const WebFilterSchema = z.object({
   allowedDomains: z.array(z.string().max(255)).max(1000),
   blockedDomains: z.array(z.string().max(255)).max(1000),
   safeSearchEnforced: z.boolean(),
+  youtubeRestrictedMode: z.enum(["strict", "moderate", "off"]).optional(),
 });
 
 const AppRuleSchema = z.object({

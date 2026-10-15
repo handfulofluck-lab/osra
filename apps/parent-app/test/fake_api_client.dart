@@ -133,6 +133,7 @@ Map<String, dynamic> ruleSetPayload(
   Map<String, bool>? socialMonitoring,
   List<String>? contactAllowlist,
   List<String>? alwaysAllowedApps,
+  Map<String, dynamic>? webFilter,
 }) => {
       'id': 'rules-$childId',
       'childId': childId,
@@ -147,11 +148,12 @@ Map<String, dynamic> ruleSetPayload(
           'days': [1, 2, 3, 4, 5],
         },
       },
-      'webFilter': {
+      'webFilter': webFilter ?? {
         'blockedCategories': blockedCategories ?? ['pornography'],
         'allowedDomains': ['khanacademy.org'],
         'blockedDomains': <String>[],
         'safeSearchEnforced': true,
+        'youtubeRestrictedMode': 'strict',
       },
       'appRules': [
         {'packageId': 'com.example.game', 'appName': 'Game', 'action': 'time_limit', 'dailyLimitMinutes': 60},

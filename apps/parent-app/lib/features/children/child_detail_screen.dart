@@ -93,6 +93,15 @@ class _OverviewTab extends ConsumerWidget {
             onTap: () => DefaultTabController.of(context).animateTo(2),
           ),
         ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.saved_search_outlined),
+            title: const Text('Search & web safety'),
+            subtitle: const Text('Flagged queries & SafeSearch history'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/child/$childId/searches'),
+          ),
+        ),
         const SizedBox(height: 8),
         // NOTE: Wrap instead of Row — the header overflowed on 320px-wide screens.
         Wrap(

@@ -197,7 +197,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     if (enable) {
       apply((w) {
         final cats = {...w.blockedCategories, ...kRecommendedCategories};
-        return WebFilterRule(blockedCategories: cats.toList(), allowedDomains: w.allowedDomains, blockedDomains: w.blockedDomains, safeSearchEnforced: w.safeSearchEnforced);
+        return w.copyWith(blockedCategories: cats.toList());
       });
       return;
     }
@@ -216,7 +216,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       if (!mounted) return;
       apply((w) {
         final cats = {...w.blockedCategories}..removeAll(kRecommendedCategories);
-        return WebFilterRule(blockedCategories: cats.toList(), allowedDomains: w.allowedDomains, blockedDomains: w.blockedDomains, safeSearchEnforced: w.safeSearchEnforced);
+        return w.copyWith(blockedCategories: cats.toList());
       });
     }
   }
@@ -252,25 +252,50 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             onChanged: (v) => update((w) {
               final cats = {...w.blockedCategories};
               v == true ? cats.add(c) : cats.remove(c);
-              return WebFilterRule(blockedCategories: cats.toList(), allowedDomains: w.allowedDomains, blockedDomains: w.blockedDomains, safeSearchEnforced: w.safeSearchEnforced);
+              return w.copyWith(blockedCategories: cats.toList());
             }),
           ),
         const SizedBox(height: 8),
         TextField(
           controller: _allowedDomains,
           decoration: const InputDecoration(labelText: 'Allowed domains (comma-separated)', border: OutlineInputBorder()),
-          onChanged: (v) => update((w) => WebFilterRule(blockedCategories: w.blockedCategories, allowedDomains: splitDomains(v), blockedDomains: w.blockedDomains, safeSearchEnforced: w.safeSearchEnforced)),
+          onChanged: (v) => update((w) => w.copyWith(allowedDomains: splitDomains(v))),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _blockedDomains,
           decoration: const InputDecoration(labelText: 'Blocked domains (comma-separated)', border: OutlineInputBorder()),
-          onChanged: (v) => update((w) => WebFilterRule(blockedCategories: w.blockedCategories, allowedDomains: w.allowedDomains, blockedDomains: splitDomains(v), safeSearchEnforced: w.safeSearchEnforced)),
+          onChanged: (v) => update((w) => w.copyWith(blockedDomains: splitDomains(v))),
         ),
         SwitchListTile(
           title: const Text('Enforce SafeSearch'),
           value: wf.safeSearchEnforced,
-          onChanged: (v) => update((w) => WebFilterRule(blockedCategories: w.blockedCategories, allowedDomains: w.allowedDomains, blockedDomains: w.blockedDomains, safeSearchEnforced: v)),
+          onChanged: (v) => update((w) => w.copyWith(safeSearchEnforced: v)),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('YouTube Restricted Mode', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Filters out potentially mature content on YouTube across child devices.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'strict', label: Text('Strict')),
+                  ButtonSegment(value: 'moderate', label: Text('Moderate')),
+                  ButtonSegment(value: 'off', label: Text('Off')),
+                ],
+                selected: {wf.youtubeRestrictedMode},
+                onSelectionChanged: (sel) => update((w) => w.copyWith(youtubeRestrictedMode: sel.first)),
+              ),
+            ],
+          ),
         ),
       ],
     );
