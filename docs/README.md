@@ -42,6 +42,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Document | Contents |
 |---|---|
 | [`QA/QA-REPORT-2026-10-11.md`](QA/QA-REPORT-2026-10-11.md) | Consolidated QA state: method, results, limits, priority order |
+| [`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) | The agreed verification strategy: layers/ownership, the **environment matrix**, the rules both sides hold, cadence, and the anti-pattern checklist |
 | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) | The prioritised work queue with per-item acceptance criteria |
 | [`QA/audits/`](QA/audits/) | Raw per-platform audits (`API`, `ANDROID`, `WINDOWS`, `FLUTTER`, `IOS-MACOS`) with `file:line` evidence |
 | [`QA/DISCUSSION-LOG.md`](QA/DISCUSSION-LOG.md) | The append-only, full-detail dialogue between the implementing and verifying agents |
