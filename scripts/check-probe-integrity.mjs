@@ -140,6 +140,17 @@ for (const kind of KINDS) {
   const removed = [...a.found[kind].keys()].filter((n) => !b.found[kind].has(n));
   const added = [...b.found[kind].keys()].filter((n) => !a.found[kind].has(n));
   for (const name of removed) {
+    // A gating check that survives only as a weaker severity is a *demotion*, and it is reported
+    // once by the demotion pass below. Reporting it here as well would say "REMOVED" and "DEMOTED"
+    // for the same line and count it twice, which overstates the finding — the tool must not
+    // exaggerate, or nobody will trust its quiet runs either.
+    const demotedTo =
+      kind === "check"
+        ? ["target", "note"].find((k) => b.found[k].has(name))
+        : kind === "target" && b.found.note.has(name)
+          ? "note"
+          : null;
+    if (demotedTo) continue;
     if (acked(kind, name)) infos.push(`acked-removed ${kind}: ${name}`);
     else problems.push(`REMOVED ${kind}: ${name}`);
   }
