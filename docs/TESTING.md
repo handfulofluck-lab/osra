@@ -65,6 +65,7 @@ count was skipped. The probe does not need it.
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
 | `ROLLUP_HOUR_UTC` (default 2), `RETENTION_DAYS` (default 90, floor 7), `ROLLUP_RETENTION_DAYS` (default 365) | Phase 2c nightly usage rollup + retention (ADR-0013); same `JOBS_ENABLED` switch. External cron: call `runUsageRollup()` from `src/jobs/usageRollup.ts`. |
+| `INTERNAL_SIGNING_ALLOW_V1` (default on), `INTERNAL_SERVICE_CALLERS` (default `ai-engine`) | ADR-0014 signing v2: keep v1 on until every paired agent runs a v2 build (probe target J7 shows the state); the global secret works only as a named service caller. Agents' clocks must be within 5 minutes of the server's or every signed call is `401 stale_timestamp`. |
 
 Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
 200 req/min rate limit and every later check reads `429` — wait 60 s between runs; it is the limiter,

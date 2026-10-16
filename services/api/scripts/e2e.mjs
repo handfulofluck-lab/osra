@@ -34,16 +34,32 @@ const check = (name, cond, extra = "") => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${name}${extra ? ` — ${extra}` : ""}`);
 };
 
-const sign = (body) => createHmac("sha256", HMAC_SECRET).update(body).digest("hex");
+/**
+ * v2 internal signing (ADR-0014): HMAC-SHA256(secret, `${ts}.${nonce}.${body}`) plus the timestamp
+ * and nonce headers. The global secret is a SERVICE credential — it is accepted only with the
+ * caller header (`ai-engine`), which is what this harness models; device signers pass their own
+ * per-device secret and no caller.
+ */
+const signV2 = (secret, body, { caller, nonce, ts } = {}) => {
+  const timestamp = String(ts ?? Math.floor(Date.now() / 1000));
+  const n = nonce ?? randomBytes(16).toString("hex");
+  return {
+    "x-familyshield-signature": createHmac("sha256", secret).update(`${timestamp}.${n}.${body}`).digest("hex"),
+    "x-familyshield-timestamp": timestamp,
+    "x-familyshield-nonce": n,
+    ...(caller ? { "x-familyshield-caller": caller } : {}),
+  };
+};
+const sign = (body) => signV2(HMAC_SECRET, body, { caller: "ai-engine" });
 
-async function call(method, path, { token, body, hmac } = {}) {
+async function call(method, path, { token, body, hmac, secret } = {}) {
   const raw = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
       ...(raw ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(hmac ? { "x-familyshield-signature": sign(raw ?? "") } : {}),
+      ...(secret ? signV2(secret, raw ?? "") : hmac ? sign(raw ?? "") : {}),
     },
     body: raw,
   });
@@ -307,10 +323,16 @@ const devSecret = CLAIM2.data?.hmacSecret;
 const dev2 = CLAIM2.data?.device?.id;
 check("pair/claim mints a per-device HMAC secret", CLAIM2.status === 201 && typeof devSecret === "string" && devSecret.length === 64);
 const bodyWithDev = JSON.stringify({ childId: sam.id, deviceId: dev2, severity: "info", category: "web_threat", title: "hygiene", body: "x", metadata: {} });
-const devSign = createHmac("sha256", devSecret).update(bodyWithDev).digest("hex");
-check("alert signed with the DEVICE secret -> 201", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", "x-familyshield-signature": devSign }, body: bodyWithDev })).status === 201);
+const devHeaders = signV2(devSecret, bodyWithDev);
+check("alert signed with the DEVICE secret (v2) -> 201", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...devHeaders }, body: bodyWithDev })).status === 201);
+// ADR-0014 / J2: the SAME signed request a second time is a replay — the nonce was consumed.
+const replayRes = await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...devHeaders }, body: bodyWithDev });
+const replayJson = await replayRes.json().catch(() => null);
+check("replaying the identical signed request -> 401 replay (J2 closed)", replayRes.status === 401 && replayJson?.reason === "replay", `got ${replayRes.status} ${JSON.stringify(replayJson)}`);
 const globalSign = createHmac("sha256", HMAC_SECRET).update(bodyWithDev).digest("hex");
-check("same alert with the GLOBAL secret -> 401 (per-device isolation)", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", "x-familyshield-signature": globalSign }, body: bodyWithDev })).status === 401);
+check("same alert with the bare GLOBAL secret (v1, no caller) -> 401 (J5/J6 closed)", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", "x-familyshield-signature": globalSign }, body: bodyWithDev })).status === 401);
+const staleHeaders = signV2(devSecret, bodyWithDev, { ts: Math.floor(Date.now() / 1000) - 600 });
+check("a signature with a 10-minute-old timestamp -> 401 stale_timestamp", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...staleHeaders }, body: bodyWithDev })).status === 401);
 const delDev2 = await call("DELETE", `/v1/devices/${dev2}`, { token });
 check("unpair device -> success", delDev2.status === 200);
 const revokedUse = await call("GET", `/v1/devices/${dev2}`, { token: CLAIM2.data.token });

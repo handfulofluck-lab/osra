@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireFamily, requireOwner, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
@@ -93,7 +93,7 @@ export async function familyRoutes(app: FastifyInstance) {
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */
-  app.post("/children", { preHandler: requireParent }, async (req, reply) => {
+  app.post("/children", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const parsed = ChildCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -161,13 +161,13 @@ export async function familyRoutes(app: FastifyInstance) {
    * device's token is revoked like an unpair (#56). The response reports the row counts so a caller
    * (and the e2e gate) can see what was removed.
    */
-  app.delete("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
+  app.delete("/children/:id", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req) => {
     const { id } = req.params as { id: string };
     return eraseChildData(id, DEVICE_TOKEN_TTL_SECONDS);
   });
 
   /** Record a parental-consent event (VPC) for an existing child. */
-  app.post("/children/:id/consent", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.post("/children/:id/consent", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req, reply) => {
     const parsed = ConsentCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -213,7 +213,7 @@ export async function familyRoutes(app: FastifyInstance) {
    * device reads answer 428 until a parent re-grants consent. Device pairings are kept so that
    * re-granting resumes without re-enrolment.
    */
-  app.post("/children/:id/consent/revoke", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.post("/children/:id/consent/revoke", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const user = req.user as AuthedUser;
     const now = new Date();

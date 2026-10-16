@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
+import { signV2 } from "../src/lib/internalAuth.js";
 import { contentRoutes } from "../src/routes/content.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -24,7 +25,7 @@ function postSearchEvent(app: Awaited<ReturnType<typeof buildApp>>, body: Record
     url: "/v1/content/search-event",
     headers: {
       "content-type": "application/json",
-      "x-familyshield-signature": sig ?? sign(raw),
+      ...(sig ? { "x-familyshield-signature": sig } : signV2(SECRET, raw, { caller: "ai-engine" })),
     },
     payload: raw,
   });
@@ -37,7 +38,7 @@ function postYouTubeWatch(app: Awaited<ReturnType<typeof buildApp>>, body: Recor
     url: "/v1/content/youtube-watch",
     headers: {
       "content-type": "application/json",
-      "x-familyshield-signature": sig ?? sign(raw),
+      ...(sig ? { "x-familyshield-signature": sig } : signV2(SECRET, raw, { caller: "ai-engine" })),
     },
     payload: raw,
   });

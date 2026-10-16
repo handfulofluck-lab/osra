@@ -92,14 +92,17 @@ public class ApiClient
             var body = JsonSerializer.SerializeToUtf8Bytes(alert, JsonOptions);
             using var content = new ByteArrayContent(body);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            // The internal alert route requires X-FamilyShield-Signature; the paired secret
-            // (BUG-001) is used when present, with env override as a legacy fallback.
+            // The internal alert route requires the v2 signature headers (ADR-0014): timestamp +
+            // nonce + HMAC over "ts.nonce.body". Signed with the paired per-device secret (BUG-001);
+            // the INTERNAL_HMAC_SECRET env override is a dev-only fallback — the server will reject
+            // it without a service caller header, by design.
             var secret = _config.HmacSecret ?? Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET");
             if (!string.IsNullOrEmpty(secret))
             {
-                using var hmac = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(secret));
-                content.Headers.Add("X-FamilyShield-Signature",
-                    Convert.ToHexString(hmac.ComputeHash(body)).ToLowerInvariant());
+                var (signature, timestamp, nonce) = InternalSigner.Sign(secret, body);
+                content.Headers.Add(InternalSigner.SignatureHeader, signature);
+                content.Headers.Add(InternalSigner.TimestampHeader, timestamp);
+                content.Headers.Add(InternalSigner.NonceHeader, nonce);
             }
             using var res = await _http.PostAsync("/v1/alerts/internal", content, ct);
             return res.IsSuccessStatusCode;

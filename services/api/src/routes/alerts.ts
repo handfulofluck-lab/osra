@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { raiseAlert } from "../lib/alerts.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -68,7 +68,7 @@ export async function alertsRoutes(app: FastifyInstance) {
   });
 
   /** Acknowledge an alert. */
-  app.post("/:id/ack", { preHandler: [requireParent, requireFamily({ model: "alert" })] }, async (req) => {
+  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
     return { alert };
@@ -83,7 +83,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       req.headers as Record<string, string | string[] | undefined>,
     );
     if (!auth.valid) {
-      return reply.code(401).send({ error: "invalid_signature" });
+      return reply.code(401).send({ error: "invalid_signature", reason: auth.reason });
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

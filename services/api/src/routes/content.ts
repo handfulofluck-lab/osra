@@ -99,7 +99,7 @@ export async function contentRoutes(app: FastifyInstance) {
       req.headers as Record<string, string | string[] | undefined>,
     );
     if (!auth.valid) {
-      return reply.code(401).send({ error: "invalid_signature" });
+      return reply.code(401).send({ error: "invalid_signature", reason: auth.reason });
     }
 
     const parsed = SearchEventSchema.safeParse(req.body);
@@ -191,7 +191,7 @@ export async function contentRoutes(app: FastifyInstance) {
       req.headers as Record<string, string | string[] | undefined>,
     );
     if (!auth.valid) {
-      return reply.code(401).send({ error: "invalid_signature" });
+      return reply.code(401).send({ error: "invalid_signature", reason: auth.reason });
     }
 
     const parsed = YouTubeWatchSchema.safeParse(req.body);

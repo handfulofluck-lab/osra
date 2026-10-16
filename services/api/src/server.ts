@@ -21,6 +21,7 @@ import { meRoutes } from "./routes/me.js";
 import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
 import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
+import { isParentSessionLive } from "./lib/sessions.js";
 import { healthRoutes } from "./routes/health.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
@@ -77,12 +78,8 @@ app.addHook("preHandler", async (req, reply) => {
       return reply.code(401).send({ error: "device_revoked" });
     }
   }
-  if (user?.jti) {
-    const redis = getRedis();
-    const revoked = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
-    if (revoked) {
-      return reply.code(401).send({ error: "session_revoked" });
-    }
+  if (user?.role === "parent" && !(await isParentSessionLive(user as { sub?: string; jti?: string; iat?: number }))) {
+    return reply.code(401).send({ error: "session_revoked" });
   }
 });
 

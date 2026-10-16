@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, publishJson, setJson } from "../redis.js";
-import { requireParent, requireFamily } from "../middleware/requireFamily.js";
+import { requireParent, requireFamily, requirePermission } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
@@ -40,13 +40,13 @@ export async function controlsRoutes(app: FastifyInstance) {
   };
   app.post(
     "/children/:childId/pause-internet",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
     pauseInternet,
   );
   // Alias matching the parent app's shorter paths (Flutter controls_provider uses /pause).
   app.post(
     "/children/:childId/pause",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
     pauseInternet,
   );
 
@@ -59,19 +59,19 @@ export async function controlsRoutes(app: FastifyInstance) {
   };
   app.post(
     "/children/:childId/resume-internet",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" })] },
     resumeInternet,
   );
   app.post(
     "/children/:childId/resume",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" })] },
     resumeInternet,
   );
 
   /** Grant extra screen time today only (Feature #10): increments bonusMinutesToday and notifies agents. */
   app.post(
     "/children/:childId/bonus",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
     async (req, reply) => {
       const parsed = BonusSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -95,7 +95,7 @@ export async function controlsRoutes(app: FastifyInstance) {
   /** Start a bedtime-style wind-down on all of the child's devices (Feature #22). */
   app.post(
     "/children/:childId/wind-down",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
     async (req, reply) => {
       const parsed = WindDownSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -109,7 +109,7 @@ export async function controlsRoutes(app: FastifyInstance) {
   /** Return whether the child's internet is currently paused (Feature #11). */
   app.get(
     "/children/:childId/status",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] },
+    { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" })] },
     async (req) => {
       const { childId } = req.params as { childId: string };
       const paused = await getJson<{ pausedAt: string }>(pausedKey(childId));

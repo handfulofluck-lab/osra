@@ -6,7 +6,7 @@ import { isInsideFence } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 
@@ -86,7 +86,7 @@ async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void>
     }
     return;
   }
-  await reply.code(401).send({ error: "unauthorized" });
+  await reply.code(401).send({ error: "unauthorized", reason: auth.reason });
 }
 
 /** Evaluate geofence enter/exit transitions for a fresh ping and raise alerts. */
@@ -289,7 +289,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Create a geofence for a child of the authenticated family. */
-  app.post("/geofences", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "body" }), requireConsent({ param: "childId", source: "body" })] }, async (req, reply) => {
+  app.post("/geofences", { preHandler: [requireParent, requirePermission("location"), requireFamily({ param: "childId", model: "child", source: "body" }), requireConsent({ param: "childId", source: "body" })] }, async (req, reply) => {
     const parsed = GeofenceCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { childId, ...data } = parsed.data;
@@ -298,7 +298,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Delete a geofence. */
-  app.delete("/geofences/:id", { preHandler: [requireParent, requireFamily({ model: "geofence" })] }, async (req) => {
+  app.delete("/geofences/:id", { preHandler: [requireParent, requirePermission("location"), requireFamily({ model: "geofence" })] }, async (req) => {
     const { id } = req.params as { id: string };
     await prisma.geofence.delete({ where: { id } });
     return { deleted: true, id };

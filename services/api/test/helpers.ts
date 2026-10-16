@@ -126,6 +126,11 @@ export function resetPrismaMock(): void {
       ? (arg as (tx: unknown) => unknown)(prismaMock)
       : Promise.all(arg as Promise<unknown>[]),
   );
+  // Default caller for tests: `authHeader()` signs as parent-1 of fam-1, an owner (ADR-0014 role gates).
+  prismaMock.parent.findUnique.mockResolvedValue({
+    id: "parent-1", familyId: "fam-1", email: "parent-1@example.com", displayName: "Parent One",
+    role: "owner", permissions: [], passwordHash: "argon2$stub", mfaEnabled: false, mfaSecret: null,
+  });
   // Default active consent for tests: non-revoked, non-expired, US jurisdiction.
   prismaMock.consentRecord.findFirst.mockResolvedValue({
     id: "consent-default",

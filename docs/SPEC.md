@@ -53,7 +53,15 @@ currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/
   gateway sends `{ type: "ready", familyId, ts }` as the first frame on every socket, after it has
   registered the socket for the family; no event frame precedes it (TR-05). Clients wait for it
   before treating the stream as live (e.g. to end a reconnect spinner).
-- Agent internal calls must carry header `X-FamilyShield-Signature` = HMAC-SHA256(body, INTERNAL_HMAC_SECRET).
+- Agent internal calls are signed v2 (ADR-0014): `X-FamilyShield-Timestamp` (unix s),
+  `X-FamilyShield-Nonce` (16–128 chars, unique) and `X-FamilyShield-Signature` =
+  HMAC-SHA256(secret, `"<ts>.<nonce>.<body>"`), where `secret` is the device's per-device secret
+  (minted at pair/claim). The server rejects |skew| > 300 s and any reused nonce. The global
+  `INTERNAL_HMAC_SECRET` is a service credential only: v2 + `X-FamilyShield-Caller: ai-engine`.
+  Body-only (v1) device signatures are accepted only while `INTERNAL_SIGNING_ALLOW_V1` ≠ 0.
+- Parent JWTs: `role: "parent"` always; `familyRole` (owner | co-parent | guardian) and `jti` on
+  every token. Mutating routes check the Parent row's `permissions` (rules, alerts, devices,
+  location); owners hold all; child create/erase, consent and invites are owner-only.
 
 ## Data isolation (§12.4 — non-negotiable)
 

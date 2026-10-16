@@ -95,7 +95,7 @@ export async function socialRoutes(app: FastifyInstance) {
       req.headers as Record<string, string | string[] | undefined>,
     );
     if (!auth.valid) {
-      return reply.code(401).send({ error: "invalid_signature" });
+      return reply.code(401).send({ error: "invalid_signature", reason: auth.reason });
     }
     const parsed = ScanSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

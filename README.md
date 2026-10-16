@@ -187,9 +187,10 @@ verified where it was written is stated as such. Details:
   happened" — a tester-facing note, not a defect.
 - **iOS is compiled only by CI** (SwiftPM + simulator build on a macOS runner). No Screen Time
   behaviour has been verified on a real device.
-- Three security items are **open by design** and tracked as probe targets: agent-request replay
-  protection (`J2`), consent revocation enforcement (`J3`), and the global-secret fallback for devices
-  without a per-device secret (`J6`).
+- One signing item is **open by design** and tracked as a probe target: legacy body-only (v1) agent
+  signatures are still accepted while `INTERNAL_SIGNING_ALLOW_V1` ≠ 0 (`J7`); set it to `0` once
+  every paired agent runs a v2 build. Replay protection (`J2`), consent revocation (`J3`) and the
+  global-secret fallback (`J6`) are closed and gated (ADR-0014).
 - No push notifications in test builds (agents poll ~60 s); FCM/APNs is a roadmap item.
 - Raw activity, browsing, social and location rows are kept **90 days** (rollups one year) by a
   nightly job — a global setting today, not per family (ADR-0013).
