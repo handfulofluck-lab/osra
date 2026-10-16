@@ -11,6 +11,27 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — TR-03 (post-merge smoke of `main`) and TR-04 (e2e WebSocket harness), in the same PR as TR-01/TR-02
+- **TR-03 — `main`@`e1e0f74` smoked on a database created from zero**, session zone `Asia/Dubai`:
+  `prisma migrate deploy` applied **all 12 migrations** to an empty database (0001→0012, including the
+  `0012_device_command_timestamptz` upgrade clause), `prisma generate` + `tsc` clean, `seed.ts` seeded,
+  API started on `:3018` with no schema-drift warning. Gates on that stack: **qa-probe 83 passed ·
+  0 failed · 2 targets (J2, J6) · 1 note (E4)** and **e2e 56 passed, 0 failed** — the same numbers as
+  the branches, now on `main` itself. Client suites: **`flutter test` (parent-app) 103/103**;
+  Android `./gradlew testDebugUnitTest` result recorded in `docs/QA/DISCUSSION-LOG.md`.
+- **TR-04 — the e2e WebSocket harness is hardened, without loosening the check.** `scripts/e2e.mjs` §7
+  no longer arms a one-shot promise: it collects frames, waits for the single-use ticket to be consumed
+  before posting the alert, re-posts the stimulus up to 3× if no frame arrives, and reports `frames=`,
+  `wsError=` and `wsClose=` on failure. The assertion is unchanged — the alert must be delivered.
+  **Acceptance met: e2e 56/56 on four consecutive runs, no `ws timeout` abort.**
+- **Correction, and it matters:** the TR-01 explanation I gave for that abort — "the frame is published
+  before the server registers the socket" — **does not reproduce**. Immediate-post trials delivered
+  **20/20**, and `main`'s unmodified harness also passed the exact original sequence (probe load, 70 s,
+  e2e). So the abort was a one-off whose cause is still unidentified; the harness fix is defensive and
+  the diagnostics exist so the next occurrence can be explained. `docs/TESTING.md` states this rather
+  than the retracted hypothesis.
+- **Verified:** all numbers above reproduced on the host PC; the smoke database was dropped afterwards.
+
 ### QA — TR-01/TR-02 verification, Redis hygiene tooling, two lifecycle findings (PR #59, issues #56/#57)
 - **TR-01 PASS — Issue #53 re-verified on a non-UTC host.** `feat/backend-command-queue@c8676e2` was
   verified on an `Asia/Dubai` (UTC+04) database whose `DeviceCommand` columns were genuinely

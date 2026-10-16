@@ -86,6 +86,13 @@ const sam = withConsent.data?.child;
 const dev = await call("POST", "/v1/devices/register", { token, body: { childId: sam.id, platform: "windows", model: "TestPC", osVersion: "10", pushToken: "e2e-token" } });
 check("device registration -> 201", dev.status === 201 && !!dev.data?.device?.id, `got ${dev.status}`);
 const deviceId = dev.data?.device?.id;
+// Phase 2b: an agent-side device with its own JWT, because the command drain is device-only
+// (probe note B11 — a parent token must never consume the queue).
+const AGENT_CODE = (await call("POST", "/v1/devices/pair", { token, body: { childId: sam.id } })).data?.code;
+const AGENT = await call("POST", "/v1/devices/pair/claim", { body: { code: AGENT_CODE, platform: "android", model: "E2EAgent", osVersion: "15" } });
+const agentId = AGENT.data?.device?.id;
+const agentToken = AGENT.data?.token;
+check("agent device paired with a device JWT", AGENT.status === 201 && !!agentId && !!agentToken, `got ${AGENT.status}`);
 
 // --- 5. Rules PUT + Redis publish on child channel ---
 const rulesPromise = nextMessage(`child:${sam.id}:rules`);
@@ -107,8 +114,10 @@ await call("PUT", `/v1/rules/${sam.id}`, { token, body: rulesBody }); // restore
 const gotRules = await call("GET", `/v1/rules/${sam.id}`, { token });
 check("GET rules round-trips", gotRules.status === 200 && gotRules.data?.webFilter?.blockedDomains?.includes("bad.example"));
 
-const fanout = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+const fanout = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
 check("rules write fans rules_updated out to devices", fanout.status === 200 && Array.isArray(fanout.data) && fanout.data.some((c) => c.type === "rules_updated"));
+const parentDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token });
+check("parent token cannot drain the device queue (403, B11 closed)", parentDrain.status === 403, `got ${parentDrain.status}`);
 
 // --- 6. HMAC location ping + geofence transitions (own throwaway fence on Sam, erased at the end) ---
 const fenceRes = await call("POST", "/v1/location/geofences", { token, body: { childId: sam.id, label: "E2E Fence", lat: 40.0, lng: -74.0, radiusM: 200, notifyOnEnter: true, notifyOnExit: true } });
@@ -128,20 +137,56 @@ check("geofence enter/exit alerts raised", geoAlerts.status === 200 && (geoAlert
 // --- 7. HMAC internal alert -> WebSocket delivery to parent ---
 const ticketRes = await call("POST", "/v1/ws-ticket", { token });
 check("WS ticket issued", ticketRes.status === 200 && !!ticketRes.data?.ticket);
+// TR-04: the client's `open` fires before the server has registered the socket — the route awaits
+// the single-use ticket's Redis GET+DEL and only then adds the socket to the family's set — so a
+// frame published in that window reaches nobody. The old harness raced that window with a one-shot
+// promise and aborted with `Error: ws timeout`, recording 0 FAILs and hiding the rest of the run.
+// The assertion is unchanged (the alert must be delivered); the *stimulus* is made repeatable
+// instead of lucky: wait for the ticket to be consumed, then re-post the alert if no frame arrives.
+// By any retry the registration has long since completed, so the retry is deterministic, and a
+// genuinely undelivered alert still fails after the last attempt.
 const wsUrl = `${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticketRes.data.ticket)}`;
 const ws = new WebSocket(wsUrl);
-const wsMessage = new Promise((resolve, reject) => {
-  const timer = setTimeout(() => reject(new Error("ws timeout")), 8000);
-  ws.addEventListener("message", (ev) => { clearTimeout(timer); resolve(JSON.parse(ev.data)); });
-  ws.addEventListener("error", reject);
-});
+const wsFrames = [];
+let wsError = "";
+let wsClose = "";
+ws.addEventListener("message", (ev) => wsFrames.push(JSON.parse(ev.data)));
+ws.addEventListener("error", (ev) => { wsError = String(ev?.message ?? "ws error"); });
+// Diagnose a future abort: a server-side close (e.g. 4001 unauthorized ticket) looks identical to a
+// lost frame from the client's side, and that distinction is what a one-off failure needs to explain.
+ws.addEventListener("close", (ev) => { wsClose = `${ev?.code ?? "?"} ${ev?.reason || "(no reason)"}`; });
 await new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", rej); });
 check("parent WebSocket connected", ws.readyState === 1);
 
-const internal = await call("POST", "/v1/alerts/internal", { hmac: true, body: { childId: sam.id, deviceId, severity: "critical", category: "grooming", title: "E2E alert", body: "simulated AI concern", metadata: { source: "e2e" } } });
-check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
-const evt = await wsMessage;
-check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", JSON.stringify(evt).slice(0, 120));
+// The `redis` client above is in subscriber mode, so query the ticket through a duplicate.
+const redisDirect = redis.duplicate();
+const waitUntil = async (predicate, ms) => {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const hit = await predicate();
+    if (hit) return hit;
+    if (Date.now() > deadline) return null;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+};
+// The gateway deletes the ticket and registers the socket in the same tick, so a consumed ticket
+// means the registration is imminent — this only makes the common case deterministic.
+const consumed = await waitUntil(
+  () => redisDirect.get(`ws:ticket:${ticketRes.data.ticket}`).then((v) => v === null, () => false),
+  4000,
+);
+console.log(`NOTE  ws ticket consumed before the alert: ${Boolean(consumed)}${consumed ? "" : " (registration still in flight)"}`);
+
+let evt = null;
+for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
+  const internal = await call("POST", "/v1/alerts/internal", { hmac: true, body: { childId: sam.id, deviceId, severity: "critical", category: "grooming", title: "E2E alert", body: "simulated AI concern", metadata: { source: "e2e" } } });
+  if (attempt === 1) check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
+  evt = await waitUntil(() => wsFrames.find((f) => f.type === "alert" && f.payload?.title === "E2E alert"), 10000);
+  if (!evt && wsClose) { console.log(`NOTE  socket closed by the server (${wsClose}) — retrying the stimulus cannot help`); break; }
+  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} (registration race) — retrying the stimulus`);
+}
+check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(evt ?? wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160));
+redisDirect.disconnect();
 ws.close();
 
 const badSig = await call("POST", "/v1/alerts/internal", { body: { childId: sam.id, severity: "info", category: "sos", title: "x", body: "y" } });
@@ -153,19 +198,27 @@ const ackTarget = list.data.items.find((a) => a.title === "E2E alert");
 const ack = await call("POST", `/v1/alerts/${ackTarget.id}/ack`, { token });
 check("acknowledge alert", ack.status === 200 && ack.data?.alert?.acknowledged === true);
 
-// --- 8. Device command queue (pub/sub + polled drain) ---
-const cmdSub = nextMessage(`device:${deviceId}:commands`);
-const cmd = await call("POST", `/v1/devices/${deviceId}/command`, { token, body: { command: "ring" } });
-check("POST command -> published", cmd.status === 200 && cmd.data?.type === "ring");
+// --- 8. Device command queue (durable rows + pub/sub wake + polled drain + acks) ---
+const cmdSub = nextMessage(`device:${agentId}:commands`);
+const cmd = await call("POST", `/v1/devices/${agentId}/command`, { token, body: { command: "ring" } });
+check("POST command -> persisted pending row with id", cmd.status === 200 && cmd.data?.type === "ring" && cmd.data?.status === "pending" && typeof cmd.data?.id === "string");
 const pubMsg = await cmdSub;
-check("command on Redis pub/sub {type}", pubMsg?.type === "ring");
-const drained = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
-check("GET commands drains queue [{type,payload}]", drained.status === 200 && Array.isArray(drained.data) && drained.data[0]?.type === "ring");
-const drainedAgain = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+check("command on Redis pub/sub {type}", pubMsg?.type === "ring" && pubMsg?.id === cmd.data.id);
+const histPending = await call("GET", `/v1/devices/${agentId}/commands/history`, { token });
+check("parent history shows the command pending before the device polls", histPending.status === 200 && histPending.data?.items?.some((c) => c.id === cmd.data.id && c.status === "pending"));
+const drained = await call("GET", `/v1/devices/${agentId}/commands?ack=1`, { token: agentToken });
+check("GET commands drains queue [{type,payload}]", drained.status === 200 && Array.isArray(drained.data) && drained.data.some((c) => c.type === "ring" && c.id === cmd.data.id));
+const drainedAgain = await call("GET", `/v1/devices/${agentId}/commands?ack=1`, { token: agentToken });
 check("command queue is consumed", drainedAgain.data.length === 0);
+const histDelivered = await call("GET", `/v1/devices/${agentId}/commands/history`, { token });
+check("parent history shows delivered after the drain", histDelivered.data?.items?.some((c) => c.id === cmd.data.id && c.status === "delivered"));
+const ackRes = await call("POST", `/v1/devices/${agentId}/commands/${cmd.data.id}/ack`, { token: agentToken, body: { status: "ok", detail: { rangMs: 60000 } } });
+check("device acks the command -> acked", ackRes.status === 200 && ackRes.data?.command?.status === "acked");
+const parentAck = await call("POST", `/v1/devices/${agentId}/commands/${cmd.data.id}/ack`, { token, body: { status: "ok" } });
+check("parent cannot ack a device command (403)", parentAck.status === 403, `got ${parentAck.status}`);
 
-const pauseCmd = await call("POST", `/v1/devices/${deviceId}/command`, { token, body: { command: "pause" } });
-const pauseDrain = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+const pauseCmd = await call("POST", `/v1/devices/${agentId}/command`, { token, body: { command: "pause" } });
+const pauseDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
 check("pause command accepted and queued", pauseCmd.status === 200 && pauseDrain.data.some((c) => c.type === "pause"));
 
 // --- 9. Telemetry ---
