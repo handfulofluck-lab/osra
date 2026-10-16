@@ -54,3 +54,14 @@ locks silently, nothing recorded delivery, any parent JWT could drain (and so co
 - Not in this ADR: a reaper for `delivered` rows of non-acking agents (they stay `delivered`, which
   is the truth), retention/cleanup of old rows (Phase 2c), WebSocket push of status changes to the
   parent app.
+
+## Addendum 2026-10-16 — issue #53
+
+The first implementation compared naive `TIMESTAMP(3)` columns to `NOW()` in raw SQL. On a database
+session outside UTC that reads the stored UTC value as local time, so commands expired on arrival;
+the author's UTC stack could not show it and two independent verifiers in Asia/Dubai did. Decision
+amended: the `DeviceCommand` time columns are `timestamptz` (migration 0012), the instant is always
+bound from application code, a unit test forbids `NOW()` in the module, the probe asserts a device
+actually drains and acks a fresh command (K1–K4), and the live gates are required to run against a
+non-UTC database. The lesson is recorded in `docs/TESTING.md`: a gate that passed only in the
+author's environment is unproven.

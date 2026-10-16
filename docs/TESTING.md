@@ -148,3 +148,17 @@ A change is done when **all** of these are true (`AGENTS.md` §3): the API unit 
 is green **including the new checks for the behaviour you changed**, e2e is green, the platform suites
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
+
+### The live gates must run against a non-UTC database (issue #53)
+
+A clock or time-zone bug cannot show up when the author's database, API and test runner all sit in
+UTC — PR #52 shipped a queue that expired every command on any other host and its gates were green.
+Before claiming `qa-probe` / `e2e` green, set the test database to a non-UTC zone once:
+
+```sql
+ALTER DATABASE familyshield SET timezone = 'Asia/Dubai';   -- then reconnect / restart the API
+SHOW timezone;                                             -- must print Asia/Dubai
+```
+
+Raw SQL rule that follows from it: never compare a column to `NOW()`; bind the instant from
+application code (`${new Date()}`) and declare time columns `@db.Timestamptz(3)` in Prisma.

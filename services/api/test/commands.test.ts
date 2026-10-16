@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { prismaMock, resetPrismaMock, buildApp, authHeader, deviceHeader } from "./helpers.js";
 
 vi.mock("../src/db.js", () => ({ prisma: prismaMock }));
@@ -74,8 +75,30 @@ describe("durable command queue (Phase 2b)", () => {
     expect(sql).toContain("\"ackedAt\" IS NULL");
     expect(sql).toContain("\"attempts\" <");
     expect(params).toContain(MAX_ATTEMPTS);
-    const cutoff = params.find((p: unknown) => p instanceof Date) as Date;
-    expect(Date.now() - cutoff.getTime()).toBeGreaterThanOrEqual(REDELIVER_AFTER_SECONDS * 1000 - 50);
+    const dates = params.filter((p: unknown) => p instanceof Date) as Date[];
+    const cutoff = new Date(Math.min(...dates.map((d) => d.getTime())));
+    const bound = new Date(Math.max(...dates.map((d) => d.getTime())));
+    expect(Date.now() - bound.getTime()).toBeLessThan(5000); // "now" is bound from JS, not the server
+    expect(bound.getTime() - cutoff.getTime()).toBe(REDELIVER_AFTER_SECONDS * 1000);
+  });
+
+  it("never uses the server's NOW() — the instant is bound from JS (issue #53, non-UTC databases)", async () => {
+    prismaMock.$queryRaw.mockResolvedValue([]);
+    await claimPendingCommands("dev-1", { ackCapable: true });
+    const sweepSql = prismaMock.$executeRaw.mock.calls[0][0].join("?");
+    const claimSql = prismaMock.$queryRaw.mock.calls[0][0].join("?");
+    const sqlNow = /(?<!Date\.)\bnow\(\)/i; // SQL NOW(), not JavaScript Date.now()
+    expect(sweepSql).not.toMatch(sqlNow);
+    expect(claimSql).not.toMatch(sqlNow);
+    const sweepParams = prismaMock.$executeRaw.mock.calls[0].slice(1);
+    const claimParams = prismaMock.$queryRaw.mock.calls[0].slice(1);
+    expect(sweepParams.some((p: unknown) => p instanceof Date)).toBe(true);
+    expect(claimParams.filter((p: unknown) => p instanceof Date).length).toBeGreaterThanOrEqual(2);
+    // Guard against the regression at the source level too: no NOW() anywhere in the queue module.
+    const src = readFileSync(new URL("../src/lib/deviceCommands.ts", import.meta.url), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(src).not.toMatch(sqlNow);
   });
 
   it("returns claimed rows oldest first in the agent wire shape", async () => {

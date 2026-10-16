@@ -117,23 +117,29 @@ export async function enqueueDeviceCommand(
  * Single statements with RETURNING, so two concurrent drains never hand out the same row twice.
  */
 export async function claimPendingCommands(deviceId: string, opts: { ackCapable?: boolean } = {}): Promise<DeviceCommandMessage[]> {
+  // Issue #53: never use the server's NOW() here. The first version compared a naive TIMESTAMP(3)
+  // column to NOW() (timestamptz); on a non-UTC session (the testers' Asia/Dubai hosts) Postgres
+  // read the naive UTC value as local wall-clock and every fresh command was already "expired",
+  // so ring/lock/unlock never reached a device. Columns are now timestamptz (migration 0012) AND
+  // the instant is bound from JS, so the comparison is independent of the session time zone.
+  const now = new Date();
   await prisma.$executeRaw`
     UPDATE "DeviceCommand" SET "status" = 'expired'
-    WHERE "deviceId" = ${deviceId} AND "status" = 'pending' AND "expiresAt" <= NOW()`;
-  const redeliverCutoff = new Date(Date.now() - REDELIVER_AFTER_SECONDS * 1000);
+    WHERE "deviceId" = ${deviceId} AND "status" = 'pending' AND "expiresAt" <= ${now}`;
+  const redeliverCutoff = new Date(now.getTime() - REDELIVER_AFTER_SECONDS * 1000);
   const rows = opts.ackCapable
     ? await prisma.$queryRaw<Row[]>`
         UPDATE "DeviceCommand"
-        SET "status" = 'delivered', "deliveredAt" = NOW(), "attempts" = "attempts" + 1
-        WHERE "deviceId" = ${deviceId} AND "expiresAt" > NOW() AND (
+        SET "status" = 'delivered', "deliveredAt" = ${now}, "attempts" = "attempts" + 1
+        WHERE "deviceId" = ${deviceId} AND "expiresAt" > ${now} AND (
           "status" = 'pending'
           OR ("status" = 'delivered' AND "ackedAt" IS NULL AND "deliveredAt" < ${redeliverCutoff} AND "attempts" < ${MAX_ATTEMPTS})
         )
         RETURNING "id", "deviceId", "type", "payload", "status", "createdAt", "expiresAt", "attempts"`
     : await prisma.$queryRaw<Row[]>`
         UPDATE "DeviceCommand"
-        SET "status" = 'delivered', "deliveredAt" = NOW(), "attempts" = "attempts" + 1
-        WHERE "deviceId" = ${deviceId} AND "expiresAt" > NOW() AND "status" = 'pending'
+        SET "status" = 'delivered', "deliveredAt" = ${now}, "attempts" = "attempts" + 1
+        WHERE "deviceId" = ${deviceId} AND "expiresAt" > ${now} AND "status" = 'pending'
         RETURNING "id", "deviceId", "type", "payload", "status", "createdAt", "expiresAt", "attempts"`;
   return rows
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
