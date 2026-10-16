@@ -113,6 +113,15 @@ describe("notification policy", () => {
     delete process.env.PUSH_MIN_SEVERITY;
   });
 
+  it("treats a missing alert as nothing to push (no TypeError in the fire-and-forget path)", async () => {
+    expect(shouldPush(undefined, "info")).toBe(false);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const out = await notifyParentsOfAlert("fam-1", undefined as unknown as typeof alert);
+    expect(out.skipped).toBe("severity");
+    expect(err).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+
   it("applies the severity floor but always pushes SOS and tamper", () => {
     expect(shouldPush({ severity: "info", category: "geofence" }, "warning")).toBe(false);
     expect(shouldPush({ severity: "warning", category: "ai_concern" }, "warning")).toBe(true);
