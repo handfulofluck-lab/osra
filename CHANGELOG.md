@@ -11,6 +11,80 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Fixed — Issue #53 (critical, found by Kimi + Antigravity verification of PR #52): command queue dead on non-UTC databases
+- `DeviceCommand` time columns were `TIMESTAMP(3)` (no time zone) while the queue's raw SQL compared them to `NOW()` (timestamptz). On any database session outside UTC (the testers' Asia/Dubai hosts) the naive UTC value was read as local wall-clock, so every fresh command was swept to `expired` before the device could drain it — ring/lock/unlock never arrived. The author's UTC stack hid it (e2e 56/56 there, 53/56 in Dubai).
+- Fix: migration `0012_device_command_timestamptz` converts the four columns to `TIMESTAMPTZ(3)` (`USING … AT TIME ZONE 'UTC'`), and `deviceCommands.ts` binds the instant from JS — there is no `NOW()` left in the module (a unit test now scans the source and the generated SQL for it).
+- Gate coverage: `qa-probe` gains **K1–K4** (device drains a fresh command, history says delivered, ack flips to acked, acked is not re-offered) — the probe previously never asserted a device receives anything. `docs/TESTING.md` now requires the live gates to run against a non-UTC database (`ALTER DATABASE … SET timezone = 'Asia/Dubai'`).
+- Verified on a lane-2 database set to Asia/Dubai: before the fix e2e **53/56** (the testers' exact three failures); after: e2e **56/56** twice, `qa-probe` **83 passed · 0 failed**, vitest **261/261**.
+
+### Added — Phase 2b: commands are durable and observable — KCL plan, ADR-0012
+- **`DeviceCommand` table** (migration `0011_device_command_queue`): every command is a row with `pending → delivered → acked | failed`, or `expired`; `requestedBy`, `attempts`, `result`. The Redis list is gone; pub/sub remains the wake-up only. A Redis restart no longer loses a pending lock.
+- **Per-type expiry**: `ring`/`locate_now` 10 min, `rules_updated` 24 h, consent commands 7 d, default 24 h. `rules_updated` coalesces onto an existing pending row.
+- **Atomic drain** (`UPDATE … RETURNING`); `GET /v1/devices/:id/commands?ack=1` declares an ack-capable agent and gets delivered-but-unacked commands re-offered after 120 s (max 3 attempts). Non-acking agents are unaffected.
+- **New routes**: `POST /v1/devices/:id/commands/:commandId/ack` (device JWT) and `GET /v1/devices/:id/commands/history` (parent, non-destructive). `POST /v1/devices/:id/command` now returns `{id, status:"pending", expiresAt, …}`.
+- **Security**: the drain is device-only (device JWT with matching `deviceId`); a parent token gets 403. Probe note **B11 is promoted to a gating check** (+ B11b history).
+- Tests: `test/commands.test.ts` (8); existing fan-out tests now assert on the durable store instead of the Redis list. e2e pairs an agent device and walks pending → delivered → acked through the parent's history (56/56).
+- Gates on this branch (lane-2, :3100): vitest **259/259**, `qa-probe` **79 passed · 0 failed · 2 targets**, `e2e` **56/56**.
+
+### Added — Phase 2a: parents are notified (push + email) — KCL plan, ADR-0011
+- **One alert path (`services/api/src/lib/alerts.ts`)**: `raiseAlert()` creates the row, publishes the WebSocket event and pushes to every parent device. All five producers (`/v1/alerts/internal`, `/v1/social/scan`, search-event, youtube-watch, geofence enter/exit) now use it; the audit had found push wired to one producer, as a `console.log`.
+- **Push providers without SDKs**: FCM HTTP v1 with a service-account key (`src/lib/push/fcm.ts`) and APNs HTTP/2 with a p8 provider token (`src/lib/push/apns.ts`). Policy in `src/lib/push/notify.ts`: `PUSH_MIN_SEVERITY` floor (SOS/tamper always push), `DigestPrefs.pushEnabled`, platform routing, dead-token pruning on `UNREGISTERED`/410.
+- **Parent push tokens**: `ParentPushToken` table (migration `0010_parent_push_tokens`), `POST /v1/me/push-token`, `DELETE /v1/me/push-token`, `GET /v1/me/push-tokens`.
+- **Email provider** (`src/lib/email/`): Resend over HTTPS (`RESEND_API_KEY`, `EMAIL_FROM`) with a console fallback that never prints bodies in production. Bilingual EN+AR templates for password reset, invites and digests.
+- **Password reset** emails a 15-minute link (`APP_PUBLIC_URL/reset?token=…`) and **no longer logs the token** (audit API-07). **Invites** email the accept link; the token is echoed in the response only without a provider and outside production. **Digests** are delivered by `src/jobs/digestScheduler.ts` (15-minute tick, `DIGEST_HOUR_UTC`, weekly on Sunday, Redis `SET NX` claim per family/day); `POST /v1/digests/send-now` now sends as well as renders.
+- Tests: `test/push.test.ts` (10) and `test/email.test.ts` (13) cover the OAuth assertion, v1 message shape, APNs ES256 token and headers, token pruning, severity policy, templates, Resend envelope, reset/invite routes, scheduler claims and the `/v1/me` routes.
+- Gates on this branch (lane-2 stack, port 3100): vitest **251/251**, `qa-probe` **77 passed · 0 failed · 2 targets**, `e2e` **50/50**.
+- Not done here (board #50): parent-app token registration + notification permission flow (Phase 3), quiet hours/per-category prefs, delivery receipts.
+
+### Security — Issue #43 / Target J3: consent revocation now stops processing (PR #48)
+- **Revocation endpoint** `POST /v1/family/children/:id/consent/revoke` and status `GET /v1/family/children/:id/consent`
+  (`services/api/src/routes/family.ts`). The `/v1/consent/*` alias from the first draft was removed before merge.
+- **Processing gate (ADR-0008 §2b).** While a child has no active consent, device ingestion
+  (`/v1/location/ping`, `/v1/social/scan`, `/v1/alerts/internal`, `/v1/content/*`, `/v1/devices/:id/telemetry|activity`)
+  and device reads (`GET /v1/rules/:childId`, `GET /v1/devices/:id/commands` with a device JWT) answer **428**.
+  The first draft gated only the parent's configuration writes, which left the child's device collecting
+  location and chat snippets after the parent had withdrawn consent — caught in the `KCL` review.
+- **Safe-direction actions stay open (ADR-0008 §2c):** `resume`, `resume-internet`, device `unlock|resume|resume_internet|sos_clear`
+  and child erasure are never consent-gated; enforcement commands (`lock`, `ring`, `pause`, …) are.
+- **Agents are notified:** revoke enqueues `consent_revoked` to every device of the child and publishes a
+  `consent_revoked` family event; re-grant enqueues `consent_granted`. Device pairings survive revocation.
+- **Android agent** honours the contract: `consent_revoked` and a 428 from rules/commands pause enforcement,
+  social capture, comms logging and location upload; `consent_granted` or a 200 resumes them
+  (`RuleRepository.kt`, `CommandDispatcher.kt`, `LocationService.kt`).
+- Migration `0009_consent_record_index` adds `ConsentRecord(childId, revokedAt)`.
+- **Verified:** vitest 228/228 · `qa-probe` **77 passed · 0 failed · 2 targets (J2, J6)** on a live stack · `e2e` 50/50.
+  Android change is unit-tested (`ConsentStateTest`) but **⚠️ not verified on hardware here** (no device in this environment).
+
+### Fixed — Issue #43: Parental Consent Revocation and Enforcement Across Child-Scoped Writes (Target J3)
+- **Consent Revocation Endpoints (`services/api`)**: Implemented `POST /v1/family/children/:id/consent/revoke` and alias `POST /v1/consent/:childId/revoke` allowing authenticated parents to withdraw consent for their child. Atomically marks active consent records as revoked (`revokedAt = now()`) and enforces strict family isolation (403 on cross-family attempts).
+- **Active Consent Enforcement (`requireConsent` middleware, `services/api`)**: Gated all child-scoped write mutations on an active, non-revoked (`revokedAt IS NULL`), non-expired (`expiresAt IS NULL OR expiresAt > now()`), jurisdiction-matching `ConsentRecord` (HTTP 428 Precondition Required otherwise):
+  - Rules: `PUT /v1/rules/:childId`, `PATCH /v1/rules/:childId`
+  - Devices: `POST /v1/devices/register`, `POST /v1/devices/pair`, `POST /v1/devices/pair/claim`
+  - Remote controls: `POST /v1/controls/children/:childId/pause-internet`, `POST /v1/controls/children/:childId/resume-internet`, `POST /v1/controls/children/:childId/bonus`, `POST /v1/controls/children/:childId/wind-down`
+  - Geofences: `POST /v1/location/geofences`
+  - Child profile: `PATCH /v1/family/children/:id`
+- **Re-Granting Consent Flow**: Confirmed re-granting consent via `POST /v1/family/children/:id/consent` successfully unblocks subsequent child writes.
+- **Probe J3 Promoted to Gate (`services/api/scripts/qa-probe.mjs`)**: Promoted target J3 to a gating assertion verifying revoke -> 428 on write, cross-family rejection (403), re-grant -> 200 unblocked, and alias route `/v1/consent/:childId/revoke` (74 passed, 0 failed, 2 targets, 2 notes).
+- **Unit & Integration Tests**: Added `services/api/test/consent.test.ts` (14 tests) covering revocation, status, 428 precondition responses on revoked/expired/mismatched consent, and re-grant unblocking (224/224 tests passing).
+- **Architecture Documentation**: Documented architectural decision and regulatory compliance in `docs/adr/0008-parental-consent-lifecycle-and-revocation.md`, superseding the tracked gap in ADR-0002.
+
+### Fixed — CI: `secrets` in a step `if:` rejected the whole workflow (zero jobs ran on PR #49's first push)
+- `.github/workflows/ci.yml`: the keystore step tested `secrets.OSRA_UPLOAD_KEYSTORE_B64` in `if:`; the secrets context is not available there, so GitHub rejected `ci.yml` and the run appeared only as a failed run named by its file path with no jobs — the "gate that looks present and does nothing" class again. The decision now happens inside the run body.
+- `scripts/check-workflows.mjs`: new error for `secrets.` inside any `if:` expression. Verified: the broken file fails the linter (1 error), the fixed tree passes.
+
+### Fixed — Phase 0 repo hygiene: the parent app's release build could not reach the network
+- **`INTERNET` was declared only in the debug manifest** (`apps/parent-app/android/app/src/debug/AndroidManifest.xml`),
+  so a `--release` build of the parent app could not log in. Moved to the main manifest with
+  `ACCESS_NETWORK_STATE` and `POST_NOTIFICATIONS` (KCL review, `docs/QA/KCL-2026-10-16/AUDIT-API-AI-PARENT-APP.md`).
+- **Google Maps key plumbing:** `com.google.android.geo.API_KEY` is now a manifest placeholder filled from
+  `android/local.properties` or `MAPS_API_KEY`; without it the map rendered blank on every device.
+- **Release signing plumbing:** `build.gradle.kts` uses an upload keystore when `OSRA_UPLOAD_KEYSTORE*` are set
+  and falls back to the debug key otherwise; release builds now minify/shrink. Cleartext HTTP is permitted
+  **only in debug** (`src/debug/res/xml/network_security_config.xml`); release is HTTPS-only.
+- **CI becomes a store-readiness gate:** `parent-app` builds the release AAB and asserts `INTERNET` is in the
+  bundled manifest; `child-android` runs `assembleRelease`; both upload artifacts (14-day retention).
+- `docs/test-guides/CI-SECRETS.md` lists every secret the pipeline reads and what happens when one is missing.
+
 ### Fixed — Issue #45: YouTube Restricted Mode Enforcement Across API, Desktop Agent, and Parent App
 - **API Persistence (`services/api`)**: Added `youtubeRestrictedMode` column (`@default("strict")`) to Prisma `RuleSet` model and schema migration `0008_youtube_restricted_mode`. Updated `toRow`, `toApiRuleSet`, and `defaultRuleSetRow` so `PUT /v1/rules/:childId` persists `youtubeRestrictedMode` ("strict" | "moderate" | "off") to PostgreSQL and subsequent `GET` requests return the persisted value. Verified via vitest covering PUT → GET round-trip across all three modes (206/206 passed).
 - **Windows Desktop Agent Dynamic Header Selector (`apps/agent-desktop`)**: Added pure header selector `SafeSearch.GetYouTubeRestrictHeaderValue(mode)` mapping `"strict"` → `"Strict"`, `"moderate"` → `"Moderate"`, and `"off"` / unrecognized → `null`. Wired into `RuleSetSnapshot`, `RuleSetMapper.FromDto`, and `WebFilterProxy.cs` so `YouTube-Restrict` HTTP headers are dynamically set based on the active ruleset's `youtubeRestrictedMode` rather than hardcoding "Strict". Added xUnit theory unit tests in `SafeSearchTests.cs` (183/183 passed).

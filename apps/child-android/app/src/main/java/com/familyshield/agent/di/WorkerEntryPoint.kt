@@ -1,6 +1,7 @@
 package com.familyshield.agent.di
 
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.BlocklistStore
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.db.FamilyShieldDatabase
@@ -39,6 +40,9 @@ interface WorkerEntryPoint {
 
     /** DataStore-backed settings. */
     fun agentSettings(): AgentSettings
+
+    /** ADR-0008 §3: workers must not upload while consent is withdrawn. */
+    fun consentState(): ConsentState
 
     /** Call/SMS logger for the telemetry-worker flush backstop (Feature #6). */
     fun commsLogger(): CommsLogger

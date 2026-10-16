@@ -50,11 +50,31 @@ INTERNAL_HMAC_SECRET=<from dist/start-backend.bat> VAULT_KEY=<same> node scripts
 INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                                        # must be 0 failed
 ```
 
+### Notification env (Phase 2a) — all optional
+
+| Variable | Effect when set |
+|---|---|
+| `FCM_SERVICE_ACCOUNT_JSON` (JSON or base64) or `FCM_SERVICE_ACCOUNT_FILE` | Enables parent push via FCM HTTP v1 (Android, web, and iOS through Firebase). |
+| `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV` | Enables direct APNs for native iOS tokens. |
+| `PUSH_MIN_SEVERITY` (`info`\|`warning`\|`critical`, default `info`) | Severity floor; SOS and tamper always push. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Enables real email. Without them emails are logged (dev) or a warning is logged (production); invites then echo `acceptToken` in dev only. |
+| `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
+| `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
+
+Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
+200 req/min rate limit and every later check reads `429` — wait 60 s between runs; it is the limiter,
+not the product.
+
+`VAULT_KEY` must be a base64-encoded 32-byte key (e.g. `head -c 32 /dev/urandom | base64`); any other
+length makes `/v1/social/scan` return 500 `ERR_CRYPTO_INVALID_KEYLEN` and fails two e2e checks — a
+harness trap, not a product bug.
+
+
 **Reading the probe output.** It prints three severities, deliberately:
 
 - **failures** — an invariant is broken. The gate exits non-zero; fix it before merging.
-- **targets** — behaviour that needs a product decision before it can be asserted (replay protection,
-  consent revocation, the global-secret fallback). Non-gating, so the gate stays actionable; do **not**
+- **targets** — behaviour that needs a product decision before it can be asserted (replay protection `J2`,
+  the global-secret fallback `J6`; consent revocation `J3 (+ J3b processing stop, J3c safe-direction, J3d agent commands)` is now resolved and enforced as a gate check). Non-gating, so the gate stays actionable; do **not**
   turn a target into a silent pass.
 - **notes** — observations for the record (e.g. a route a parent can call that drains a device queue).
 
@@ -130,3 +150,24 @@ A change is done when **all** of these are true (`AGENTS.md` §3): the API unit 
 is green **including the new checks for the behaviour you changed**, e2e is green, the platform suites
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
+
+### The live gates must run against a non-UTC database (issue #53)
+
+A clock or time-zone bug cannot show up when the author's database, API and test runner all sit in
+UTC — PR #52 shipped a queue that expired every command on any other host and its gates were green.
+Before claiming `qa-probe` / `e2e` green, set the test database to a non-UTC zone once:
+
+```sql
+ALTER DATABASE familyshield SET timezone = 'Asia/Dubai';   -- then reconnect / restart the API
+SHOW timezone;                                             -- must print Asia/Dubai
+```
+
+Raw SQL rule that follows from it: never compare a column to `NOW()`; bind the instant from
+application code (`${new Date()}`) and declare time columns `@db.Timestamptz(3)` in Prisma.
+
+### Workflow trap: `secrets` in `if:`
+
+A step or job `if:` that references `secrets.*` makes GitHub reject the entire workflow file. The only
+symptom is a failed run **named after the file path** (`.github/workflows/ci.yml`) with zero jobs, while
+`workflow-lint` (a separate file) stays green. `scripts/check-workflows.mjs` now reports it as an error.
+Pattern to use instead: put the secret in `env:` and test the variable inside the `run:` body.

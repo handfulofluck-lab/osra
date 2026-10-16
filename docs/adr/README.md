@@ -17,6 +17,9 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0005](0005-adversarial-acceptance-gate.md) | A separate adversarial probe suite as the merge gate | accepted |
 | [0006](0006-content-monitoring-and-snippet-vault.md) | Bounded, encrypted snippets and concern alerts — not full-chat surveillance | accepted |
 | [0007](0007-engineered-process-controls.md) | Process is engineered (hooks, lint, PR-only main, hardware verification), not promised | accepted |
+| [0008](0008-parental-consent-lifecycle-and-revocation.md) | Parental consent lifecycle, revocation, and enforcement across child-scoped writes | accepted |
+| [0011](0011-parent-notifications-push-and-email.md) | Parent notifications: push (FCM/APNs) and email through one alert path; 0009/0010 reserved by the Android lane | accepted |
+| [0012](0012-durable-device-command-queue.md) | Durable device command queue: delivery state, acks, per-type expiry, device-only drain | accepted |
 
 ## Writing a new ADR
 

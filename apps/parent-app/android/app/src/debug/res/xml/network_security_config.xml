@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG BUILDS ONLY — permits cleartext HTTP for local/LAN test backends (127.0.0.1, 10.0.2.2,
+     192.168.0.0/16). Android cannot wildcard IP ranges, so base-config is used. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

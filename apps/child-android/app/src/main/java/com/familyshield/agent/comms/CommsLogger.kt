@@ -7,6 +7,7 @@ import android.provider.CallLog
 import android.provider.Telephony
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.db.AgentStateEntity
 import com.familyshield.agent.data.db.CommsEventEntity
@@ -45,6 +46,7 @@ class CommsLogger @Inject constructor(
     private val api: ApiService,
     private val settings: AgentSettings,
     private val rules: RuleRepository,
+    private val consent: ConsentState,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushMutex = Mutex()
@@ -73,12 +75,14 @@ class CommsLogger @Inject constructor(
 
     private val callObserver = object : ContentObserver(null) {
         override fun onChange(selfChange: Boolean) {
+            if (consent.isPaused()) return // ADR-0008 §3
             scope.launch { runCatching { harvestCalls() } }
         }
     }
 
     private val smsObserver = object : ContentObserver(null) {
         override fun onChange(selfChange: Boolean) {
+            if (consent.isPaused()) return // ADR-0008 §3
             scope.launch { runCatching { harvestSms() } }
         }
     }
@@ -185,6 +189,10 @@ class CommsLogger @Inject constructor(
         val deviceId = settings.deviceId() ?: return
         flushMutex.withLock {
             val dao = db.commsEventDao()
+            if (consent.isPaused()) {
+                dao.clear() // ADR-0008 §3: withdrawal stops collection; nothing buffered may be uploaded later
+                return@withLock
+            }
             val events = dao.all()
             if (events.isEmpty()) return@withLock
             val batch = ActivityEventBatchDto(

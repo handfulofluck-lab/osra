@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { raiseAlert } from "../lib/alerts.js";
 import { getRedis } from "../redis.js";
-import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 
@@ -115,6 +115,8 @@ export async function socialRoutes(app: FastifyInstance) {
 
     const child = await prisma.child.findUnique({ where: { id: childId } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
       ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
@@ -138,18 +140,17 @@ export async function socialRoutes(app: FastifyInstance) {
       const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
       // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
       // the decrypted preview stays exclusively in the encrypted vault (#24).
-      const alert = await prisma.alert.create({
-        data: {
-          childId,
-          deviceId,
-          severity: verdict.severity,
-          category,
-          title: `Social concern in ${appName}`,
-          body: `${contact || "A contact"} sent a flagged message on ${appName}`,
-          metadata: { app: appName, contact, concernTypes: verdict.concernTypes } as Prisma.InputJsonValue,
-        },
+      await raiseAlert({
+        childId,
+        familyId: child.familyId,
+        deviceId,
+        severity: verdict.severity,
+        category,
+        title: `Social concern in ${appName}`,
+        body: `${contact || "A contact"} sent a flagged message on ${appName}`,
+        metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
+        childName: child.displayName,
       });
-      await publishFamilyEvent(child.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
     }
     return { flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
   });

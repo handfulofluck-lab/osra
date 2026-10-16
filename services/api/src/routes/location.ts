@@ -1,12 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { publishFamilyEvent } from "../realtime/gateway.js";
+import { raiseAlert } from "../lib/alerts.js";
 import { isInsideFence } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 
 const SinglePingItemSchema = z.object({
   childId: z.string().min(1).optional(),
@@ -111,18 +113,16 @@ async function evaluateGeofences(
     const exited = !insideNow && fence.notifyOnExit;
     if (!entered && !exited) continue;
     const title = entered ? `Entered ${fence.label}` : `Left ${fence.label}`;
-    const alert = await prisma.alert.create({
-      data: {
-        childId,
-        deviceId,
-        severity: "info",
-        category: "geofence",
-        title,
-        body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius)`,
-        metadata: { geofenceId: fence.id, label: fence.label, lat, lng },
-      },
+    await raiseAlert({
+      childId,
+      familyId,
+      deviceId,
+      severity: "info",
+      category: "geofence",
+      title,
+      body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius)`,
+      metadata: { geofenceId: fence.id, label: fence.label, lat, lng },
     });
-    await publishFamilyEvent(familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
     // Feature #23: entering a school/routine fence auto-applies the bound routine — push the
     // child's ruleset and nudge every device to refresh.
     if (entered && fence.routineId) {
@@ -203,6 +203,9 @@ export async function locationRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: "cross_child_forbidden" });
       }
     }
+
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(effectiveChildId, reply))) return;
 
     // Evaluate transitions against the latest ping in the batch
     const latestPing = pingsList[pingsList.length - 1];
@@ -286,7 +289,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Create a geofence for a child of the authenticated family. */
-  app.post("/geofences", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "body" })] }, async (req, reply) => {
+  app.post("/geofences", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "body" }), requireConsent({ param: "childId", source: "body" })] }, async (req, reply) => {
     const parsed = GeofenceCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { childId, ...data } = parsed.data;

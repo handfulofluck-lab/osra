@@ -199,6 +199,14 @@ class AgentSettings @Inject constructor(
     /** Synchronous snapshot of pairing status (device token present). */
     fun isPairedSync(): Boolean = !deviceTokenSync().isNullOrBlank()
 
+    /** Persists the consent-pause flag (ADR-0008 §3) so a reboot while paused stays paused. */
+    suspend fun saveConsentPaused(paused: Boolean) {
+        store.edit { it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0" }
+    }
+
+    /** Synchronous cold-start read of the consent-pause flag (once per process). */
+    fun consentPausedSync(): Boolean = runBlocking { read(KEY_CONSENT_PAUSED) } == "1"
+
     private suspend fun read(key: Preferences.Key<String>): String? = store.data.first()[key]
 
     companion object {
@@ -211,5 +219,6 @@ class AgentSettings @Inject constructor(
         private val KEY_BASE_URL = stringPreferencesKey("base_url")
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
+        private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
     }
 }
