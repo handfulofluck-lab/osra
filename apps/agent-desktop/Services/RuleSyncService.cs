@@ -27,6 +27,7 @@ public sealed class RuleSyncService : BackgroundService
     internal Func<string, object?> ReadRegistryValue = TamperChecks.RegistryReader;
     internal Func<bool> ProxyRunningReader = () => AgentStatus.ProxyRunning;
     internal Func<IReadOnlyList<TamperChecks.VpnInterfaceInfo>> VpnInterfacesReader = TamperChecks.ListInterfaces;
+    internal Action EnsureProxyEnforced = () => WebFilterProxy.EnsureSystemProxy();
 
     // Feature #19/#20: each alert family is throttled to one per hour so a persistent tamper
     // state cannot spam the parent; internal set so tests can rewind the throttle window.
@@ -143,26 +144,29 @@ public sealed class RuleSyncService : BackgroundService
         // the child disabled it in Windows settings.
         try
         {
-            var settings = TamperChecks.ReadProxySettings(ReadRegistryValue);
-            if (TamperChecks.ShouldAlertProxyDisabled(ProxyRunningReader(), settings))
+            if (_config.SetSystemProxy)
             {
-                // Re-enforce proxy automatically if disabled by child (WIN-06 self-healing)
-                WebFilterProxy.EnsureSystemProxy();
-
-                if ((DateTime.UtcNow - LastTamperAlertUtc) >= TimeSpan.FromHours(1))
+                var settings = TamperChecks.ReadProxySettings(ReadRegistryValue);
+                if (TamperChecks.ShouldAlertProxyDisabled(ProxyRunningReader(), settings))
                 {
-                    LastTamperAlertUtc = DateTime.UtcNow;
-                    _log.LogWarning("OSRA proxy disabled in Windows settings; re-enforced and raising tamper alert");
-                    _ = _api.PostAlert(new AlertDto
+                    // Re-enforce proxy automatically if disabled by child (WIN-06 self-healing)
+                    EnsureProxyEnforced();
+
+                    if ((DateTime.UtcNow - LastTamperAlertUtc) >= TimeSpan.FromHours(1))
                     {
-                        ChildId = _config.ChildId,
-                        DeviceId = _config.DeviceId,
-                        Severity = "critical",
-                        Category = "tamper",
-                        Title = "Web filter was bypassed",
-                        Body = "The OSRA proxy was disabled in Windows settings",
-                        Metadata = new Dictionary<string, object> { ["type"] = "proxy_disabled" },
-                    });
+                        LastTamperAlertUtc = DateTime.UtcNow;
+                        _log.LogWarning("OSRA proxy disabled in Windows settings; re-enforced and raising tamper alert");
+                        _ = _api.PostAlert(new AlertDto
+                        {
+                            ChildId = _config.ChildId,
+                            DeviceId = _config.DeviceId,
+                            Severity = "critical",
+                            Category = "tamper",
+                            Title = "Web filter was bypassed",
+                            Body = "The OSRA proxy was disabled in Windows settings",
+                            Metadata = new Dictionary<string, object> { ["type"] = "proxy_disabled" },
+                        });
+                    }
                 }
             }
         }

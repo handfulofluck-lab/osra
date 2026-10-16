@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:e2e": "node --experimental-websocket scripts/e2e.mjs",
-    "db:migrate": "prisma migrate deploy",
+    "db:migrate": "prisma migrate deploy && prisma generate",
+    "postinstall": "prisma generate",
     "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {

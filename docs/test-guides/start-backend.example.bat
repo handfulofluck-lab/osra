@@ -53,6 +53,8 @@ REM =====================================================================
 echo [4/5] Applying migrations + seed...
 cd /d %API%
 call pnpm exec prisma migrate deploy || goto :fail
+REM NOTE: On Windows, stop any running server before running prisma generate to avoid query_engine DLL lock (EPERM).
+call pnpm exec prisma generate || goto :fail
 call pnpm exec tsx scripts/seed.ts || goto :fail
 
 echo [5/5] Starting API on port 3000...

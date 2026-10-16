@@ -34,6 +34,18 @@ if (!process.env.VAULT_KEY && process.env.NODE_ENV === "production") {
 
 import { getRedis } from "./redis.js";
 import { prisma } from "./db.js";
+import { assertPrismaClientInSync } from "./lib/schemaSync.js";
+
+// Issue #47: fail fast on boot if database schema and generated Prisma client drifted.
+try {
+  await assertPrismaClientInSync(prisma);
+} catch (err: any) {
+  if (err.message?.includes("[SchemaDrift]")) {
+    console.error(`\n======================================================\n${err.message}\n======================================================\n`);
+    process.exit(1);
+  }
+  console.warn(`[schema-sync] Database check skipped due to connectivity issue: ${err.message}`);
+}
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 

@@ -30,6 +30,12 @@ public sealed class AgentConfig
     public string? HmacSecret { get; set; }
 
     /// <summary>
+    /// When false, the desktop agent does not configure or enforce the system-wide WinINET proxy.
+    /// Default true. Environment variable FS_SET_SYSTEM_PROXY=0 overrides to false.
+    /// </summary>
+    public bool SetSystemProxy { get; set; } = true;
+
+    /// <summary>
     /// Reads <paramref name="exeDir"/>/<see cref="FileName"/> and applies env overrides.
     /// Returns null when the file is corrupt, and when there is no usable identity — i.e. the
     /// missing-file first run, unless the env vars supply a complete identity themselves.
@@ -56,6 +62,14 @@ public sealed class AgentConfig
         config.DeviceId = Environment.GetEnvironmentVariable("DEVICE_ID") ?? config.DeviceId;
         config.ChildId = Environment.GetEnvironmentVariable("CHILD_ID") ?? config.ChildId;
         config.HmacSecret = Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET") ?? config.HmacSecret;
+
+        var setProxyEnv = Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY") ??
+                          Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY", EnvironmentVariableTarget.User);
+        if (!string.IsNullOrWhiteSpace(setProxyEnv))
+        {
+            config.SetSystemProxy = !string.Equals(setProxyEnv, "0", StringComparison.OrdinalIgnoreCase) &&
+                                    !string.Equals(setProxyEnv, "false", StringComparison.OrdinalIgnoreCase);
+        }
 
         // NOTE: "no device token" means "not paired" — that covers the missing-file first run while
         // still letting a fully env-provided identity (legacy deployments) run without any file.

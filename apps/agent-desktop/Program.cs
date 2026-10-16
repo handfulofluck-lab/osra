@@ -1,5 +1,8 @@
 using FamilyShield.Agent.Services;
 
+// Fail-safe: ensure orphaned proxy settings are cleaned up when the process exits.
+AppDomain.CurrentDomain.ProcessExit += (_, _) => WebFilterProxy.ResetSystemProxyIfSet(8877);
+
 // The identity must exist before the host starts: every hosted service assumes a paired device.
 // Env overrides (API_BASE/DEVICE_JWT/DEVICE_ID/CHILD_ID) are applied inside AgentConfig.Load.
 var exeDir = AppContext.BaseDirectory;

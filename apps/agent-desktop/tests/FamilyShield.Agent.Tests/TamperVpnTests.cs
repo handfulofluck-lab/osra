@@ -168,6 +168,40 @@ public sealed class TamperVpnTests : IDisposable
     }
 
     [Fact]
+    public void CheckTamperAndVpnInvokesEnsureProxyEnforced()
+    {
+        var (api, sync) = CreateSync(
+            proxyRunning: true,
+            proxySettings: new Dictionary<string, object?> { ["ProxyEnable"] = 0, ["ProxyServer"] = "127.0.0.1:8877" },
+            interfaces: [new TamperChecks.VpnInterfaceInfo("Ethernet", "Intel Ethernet", IsUp: true)]);
+
+        var enforced = false;
+        sync.EnsureProxyEnforced = () => enforced = true;
+
+        sync.CheckTamperAndVpn();
+
+        Assert.True(enforced);
+    }
+
+    [Fact]
+    public void CheckTamperAndVpnSkipsTamperCheckWhenSetSystemProxyIsFalse()
+    {
+        var api = new FakeApiClient();
+        var config = new AgentConfig { ChildId = "child-1", DeviceId = "device-1", SetSystemProxy = false };
+        var sync = new RuleSyncService(NullLogger<RuleSyncService>.Instance, CreateStore(), api, config)
+        {
+            ProxyRunningReader = () => true,
+            ReadRegistryValue = new Dictionary<string, object?> { ["ProxyEnable"] = 0, ["ProxyServer"] = "127.0.0.1:8877" }.GetValueOrDefault,
+            VpnInterfacesReader = () => [new TamperChecks.VpnInterfaceInfo("Ethernet", "Intel Ethernet", IsUp: true)],
+            EnsureProxyEnforced = () => Assert.Fail("EnsureProxyEnforced should not be called when SetSystemProxy is false"),
+        };
+
+        sync.CheckTamperAndVpn();
+
+        Assert.Empty(api.Alerts);
+    }
+
+    [Fact]
     public void CheckTamperAndVpnRaisesTheContractVpnAlert()
     {
         var (api, sync) = CreateSync(
@@ -236,6 +270,7 @@ public sealed class TamperVpnTests : IDisposable
             ProxyRunningReader = () => true,
             ReadRegistryValue = _ => 0,
             VpnInterfacesReader = () => [new TamperChecks.VpnInterfaceInfo("tun0", "tun", IsUp: true)],
+            EnsureProxyEnforced = () => { },
         };
 
         sync.CheckTamperAndVpn();
@@ -276,6 +311,7 @@ public sealed class TamperVpnTests : IDisposable
             ProxyRunningReader = () => proxyRunning,
             ReadRegistryValue = proxySettings.GetValueOrDefault,
             VpnInterfacesReader = () => interfaces,
+            EnsureProxyEnforced = () => { },
         };
         return (api, sync);
     }
