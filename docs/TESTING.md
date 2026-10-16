@@ -144,3 +144,10 @@ A change is done when **all** of these are true (`AGENTS.md` §3): the API unit 
 is green **including the new checks for the behaviour you changed**, e2e is green, the platform suites
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
+
+### Workflow trap: `secrets` in `if:`
+
+A step or job `if:` that references `secrets.*` makes GitHub reject the entire workflow file. The only
+symptom is a failed run **named after the file path** (`.github/workflows/ci.yml`) with zero jobs, while
+`workflow-lint` (a separate file) stays green. `scripts/check-workflows.mjs` now reports it as an error.
+Pattern to use instead: put the secret in `env:` and test the variable inside the `run:` body.

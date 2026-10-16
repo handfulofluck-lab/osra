@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Secrets and signing material come from android/local.properties (gitignored) or the environment.
+// Nothing here is committed; CI injects them from repository secrets (docs/test-guides/PUBLISHING-READINESS.md).
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun secret(name: String): String? = (localProps.getProperty(name) ?: System.getenv(name))?.takeIf { it.isNotBlank() }
+val mapsApiKey = secret("MAPS_API_KEY") ?: ""
+val releaseStoreFile = secret("OSRA_UPLOAD_KEYSTORE")
 
 android {
     namespace = "dev.familyshield.familyshield_parent"
@@ -27,13 +39,29 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("upload") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = secret("OSRA_UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = secret("OSRA_UPLOAD_KEY_ALIAS") ?: "upload"
+                keyPassword = secret("OSRA_UPLOAD_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Real upload key when OSRA_UPLOAD_KEYSTORE is configured; debug key otherwise so
+            // `flutter run --release` keeps working on a dev box. CI fails the release job if the
+            // upload key is missing (see .github/workflows/ci.yml).
+            signingConfig = if (releaseStoreFile != null) signingConfigs.getByName("upload") else signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
