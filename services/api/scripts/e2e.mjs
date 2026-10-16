@@ -300,9 +300,15 @@ redisFlush.disconnect();
 const meAfterFlush = await call("GET", "/v1/family/me", { token });
 const samAfter = meAfterFlush.data?.children?.find((c) => c.id === sam.id);
 check("screen time today survives a Redis flush (durable day total)", flushed >= 0 && samAfter?.screenTimeTodayMinutes === 30, `flushed=${flushed} minutes=${samAfter?.screenTimeTodayMinutes}`);
+// #66: a delta AFTER the flush recreates the counter from the delta alone; /me must still report
+// the day total (max of cache and table), not the fresh counter.
+const telDelta = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { totalMinutes: 5, batteryPct: 63 } });
+const meAfterDelta = await call("GET", "/v1/family/me", { token });
+const samAfterDelta = meAfterDelta.data?.children?.find((c) => c.id === sam.id);
+check("a delta after the flush does not make /me under-report (max of cache and durable, #66)", telDelta.status === 202 && samAfterDelta?.screenTimeTodayMinutes === 35, `minutes=${samAfterDelta?.screenTimeTodayMinutes} expected 35`);
 const usage = await call("GET", `/v1/reports/usage?childId=${sam.id}&days=7`, { token });
 const usageToday = usage.data?.series?.find((d) => d.day === todayKey);
-check("reports/usage: per-day series with per-app split from the rollup table", usage.status === 200 && usage.data?.series?.length === 7 && usageToday?.minutes === 30 && usageToday?.apps?.find((a) => a.app === "YouTube")?.minutes === 21 && usageToday?.apps?.find((a) => a.app === "Roblox")?.minutes === 9 && !usageToday?.apps?.find((a) => a.minutes === 4), `got ${usage.status} ${JSON.stringify(usageToday ?? usage.data).slice(0, 140)}`);
+check("reports/usage: per-day series with per-app split from the rollup table", usage.status === 200 && usage.data?.series?.length === 7 && usageToday?.minutes === 35 && usageToday?.apps?.find((a) => a.app === "YouTube")?.minutes === 21 && usageToday?.apps?.find((a) => a.app === "Roblox")?.minutes === 9 && !usageToday?.apps?.find((a) => a.minutes === 4), `got ${usage.status} ${JSON.stringify(usageToday ?? usage.data).slice(0, 140)}`);
 const web = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1`, { token });
 check("reports/web: browsing history rows with domain + blocked flag", web.status === 200 && web.data?.items?.some((v) => v.domain === "blocked.example" && v.blocked === true && v.category === "gambling") && web.data.items.some((v) => v.domain === "news.example" && v.blocked === false), `got ${web.status} ${JSON.stringify(web.data?.items?.map((v) => v.domain))}`);
 const webBlocked = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1&blocked=true`, { token });

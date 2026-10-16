@@ -42,8 +42,13 @@ environment where it was written — see `docs/QA/` for the verification state.
   permission 403s, owner-only erasure, granted permission works). New unit suites
   `internal-signing.test.ts` (7) and `sessions-and-roles.test.ts` (7); **14 fail on `main`**.
   vitest **295/295**.
-- **Verified here** on a zero-migrated `Asia/Dubai` database, API `:3019`. ⚠️ Not verified on the
-  testers' hosts or hardware yet — **TR-07**.
+- **#66 (Kimi, TR-06 verification):** `/v1/family/me` preferred the Redis counter whenever the key
+  existed, so a flush was survived only until the next telemetry delta recreated the counter from
+  that delta alone (5 instead of 19). Now the larger of the cache and the durable day total wins —
+  deltas are monotonic within a day, so that is right in both directions (a failed rollup write
+  leaves the cache ahead). Unit test (fails before) + e2e check (`+5` after the flush → 35, not 5).
+- **Verified here** on a zero-migrated `Asia/Dubai` database, API `:3019`: e2e **69/69** after the
+  #66 fix. ⚠️ Not verified on the testers' hosts or hardware yet — **TR-07**.
 
 ### Backend — Phase 2c: durable usage model, retention, complete erasure cascade (ADR-0013)
 - **New tables** (migration `0013_usage_model`): `AppUsageDaily` (child × device × UTC day × app →

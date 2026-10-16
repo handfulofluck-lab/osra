@@ -238,6 +238,26 @@ describe("usage model — ingestion hooks and routes", () => {
     await app.close();
   });
 
+  it("#66 GET /family/me takes the LARGER of the Redis counter and the durable total (presence is not authority)", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: "fam-1", name: "F", region: "US",
+      parents: [{ id: "parent-1", email: "p@x", displayName: "P", role: "owner", passwordHash: "h" }],
+      children: [{ id: "child-1", familyId: "fam-1", displayName: "C", birthYear: 2015, devices: [] }],
+    });
+    const redis = getRedis() as unknown as MockRedis;
+    // After a flush, one +5 delta recreated the counter; the table still holds the day's 19.
+    redis.get.mockImplementation(async (k: string) => (k.startsWith("usage:child:") ? "5" : null));
+    prismaMock.appUsageDaily.findMany.mockResolvedValue([{ app: DEVICE_TOTAL_APP, minutes: 19 }]);
+    let res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.json().children[0].screenTimeTodayMinutes).toBe(19);
+    // The other direction: a rollup write failed, so the cache is ahead of the table.
+    redis.get.mockImplementation(async (k: string) => (k.startsWith("usage:child:") ? "23" : null));
+    res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    expect(res.json().children[0].screenTimeTodayMinutes).toBe(23);
+    await app.close();
+  });
+
   it("GET /reports/usage and /reports/web are family-scoped and validated", async () => {
     const app = await buildApp(reportsRoutes, "/v1/reports");
     prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });

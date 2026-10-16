@@ -61,12 +61,15 @@ export async function familyRoutes(app: FastifyInstance) {
         const childUsageKey = `usage:child:${c.id}:${today}`;
         const accumulated = await redis.get(childUsageKey).catch(() => null);
         // Phase 2c: the Redis key is a cache of the durable AppUsageDaily rows; a flush or restart
-        // must not read as "0 minutes today".
-        const durable = accumulated === null ? await screenTimeTodayFromDb(c.id).catch(() => 0) : 0;
-        if (accumulated !== null) {
-          screenTimeTodayMinutes = parseInt(accumulated, 10) || 0;
-        } else if (durable > 0) {
-          screenTimeTodayMinutes = durable;
+        // must not read as "0 minutes today". #66: presence is not authority — after a flush the
+        // next delta recreates the counter from that delta alone, and a failed rollup write leaves
+        // the cache AHEAD of the table. Deltas only grow within a day, so the larger of the two is
+        // right in both directions.
+        const cached = accumulated !== null ? parseInt(accumulated, 10) || 0 : 0;
+        const durable = await screenTimeTodayFromDb(c.id).catch(() => 0);
+        const best = Math.max(cached, durable);
+        if (best > 0) {
+          screenTimeTodayMinutes = best;
         } else {
           for (const d of c.devices) {
             const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
