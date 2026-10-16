@@ -63,3 +63,7 @@ pgdata/
 
 # ── Cloud-sync staging (Google Drive etc.) ───────────────────────────────────
 .tmp.driveupload/
+
+# Redis snapshots written by a locally started redis-server (never commit)
+*.rdb
+dump.rdb
