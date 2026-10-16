@@ -11,6 +11,36 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Backend — Phase 2c: durable usage model, retention, complete erasure cascade (ADR-0013)
+- **New tables** (migration `0013_usage_model`): `AppUsageDaily` (child × device × UTC day × app →
+  minutes; `app="*"` is the device-reported day total) and `WebVisit` (one row per URL event). Written
+  incrementally by `POST /devices/:id/activity` and `/telemetry`; reconciled nightly from
+  `ActivityEvent` by `src/jobs/usageRollup.ts` (overwrite, idempotent; `ROLLUP_HOUR_UTC`, default 02:00,
+  Redis `SET NX` claim, `JOBS_ENABLED=0` for an external cron). A rollup write failure never rejects a
+  batch.
+- **Reads no longer depend on Redis:** `/v1/family/me` falls back to the durable day total when the
+  `usage:child:*` key is gone; new `GET /v1/reports/usage?childId&days` (per-day series + per-app split,
+  the data for trend charts) and `GET /v1/reports/web?childId&days&limit&blocked&domain` (browsing
+  history) — family-scoped, bounds validated (400).
+- **Retention:** raw `ActivityEvent`/`WebVisit`/`SocialEvent`/`LocationPing` deleted after
+  `RETENTION_DAYS` (90, floor 7), rollups after `ROLLUP_RETENTION_DAYS` (365); instants bound from JS.
+- **Erasure (`DELETE /v1/family/children/:id`) now covers every child-scoped table** — it previously
+  left `ActivityEvent`, `SocialEvent`, `InstallRequest` and `DeviceCommand` rows orphaned — in one
+  transaction (`eraseChildData()`, list pinned by a test), returns `deletedDevices` + per-table `rows`,
+  revokes each deleted device's JWT like an unpair (#56 TTL) and drops the child's Redis keys.
+  `DEVICE_TOKEN_TTL_SECONDS` moved to `src/lib/deviceToken.ts` (re-exported from `devices.ts`).
+- **Gates:** e2e gains 9 checks (rollup survives `DEL usage:child:*`; `/reports/usage` 21/9 with the
+  live heartbeat excluded; `/reports/web` + `blocked=true`; erasure counts; erased device → 401; and,
+  when the gate shell has `DATABASE_URL`, **a Postgres count of 0 rows in all 13 tables**). Probe
+  gains **M1–M6** (bounds; cross-family erasure 403 with the child intact; own erasure counts;
+  erased device 401 on commands *and* ping; 404 afterwards) and `B5b`; `B5` now hits the real route.
+  New unit suite `test/usage-model.test.ts` (13 tests); the cascade test in `test/family.test.ts` now
+  asserts 13 deletes and the revocation writes.
+- **Verified here** (DB from zero, `Asia/Dubai`, API `:3019`): vitest **281/281** (24 files), `tsc`
+  clean, e2e **66 passed, 0 failed**, probe **95 passed · 0 failed · 2 targets · 1 note**; rollup run
+  twice on seeded rows overwrote a stale 999 → 17 and reaped a 107-day-old event, second run identical
+  (rows then removed — hygiene rule §7). ⚠️ Not verified on the testers' hosts yet — **TR-06**.
+
 ### Backend — TR-05: WebSocket `ready` frame; Redis state bounded (#56, #57)
 - **Realtime contract (product change, decided under TR-04):** the gateway now sends
   `{type:"ready", familyId, ts}` as the **first frame on every socket**, immediately after it adds the

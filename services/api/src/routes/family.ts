@@ -8,6 +8,8 @@ import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { getRedis } from "../redis.js";
+import { eraseChildData, screenTimeTodayFromDb } from "../lib/usageModel.js";
+import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -58,8 +60,13 @@ export async function familyRoutes(app: FastifyInstance) {
         const today = new Date().toISOString().slice(0, 10);
         const childUsageKey = `usage:child:${c.id}:${today}`;
         const accumulated = await redis.get(childUsageKey).catch(() => null);
+        // Phase 2c: the Redis key is a cache of the durable AppUsageDaily rows; a flush or restart
+        // must not read as "0 minutes today".
+        const durable = accumulated === null ? await screenTimeTodayFromDb(c.id).catch(() => 0) : 0;
         if (accumulated !== null) {
           screenTimeTodayMinutes = parseInt(accumulated, 10) || 0;
+        } else if (durable > 0) {
+          screenTimeTodayMinutes = durable;
         } else {
           for (const d of c.devices) {
             const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
@@ -148,19 +155,15 @@ export async function familyRoutes(app: FastifyInstance) {
     return child;
   });
 
-  /** GDPR erasure cascade: delete the child and every child-scoped record. */
+  /**
+   * GDPR erasure cascade: delete the child and every child-scoped record (ADR-0013). The list of
+   * tables and Redis keys lives in `eraseChildData()` so there is one place to extend; each deleted
+   * device's token is revoked like an unpair (#56). The response reports the row counts so a caller
+   * (and the e2e gate) can see what was removed.
+   */
   app.delete("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
     const { id } = req.params as { id: string };
-    await prisma.$transaction([
-      prisma.locationPing.deleteMany({ where: { childId: id } }),
-      prisma.alert.deleteMany({ where: { childId: id } }),
-      prisma.device.deleteMany({ where: { childId: id } }),
-      prisma.ruleSet.deleteMany({ where: { childId: id } }),
-      prisma.geofence.deleteMany({ where: { childId: id } }),
-      prisma.consentRecord.deleteMany({ where: { childId: id } }),
-      prisma.child.delete({ where: { id } }),
-    ]);
-    return { erased: true, childId: id };
+    return eraseChildData(id, DEVICE_TOKEN_TTL_SECONDS);
   });
 
   /** Record a parental-consent event (VPC) for an existing child. */

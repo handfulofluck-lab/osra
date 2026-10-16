@@ -265,6 +265,33 @@ if (invite.data?.invite?.id) await call("DELETE", `/v1/family/invites/${invite.d
 const summary = await call("GET", `/v1/reports/summary?childId=${sam.id}&days=7`, { token });
 check("reports summary endpoint live", summary.status === 200 && typeof summary.data?.totalAppMinutes === "number");
 
+// --- 11a. Phase 2c usage model: durable rollups survive a Redis flush (ADR-0013) ---
+const todayKey = new Date().toISOString().slice(0, 10);
+const actBatch = await call("POST", `/v1/devices/${agentId}/activity`, { token: agentToken, body: { events: [
+  { type: "app_usage", payload: { app: "YouTube", minutes: 21 } },
+  { type: "app_usage", payload: { app: "Roblox", minutes: 9 } },
+  { type: "app_usage", payload: { app: "YouTube", minutes: 4, live: true } }, // heartbeat: never counted
+  { type: "url", payload: { url: "https://blocked.example/x", blocked: true, category: "gambling" } },
+  { type: "url", payload: { domain: "news.example" } },
+] } });
+check("activity batch accepted (agent JWT)", actBatch.status === 202, `got ${actBatch.status}`);
+const telTotal = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { totalMinutes: 30, batteryPct: 64 } });
+check("telemetry day total accepted", telTotal.status === 202, `got ${telTotal.status}`);
+// Flush the cache the old code depended on, then read everything back from Postgres.
+const redisFlush = redis.duplicate();
+const flushed = await redisFlush.del(`usage:child:${sam.id}:${todayKey}`).catch(() => -1);
+redisFlush.disconnect();
+const meAfterFlush = await call("GET", "/v1/family/me", { token });
+const samAfter = meAfterFlush.data?.children?.find((c) => c.id === sam.id);
+check("screen time today survives a Redis flush (durable day total)", flushed >= 0 && samAfter?.screenTimeTodayMinutes === 30, `flushed=${flushed} minutes=${samAfter?.screenTimeTodayMinutes}`);
+const usage = await call("GET", `/v1/reports/usage?childId=${sam.id}&days=7`, { token });
+const usageToday = usage.data?.series?.find((d) => d.day === todayKey);
+check("reports/usage: per-day series with per-app split from the rollup table", usage.status === 200 && usage.data?.series?.length === 7 && usageToday?.minutes === 30 && usageToday?.apps?.find((a) => a.app === "YouTube")?.minutes === 21 && usageToday?.apps?.find((a) => a.app === "Roblox")?.minutes === 9 && !usageToday?.apps?.find((a) => a.minutes === 4), `got ${usage.status} ${JSON.stringify(usageToday ?? usage.data).slice(0, 140)}`);
+const web = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1`, { token });
+check("reports/web: browsing history rows with domain + blocked flag", web.status === 200 && web.data?.items?.some((v) => v.domain === "blocked.example" && v.blocked === true && v.category === "gambling") && web.data.items.some((v) => v.domain === "news.example" && v.blocked === false), `got ${web.status} ${JSON.stringify(web.data?.items?.map((v) => v.domain))}`);
+const webBlocked = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1&blocked=true`, { token });
+check("reports/web?blocked=true filters to blocked visits only", webBlocked.status === 200 && webBlocked.data?.items?.length >= 1 && webBlocked.data.items.every((v) => v.blocked === true));
+
 const windDown = await call("POST", `/v1/controls/children/${sam.id}/wind-down`, { token, body: { minutes: 15 } });
 check("wind-down command accepted", windDown.status === 200);
 
@@ -294,6 +321,32 @@ const exp = await call("GET", "/v1/family/export", { token });
 check("GDPR export downloads JSON", exp.status === 200 && !!exp.data?.family?.children);
 const erased = await call("DELETE", `/v1/family/children/${sam.id}`, { token });
 check("GDPR erasure cascade", erased.status === 200 && erased.data?.erased === true);
+check("erasure reports the deleted devices and per-table row counts (ADR-0013)", Array.isArray(erased.data?.deletedDevices) && erased.data.deletedDevices.includes(agentId) && erased.data?.rows?.activityEvent >= 4 && erased.data?.rows?.webVisit >= 2 && erased.data?.rows?.appUsageDaily >= 3 && erased.data?.rows?.socialEvent >= 1, JSON.stringify(erased.data?.rows ?? null));
+// The erased child's agent token is revoked like an unpair (#56): its 10-year JWT must now 401.
+const erasedAgent = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
+check("erased child's device JWT is revoked (401)", erasedAgent.status === 401, `got ${erasedAgent.status}`);
+// Zero rows left: counted in the database itself when the gate shell has DATABASE_URL (TESTING.md §3).
+if (process.env.DATABASE_URL) {
+  const { PrismaClient } = await import("@prisma/client");
+  const db = new PrismaClient();
+  try {
+    const where = { where: { childId: sam.id } };
+    const counts = {
+      activityEvent: await db.activityEvent.count(where), socialEvent: await db.socialEvent.count(where),
+      installRequest: await db.installRequest.count(where), webVisit: await db.webVisit.count(where),
+      appUsageDaily: await db.appUsageDaily.count(where), locationPing: await db.locationPing.count(where),
+      alert: await db.alert.count(where), device: await db.device.count(where), ruleSet: await db.ruleSet.count(where),
+      geofence: await db.geofence.count(where), consentRecord: await db.consentRecord.count(where),
+      deviceCommand: await db.deviceCommand.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),
+      child: await db.child.count({ where: { id: sam.id } }),
+    };
+    check("erasure leaves ZERO child-scoped rows in every table (counted in Postgres)", Object.values(counts).every((n) => n === 0), JSON.stringify(counts));
+  } finally {
+    await db.$disconnect();
+  }
+} else {
+  console.log("NOTE  erasure row-count check skipped — set DATABASE_URL in the gate shell to count rows in Postgres (TESTING.md §3)");
+}
 
 redis.disconnect();
 console.log(`\n=== E2E: ${PASS.length} passed, ${FAIL.length} failed ===`);

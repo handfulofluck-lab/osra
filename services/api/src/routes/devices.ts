@@ -9,15 +9,11 @@ import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
-/**
- * Device JWT lifetime (10 years, `ms`-style "10y" = 365.25-day years), in seconds. The SAME constant
- * bounds the `revoked:device:<id>` key written on unpair (#56): that key is what turns a still-valid
- * device token into `401 device_revoked` once the `Device` row is gone, so it must outlive any token
- * the device could present — never shorter than this, never reaped by cleanup. A key written at
- * unpair with this TTL expires no earlier than the last token minted before the unpair.
- */
-export const DEVICE_TOKEN_TTL_SECONDS = Math.round(10 * 365.25 * 24 * 60 * 60); // 315 576 000
+import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
+// Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
+export { DEVICE_TOKEN_TTL_SECONDS };
 
 const PLATFORM = z.enum(["android", "ios", "windows", "macos", "chromebook"]);
 
@@ -315,6 +311,12 @@ export async function deviceRoutes(app: FastifyInstance) {
       const redis = getRedis();
       await redis.incrby(childUsageKey, parsed.data.totalMinutes);
       await redis.expire(childUsageKey, 86400 * 2);
+      // Phase 2c: the same delta into the durable day total, so "today" survives a Redis flush.
+      try {
+        await recordDeviceTotal(device.childId, id, parsed.data.totalMinutes);
+      } catch (err) {
+        req.log.warn({ err }, "usage rollup write failed (telemetry)");
+      }
     }
 
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
@@ -352,6 +354,13 @@ export async function deviceRoutes(app: FastifyInstance) {
           payload: e.payload as Prisma.InputJsonValue,
         })),
       });
+      // Phase 2c: fold the batch into AppUsageDaily / WebVisit. A failure here must not reject the
+      // batch (the raw log is the source of truth; the nightly rollup reconciles from it).
+      try {
+        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>);
+      } catch (err) {
+        req.log.warn({ err }, "usage rollup write failed (activity)");
+      }
     }
     // Live activity (#29): broadcast the latest app_usage event of the batch so the
     // parent dashboard's live chip updates without polling.
