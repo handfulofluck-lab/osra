@@ -99,6 +99,31 @@ public sealed class SafeSearchTests
         Assert.Equal("http://h/x?a=1&safe=strict", result);
     }
 
+    [Theory]
+    [InlineData("strict", "Strict")]
+    [InlineData("STRICT", "Strict")]
+    [InlineData("Strict", "Strict")]
+    [InlineData("moderate", "Moderate")]
+    [InlineData("MODERATE", "Moderate")]
+    [InlineData("Moderate", "Moderate")]
+    public void YouTubeRestrictHeaderValueMapsActiveModes(string mode, string expected)
+    {
+        Assert.Equal(expected, SafeSearch.GetYouTubeRestrictHeaderValue(mode));
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("OFF")]
+    [InlineData("Off")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    [InlineData("unknown")]
+    public void YouTubeRestrictHeaderValueReturnsNullForOffOrUnrecognized(string? mode)
+    {
+        Assert.Null(SafeSearch.GetYouTubeRestrictHeaderValue(mode));
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         var count = 0;

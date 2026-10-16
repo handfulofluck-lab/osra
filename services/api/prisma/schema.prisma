@@ -79,6 +79,7 @@ model RuleSet {
   allowedDomains      String[]
   blockedDomains      String[]
   safeSearchEnforced  Boolean  @default(true)
+  youtubeRestrictedMode String @default("strict")
   alwaysAllowedApps   String[] @default([])
   bonusMinutesToday   Int      @default(0)
   socialMonitoring    Json     @default("{}")

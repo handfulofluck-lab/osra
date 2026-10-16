@@ -259,6 +259,7 @@ describe("rules routes", () => {
       allowedDomains: ["khanacademy.org"],
       blockedDomains: [],
       safeSearchEnforced: false,
+      youtubeRestrictedMode: "strict",
     });
     expect(body.appRules).toHaveLength(1);
     await app.close();
@@ -402,6 +403,51 @@ describe("rules routes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/overlap/);
     expect(prismaMock.ruleSet.upsert).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("persists and round-trips youtubeRestrictedMode (strict, moderate, off) (#45)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.device.findMany.mockResolvedValue([]);
+
+    for (const mode of ["moderate", "off", "strict"] as const) {
+      let storedRow: Record<string, unknown> | null = null;
+      prismaMock.ruleSet.upsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => {
+        storedRow = { id: "rs-1", childId: CHILD_ID, ...create, updatedAt: new Date().toISOString() };
+        return storedRow;
+      });
+      prismaMock.ruleSet.findUnique.mockImplementation(async () => storedRow);
+
+      const putRes = await app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: {
+          ...validRuleSet,
+          webFilter: {
+            ...validRuleSet.webFilter,
+            youtubeRestrictedMode: mode,
+          },
+        },
+      });
+      expect(putRes.statusCode).toBe(200);
+      expect(putRes.json().webFilter.youtubeRestrictedMode).toBe(mode);
+      expect(prismaMock.ruleSet.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ youtubeRestrictedMode: mode }),
+          update: expect.objectContaining({ youtubeRestrictedMode: mode }),
+        }),
+      );
+
+      const getRes = await app.inject({
+        method: "GET",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+      });
+      expect(getRes.statusCode).toBe(200);
+      expect(getRes.json().webFilter.youtubeRestrictedMode).toBe(mode);
+    }
     await app.close();
   });
 });

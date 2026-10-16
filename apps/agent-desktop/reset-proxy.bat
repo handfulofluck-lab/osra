@@ -6,6 +6,10 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v Pr
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyServer /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections" /v DefaultConnectionSettings /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections" /v SavedLegacySettings /f >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$sig = @'
+[System.Runtime.InteropServices.DllImport(\"wininet.dll\")]
+public static extern bool InternetSetOption(System.IntPtr hInternet, int dwOption, System.IntPtr lpBuffer, int dwBufferLength);
+'@; $type = Add-Type -MemberDefinition $sig -Name WinInet -Namespace FamilyShield -PassThru; [void]$type::InternetSetOption([System.IntPtr]::Zero, 39, [System.IntPtr]::Zero, 0); [void]$type::InternetSetOption([System.IntPtr]::Zero, 37, [System.IntPtr]::Zero, 0)" >nul 2>&1
 echo OSRA proxy cleared - direct connection restored.
 pause
 

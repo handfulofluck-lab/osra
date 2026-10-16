@@ -168,20 +168,32 @@ public sealed class WebFilterProxy : BackgroundService
             var category = _store.LookupCategory(host);
             var blocked = _store.ShouldBlock(host, url);
 
-            if (!blocked && _store.Current?.SafeSearchEnforced == true)
+            if (!blocked)
             {
                 if (SafeSearch.IsYouTubeHost(host))
                 {
-                    request.Headers.AddHeader(new HttpHeader("YouTube-Restrict", "Strict"));
+                    var ytMode = _store.Current?.YoutubeRestrictedMode ?? (_store.Current?.SafeSearchEnforced == true ? "strict" : "off");
+                    var ytHeader = SafeSearch.GetYouTubeRestrictHeaderValue(ytMode);
+                    if (ytHeader is not null)
+                    {
+                        request.Headers.AddHeader(new HttpHeader("YouTube-Restrict", ytHeader));
+                        if (_store.Current?.SafeSearchEnforced == true && SafeSearch.TryRewrite(host, url, out var rewritten))
+                        {
+                            e.Redirect(rewritten);
+                        }
+                    }
                 }
-                else if (SafeSearch.IsGoogleHost(host))
+                else if (_store.Current?.SafeSearchEnforced == true)
                 {
-                    request.Headers.AddHeader(new HttpHeader("X-SafeSearch", "true"));
-                }
+                    if (SafeSearch.IsGoogleHost(host))
+                    {
+                        request.Headers.AddHeader(new HttpHeader("X-SafeSearch", "true"));
+                    }
 
-                if (SafeSearch.TryRewrite(host, url, out var rewritten))
-                {
-                    e.Redirect(rewritten);
+                    if (SafeSearch.TryRewrite(host, url, out var rewritten))
+                    {
+                        e.Redirect(rewritten);
+                    }
                 }
             }
 
@@ -258,6 +270,14 @@ public sealed class WebFilterProxy : BackgroundService
 
     private void SetSystemProxy()
     {
+        var env = Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY") ??
+                  Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY", EnvironmentVariableTarget.User);
+        if (!_config.SetSystemProxy || string.Equals(env, "0", StringComparison.OrdinalIgnoreCase) || string.Equals(env, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogInformation("WinINET system proxy registration disabled (SetSystemProxy=false / FS_SET_SYSTEM_PROXY=0); running proxy on 127.0.0.1:{Port} without modifying system proxy", Port);
+            return;
+        }
+
         using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true);
         if (key is null) throw new InvalidOperationException("Internet Settings registry key not found");
         _previousProxyEnable = key.GetValue("ProxyEnable");
@@ -271,6 +291,13 @@ public sealed class WebFilterProxy : BackgroundService
     /// <summary>Re-applies the WinINET system proxy if tampered (WIN-06 self-healing).</summary>
     public static void EnsureSystemProxy(int port = 8877)
     {
+        var env = Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY") ??
+                  Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY", EnvironmentVariableTarget.User);
+        if (string.Equals(env, "0", StringComparison.OrdinalIgnoreCase) || string.Equals(env, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true);
@@ -285,8 +312,45 @@ public sealed class WebFilterProxy : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Resets the WinINET system proxy if currently pointed to 127.0.0.1:{port}.
+    /// Cleans both main registry keys and legacy Connections blobs to prevent orphaned proxies.
+    /// </summary>
+    public static void ResetSystemProxyIfSet(int port = 8877)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true);
+            if (key is null) return;
+            var server = key.GetValue("ProxyServer") as string;
+            var enable = key.GetValue("ProxyEnable");
+            if (string.Equals(server?.Trim(), $"127.0.0.1:{port}", StringComparison.OrdinalIgnoreCase) ||
+                enable is 1 or "1")
+            {
+                key.SetValue("ProxyEnable", 0);
+                key.DeleteValue("ProxyServer", throwOnMissingValue: false);
+
+                try
+                {
+                    using var connKey = Registry.CurrentUser.OpenSubKey(RegistryPath + @"\Connections", writable: true);
+                    if (connKey != null)
+                    {
+                        connKey.DeleteValue("DefaultConnectionSettings", throwOnMissingValue: false);
+                        connKey.DeleteValue("SavedLegacySettings", throwOnMissingValue: false);
+                    }
+                }
+                catch { }
+
+                RefreshWininet();
+            }
+        }
+        catch { }
+    }
+
     private void RevertSystemProxy()
     {
+        if (!_config.SetSystemProxy) return;
+
         using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true);
         if (key is null) return;
         RestoreValue(key, "ProxyEnable", _previousProxyEnable);

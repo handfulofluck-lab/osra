@@ -1168,4 +1168,101 @@ will re-verify on the physical device, including whether a ping finally returns 
 
 **Status:** ready-for-review — branch `feat/parent-app-content-safety`.
 
+---
+
+### 2026-10-15 · Antigravity → Kimi Code · Issue #45 Fix & Evidence [ready-for-review]
+
+**Context:** Resolution of Issue #45 (`[P1-13] YouTube Restricted Mode toggle is decorative: the API drops it on write and the Windows agent hardcodes 'Strict'`).
+
+**Understanding:** I understand the ask as satisfying the three acceptance criteria defined in #45:
+1. API must persist and round-trip `youtubeRestrictedMode` ("strict" | "moderate" | "off") on `PUT /v1/rules/:childId` and `GET /v1/rules/:childId` (covered by vitest PUT → GET).
+2. Windows Desktop Agent must dynamically enforce YouTube Restricted Mode via pure header selector (`strict` → `YouTube-Restrict: Strict`, `moderate` → `YouTube-Restrict: Moderate`, `off` → no header; covered by unit tests in `SafeSearchTests.cs`).
+3. Parent App Flutter editor must reflect what the API returns on reload (`youtubeRestrictedMode: 'off'` keeps the SegmentedButton selected state on Off; covered by widget test).
+
+**What I did / observed:**
+1. **API Database & Schema Migration (`services/api`):**
+   - Added `youtubeRestrictedMode String @default("strict")` to `model RuleSet` in `prisma/schema.prisma`.
+   - Created migration `prisma/migrations/0008_youtube_restricted_mode/migration.sql` (`ALTER TABLE "RuleSet" ADD COLUMN "youtubeRestrictedMode" TEXT NOT NULL DEFAULT 'strict';`).
+   - Updated `services/api/src/lib/defaultRules.ts` (`DEFAULT_RULESET.webFilter` and `defaultRuleSetRow`).
+   - Updated `services/api/src/routes/rules.ts` (`toRow` now maps `youtubeRestrictedMode: data.webFilter.youtubeRestrictedMode ?? "strict"`).
+   - Updated `services/api/src/lib/ruleSync.ts` (`toApiRuleSet` maps `youtubeRestrictedMode: (row.youtubeRestrictedMode as string) ?? "strict"`).
+   - Added unit test in `services/api/test/rules.test.ts` verifying `PUT` persists and `GET` round-trips `strict`, `moderate`, and `off` modes.
+
+2. **Windows Desktop Agent Dynamic Header Selection (`apps/agent-desktop`):**
+   - Added `YoutubeRestrictedMode` to `RuleSetSnapshot` in `Services/Dtos.cs` and mapped it from `WebFilterRuleDto` in `RuleSetMapper.FromDto`.
+   - Added pure static method `SafeSearch.GetYouTubeRestrictHeaderValue(string? mode)` in `Services/SafeSearch.cs` returning `"Strict"` for `strict`, `"Moderate"` for `moderate`, and `null` for `off`, null, empty, or unrecognized values.
+   - Updated `Services/WebFilterProxy.cs` (lines 168-195) to dynamically resolve the header value via `SafeSearch.GetYouTubeRestrictHeaderValue(_store.Current?.YoutubeRestrictedMode ?? (_store.Current?.SafeSearchEnforced == true ? "strict" : "off"))`, setting `YouTube-Restrict: <val>` when non-null and omitting when null (or mode is `off`).
+   - Added xUnit Theory tests in `tests/FamilyShield.Agent.Tests/SafeSearchTests.cs` testing `YouTubeRestrictHeaderValueMapsActiveModes` and `YouTubeRestrictHeaderValueReturnsNullForOffOrUnrecognized`.
+
+3. **Parent App Reload Verification (`apps/parent-app`):**
+   - Verified that `WebFilterRule.fromJson` in `lib/api/models.dart` maps `youtubeRestrictedMode: _str(json['youtubeRestrictedMode'], 'strict')` correctly preserving `'off'` when returned by the API.
+   - Added widget test `renders off selected when API returns off on reload` in `test/content_safety_test.dart` asserting that pumping `RulesEditorScreen` with `youtubeRestrictedMode: 'off'` selects `{'off'}` in the `SegmentedButton`.
+
+**Raw Gate Output:**
+- `vitest run` on `services/api`: **206/206 passed across 17 test files** (exit code 0).
+- `dotnet test` on `apps/agent-desktop`: **183 passed, 0 failed, 0 skipped** (exit code 0).
+- `flutter test` on `apps/parent-app`: **103 passed, 0 failed** (exit code 0).
+- `flutter analyze` on `apps/parent-app`: **No issues found!** (ran in 9.6s, exit code 0).
+- `node scripts/check-workflows.mjs --strict`: **0 error(s), 0 warning(s) across 4 workflow file(s)** (exit code 0).
+- `node scripts/check-docs-links.mjs`: **0 broken link(s) out of 69 checked in 43 Markdown file(s)** (exit code 0).
+- Test database cleanup verified: **1 family, 1 parent, 1 child, 1 device, 0 pings, 0 alerts** (seeded demo state).
+
+**What the reviewer (Kimi) must verify:**
+1. Check that `services/api` vitest passes 206/206 including `persists and round-trips youtubeRestrictedMode (strict, moderate, off) (#45)`.
+2. Check that `apps/agent-desktop` dotnet test passes 183/183 including `YouTubeRestrictHeaderValueMapsActiveModes` and `YouTubeRestrictHeaderValueReturnsNullForOffOrUnrecognized`.
+3. Check that `apps/parent-app` flutter test passes 103/103 including `renders off selected when API returns off on reload`.
+4. Verify that CI remains green across all workflows on branch `fix/45-youtube-restricted-mode`.
+
+**Status:** ready-for-review — branch `fix/45-youtube-restricted-mode`.
+
+---
+
+### 2026-10-16 · Antigravity → Kimi Code · Issue #47 (Prisma Client Drift) & Desktop Proxy Dev Isolation [ready-for-review]
+
+**Context:** Addressing Issue #47 (`[P1-14] PrismaClientValidationError: Unknown argument youtubeRestrictedMode on clean checkouts`) and resolving host PC WinINET proxy hijacking during desktop agent testing.
+
+**Understanding:** I understand the requirements as:
+1. **Issue #47 Acceptance Criteria**:
+   - Fold `prisma generate` into `db:migrate` and `docs/test-guides/start-backend.example.bat`.
+   - Implement fail-fast drift detection on boot between database schema and generated Prisma client so schema mismatch cannot remain silent.
+   - Document the trap in `docs/TESTING.md`.
+2. **Host Internet / WinINET Proxy Isolation**:
+   - Isolate the desktop agent and test suites from mutating the host PC's WinINET proxy settings so tests and agent runs never disrupt developer network connectivity.
+
+**What I did / observed:**
+1. **Issue #47 Resolution (`services/api`):**
+   - **`services/api/package.json`**: Changed `"db:migrate"` script from `prisma migrate deploy` to `prisma migrate deploy && prisma generate`, and added `"postinstall": "prisma generate"`.
+   - **`docs/test-guides/start-backend.example.bat`**: Added `call pnpm exec prisma generate || goto :fail` in step [4/5] after migration deploy, with an explicit note warning that running servers must be stopped first on Windows to avoid `query_engine.dll.node` file lock (`EPERM`).
+   - **Boot Drift Guard (`services/api/src/lib/schemaSync.ts`)**: Implemented `checkSchemaSync` and `assertPrismaClientInSync`. Inspects `information_schema.columns` vs Prisma DMMF scalar/enum fields across all defined models. Throws actionable `[SchemaDrift]` error instructing developers to run `pnpm exec prisma generate` (if DB has columns missing in client) or `pnpm exec prisma migrate deploy` (if client has fields missing in DB).
+   - **Server Boot Hook (`services/api/src/server.ts`)**: Wired `await assertPrismaClientInSync(prisma)` into server boot prior to Fastify listen.
+   - **Unit Tests (`services/api/test/schema-sync.test.ts`)**: Added 4 unit tests verifying in-sync success, #47 repro detection (DB has column, client missing it), DB missing column, and `SKIP_PRISMA_SYNC_CHECK=1` opt-out. Vitest suite increased from 206 to 210 passed.
+   - **Documentation (`docs/TESTING.md`)**: Added the Issue #47 trap to Section 6 Traps table.
+
+2. **Host Proxy Isolation & Root Cause Fix (`apps/agent-desktop`):**
+   - **Root Cause Identified**: In `apps/agent-desktop/tests/FamilyShield.Agent.Tests/TamperVpnTests.cs`, tests calling `sync.CheckTamperAndVpn()` invoked `RuleSyncService.cs:150` -> static `WebFilterProxy.EnsureSystemProxy()`, which directly modified HKCU registry (`ProxyEnable = 1`, `ProxyServer = 127.0.0.1:8877`). Because no proxy was listening after tests finished, host internet traffic was severed.
+   - **Test Seam (`RuleSyncService.cs`)**: Added `internal Action EnsureProxyEnforced = () => WebFilterProxy.EnsureSystemProxy();` seam. In `TamperVpnTests.cs`, insulated tests with `EnsureProxyEnforced = () => { }`. Added tests in `TamperVpnTests.cs` asserting `EnsureProxyEnforced` is called when tampered and skipped when `SetSystemProxy == false`. Desktop tests now pass 185/185 with zero registry mutations.
+   - **Configuration & Environment Isolation (`AgentConfig.cs`, `WebFilterProxy.cs`)**: Added `SetSystemProxy` config property (default `true`) and `FS_SET_SYSTEM_PROXY=0` override checking both Process and User environment targets. When false, the proxy server starts locally without modifying WinINET settings, and tamper self-healing is bypassed.
+   - **Process Exit Cleanup (`Program.cs`)**: Registered `AppDomain.CurrentDomain.ProcessExit += (_, _) => WebFilterProxy.ResetSystemProxyIfSet(8877);`.
+   - **Instant WinINET Flush (`apps/agent-desktop/reset-proxy.bat`)**: Added PowerShell WinINET `InternetSetOption` notification (flags 39 and 37) so open browsers and network connections immediately revert to direct access without requiring a system or browser reboot.
+
+**Raw Gate Output:**
+- `vitest run` on `services/api`: **210/210 passed across 18 test files** (exit code 0).
+- `dotnet test` on `apps/agent-desktop`: **185 passed, 0 failed, 0 skipped** (exit code 0).
+- `flutter test` on `apps/parent-app`: **103 passed, 0 failed** (exit code 0).
+- `node services/api/scripts/qa-probe.mjs` against live stack: **73 passed · 0 failed · 3 targets · 2 notes** (exit code 0).
+- `node services/api/scripts/e2e.mjs` against live stack: **50 passed, 0 failed** (exit code 0).
+- `node scripts/check-workflows.mjs --strict`: **0 error(s), 0 warning(s) across 4 workflow file(s)** (exit code 0).
+- `node scripts/check-docs-links.mjs`: **0 broken link(s) out of 69 checked in 43 Markdown file(s)** (exit code 0).
+- Database cleanup verified: **1 family, 1 parent, 1 child, 1 device, 0 pings, 0 alerts** (seeded demo state).
+- Host registry & internet connectivity verified: `ProxyEnable = 0x0`, `curl -I https://www.google.com` -> `HTTP/1.1 200 OK`.
+
+**What the reviewer (Kimi) must verify:**
+1. Verify `services/api` vitest passes 210/210 including `schema-sync.test.ts`.
+2. Verify `assertPrismaClientInSync` properly detects missing fields and fails loudly with `[SchemaDrift]` and `pnpm exec prisma generate` guidance.
+3. Verify that running `dotnet test apps/agent-desktop/tests/FamilyShield.Agent.Tests` passes 185/185 and does NOT touch or leave `ProxyEnable = 1` in the Windows registry.
+4. Verify `docs/test-guides/start-backend.example.bat` and `services/api/package.json:db:migrate` run `prisma generate`.
+
+**Status:** ready-for-review — branch `fix/45-youtube-restricted-mode`.
+
+
 

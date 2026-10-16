@@ -270,5 +270,39 @@ void main() {
       final webFilter = Map<String, dynamic>.from(puts.single.body['webFilter'] as Map);
       expect(webFilter['youtubeRestrictedMode'], 'moderate');
     });
+
+    testWidgets('renders off selected when API returns off on reload', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/rules/child-1': (_) => ruleSetPayload('child-1', webFilter: {
+          'blockedCategories': ['pornography'],
+          'allowedDomains': [],
+          'blockedDomains': [],
+          'safeSearchEnforced': true,
+          'youtubeRestrictedMode': 'off',
+        }),
+      });
+
+      await pumpScreen(tester, const RulesEditorScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      // Switch to Web filter tab
+      await tester.tap(find.text('Web filter'));
+      await tester.pumpAndSettle();
+
+      final ytSection = find.text('YouTube Restricted Mode');
+      final scrollable = find.descendant(
+        of: find.byKey(const ValueKey('webFilterList')),
+        matching: find.byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical),
+      );
+      await tester.scrollUntilVisible(ytSection, 150, scrollable: scrollable);
+      await tester.pumpAndSettle();
+
+      final segmentedButtonFinder = find.byType(SegmentedButton<String>);
+      expect(segmentedButtonFinder, findsOneWidget);
+      final segmentedButton = tester.widget<SegmentedButton<String>>(segmentedButtonFinder);
+      expect(segmentedButton.selected, equals({'off'}));
+    });
   });
 }

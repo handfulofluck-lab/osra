@@ -23,6 +23,7 @@ export function toApiRuleSet(row: Record<string, unknown>) {
       allowedDomains: row.allowedDomains,
       blockedDomains: row.blockedDomains,
       safeSearchEnforced: row.safeSearchEnforced,
+      youtubeRestrictedMode: (row.youtubeRestrictedMode as string) ?? "strict",
     },
     appRules: row.appRules,
     routines: row.routines,
