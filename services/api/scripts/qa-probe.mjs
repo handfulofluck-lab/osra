@@ -423,8 +423,47 @@ const overflowLeak = /prisma|invocation|at Object|stack/i.test(JSON.stringify(ov
 check("J1 out-of-range integer rejected (400) with no DB internals leaked", overflow.status === 400 && !overflowLeak, `status=${overflow.status} internalsLeaked=${overflowLeak}`);
 
 target("J2 signed-request replay protection", "a byte-identical signed agent request is accepted twice (signature covers only the body — no timestamp/nonce)");
+// A live pairing for the processing-stop checks (d1 was unpaired in section G).
+const dJ = await pairDevice(kidA, "qa-dev-j3");
 const revokeProbe = await call("POST", `/v1/family/children/${kidA}/consent/revoke`, { token: tokenA });
-target("J3 consent revocation enforcement", `consent-revoke path returns ${revokeProbe.status}; nothing reads ConsentRecord.revokedAt/expiresAt, so revoke/expiry is unenforceable today`);
+const xRevokeProbe = await call("POST", `/v1/family/children/${kidA}/consent/revoke`, { token: tokenB });
+const blockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+// ADR-0008 §2b: withdrawal must stop *processing* — device ingestion and device reads answer 428.
+const pingBody = { childId: kidA, deviceId: dJ.deviceId, lat: 24.7, lng: 46.7, accuracyM: 5, timestamp: new Date().toISOString() };
+const blockedPing = dJ.token ? await call("POST", "/v1/location/ping", { token: dJ.token, body: pingBody }) : { status: 0 };
+const blockedRules = dJ.token ? await call("GET", `/v1/rules/${kidA}`, { token: dJ.token }) : { status: 0 };
+const parentRules = await call("GET", `/v1/rules/${kidA}`, { token: tokenA });
+const blockedDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands`, { token: dJ.token }) : { status: 0 };
+// ADR-0008 §2c: safe-direction actions stay open; enforcement actions do not.
+const resumeOpen = await call("POST", `/v1/controls/children/${kidA}/resume`, { token: tokenA });
+const lockBlocked = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "lock" } }) : { status: 0 };
+const unlockOpen = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "unlock" } }) : { status: 0 };
+const regrant = await call("POST", `/v1/family/children/${kidA}/consent`, { token: tokenA, body: { method: "credit_card", jurisdiction: "US" } });
+const unblockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+const unblockedPing = dJ.token ? await call("POST", "/v1/location/ping", { token: dJ.token, body: pingBody }) : { status: 0 };
+const drainAfter = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands`, { token: dJ.token }) : { status: 0, data: [] };
+const drainTypes = Array.isArray(drainAfter.data) ? drainAfter.data.map((c) => c.type) : [];
+
+check(
+  "J3 consent revocation enforcement (revoke -> 428 on parent writes, regrant -> unblocked)",
+  revokeProbe.status === 200 && xRevokeProbe.status === 403 && blockedWrite.status === 428 && regrant.status === 201 && unblockedWrite.status === 200,
+  `revoke=${revokeProbe.status} xRevoke=${xRevokeProbe.status} blocked=${blockedWrite.status} regrant=${regrant.status} unblocked=${unblockedWrite.status}`,
+);
+check(
+  "J3b consent revocation stops device processing (ping/rules/commands -> 428; parent read stays 200)",
+  blockedPing.status === 428 && blockedRules.status === 428 && blockedDrain.status === 428 && parentRules.status === 200 && unblockedPing.status === 201,
+  `ping=${blockedPing.status} rules=${blockedRules.status} drain=${blockedDrain.status} parentRules=${parentRules.status} pingAfterRegrant=${unblockedPing.status}`,
+);
+check(
+  "J3c safe-direction actions stay open while revoked (resume/unlock 200, lock 428)",
+  resumeOpen.status === 200 && unlockOpen.status === 200 && lockBlocked.status === 428,
+  `resume=${resumeOpen.status} unlock=${unlockOpen.status} lock=${lockBlocked.status}`,
+);
+check(
+  "J3d agents are told to pause and resume (consent_revoked + consent_granted commands queued)",
+  drainTypes.includes("consent_revoked") && drainTypes.includes("consent_granted"),
+  `drain=${JSON.stringify(drainTypes)}`,
+);
 
 // IOS-01: the iOS AlertReporter signs with the device's own secret but sends no top-level
 // `deviceId`, so the server falls back to the global secret and rejects every alert (verified 401).

@@ -11,6 +11,7 @@ import android.media.RingtoneManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.sos.SosActivity
@@ -35,6 +36,7 @@ class CommandDispatcher @Inject constructor(
     @ApplicationContext private val context: Context,
     private val rules: RuleRepository,
     private val devicePolicyManager: DevicePolicyManager,
+    private val consent: ConsentState,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val ringLock = Any()
@@ -44,6 +46,16 @@ class CommandDispatcher @Inject constructor(
 
     /** Executes the command [type] with its string [data] payload; unknown types are ignored. */
     fun dispatch(type: String, data: Map<String, String>) {
+        // ADR-0008 §3: consent lifecycle commands pause/resume the whole agent.
+        if (consent.onCommand(type)) {
+            if (consent.isPaused()) {
+                windDownJob?.cancel(); windDownJob = null
+                rules.setPausedInternet(false)
+            } else {
+                rules.refreshAsync()
+            }
+            return
+        }
         when (type) {
             "lock" -> lock()
             "unlock" -> unlock()

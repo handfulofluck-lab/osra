@@ -11,6 +11,38 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security — Issue #43 / Target J3: consent revocation now stops processing (PR #48)
+- **Revocation endpoint** `POST /v1/family/children/:id/consent/revoke` and status `GET /v1/family/children/:id/consent`
+  (`services/api/src/routes/family.ts`). The `/v1/consent/*` alias from the first draft was removed before merge.
+- **Processing gate (ADR-0008 §2b).** While a child has no active consent, device ingestion
+  (`/v1/location/ping`, `/v1/social/scan`, `/v1/alerts/internal`, `/v1/content/*`, `/v1/devices/:id/telemetry|activity`)
+  and device reads (`GET /v1/rules/:childId`, `GET /v1/devices/:id/commands` with a device JWT) answer **428**.
+  The first draft gated only the parent's configuration writes, which left the child's device collecting
+  location and chat snippets after the parent had withdrawn consent — caught in the `KCL` review.
+- **Safe-direction actions stay open (ADR-0008 §2c):** `resume`, `resume-internet`, device `unlock|resume|resume_internet|sos_clear`
+  and child erasure are never consent-gated; enforcement commands (`lock`, `ring`, `pause`, …) are.
+- **Agents are notified:** revoke enqueues `consent_revoked` to every device of the child and publishes a
+  `consent_revoked` family event; re-grant enqueues `consent_granted`. Device pairings survive revocation.
+- **Android agent** honours the contract: `consent_revoked` and a 428 from rules/commands pause enforcement,
+  social capture, comms logging and location upload; `consent_granted` or a 200 resumes them
+  (`RuleRepository.kt`, `CommandDispatcher.kt`, `LocationService.kt`).
+- Migration `0009_consent_record_index` adds `ConsentRecord(childId, revokedAt)`.
+- **Verified:** vitest 228/228 · `qa-probe` **77 passed · 0 failed · 2 targets (J2, J6)** on a live stack · `e2e` 50/50.
+  Android change is unit-tested (`ConsentStateTest`) but **⚠️ not verified on hardware here** (no device in this environment).
+
+### Fixed — Issue #43: Parental Consent Revocation and Enforcement Across Child-Scoped Writes (Target J3)
+- **Consent Revocation Endpoints (`services/api`)**: Implemented `POST /v1/family/children/:id/consent/revoke` and alias `POST /v1/consent/:childId/revoke` allowing authenticated parents to withdraw consent for their child. Atomically marks active consent records as revoked (`revokedAt = now()`) and enforces strict family isolation (403 on cross-family attempts).
+- **Active Consent Enforcement (`requireConsent` middleware, `services/api`)**: Gated all child-scoped write mutations on an active, non-revoked (`revokedAt IS NULL`), non-expired (`expiresAt IS NULL OR expiresAt > now()`), jurisdiction-matching `ConsentRecord` (HTTP 428 Precondition Required otherwise):
+  - Rules: `PUT /v1/rules/:childId`, `PATCH /v1/rules/:childId`
+  - Devices: `POST /v1/devices/register`, `POST /v1/devices/pair`, `POST /v1/devices/pair/claim`
+  - Remote controls: `POST /v1/controls/children/:childId/pause-internet`, `POST /v1/controls/children/:childId/resume-internet`, `POST /v1/controls/children/:childId/bonus`, `POST /v1/controls/children/:childId/wind-down`
+  - Geofences: `POST /v1/location/geofences`
+  - Child profile: `PATCH /v1/family/children/:id`
+- **Re-Granting Consent Flow**: Confirmed re-granting consent via `POST /v1/family/children/:id/consent` successfully unblocks subsequent child writes.
+- **Probe J3 Promoted to Gate (`services/api/scripts/qa-probe.mjs`)**: Promoted target J3 to a gating assertion verifying revoke -> 428 on write, cross-family rejection (403), re-grant -> 200 unblocked, and alias route `/v1/consent/:childId/revoke` (74 passed, 0 failed, 2 targets, 2 notes).
+- **Unit & Integration Tests**: Added `services/api/test/consent.test.ts` (14 tests) covering revocation, status, 428 precondition responses on revoked/expired/mismatched consent, and re-grant unblocking (224/224 tests passing).
+- **Architecture Documentation**: Documented architectural decision and regulatory compliance in `docs/adr/0008-parental-consent-lifecycle-and-revocation.md`, superseding the tracked gap in ADR-0002.
+
 ### Fixed — CI: `secrets` in a step `if:` rejected the whole workflow (zero jobs ran on PR #49's first push)
 - `.github/workflows/ci.yml`: the keystore step tested `secrets.OSRA_UPLOAD_KEYSTORE_B64` in `if:`; the secrets context is not available there, so GitHub rejected `ci.yml` and the run appeared only as a failed run named by its file path with no jobs — the "gate that looks present and does nothing" class again. The decision now happens inside the run body.
 - `scripts/check-workflows.mjs`: new error for `secrets.` inside any `if:` expression. Verified: the broken file fails the linter (1 error), the fixed tree passes.

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.social.SocialCapture
@@ -20,6 +21,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     @Inject lateinit var usage: UsageReporter
     @Inject lateinit var social: SocialCapture
     @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var consentState: ConsentState
 
     private var lastLocationCheckMs = 0L
 
@@ -27,6 +29,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
         ensureLocationServiceRunning()
+        // ADR-0008 §3: consent withdrawn — the service keeps polling (to learn about a re-grant) but
+        // records, captures and enforces nothing.
+        if (consentState.isPaused()) return
         usage.recordForeground(pkg, System.currentTimeMillis())
         // Feature #2/#17: social/chat text capture for monitored apps (no-op elsewhere).
         social.onAccessibilityEvent(event)

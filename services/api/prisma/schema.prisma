@@ -195,4 +195,6 @@ model ConsentRecord {
   thirdPartySharing Boolean  @default(false)
   child             Child    @relation(fields: [childId], references: [id])
   parent            Parent   @relation(fields: [parentId], references: [id])
+
+  @@index([childId, revokedAt])
 }

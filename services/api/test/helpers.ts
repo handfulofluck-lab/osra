@@ -119,4 +119,35 @@ export function resetPrismaMock(): void {
       ? (arg as (tx: unknown) => unknown)(prismaMock)
       : Promise.all(arg as Promise<unknown>[]),
   );
+  // Default active consent for tests: non-revoked, non-expired, US jurisdiction.
+  prismaMock.consentRecord.findFirst.mockResolvedValue({
+    id: "consent-default",
+    childId: "child-1",
+    parentId: "parent-1",
+    method: "sms_plus",
+    jurisdiction: "US",
+    grantedAt: new Date(),
+    expiresAt: null,
+    revokedAt: null,
+    thirdPartySharing: false,
+  });
+  prismaMock.consentRecord.findMany.mockResolvedValue([{
+    id: "consent-default",
+    childId: "child-1",
+    parentId: "parent-1",
+    method: "sms_plus",
+    jurisdiction: "US",
+    grantedAt: new Date(),
+    expiresAt: null,
+    revokedAt: null,
+    thirdPartySharing: false,
+  }]);
+  prismaMock.consentRecord.updateMany.mockResolvedValue({ count: 1 });
+  // Child-scoped fan-outs (rules_updated, consent_revoked) iterate the child's devices.
+  prismaMock.device.findMany.mockResolvedValue([]);
+  prismaMock.family.findUnique.mockResolvedValue({
+    id: "fam-1",
+    name: "Demo Family",
+    region: "US",
+  });
 }

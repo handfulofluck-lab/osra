@@ -53,8 +53,8 @@ INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                           
 **Reading the probe output.** It prints three severities, deliberately:
 
 - **failures** — an invariant is broken. The gate exits non-zero; fix it before merging.
-- **targets** — behaviour that needs a product decision before it can be asserted (replay protection,
-  consent revocation, the global-secret fallback). Non-gating, so the gate stays actionable; do **not**
+- **targets** — behaviour that needs a product decision before it can be asserted (replay protection `J2`,
+  the global-secret fallback `J6`; consent revocation `J3 (+ J3b processing stop, J3c safe-direction, J3d agent commands)` is now resolved and enforced as a gate check). Non-gating, so the gate stays actionable; do **not**
   turn a target into a silent pass.
 - **notes** — observations for the record (e.g. a route a parent can call that drains a device queue).
 
