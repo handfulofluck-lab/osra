@@ -21,9 +21,11 @@ import okhttp3.Response
  */
 class SignatureInterceptor(
     private val secretProvider: () -> String?,
-    private val clock: () -> Long = { System.currentTimeMillis() / 1000 },
-    private val nonceProvider: () -> String = { newNonce() },
 ) : Interceptor {
+    // Overridable for tests only; the single-parameter constructor keeps the trailing-lambda call
+    // sites (`SignatureInterceptor { settings.hmacSecretSync() }`) binding to `secretProvider`.
+    internal var clock: () -> Long = { System.currentTimeMillis() / 1000 }
+    internal var nonceProvider: () -> String = { newNonce() }
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
