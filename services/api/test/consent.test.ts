@@ -97,7 +97,7 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
     const app = await buildConsentApp();
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
     prismaMock.device.findMany.mockResolvedValue([{ id: "dev-1" }, { id: "dev-2" }]);
-    MockRedis.instances.forEach((r) => r.lpush.mockClear());
+    prismaMock.deviceCommand.create.mockClear();
 
     const res = await app.inject({
       method: "POST",
@@ -107,9 +107,12 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
 
     expect(res.statusCode).toBe(200);
     expect(res.json().devicesNotified).toBe(2);
-    const pushed = MockRedis.instances.flatMap((r) => r.lpush.mock.calls.map((c) => [c[0], JSON.parse(c[1] as string)]));
-    const queues = pushed.filter(([, msg]) => (msg as { type: string }).type === "consent_revoked").map(([k]) => k);
-    expect(queues.sort()).toEqual(["device:dev-1:command-queue", "device:dev-2:command-queue"]);
+    // Phase 2b: the command is a durable row per device, not a Redis list entry.
+    const queued = prismaMock.deviceCommand.create.mock.calls
+      .map(([arg]: [{ data: { deviceId: string; type: string } }]) => arg.data)
+      .filter((d) => d.type === "consent_revoked")
+      .map((d) => d.deviceId);
+    expect(queued.sort()).toEqual(["dev-1", "dev-2"]);
     await app.close();
   });
 

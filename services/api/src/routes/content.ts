@@ -1,9 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { raiseAlert } from "../lib/alerts.js";
 import { getRedis } from "../redis.js";
-import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
@@ -124,7 +123,7 @@ export async function contentRoutes(app: FastifyInstance) {
 
     const child = await prisma.child.findUnique({
       where: { id: childId },
-      select: { id: true, familyId: true, birthYear: true },
+      select: { id: true, familyId: true, birthYear: true, displayName: true },
     });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
     // ADR-0008 §2b: withdrawal of consent stops collection.
@@ -161,23 +160,18 @@ export async function contentRoutes(app: FastifyInstance) {
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 
     if (!throttled) {
-      const alert = await prisma.alert.create({
-        data: {
-          childId,
-          deviceId: effectiveDeviceId,
-          severity: verdict.severity,
-          category: verdict.concernTypes.includes("self_harm") ? "self_harm" : "ai_concern",
-          title: `Search query concern on ${engine}`,
-          body: `A concerning search was conducted on ${engine}`,
-          metadata: {
-            engine,
-            concernTypes: verdict.concernTypes,
-            url,
-          } as Prisma.InputJsonValue,
-        },
+      const alert = await raiseAlert({
+        childId,
+        familyId: child.familyId,
+        deviceId: effectiveDeviceId,
+        severity: verdict.severity,
+        category: verdict.concernTypes.includes("self_harm") ? "self_harm" : "ai_concern",
+        title: `Search query concern on ${engine}`,
+        body: `A concerning search was conducted on ${engine}`,
+        metadata: { engine, concernTypes: verdict.concernTypes, url },
+        childName: child.displayName,
       });
       alertId = alert.id;
-      await publishFamilyEvent(child.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
     }
 
     return reply.code(201).send({
@@ -221,7 +215,7 @@ export async function contentRoutes(app: FastifyInstance) {
 
     const child = await prisma.child.findUnique({
       where: { id: childId },
-      select: { id: true, familyId: true, birthYear: true },
+      select: { id: true, familyId: true, birthYear: true, displayName: true },
     });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
     // ADR-0008 §2b: withdrawal of consent stops collection.
@@ -246,18 +240,17 @@ export async function contentRoutes(app: FastifyInstance) {
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 
-    const alert = await prisma.alert.create({
-      data: {
-        childId,
-        deviceId: effectiveDeviceId,
-        severity: verdict.severity,
-        category: "ai_concern",
-        title: `YouTube video flagged: ${title.slice(0, 40)}`,
-        body: `A video with sensitive content was opened on YouTube (${channel})`,
-        metadata: { videoId, channel, concernTypes: verdict.concernTypes } as Prisma.InputJsonValue,
-      },
+    const alert = await raiseAlert({
+      childId,
+      familyId: child.familyId,
+      deviceId: effectiveDeviceId,
+      severity: verdict.severity,
+      category: "ai_concern",
+      title: `YouTube video flagged: ${title.slice(0, 40)}`,
+      body: `A video with sensitive content was opened on YouTube (${channel})`,
+      metadata: { videoId, channel, concernTypes: verdict.concernTypes },
+      childName: child.displayName,
     });
-    await publishFamilyEvent(child.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
 
     return reply.code(201).send({
       flagged: true,
