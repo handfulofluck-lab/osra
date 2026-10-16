@@ -49,7 +49,10 @@ currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/
 ## Wiring contracts (§12.3)
 
 - API paths must match the route TODOs below exactly.
-- WebSocket events use shape `{ type, payload, ts }` published to `family:${familyId}:events`.
+- WebSocket events use shape `{ type, payload, ts }` published to `family:${familyId}:events`. The
+  gateway sends `{ type: "ready", familyId, ts }` as the first frame on every socket, after it has
+  registered the socket for the family; no event frame precedes it (TR-05). Clients wait for it
+  before treating the stream as live (e.g. to end a reconnect spinner).
 - Agent internal calls must carry header `X-FamilyShield-Signature` = HMAC-SHA256(body, INTERNAL_HMAC_SECRET).
 
 ## Data isolation (§12.4 — non-negotiable)

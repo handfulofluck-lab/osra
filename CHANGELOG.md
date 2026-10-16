@@ -11,6 +11,41 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Backend — TR-05: WebSocket `ready` frame; Redis state bounded (#56, #57)
+- **Realtime contract (product change, decided under TR-04):** the gateway now sends
+  `{type:"ready", familyId, ts}` as the **first frame on every socket**, immediately after it adds the
+  socket to the family set (`src/realtime/gateway.ts`). A client that has not seen `ready` cannot know
+  whether a published event reached it; one that has can treat a missing event as a delivery failure
+  rather than a race. `docs/SPEC.md` and `README.md` record the contract.
+- **Gates:** `scripts/e2e.mjs` §7 waits for `ready` before posting the alert and no longer polls the
+  Redis ticket key (one mechanism, not two — Kimi's question on #62); a new check asserts `ready` is the
+  first frame and names the family. `scripts/qa-probe.mjs` gains **L1–L5** (ready first and bound to
+  the caller's family; an alert published after ready arrives after it; no event precedes ready;
+  invalid ticket → `4001` with no ready; a consumed ticket cannot open a second socket). The probe now
+  carries the same `--experimental-websocket` re-exec shim as e2e for Node 20. New unit suite
+  `test/realtime.test.ts` opens real sockets against a listening Fastify instance (3 tests; 2 of them
+  fail on the previous gateway).
+- **#56 — `revoked:device:<id>` is bounded, not reaped.** Unpair now writes it with `EX` =
+  `DEVICE_TOKEN_TTL_SECONDS` (10 y = 315 576 000 s), the same constant the device JWT is minted with
+  (`expiresIn` was the `ms` string `"10y"`, now the number — identical lifetime, and a test proves
+  `exp − iat` equals the key's TTL so the two cannot drift). The handler comment states that the key is
+  security state and must never be shortened or deleted while the token could still be presented;
+  `scripts/cleanup-test-redis.mjs` already keeps it. Keys written before this change keep `TTL -1`
+  until the next unpair of that id (the QA tool reports them; they are still controls).
+- **#57 — `refresh:index:<parentId>` no longer leaks.** `/logout` reads the owner from the live record
+  *before* deleting it and `srem`s the hash; the expired-but-present path does the same; both go through
+  one `retireRefreshToken()` helper shared with rotation. The index SET re-arms a 30-day TTL on every
+  issue (`expire`), so an abandoned index disappears a refresh-lifetime after the last login even if a
+  path is ever missed. Four new tests in `test/token-hygiene.test.ts` (logout removes only that
+  session's hash; expired token is retired from the index; TTL re-armed; #56 bound) — all four fail on
+  the previous code.
+- **Verified here** on a database created from zero with session zone `Asia/Dubai`, API on `:3019`:
+  vitest **268/268** (23 files), `tsc` clean, **e2e 57 passed, 0 failed** (56 + the ready check),
+  **qa-probe 88 passed · 0 failed · 2 targets (J2, J6) · 1 note (E4)** (83 + L1–L5). Live Redis:
+  the logged-out session's hash is absent from its `refresh:index:*` set; a fresh unpair's
+  `revoked:device:*` key reports `TTL 315576000`. ⚠️ Not verified on the testers' hosts yet — that is
+  **TR-05**.
+
 ### QA — TR-03 (post-merge smoke of `main`) and TR-04 (e2e WebSocket harness), in the same PR as TR-01/TR-02
 - **TR-03 — `main`@`e1e0f74` smoked on a database created from zero**, session zone `Asia/Dubai`:
   `prisma migrate deploy` applied **all 12 migrations** to an empty database (0001→0012, including the

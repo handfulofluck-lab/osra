@@ -140,15 +140,16 @@ check("WS ticket issued", ticketRes.status === 200 && !!ticketRes.data?.ticket);
 // TR-04: the old harness armed a ONE-SHOT promise on the socket and aborted the entire run when it
 // timed out, recording 0 FAILs — so every later check silently never ran and a flake read as a hard
 // failure. That shape is gone: frames are collected, and the stimulus is made repeatable instead of
-// lucky, with a bounded re-post.
+// lucky, with a bounded re-post. On the CAUSE of the single abort that started this: the plausible
+// mechanism — the frame is published before the gateway registers the socket — did NOT reproduce
+// (20/20 immediate-post trials delivered). The diagnostics (frames=, wsError=, wsClose=) are what
+// will explain the next one.
 //
-// On the CAUSE of the single abort that started this: the plausible mechanism — the frame is
-// published before the gateway registers the socket, which happens only after the ticket's Redis
-// GET+DEL — did NOT reproduce (20/20 immediate-post trials delivered, and main's unmodified harness
-// passed the original failing sequence). The wait below is therefore a cheap ordering guard, NOT a
-// proven fix, and it must not be described as one. The diagnostics are the part that matters: the
-// next abort reports frames=, wsError= and wsClose=, which is what will separate "the frame was
-// lost" from "the server closed the socket" from "the subscriber never delivered at all".
+// TR-05: the gateway now sends `{type:"ready", familyId, ts}` as the FIRST frame on every socket,
+// after it has added the socket to the family set. The harness waits for that frame before it posts
+// the alert, so the ordering is a server contract rather than a guess; the Redis ticket polling that
+// stood in for it under TR-04 is gone (one mechanism, not two). If an alert is ever lost AFTER
+// `ready` was received, that is a finding against the subscriber, not a harness race.
 //
 // The assertion is unchanged — the alert must be delivered, and a genuinely undelivered alert still
 // fails after the last attempt.
@@ -165,8 +166,6 @@ ws.addEventListener("close", (ev) => { wsClose = `${ev?.code ?? "?"} ${ev?.reaso
 await new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", rej); });
 check("parent WebSocket connected", ws.readyState === 1);
 
-// The `redis` client above is in subscriber mode, so query the ticket through a duplicate.
-const redisDirect = redis.duplicate();
 const waitUntil = async (predicate, ms) => {
   const deadline = Date.now() + ms;
   for (;;) {
@@ -176,14 +175,12 @@ const waitUntil = async (predicate, ms) => {
     await new Promise((r) => setTimeout(r, 100));
   }
 };
-// The gateway deletes the ticket and registers the socket in the same tick, so a consumed ticket
-// means the registration is imminent. This narrows the window; it is not a proven fix (see the block
-// comment above), and it is expected to be replaced by the server-side `ready` frame (TR-05).
-const consumed = await waitUntil(
-  () => redisDirect.get(`ws:ticket:${ticketRes.data.ticket}`).then((v) => v === null, () => false),
-  4000,
+const ready = await waitUntil(() => wsFrames.find((f) => f.type === "ready"), 5000);
+check(
+  "WebSocket `ready` frame is the first frame and names the family (TR-05)",
+  !!ready && wsFrames[0] === ready && ready.familyId === me.data.family.id && typeof ready.ts === "string",
+  [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160),
 );
-console.log(`NOTE  ws ticket consumed before the alert: ${Boolean(consumed)}${consumed ? "" : " (registration still in flight)"}`);
 
 let evt = null;
 for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
@@ -191,10 +188,9 @@ for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
   if (attempt === 1) check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
   evt = await waitUntil(() => wsFrames.find((f) => f.type === "alert" && f.payload?.title === "E2E alert"), 10000);
   if (!evt && wsClose) { console.log(`NOTE  socket closed by the server (${wsClose}) — retrying the stimulus cannot help`); break; }
-  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} — retrying the stimulus (cause unidentified; see the TR-04 block comment above)`);
+  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} after ready=${Boolean(ready)} — retrying the stimulus (see the TR-04/TR-05 block comment above)`);
 }
 check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(evt ?? wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160));
-redisDirect.disconnect();
 ws.close();
 
 const badSig = await call("POST", "/v1/alerts/internal", { body: { childId: sam.id, severity: "info", category: "sos", title: "x", body: "y" } });
