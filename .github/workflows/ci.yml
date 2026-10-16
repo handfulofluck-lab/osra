@@ -51,13 +51,20 @@ jobs:
       # key placeholder. The Maps key is a repository secret (blank is tolerated for the build;
       # the map simply renders empty). Signing: with OSRA_UPLOAD_KEYSTORE_B64 set this produces an
       # upload-key-signed AAB; without it the debug key is used and the job still proves the build.
+      # NOTE: the `secrets` context is NOT available in a step `if:` — GitHub rejects the whole
+      # workflow file ("Unrecognized named-value: 'secrets'") and zero jobs run, which is exactly
+      # how the first push of this PR failed. Decide inside the run body instead.
       - name: Materialise upload keystore (if configured)
-        if: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 != '' }}
         env:
           KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
         run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release build will use the debug key (by design)"
+            exit 0
+          fi
           echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
           echo "OSRA_UPLOAD_KEYSTORE=upload.jks" >> "$GITHUB_ENV"
+          echo "upload keystore materialised"
       - name: Release build (AAB)
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}

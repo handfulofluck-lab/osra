@@ -11,6 +11,10 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Fixed — CI: `secrets` in a step `if:` rejected the whole workflow (zero jobs ran on PR #49's first push)
+- `.github/workflows/ci.yml`: the keystore step tested `secrets.OSRA_UPLOAD_KEYSTORE_B64` in `if:`; the secrets context is not available there, so GitHub rejected `ci.yml` and the run appeared only as a failed run named by its file path with no jobs — the "gate that looks present and does nothing" class again. The decision now happens inside the run body.
+- `scripts/check-workflows.mjs`: new error for `secrets.` inside any `if:` expression. Verified: the broken file fails the linter (1 error), the fixed tree passes.
+
 ### Fixed — Phase 0 repo hygiene: the parent app's release build could not reach the network
 - **`INTERNET` was declared only in the debug manifest** (`apps/parent-app/android/app/src/debug/AndroidManifest.xml`),
   so a `--release` build of the parent app could not log in. Moved to the main manifest with
