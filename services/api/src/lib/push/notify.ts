@@ -31,7 +31,8 @@ export function minPushSeverity(env: NodeJS.ProcessEnv = process.env): Severity 
   return v && v in SEVERITY_RANK ? v : "info";
 }
 
-export function shouldPush(alert: Pick<AlertLike, "severity" | "category">, min: Severity): boolean {
+export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | null | undefined, min: Severity): boolean {
+  if (!alert) return false;
   const sev = (alert.severity as Severity) in SEVERITY_RANK ? (alert.severity as Severity) : "info";
   // SOS and tamper always wake the parent regardless of the floor.
   if (alert.category === "sos" || alert.category === "tamper") return true;
@@ -97,6 +98,9 @@ export interface NotifyOutcome {
 export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, childName?: string): Promise<NotifyOutcome> {
   const outcome: NotifyOutcome = { recipients: 0, delivered: 0, pruned: 0, skipped: null };
   try {
+    // Defensive: raiseAlert always passes the created row, but a caller with a mocked or failed
+    // create must not turn into a TypeError in a fire-and-forget path (Antigravity review of #51).
+    if (!alert) return { ...outcome, skipped: "severity" };
     if (!shouldPush(alert, minPushSeverity())) return { ...outcome, skipped: "severity" };
     const providers = getPushProviders();
     if (providers.size === 0) {
