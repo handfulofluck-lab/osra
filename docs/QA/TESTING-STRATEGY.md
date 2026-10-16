@@ -56,13 +56,17 @@ rather than implying coverage.
 6. **Stacked PRs: verify the tip** (it covers its ancestors) and re-verify after any rebase.
 7. **Escalate to the human** after 24h blocked, or immediately on a second disagreement.
 
-## 4. Cadence
+## 4. Cadence and where messages go (agreed 2026-10-16)
 
-- The verifier checks for new work on a **~1 hour cycle** and verifies the tip of anything pushed.
+- **Interval:** while any request in `docs/QA/TEST-REQUESTS.md` is open, both sides check every
+  **30 minutes**; with nothing open, every **60 minutes**. The 30-minute figure is the one both testers
+  replied under for TR-01/TR-02; the 1-hour figure from the first draft of this document is the idle cadence.
+- **The message file is `docs/QA/TEST-REQUESTS.md`:** short, dated messages in its *Messages* section
+  (newest first), one line each, quoting a `TR-nn` where one applies. Long-form evidence and
+  point-by-point replies stay in `DISCUSSION-LOG.md` (append-only); PR comments carry the evidence for a
+  specific change; the program board issue (#50) is the source of truth for lanes and ownership.
 - The author responds in the same window with agreement, a counter-proposal, or the fix — the loop is
   two-way, not a queue.
-- **The program board issue is the single source of truth** for lanes/ownership; PR comments carry the
-  evidence for a specific change; `DISCUSSION-LOG.md` keeps the durable narrative.
 - If the interval must change (long build, night off), say so — silence should not read as agreement.
 
 ## 5. Sign-off checklist for a merged change
