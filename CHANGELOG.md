@@ -11,6 +11,37 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — TR-01/TR-02 verification, Redis hygiene tooling, two lifecycle findings (PR #58, issues #56/#57)
+- **TR-01 PASS — Issue #53 re-verified on a non-UTC host.** `feat/backend-command-queue@c8676e2` was
+  verified on an `Asia/Dubai` (UTC+04) database whose `DeviceCommand` columns were genuinely
+  `timestamp(3) without time zone` before `migrate deploy` applied `0012_device_command_timestamptz`
+  — i.e. the upgrade path, not a fresh schema. Results: **vitest 261/261 (22 files)**,
+  **qa-probe 83 passed · 0 failed · 2 targets (J2, J6) · 1 note (E4)** including the new
+  `K1`–`K4` device-drain/delivery/ack checks, **e2e 56/56**. Issue #53 closed as verified.
+- **TR-02 PASS — `feat/backend-push-email@8276dd2`: vitest 252/252 (21 files), zero `TypeError` lines.**
+- **Gate integrity re-checked on all three branches:** `qa-probe.mjs` vs `main` is 63/2 additions on the
+  queue branch and 40/1 on each other branch, and every deletion is a promotion (a `note`→gating `check`
+  for `B11`, a `target`→four gating checks for `J3`). No assertion relaxed anywhere.
+- **New `services/api/scripts/cleanup-test-redis.mjs`** (dry run by default): classifies every Redis key,
+  deletes only keys whose owning row is gone, and **never** touches `revoked:device:*` — that key is the
+  control that makes an unpaired device's 10-year JWT answer `401`, not residue. Documented in
+  `docs/TESTING.md` §5 and as a trap row.
+- **Finding #56 (low):** per-device Redis keys have no owner. `revoked:device:*` is unbounded (10-year
+  JWT, no TTL) and `cleanup-test-data.sql` cannot reach Redis. Also records my own mistake: I deleted 33
+  such keys before reading the handler, and retract the "reap it on delete" suggestion — the fix is to
+  **bound** the key by the token lifetime, never to reap it.
+- **Finding #57 (low):** `refresh:index:<parentId>` (a Redis SET, no TTL) leaks a permanent member on
+  every `/logout` (`routes/auth.ts:255-263`) and every naturally-expired session (`:242-244`); only
+  rotation (`:247`) and logout-all (`:97`) clean up. 42 such keys with `TTL -1` after one day of runs.
+- **`docs/TESTING.md`:** trap row for `e2e.mjs` aborting with `Error: ws timeout` (the harness races the
+  server's socket registration and aborts with **0 FAILs recorded**, hiding the remaining checks) and for
+  over-broad cleanup scripts.
+- **Durable log:** full TR-01/TR-02 reply, the cadence agreement (30 min, checks at :23 and :53) and the
+  correction above appended to `docs/QA/DISCUSSION-LOG.md`.
+- **Verified:** all numbers above reproduced on the host PC against a live API on a non-UTC database;
+  database restored to seed state (1 family / 1 parent / 1 child / 1 device / 0 pings / 3 seeded demo
+  alerts / 2 geofences / 0 social / 0 invites / 0 commands) and Redis left with 170 keys, all with a TTL.
+
 ### Security — Issue #43 / Target J3: consent revocation now stops processing (PR #48)
 - **Revocation endpoint** `POST /v1/family/children/:id/consent/revoke` and status `GET /v1/family/children/:id/consent`
   (`services/api/src/routes/family.ts`). The `/v1/consent/*` alias from the first draft was removed before merge.

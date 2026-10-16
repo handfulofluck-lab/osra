@@ -106,7 +106,15 @@ the specific claim the change makes. Paste the raw evidence into the issue.
 adb uninstall com.familyshield.agent && adb reverse --remove-all
 psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql
 psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # expect 1 / 1
+node services/api/scripts/cleanup-test-redis.mjs            # dry run: lists orphaned per-device keys
+node services/api/scripts/cleanup-test-redis.mjs --apply    # deletes only keys whose owner row is gone
 ```
+
+**Redis is part of the environment too** — `AGENTS.md` §7 says persistent (`TTL -1`) keys must be
+removed or explained, and the SQL script cannot see them. `cleanup-test-redis.mjs` reaps only keys
+whose owning row no longer exists; it **never** touches a `revoked:device:*` key for a device that
+still exists, because that key is the control that makes an unpaired device's 10-year JWT get `401`
+(issue #56). Any key it reports as kept, keep.
 
 ## 6. Traps that have cost real time here
 
@@ -121,6 +129,8 @@ psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'
 | Emulator: no location, ever | Emulator GPS injection does not reach agents | Verify location on the physical device only |
 | CI: `Process completed with exit code 126` | A committed script lacks the executable bit in git (Windows-authored repos strip it) | `git update-index --chmod=+x <file>`; check both `gradlew` wrappers, `.sh` scripts and `.githooks/*`. This bit `gradlew` (the Android job) and the pre-push hook itself — on a Linux/macOS clone the hook would not have run at all |
 | `PrismaClientValidationError: Unknown argument <field>` / `400 invalid_input` on writes right after a schema migration | Generated Prisma client predates the DB migration (`#47`) | Run `pnpm exec prisma generate` (or run `pnpm db:migrate` which now chains `deploy && generate`). The API boot check (`assertPrismaClientInSync`) fails fast on schema drift |
+| `e2e.mjs` aborts with `Error: ws timeout` and the summary never prints | The harness posts the alert the instant the socket reports `open`, while the server registers the socket inside the async route only after the ticket's Redis `GET`+`DEL` — under load the message is published before registration and is lost | Re-run it (observed once in two consecutive runs, on a loaded host). Note it aborts the run with **0 FAILs recorded**, so the remaining ~30 checks silently never execute — read the line count, not just "no failures". QA owns the harness fix; do not loosen the assertion |
+| A committed cleanup script deletes more than expected | `cleanup-test-data.sql` restores the **database**; per-device Redis keys are invisible to it, and `revoked:device:*` is security state, not residue (`#56`) | Use `scripts/cleanup-test-redis.mjs` (dry run by default) rather than `redis-cli` by hand. Per-device keys are only ever deleted with their owner row |
 
 ## 7. Definition of done (tests)
 
