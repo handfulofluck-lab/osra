@@ -68,3 +68,5 @@ Start here. This page is the map: what each document is for, and which one to re
   verified. An unqualified claim in these docs is a documentation bug — please report it.
 - **Open questions are recorded, not hidden**: probe targets in `QA/ANTIGRAVITY-INBOX.md`, gaps in the
   audits, and unresolved decisions in the changelog's "verification state" notes.
+
+- `docs/QA/TEST-REQUESTS.md` — open test requests from KCL lead to the testers, with ids and pass criteria; replies go to `docs/QA/DISCUSSION-LOG.md`.
