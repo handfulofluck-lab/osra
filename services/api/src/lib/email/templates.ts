@@ -1,0 +1,96 @@
+import type { EmailMessage } from "./index.js";
+
+/**
+ * Email templates. Bilingual (English + Arabic) by default: the product's first market is
+ * Arabic-speaking families and the parent app has no locale preference yet, so every message
+ * carries both. When a parent locale exists, pass it and the other language is dropped.
+ */
+
+export type Locale = "en" | "ar" | "both";
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function shell(parts: { en: { title: string; body: string[]; cta?: { label: string; href: string } }; ar: { title: string; body: string[]; cta?: { label: string; href: string } } }, locale: Locale) {
+  const block = (dir: "ltr" | "rtl", t: { title: string; body: string[]; cta?: { label: string; href: string } }) => `
+    <div dir="${dir}" style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2430">
+      <h2 style="margin:0 0 12px;font-size:20px">${esc(t.title)}</h2>
+      ${t.body.map((p) => `<p style="margin:0 0 12px;line-height:1.5">${esc(p)}</p>`).join("")}
+      ${t.cta ? `<p style="margin:20px 0"><a href="${esc(t.cta.href)}" style="background:#3949ab;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block">${esc(t.cta.label)}</a></p><p style="font-size:12px;color:#667">${esc(t.cta.href)}</p>` : ""}
+    </div>`;
+  const text = (t: { title: string; body: string[]; cta?: { label: string; href: string } }) =>
+    [t.title, "", ...t.body, ...(t.cta ? ["", `${t.cta.label}: ${t.cta.href}`] : [])].join("\n");
+  const en = locale !== "ar";
+  const ar = locale !== "en";
+  return {
+    html: `<!doctype html><html><body style="margin:0;background:#f6f7fb;padding:16px 0">${en ? block("ltr", parts.en) : ""}${en && ar ? '<hr style="border:0;border-top:1px solid #e3e6ef;max-width:560px">' : ""}${ar ? block("rtl", parts.ar) : ""}<p style="text-align:center;font-size:11px;color:#99a">OSRA · أسرة</p></body></html>`,
+    text: [en ? text(parts.en) : "", en && ar ? "\n----\n" : "", ar ? text(parts.ar) : ""].join(""),
+  };
+}
+
+export function passwordResetEmail(to: string, link: string, locale: Locale = "both"): EmailMessage {
+  const { html, text } = shell(
+    {
+      en: {
+        title: "Reset your OSRA password",
+        body: ["We received a request to reset the password for this account. The link below works for 15 minutes.", "If you did not ask for this, you can ignore this email; your password will not change."],
+        cta: { label: "Choose a new password", href: link },
+      },
+      ar: {
+        title: "إعادة تعيين كلمة مرور أسرة",
+        body: ["وصلنا طلب لإعادة تعيين كلمة المرور لهذا الحساب. الرابط أدناه صالح لمدة 15 دقيقة.", "إذا لم تطلب ذلك، تجاهل هذه الرسالة ولن تتغير كلمة المرور."],
+        cta: { label: "اختيار كلمة مرور جديدة", href: link },
+      },
+    },
+    locale,
+  );
+  return { to, subject: "Reset your OSRA password · إعادة تعيين كلمة المرور", html, text };
+}
+
+export function inviteEmail(to: string, opts: { inviterName: string; familyName: string; role: string; link: string }, locale: Locale = "both"): EmailMessage {
+  const { html, text } = shell(
+    {
+      en: {
+        title: `${opts.inviterName} invited you to the ${opts.familyName} family on OSRA`,
+        body: [`You have been invited as a ${opts.role}. Accept to see the family's children, alerts and controls from your own account.`, "The invitation expires in 7 days."],
+        cta: { label: "Accept invitation", href: opts.link },
+      },
+      ar: {
+        title: `${opts.inviterName} دعاك للانضمام إلى عائلة ${opts.familyName} في أسرة`,
+        body: [`تمت دعوتك بصفة ${opts.role}. اقبل الدعوة لمتابعة الأطفال والتنبيهات وأدوات التحكم من حسابك.`, "تنتهي صلاحية الدعوة خلال 7 أيام."],
+        cta: { label: "قبول الدعوة", href: opts.link },
+      },
+    },
+    locale,
+  );
+  return { to, subject: `Invitation to ${opts.familyName} on OSRA · دعوة إلى أسرة`, html, text, idempotencyKey: `invite:${opts.link}` };
+}
+
+export interface DigestChild {
+  displayName: string;
+  totalAppMinutes: number;
+  topApps: Array<{ name: string; minutes: number }>;
+  urlVisits: number;
+  topBlockedDomains: Array<{ domain: string; count: number }>;
+  socialConcerns: number;
+  calls: number;
+  sms: number;
+}
+
+export function digestEmail(to: string | string[], opts: { familyName: string; days: number; children: DigestChild[]; link: string }, locale: Locale = "both"): EmailMessage {
+  const periodEn = opts.days === 1 ? "today" : `the last ${opts.days} days`;
+  const periodAr = opts.days === 1 ? "اليوم" : `آخر ${opts.days} أيام`;
+  const lineEn = (c: DigestChild) =>
+    `${c.displayName}: ${c.totalAppMinutes} min on screen; top apps ${c.topApps.map((a) => `${a.name} ${a.minutes}m`).join(", ") || "none"}; ${c.urlVisits} sites visited, ${c.topBlockedDomains.length} blocked; ${c.socialConcerns} social concern(s); ${c.calls} calls, ${c.sms} SMS.`;
+  const lineAr = (c: DigestChild) =>
+    `${c.displayName}: ${c.totalAppMinutes} دقيقة على الشاشة؛ أكثر التطبيقات ${c.topApps.map((a) => `${a.name} ${a.minutes}د`).join("، ") || "لا شيء"}؛ ${c.urlVisits} موقعاً، ${c.topBlockedDomains.length} محجوب؛ ${c.socialConcerns} تنبيه اجتماعي؛ ${c.calls} مكالمة، ${c.sms} رسالة.`;
+  const { html, text } = shell(
+    {
+      en: { title: `OSRA digest for ${opts.familyName} — ${periodEn}`, body: opts.children.length ? opts.children.map(lineEn) : ["No activity was recorded."], cta: { label: "Open the dashboard", href: opts.link } },
+      ar: { title: `ملخص أسرة لعائلة ${opts.familyName} — ${periodAr}`, body: opts.children.length ? opts.children.map(lineAr) : ["لم يُسجَّل أي نشاط."], cta: { label: "فتح لوحة المتابعة", href: opts.link } },
+    },
+    locale,
+  );
+  return { to, subject: `OSRA digest · ملخص أسرة — ${opts.familyName}`, html, text };
+}

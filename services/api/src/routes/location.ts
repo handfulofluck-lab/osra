@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { publishFamilyEvent } from "../realtime/gateway.js";
+import { raiseAlert } from "../lib/alerts.js";
 import { isInsideFence } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { getRedis } from "../redis.js";
@@ -113,18 +113,16 @@ async function evaluateGeofences(
     const exited = !insideNow && fence.notifyOnExit;
     if (!entered && !exited) continue;
     const title = entered ? `Entered ${fence.label}` : `Left ${fence.label}`;
-    const alert = await prisma.alert.create({
-      data: {
-        childId,
-        deviceId,
-        severity: "info",
-        category: "geofence",
-        title,
-        body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius)`,
-        metadata: { geofenceId: fence.id, label: fence.label, lat, lng },
-      },
+    await raiseAlert({
+      childId,
+      familyId,
+      deviceId,
+      severity: "info",
+      category: "geofence",
+      title,
+      body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius)`,
+      metadata: { geofenceId: fence.id, label: fence.label, lat, lng },
     });
-    await publishFamilyEvent(familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
     // Feature #23: entering a school/routine fence auto-applies the bound routine — push the
     // child's ruleset and nudge every device to refresh.
     if (entered && fence.routineId) {

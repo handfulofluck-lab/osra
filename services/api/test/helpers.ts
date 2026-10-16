@@ -41,6 +41,7 @@ function makePrismaMock() {
     "socialEvent",
     "digestPrefs",
     "familyInvite",
+    "parentPushToken",
   ]) {
     root[model] = autoMockModel();
   }
@@ -145,6 +146,10 @@ export function resetPrismaMock(): void {
   prismaMock.consentRecord.updateMany.mockResolvedValue({ count: 1 });
   // Child-scoped fan-outs (rules_updated, consent_revoked) iterate the child's devices.
   prismaMock.device.findMany.mockResolvedValue([]);
+  // Phase 2a: alert push fan-out reads parents + tokens; default to none so route tests stay quiet.
+  prismaMock.parent.findMany.mockResolvedValue([]);
+  prismaMock.parentPushToken.findMany.mockResolvedValue([]);
+  prismaMock.parentPushToken.deleteMany.mockResolvedValue({ count: 0 });
   prismaMock.family.findUnique.mockResolvedValue({
     id: "fam-1",
     name: "Demo Family",

@@ -18,6 +18,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0006](0006-content-monitoring-and-snippet-vault.md) | Bounded, encrypted snippets and concern alerts — not full-chat surveillance | accepted |
 | [0007](0007-engineered-process-controls.md) | Process is engineered (hooks, lint, PR-only main, hardware verification), not promised | accepted |
 | [0008](0008-parental-consent-lifecycle-and-revocation.md) | Parental consent lifecycle, revocation, and enforcement across child-scoped writes | accepted |
+| [0011](0011-parent-notifications-push-and-email.md) | Parent notifications: push (FCM/APNs) and email through one alert path; 0009/0010 reserved by the Android lane | accepted |
 
 ## Writing a new ADR
 

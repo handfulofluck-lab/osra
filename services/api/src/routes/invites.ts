@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
+import { inviteEmail } from "../lib/email/templates.js";
 import { getJson, setJson } from "../redis.js";
 import { requireAuth, requireParent } from "../middleware/requireFamily.js";
 
@@ -52,7 +54,19 @@ export async function inviteRoutes(app: FastifyInstance) {
     });
     const token: InviteToken = { familyId: user.familyId, email: normalizedEmail, role, permissions };
     await setJson(inviteKey(invite.id), token, INVITE_TTL_SECONDS);
-    return reply.code(201).send({ invite, acceptToken: invite.id });
+    // Phase 2a: the invitee gets a link by email. The accept token is echoed in the response only
+    // while no email provider is configured (dev/test builds), never in production.
+    const [inviter, family] = await Promise.all([
+      prisma.parent.findUnique({ where: { id: user.sub } }),
+      prisma.family.findUnique({ where: { id: user.familyId } }),
+    ]);
+    const link = `${appPublicUrl()}/invite/accept?token=${encodeURIComponent(invite.id)}`;
+    const sent = await getEmailSender().send(
+      inviteEmail(normalizedEmail, { inviterName: inviter?.displayName ?? "A parent", familyName: family?.name ?? "your", role, link }),
+    );
+    if (!sent.ok) req.log.error({ reason: sent.reason }, "invite email failed");
+    const echoToken = !emailConfigured() && process.env.NODE_ENV !== "production";
+    return reply.code(201).send({ invite, emailed: sent.ok && emailConfigured(), ...(echoToken ? { acceptToken: invite.id } : {}) });
   });
 
   /** List the family's invites (any parent of the family). */
