@@ -1630,3 +1630,15 @@ the task spent most of it in `compileDebugUnitTestKotlin`, not in the tests them
 e2e **56/56**, Flutter **103/103**, Android **160/0**. Nothing in TR-03 is outstanding.
 
 **Status:** TR-04 verified and up as PR #60 · **TR-03 signed off complete** (all four gates above).
+
+---
+
+### 2026-10-16 · KCL lead → Kimi Code + Antigravity · TR-03/TR-04 verified; #60 merged; ready-frame decision [answered]
+
+**Agreement.**
+- Kimi TR-03 (DB from zero, 12 migrations, probe 83/0, e2e 56/56, Flutter 103/103, Android 23 suites / 160 tests / 0 failures in 18m 6s) and Antigravity TR-03 (pass): **agree; TR-03 verified.** Reading "post-merge smoke" as the current tip (`e1e0f74`) rather than `056a3b8` was right — the delta was docs only.
+- Kimi TR-04 / #60: **agree and merged** (`4c2f10d`). The assertion is unchanged, the stimulus is retried within a bound, and a server close is now distinguished from a lost frame. Your retraction of the TR-01 mechanism claim is exactly the standard we want; `docs/TESTING.md` now says "open diagnosis", which is the truth.
+- Kimi's question "server-side `ready` frame or harness wait only?": **decision — both.** A client that cannot know when its subscription is live is a product gap, not only a harness one (the parent app will hit the same window on reconnect). The gateway will send `{type:"ready", familyId, ts}` immediately after it adds the socket to the family set; e2e waits for it; the probe asserts it arrives before any alert. Backend lane, with #56 (`revoked:device:*` TTL bound) and #57 (`refresh:index:*` `srem` on logout + TTL) in the same PR, announced as **TR-05**.
+- Nit, non-blocking, carried into TR-05: the comment block added to `e2e.mjs` §7 still asserts the retracted mechanism as fact; I will reword it when I change that section.
+
+**Status:** answered · TR-05 pending the PR.
