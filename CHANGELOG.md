@@ -11,6 +11,19 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Fixed — Issue #43: Parental Consent Revocation and Enforcement Across Child-Scoped Writes (Target J3)
+- **Consent Revocation Endpoints (`services/api`)**: Implemented `POST /v1/family/children/:id/consent/revoke` and alias `POST /v1/consent/:childId/revoke` allowing authenticated parents to withdraw consent for their child. Atomically marks active consent records as revoked (`revokedAt = now()`) and enforces strict family isolation (403 on cross-family attempts).
+- **Active Consent Enforcement (`requireConsent` middleware, `services/api`)**: Gated all child-scoped write mutations on an active, non-revoked (`revokedAt IS NULL`), non-expired (`expiresAt IS NULL OR expiresAt > now()`), jurisdiction-matching `ConsentRecord` (HTTP 428 Precondition Required otherwise):
+  - Rules: `PUT /v1/rules/:childId`, `PATCH /v1/rules/:childId`
+  - Devices: `POST /v1/devices/register`, `POST /v1/devices/pair`, `POST /v1/devices/pair/claim`
+  - Remote controls: `POST /v1/controls/children/:childId/pause-internet`, `POST /v1/controls/children/:childId/resume-internet`, `POST /v1/controls/children/:childId/bonus`, `POST /v1/controls/children/:childId/wind-down`
+  - Geofences: `POST /v1/location/geofences`
+  - Child profile: `PATCH /v1/family/children/:id`
+- **Re-Granting Consent Flow**: Confirmed re-granting consent via `POST /v1/family/children/:id/consent` successfully unblocks subsequent child writes.
+- **Probe J3 Promoted to Gate (`services/api/scripts/qa-probe.mjs`)**: Promoted target J3 to a gating assertion verifying revoke -> 428 on write, cross-family rejection (403), re-grant -> 200 unblocked, and alias route `/v1/consent/:childId/revoke` (74 passed, 0 failed, 2 targets, 2 notes).
+- **Unit & Integration Tests**: Added `services/api/test/consent.test.ts` (14 tests) covering revocation, status, 428 precondition responses on revoked/expired/mismatched consent, and re-grant unblocking (224/224 tests passing).
+- **Architecture Documentation**: Documented architectural decision and regulatory compliance in `docs/adr/0008-parental-consent-lifecycle-and-revocation.md`, superseding the tracked gap in ADR-0002.
+
 ### Fixed — Issue #45: YouTube Restricted Mode Enforcement Across API, Desktop Agent, and Parent App
 - **API Persistence (`services/api`)**: Added `youtubeRestrictedMode` column (`@default("strict")`) to Prisma `RuleSet` model and schema migration `0008_youtube_restricted_mode`. Updated `toRow`, `toApiRuleSet`, and `defaultRuleSetRow` so `PUT /v1/rules/:childId` persists `youtubeRestrictedMode` ("strict" | "moderate" | "off") to PostgreSQL and subsequent `GET` requests return the persisted value. Verified via vitest covering PUT → GET round-trip across all three modes (206/206 passed).
 - **Windows Desktop Agent Dynamic Header Selector (`apps/agent-desktop`)**: Added pure header selector `SafeSearch.GetYouTubeRestrictHeaderValue(mode)` mapping `"strict"` → `"Strict"`, `"moderate"` → `"Moderate"`, and `"off"` / unrecognized → `null`. Wired into `RuleSetSnapshot`, `RuleSetMapper.FromDto`, and `WebFilterProxy.cs` so `YouTube-Restrict` HTTP headers are dynamically set based on the active ruleset's `youtubeRestrictedMode` rather than hardcoding "Strict". Added xUnit theory unit tests in `SafeSearchTests.cs` (183/183 passed).

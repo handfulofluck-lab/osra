@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { publishJson } from "../redis.js";
 import { requireParent, requireFamily } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { toApiRuleSet } from "../lib/ruleSync.js";
@@ -98,7 +99,7 @@ export function windowsOverlap(start1: string, end1: string, start2: string, end
 
 /** Push a rules_updated command to every device of the child so HTTP-polling agents refresh. */
 async function notifyDevices(childId: string): Promise<void> {
-  const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
+  const devices = (await prisma.device.findMany({ where: { childId }, select: { id: true } })) ?? [];
   for (const { id } of devices) {
     await enqueueDeviceCommand(id, "rules_updated", { reason: "rules_changed" });
   }
@@ -147,7 +148,7 @@ export async function rulesRoutes(app: FastifyInstance) {
   });
 
   /** Full validated upsert of a child's ruleset; publishes the ruleset to Redis. */
-  app.put("/:childId", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] }, async (req, reply) => {
+  app.put("/:childId", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] }, async (req, reply) => {
     const parsed = RuleSetInputSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const overlap = overlapError(parsed.data);
@@ -165,7 +166,7 @@ export async function rulesRoutes(app: FastifyInstance) {
   });
 
   /** Deep-merge a partial ruleset update onto the existing ruleset; publishes to Redis. */
-  app.patch("/:childId", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] }, async (req, reply) => {
+  app.patch("/:childId", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     const parsed = RuleSetPatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

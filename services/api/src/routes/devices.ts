@@ -5,6 +5,8 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { requireAuth, requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
+import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 
@@ -95,9 +97,19 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = RegisterSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
-    const child = await prisma.child.findUnique({ where: { id: parsed.data.childId } });
+    const child = await prisma.child.findUnique({
+      where: { id: parsed.data.childId },
+      include: { family: true },
+    });
     if (!child || child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
+    }
+    const consent = await checkActiveConsent(child.id, child.family?.region);
+    if (!consent.active) {
+      return reply.code(428).send({
+        error: consent.reason ?? "parental_consent_required",
+        ...(consent.jurisdiction ? { jurisdiction: consent.jurisdiction } : {}),
+      });
     }
     const { childId, ...rest } = parsed.data;
     const device = await prisma.device.create({ data: { childId, ...rest } });
@@ -109,9 +121,19 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = PairSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
-    const child = await prisma.child.findUnique({ where: { id: parsed.data.childId } });
+    const child = await prisma.child.findUnique({
+      where: { id: parsed.data.childId },
+      include: { family: true },
+    });
     if (!child || child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
+    }
+    const consent = await checkActiveConsent(child.id, child.family?.region);
+    if (!consent.active) {
+      return reply.code(428).send({
+        error: consent.reason ?? "parental_consent_required",
+        ...(consent.jurisdiction ? { jurisdiction: consent.jurisdiction } : {}),
+      });
     }
     const { code, expiresAt } = await createPairingCode({ childId: child.id, familyId: user.familyId });
     return reply.code(201).send({ code, expiresAt });
@@ -131,6 +153,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     )) as string | null;
     const payload = raw ? (JSON.parse(raw) as { childId: string; familyId: string }) : null;
     if (!payload) return reply.code(404).send({ error: "invalid_or_expired_code" });
+    const consentCheck = await checkActiveConsent(payload.childId);
+    if (!consentCheck.active) {
+      return reply.code(428).send({ error: consentCheck.reason ?? "parental_consent_required" });
+    }
     const { code: _code, deviceName, ...rest } = parsed.data;
     // NOTE: the Device table is child-scoped (no familyId column); familyId from the Redis
     // payload is used for the JWT claims and response only — never sourced from the client.

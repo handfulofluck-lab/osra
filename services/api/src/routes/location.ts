@@ -7,6 +7,7 @@ import { publishChildRules } from "../lib/ruleSync.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
 
 const SinglePingItemSchema = z.object({
   childId: z.string().min(1).optional(),
@@ -286,7 +287,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Create a geofence for a child of the authenticated family. */
-  app.post("/geofences", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "body" })] }, async (req, reply) => {
+  app.post("/geofences", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "body" }), requireConsent({ param: "childId", source: "body" })] }, async (req, reply) => {
     const parsed = GeofenceCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { childId, ...data } = parsed.data;

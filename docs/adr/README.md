@@ -17,6 +17,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0005](0005-adversarial-acceptance-gate.md) | A separate adversarial probe suite as the merge gate | accepted |
 | [0006](0006-content-monitoring-and-snippet-vault.md) | Bounded, encrypted snippets and concern alerts — not full-chat surveillance | accepted |
 | [0007](0007-engineered-process-controls.md) | Process is engineered (hooks, lint, PR-only main, hardware verification), not promised | accepted |
+| [0008](0008-parental-consent-lifecycle-and-revocation.md) | Parental consent lifecycle, revocation, and enforcement across child-scoped writes | accepted |
 
 ## Writing a new ADR
 

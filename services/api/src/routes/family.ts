@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { getRedis } from "../redis.js";
 
@@ -136,7 +137,7 @@ export async function familyRoutes(app: FastifyInstance) {
   });
 
   /** Update a child's profile fields. */
-  app.patch("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.patch("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" }), requireConsent({ param: "id" })] }, async (req, reply) => {
     const parsed = ChildPatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
@@ -183,6 +184,22 @@ export async function familyRoutes(app: FastifyInstance) {
       },
     });
     return reply.code(201).send({ consent });
+  });
+
+  /** Revoke parental consent for an existing child. */
+  app.post("/children/:id/consent/revoke", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const now = new Date();
+    const updated = await prisma.consentRecord.updateMany({
+      where: { childId: id, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return reply.code(200).send({
+      revoked: true,
+      childId: id,
+      count: updated.count,
+      revokedAt: now.toISOString(),
+    });
   });
 
   /** GDPR data export: JSON download of family, children, devices and consents. */

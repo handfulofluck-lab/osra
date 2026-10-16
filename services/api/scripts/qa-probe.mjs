@@ -424,7 +424,25 @@ check("J1 out-of-range integer rejected (400) with no DB internals leaked", over
 
 target("J2 signed-request replay protection", "a byte-identical signed agent request is accepted twice (signature covers only the body — no timestamp/nonce)");
 const revokeProbe = await call("POST", `/v1/family/children/${kidA}/consent/revoke`, { token: tokenA });
-target("J3 consent revocation enforcement", `consent-revoke path returns ${revokeProbe.status}; nothing reads ConsentRecord.revokedAt/expiresAt, so revoke/expiry is unenforceable today`);
+const xRevokeProbe = await call("POST", `/v1/family/children/${kidA}/consent/revoke`, { token: tokenB });
+const blockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+const regrant = await call("POST", `/v1/family/children/${kidA}/consent`, { token: tokenA, body: { method: "credit_card", jurisdiction: "US" } });
+const unblockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+const aliasRevoke = await call("POST", `/v1/consent/${kidA}/revoke`, { token: tokenA });
+const reblockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+await call("POST", `/v1/family/children/${kidA}/consent`, { token: tokenA, body: { method: "credit_card", jurisdiction: "US" } });
+
+check(
+  "J3 consent revocation enforcement (revoke -> 428 on write, regrant -> unblocked)",
+  revokeProbe.status === 200 &&
+    xRevokeProbe.status === 403 &&
+    blockedWrite.status === 428 &&
+    regrant.status === 201 &&
+    unblockedWrite.status === 200 &&
+    aliasRevoke.status === 200 &&
+    reblockedWrite.status === 428,
+  `revoke=${revokeProbe.status} xRevoke=${xRevokeProbe.status} blocked=${blockedWrite.status} regrant=${regrant.status} unblocked=${unblockedWrite.status} alias=${aliasRevoke.status} reblocked=${reblockedWrite.status}`,
+);
 
 // IOS-01: the iOS AlertReporter signs with the device's own secret but sends no top-level
 // `deviceId`, so the server falls back to the global secret and rejects every alert (verified 401).
