@@ -169,6 +169,10 @@ environment where it was written — see `docs/QA/` for the verification state.
 - `CHANGELOG.md` (this file), `docs/README.md` (documentation index), `docs/TESTING.md` (how to run and
   interpret every suite and gate), and `docs/adr/` (architecture decision records — the reasoning
   behind the decisions, not just the decisions).
+- `docs/QA/TESTING-STRATEGY.md` — the agreed verification strategy: layer/ownership split, the
+  **environment matrix** (timezone ≠ UTC, fresh DB, stale Prisma client, cleared build outputs, no
+  credentials, rate-limit separation, OS paths, device), the rules both sides hold, the check cadence,
+  and the anti-pattern checklist drawn from the failures actually hit in this repo.
 - `AGENTS.md`: documentation is now part of the definition of done.
 
 ### Verification state at this point
