@@ -15,6 +15,8 @@
  *   - a tab character in the file (YAML forbids tabs for indentation)
  * Warnings (exit 0 unless --strict): a gate that cannot fail
  *   - `|| echo …`, `|| true` inside a run body, or `continue-on-error: true` on a step
+ *   - `secrets.` inside an `if:` expression — the secrets context is not available there and
+ *     GitHub rejects the whole file ("Unrecognized named-value: 'secrets'") → zero jobs run (PR #49)
  *
  * Usage: node scripts/check-workflows.mjs [--strict] [dir]
  */
@@ -92,6 +94,13 @@ for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort()) {
     }
     if (!hasRunsOn && !callsReusable)
       errors.push(`${path}:${i + 1} job "${job[1]}" has no runs-on:`);
+  }
+
+  // ── `if:` expressions: the secrets context is not allowed there (file rejected, zero jobs) ──
+  for (let i = 0; i < lines.length; i++) {
+    const cond = lines[i].match(/^\s*(?:- )?if:\s*(.+)$/);
+    if (cond && /\bsecrets\./.test(cond[1]))
+      errors.push(`${path}:${i + 1} 'if:' references the secrets context — GitHub rejects the whole file ("Unrecognized named-value: 'secrets'"); copy the secret into env: and test that, or branch inside the run body`);
   }
 
   // ── steps: the uses+run / with-without-uses traps ──

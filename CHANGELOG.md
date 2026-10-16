@@ -68,6 +68,23 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **Unit & Integration Tests**: Added `services/api/test/consent.test.ts` (14 tests) covering revocation, status, 428 precondition responses on revoked/expired/mismatched consent, and re-grant unblocking (224/224 tests passing).
 - **Architecture Documentation**: Documented architectural decision and regulatory compliance in `docs/adr/0008-parental-consent-lifecycle-and-revocation.md`, superseding the tracked gap in ADR-0002.
 
+### Fixed — CI: `secrets` in a step `if:` rejected the whole workflow (zero jobs ran on PR #49's first push)
+- `.github/workflows/ci.yml`: the keystore step tested `secrets.OSRA_UPLOAD_KEYSTORE_B64` in `if:`; the secrets context is not available there, so GitHub rejected `ci.yml` and the run appeared only as a failed run named by its file path with no jobs — the "gate that looks present and does nothing" class again. The decision now happens inside the run body.
+- `scripts/check-workflows.mjs`: new error for `secrets.` inside any `if:` expression. Verified: the broken file fails the linter (1 error), the fixed tree passes.
+
+### Fixed — Phase 0 repo hygiene: the parent app's release build could not reach the network
+- **`INTERNET` was declared only in the debug manifest** (`apps/parent-app/android/app/src/debug/AndroidManifest.xml`),
+  so a `--release` build of the parent app could not log in. Moved to the main manifest with
+  `ACCESS_NETWORK_STATE` and `POST_NOTIFICATIONS` (KCL review, `docs/QA/KCL-2026-10-16/AUDIT-API-AI-PARENT-APP.md`).
+- **Google Maps key plumbing:** `com.google.android.geo.API_KEY` is now a manifest placeholder filled from
+  `android/local.properties` or `MAPS_API_KEY`; without it the map rendered blank on every device.
+- **Release signing plumbing:** `build.gradle.kts` uses an upload keystore when `OSRA_UPLOAD_KEYSTORE*` are set
+  and falls back to the debug key otherwise; release builds now minify/shrink. Cleartext HTTP is permitted
+  **only in debug** (`src/debug/res/xml/network_security_config.xml`); release is HTTPS-only.
+- **CI becomes a store-readiness gate:** `parent-app` builds the release AAB and asserts `INTERNET` is in the
+  bundled manifest; `child-android` runs `assembleRelease`; both upload artifacts (14-day retention).
+- `docs/test-guides/CI-SECRETS.md` lists every secret the pipeline reads and what happens when one is missing.
+
 ### Fixed — Issue #45: YouTube Restricted Mode Enforcement Across API, Desktop Agent, and Parent App
 - **API Persistence (`services/api`)**: Added `youtubeRestrictedMode` column (`@default("strict")`) to Prisma `RuleSet` model and schema migration `0008_youtube_restricted_mode`. Updated `toRow`, `toApiRuleSet`, and `defaultRuleSetRow` so `PUT /v1/rules/:childId` persists `youtubeRestrictedMode` ("strict" | "moderate" | "off") to PostgreSQL and subsequent `GET` requests return the persisted value. Verified via vitest covering PUT → GET round-trip across all three modes (206/206 passed).
 - **Windows Desktop Agent Dynamic Header Selector (`apps/agent-desktop`)**: Added pure header selector `SafeSearch.GetYouTubeRestrictHeaderValue(mode)` mapping `"strict"` → `"Strict"`, `"moderate"` → `"Moderate"`, and `"off"` / unrecognized → `null`. Wired into `RuleSetSnapshot`, `RuleSetMapper.FromDto`, and `WebFilterProxy.cs` so `YouTube-Restrict` HTTP headers are dynamically set based on the active ruleset's `youtubeRestrictedMode` rather than hardcoding "Strict". Added xUnit theory unit tests in `SafeSearchTests.cs` (183/183 passed).

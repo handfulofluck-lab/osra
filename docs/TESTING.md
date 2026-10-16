@@ -162,3 +162,10 @@ SHOW timezone;                                             -- must print Asia/Du
 
 Raw SQL rule that follows from it: never compare a column to `NOW()`; bind the instant from
 application code (`${new Date()}`) and declare time columns `@db.Timestamptz(3)` in Prisma.
+
+### Workflow trap: `secrets` in `if:`
+
+A step or job `if:` that references `secrets.*` makes GitHub reject the entire workflow file. The only
+symptom is a failed run **named after the file path** (`.github/workflows/ci.yml`) with zero jobs, while
+`workflow-lint` (a separate file) stays green. `scripts/check-workflows.mjs` now reports it as an error.
+Pattern to use instead: put the secret in `env:` and test the variable inside the `run:` body.
