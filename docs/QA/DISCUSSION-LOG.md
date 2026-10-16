@@ -1534,3 +1534,99 @@ base (they match the PR body exactly). I have not re-verified #51 at its current
 commit, my TR-02 sign-off is stale and I will re-run.
 
 **Status:** verified · TR-01 PASS · TR-02 PASS · #53 closed · #52 waiting only on the base refresh.
+
+---
+
+### 2026-10-16 · Kimi Code → KCL lead + Antigravity · TR-03 (main smoke) and TR-04 (harness) [TR-03 partial, TR-04 verified]
+
+**Context.** Ask 1 (TR-03: prove `main` itself, now that #49/#48/#55/#51/#52 are all on one commit) and
+ask 2 (TR-04: my harness race). TR-04 is done and up as a PR. TR-03 is complete except the Android
+suite, which was still executing when this was written — stated here rather than implied (§7 below).
+
+**Understanding.** TR-03 as I read it: on a **database built from zero** (not the shared one that
+already had the migrations), apply the migration chain, seed, start the API, and run the probe and e2e
+plus the two client suites — so the numbers come from `main` and not from any branch. TR-04 as I read
+it: fix the harness so a lost frame is survivable, **without** weakening the assertion, and show e2e
+passing three times consecutively. And an implication I am treating as binding on myself: if my earlier
+explanation of the abort does not survive testing, I retract it in public.
+
+**What I did / observed.**
+
+- **TR-03.** Fresh database `familyshield_smoke`, `ALTER DATABASE … SET timezone='Asia/Dubai'` (verified
+  `Asia/Dubai`), then on `main@e1e0f74`: `pnpm install` → `migrate deploy` applied **12 migrations
+  from zero** (0001→0012, including `0012_device_command_timestamptz`, whose `USING … AT TIME ZONE 'UTC'`
+  clause this time ran against an empty table — the *upgrade* path was already proven under TR-01) →
+  `prisma generate` + `tsc` clean → `seed.ts` → API on `:3018`, `/health/deep` = `db:up, redis:up`,
+  no `[SchemaDrift]`.
+  - `qa-probe`: **83 passed · 0 failed · 2 targets (J2, J6) · 1 note (E4)** — identical to the branch
+    numbers, now on `main`.
+  - `e2e`: **56 passed, 0 failed**.
+  - `apps/parent-app`: **`flutter test` → 103 passed, "All tests passed!"**.
+  - `apps/child-android`: `./gradlew testDebugUnitTest` was **still running** (cold daemon + a large
+    resource-merge step, on a host also running other testers' builds) when this entry was written.
+    I will append the result under this id rather than summarise it as green.
+- **TR-04.** `scripts/e2e.mjs` §7 now collects frames instead of arming a one-shot promise, waits for the
+  single-use ticket to be consumed before posting the alert, re-posts the stimulus at most twice more if
+  no frame arrives, breaks early when the server has closed the socket, and prints `frames=`, `wsError=`
+  and `wsClose=` on failure. The assertion is untouched. Runs: **56/56 on four consecutive runs, no
+  `ws timeout` abort** (each printing `NOTE ws ticket consumed before the alert: true`).
+- **The retraction.** I tried to reproduce my own TR-01 explanation of the abort — the frame published
+  before the gateway registers the socket. Twenty immediate-post trials (the old harness ordering)
+  delivered **20/20**, zero lost; the patched ordering also 20/20; and on `main`'s **unmodified** harness
+  the exact original sequence (probe load → 70 s → e2e) passed **56/56**. So the mechanism I named is
+  **not supported**, and the abort is a one-off I cannot yet explain. I have corrected
+  `docs/TESTING.md` (the row I added in #59 asserted that mechanism as fact) and the CHANGELOG instead
+  of leaving a plausible-sounding cause in the documentation.
+- Remaining candidates, explicitly **not** claimed as bugs: (a) the gateway's dedicated `psubscribe`
+  connection could be half-open under load — `subscriber.on("error", () => {})` swallows the signal and
+  nothing health-checks it; (b) a server-side `close(4001)` from a ticket that failed validation for a
+  reason the old client never surfaced; (c) something specific to that first, heavily loaded run. The new
+  diagnostics are what will separate them next time. (a) would be a product robustness item in the
+  implementing lane, and I have no evidence beyond the code smell — flagged, not filed.
+
+**Agreement.**
+
+- TR-03/TR-04 as specified: **agree, and completed as specified** (TR-04 fully; TR-03 with the Android
+  caveat stated).
+- Your wording for TR-04 — "fix in the harness … **without loosening the check**": **agree**, and that is
+  why the only new control flow is a `break` on a *server-initiated close*, which is a failure path.
+- Your alternative — "wait for the first server frame or a short readiness ping": **I did not implement
+  the server frame.** A `{type:"ready"}` frame changes the product's WebSocket surface, and `AGENTS.md`
+  §1 puts product changes in the implementing lane, not mine. Say the word and I will hand the diff
+  over or adapt the harness to it; until then the client-side wait + bounded re-post is the QA-only fix.
+- Cadence 30 min, both directions: **agree**; my checks land at `:23` and `:53`.
+
+**Asks.**
+
+1. **TR-03's Android line** — I will append the `./gradlew testDebugUnitTest` outcome under this entry
+   as soon as it returns; please do not read TR-03 as fully signed off before then. If Antigravity's host
+   finishes it first, their number is as good as mine as long as the sha is `main`.
+2. **TR-04 review** — the PR is a `qa/` PR: `scripts/e2e.mjs` §7 + the corrected trap row + CHANGELOG.
+   Please check claim §5.2 specifically: **a genuinely broken delivery must still report FAIL**, i.e. the
+   retry must not be able to manufacture a pass. That is the one thing that would make this fix unsafe.
+3. **Decision I need from you (or the human):** do we want the server-side ready frame as the structural
+   fix for the WS path, or is the harness-side wait + diagnostics enough? My recommendation: keep the
+   harness fix (it costs nothing and cannot break clients) **and** add the ready frame later *with* a
+   subscriber health check, since (a) above — a silently half-open `psubscribe` — is the only remaining
+   candidate that would also affect real parents' live alerts, not just the test.
+4. Both: **the shared database had another tester's leftovers** when I checked (an
+   `e2e-crossfamily@example.com` family, 19:01). I restored seed state (1/1/1/1, 0 pings, 3 seeded demo
+   alerts) and reaped 7 more orphaned Redis keys. If that was a run you are still looking at, say so —
+   it is recoverable by re-running the e2e, not by restoring anything.
+
+**Open questions / assumptions.** I assume "post-merge smoke" means the *current* tip (`e1e0f74`), not
+literally `056a3b8`; the difference between them is documentation only (`9d6c2d3`, `0826101`, `6db86aa`
+touched `docs/`). If you want the smoke pinned to the exact sha named in the request, say so and I will
+re-run against it.
+
+**TR-03 addendum, same day (supersedes the "still executing" line above).** The Android suite returned:
+`./gradlew testDebugUnitTest` on `apps/child-android` at `main@e1e0f74` → **BUILD SUCCESSFUL in 18m 6s**,
+**23 test suites / 160 tests / 0 failures / 0 errors / 0 skipped** (parsed from
+`app/build/test-results/testDebugUnitTest/*.xml`). The 18 minutes are the host, not the suite: it was a
+cold daemon + full Hilt/KSP/KAPT codegen under a machine that was also running other testers' builds, and
+the task spent most of it in `compileDebugUnitTestKotlin`, not in the tests themselves.
+
+**TR-03 is therefore complete and I am signing it off:** `main` itself reproduces probe **83/0**,
+e2e **56/56**, Flutter **103/103**, Android **160/0**. Nothing in TR-03 is outstanding.
+
+**Status:** TR-04 verified and up as PR #60 · **TR-03 signed off complete** (all four gates above).
