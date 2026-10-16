@@ -19,7 +19,7 @@ describe("device command queue", () => {
     resetPrismaMock();
   });
 
-  it("publishes {type, payload} to the device channel and pushes onto the polled queue", async () => {
+  it("publishes {type, payload} to the device channel and persists a pending command row", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
 
@@ -32,28 +32,37 @@ describe("device command queue", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().type).toBe("ring");
 
+    expect(res.json()).toMatchObject({ published: true, status: "pending", deviceId: "dev-1" });
+    expect(typeof res.json().id).toBe("string");
     const redis = getRedis() as unknown as import("./helpers.js").MockRedis;
     expect(redis.publish).toHaveBeenCalledWith("device:dev-1:commands", expect.stringContaining('"type":"ring"'));
-    expect(redis.lpush).toHaveBeenCalledWith("device:dev-1:command-queue", expect.stringContaining('"payload"'));
+    expect(prismaMock.deviceCommand.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ deviceId: "dev-1", type: "ring", requestedBy: "parent-1", expiresAt: expect.any(Date) }) }),
+    );
     await app.close();
   });
 
-  it("GET /commands drains the queue and returns the pending commands", async () => {
+  it("GET /commands claims pending rows for the device JWT only and returns [{type,payload,...}]", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
-    const queued = [JSON.stringify({ deviceId: "dev-1", type: "lock", payload: {}, ts: "t" })];
-    const redis = getRedis() as unknown as import("./helpers.js").MockRedis;
-    // The drain is atomic via Lua (LRANGE+DEL in one script).
-    redis.eval.mockResolvedValue(queued);
+    const t = new Date("2026-10-16T10:00:00Z");
+    // The drain is one UPDATE … RETURNING, so two concurrent drains cannot both receive a row.
+    prismaMock.$queryRaw.mockResolvedValue([
+      { id: "c1", deviceId: "dev-1", type: "lock", payload: {}, status: "delivered", createdAt: t, expiresAt: new Date(t.getTime() + 86400000), attempts: 1 },
+    ]);
 
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/devices/dev-1/commands",
-      headers: authHeader(app),
-    });
+    const parent = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands", headers: authHeader(app) });
+    expect(parent.statusCode).toBe(403); // probe note B11: a parent token must not consume the queue
+
+    const otherDevice = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands", headers: deviceHeader(app, { deviceId: "dev-9", childId: "child-1", familyId: "fam-1" }) });
+    expect(otherDevice.statusCode).toBe(403);
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands", headers: deviceHeader(app) });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual([{ deviceId: "dev-1", type: "lock", payload: {}, ts: "t" }]);
-    expect(redis.eval).toHaveBeenCalled();
+    expect(res.json()).toEqual([
+      { id: "c1", deviceId: "dev-1", type: "lock", payload: {}, ts: t.toISOString(), expiresAt: new Date(t.getTime() + 86400000).toISOString(), attempt: 1 },
+    ]);
+    expect(prismaMock.$executeRaw).toHaveBeenCalled(); // expired sweep
     await app.close();
   });
 

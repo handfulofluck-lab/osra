@@ -177,7 +177,9 @@ check("B9 digest prefs for other family's child (403/404)", [403, 404].includes(
 
 // Token-type confusion is asserted with a real device JWT in section G (G6).
 const parentOnDevice = await call("GET", `/v1/devices/${deviceIdA}/commands`, { token: tokenA });
-note("B11 parent JWT on device command route", `status ${parentOnDevice.status} (route is destructive-drain; a parent-only preview should not consume the queue)`);
+check("B11 parent JWT cannot drain the device command queue (403; parents use /commands/history)", parentOnDevice.status === 403, `got ${parentOnDevice.status}`);
+const parentHistory = await call("GET", `/v1/devices/${deviceIdA}/commands/history`, { token: tokenA });
+check("B11b parent reads command history non-destructively (200 {items})", parentHistory.status === 200 && Array.isArray(parentHistory.data?.items), `got ${parentHistory.status}`);
 
 // ── C. consent gate ─────────────────────────────────────────────────────────
 console.log("\n── C. consent gate ──");

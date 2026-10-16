@@ -61,6 +61,10 @@ INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                           
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
 
+Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
+200 req/min rate limit and every later check reads `429` — wait 60 s between runs; it is the limiter,
+not the product.
+
 `VAULT_KEY` must be a base64-encoded 32-byte key (e.g. `head -c 32 /dev/urandom | base64`); any other
 length makes `/v1/social/scan` return 500 `ERR_CRYPTO_INVALID_KEYLEN` and fails two e2e checks — a
 harness trap, not a product bug.

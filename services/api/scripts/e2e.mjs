@@ -86,6 +86,13 @@ const sam = withConsent.data?.child;
 const dev = await call("POST", "/v1/devices/register", { token, body: { childId: sam.id, platform: "windows", model: "TestPC", osVersion: "10", pushToken: "e2e-token" } });
 check("device registration -> 201", dev.status === 201 && !!dev.data?.device?.id, `got ${dev.status}`);
 const deviceId = dev.data?.device?.id;
+// Phase 2b: an agent-side device with its own JWT, because the command drain is device-only
+// (probe note B11 — a parent token must never consume the queue).
+const AGENT_CODE = (await call("POST", "/v1/devices/pair", { token, body: { childId: sam.id } })).data?.code;
+const AGENT = await call("POST", "/v1/devices/pair/claim", { body: { code: AGENT_CODE, platform: "android", model: "E2EAgent", osVersion: "15" } });
+const agentId = AGENT.data?.device?.id;
+const agentToken = AGENT.data?.token;
+check("agent device paired with a device JWT", AGENT.status === 201 && !!agentId && !!agentToken, `got ${AGENT.status}`);
 
 // --- 5. Rules PUT + Redis publish on child channel ---
 const rulesPromise = nextMessage(`child:${sam.id}:rules`);
@@ -107,8 +114,10 @@ await call("PUT", `/v1/rules/${sam.id}`, { token, body: rulesBody }); // restore
 const gotRules = await call("GET", `/v1/rules/${sam.id}`, { token });
 check("GET rules round-trips", gotRules.status === 200 && gotRules.data?.webFilter?.blockedDomains?.includes("bad.example"));
 
-const fanout = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+const fanout = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
 check("rules write fans rules_updated out to devices", fanout.status === 200 && Array.isArray(fanout.data) && fanout.data.some((c) => c.type === "rules_updated"));
+const parentDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token });
+check("parent token cannot drain the device queue (403, B11 closed)", parentDrain.status === 403, `got ${parentDrain.status}`);
 
 // --- 6. HMAC location ping + geofence transitions (own throwaway fence on Sam, erased at the end) ---
 const fenceRes = await call("POST", "/v1/location/geofences", { token, body: { childId: sam.id, label: "E2E Fence", lat: 40.0, lng: -74.0, radiusM: 200, notifyOnEnter: true, notifyOnExit: true } });
@@ -153,19 +162,27 @@ const ackTarget = list.data.items.find((a) => a.title === "E2E alert");
 const ack = await call("POST", `/v1/alerts/${ackTarget.id}/ack`, { token });
 check("acknowledge alert", ack.status === 200 && ack.data?.alert?.acknowledged === true);
 
-// --- 8. Device command queue (pub/sub + polled drain) ---
-const cmdSub = nextMessage(`device:${deviceId}:commands`);
-const cmd = await call("POST", `/v1/devices/${deviceId}/command`, { token, body: { command: "ring" } });
-check("POST command -> published", cmd.status === 200 && cmd.data?.type === "ring");
+// --- 8. Device command queue (durable rows + pub/sub wake + polled drain + acks) ---
+const cmdSub = nextMessage(`device:${agentId}:commands`);
+const cmd = await call("POST", `/v1/devices/${agentId}/command`, { token, body: { command: "ring" } });
+check("POST command -> persisted pending row with id", cmd.status === 200 && cmd.data?.type === "ring" && cmd.data?.status === "pending" && typeof cmd.data?.id === "string");
 const pubMsg = await cmdSub;
-check("command on Redis pub/sub {type}", pubMsg?.type === "ring");
-const drained = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
-check("GET commands drains queue [{type,payload}]", drained.status === 200 && Array.isArray(drained.data) && drained.data[0]?.type === "ring");
-const drainedAgain = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+check("command on Redis pub/sub {type}", pubMsg?.type === "ring" && pubMsg?.id === cmd.data.id);
+const histPending = await call("GET", `/v1/devices/${agentId}/commands/history`, { token });
+check("parent history shows the command pending before the device polls", histPending.status === 200 && histPending.data?.items?.some((c) => c.id === cmd.data.id && c.status === "pending"));
+const drained = await call("GET", `/v1/devices/${agentId}/commands?ack=1`, { token: agentToken });
+check("GET commands drains queue [{type,payload}]", drained.status === 200 && Array.isArray(drained.data) && drained.data.some((c) => c.type === "ring" && c.id === cmd.data.id));
+const drainedAgain = await call("GET", `/v1/devices/${agentId}/commands?ack=1`, { token: agentToken });
 check("command queue is consumed", drainedAgain.data.length === 0);
+const histDelivered = await call("GET", `/v1/devices/${agentId}/commands/history`, { token });
+check("parent history shows delivered after the drain", histDelivered.data?.items?.some((c) => c.id === cmd.data.id && c.status === "delivered"));
+const ackRes = await call("POST", `/v1/devices/${agentId}/commands/${cmd.data.id}/ack`, { token: agentToken, body: { status: "ok", detail: { rangMs: 60000 } } });
+check("device acks the command -> acked", ackRes.status === 200 && ackRes.data?.command?.status === "acked");
+const parentAck = await call("POST", `/v1/devices/${agentId}/commands/${cmd.data.id}/ack`, { token, body: { status: "ok" } });
+check("parent cannot ack a device command (403)", parentAck.status === 403, `got ${parentAck.status}`);
 
-const pauseCmd = await call("POST", `/v1/devices/${deviceId}/command`, { token, body: { command: "pause" } });
-const pauseDrain = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+const pauseCmd = await call("POST", `/v1/devices/${agentId}/command`, { token, body: { command: "pause" } });
+const pauseDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
 check("pause command accepted and queued", pauseCmd.status === 200 && pauseDrain.data.some((c) => c.type === "pause"));
 
 // --- 9. Telemetry ---

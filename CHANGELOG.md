@@ -11,6 +11,15 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Added — Phase 2b: commands are durable and observable — KCL plan, ADR-0012
+- **`DeviceCommand` table** (migration `0011_device_command_queue`): every command is a row with `pending → delivered → acked | failed`, or `expired`; `requestedBy`, `attempts`, `result`. The Redis list is gone; pub/sub remains the wake-up only. A Redis restart no longer loses a pending lock.
+- **Per-type expiry**: `ring`/`locate_now` 10 min, `rules_updated` 24 h, consent commands 7 d, default 24 h. `rules_updated` coalesces onto an existing pending row.
+- **Atomic drain** (`UPDATE … RETURNING`); `GET /v1/devices/:id/commands?ack=1` declares an ack-capable agent and gets delivered-but-unacked commands re-offered after 120 s (max 3 attempts). Non-acking agents are unaffected.
+- **New routes**: `POST /v1/devices/:id/commands/:commandId/ack` (device JWT) and `GET /v1/devices/:id/commands/history` (parent, non-destructive). `POST /v1/devices/:id/command` now returns `{id, status:"pending", expiresAt, …}`.
+- **Security**: the drain is device-only (device JWT with matching `deviceId`); a parent token gets 403. Probe note **B11 is promoted to a gating check** (+ B11b history).
+- Tests: `test/commands.test.ts` (8); existing fan-out tests now assert on the durable store instead of the Redis list. e2e pairs an agent device and walks pending → delivered → acked through the parent's history (56/56).
+- Gates on this branch (lane-2, :3100): vitest **259/259**, `qa-probe` **79 passed · 0 failed · 2 targets**, `e2e` **56/56**.
+
 ### Added — Phase 2a: parents are notified (push + email) — KCL plan, ADR-0011
 - **One alert path (`services/api/src/lib/alerts.ts`)**: `raiseAlert()` creates the row, publishes the WebSocket event and pushes to every parent device. All five producers (`/v1/alerts/internal`, `/v1/social/scan`, search-event, youtube-watch, geofence enter/exit) now use it; the audit had found push wired to one producer, as a `console.log`.
 - **Push providers without SDKs**: FCM HTTP v1 with a service-account key (`src/lib/push/fcm.ts`) and APNs HTTP/2 with a p8 provider token (`src/lib/push/apns.ts`). Policy in `src/lib/push/notify.ts`: `PUSH_MIN_SEVERITY` floor (SOS/tamper always push), `DigestPrefs.pushEnabled`, platform routing, dead-token pruning on `UNREGISTERED`/410.

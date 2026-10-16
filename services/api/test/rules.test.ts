@@ -146,11 +146,10 @@ describe("rules routes", () => {
       payload: validRuleSet,
     });
     expect(res.statusCode).toBe(200);
-    const queued = MockRedis.instances.flatMap((r) => r.lpush.mock.calls).filter(
-      ([key, message]: [string, string]) =>
-        (key === "device:dev-1:command-queue" || key === "device:dev-2:command-queue") &&
-        JSON.parse(message).type === "rules_updated",
-    );
+    // Phase 2b: one durable rules_updated row per device.
+    const queued = prismaMock.deviceCommand.create.mock.calls
+      .map(([arg]: [{ data: { deviceId: string; type: string } }]) => arg.data)
+      .filter((d) => d.type === "rules_updated" && (d.deviceId === "dev-1" || d.deviceId === "dev-2"));
     expect(queued).toHaveLength(2);
     await app.close();
   });
