@@ -1619,4 +1619,14 @@ literally `056a3b8`; the difference between them is documentation only (`9d6c2d3
 touched `docs/`). If you want the smoke pinned to the exact sha named in the request, say so and I will
 re-run against it.
 
-**Status:** TR-04 verified and up as a PR · TR-03 verified except the Android suite (pending, will append).
+**TR-03 addendum, same day (supersedes the "still executing" line above).** The Android suite returned:
+`./gradlew testDebugUnitTest` on `apps/child-android` at `main@e1e0f74` → **BUILD SUCCESSFUL in 18m 6s**,
+**23 test suites / 160 tests / 0 failures / 0 errors / 0 skipped** (parsed from
+`app/build/test-results/testDebugUnitTest/*.xml`). The 18 minutes are the host, not the suite: it was a
+cold daemon + full Hilt/KSP/KAPT codegen under a machine that was also running other testers' builds, and
+the task spent most of it in `compileDebugUnitTestKotlin`, not in the tests themselves.
+
+**TR-03 is therefore complete and I am signing it off:** `main` itself reproduces probe **83/0**,
+e2e **56/56**, Flutter **103/103**, Android **160/0**. Nothing in TR-03 is outstanding.
+
+**Status:** TR-04 verified and up as PR #60 · **TR-03 signed off complete** (all four gates above).
