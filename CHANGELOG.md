@@ -11,6 +11,16 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Added — Phase 2a: parents are notified (push + email) — KCL plan, ADR-0011
+- **One alert path (`services/api/src/lib/alerts.ts`)**: `raiseAlert()` creates the row, publishes the WebSocket event and pushes to every parent device. All five producers (`/v1/alerts/internal`, `/v1/social/scan`, search-event, youtube-watch, geofence enter/exit) now use it; the audit had found push wired to one producer, as a `console.log`.
+- **Push providers without SDKs**: FCM HTTP v1 with a service-account key (`src/lib/push/fcm.ts`) and APNs HTTP/2 with a p8 provider token (`src/lib/push/apns.ts`). Policy in `src/lib/push/notify.ts`: `PUSH_MIN_SEVERITY` floor (SOS/tamper always push), `DigestPrefs.pushEnabled`, platform routing, dead-token pruning on `UNREGISTERED`/410.
+- **Parent push tokens**: `ParentPushToken` table (migration `0010_parent_push_tokens`), `POST /v1/me/push-token`, `DELETE /v1/me/push-token`, `GET /v1/me/push-tokens`.
+- **Email provider** (`src/lib/email/`): Resend over HTTPS (`RESEND_API_KEY`, `EMAIL_FROM`) with a console fallback that never prints bodies in production. Bilingual EN+AR templates for password reset, invites and digests.
+- **Password reset** emails a 15-minute link (`APP_PUBLIC_URL/reset?token=…`) and **no longer logs the token** (audit API-07). **Invites** email the accept link; the token is echoed in the response only without a provider and outside production. **Digests** are delivered by `src/jobs/digestScheduler.ts` (15-minute tick, `DIGEST_HOUR_UTC`, weekly on Sunday, Redis `SET NX` claim per family/day); `POST /v1/digests/send-now` now sends as well as renders.
+- Tests: `test/push.test.ts` (10) and `test/email.test.ts` (13) cover the OAuth assertion, v1 message shape, APNs ES256 token and headers, token pruning, severity policy, templates, Resend envelope, reset/invite routes, scheduler claims and the `/v1/me` routes.
+- Gates on this branch (lane-2 stack, port 3100): vitest **251/251**, `qa-probe` **77 passed · 0 failed · 2 targets**, `e2e` **50/50**.
+- Not done here (board #50): parent-app token registration + notification permission flow (Phase 3), quiet hours/per-category prefs, delivery receipts.
+
 ### Security — Issue #43 / Target J3: consent revocation now stops processing (PR #48)
 - **Revocation endpoint** `POST /v1/family/children/:id/consent/revoke` and status `GET /v1/family/children/:id/consent`
   (`services/api/src/routes/family.ts`). The `/v1/consent/*` alias from the first draft was removed before merge.

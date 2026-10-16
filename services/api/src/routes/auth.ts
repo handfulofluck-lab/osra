@@ -3,6 +3,8 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import argon2 from "argon2";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
+import { passwordResetEmail } from "../lib/email/templates.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
 
@@ -184,7 +186,10 @@ export async function authRoutes(app: FastifyInstance) {
     const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
     if (parent) {
       const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset" }, { expiresIn: "15m" });
-      console.log(`[email:stub] password reset for ${parent.email}: ${token}`);
+      // Phase 2a: the live token goes only into the email (audit API-07: it used to be logged).
+      const link = `${appPublicUrl()}/reset?token=${encodeURIComponent(token)}`;
+      const result = await getEmailSender().send(passwordResetEmail(parent.email, link));
+      if (!result.ok) req.log.error({ reason: result.reason }, "password reset email failed");
     }
     return { ok: true };
   });

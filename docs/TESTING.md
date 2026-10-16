@@ -50,6 +50,22 @@ INTERNAL_HMAC_SECRET=<from dist/start-backend.bat> VAULT_KEY=<same> node scripts
 INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                                        # must be 0 failed
 ```
 
+### Notification env (Phase 2a) — all optional
+
+| Variable | Effect when set |
+|---|---|
+| `FCM_SERVICE_ACCOUNT_JSON` (JSON or base64) or `FCM_SERVICE_ACCOUNT_FILE` | Enables parent push via FCM HTTP v1 (Android, web, and iOS through Firebase). |
+| `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV` | Enables direct APNs for native iOS tokens. |
+| `PUSH_MIN_SEVERITY` (`info`\|`warning`\|`critical`, default `info`) | Severity floor; SOS and tamper always push. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Enables real email. Without them emails are logged (dev) or a warning is logged (production); invites then echo `acceptToken` in dev only. |
+| `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
+| `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
+
+`VAULT_KEY` must be a base64-encoded 32-byte key (e.g. `head -c 32 /dev/urandom | base64`); any other
+length makes `/v1/social/scan` return 500 `ERR_CRYPTO_INVALID_KEYLEN` and fails two e2e checks — a
+harness trap, not a product bug.
+
+
 **Reading the probe output.** It prints three severities, deliberately:
 
 - **failures** — an invariant is broken. The gate exits non-zero; fix it before merging.

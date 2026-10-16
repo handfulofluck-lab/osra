@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireParent } from "../middleware/requireFamily.js";
 import { summarizeChildActivity, type ActivitySummary } from "../lib/activitySummary.js";
+import { sendFamilyDigest } from "../jobs/digestScheduler.js";
+import { emailConfigured } from "../lib/email/index.js";
 
 const PrefsSchema = z.object({
   dailyEmail: z.boolean(),
@@ -61,12 +63,16 @@ export async function digestRoutes(app: FastifyInstance) {
     return prefs;
   });
 
-  /** Dev-only: render the digest in-app for every child of the family (no SMTP in test build — NOTE). */
-  // NOTE: scheduled daily/weekly delivery is a production cron job; this route only
-  // exercises the render path so the digest content is verifiable end-to-end.
+  /**
+   * Render the digest for every child and, when an email provider is configured, deliver it to
+   * the family's digest recipients right now (Phase 2a). Scheduled delivery is
+   * `jobs/digestScheduler.ts`; this route is the parent-triggered "send me one now".
+   */
   app.post("/send-now", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
-    const days = 7;
+    const body = (req.body ?? {}) as { kind?: "daily" | "weekly" };
+    const kind = body.kind === "daily" ? "daily" : "weekly";
+    const days = kind === "daily" ? 1 : 7;
     const children = await prisma.child.findMany({ where: { familyId: user.familyId } });
     const digests = [];
     for (const child of children) {
@@ -77,6 +83,7 @@ export async function digestRoutes(app: FastifyInstance) {
         markdown: renderDigest(child.displayName, days, summary),
       });
     }
-    return { digests };
+    const delivery = await sendFamilyDigest(user.familyId, kind);
+    return { digests, emailed: delivery.sent && emailConfigured(), recipients: delivery.to, reason: delivery.reason };
   });
 }

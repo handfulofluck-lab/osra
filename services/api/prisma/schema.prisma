@@ -30,6 +30,22 @@ model Parent {
   createdAt    DateTime        @default(now())
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
+  pushTokens   ParentPushToken[]
+}
+
+/// A parent device registered for push delivery of alerts (Phase 2a). One row per app install;
+/// tokens are pruned when FCM/APNs report them unregistered. `platform` is "android" | "ios" | "web".
+model ParentPushToken {
+  id         String   @id @default(uuid())
+  parentId   String
+  token      String   @unique
+  platform   String
+  appVersion String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  parent     Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId])
 }
 
 model Child {
