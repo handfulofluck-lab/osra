@@ -1,9 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { raiseAlert } from "../lib/alerts.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 
@@ -39,19 +38,6 @@ const InternalAlertSchema = z.object({
   body: z.string().min(1),
   metadata: z.record(z.unknown()).optional(),
 });
-
-/** Minimal push-enqueue interface; real providers deliver via FCM (Android) / APNs (iOS). */
-export interface PushProvider {
-  sendToFamily(familyId: string, payload: { title: string; body: string; data: unknown }): Promise<void>;
-}
-
-// NOTE: production would inject a real FcmApnsPush wired to Firebase/APNs credentials; this
-// stub only logs so the alert pipeline is complete end-to-end without push infra.
-export class FcmApnsPush implements PushProvider {
-  async sendToFamily(familyId: string, payload: { title: string; body: string; data: unknown }): Promise<void> {
-    console.log(`[push:stub] family=${familyId} title=${payload.title}`);
-  }
-}
 
 type AuthedUser = { familyId: string };
 
@@ -125,15 +111,18 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 
-    const alert = await prisma.alert.create({
-      data: { childId, deviceId: effectiveDeviceId, severity, category, title, body, metadata: (metadata ?? {}) as Prisma.InputJsonValue },
+    // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
+    const alert = await raiseAlert({
+      childId,
+      familyId: child.familyId,
+      deviceId: effectiveDeviceId,
+      severity,
+      category,
+      title,
+      body,
+      metadata,
+      childName: child.displayName,
     });
-
-    const event = { type: "alert", payload: alert, ts: new Date().toISOString() };
-    await publishFamilyEvent(child.familyId, event);
-
-    const push: PushProvider = new FcmApnsPush();
-    await push.sendToFamily(child.familyId, { title, body, data: alert });
     return reply.code(201).send({ alert });
   });
 

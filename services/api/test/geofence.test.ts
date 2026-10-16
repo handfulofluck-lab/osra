@@ -202,13 +202,8 @@ describe("school-geofence routine auto-apply (Feature #23)", () => {
     );
     // Every device is nudged to re-fetch the rules.
     for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"type":"rules_updated"'),
-      );
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"reason":"geofence_routine"'),
+      expect(prismaMock.deviceCommand.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ deviceId, type: "rules_updated", payload: { reason: "geofence_routine" } }) }),
       );
     }
     await app.close();

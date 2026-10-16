@@ -7,7 +7,7 @@ import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { requireAuth, requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
-import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
+import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 
 const PLATFORM = z.enum(["android", "ios", "windows", "macos", "chromebook"]);
@@ -39,6 +39,11 @@ const CommandSchema = z.object({
 
 /** Commands that reduce restriction on the child and therefore never require active consent. */
 const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear"]);
+
+const AckSchema = z.object({
+  status: z.enum(["ok", "failed"]),
+  detail: z.record(z.unknown()).optional(),
+});
 
 const PushTokenSchema = z.object({ pushToken: z.string().min(1) });
 
@@ -220,29 +225,54 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = CommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
+    const user = req.user as AuthedUser & { sub: string };
     // ADR-0008 §2c: enforcement commands need active consent; safe-direction commands
     // (unlock, resume, sos_clear) must always remain available to the parent.
     if (!SAFE_DIRECTION_COMMANDS.has(parsed.data.command)) {
       const device = (req as unknown as { device: { id: string; childId: string } }).device;
       if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     }
-    const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {});
-    return { published: true, ...message };
+    // Phase 2b: the command is a durable row; the response carries its id so the parent app can
+    // poll /commands/history for delivered / acked / failed instead of guessing.
+    const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {}, { requestedBy: user.sub });
+    return { published: true, status: "pending", ...message };
   });
-
-  /** Drain the device's pending command queue (long-poll-free polling for agents). */
+  /**
+   * Agent drain (Phase 2b). Device JWT only — a parent token used to be able to consume the queue
+   * (probe note B11); parents read `/commands/history` instead. `?ack=1` declares an ack-capable
+   * agent: its delivered-but-unacked commands are re-offered after 120 s, up to 3 attempts.
+   * Shape is unchanged for existing agents: an array of `{type, payload, ...}`.
+   */
   app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const user = req.user as { role?: string; deviceId?: string; sub?: string };
+    if (user.role !== "device") return reply.code(403).send({ error: "device_role_required", hint: "parents: GET /v1/devices/:id/commands/history" });
+    if ((user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
     // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
-    // Atomic LRANGE+DEL via Lua (review API-6): no command pushed between read and clear can be lost.
-    const raw = (await getRedis().eval(
-      "local items = redis.call('LRANGE', KEYS[1], 0, -1); redis.call('DEL', KEYS[1]); return items",
-      1,
-      `device:${id}:command-queue`,
-    )) as string[];
-    return raw.map((r) => JSON.parse(r) as unknown);
+    const ackCapable = (req.query as { ack?: string })?.ack === "1";
+    return claimPendingCommands(id, { ackCapable });
+  });
+
+  /** Agent reports the outcome of a delivered command (Phase 2b). */
+  app.post("/:id/commands/:commandId/ack", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+    const { id, commandId } = req.params as { id: string; commandId: string };
+    const user = req.user as { role?: string; deviceId?: string; sub?: string };
+    if (user.role !== "device" || (user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
+    const parsed = AckSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const row = await ackDeviceCommand(id, commandId, parsed.data.status, parsed.data.detail);
+    if (!row) return reply.code(404).send({ error: "no_delivered_command" });
+    return { command: row };
+  });
+
+  /** Parent view of recent commands and their delivery state (Phase 2b). Never consumes anything. */
+  app.get("/:id/commands/history", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const limit = Number((req.query as { limit?: string })?.limit ?? 20);
+    const items = await listDeviceCommands(id, Number.isFinite(limit) ? limit : 20);
+    return { items };
   });
 
   /** Update the device push token (FCM/APNs registration). */
