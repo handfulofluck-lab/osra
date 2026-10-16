@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 
@@ -126,6 +127,8 @@ export async function contentRoutes(app: FastifyInstance) {
       select: { id: true, familyId: true, birthYear: true },
     });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const childAge = child.birthYear
       ? new Date().getFullYear() - child.birthYear
@@ -221,6 +224,8 @@ export async function contentRoutes(app: FastifyInstance) {
       select: { id: true, familyId: true, birthYear: true },
     });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const verdict = (await analyzeContentWithAi(title, "web")) ?? localSearchCheck(title);
     if (!verdict.flagged) {

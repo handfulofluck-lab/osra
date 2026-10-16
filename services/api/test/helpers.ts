@@ -143,6 +143,8 @@ export function resetPrismaMock(): void {
     thirdPartySharing: false,
   }]);
   prismaMock.consentRecord.updateMany.mockResolvedValue({ count: 1 });
+  // Child-scoped fan-outs (rules_updated, consent_revoked) iterate the child's devices.
+  prismaMock.device.findMany.mockResolvedValue([]);
   prismaMock.family.findUnique.mockResolvedValue({
     id: "fam-1",
     name: "Demo Family",

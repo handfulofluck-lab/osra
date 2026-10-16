@@ -2,6 +2,7 @@ package com.familyshield.agent.social
 
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,12 +20,14 @@ import javax.inject.Singleton
 class SocialCapture @Inject constructor(
     private val rules: RuleRepository,
     private val queue: SocialScanQueue,
+    private val consent: ConsentState,
 ) {
     private val lock = Any()
     private val lastCaptureAt = HashMap<String, Long>()
 
     /** Entry point from AccessibilityMonitorService; cheap no-op for unmonitored packages. */
     fun onAccessibilityEvent(event: AccessibilityEvent, nowMs: Long = System.currentTimeMillis()) {
+        if (consent.isPaused()) return // ADR-0008 §3
         val pkg = event.packageName?.toString() ?: return
         val appKey = MonitoredApps.appKeyFor(pkg) ?: return
         if (!rules.socialMonitoringEnabled(appKey)) return

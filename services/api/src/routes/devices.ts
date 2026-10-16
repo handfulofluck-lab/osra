@@ -6,7 +6,7 @@ import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { requireAuth, requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
-import { checkActiveConsent } from "../lib/consent.js";
+import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 
@@ -36,6 +36,9 @@ const CommandSchema = z.object({
   ]),
   payload: z.record(z.unknown()).optional(),
 });
+
+/** Commands that reduce restriction on the child and therefore never require active consent. */
+const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear"]);
 
 const PushTokenSchema = z.object({ pushToken: z.string().min(1) });
 
@@ -217,13 +220,22 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = CommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
+    // ADR-0008 §2c: enforcement commands need active consent; safe-direction commands
+    // (unlock, resume, sos_clear) must always remain available to the parent.
+    if (!SAFE_DIRECTION_COMMANDS.has(parsed.data.command)) {
+      const device = (req as unknown as { device: { id: string; childId: string } }).device;
+      if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    }
     const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {});
     return { published: true, ...message };
   });
 
   /** Drain the device's pending command queue (long-poll-free polling for agents). */
-  app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req) => {
+  app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
+    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     // Atomic LRANGE+DEL via Lua (review API-6): no command pushed between read and clear can be lost.
     const raw = (await getRedis().eval(
       "local items = redis.call('LRANGE', KEYS[1], 0, -1); redis.call('DEL', KEYS[1]); return items",
@@ -253,6 +265,8 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     await setJson(`device:${id}:telemetry`, { ...parsed.data, receivedAt: new Date().toISOString() }, 86400);
 
     // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
@@ -283,6 +297,8 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002)
     const persistentEvents = parsed.data.events.filter(
       (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),

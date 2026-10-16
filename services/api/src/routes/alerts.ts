@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
@@ -119,6 +120,8 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     const child = await prisma.child.findUnique({ where: { id: childId } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 

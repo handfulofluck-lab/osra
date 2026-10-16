@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { publishJson } from "../redis.js";
 import { requireParent, requireFamily } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { toApiRuleSet } from "../lib/ruleSync.js";
@@ -99,7 +100,7 @@ export function windowsOverlap(start1: string, end1: string, start2: string, end
 
 /** Push a rules_updated command to every device of the child so HTTP-polling agents refresh. */
 async function notifyDevices(childId: string): Promise<void> {
-  const devices = (await prisma.device.findMany({ where: { childId }, select: { id: true } })) ?? [];
+  const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   for (const { id } of devices) {
     await enqueueDeviceCommand(id, "rules_updated", { reason: "rules_changed" });
   }
@@ -141,8 +142,12 @@ function overlapError(data: z.infer<typeof RuleSetInputSchema>): string | null {
 
 export async function rulesRoutes(app: FastifyInstance) {
   /** Return the child's ruleset (nested API shape), or defaults when none exists. */
-  app.get("/:childId", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req) => {
+  app.get("/:childId", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
+    // ADR-0008 §2b: a device must not keep enforcing or collecting once consent is withdrawn;
+    // parents may still read the (dormant) ruleset.
+    const user = req.user as { role?: string } | undefined;
+    if (user?.role === "device" && !(await assertProcessingAllowed(childId, reply))) return;
     const row = await prisma.ruleSet.findUnique({ where: { childId } });
     return row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
   });

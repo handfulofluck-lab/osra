@@ -59,12 +59,12 @@ export async function controlsRoutes(app: FastifyInstance) {
   };
   app.post(
     "/children/:childId/resume-internet",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
+    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] },
     resumeInternet,
   );
   app.post(
     "/children/:childId/resume",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] },
+    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] },
     resumeInternet,
   );
 

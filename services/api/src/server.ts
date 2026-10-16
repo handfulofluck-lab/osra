@@ -17,7 +17,6 @@ import { socialRoutes } from "./routes/social.js";
 import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
 import { insightsRoutes } from "./routes/insights.js";
-import { consentRoutes } from "./routes/consent.js";
 import { registerRealtime } from "./realtime/gateway.js";
 import { healthRoutes } from "./routes/health.js";
 
@@ -115,7 +114,6 @@ await app.register(digestRoutes, { prefix: "/v1/digests" });
 await app.register(socialRoutes, { prefix: "/v1/social" });
 await app.register(contentRoutes, { prefix: "/v1/content" });
 await app.register(insightsRoutes, { prefix: "/v1/insights" });
-await app.register(consentRoutes, { prefix: "/v1/consent" });
 
 registerRealtime(app);
 

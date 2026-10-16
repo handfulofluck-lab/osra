@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 
@@ -115,6 +116,8 @@ export async function socialRoutes(app: FastifyInstance) {
 
     const child = await prisma.child.findUnique({ where: { id: childId } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
       ? new Date().getFullYear() - (child as { birthYear: number }).birthYear

@@ -8,6 +8,7 @@ import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 
 const SinglePingItemSchema = z.object({
   childId: z.string().min(1).optional(),
@@ -204,6 +205,9 @@ export async function locationRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: "cross_child_forbidden" });
       }
     }
+
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(effectiveChildId, reply))) return;
 
     // Evaluate transitions against the latest ping in the batch
     const latestPing = pingsList[pingsList.length - 1];

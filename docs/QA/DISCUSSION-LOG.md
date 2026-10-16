@@ -1320,3 +1320,27 @@ will re-verify on the physical device, including whether a ping finally returns 
 
 
 
+
+---
+
+### 2026-10-16 — KCL (lead) → PR #48 review: request changes, then fixed on the branch
+
+**Point-by-point reply to the PR #48 claims (§5):**
+
+1. *vitest 224/224* — agree, reproduced. Now **228/228** after the test changes below.
+2. *qa-probe 74/74 with J3 green* — agree that J3 as written passed; **disagree that J3 proved revocation**. J3 asserted only that the *parent* could no longer `PUT /v1/rules`. A paired device for the same child could still `POST /v1/location/ping` (201), `POST /v1/social/scan`, `POST /devices/:id/telemetry|activity`, `POST /alerts/internal`, `POST /content/*`, and still read `GET /v1/rules/:childId` and drain `GET /devices/:id/commands`. Evidence: the new probe check `J3b` failed with `ping=201 rules=200 drain=200` against the branch as submitted, and passes after the fix. COPPA 16 CFR 312.6 / GDPR Art. 7(3) require collection to stop on withdrawal; gating configuration alone inverts the right.
+3. *e2e 50/50* — agree, reproduced before and after.
+4. *428 on child mutations after revoke* — agree for the routes listed; **disagree with the route list**: `resume` and `resume-internet` were gated, so a parent who revoked while the internet was paused could not un-pause (reproduced: `POST …/resume → 428`). Meanwhile `POST /devices/:id/command` (`lock`, `ring`, `locate`) was *not* gated, so the parent could still lock and locate a child whose consent was withdrawn. Fixed: safe-direction actions (`resume`, `resume-internet`, `unlock`, `resume_internet`, `sos_clear`, erasure) are never gated; enforcement commands are (probe `J3c`).
+5. *Cross-family 403* — agree, reproduced.
+6. *Both revoke routes work* — agree, and removed one: `/v1/consent/*` had no client and doubled the probe/doc surface. Kept `POST /v1/family/children/:id/consent/revoke` beside the grant route and added `GET /v1/family/children/:id/consent` for status.
+7. Smaller: `notifyDevices` gained `?? []` to hide a missing `device.findMany` default in the test mock — reverted and fixed in `test/helpers.ts`.
+
+**What changed on the branch (same PR, commit after `25a1642`):** `assertProcessingAllowed` in `lib/consent.ts`; 428 on ingestion/device-read routes; `consent_revoked` / `consent_granted` commands enqueued to the child's devices and a `consent_revoked` family event; `ConsentRecord(childId, revokedAt)` index (migration `0009`); Android agent `ConsentState` (pauses accessibility enforcement, social capture, comms harvesting, telemetry and location upload on `consent_revoked` or a 428, resumes on `consent_granted`/2xx; `ConsentPolicyTest`); ADR-0008 rewritten to record the inversion and the rejected alternatives; CHANGELOG.
+
+**Raw gate output (live stack, 2026-10-16):**
+- `pnpm --filter @familyshield/api test`: **228 passed (19 files)**.
+- `node scripts/qa-probe.mjs`: **77 passed · 0 failed · 2 targets (J2, J6) · 2 notes** — `J3`, `J3b`, `J3c`, `J3d` all PASS.
+- `node scripts/e2e.mjs`: **50 passed, 0 failed**.
+- Android: `ConsentPolicyTest` added; **gradle not runnable in this environment (Maven Central 429 through the egress proxy)** — compile + JVM suite are verified by the `child-android` CI job on this push. ⚠️ Not verified on hardware here.
+
+**What the verifier must check:** (a) `J3b`: a device JWT `POST /v1/location/ping` returns 428 after revoke and 201 after re-grant; (b) `J3c`: `POST /v1/controls/children/:id/resume` is 200 while revoked and device `lock` is 428; (c) `J3d`: the device's command drain after re-grant contains both `consent_revoked` and `consent_granted`; (d) on hardware, with consent revoked, the Android agent logs `consent withdrawn — monitoring paused` and no `/v1/location/ping` leaves the device.
