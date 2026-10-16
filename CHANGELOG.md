@@ -11,7 +11,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### QA — TR-01/TR-02 verification, Redis hygiene tooling, two lifecycle findings (PR #58, issues #56/#57)
+### QA — TR-01/TR-02 verification, Redis hygiene tooling, two lifecycle findings (PR #59, issues #56/#57)
 - **TR-01 PASS — Issue #53 re-verified on a non-UTC host.** `feat/backend-command-queue@c8676e2` was
   verified on an `Asia/Dubai` (UTC+04) database whose `DeviceCommand` columns were genuinely
   `timestamp(3) without time zone` before `migrate deploy` applied `0012_device_command_timestamptz`
