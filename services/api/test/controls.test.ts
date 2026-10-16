@@ -74,6 +74,11 @@ function flatRuleSet(bonusMinutesToday = 0) {
   };
 }
 
+/** Phase 2b: commands are durable rows — assert on the store, not on a Redis list. */
+function queuedCommands(): Array<{ deviceId: string; type: string; payload: Record<string, unknown> }> {
+  return prismaMock.deviceCommand.create.mock.calls.map(([arg]: [{ data: { deviceId: string; type: string; payload: Record<string, unknown> } }]) => arg.data);
+}
+
 describe("controls routes (features #10/#11)", () => {
   beforeEach(() => {
     resetPrismaMock();
@@ -100,10 +105,7 @@ describe("controls routes (features #10/#11)", () => {
         `device:${deviceId}:commands`,
         expect.stringContaining('"type":"pause_internet"'),
       );
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"type":"pause_internet"'),
-      );
+      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "pause_internet" }));
     }
     expect(store.get(PAUSED_KEY)).toEqual(expect.stringContaining('"pausedAt"'));
 
@@ -133,10 +135,7 @@ describe("controls routes (features #10/#11)", () => {
 
     const redis = getRedis() as unknown as MockRedis;
     for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"type":"resume_internet"'),
-      );
+      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "resume_internet" }));
     }
     expect(store.has(PAUSED_KEY)).toBe(false);
 
@@ -176,14 +175,7 @@ describe("controls routes (features #10/#11)", () => {
 
     const redis = getRedis() as unknown as MockRedis;
     for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"type":"bonus_time"'),
-      );
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"minutes":15'),
-      );
+      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "bonus_time", payload: { minutes: 15 } }));
     }
     expect(redis.publish).toHaveBeenCalledWith(
       "child:child-1:rules",
@@ -237,10 +229,7 @@ describe("controls routes (features #10/#11)", () => {
         `device:${deviceId}:commands`,
         expect.stringContaining('"type":"wind_down"'),
       );
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"minutes":30'),
-      );
+      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "wind_down", payload: { minutes: 30 } }));
     }
     await app.close();
   });

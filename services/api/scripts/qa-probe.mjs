@@ -177,7 +177,9 @@ check("B9 digest prefs for other family's child (403/404)", [403, 404].includes(
 
 // Token-type confusion is asserted with a real device JWT in section G (G6).
 const parentOnDevice = await call("GET", `/v1/devices/${deviceIdA}/commands`, { token: tokenA });
-note("B11 parent JWT on device command route", `status ${parentOnDevice.status} (route is destructive-drain; a parent-only preview should not consume the queue)`);
+check("B11 parent JWT cannot drain the device command queue (403; parents use /commands/history)", parentOnDevice.status === 403, `got ${parentOnDevice.status}`);
+const parentHistory = await call("GET", `/v1/devices/${deviceIdA}/commands/history`, { token: tokenA });
+check("B11b parent reads command history non-destructively (200 {items})", parentHistory.status === 200 && Array.isArray(parentHistory.data?.items), `got ${parentHistory.status}`);
 
 // ── C. consent gate ─────────────────────────────────────────────────────────
 console.log("\n── C. consent gate ──");
@@ -464,6 +466,26 @@ check(
   drainTypes.includes("consent_revoked") && drainTypes.includes("consent_granted"),
   `drain=${JSON.stringify(drainTypes)}`,
 );
+
+// Issue #53 (found by Kimi/Antigravity verification of PR #52): the probe never asserted that a
+// device actually receives a fresh command, so a queue that expired every row on a non-UTC
+// database stayed green. These checks fail if the drain is empty, if delivery is not recorded,
+// or if the ack transition does not happen. Run them against a non-UTC database (docs/TESTING.md).
+const freshCmd = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "ring" } }) : { status: 0, data: {} };
+const freshDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands?ack=1`, { token: dJ.token }) : { status: 0, data: [] };
+const freshHit = Array.isArray(freshDrain.data) ? freshDrain.data.find((c) => c.id === freshCmd.data?.id) : undefined;
+check(
+  "K1 device drains a fresh command within seconds (not expired on arrival — issue #53)",
+  freshCmd.status === 200 && freshCmd.data?.status === "pending" && freshDrain.status === 200 && !!freshHit && freshHit.type === "ring",
+  `post=${freshCmd.status} drain=${freshDrain.status} ids=${JSON.stringify((freshDrain.data || []).map((c) => c.type))}`,
+);
+const freshHistory = dJ.deviceId ? await call("GET", `/v1/devices/${dJ.deviceId}/commands/history?limit=5`, { token: tokenA }) : { status: 0, data: {} };
+const freshRow = freshHistory.data?.items?.find((c) => c.id === freshCmd.data?.id);
+check("K2 history records the drained command as delivered", freshRow?.status === "delivered", `status=${freshRow?.status}`);
+const freshAck = freshCmd.data?.id && dJ.token ? await call("POST", `/v1/devices/${dJ.deviceId}/commands/${freshCmd.data.id}/ack`, { token: dJ.token, body: { status: "ok" } }) : { status: 0, data: {} };
+check("K3 device ack flips the command to acked", freshAck.status === 200 && freshAck.data?.command?.status === "acked", `got ${freshAck.status} ${freshAck.data?.command?.status ?? ""}`);
+const emptyDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands?ack=1`, { token: dJ.token }) : { status: 0, data: [1] };
+check("K4 an acked command is not re-offered", emptyDrain.status === 200 && Array.isArray(emptyDrain.data) && !emptyDrain.data.some((c) => c.id === freshCmd.data?.id), `drain=${JSON.stringify((emptyDrain.data || []).map((c) => c.type))}`);
 
 // IOS-01: the iOS AlertReporter signs with the device's own secret but sends no top-level
 // `deviceId`, so the server falls back to the global secret and rejects every alert (verified 401).

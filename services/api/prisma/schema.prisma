@@ -79,6 +79,30 @@ model Device {
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]
+  commands   DeviceCommand[]
+}
+
+/// Durable device command queue (Phase 2b, ADR-0012). Source of truth for "did the lock reach the
+/// phone": pending → delivered (claimed by the device's drain) → acked | failed (device ack), or
+/// expired (never claimed before `expiresAt`). Redis pub/sub remains the wake-up signal only.
+model DeviceCommand {
+  id          String    @id @default(uuid())
+  deviceId    String
+  type        String
+  payload     Json      @default("{}")
+  status      String    @default("pending")
+  requestedBy String?
+  attempts    Int       @default(0)
+  // Issue #53: timestamptz so raw SQL comparisons cannot depend on the DB session time zone.
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  deliveredAt DateTime? @db.Timestamptz(3)
+  ackedAt     DateTime? @db.Timestamptz(3)
+  result      Json?
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, status])
+  @@index([deviceId, createdAt])
 }
 
 model RuleSet {

@@ -22,10 +22,10 @@ function pausedKey(childId: string): string {
 }
 
 /** Enqueue the same command on every device belonging to the child. */
-async function fanOutToDevices(childId: string, type: string, payload: Record<string, unknown> = {}): Promise<void> {
+async function fanOutToDevices(childId: string, type: string, payload: Record<string, unknown> = {}, requestedBy?: string): Promise<void> {
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   for (const { id } of devices) {
-    await enqueueDeviceCommand(id, type, payload);
+    await enqueueDeviceCommand(id, type, payload, { requestedBy });
   }
 }
 

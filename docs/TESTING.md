@@ -61,6 +61,10 @@ INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                           
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
 
+Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
+200 req/min rate limit and every later check reads `429` — wait 60 s between runs; it is the limiter,
+not the product.
+
 `VAULT_KEY` must be a base64-encoded 32-byte key (e.g. `head -c 32 /dev/urandom | base64`); any other
 length makes `/v1/social/scan` return 500 `ERR_CRYPTO_INVALID_KEYLEN` and fails two e2e checks — a
 harness trap, not a product bug.
@@ -144,6 +148,20 @@ A change is done when **all** of these are true (`AGENTS.md` §3): the API unit 
 is green **including the new checks for the behaviour you changed**, e2e is green, the platform suites
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
+
+### The live gates must run against a non-UTC database (issue #53)
+
+A clock or time-zone bug cannot show up when the author's database, API and test runner all sit in
+UTC — PR #52 shipped a queue that expired every command on any other host and its gates were green.
+Before claiming `qa-probe` / `e2e` green, set the test database to a non-UTC zone once:
+
+```sql
+ALTER DATABASE familyshield SET timezone = 'Asia/Dubai';   -- then reconnect / restart the API
+SHOW timezone;                                             -- must print Asia/Dubai
+```
+
+Raw SQL rule that follows from it: never compare a column to `NOW()`; bind the instant from
+application code (`${new Date()}`) and declare time columns `@db.Timestamptz(3)` in Prisma.
 
 ### Workflow trap: `secrets` in `if:`
 
