@@ -137,14 +137,21 @@ check("geofence enter/exit alerts raised", geoAlerts.status === 200 && (geoAlert
 // --- 7. HMAC internal alert -> WebSocket delivery to parent ---
 const ticketRes = await call("POST", "/v1/ws-ticket", { token });
 check("WS ticket issued", ticketRes.status === 200 && !!ticketRes.data?.ticket);
-// TR-04: the client's `open` fires before the server has registered the socket — the route awaits
-// the single-use ticket's Redis GET+DEL and only then adds the socket to the family's set — so a
-// frame published in that window reaches nobody. The old harness raced that window with a one-shot
-// promise and aborted with `Error: ws timeout`, recording 0 FAILs and hiding the rest of the run.
-// The assertion is unchanged (the alert must be delivered); the *stimulus* is made repeatable
-// instead of lucky: wait for the ticket to be consumed, then re-post the alert if no frame arrives.
-// By any retry the registration has long since completed, so the retry is deterministic, and a
-// genuinely undelivered alert still fails after the last attempt.
+// TR-04: the old harness armed a ONE-SHOT promise on the socket and aborted the entire run when it
+// timed out, recording 0 FAILs — so every later check silently never ran and a flake read as a hard
+// failure. That shape is gone: frames are collected, and the stimulus is made repeatable instead of
+// lucky, with a bounded re-post.
+//
+// On the CAUSE of the single abort that started this: the plausible mechanism — the frame is
+// published before the gateway registers the socket, which happens only after the ticket's Redis
+// GET+DEL — did NOT reproduce (20/20 immediate-post trials delivered, and main's unmodified harness
+// passed the original failing sequence). The wait below is therefore a cheap ordering guard, NOT a
+// proven fix, and it must not be described as one. The diagnostics are the part that matters: the
+// next abort reports frames=, wsError= and wsClose=, which is what will separate "the frame was
+// lost" from "the server closed the socket" from "the subscriber never delivered at all".
+//
+// The assertion is unchanged — the alert must be delivered, and a genuinely undelivered alert still
+// fails after the last attempt.
 const wsUrl = `${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticketRes.data.ticket)}`;
 const ws = new WebSocket(wsUrl);
 const wsFrames = [];
@@ -170,7 +177,8 @@ const waitUntil = async (predicate, ms) => {
   }
 };
 // The gateway deletes the ticket and registers the socket in the same tick, so a consumed ticket
-// means the registration is imminent — this only makes the common case deterministic.
+// means the registration is imminent. This narrows the window; it is not a proven fix (see the block
+// comment above), and it is expected to be replaced by the server-side `ready` frame (TR-05).
 const consumed = await waitUntil(
   () => redisDirect.get(`ws:ticket:${ticketRes.data.ticket}`).then((v) => v === null, () => false),
   4000,
@@ -183,7 +191,7 @@ for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
   if (attempt === 1) check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
   evt = await waitUntil(() => wsFrames.find((f) => f.type === "alert" && f.payload?.title === "E2E alert"), 10000);
   if (!evt && wsClose) { console.log(`NOTE  socket closed by the server (${wsClose}) — retrying the stimulus cannot help`); break; }
-  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} (registration race) — retrying the stimulus`);
+  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} — retrying the stimulus (cause unidentified; see the TR-04 block comment above)`);
 }
 check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(evt ?? wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160));
 redisDirect.disconnect();
