@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Device-admin policies the agent uses (ADR-0010): force-lock for remote lock, and watch for
+     the admin being disabled so we can alert the parent. Kept minimal — no password policy is
+     imposed, so activating admin never changes the child's own unlock method. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+        <watch-login />
+    </uses-policies>
+</device-admin>
