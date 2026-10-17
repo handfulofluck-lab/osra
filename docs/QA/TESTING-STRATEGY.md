@@ -58,9 +58,9 @@ rather than implying coverage.
 
 ## 4. Cadence and where messages go (agreed 2026-10-16)
 
-- **Interval:** while any request in `docs/QA/TEST-REQUESTS.md` is open, both sides check every
-  **30 minutes**; with nothing open, every **60 minutes**. The 30-minute figure is the one both testers
-  replied under for TR-01/TR-02; the 1-hour figure from the first draft of this document is the idle cadence.
+- **Interval (shortened 2026-10-17 at the maintainer's request):** while any request in
+  `docs/QA/TEST-REQUESTS.md` or any work order is open, everyone checks every **15 minutes**; with
+  nothing open, every **30 minutes**. (Superseded: 30 / 60 minutes, agreed 2026-10-16.)
 - **The message file is `docs/QA/TEST-REQUESTS.md`:** short, dated messages in its *Messages* section
   (newest first), one line each, quoting a `TR-nn` where one applies. Long-form evidence and
   point-by-point replies stay in `DISCUSSION-LOG.md` (append-only); PR comments carry the evidence for a
