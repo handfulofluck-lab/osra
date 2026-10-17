@@ -11,6 +11,49 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security/safety — the lock no longer covers an OEM emergency dialer (issue #80, found by the Phase 1 gate)
+- **Cause.** `LockEnforcementPolicy`'s exemption list was written against AOSP names
+  (`com.android.emergency`, `com.android.dialer`, `com.android.incallui`) and matched with
+  `startsWith`. The one device we test — a Samsung Galaxy Z Flip4 — runs
+  **`com.samsung.android.emergency/.emergencydialer.view.EmergencyDialerActivity`**, which no prefix
+  matched, so `AccessibilityMonitorService` re-raised `LockActivity` over the emergency dialer: on the
+  gate run the dialer started and the lock was on top at 6 s *and* 11 s. The unit test passed because
+  it asserted the platform's names, not the device's.
+- **Fix.** Two mechanisms, deliberately asymmetric: the explicit list now names the Samsung, Google and
+  AOSP call/emergency surfaces, and `isExemptPackage()` additionally matches the **segment** — any
+  package with an `emergency`, `incallui` or `dialer` segment is exempt, so an OEM we have never seen
+  still gets through. Segment equality rather than substring, so `com.example.emergencygame` is still
+  locked.
+- **Why the asymmetry.** Over-exempting a dialer costs one unlocked app; blocking an emergency call
+  costs the call.
+- **Verified:** two JVM cases — a 14-row OEM table (including the exact Flip4 dialer) asserting the lock
+  stays off, and a five-row negative table (`com.whatsapp`, `com.example.emergencygame`, …) asserting
+  ordinary apps are still locked. Hardware re-run of probe row **S1** is the acceptance on the handset
+  and is recorded on #80 when it passes; until then #78 stays held.
+- **The gate itself was measuring the wrong thing (found while re-running S1, same day).** `lock` is a
+  real `lockNow()`, so on a phone with a secure lock the **OS keyguard** sits above `LockActivity` and
+  above anything `am start` launches: the dialer never reaches the front and the row reported
+  `LockActivity` on top whether or not the overlay exempts the dialer. The probe now tries
+  `wm dismiss-keyguard` + a swipe, and if the keyguard survives it records **NOT MEASURED** and exits
+  non-zero instead of FAIL (`RecordNote`; `docs/TESTING.md` §5f). A `NOT MEASURED` row is not green —
+  the run fails, because a hidden precondition that silently flips a verdict is how a gate stops being
+  one. Consequence for the record: the *original* S1 FAIL on `main` was measured on a phone without a
+  secure lock, so it stands; but it can no longer be reproduced on a locked handset without unlocking
+  it first, and the probe says so instead of guessing.
+- **Second cause, and the dominant one: the overlay re-raised *itself*.** With the keyguard down and the
+  exemption in place, S1 still read `LockActivity` on top at 2 s, 6 s and 11 s (`cec3f82`, Flip4,
+  2026-10-17). The control run with the overlay down showed the dialer's task had been created and then
+  never resumed — so the dialer was launched and the overlay took the front back. `LockActivity.onPause()`
+  and `onUserLeaveHint()` started the activity again unconditionally; `onPause` fires on the way out,
+  before the next window is known, so it also fired for the emergency dialer. `shouldReraise` was already
+  returning `false`, and the service never re-raised: the activity did it to itself. The self-re-raise is
+  removed; re-raising is now only `AccessibilityMonitorService`'s job for non-exempt foreground windows
+  (documented in the class: with the accessibility service off there is no self-re-raise, and that
+  service is already a hard requirement for blocking and the tamper guard). JVM suites unchanged:
+  33 suites / 219 tests / 0 failures.
+- **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
+  mitigated by `device_silent` plus parent-minted pairing.
+
 ### Android + API — durable on-device scan queue (plan 2.6, first half)
 - `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
   before sending, so a process kill, a reboot or an offline stretch loses nothing. Rows go oldest-first
