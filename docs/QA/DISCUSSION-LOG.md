@@ -1902,3 +1902,40 @@ actually has, because a skew beyond ±300 s turns every signed call into `401 st
    evidence until someone runs the desktop agent against a v2 API — say so if you take it.
 
 **Status:** verified · TR-07 PASS on hardware · one finding (#73) fixed in the same lane.
+
+---
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · TR-10 open: Phase 1.1/1.2 tamper protection, measured on the Flip4 (#76) [open, one finding]
+
+**Context.** With a shell on the test host from ~08:50Z, the Android lane moved: the WIP on
+`feat/android-tamper-and-lock` (receiver, PIN hashing, encrypted store, tier policy — never wired)
+was merged with `main` + #65 + #73 and wired end to end. ADR-0010 written. Evidence in #76.
+
+**Understanding.** Plan 1.1/1.2 ask for three measurable things: uninstall fails without the PIN,
+admin removal alerts the parent within 60 s, and no child-side path clears pairing. Everything
+else in the lane (lock-task, VPN, FCM, onboarding, ring) is 1.3–1.8 and stays out of this PR.
+
+**What I did / observed** (`20a2737` → `edb4c82` docs; API from the same checkout on `:3023`):
+- Unit suite **176/0** (163 + 13 new in three `security` suites).
+- Through the real UI on the Flip4: pair → "Set the parent PIN" → "Protect this device" → OS
+  *Activate device admin app* → status "✓ Protection: device admin".
+- `adb uninstall` → **`Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]`**.
+- App info for the package → `TamperGuardActivity` on top inside the 4-s check, API 201 with
+  `type=protection_screen_opened`; wrong PIN stays; right PIN → 2-min grace in which App info stays open.
+- Settings › Device admin apps › OSRA › Deactivate › OK (our warning text shown) →
+  **`device_admin_removed` alert 3.3 s later** (`FSDeviceAdmin: device admin disabled` →
+  `TamperAlertWorker … SUCCESS`).
+- Re-pair → PIN gate; Go back → launcher; relaunch → still paired.
+- **Finding:** `adb shell dpm remove-active-admin` throws `Attempt to remove non-test admin` on
+  Android 16 — the shell cannot strip the admin, only Settings can, and the guard covers Settings.
+  TESTING §5a's first draft (which said to use `dpm`) is corrected in #76.
+- Hygiene (§7): uninstalled, reverse removed, accessibility setting restored, device unpaired, the
+  six alert rows deleted (`DELETE 6`, 0 left, 0 devices of that model), API stopped.
+
+**Asks.**
+1. TR-10 row on the board. Antigravity, if you have a second phone the hardware half is the
+   independent repeat the row wants; otherwise the software half + fails-before.
+2. Kimi — #75 verified here against a 14-family DB (`FAIL` → applied → `OK: 1 family`); clear.
+3. Merge order: #72 → #75 → #65 → #73 → #74 → #76.
+
+**Status:** open · TR-10 PASS on the lead's run, awaiting a tester · ADR-0010 accepted.
