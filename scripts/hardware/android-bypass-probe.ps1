@@ -110,10 +110,24 @@ $sw = [Diagnostics.Stopwatch]::StartNew(); $guard = $false; while ($sw.Elapsed.T
 $t = WaitAlert "protection_screen_opened" 30
 Record 10 "deactivate device admin from Settings" ($guard -or ($t -ge 0)) ("guard on top: $guard; protection_screen_opened alert after " + $t + " s (manual; -1 = nobody opened it)")
 
+# S1. SAFETY, not a bypass: the emergency dialer must stay reachable under lock (LockEnforcementPolicy exempts
+#     com.android.phone / the dialers; a wrong answer here blocks a child from calling for help). No call is placed.
+$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $T
+$sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -notmatch "LockActivity") { Start-Sleep 1 }
+$dialer = (Sh "cmd package resolve-activity --brief -a com.android.phone.EmergencyDialer.DIAL" -split "`n" | Select-Object -Last 1).Trim()
+if (-not $dialer -or $dialer -match "No activity") { $dialer = "com.android.phone/.EmergencyDialer" }
+Sh "am start -n $dialer" | Out-Null; Start-Sleep 6
+$f1 = Focus; Start-Sleep 5; $f2 = Focus
+$stays = ($f1 -match "Emergency|phone|dialer|incallui") -and ($f2 -match "Emergency|phone|dialer|incallui") -and ($f2 -notmatch "LockActivity")
+Record "S1" "emergency dialer reachable under lock (safety)" $stays ("dialer=$dialer; focus after 6 s: $f1; after 11 s: $f2")
+Sh "input keyevent 4" | Out-Null
+Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $T | Out-Null
+$sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
+
 W "---- RESULTS ----"
 $results | Format-Table -AutoSize | Out-String -Width 220 | ForEach-Object { $_ } | Add-Content $LOG -Encoding utf8
 $results | Format-Table -AutoSize | Out-String -Width 220
 $results | ConvertTo-Json | Set-Content (Join-Path $Out "bypass-probe.json") -Encoding utf8
 $fails = @($results | Where-Object { $_.result -eq "FAIL" }).Count
-W ("probe done: " + (10 - $fails) + "/10 blocked or alerted; log " + $LOG)
+W ("probe done: " + ($results.Count - $fails) + "/" + $results.Count + " rows PASS (ten bypasses + the emergency-dialer safety check); log " + $LOG)
 exit $fails

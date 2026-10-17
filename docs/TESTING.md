@@ -233,7 +233,9 @@ runs, against a paired phone with the PIN set and the test API reachable through
 overlay revoked · Private DNS provider · escaping a lock (Home / Recents / Settings) · going offline
 to dodge or escape a lock · VPN disconnected in Settings · device admin deactivated from Settings.
 Each row is a measured outcome (what the OS answered, the alert's latency counted in Postgres, what the
-status screen says) and the table it prints goes into the PR verbatim. Two rows need a human tap on
+status screen says) and the table it prints goes into the PR verbatim. An eleventh row, **S1**, is a
+safety check rather than a bypass: with the device locked, the emergency dialer must open and stay
+on top (no call is placed) — a lock that covered it would be the one bug worse than every bypass. Two rows need a human tap on
 One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
 
 ## 5b. Hardware runs on the Windows test host (scripted)
