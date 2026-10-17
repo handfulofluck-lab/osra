@@ -11,6 +11,16 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — SOS quick-settings tile did nothing on Android 14+ (found in TR-07 on hardware)
+- `SosTileService.onClick` used `TileService.startActivityAndCollapse(Intent)`, which Android 14 (API 34)
+  removed: the system delivered the tap (`TileLifecycleManager: onClick … SosTileService` in logcat) and
+  the SOS screen never opened — on every current phone, the child's SOS button was dead. Found on a
+  Galaxy Z Flip4 / Android 16 while running the TR-07 hardware half; the unit suite could not see it.
+- Fix: API 34+ hands the system a `PendingIntent` (`FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT`); API 26–33
+  keep the Intent overload. Verified on the Flip4: tile tap → `SosActivity` → SOS → `POST
+  /v1/alerts/internal` 201 (the TR-07 evidence). Not unit-tested — `TileService` behaviour is a
+  platform contract; the hardware run is the test and is recorded on the board.
+
 ### QA — environment trap: the shared `:3000` API must not be hosted inside an agent task manager (issue #71)
 - Twice today the shared test API died with **no crash trace** — its log's last lines were normal `200`s — and both times the death coincided with an agent stopping a *different* background task. The likely mechanism is that the task runner kills a **process group**, and the shared server was started inside one.
 - Impact is not data loss but diagnosis: `qa-probe` / `e2e` then fail with **connection refused**, which reads like a product or network bug, and a second tester racing to restart it produces a confusing `EADDRINUSE` while the environment is actually fine.
