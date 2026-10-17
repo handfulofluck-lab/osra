@@ -55,7 +55,7 @@ Sh "settings put secure enabled_accessibility_services ''" | Out-Null
 Sh "am start-foreground-service -n $PKG/.services.LocationService" | Out-Null
 $t = WaitAlert "accessibility" 90
 Record 4 "accessibility service turned off" ($t -ge 0) ("tamper/accessibility alert after " + $t + " s")
-Sh "settings put secure enabled_accessibility_services $PKG/.services.AccessibilityMonitorService" | Out-Null; Sh "settings put secure accessibility_enabled 1" | Out-Null
+Sh "settings put secure enabled_accessibility_services $PKG/$PKG.services.AccessibilityMonitorService" | Out-Null; Sh "settings put secure accessibility_enabled 1" | Out-Null
 
 # 5. revoke "display over other apps" -> alert + status names it
 Sh "appops set $PKG SYSTEM_ALERT_WINDOW deny" | Out-Null
