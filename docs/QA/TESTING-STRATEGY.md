@@ -51,8 +51,11 @@ rather than implying coverage.
    one week: an invalid workflow file (zero jobs), a retired runner (queued forever), a step that swallows
    failures (`|| echo`), and an `if:` that skips. Check the steps, not the tick.
 4. **Every claim carries its scope**, including corrections of earlier conclusions.
-5. **Verification sign-off before merge** for `sev:critical`/`sev:high`: the verifier comments with raw
-   evidence on the PR. Below that, the author's own gates suffice.
+5. **Verification sign-off before every merge, by someone other than the author** (`AGENTS.md` §6.5,
+   architecture decision 2026-10-17): the verifier comments with raw evidence on the PR. Severity sets
+   the depth, not whether it happens: `sev:critical`/`sev:high` and hardware rows get the full gate re-run;
+   docs-only changes get a line-by-line read plus the link check. (Superseded: "below `sev:high` the
+   author's own gates suffice", which contradicted §6.5 once the lead became the only merging agent.)
 6. **Stacked PRs: verify the tip** (it covers its ancestors) and re-verify after any rebase.
 7. **Escalate to the human** after 24h blocked, or immediately on a second disagreement.
 

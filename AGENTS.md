@@ -185,7 +185,7 @@ Every test — automated or on hardware — ends with the environment as it was 
 Rationale: the phone belongs to the human and carries real notifications/accounts; the database is what
 the human and testers look at for demos and decisions. Test residue in either one is misleading.
 
-## 9. Roadmap alignment, documentation and findings (maintainer, 2026-10-17)
+## 12. Roadmap alignment, documentation and findings (maintainer, 2026-10-17)
 
 The maintainer re-cut the roles on 2026-10-17, in his words: *"architecture is your [Claude's] decision
 and that is clear to the team, you help with constructive testing with detailed feedback on how to fix
