@@ -157,8 +157,11 @@ if (-not $keyguardUp) {
     $r = Api POST "/v1/devices/$DEV/command" @{ command="pause"; payload=@{} } $TOKEN
     Start-Sleep 4
     $fw = FocusWindow
-    $covers = $fw -match "LockActivity"
-    Record "S2" "owner can reach the keyguard while the overlay is up (safety, #87)" (-not $covers) ("keyguard up; mCurrentFocus after pause: " + $fw)
+    $covers = $fw -match "LockActivity|BlockActivity"
+    # Neither overlay may draw, and the keyguard must still be the thing in front: a null focus alone
+    # would also be produced by a dead app, so the two conditions are asserted together.
+    $kgStill = KeyguardUp
+    Record "S2" "owner can reach the keyguard while the overlay is up (safety, #87)" ((-not $covers) -and $kgStill) ("keyguard up before and after the pause: " + $kgStill + "; mCurrentFocus after pause: " + $fw)
 }
 Api POST "/v1/devices/$DEV/command" @{ command="resume"; payload=@{} } $TOKEN | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 60 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
