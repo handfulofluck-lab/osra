@@ -29,13 +29,18 @@ class AccessibilityMonitorService : AccessibilityService() {
     @Inject lateinit var social: SocialCapture
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var consentState: ConsentState
+    @Inject lateinit var pinStore: ParentPinStore
 
     private var lastLocationCheckMs = 0L
+    private var lastGuardMs = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
         ensureLocationServiceRunning()
+        // ADR-0010 §3: the protection guard runs even while consent is paused — a paused agent is
+        // still an installed one, and the parent must still hear about an uninstall attempt.
+        guardProtectionScreens(event, pkg)
         // ADR-0008 §3: consent withdrawn — the service keeps polling (to learn about a re-grant) but
         // records, captures and enforces nothing.
         if (consentState.isPaused()) return
