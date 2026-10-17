@@ -26,5 +26,12 @@
     "reason": "Retired because the behaviour it observed is fixed: the note recorded 'accepted twice and created two alerts'. The replacement is the gating E4/J2 check, so the observation moved from advisory to enforced. Probe on the TR-07 tip reports 0 notes. Verified by Kimi 2026-10-17.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-17"
+  },
+  {
+    "kind": "check",
+    "name": "J7 legacy v1 device signatures refused (INTERNAL_SIGNING_ALLOW_V1=0)",
+    "reason": "Label only; the condition is unchanged (401 with reason legacy_signature_disabled when v1 is refused). Renamed because TR-09 made INTERNAL_SIGNING_ALLOW_V1 opt-in: the refusal now happens by default, so '=0' is no longer the trigger and the old label told a reader that setting =0 was required. Verified by Kimi on 2026-10-17 (main@7f019d6) against TR-09's two configurations: 109/0 with 0 targets by default, 108/0 with 1 target when =1.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-17"
   }
 ]

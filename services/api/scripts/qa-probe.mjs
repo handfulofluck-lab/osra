@@ -563,7 +563,7 @@ if (d2?.secret && kidA2) {
     if ([200, 201].includes(v1Res.status)) {
       target("J7 legacy v1 (body-only) device signatures", `HTTP ${v1Res.status} — accepted because INTERNAL_SIGNING_ALLOW_V1=1 is set; unset it once every agent signs v2 (ADR-0014)`);
     } else {
-      check("J7 legacy v1 device signatures refused (INTERNAL_SIGNING_ALLOW_V1=0)", v1Res.status === 401 && v1Res.data?.reason === "legacy_signature_disabled", `got ${v1Res.status} ${JSON.stringify(v1Res.data)}`);
+      check("J7 legacy v1 device signatures refused by default (opt in with INTERNAL_SIGNING_ALLOW_V1=1)", v1Res.status === 401 && v1Res.data?.reason === "legacy_signature_disabled", `got ${v1Res.status} ${JSON.stringify(v1Res.data)}`);
     }
   }
 }
