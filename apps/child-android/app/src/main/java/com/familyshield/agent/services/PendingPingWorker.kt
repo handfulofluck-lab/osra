@@ -29,6 +29,10 @@ class PendingPingWorker(
         // NOTE: shares LocationService.FLUSH_MUTEX so a concurrent service flush cannot upload
         // the same rows twice or clear rows this worker has not sent.
         return LocationService.FLUSH_MUTEX.withLock {
+            if (deps.consentState().isPaused()) {
+                dao.clear() // ADR-0008 §3: withdrawal stops collection; buffered pings are discarded
+                return Result.success()
+            }
             val pending = dao.all()
             if (pending.isEmpty()) return Result.success()
             try {

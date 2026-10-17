@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { publishJson } from "../redis.js";
-import { requireParent, requireFamily } from "../middleware/requireFamily.js";
+import { requireParent, requireFamily, requirePermission } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { toApiRuleSet } from "../lib/ruleSync.js";
@@ -140,14 +142,18 @@ function overlapError(data: z.infer<typeof RuleSetInputSchema>): string | null {
 
 export async function rulesRoutes(app: FastifyInstance) {
   /** Return the child's ruleset (nested API shape), or defaults when none exists. */
-  app.get("/:childId", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req) => {
+  app.get("/:childId", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
+    // ADR-0008 §2b: a device must not keep enforcing or collecting once consent is withdrawn;
+    // parents may still read the (dormant) ruleset.
+    const user = req.user as { role?: string } | undefined;
+    if (user?.role === "device" && !(await assertProcessingAllowed(childId, reply))) return;
     const row = await prisma.ruleSet.findUnique({ where: { childId } });
     return row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
   });
 
   /** Full validated upsert of a child's ruleset; publishes the ruleset to Redis. */
-  app.put("/:childId", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] }, async (req, reply) => {
+  app.put("/:childId", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] }, async (req, reply) => {
     const parsed = RuleSetInputSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const overlap = overlapError(parsed.data);
@@ -165,7 +171,7 @@ export async function rulesRoutes(app: FastifyInstance) {
   });
 
   /** Deep-merge a partial ruleset update onto the existing ruleset; publishes to Redis. */
-  app.patch("/:childId", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child" })] }, async (req, reply) => {
+  app.patch("/:childId", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ param: "childId", model: "child" }), requireConsent({ param: "childId" })] }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     const parsed = RuleSetPatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

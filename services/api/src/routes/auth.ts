@@ -3,11 +3,12 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import argon2 from "argon2";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
+import { passwordResetEmail } from "../lib/email/templates.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
-
-// Parent access tokens live 7 days; device tokens are minted separately with a 10y life.
-const PARENT_TOKEN_TTL = "7d";
+import { invalidateSessionsBefore, isParentSessionLive, signParentToken } from "../lib/sessions.js";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
 const RegisterSchema = z.object({
   email: z.string().email().transform((e) => e.trim().toLowerCase()),
@@ -27,7 +28,8 @@ const LoginSchema = z.object({
  * time-step counter is stored per parent, so a captured code cannot be reused
  * within its validity window.
  */
-async function verifyTotpFresh(parentId: string, secret: string | null, code: string): Promise<boolean> {
+async function verifyTotpFresh(parentId: string, storedSecret: string | null, code: string): Promise<boolean> {
+  const secret = decryptSecret(storedSecret);
   if (!secret) return false;
   const now = Math.floor(Date.now() / 1000 / 30);
   let matched: number | null = null;
@@ -70,20 +72,42 @@ export async function authRoutes(app: FastifyInstance) {
   // --- Redis-backed refresh-token store (handoff items 1-3) ---
   // Live key  refresh:{sha256(token)}            -> JSON {parentId, expiresAt} (30 d TTL)
   // Marker    refresh:used:{sha256(token)}       -> "1" (rotation/reuse detection, same TTL)
-  // Index     refresh:index:{parentId}           -> SET of live token hashes (for logout-all)
+  // Index     refresh:index:{parentId}           -> SET of live token hashes (for logout-all); TTL re-armed
+  //                                                  to 30 d on every issue, members removed on
+  //                                                  rotation / logout / expiry (#57)
   const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
   const liveKey = (hash: string) => `refresh:${hash}`;
   const usedKey = (hash: string) => `refresh:used:${hash}`;
   const indexKey = (parentId: string) => `refresh:index:${parentId}`;
 
   /** Issue a new opaque refresh token, storing only its sha256 hash in Redis. */
-  const issueRefreshToken = async (parentId: string): Promise<string> => {
+  const issueRefreshToken = async (parentId: string, accessJti?: string): Promise<string> => {
     const token = randomBytes(48).toString("hex");
     const hash = hashToken(token);
     const redis = getRedis();
-    await redis.set(liveKey(hash), JSON.stringify({ parentId, expiresAt: Date.now() + REFRESH_TTL_MS }), "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    await redis.set(liveKey(hash), JSON.stringify({ parentId, expiresAt: Date.now() + REFRESH_TTL_MS, jti: accessJti ?? null }), "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    // The access token issued alongside: `/logout` with this refresh token revokes it too (ADR-0014).
+    if (accessJti) await redis.set(`refresh:jwt:${hash}`, accessJti, "EX", Math.floor(REFRESH_TTL_MS / 1000));
     await redis.sadd(indexKey(parentId), hash);
+    // #57: a SET member does not expire with the live key it indexes, so the index itself is bounded —
+    // it lives exactly as long as the newest token it could still reference. Refreshed on every issue,
+    // so an abandoned index disappears one refresh-lifetime after the last login even if a removal
+    // path is ever missed. The members are still removed eagerly below (rotation, logout, expiry).
+    await redis.expire(indexKey(parentId), Math.floor(REFRESH_TTL_MS / 1000));
     return token;
+  };
+
+  /**
+   * Retire one refresh token: drop the live key, mark the hash consumed (reuse detection), and remove
+   * it from its parent's index (#57 — a logout or a naturally expired token used to leave the hash in
+   * the SET forever). `parentId` comes from the live record when it is still there; a token whose
+   * record is already gone needs no index work.
+   */
+  const retireRefreshToken = async (hash: string, parentId: string | null): Promise<void> => {
+    const redis = getRedis();
+    await redis.del(liveKey(hash));
+    await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    if (parentId) await redis.srem(indexKey(parentId), hash);
   };
 
   /** Revoke every refresh token of a parent (password reset / MFA enable / logout-all / theft). */
@@ -95,6 +119,8 @@ export async function authRoutes(app: FastifyInstance) {
       await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
     }
     await redis.del(indexKey(parentId));
+    // ADR-0014: the live access tokens die with the sessions, not 7 days later.
+    await invalidateSessionsBefore(parentId);
   };
 
   app.post("/register", { config: RL }, async (req, reply) => {
@@ -115,8 +141,8 @@ export async function authRoutes(app: FastifyInstance) {
       return { family, parent };
     });
 
-    const token = app.jwt.sign({ sub: result.parent.id, familyId: result.family.id, role: "parent" }, { expiresIn: PARENT_TOKEN_TTL });
-    return reply.code(201).send({ token, refreshToken: await issueRefreshToken(result.parent.id), parent: { id: result.parent.id, email, displayName } });
+    const { token, jti } = signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" });
+    return reply.code(201).send({ token, refreshToken: await issueRefreshToken(result.parent.id, jti), parent: { id: result.parent.id, email, displayName } });
   });
 
   app.post("/login", { config: RL }, async (req, reply) => {
@@ -134,8 +160,16 @@ export async function authRoutes(app: FastifyInstance) {
         return reply.code(401).send({ error: "mfa_required" });
       }
     }
-    const token = app.jwt.sign({ sub: parent.id, familyId: parent.familyId, role: "parent" }, { expiresIn: PARENT_TOKEN_TTL });
-    return { token, refreshToken: await issueRefreshToken(parent.id) };
+    // Lazy upgrade of a legacy plaintext MFA secret to the encrypted form (ADR-0014).
+    if (parent.mfaSecret && !isEncryptedSecret(parent.mfaSecret)) {
+      try {
+        await prisma.parent.update({ where: { id: parent.id }, data: { mfaSecret: encryptSecret(parent.mfaSecret) } });
+      } catch (err) {
+        req.log.warn({ err }, "mfa secret lazy encryption failed");
+      }
+    }
+    const { token, jti } = signParentToken(app, parent);
+    return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
   });
 
   /** Require a valid parent JWT for the MFA endpoints. */
@@ -144,6 +178,11 @@ export async function authRoutes(app: FastifyInstance) {
       await req.jwtVerify();
     } catch {
       await reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+    // ADR-0014: a revoked or pre-epoch token is dead here too, not only behind the global hook.
+    if (!(await isParentSessionLive(req.user as { sub?: string; jti?: string; iat?: number }))) {
+      await reply.code(401).send({ error: "session_revoked" });
     }
   };
 
@@ -153,7 +192,7 @@ export async function authRoutes(app: FastifyInstance) {
     const secret = generateTotpSecret();
     const parent = await prisma.parent.update({
       where: { id: user.sub },
-      data: { mfaSecret: secret },
+      data: { mfaSecret: encryptSecret(secret) },
     });
     const otpauthUrl = `otpauth://totp/OSRA:${encodeURIComponent(parent.email)}?secret=${secret}&issuer=OSRA`;
     return { secret, otpauthUrl };
@@ -184,7 +223,10 @@ export async function authRoutes(app: FastifyInstance) {
     const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
     if (parent) {
       const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset" }, { expiresIn: "15m" });
-      console.log(`[email:stub] password reset for ${parent.email}: ${token}`);
+      // Phase 2a: the live token goes only into the email (audit API-07: it used to be logged).
+      const link = `${appPublicUrl()}/reset?token=${encodeURIComponent(token)}`;
+      const result = await getEmailSender().send(passwordResetEmail(parent.email, link));
+      if (!result.ok) req.log.error({ reason: result.reason }, "password reset email failed");
     }
     return { ok: true };
   });
@@ -237,20 +279,21 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const stored = JSON.parse(raw) as { parentId: string; expiresAt: number };
     if (stored.expiresAt < Date.now()) {
-      await redis.del(liveKey(hash));
+      // Expired-but-present (the key's TTL and the stored instant can disagree by a few seconds):
+      // retire it fully so the hash leaves the index too (#57).
+      await retireRefreshToken(hash, stored.parentId);
       return reply.code(401).send({ error: "invalid_refresh_token" });
     }
     // Rotation: mark the presented token consumed before issuing new credentials.
-    await redis.del(liveKey(hash));
-    await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    await retireRefreshToken(hash, stored.parentId);
     await redis.set(`refresh:owner:${hash}`, stored.parentId, "EX", Math.floor(REFRESH_TTL_MS / 1000));
-    await redis.srem(indexKey(stored.parentId), hash);
     const parent = await prisma.parent.findUnique({ where: { id: stored.parentId } });
     if (!parent) return reply.code(401).send({ error: "invalid_refresh_token" });
-    const jti = randomBytes(16).toString("hex");
-    const token = app.jwt.sign({ sub: parent.id, familyId: parent.familyId, role: "parent", jti }, { expiresIn: PARENT_TOKEN_TTL });
+    const { token, jti } = signParentToken(app, parent);
+    // Theft response: if the token we just consumed is ever presented again, the SESSION IT ROTATED
+    // INTO (this jti) is what must die — `refresh:jwt:<old hash>` is how the reuse path finds it.
     await redis.set(`refresh:jwt:${hash}`, jti, "EX", Math.floor(REFRESH_TTL_MS / 1000));
-    return { token, refreshToken: await issueRefreshToken(parent.id) };
+    return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
   });
 
   /** Revoke a single refresh token (logout; always 200 — handoff item 2). */
@@ -258,9 +301,20 @@ export async function authRoutes(app: FastifyInstance) {
     const parsed = z.object({ refreshToken: z.string().min(1) }).safeParse(req.body);
     if (parsed.success) {
       const hash = hashToken(parsed.data.refreshToken);
+      // Read the owner BEFORE deleting the live key — it is the only place the parentId lives for a
+      // token that has never been rotated (#57).
       const redis = getRedis();
-      await redis.del(liveKey(hash));
-      await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+      const raw = await redis.get(liveKey(hash)).catch(() => null);
+      let parentId: string | null = null;
+      let jti: string | null = null;
+      try {
+        const rec = raw ? (JSON.parse(raw) as { parentId?: string; jti?: string | null }) : null;
+        parentId = rec?.parentId ?? null;
+        jti = rec?.jti ?? null;
+      } catch { parentId = null; }
+      await retireRefreshToken(hash, parentId);
+      // ADR-0014: logging out a session also kills the access token that was issued with it.
+      if (jti) await redis.set(`revoked:token:${jti}`, "1", "EX", 8 * 24 * 3600).catch(() => {});
     }
     return { ok: true };
   });

@@ -22,6 +22,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
 import com.familyshield.agent.commands.CommandDispatcher
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.network.dto.LocationPingBatchDto
@@ -64,6 +65,7 @@ class LocationService : Service() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var db: FamilyShieldDatabase
     @Inject lateinit var dispatcher: CommandDispatcher
+    @Inject lateinit var consentState: ConsentState
     @Inject lateinit var usage: UsageReporter
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -181,6 +183,12 @@ class LocationService : Service() {
     /** Uploads memory + Room pings; on failure persists the memory batch into Room. */
     suspend fun flushPings() {
         FLUSH_MUTEX.withLock {
+            if (consentState.isPaused()) {
+                // ADR-0008 §3: withdrawal stops collection — discard, do not buffer for later upload.
+                synchronized(pingLock) { memoryPings.clear() }
+                runCatching { db.pendingPingDao().clear() }
+                return
+            }
             val mem = synchronized(pingLock) { ArrayList(memoryPings) }
             val stored = db.pendingPingDao().all()
             val all = mem + stored.map {
@@ -253,13 +261,17 @@ class LocationService : Service() {
         val deviceId = settings.deviceId() ?: return
         runCatching {
             val commands = api.getCommands(deviceId)
+            consentState.onPollStatus(200)
             for (command in commands) {
                 runCatching {
                     val data = (command.payload ?: emptyMap()).mapValues { it.value.toString() }
                     dispatcher.dispatch(command.type, data)
                 }.onFailure { Log.w(TAG, "command failed: ${command.type}", it) }
             }
-        }.onFailure { Log.w(TAG, "command poll failed", it) }
+        }.onFailure {
+            consentState.onPollFailure(it) // ADR-0008 §3: 428 = consent withdrawn, pause collection
+            Log.w(TAG, "command poll failed", it)
+        }
     }
 
     /**

@@ -30,6 +30,22 @@ model Parent {
   createdAt    DateTime        @default(now())
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
+  pushTokens   ParentPushToken[]
+}
+
+/// A parent device registered for push delivery of alerts (Phase 2a). One row per app install;
+/// tokens are pruned when FCM/APNs report them unregistered. `platform` is "android" | "ios" | "web".
+model ParentPushToken {
+  id         String   @id @default(uuid())
+  parentId   String
+  token      String   @unique
+  platform   String
+  appVersion String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  parent     Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId])
 }
 
 model Child {
@@ -63,6 +79,30 @@ model Device {
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]
+  commands   DeviceCommand[]
+}
+
+/// Durable device command queue (Phase 2b, ADR-0012). Source of truth for "did the lock reach the
+/// phone": pending → delivered (claimed by the device's drain) → acked | failed (device ack), or
+/// expired (never claimed before `expiresAt`). Redis pub/sub remains the wake-up signal only.
+model DeviceCommand {
+  id          String    @id @default(uuid())
+  deviceId    String
+  type        String
+  payload     Json      @default("{}")
+  status      String    @default("pending")
+  requestedBy String?
+  attempts    Int       @default(0)
+  // Issue #53: timestamptz so raw SQL comparisons cannot depend on the DB session time zone.
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  deliveredAt DateTime? @db.Timestamptz(3)
+  ackedAt     DateTime? @db.Timestamptz(3)
+  result      Json?
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, status])
+  @@index([deviceId, createdAt])
 }
 
 model RuleSet {
@@ -97,6 +137,36 @@ model ActivityEvent {
   ts        DateTime @default(now())
   type      String
   payload   Json     @default("{}")
+  @@index([childId, ts])
+}
+
+/// Phase 2c (ADR-0013): per-child, per-device, per-app daily minutes. Written incrementally at
+/// ingestion and reconciled from ActivityEvent by the nightly rollup, so the weekly report does not
+/// depend on Redis (`usage:child:*` is a cache of today only) and survives raw-event retention.
+/// `app = "*"` is the device-reported total for the day (telemetry `totalMinutes`).
+model AppUsageDaily {
+  id        String   @id @default(uuid())
+  childId   String
+  deviceId  String   @default("")
+  day       DateTime @db.Date
+  app       String
+  minutes   Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  @@unique([childId, deviceId, day, app])
+  @@index([childId, day])
+}
+
+/// Phase 2c (ADR-0013): one row per URL visit (from ActivityEvent type "url"), queryable as browsing
+/// history without scanning the JSON event log. Subject to the raw-data retention window.
+model WebVisit {
+  id       String   @id @default(uuid())
+  childId  String
+  deviceId String?
+  ts       DateTime @default(now()) @db.Timestamptz(3)
+  domain   String
+  url      String   @default("")
+  blocked  Boolean  @default(false)
+  category String   @default("")
   @@index([childId, ts])
 }
 
@@ -195,4 +265,6 @@ model ConsentRecord {
   thirdPartySharing Boolean  @default(false)
   child             Child    @relation(fields: [childId], references: [id])
   parent            Parent   @relation(fields: [parentId], references: [id])
+
+  @@index([childId, revokedAt])
 }

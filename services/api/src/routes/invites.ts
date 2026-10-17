@@ -1,8 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
+import { inviteEmail } from "../lib/email/templates.js";
 import { getJson, setJson } from "../redis.js";
-import { requireAuth, requireParent } from "../middleware/requireFamily.js";
+import { requireAuth, requireOwner, requireParent } from "../middleware/requireFamily.js";
+import { signParentToken } from "../lib/sessions.js";
 
 const INVITE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
@@ -23,19 +26,6 @@ function inviteKey(id: string): string {
 /** Strip credential material from a parent row before it leaves the API. */
 const sanitizeParent = ({ passwordHash: _ph, mfaSecret: _ms, ...rest }: Record<string, unknown>) => rest;
 
-/** preHandler (after requireParent): the caller's Parent row must carry the owner role. */
-async function requireOwner(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const user = req.user as AuthedUser;
-  const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
-  if (!parent) {
-    await reply.code(404).send({ error: "parent_not_found" });
-    return;
-  }
-  if (parent.role !== "owner") {
-    await reply.code(403).send({ error: "owner_role_required" });
-  }
-}
-
 export async function inviteRoutes(app: FastifyInstance) {
   /** Create a family invite (owner only); the accept token lives in Redis for 7 days. */
   // NOTE: the test build returns the accept token inline — production emails a
@@ -52,7 +42,19 @@ export async function inviteRoutes(app: FastifyInstance) {
     });
     const token: InviteToken = { familyId: user.familyId, email: normalizedEmail, role, permissions };
     await setJson(inviteKey(invite.id), token, INVITE_TTL_SECONDS);
-    return reply.code(201).send({ invite, acceptToken: invite.id });
+    // Phase 2a: the invitee gets a link by email. The accept token is echoed in the response only
+    // while no email provider is configured (dev/test builds), never in production.
+    const [inviter, family] = await Promise.all([
+      prisma.parent.findUnique({ where: { id: user.sub } }),
+      prisma.family.findUnique({ where: { id: user.familyId } }),
+    ]);
+    const link = `${appPublicUrl()}/invite/accept?token=${encodeURIComponent(invite.id)}`;
+    const sent = await getEmailSender().send(
+      inviteEmail(normalizedEmail, { inviterName: inviter?.displayName ?? "A parent", familyName: family?.name ?? "your", role, link }),
+    );
+    if (!sent.ok) req.log.error({ reason: sent.reason }, "invite email failed");
+    const echoToken = !emailConfigured() && process.env.NODE_ENV !== "production";
+    return reply.code(201).send({ invite, emailed: sent.ok && emailConfigured(), ...(echoToken ? { acceptToken: invite.id } : {}) });
   });
 
   /** List the family's invites (any parent of the family). */
@@ -89,10 +91,10 @@ export async function inviteRoutes(app: FastifyInstance) {
     await prisma.familyInvite.update({ where: { id }, data: { status: "accepted" } });
     const family = await prisma.family.findUnique({ where: { id: token.familyId } });
     // Issue a fresh access token bound to the new family ID (BUG-006 / API-05)
-    const freshToken = app.jwt.sign(
-      { sub: parent.id, familyId: token.familyId, role: token.role },
-      { expiresIn: "15m" },
-    );
+    // ADR-0014: the JWT `role` is always "parent" (it selects the parent surface — `requireParent`
+    // used to reject the "co-parent"/"guardian" tokens minted here, locking invitees out until they
+    // logged in again); the family role travels as `familyRole`.
+    const { token: freshToken } = signParentToken(app, { id: parent.id, familyId: token.familyId, role: token.role }, { expiresIn: "15m" });
     return {
       family,
       parent: sanitizeParent(updated as unknown as Record<string, unknown>),

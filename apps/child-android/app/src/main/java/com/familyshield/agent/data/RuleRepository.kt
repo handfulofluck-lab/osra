@@ -35,6 +35,7 @@ class RuleRepository @Inject constructor(
     private val moshi: Moshi,
     private val blocklist: BlocklistStore,
     private val usageDao: UsageEventDao? = null,
+    private val consent: ConsentState,
 ) {
     /** Outcome of evaluating a package against the active rule set. */
     enum class Decision { ALLOW, BLOCK, TIME_LIMIT_REACHED }
@@ -67,6 +68,8 @@ class RuleRepository @Inject constructor(
 
     /** Returns the decision for [packageId] based on the cached rules, the blocklist and today's usage counters. */
     fun evaluate(packageId: String): Decision {
+        // ADR-0008 §3: no enforcement while the parent has withdrawn consent.
+        if (consent.isPaused()) return Decision.ALLOW
         val ruleSet = cached
         if (ruleSet == null) {
             // AND-03: Fail-closed when paired but no rules are cached yet.
@@ -182,13 +185,21 @@ class RuleRepository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e // NOTE: never swallow coroutine cancellation
             } catch (e: Exception) {
+                // ADR-0008 §3: a 428 here means consent was withdrawn — pause, keep the cached rules dormant.
+                consent.onPollFailure(e)
                 return@withLock cached
             }
+            consent.onPollStatus(200)
             cached = updated
             runCatching { settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated)) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             updated
         }
+    }
+
+    /** Fire-and-forget refresh (used after consent is re-granted). */
+    fun refreshAsync() {
+        appScope.launch { refresh() }
     }
 
     /** Returns the most recently known rule set, loading it from disk if necessary. */

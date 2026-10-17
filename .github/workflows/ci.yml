@@ -47,6 +47,41 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      # Store-readiness gate: a release build must compile, shrink and carry INTERNET + the Maps
+      # key placeholder. The Maps key is a repository secret (blank is tolerated for the build;
+      # the map simply renders empty). Signing: with OSRA_UPLOAD_KEYSTORE_B64 set this produces an
+      # upload-key-signed AAB; without it the debug key is used and the job still proves the build.
+      # NOTE: the `secrets` context is NOT available in a step `if:` — GitHub rejects the whole
+      # workflow file ("Unrecognized named-value: 'secrets'") and zero jobs run, which is exactly
+      # how the first push of this PR failed. Decide inside the run body instead.
+      - name: Materialise upload keystore (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release build will use the debug key (by design)"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
+          echo "OSRA_UPLOAD_KEYSTORE=upload.jks" >> "$GITHUB_ENV"
+          echo "upload keystore materialised"
+      - name: Release build (AAB)
+        env:
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          OSRA_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEYSTORE_PASSWORD }}
+          OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
+          OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
+        run: flutter build appbundle --release
+      - name: Release manifest must declare INTERNET
+        run: |
+          unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
+          # The AAB manifest is protobuf; the permission string survives as plain text.
+          grep -q "android.permission.INTERNET" /tmp/manifest.bin && echo "INTERNET present"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parent-app-release-aab
+          path: apps/parent-app/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 14
 
   # ── Child agent (Android JVM unit tests — no emulator needed) ─────────────
   child-android:
@@ -64,10 +99,19 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Unit tests & build (JVM + APK)
+      - name: Unit tests & build (JVM + debug APK + release APK)
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
-        run: ./gradlew testDebugUnitTest assembleDebug --console=plain
+        # assembleRelease proves the shrunk, release-signed configuration compiles; signing material
+        # comes from secrets when present (see parent-app job) and falls back to the debug key.
+        run: ./gradlew testDebugUnitTest assembleDebug assembleRelease --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: child-android-apks
+          path: |
+            apps/child-android/app/build/outputs/apk/debug/*.apk
+            apps/child-android/app/build/outputs/apk/release/*.apk
+          retention-days: 14
 
   # ── Windows desktop agent ──────────────────────────────────────────────────
   agent-desktop:
@@ -98,6 +142,25 @@ jobs:
       # seconds without them (verified: 21 passed vs 18 passed + 1 skipped when fastapi is absent).
       - run: pip install -r requirements-dev.txt
       - run: pytest tests -q
+
+  # ── Probe integrity: the adversarial gate may only be extended (AGENTS.md §4) ──────────────
+  # Runs `scripts/check-probe-integrity.mjs` (PR #68) on every pull request: the assertion-name sets
+  # of `services/api/scripts/qa-probe.mjs` on the PR head are compared with the base branch, and the
+  # job fails on a removed or demoted assertion unless `scripts/probe-gate-acks.json` on the branch
+  # acknowledges it with a reason. Cheap (one node script, no install), so it runs on every PR rather
+  # than only on PRs that touch the probe — a path filter would make the check look green by absence.
+  probe-integrity:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the checker reads the base ref with `git show`
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Compare probe assertion sets against the base branch
+        run: node scripts/check-probe-integrity.mjs --base "origin/${{ github.base_ref }}" --head HEAD
 
   # NOTE (2026-10-15): iOS is covered by the dedicated `.github/workflows/ios-ci.yml` workflow
   # (SwiftPM build + `generic/platform=iOS Simulator` on macos-14). A second, subtly different

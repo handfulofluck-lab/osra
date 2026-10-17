@@ -17,7 +17,11 @@ import { socialRoutes } from "./routes/social.js";
 import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
 import { insightsRoutes } from "./routes/insights.js";
+import { meRoutes } from "./routes/me.js";
+import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
+import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
+import { isParentSessionLive } from "./lib/sessions.js";
 import { healthRoutes } from "./routes/health.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
@@ -74,12 +78,8 @@ app.addHook("preHandler", async (req, reply) => {
       return reply.code(401).send({ error: "device_revoked" });
     }
   }
-  if (user?.jti) {
-    const redis = getRedis();
-    const revoked = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
-    if (revoked) {
-      return reply.code(401).send({ error: "session_revoked" });
-    }
+  if (user?.role === "parent" && !(await isParentSessionLive(user as { sub?: string; jti?: string; iat?: number }))) {
+    return reply.code(401).send({ error: "session_revoked" });
   }
 });
 
@@ -114,8 +114,13 @@ await app.register(digestRoutes, { prefix: "/v1/digests" });
 await app.register(socialRoutes, { prefix: "/v1/social" });
 await app.register(contentRoutes, { prefix: "/v1/content" });
 await app.register(insightsRoutes, { prefix: "/v1/insights" });
+await app.register(meRoutes, { prefix: "/v1/me" });
 
 registerRealtime(app);
 
 const port = Number(process.env.PORT ?? 3000);
 await app.listen({ port, host: "0.0.0.0" });
+// Phase 2a: in-process digest scheduler (hourly tick; JOBS_ENABLED=0 disables, e.g. behind an external cron).
+startDigestScheduler();
+// Phase 2c: nightly usage rollup + retention (ADR-0013); same JOBS_ENABLED switch.
+startUsageRollupScheduler();

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import argon2 from "argon2";
 import { authRoutes } from "../src/routes/auth.js";
+import { decryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -94,7 +95,10 @@ describe("auth routes", () => {
     const { secret, otpauthUrl } = enroll.json();
     expect(secret).toMatch(/^[A-Z2-7]{32}$/);
     expect(otpauthUrl).toContain(`secret=${secret}`);
-    expect(storedSecret).toBe(secret);
+    // ADR-0014: the row holds the ENCRYPTED secret, never the plaintext the authenticator app gets.
+    expect(storedSecret).not.toBe(secret);
+    expect(storedSecret.startsWith("enc1:")).toBe(true);
+    expect(decryptSecret(storedSecret)).toBe(secret);
 
     // Wrong code is rejected.
     const wrong = await app.inject({

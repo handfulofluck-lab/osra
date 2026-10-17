@@ -4,9 +4,16 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
-import { requireAuth, requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
-import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
+import { requireAuth, requireFamily, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
+import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
+import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
+
+import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
+// Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
+export { DEVICE_TOKEN_TTL_SECONDS };
 
 const PLATFORM = z.enum(["android", "ios", "windows", "macos", "chromebook"]);
 
@@ -33,6 +40,14 @@ const CommandSchema = z.object({
     "wind_down",
   ]),
   payload: z.record(z.unknown()).optional(),
+});
+
+/** Commands that reduce restriction on the child and therefore never require active consent. */
+const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear"]);
+
+const AckSchema = z.object({
+  status: z.enum(["ok", "failed"]),
+  detail: z.record(z.unknown()).optional(),
 });
 
 const PushTokenSchema = z.object({ pushToken: z.string().min(1) });
@@ -95,9 +110,19 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = RegisterSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
-    const child = await prisma.child.findUnique({ where: { id: parsed.data.childId } });
+    const child = await prisma.child.findUnique({
+      where: { id: parsed.data.childId },
+      include: { family: true },
+    });
     if (!child || child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
+    }
+    const consent = await checkActiveConsent(child.id, child.family?.region);
+    if (!consent.active) {
+      return reply.code(428).send({
+        error: consent.reason ?? "parental_consent_required",
+        ...(consent.jurisdiction ? { jurisdiction: consent.jurisdiction } : {}),
+      });
     }
     const { childId, ...rest } = parsed.data;
     const device = await prisma.device.create({ data: { childId, ...rest } });
@@ -109,9 +134,19 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = PairSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
-    const child = await prisma.child.findUnique({ where: { id: parsed.data.childId } });
+    const child = await prisma.child.findUnique({
+      where: { id: parsed.data.childId },
+      include: { family: true },
+    });
     if (!child || child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
+    }
+    const consent = await checkActiveConsent(child.id, child.family?.region);
+    if (!consent.active) {
+      return reply.code(428).send({
+        error: consent.reason ?? "parental_consent_required",
+        ...(consent.jurisdiction ? { jurisdiction: consent.jurisdiction } : {}),
+      });
     }
     const { code, expiresAt } = await createPairingCode({ childId: child.id, familyId: user.familyId });
     return reply.code(201).send({ code, expiresAt });
@@ -131,6 +166,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     )) as string | null;
     const payload = raw ? (JSON.parse(raw) as { childId: string; familyId: string }) : null;
     if (!payload) return reply.code(404).send({ error: "invalid_or_expired_code" });
+    const consentCheck = await checkActiveConsent(payload.childId);
+    if (!consentCheck.active) {
+      return reply.code(428).send({ error: consentCheck.reason ?? "parental_consent_required" });
+    }
     const { code: _code, deviceName, ...rest } = parsed.data;
     // NOTE: the Device table is child-scoped (no familyId column); familyId from the Redis
     // payload is used for the JWT claims and response only — never sourced from the client.
@@ -149,7 +188,7 @@ export async function deviceRoutes(app: FastifyInstance) {
     });
     const token = app.jwt.sign(
       { sub: device.id, deviceId: device.id, childId: payload.childId, familyId: payload.familyId, role: "device" },
-      { expiresIn: "10y" },
+      { expiresIn: DEVICE_TOKEN_TTL_SECONDS },
     );
     return reply.code(201).send({
       device,
@@ -187,24 +226,58 @@ export async function deviceRoutes(app: FastifyInstance) {
 
 
   /** Publish a lock/unlock/ring/sos_clear command to the device's Redis command channel and queue. */
-  app.post("/:id/command", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req, reply) => {
+  app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {
     const parsed = CommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
-    const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {});
-    return { published: true, ...message };
+    const user = req.user as AuthedUser & { sub: string };
+    // ADR-0008 §2c: enforcement commands need active consent; safe-direction commands
+    // (unlock, resume, sos_clear) must always remain available to the parent.
+    if (!SAFE_DIRECTION_COMMANDS.has(parsed.data.command)) {
+      const device = (req as unknown as { device: { id: string; childId: string } }).device;
+      if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    }
+    // Phase 2b: the command is a durable row; the response carries its id so the parent app can
+    // poll /commands/history for delivered / acked / failed instead of guessing.
+    const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {}, { requestedBy: user.sub });
+    return { published: true, status: "pending", ...message };
+  });
+  /**
+   * Agent drain (Phase 2b). Device JWT only — a parent token used to be able to consume the queue
+   * (probe note B11); parents read `/commands/history` instead. `?ack=1` declares an ack-capable
+   * agent: its delivered-but-unacked commands are re-offered after 120 s, up to 3 attempts.
+   * Shape is unchanged for existing agents: an array of `{type, payload, ...}`.
+   */
+  app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const user = req.user as { role?: string; deviceId?: string; sub?: string };
+    if (user.role !== "device") return reply.code(403).send({ error: "device_role_required", hint: "parents: GET /v1/devices/:id/commands/history" });
+    if ((user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
+    // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
+    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    const ackCapable = (req.query as { ack?: string })?.ack === "1";
+    return claimPendingCommands(id, { ackCapable });
   });
 
-  /** Drain the device's pending command queue (long-poll-free polling for agents). */
-  app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req) => {
+  /** Agent reports the outcome of a delivered command (Phase 2b). */
+  app.post("/:id/commands/:commandId/ack", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+    const { id, commandId } = req.params as { id: string; commandId: string };
+    const user = req.user as { role?: string; deviceId?: string; sub?: string };
+    if (user.role !== "device" || (user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
+    const parsed = AckSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const row = await ackDeviceCommand(id, commandId, parsed.data.status, parsed.data.detail);
+    if (!row) return reply.code(404).send({ error: "no_delivered_command" });
+    return { command: row };
+  });
+
+  /** Parent view of recent commands and their delivery state (Phase 2b). Never consumes anything. */
+  app.get("/:id/commands/history", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
     const { id } = req.params as { id: string };
-    // Atomic LRANGE+DEL via Lua (review API-6): no command pushed between read and clear can be lost.
-    const raw = (await getRedis().eval(
-      "local items = redis.call('LRANGE', KEYS[1], 0, -1); redis.call('DEL', KEYS[1]); return items",
-      1,
-      `device:${id}:command-queue`,
-    )) as string[];
-    return raw.map((r) => JSON.parse(r) as unknown);
+    const limit = Number((req.query as { limit?: string })?.limit ?? 20);
+    const items = await listDeviceCommands(id, Number.isFinite(limit) ? limit : 20);
+    return { items };
   });
 
   /** Update the device push token (FCM/APNs registration). */
@@ -227,6 +300,8 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     await setJson(`device:${id}:telemetry`, { ...parsed.data, receivedAt: new Date().toISOString() }, 86400);
 
     // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
@@ -236,6 +311,12 @@ export async function deviceRoutes(app: FastifyInstance) {
       const redis = getRedis();
       await redis.incrby(childUsageKey, parsed.data.totalMinutes);
       await redis.expire(childUsageKey, 86400 * 2);
+      // Phase 2c: the same delta into the durable day total, so "today" survives a Redis flush.
+      try {
+        await recordDeviceTotal(device.childId, id, parsed.data.totalMinutes);
+      } catch (err) {
+        req.log.warn({ err }, "usage rollup write failed (telemetry)");
+      }
     }
 
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
@@ -257,6 +338,8 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002)
     const persistentEvents = parsed.data.events.filter(
       (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),
@@ -271,6 +354,13 @@ export async function deviceRoutes(app: FastifyInstance) {
           payload: e.payload as Prisma.InputJsonValue,
         })),
       });
+      // Phase 2c: fold the batch into AppUsageDaily / WebVisit. A failure here must not reject the
+      // batch (the raw log is the source of truth; the nightly rollup reconciles from it).
+      try {
+        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>);
+      } catch (err) {
+        req.log.warn({ err }, "usage rollup write failed (activity)");
+      }
     }
     // Live activity (#29): broadcast the latest app_usage event of the batch so the
     // parent dashboard's live chip updates without polling.
@@ -298,10 +388,15 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Unenroll a device from the family; revokes its long-lived JWT (handoff item 4). */
-  app.delete("/:id", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+  app.delete("/:id", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req) => {
     const { id } = req.params as { id: string };
     await prisma.device.delete({ where: { id } });
-    await getRedis().set(`revoked:device:${id}`, new Date().toISOString());
+    // Security state, not residue (#56): once the row is gone this key is the only thing that makes
+    // the device's 10-year JWT answer 401 (server.ts preHandler, location.ts, gateway.ts, and the
+    // hook below). It is bounded by the token lifetime so an unpaired device cannot leave a key
+    // forever, and it must never be given a shorter TTL or deleted while that token could still be
+    // presented — `scripts/cleanup-test-redis.mjs` deliberately keeps it.
+    await getRedis().set(`revoked:device:${id}`, new Date().toISOString(), "EX", DEVICE_TOKEN_TTL_SECONDS);
     return { deleted: true, id };
   });
 

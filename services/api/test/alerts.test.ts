@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
+import { signV2 } from "../src/lib/internalAuth.js";
 import { alertsRoutes } from "../src/routes/alerts.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -62,7 +63,7 @@ describe("alerts routes", () => {
       url: "/v1/alerts/internal",
       headers: {
         "content-type": "application/json",
-        "x-familyshield-signature": sign(raw),
+        ...signV2(SECRET, raw, { caller: "ai-engine" }),
       },
       payload: raw,
     });
@@ -183,7 +184,7 @@ describe("alerts routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/alerts/internal",
-      headers: { "content-type": "application/json", "x-familyshield-signature": sign(raw) },
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
       payload: raw,
     });
     expect(res.statusCode).toBe(400);
@@ -199,7 +200,7 @@ describe("alerts routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/alerts/internal",
-      headers: { "content-type": "application/json", "x-familyshield-signature": sign(raw) },
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
       payload: raw,
     });
     expect(res.statusCode).toBe(404);

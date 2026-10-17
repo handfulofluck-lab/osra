@@ -6,11 +6,22 @@
  * system behaves correctly (i.e. it REJECTS the bad input) and FAIL when it accepts it.
  *
  * Usage:  node scripts/qa-probe.mjs          (see QA-KIMI docs; needs INTERNAL_HMAC_SECRET)
- * Env:    API_BASE, INTERNAL_HMAC_SECRET, REDIS_URL (only for the WS ticket probe)
+ * Env:    API_BASE, INTERNAL_HMAC_SECRET
  *
  * Exit code is non-zero when any probe fails, so CI / the collaborating developer can gate on it.
  */
 import { createHmac, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+
+// Node 20 hides the global WebSocket behind a flag — re-exec ourselves with it (same shim as e2e.mjs).
+if (typeof globalThis.WebSocket === "undefined" && !process.env.FS_WS_FLAGGED) {
+  const child = spawn(process.execPath, ["--experimental-websocket", process.argv[1]], {
+    stdio: "inherit",
+    env: { ...process.env, FS_WS_FLAGGED: "1" },
+  });
+  child.on("exit", (code) => process.exit(code ?? 1));
+  await new Promise(() => {});
+}
 
 const API = process.env.API_BASE ?? "http://localhost:3000";
 const HMAC_SECRET = process.env.INTERNAL_HMAC_SECRET ?? "";
@@ -37,16 +48,33 @@ const target = (name, detail) => {
   console.log(`TARGET  ${name} — ${detail}`);
 };
 
-const sign = (body) => createHmac("sha256", HMAC_SECRET).update(body).digest("hex");
+/**
+ * v2 internal signing (ADR-0014): HMAC over `${ts}.${nonce}.${body}` + timestamp/nonce headers.
+ * `hmac: true` signs as the ai-engine SERVICE (global secret + caller header); `secret: <device>`
+ * signs as that device. `signV1()` is the legacy body-only format, kept here only to prove the
+ * server treats it as it should.
+ */
+const signV2 = (secret, body, { caller, nonce, ts } = {}) => {
+  const timestamp = String(ts ?? Math.floor(Date.now() / 1000));
+  const n = nonce ?? randomUUID().replace(/-/g, "");
+  return {
+    "x-familyshield-signature": createHmac("sha256", secret).update(`${timestamp}.${n}.${body}`).digest("hex"),
+    "x-familyshield-timestamp": timestamp,
+    "x-familyshield-nonce": n,
+    ...(caller ? { "x-familyshield-caller": caller } : {}),
+  };
+};
+const signV1 = (secret, body) => ({ "x-familyshield-signature": createHmac("sha256", secret).update(body).digest("hex") });
+const sign = (body) => signV2(HMAC_SECRET, body, { caller: "ai-engine" });
 
-async function call(method, path, { token, body, hmac, rawBody, headers } = {}) {
+async function call(method, path, { token, body, hmac, secret, rawBody, headers } = {}) {
   const raw = rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
       ...(raw !== undefined ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(hmac ? { "x-familyshield-signature": sign(raw ?? "") } : {}),
+      ...(secret ? signV2(secret, raw ?? "") : hmac ? sign(raw ?? "") : {}),
       ...headers,
     },
     body: raw,
@@ -68,7 +96,7 @@ const regA = await call("POST", "/v1/auth/register", {
 const regB = await call("POST", "/v1/auth/register", {
   body: { email: emailB, password: PASSWORD, displayName: "QA B", familyName: "QA Family B", region: "EU" },
 });
-const tokenA = regA.data?.token;
+let tokenA = regA.data?.token;
 const tokenB = regB.data?.token;
 check("setup: two families registered", regA.status === 201 && regB.status === 201, `${regA.status}/${regB.status}`);
 if (!tokenA || !tokenB) {
@@ -157,8 +185,10 @@ const crossGeofence = await call("POST", "/v1/location/geofences", {
 });
 check("B4 geofence on other family's child (403/404)", [403, 404].includes(crossGeofence.status), `got ${crossGeofence.status}`);
 
-const crossReports = await call("GET", `/v1/reports/usage/${kidA}?days=7`, { token: tokenB });
+const crossReports = await call("GET", `/v1/reports/usage?childId=${kidA}&days=7`, { token: tokenB });
 check("B5 usage report for other family's child (403/404)", [403, 404].includes(crossReports.status), `got ${crossReports.status}`);
+const crossWeb = await call("GET", `/v1/reports/web?childId=${kidA}&days=7`, { token: tokenB });
+check("B5b browsing history for other family's child (403/404)", [403, 404].includes(crossWeb.status), `got ${crossWeb.status}`);
 
 const crossWellbeing = await call("GET", `/v1/reports/wellbeing/${kidA}`, { token: tokenB });
 check("B6 wellbeing for other family's child (403/404)", [403, 404].includes(crossWellbeing.status), `got ${crossWellbeing.status}`);
@@ -177,7 +207,9 @@ check("B9 digest prefs for other family's child (403/404)", [403, 404].includes(
 
 // Token-type confusion is asserted with a real device JWT in section G (G6).
 const parentOnDevice = await call("GET", `/v1/devices/${deviceIdA}/commands`, { token: tokenA });
-note("B11 parent JWT on device command route", `status ${parentOnDevice.status} (route is destructive-drain; a parent-only preview should not consume the queue)`);
+check("B11 parent JWT cannot drain the device command queue (403; parents use /commands/history)", parentOnDevice.status === 403, `got ${parentOnDevice.status}`);
+const parentHistory = await call("GET", `/v1/devices/${deviceIdA}/commands/history`, { token: tokenA });
+check("B11b parent reads command history non-destructively (200 {items})", parentHistory.status === 200 && Array.isArray(parentHistory.data?.items), `got ${parentHistory.status}`);
 
 // ── C. consent gate ─────────────────────────────────────────────────────────
 console.log("\n── C. consent gate ──");
@@ -253,15 +285,17 @@ const noSig = await call("POST", "/v1/alerts/internal", {
 });
 check("E3 missing signature rejected (401)", noSig.status === 401, `got ${noSig.status}`);
 
-// Replay: re-send a byte-identical, previously accepted signed request.
-const replayBody = { childId: kidA, deviceId: deviceIdA, severity: "info", category: "sos", title: "replay", body: "same-bytes" };
-const firstSend = await call("POST", "/v1/alerts/internal", { hmac: true, body: replayBody });
-const replaySend = await call("POST", "/v1/alerts/internal", { hmac: true, body: replayBody });
-if (firstSend.status === replaySend.status && [200, 201].includes(replaySend.status) && replaySend.data?.alert?.id !== firstSend.data?.alert?.id) {
-  note("E4 signed-request replay", "accepted twice and created two alerts (signature covers the body only — no timestamp/nonce)");
-} else {
-  check("E4 signed-request replay rejected", firstSend.status !== replaySend.status || replaySend.status >= 400, `first=${firstSend.status} replay=${replaySend.status}`);
-}
+// Replay (ADR-0014 / target J2 → gate): the SAME v2-signed bytes a second time must be refused —
+// the nonce was consumed on first presentment. Sent as the ai-engine service (global secret + caller).
+const replayBody = JSON.stringify({ childId: kidA, deviceId: deviceIdA, severity: "info", category: "sos", title: "replay", body: "same-bytes" });
+const replayHeaders = sign(replayBody);
+const firstSend = await call("POST", "/v1/alerts/internal", { rawBody: replayBody, headers: replayHeaders });
+const replaySend = await call("POST", "/v1/alerts/internal", { rawBody: replayBody, headers: replayHeaders });
+check("E4/J2 byte-identical signed request replayed -> 401 replay (nonce consumed)", [200, 201].includes(firstSend.status) && replaySend.status === 401 && replaySend.data?.reason === "replay", `first=${firstSend.status} replay=${replaySend.status} ${JSON.stringify(replaySend.data)}`);
+const staleSend = await call("POST", "/v1/alerts/internal", { rawBody: replayBody, headers: signV2(HMAC_SECRET, replayBody, { caller: "ai-engine", ts: Math.floor(Date.now() / 1000) - 301 }) });
+check("E4b signature with a timestamp 301 s old -> 401 stale_timestamp", staleSend.status === 401 && staleSend.data?.reason === "stale_timestamp", `got ${staleSend.status} ${JSON.stringify(staleSend.data)}`);
+const noCaller = await call("POST", "/v1/alerts/internal", { rawBody: replayBody, headers: signV2(HMAC_SECRET, replayBody) });
+check("E4c global secret without the service caller header -> 401", noCaller.status === 401 && noCaller.data?.reason === "global_secret_requires_service_caller", `got ${noCaller.status} ${JSON.stringify(noCaller.data)}`);
 
 // Cross-endpoint signature confusion: a signature made for one agent route replayed on another.
 const confusionBody = { childId: kidA, deviceId: deviceIdA, lat: 1.5, lng: 2.5, accuracyM: 5 };
@@ -296,6 +330,14 @@ const freshLogin = await call("POST", "/v1/auth/login", { body: { email: emailA,
 const logoutRes = await call("POST", "/v1/auth/logout", { token: freshLogin.data?.token, body: { refreshToken: freshLogin.data?.refreshToken } });
 const refreshAfterLogout = await call("POST", "/v1/auth/token/refresh", { body: { refreshToken: freshLogin.data?.refreshToken } });
 check("F4 refresh token dead after logout", logoutRes.status < 300 && refreshAfterLogout.status === 401, `logout=${logoutRes.status} refresh=${refreshAfterLogout.status}`);
+// ADR-0014: the theft response in F2/F3 revoked EVERY session of parent A, including the
+// registration token this probe has been using — exactly as a real theft should. Prove it, then log
+// in again for the rest of the run.
+const stolenEra = await call("GET", "/v1/family/me", { token: tokenA });
+await new Promise((r) => setTimeout(r, 1100)); // iat has 1-second resolution: a new login must post-date the revocation epoch
+const relogin = await call("POST", "/v1/auth/login", { body: { email: emailA, password: PASSWORD } });
+check("F8 theft response killed the owner's other live access token too (401); a fresh login works", stolenEra.status === 401 && stolenEra.data?.error === "session_revoked" && relogin.status === 200 && !!relogin.data?.token, `old=${stolenEra.status} relogin=${relogin.status}`);
+if (relogin.data?.token) tokenA = relogin.data.token;
 
 // The per-device HMAC signing secret authenticates agent -> server alerts. No parent-facing
 // payload may contain it (an allowlist-by-omission strip of pushToken missed this column).
@@ -350,19 +392,16 @@ if (d1.token) {
   // A device's signature must not write into a sibling child.
   if (d1.secret && kidA2) {
     const body = JSON.stringify({ childId: kidA2, deviceId: d1.deviceId, severity: "warning", category: "sos", title: `qa-xchild-${stamp}`, body: "signed by sibling device" });
-    const sig = createHmac("sha256", d1.secret).update(body).digest("hex");
-    const inj = await call("POST", "/v1/alerts/internal", { rawBody: body, headers: { "x-familyshield-signature": sig } });
+    const inj = await call("POST", "/v1/alerts/internal", { rawBody: body, headers: signV2(d1.secret, body) });
     check("G7 device HMAC cannot write an alert for a sibling child", inj.status >= 400, `got ${inj.status}`);
 
     // Issue #29: A device's signature must not write search-event or youtube-watch for a sibling child.
     const searchBody = JSON.stringify({ childId: kidA2, deviceId: d1.deviceId, engine: "google", query: "how to kill myself" });
-    const searchSig = createHmac("sha256", d1.secret).update(searchBody).digest("hex");
-    const searchInj = await call("POST", "/v1/content/search-event", { rawBody: searchBody, headers: { "x-familyshield-signature": searchSig } });
+    const searchInj = await call("POST", "/v1/content/search-event", { rawBody: searchBody, headers: signV2(d1.secret, searchBody) });
     check("G7d device HMAC cannot inject search-event for a sibling child (#29)", searchInj.status >= 400, `got ${searchInj.status}`);
 
     const ytBody = JSON.stringify({ childId: kidA2, deviceId: d1.deviceId, videoId: "xyz123", title: "how to commit suicide", channel: "c" });
-    const ytSig = createHmac("sha256", d1.secret).update(ytBody).digest("hex");
-    const ytInj = await call("POST", "/v1/content/youtube-watch", { rawBody: ytBody, headers: { "x-familyshield-signature": ytSig } });
+    const ytInj = await call("POST", "/v1/content/youtube-watch", { rawBody: ytBody, headers: signV2(d1.secret, ytBody) });
     check("G7e device HMAC cannot inject youtube-watch for a sibling child (#29)", ytInj.status >= 400, `got ${ytInj.status}`);
   }
 
@@ -422,47 +461,251 @@ const overflow = await call("PUT", `/v1/rules/${kidA}`, {
 const overflowLeak = /prisma|invocation|at Object|stack/i.test(JSON.stringify(overflow.data ?? {}));
 check("J1 out-of-range integer rejected (400) with no DB internals leaked", overflow.status === 400 && !overflowLeak, `status=${overflow.status} internalsLeaked=${overflowLeak}`);
 
-target("J2 signed-request replay protection", "a byte-identical signed agent request is accepted twice (signature covers only the body — no timestamp/nonce)");
+// A live pairing for the processing-stop checks (d1 was unpaired in section G).
+const dJ = await pairDevice(kidA, "qa-dev-j3");
 const revokeProbe = await call("POST", `/v1/family/children/${kidA}/consent/revoke`, { token: tokenA });
-target("J3 consent revocation enforcement", `consent-revoke path returns ${revokeProbe.status}; nothing reads ConsentRecord.revokedAt/expiresAt, so revoke/expiry is unenforceable today`);
+const xRevokeProbe = await call("POST", `/v1/family/children/${kidA}/consent/revoke`, { token: tokenB });
+const blockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+// ADR-0008 §2b: withdrawal must stop *processing* — device ingestion and device reads answer 428.
+const pingBody = { childId: kidA, deviceId: dJ.deviceId, lat: 24.7, lng: 46.7, accuracyM: 5, timestamp: new Date().toISOString() };
+const blockedPing = dJ.token ? await call("POST", "/v1/location/ping", { token: dJ.token, body: pingBody }) : { status: 0 };
+const blockedRules = dJ.token ? await call("GET", `/v1/rules/${kidA}`, { token: dJ.token }) : { status: 0 };
+const parentRules = await call("GET", `/v1/rules/${kidA}`, { token: tokenA });
+const blockedDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands`, { token: dJ.token }) : { status: 0 };
+// ADR-0008 §2c: safe-direction actions stay open; enforcement actions do not.
+const resumeOpen = await call("POST", `/v1/controls/children/${kidA}/resume`, { token: tokenA });
+const lockBlocked = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "lock" } }) : { status: 0 };
+const unlockOpen = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "unlock" } }) : { status: 0 };
+const regrant = await call("POST", `/v1/family/children/${kidA}/consent`, { token: tokenA, body: { method: "credit_card", jurisdiction: "US" } });
+const unblockedWrite = await call("PUT", `/v1/rules/${kidA}`, { token: tokenA, body: rulesBody });
+const unblockedPing = dJ.token ? await call("POST", "/v1/location/ping", { token: dJ.token, body: pingBody }) : { status: 0 };
+const drainAfter = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands`, { token: dJ.token }) : { status: 0, data: [] };
+const drainTypes = Array.isArray(drainAfter.data) ? drainAfter.data.map((c) => c.type) : [];
+
+check(
+  "J3 consent revocation enforcement (revoke -> 428 on parent writes, regrant -> unblocked)",
+  revokeProbe.status === 200 && xRevokeProbe.status === 403 && blockedWrite.status === 428 && regrant.status === 201 && unblockedWrite.status === 200,
+  `revoke=${revokeProbe.status} xRevoke=${xRevokeProbe.status} blocked=${blockedWrite.status} regrant=${regrant.status} unblocked=${unblockedWrite.status}`,
+);
+check(
+  "J3b consent revocation stops device processing (ping/rules/commands -> 428; parent read stays 200)",
+  blockedPing.status === 428 && blockedRules.status === 428 && blockedDrain.status === 428 && parentRules.status === 200 && unblockedPing.status === 201,
+  `ping=${blockedPing.status} rules=${blockedRules.status} drain=${blockedDrain.status} parentRules=${parentRules.status} pingAfterRegrant=${unblockedPing.status}`,
+);
+check(
+  "J3c safe-direction actions stay open while revoked (resume/unlock 200, lock 428)",
+  resumeOpen.status === 200 && unlockOpen.status === 200 && lockBlocked.status === 428,
+  `resume=${resumeOpen.status} unlock=${unlockOpen.status} lock=${lockBlocked.status}`,
+);
+check(
+  "J3d agents are told to pause and resume (consent_revoked + consent_granted commands queued)",
+  drainTypes.includes("consent_revoked") && drainTypes.includes("consent_granted"),
+  `drain=${JSON.stringify(drainTypes)}`,
+);
+
+// Issue #53 (found by Kimi/Antigravity verification of PR #52): the probe never asserted that a
+// device actually receives a fresh command, so a queue that expired every row on a non-UTC
+// database stayed green. These checks fail if the drain is empty, if delivery is not recorded,
+// or if the ack transition does not happen. Run them against a non-UTC database (docs/TESTING.md).
+const freshCmd = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "ring" } }) : { status: 0, data: {} };
+const freshDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands?ack=1`, { token: dJ.token }) : { status: 0, data: [] };
+const freshHit = Array.isArray(freshDrain.data) ? freshDrain.data.find((c) => c.id === freshCmd.data?.id) : undefined;
+check(
+  "K1 device drains a fresh command within seconds (not expired on arrival — issue #53)",
+  freshCmd.status === 200 && freshCmd.data?.status === "pending" && freshDrain.status === 200 && !!freshHit && freshHit.type === "ring",
+  `post=${freshCmd.status} drain=${freshDrain.status} ids=${JSON.stringify((freshDrain.data || []).map((c) => c.type))}`,
+);
+const freshHistory = dJ.deviceId ? await call("GET", `/v1/devices/${dJ.deviceId}/commands/history?limit=5`, { token: tokenA }) : { status: 0, data: {} };
+const freshRow = freshHistory.data?.items?.find((c) => c.id === freshCmd.data?.id);
+check("K2 history records the drained command as delivered", freshRow?.status === "delivered", `status=${freshRow?.status}`);
+const freshAck = freshCmd.data?.id && dJ.token ? await call("POST", `/v1/devices/${dJ.deviceId}/commands/${freshCmd.data.id}/ack`, { token: dJ.token, body: { status: "ok" } }) : { status: 0, data: {} };
+check("K3 device ack flips the command to acked", freshAck.status === 200 && freshAck.data?.command?.status === "acked", `got ${freshAck.status} ${freshAck.data?.command?.status ?? ""}`);
+const emptyDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands?ack=1`, { token: dJ.token }) : { status: 0, data: [1] };
+check("K4 an acked command is not re-offered", emptyDrain.status === 200 && Array.isArray(emptyDrain.data) && !emptyDrain.data.some((c) => c.id === freshCmd.data?.id), `drain=${JSON.stringify((emptyDrain.data || []).map((c) => c.type))}`);
 
 // IOS-01: the iOS AlertReporter signs with the device's own secret but sends no top-level
 // `deviceId`, so the server falls back to the global secret and rejects every alert (verified 401).
 if (d2?.secret && kidA2) {
   const iosBody = JSON.stringify({ childId: kidA2, category: "sos", severity: "critical", title: "ios-shape", body: "no deviceId", metadata: { source: "ios" } });
-  const iosSig = createHmac("sha256", d2.secret).update(iosBody).digest("hex");
-  const iosRes = await call("POST", "/v1/alerts/internal", { rawBody: iosBody, headers: { "x-familyshield-signature": iosSig } });
+  const iosRes = await call("POST", "/v1/alerts/internal", { rawBody: iosBody, headers: signV2(d2.secret, iosBody) });
   check("J4 iOS-shaped alert (per-device secret, no body deviceId) accepted", [200, 201].includes(iosRes.status), `got ${iosRes.status}`);
 
   // J5 (gate): while devices may carry their own secret, the global secret must NOT be able to sign
   // as that device — the per-device secret is the thing that makes an agent alert trustworthy.
   // Verified 2026-10-11: after the P0 bundle this is fail-closed (401). Keep it that way.
   const gBody = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, category: "sos", severity: "info", title: "global-secret-check", body: "x" });
-  const gRes = await call("POST", "/v1/alerts/internal", {
-    rawBody: gBody,
-    headers: { "x-familyshield-signature": createHmac("sha256", HMAC_SECRET).update(gBody).digest("hex") },
-  });
-  check("J5 global secret cannot sign as a device that has its own secret", gRes.status === 401, `got ${gRes.status}`);
+  const gRes = await call("POST", "/v1/alerts/internal", { rawBody: gBody, headers: signV1(HMAC_SECRET, gBody) });
+  const gRes2 = await call("POST", "/v1/alerts/internal", { rawBody: gBody, headers: signV2(HMAC_SECRET, gBody) });
+  check("J5 bare global secret (v1, or v2 without a caller) cannot sign as a device that has its own secret", gRes.status === 401 && gRes2.status === 401, `v1=${gRes.status} v2nocaller=${gRes2.status}`);
 
-  // J6 (target, NON-GATING): the global-secret fallback still applies to devices with no per-device
-  // secret (the parent `POST /v1/devices/register` path), and candidates are resolved from the BODY
-  // childId — so the global secret can write into any child that owns such a device. No shipped
-  // client uses that path today (only e2e), so this is a design decision, not a live regression:
-  // see DISCUSSION-LOG ask 16. Promote to a gate check if the fallback is removed.
+  // J6 (gate, ADR-0014): the global-secret fallback for secret-less devices is CLOSED. A device
+  // registered through the parent path has no secret; nothing body-only may act for it, and the
+  // global secret authenticates only as a named service. The legitimate service path (caller header)
+  // still works for child-only bodies, which is what the ai-engine sends.
   const regd = await call("POST", "/v1/devices/register", {
     token: tokenA,
     body: { childId: kidA2, platform: "windows", model: "probe-nosecret", osVersion: "10" },
   });
   if (regd.status === 201) {
     const nBody = JSON.stringify({ childId: kidA2, category: "sos", severity: "info", title: "global-fallback-check", body: "x" });
-    const nRes = await call("POST", "/v1/alerts/internal", {
-      rawBody: nBody,
-      headers: { "x-familyshield-signature": createHmac("sha256", HMAC_SECRET).update(nBody).digest("hex") },
-    });
-    target(
-      "J6 global-secret fallback for secret-less devices",
-      `HTTP ${nRes.status} when signing with the global secret for a child whose device has no per-device secret (201 = the fallback is still open; see ask 16)`,
-    );
+    const bare = await call("POST", "/v1/alerts/internal", { rawBody: nBody, headers: signV1(HMAC_SECRET, nBody) });
+    const dBody = JSON.stringify({ childId: kidA2, deviceId: regd.data?.device?.id, category: "sos", severity: "info", title: "global-fallback-check", body: "x" });
+    const bareDev = await call("POST", "/v1/alerts/internal", { rawBody: dBody, headers: signV1(HMAC_SECRET, dBody) });
+    check("J6 bare global secret cannot write for a child/device with no per-device secret (401)", bare.status === 401 && bareDev.status === 401, `childOnly=${bare.status} deviceNamed=${bareDev.status}`);
+    const svc = await call("POST", "/v1/alerts/internal", { rawBody: nBody, headers: sign(nBody) });
+    check("J6b the ai-engine service path (global secret + caller, v2) still raises a child-only alert (201)", svc.status === 201, `got ${svc.status}`);
+  }
+  // J7 (target until the fleet is on v2): legacy v1 device signatures. Accepted while the server runs
+  // with INTERNAL_SIGNING_ALLOW_V1 (default) so shipped agents keep working; must be 401 once it is 0.
+  if (d2?.secret) {
+    const v1Body = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, category: "sos", severity: "info", title: "legacy-v1", body: "x" });
+    const v1Res = await call("POST", "/v1/alerts/internal", { rawBody: v1Body, headers: signV1(d2.secret, v1Body) });
+    if ([200, 201].includes(v1Res.status)) {
+      target("J7 legacy v1 (body-only) device signatures", `HTTP ${v1Res.status} — still accepted; set INTERNAL_SIGNING_ALLOW_V1=0 once every agent signs v2 (ADR-0014)`);
+    } else {
+      check("J7 legacy v1 device signatures refused (INTERNAL_SIGNING_ALLOW_V1=0)", v1Res.status === 401 && v1Res.data?.reason === "legacy_signature_disabled", `got ${v1Res.status} ${JSON.stringify(v1Res.data)}`);
+    }
+  }
+}
+
+// ── L. realtime contract — `ready` frame (TR-05) ────────────────────────────
+console.log("\n── L. realtime ──");
+{
+  // Contract: the gateway sends `{type:"ready", familyId, ts}` as the FIRST frame after it has
+  // registered the socket, and no event frame precedes it. A client that has not seen `ready`
+  // cannot know whether a published event reached it; a client that has can treat a missing event
+  // as a delivery failure, not a race. Checked end-to-end here: real ticket, real socket, real alert.
+  const openSocket = async (ticket) => {
+    const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    const frames = [];
+    let close = null;
+    ws.addEventListener("message", (ev) => frames.push(JSON.parse(ev.data)));
+    ws.addEventListener("close", (ev) => { close = ev?.code ?? -1; });
+    ws.addEventListener("error", () => {});
+    const until = async (pred, ms) => {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        if (pred()) return true;
+        if (Date.now() > deadline) return false;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+    return { ws, frames, close: () => close, until };
+  };
+  const meA = await call("GET", "/v1/family/me", { token: tokenA });
+  const familyIdA = meA.data?.family?.id;
+  const ticketA = (await call("POST", "/v1/ws-ticket", { token: tokenA })).data?.ticket;
+  const sock = await openSocket(ticketA ?? "missing");
+  const gotReady = await sock.until(() => sock.frames.some((f) => f.type === "ready"), 5000);
+  const first = sock.frames[0];
+  check(
+    "L1 parent socket receives {type:ready} as the FIRST frame, bound to its own familyId",
+    gotReady && first?.type === "ready" && first?.familyId === familyIdA && typeof first?.ts === "string",
+    `first=${JSON.stringify(first ?? null)} expectedFamily=${familyIdA} close=${sock.close()}`,
+  );
+  const readyIdx = sock.frames.findIndex((f) => f.type === "ready");
+  const alertBody = { childId: kidA, deviceId: deviceIdA, severity: "info", category: "sos", title: `ready-order-${stamp}`, body: "after ready" };
+  const posted = await call("POST", "/v1/alerts/internal", { hmac: true, body: alertBody });
+  const gotAlert = await sock.until(() => sock.frames.some((f) => f.type === "alert" && f.payload?.title === alertBody.title), 10000);
+  const alertIdx = sock.frames.findIndex((f) => f.type === "alert" && f.payload?.title === alertBody.title);
+  check(
+    "L2 an alert published after ready is delivered on that socket, after ready",
+    [200, 201].includes(posted.status) && gotAlert && readyIdx === 0 && alertIdx > readyIdx,
+    `post=${posted.status} readyIdx=${readyIdx} alertIdx=${alertIdx} frames=${sock.frames.length} close=${sock.close()}`,
+  );
+  check("L3 no event frame precedes ready", !sock.frames.slice(0, Math.max(readyIdx, 0)).some((f) => f.type !== "ready"), `frames=${JSON.stringify(sock.frames.map((f) => f.type))}`);
+  sock.ws.close();
+
+  // A bad ticket must close 4001 and must NOT leak a ready frame (ready = "you are subscribed").
+  const bad = await openSocket(`bogus-${stamp}`);
+  const closed = await bad.until(() => bad.close() !== null, 5000);
+  check("L4 invalid ticket -> close 4001 and no ready frame", closed && bad.close() === 4001 && bad.frames.length === 0, `close=${bad.close()} frames=${bad.frames.length}`);
+
+  // A ticket is single-use: the second presentment of the same ticket is refused, no ready frame.
+  const reuse = await openSocket(ticketA ?? "missing");
+  const reuseClosed = await reuse.until(() => reuse.close() !== null, 5000);
+  check("L5 a consumed ticket cannot open a second socket (4001, no ready)", reuseClosed && reuse.close() === 4001 && reuse.frames.length === 0, `close=${reuse.close()} frames=${reuse.frames.length}`);
+}
+
+// ── M. usage model + erasure cascade (Phase 2c, ADR-0013) ───────────────────
+console.log("\n── M. usage model & erasure ──");
+{
+  // Bounds on the new report routes.
+  const tooMany = await call("GET", `/v1/reports/usage?childId=${kidA}&days=400`, { token: tokenA });
+  const zero = await call("GET", `/v1/reports/usage?childId=${kidA}&days=0`, { token: tokenA });
+  const webBig = await call("GET", `/v1/reports/web?childId=${kidA}&limit=5000`, { token: tokenA });
+  const webDays = await call("GET", `/v1/reports/web?childId=${kidA}&days=91`, { token: tokenA });
+  check("M1 /reports/usage and /reports/web reject out-of-range days/limit (400)", [tooMany, zero, webBig, webDays].every((r) => r.status === 400), `got ${[tooMany, zero, webBig, webDays].map((r) => r.status).join("/")}`);
+  const own = await call("GET", `/v1/reports/usage?childId=${kidA}&days=3`, { token: tokenA });
+  check("M2 /reports/usage returns a 3-entry series for the owning parent", own.status === 200 && Array.isArray(own.data?.series) && own.data.series.length === 3 && own.data.series.every((d) => typeof d.minutes === "number"), `got ${own.status} len=${own.data?.series?.length}`);
+
+  // Erasure: a scratch child with a real paired device and ingested data, erased by its own parent.
+  const kidC = (await call("POST", "/v1/family/children", {
+    token: tokenA,
+    body: { displayName: `QA Erase ${stamp}`, birthYear: 2016, consent: { method: "sms_plus", jurisdiction: "US" } },
+  })).data?.child?.id;
+  const dC = kidC ? await pairDevice(kidC, "qa-erase-dev") : { status: 0 };
+  if (kidC && dC.token && dC.deviceId) {
+    await call("POST", `/v1/devices/${dC.deviceId}/activity`, { token: dC.token, body: { events: [
+      { type: "app_usage", payload: { app: "YouTube", minutes: 3 } },
+      { type: "url", payload: { url: "https://erase.example/p", blocked: false } },
+    ] } });
+    await call("POST", `/v1/devices/${dC.deviceId}/telemetry`, { token: dC.token, body: { totalMinutes: 3 } });
+    const crossErase = await call("DELETE", `/v1/family/children/${kidC}`, { token: tokenB });
+    check("M3 other family cannot erase a child (403/404), child still readable by its parent", [403, 404].includes(crossErase.status) && (await call("GET", `/v1/family/children/${kidC}`, { token: tokenA })).status === 200, `got ${crossErase.status}`);
+    const erase = await call("DELETE", `/v1/family/children/${kidC}`, { token: tokenA });
+    check("M4 own erasure returns deleted devices + per-table counts incl. activity/web/usage rows", erase.status === 200 && erase.data?.deletedDevices?.includes(dC.deviceId) && erase.data?.rows?.activityEvent >= 2 && erase.data?.rows?.webVisit >= 1 && erase.data?.rows?.appUsageDaily >= 2 && erase.data?.rows?.device >= 1, `got ${erase.status} ${JSON.stringify(erase.data?.rows ?? null)}`);
+    const afterDevice = await call("GET", `/v1/devices/${dC.deviceId}/commands`, { token: dC.token });
+    const afterPing = await call("POST", "/v1/location/ping", { token: dC.token, body: { childId: kidC, deviceId: dC.deviceId, lat: 1, lng: 2, accuracyM: 5 } });
+    check("M5 an erased child's device JWT is revoked on every route (401), not merely orphaned", afterDevice.status === 401 && afterPing.status === 401, `commands=${afterDevice.status} ping=${afterPing.status}`);
+    const gone = await call("GET", `/v1/family/children/${kidC}`, { token: tokenA });
+    const usageGone = await call("GET", `/v1/reports/usage?childId=${kidC}&days=1`, { token: tokenA });
+    check("M6 erased child is gone for its parent too (404 on child and on its reports)", gone.status === 404 && usageGone.status === 404, `child=${gone.status} usage=${usageGone.status}`);
+  } else {
+    check("M3-M6 erasure scratch child + device could not be created", false, `kidC=${kidC} claim=${dC.status}`);
+  }
+}
+
+// ── N. parent sessions and family roles (ADR-0014) ──────────────────────────
+console.log("\n── N. sessions & roles ──");
+{
+  // N1: logout-all kills the live access token immediately (it used to stay valid for 7 days).
+  const loginA = await call("POST", "/v1/auth/login", { body: { email: emailA, password: PASSWORD } });
+  const liveTok = loginA.data?.token;
+  const claims = liveTok ? JSON.parse(Buffer.from(liveTok.split(".")[1], "base64url").toString()) : {};
+  check("N1 every parent access token carries a jti and a familyRole", typeof claims.jti === "string" && claims.jti.length === 32 && claims.role === "parent" && typeof claims.familyRole === "string", JSON.stringify({ jti: claims.jti, role: claims.role, familyRole: claims.familyRole }));
+  await new Promise((r) => setTimeout(r, 1100)); // iat has 1-second resolution: let the revocation epoch pass the token's iat
+  const killAll = await call("POST", "/v1/auth/logout-all", { token: liveTok });
+  const afterKill = await call("GET", "/v1/family/me", { token: liveTok });
+  check("N2 logout-all revokes the live access token (401 session_revoked), not only the refresh token", killAll.status === 200 && afterKill.status === 401 && afterKill.data?.error === "session_revoked", `logoutAll=${killAll.status} then=${afterKill.status} ${JSON.stringify(afterKill.data)}`);
+  // N3: single logout with the refresh token also kills the access token issued with it.
+  const loginA2 = await call("POST", "/v1/auth/login", { body: { email: emailA, password: PASSWORD } });
+  const out = await call("POST", "/v1/auth/logout", { body: { refreshToken: loginA2.data?.refreshToken } });
+  const afterOut = await call("GET", "/v1/family/me", { token: loginA2.data?.token });
+  check("N3 single logout (refresh token) also revokes its access token (401)", out.status === 200 && afterOut.status === 401, `logout=${out.status} then=${afterOut.status}`);
+  // Fresh token for family A for the rest of this section.
+  const tokenA3 = (await call("POST", "/v1/auth/login", { body: { email: emailA, password: PASSWORD } })).data?.token;
+
+  // N4–N6: invite family B's parent into family A as a co-parent with only the "alerts" permission.
+  const invite = await call("POST", "/v1/family/invites", { token: tokenA3, body: { email: emailB, role: "co-parent", permissions: ["alerts"] } });
+  const inviteId = invite.data?.invite?.id;
+  check("N4 owner can invite a co-parent (201 with id)", invite.status === 201 && !!inviteId, `got ${invite.status}`);
+  const accept = inviteId ? await call("POST", `/v1/family/invites/${inviteId}/accept`, { token: tokenB }) : { status: 0 };
+  const coTok = accept.data?.token;
+  const coClaims = coTok ? JSON.parse(Buffer.from(coTok.split(".")[1], "base64url").toString()) : {};
+  const coMe = coTok ? await call("GET", "/v1/family/me", { token: coTok }) : { status: 0 };
+  check("N5 accepted invite mints a token the parent surface ACCEPTS (role=parent, familyRole=co-parent) — was 403 before", accept.status === 200 && coClaims.role === "parent" && coClaims.familyRole === "co-parent" && coMe.status === 200 && coMe.data?.family?.id && coMe.data.family.id !== undefined, `accept=${accept.status} me=${coMe.status} claims=${JSON.stringify({ role: coClaims.role, familyRole: coClaims.familyRole })}`);
+  if (coTok) {
+    const coRules = await call("PATCH", `/v1/rules/${kidA}`, { token: coTok, body: { dailyLimitMinutes: 45 } });
+    const coCmd = await call("POST", `/v1/devices/${deviceIdA}/command`, { token: coTok, body: { command: "lock" } });
+    const coErase = await call("DELETE", `/v1/family/children/${kidA}`, { token: coTok });
+    const coRead = await call("GET", `/v1/rules/${kidA}`, { token: coTok });
+    check("N6 co-parent without 'rules'/'devices' cannot write rules or command a device (403 permission_required); erasure is owner-only (403); reads work", coRules.status === 403 && coRules.data?.error === "permission_required" && coCmd.status === 403 && coErase.status === 403 && coErase.data?.error === "owner_role_required" && coRead.status === 200, `rules=${coRules.status} cmd=${coCmd.status} erase=${coErase.status} read=${coRead.status}`);
+    // N7: the permission the invite DID grant works — ack an alert of family A.
+    const alertsA = await call("GET", "/v1/alerts?limit=1", { token: coTok });
+    const alertId = alertsA.data?.items?.[0]?.id ?? alertsA.data?.alerts?.[0]?.id;
+    const ack = alertId ? await call("POST", `/v1/alerts/${alertId}/ack`, { token: coTok }) : { status: 0 };
+    check("N7 co-parent WITH the 'alerts' permission can acknowledge an alert (200)", ack.status === 200, `alerts=${alertsA.status} ack=${ack.status} id=${alertId ?? "none"}`);
   }
 }
 

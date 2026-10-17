@@ -28,6 +28,7 @@ function resourceFamilyId(resource: { familyId?: string; child?: { familyId: str
 }
 
 import { getRedis } from "../redis.js";
+import { isParentSessionLive } from "../lib/sessions.js";
 
 export function sanitizeDevice<T extends Record<string, any>>(device: T): Omit<T, "internalSecret" | "pushToken"> {
   if (!device) return device;
@@ -69,14 +70,55 @@ export async function requireParent(req: FastifyRequest, reply: FastifyReply): P
     await reply.code(403).send({ error: "parent_role_required" });
     return;
   }
-  if (user?.jti) {
-    const redis = getRedis();
-    const revokedToken = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
-    if (revokedToken) {
-      await reply.code(401).send({ error: "session_revoked" });
+  // ADR-0014: per-token revocation (`jti`) and the parent's sessions-invalid-before instant.
+  if (user && !(await isParentSessionLive(user))) {
+    await reply.code(401).send({ error: "session_revoked" });
+    return;
+  }
+}
+
+/** The permission names an invite may grant; the owner implicitly holds all of them. */
+export const PERMISSIONS = ["rules", "alerts", "location", "social", "devices"] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+type ParentRoleRow = { id: string; role: string; permissions: string[] };
+
+async function loadParentRole(req: FastifyRequest): Promise<ParentRoleRow | null> {
+  const cached = (req as unknown as { parentRole?: ParentRoleRow | null }).parentRole;
+  if (cached !== undefined) return cached;
+  const user = req.user as { sub?: string } | undefined;
+  const row = user?.sub ? await prisma.parent.findUnique({ where: { id: user.sub }, select: { id: true, role: true, permissions: true } }) : null;
+  (req as unknown as { parentRole?: ParentRoleRow | null }).parentRole = row;
+  return row;
+}
+
+/** preHandler (after requireParent): the caller's Parent row must carry the owner role. */
+export async function requireOwner(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const parent = await loadParentRole(req);
+  if (!parent) {
+    await reply.code(404).send({ error: "parent_not_found" });
+    return;
+  }
+  if (parent.role !== "owner") {
+    await reply.code(403).send({ error: "owner_role_required" });
+  }
+}
+
+/**
+ * preHandler factory (after requireParent): owners pass; a co-parent or guardian passes only when
+ * the invite that admitted them granted `permission` (ADR-0014 — `permissions` were stored and
+ * never enforced). Reads are never gated by this; only the mutating routes name a permission.
+ */
+export function requirePermission(permission: Permission) {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const parent = await loadParentRole(req);
+    if (!parent) {
+      await reply.code(404).send({ error: "parent_not_found" });
       return;
     }
-  }
+    if (parent.role === "owner" || parent.permissions.includes(permission)) return;
+    await reply.code(403).send({ error: "permission_required", permission });
+  };
 }
 
 

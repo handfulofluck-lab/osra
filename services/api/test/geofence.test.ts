@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
+import { signV2 } from "../src/lib/internalAuth.js";
 import { haversineMeters, isInsideFence } from "../src/lib/geo.js";
 import { locationRoutes } from "../src/routes/location.js";
 import { getRedis } from "../src/redis.js";
@@ -202,13 +203,8 @@ describe("school-geofence routine auto-apply (Feature #23)", () => {
     );
     // Every device is nudged to re-fetch the rules.
     for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"type":"rules_updated"'),
-      );
-      expect(redis.lpush).toHaveBeenCalledWith(
-        `device:${deviceId}:command-queue`,
-        expect.stringContaining('"reason":"geofence_routine"'),
+      expect(prismaMock.deviceCommand.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ deviceId, type: "rules_updated", payload: { reason: "geofence_routine" } }) }),
       );
     }
     await app.close();
@@ -315,7 +311,7 @@ describe("location ping validation & auth", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: { "content-type": "application/json", "x-familyshield-signature": sign(raw) },
+      headers: { "content-type": "application/json", ...signV2(HMAC_SECRET, raw, { caller: "ai-engine" }) },
       payload: raw,
     });
     expect(res.statusCode).toBe(201);

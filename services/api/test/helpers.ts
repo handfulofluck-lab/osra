@@ -24,9 +24,11 @@ function makePrismaMock() {
   const root: Record<string, unknown> = {
     $transaction: vi.fn(),
     $queryRaw: vi.fn(async () => [{}]),
+    $executeRaw: vi.fn(async () => 0),
   };
   allMocks.push(root.$transaction as ReturnType<typeof vi.fn>);
   allMocks.push(root.$queryRaw as ReturnType<typeof vi.fn>);
+  allMocks.push(root.$executeRaw as ReturnType<typeof vi.fn>);
   for (const model of [
     "family",
     "parent",
@@ -41,12 +43,17 @@ function makePrismaMock() {
     "socialEvent",
     "digestPrefs",
     "familyInvite",
+    "parentPushToken",
+    "deviceCommand",
+    "installRequest",
+    "appUsageDaily",
+    "webVisit",
   ]) {
     root[model] = autoMockModel();
   }
   const mock = root as unknown as {
     [k: string]: Record<string, ReturnType<typeof vi.fn>>;
-  } & { $transaction: ReturnType<typeof vi.fn> };
+  } & { $transaction: ReturnType<typeof vi.fn>; $queryRaw: ReturnType<typeof vi.fn>; $executeRaw: ReturnType<typeof vi.fn> };
   // Default: run callback transactions against the mock itself, resolve promise arrays.
   mock.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === "function"
@@ -119,4 +126,58 @@ export function resetPrismaMock(): void {
       ? (arg as (tx: unknown) => unknown)(prismaMock)
       : Promise.all(arg as Promise<unknown>[]),
   );
+  // Default caller for tests: `authHeader()` signs as parent-1 of fam-1, an owner (ADR-0014 role gates).
+  prismaMock.parent.findUnique.mockResolvedValue({
+    id: "parent-1", familyId: "fam-1", email: "parent-1@example.com", displayName: "Parent One",
+    role: "owner", permissions: [], passwordHash: "argon2$stub", mfaEnabled: false, mfaSecret: null,
+  });
+  // Default active consent for tests: non-revoked, non-expired, US jurisdiction.
+  prismaMock.consentRecord.findFirst.mockResolvedValue({
+    id: "consent-default",
+    childId: "child-1",
+    parentId: "parent-1",
+    method: "sms_plus",
+    jurisdiction: "US",
+    grantedAt: new Date(),
+    expiresAt: null,
+    revokedAt: null,
+    thirdPartySharing: false,
+  });
+  prismaMock.consentRecord.findMany.mockResolvedValue([{
+    id: "consent-default",
+    childId: "child-1",
+    parentId: "parent-1",
+    method: "sms_plus",
+    jurisdiction: "US",
+    grantedAt: new Date(),
+    expiresAt: null,
+    revokedAt: null,
+    thirdPartySharing: false,
+  }]);
+  prismaMock.consentRecord.updateMany.mockResolvedValue({ count: 1 });
+  // Child-scoped fan-outs (rules_updated, consent_revoked) iterate the child's devices.
+  prismaMock.device.findMany.mockResolvedValue([]);
+  // Phase 2a: alert push fan-out reads parents + tokens; default to none so route tests stay quiet.
+  prismaMock.parent.findMany.mockResolvedValue([]);
+  prismaMock.parentPushToken.findMany.mockResolvedValue([]);
+  prismaMock.parentPushToken.deleteMany.mockResolvedValue({ count: 0 });
+  // Phase 2b: commands are rows. Default create echoes a pending row so enqueue callers work.
+  prismaMock.deviceCommand.findFirst.mockResolvedValue(null);
+  prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+    id: `cmd-${Math.random().toString(36).slice(2, 8)}`,
+    status: "pending",
+    attempts: 0,
+    createdAt: new Date(),
+    deliveredAt: null,
+    ackedAt: null,
+    result: null,
+    ...data,
+  }));
+  prismaMock.$queryRaw.mockResolvedValue([{}]);
+  prismaMock.$executeRaw.mockResolvedValue(0);
+  prismaMock.family.findUnique.mockResolvedValue({
+    id: "fam-1",
+    name: "Demo Family",
+    region: "US",
+  });
 }

@@ -1,9 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireFamily, requireOwner, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireConsent } from "../middleware/requireConsent.js";
+import { checkActiveConsent } from "../lib/consent.js";
+import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
+import { publishFamilyEvent } from "../realtime/gateway.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { getRedis } from "../redis.js";
+import { eraseChildData, screenTimeTodayFromDb } from "../lib/usageModel.js";
+import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -54,8 +60,16 @@ export async function familyRoutes(app: FastifyInstance) {
         const today = new Date().toISOString().slice(0, 10);
         const childUsageKey = `usage:child:${c.id}:${today}`;
         const accumulated = await redis.get(childUsageKey).catch(() => null);
-        if (accumulated !== null) {
-          screenTimeTodayMinutes = parseInt(accumulated, 10) || 0;
+        // Phase 2c: the Redis key is a cache of the durable AppUsageDaily rows; a flush or restart
+        // must not read as "0 minutes today". #66: presence is not authority — after a flush the
+        // next delta recreates the counter from that delta alone, and a failed rollup write leaves
+        // the cache AHEAD of the table. Deltas only grow within a day, so the larger of the two is
+        // right in both directions.
+        const cached = accumulated !== null ? parseInt(accumulated, 10) || 0 : 0;
+        const durable = await screenTimeTodayFromDb(c.id).catch(() => 0);
+        const best = Math.max(cached, durable);
+        if (best > 0) {
+          screenTimeTodayMinutes = best;
         } else {
           for (const d of c.devices) {
             const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
@@ -82,7 +96,7 @@ export async function familyRoutes(app: FastifyInstance) {
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */
-  app.post("/children", { preHandler: requireParent }, async (req, reply) => {
+  app.post("/children", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const parsed = ChildCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -136,7 +150,7 @@ export async function familyRoutes(app: FastifyInstance) {
   });
 
   /** Update a child's profile fields. */
-  app.patch("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.patch("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" }), requireConsent({ param: "id" })] }, async (req, reply) => {
     const parsed = ChildPatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
@@ -144,23 +158,19 @@ export async function familyRoutes(app: FastifyInstance) {
     return child;
   });
 
-  /** GDPR erasure cascade: delete the child and every child-scoped record. */
-  app.delete("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
+  /**
+   * GDPR erasure cascade: delete the child and every child-scoped record (ADR-0013). The list of
+   * tables and Redis keys lives in `eraseChildData()` so there is one place to extend; each deleted
+   * device's token is revoked like an unpair (#56). The response reports the row counts so a caller
+   * (and the e2e gate) can see what was removed.
+   */
+  app.delete("/children/:id", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req) => {
     const { id } = req.params as { id: string };
-    await prisma.$transaction([
-      prisma.locationPing.deleteMany({ where: { childId: id } }),
-      prisma.alert.deleteMany({ where: { childId: id } }),
-      prisma.device.deleteMany({ where: { childId: id } }),
-      prisma.ruleSet.deleteMany({ where: { childId: id } }),
-      prisma.geofence.deleteMany({ where: { childId: id } }),
-      prisma.consentRecord.deleteMany({ where: { childId: id } }),
-      prisma.child.delete({ where: { id } }),
-    ]);
-    return { erased: true, childId: id };
+    return eraseChildData(id, DEVICE_TOKEN_TTL_SECONDS);
   });
 
   /** Record a parental-consent event (VPC) for an existing child. */
-  app.post("/children/:id/consent", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.post("/children/:id/consent", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req, reply) => {
     const parsed = ConsentCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -182,7 +192,55 @@ export async function familyRoutes(app: FastifyInstance) {
         expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
       },
     });
+    // ADR-0008 §3: re-granting restores processing; tell paused agents to resume.
+    const devices = await prisma.device.findMany({ where: { childId: id }, select: { id: true } });
+    for (const { id: deviceId } of devices ?? []) {
+      await enqueueDeviceCommand(deviceId, "consent_granted", { childId: id }).catch(() => undefined);
+    }
     return reply.code(201).send({ consent });
+  });
+
+  /** Current consent status for a child (ADR-0008). */
+  app.get("/children/:id/consent", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const user = req.user as AuthedUser;
+    const family = await prisma.family.findUnique({ where: { id: user.familyId } });
+    return checkActiveConsent(id, family?.region);
+  });
+
+  /**
+   * Revoke parental consent for an existing child (ADR-0008 §1).
+   *
+   * Revocation stops processing, not only configuration: every device of the child is told to
+   * pause monitoring (`consent_revoked` command) and, from this moment, device ingestion and
+   * device reads answer 428 until a parent re-grants consent. Device pairings are kept so that
+   * re-granting resumes without re-enrolment.
+   */
+  app.post("/children/:id/consent/revoke", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const user = req.user as AuthedUser;
+    const now = new Date();
+    const updated = await prisma.consentRecord.updateMany({
+      where: { childId: id, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    const devices = await prisma.device.findMany({ where: { childId: id }, select: { id: true } });
+    for (const { id: deviceId } of devices) {
+      // Best-effort signal; the 428 on the agent's next poll is the authoritative stop.
+      await enqueueDeviceCommand(deviceId, "consent_revoked", { childId: id, revokedAt: now.toISOString() }).catch(() => undefined);
+    }
+    await publishFamilyEvent(user.familyId, {
+      type: "consent_revoked",
+      payload: { childId: id, revokedBy: user.sub, revokedAt: now.toISOString(), devicesNotified: devices.length },
+      ts: now.toISOString(),
+    }).catch(() => undefined);
+    return reply.code(200).send({
+      revoked: true,
+      childId: id,
+      count: updated.count,
+      devicesNotified: devices.length,
+      revokedAt: now.toISOString(),
+    });
   });
 
   /** GDPR data export: JSON download of family, children, devices and consents. */

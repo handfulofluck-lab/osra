@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
+import { signV2 } from "../src/lib/internalAuth.js";
 import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
 import { socialRoutes } from "../src/routes/social.js";
 import { deviceRoutes } from "../src/routes/devices.js";
@@ -33,7 +34,7 @@ function postScan(app: Awaited<ReturnType<typeof buildApp>>, body: Record<string
   return app.inject({
     method: "POST",
     url: "/v1/social/scan",
-    headers: { "content-type": "application/json", "x-familyshield-signature": sign(raw) },
+    headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
     payload: raw,
   });
 }
@@ -201,7 +202,7 @@ describe("social routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/social/scan",
-      headers: { "content-type": "application/json", "x-familyshield-signature": sign(raw) },
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
       payload: raw,
     });
     expect(res.statusCode).toBe(400);

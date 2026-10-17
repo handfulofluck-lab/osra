@@ -9,6 +9,11 @@ const subscriber = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
 subscriber.on("error", () => {});
 const socketsByFamily = new Map<string, Set<any>>();
 
+/** Serialise and send one frame if the socket is still open; a closed socket is not an error. */
+function sendFrame(socket: { readyState: number; send: (data: string) => void }, frame: unknown) {
+  if (socket.readyState === 1) socket.send(JSON.stringify(frame));
+}
+
 export function registerRealtime(app: FastifyInstance) {
   /**
    * Handoff item 6: issue a short-lived, single-use WS ticket so the JWT never travels
@@ -58,6 +63,17 @@ export function registerRealtime(app: FastifyInstance) {
       set.add(socket);
       socketsByFamily.set(familyId, set);
       socket.on("close", () => set.delete(socket));
+      // TR-05: tell the client its subscription is live. Until this frame arrives the client has
+      // no way to know whether a `family:*:events` message published after `open` reached it — the
+      // registration above happens only after the ticket's Redis GET+DEL, so `open` fires early.
+      // Contract: `ready` is the FIRST frame on every socket, it carries the familyId the socket is
+      // bound to, and no event frame is sent before it. Harnesses wait for it; the parent app can
+      // use it to end a reconnect spinner. Sent after the set add, so a message that races the
+      // send is delivered on this socket (the subscriber iterates the set it was just added to).
+      // `familyId` is deliberate (TR-05 review): the holder authenticated as that family's parent
+      // and already has the id; it lets a client assert which family the stream is bound to. Add
+      // NOTHING else — no child id, device id or ticket — this frame reaches devtools and proxy logs.
+      sendFrame(socket, { type: "ready", familyId, ts: new Date().toISOString() });
     } catch {
       socket.close(4001, "unauthorized");
     }

@@ -42,6 +42,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Document | Contents |
 |---|---|
 | [`QA/QA-REPORT-2026-10-11.md`](QA/QA-REPORT-2026-10-11.md) | Consolidated QA state: method, results, limits, priority order |
+| [`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) | The agreed verification strategy: layers/ownership, the **environment matrix**, the rules both sides hold, cadence, and the anti-pattern checklist |
 | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) | The prioritised work queue with per-item acceptance criteria |
 | [`QA/audits/`](QA/audits/) | Raw per-platform audits (`API`, `ANDROID`, `WINDOWS`, `FLUTTER`, `IOS-MACOS`) with `file:line` evidence |
 | [`QA/DISCUSSION-LOG.md`](QA/DISCUSSION-LOG.md) | The append-only, full-detail dialogue between the implementing and verifying agents |
@@ -68,3 +69,6 @@ Start here. This page is the map: what each document is for, and which one to re
   verified. An unqualified claim in these docs is a documentation bug — please report it.
 - **Open questions are recorded, not hidden**: probe targets in `QA/ANTIGRAVITY-INBOX.md`, gaps in the
   audits, and unresolved decisions in the changelog's "verification state" notes.
+
+- `docs/test-guides/CI-SECRETS.md` — every secret CI and deployment read from the environment, and what happens when one is missing.
+- `docs/QA/TEST-REQUESTS.md` — open test requests from KCL lead to the testers, with ids and pass criteria; replies go to `docs/QA/DISCUSSION-LOG.md`.

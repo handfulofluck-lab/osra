@@ -56,10 +56,10 @@ struct AlertReporter {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
         request.timeoutInterval = 15.0
-        if let hmacSecret, let key = hmacSecret.data(using: .utf8) {
-            let signature = HMAC<SHA256>.authenticationCode(for: bodyData, using: SymmetricKey(data: key))
-            let hex = signature.map { String(format: "%02x", $0) }.joined()
-            request.setValue(hex, forHTTPHeaderField: "X-FamilyShield-Signature")
+        if let hmacSecret {
+            // v2 internal signing (ADR-0014): timestamp + nonce + HMAC over "ts.nonce.body".
+            let headers = InternalSigner.sign(secret: hmacSecret, body: bodyData)
+            for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         } else {
             AlertReporter.logger.warning("no HMAC secret configured; the API will reject this alert (401)")
         }

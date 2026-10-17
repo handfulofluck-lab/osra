@@ -34,16 +34,32 @@ const check = (name, cond, extra = "") => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${name}${extra ? ` — ${extra}` : ""}`);
 };
 
-const sign = (body) => createHmac("sha256", HMAC_SECRET).update(body).digest("hex");
+/**
+ * v2 internal signing (ADR-0014): HMAC-SHA256(secret, `${ts}.${nonce}.${body}`) plus the timestamp
+ * and nonce headers. The global secret is a SERVICE credential — it is accepted only with the
+ * caller header (`ai-engine`), which is what this harness models; device signers pass their own
+ * per-device secret and no caller.
+ */
+const signV2 = (secret, body, { caller, nonce, ts } = {}) => {
+  const timestamp = String(ts ?? Math.floor(Date.now() / 1000));
+  const n = nonce ?? randomBytes(16).toString("hex");
+  return {
+    "x-familyshield-signature": createHmac("sha256", secret).update(`${timestamp}.${n}.${body}`).digest("hex"),
+    "x-familyshield-timestamp": timestamp,
+    "x-familyshield-nonce": n,
+    ...(caller ? { "x-familyshield-caller": caller } : {}),
+  };
+};
+const sign = (body) => signV2(HMAC_SECRET, body, { caller: "ai-engine" });
 
-async function call(method, path, { token, body, hmac } = {}) {
+async function call(method, path, { token, body, hmac, secret } = {}) {
   const raw = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
       ...(raw ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(hmac ? { "x-familyshield-signature": sign(raw ?? "") } : {}),
+      ...(secret ? signV2(secret, raw ?? "") : hmac ? sign(raw ?? "") : {}),
     },
     body: raw,
   });
@@ -86,6 +102,13 @@ const sam = withConsent.data?.child;
 const dev = await call("POST", "/v1/devices/register", { token, body: { childId: sam.id, platform: "windows", model: "TestPC", osVersion: "10", pushToken: "e2e-token" } });
 check("device registration -> 201", dev.status === 201 && !!dev.data?.device?.id, `got ${dev.status}`);
 const deviceId = dev.data?.device?.id;
+// Phase 2b: an agent-side device with its own JWT, because the command drain is device-only
+// (probe note B11 — a parent token must never consume the queue).
+const AGENT_CODE = (await call("POST", "/v1/devices/pair", { token, body: { childId: sam.id } })).data?.code;
+const AGENT = await call("POST", "/v1/devices/pair/claim", { body: { code: AGENT_CODE, platform: "android", model: "E2EAgent", osVersion: "15" } });
+const agentId = AGENT.data?.device?.id;
+const agentToken = AGENT.data?.token;
+check("agent device paired with a device JWT", AGENT.status === 201 && !!agentId && !!agentToken, `got ${AGENT.status}`);
 
 // --- 5. Rules PUT + Redis publish on child channel ---
 const rulesPromise = nextMessage(`child:${sam.id}:rules`);
@@ -107,8 +130,10 @@ await call("PUT", `/v1/rules/${sam.id}`, { token, body: rulesBody }); // restore
 const gotRules = await call("GET", `/v1/rules/${sam.id}`, { token });
 check("GET rules round-trips", gotRules.status === 200 && gotRules.data?.webFilter?.blockedDomains?.includes("bad.example"));
 
-const fanout = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+const fanout = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
 check("rules write fans rules_updated out to devices", fanout.status === 200 && Array.isArray(fanout.data) && fanout.data.some((c) => c.type === "rules_updated"));
+const parentDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token });
+check("parent token cannot drain the device queue (403, B11 closed)", parentDrain.status === 403, `got ${parentDrain.status}`);
 
 // --- 6. HMAC location ping + geofence transitions (own throwaway fence on Sam, erased at the end) ---
 const fenceRes = await call("POST", "/v1/location/geofences", { token, body: { childId: sam.id, label: "E2E Fence", lat: 40.0, lng: -74.0, radiusM: 200, notifyOnEnter: true, notifyOnExit: true } });
@@ -128,20 +153,60 @@ check("geofence enter/exit alerts raised", geoAlerts.status === 200 && (geoAlert
 // --- 7. HMAC internal alert -> WebSocket delivery to parent ---
 const ticketRes = await call("POST", "/v1/ws-ticket", { token });
 check("WS ticket issued", ticketRes.status === 200 && !!ticketRes.data?.ticket);
+// TR-04: the old harness armed a ONE-SHOT promise on the socket and aborted the entire run when it
+// timed out, recording 0 FAILs — so every later check silently never ran and a flake read as a hard
+// failure. That shape is gone: frames are collected, and the stimulus is made repeatable instead of
+// lucky, with a bounded re-post. On the CAUSE of the single abort that started this: the plausible
+// mechanism — the frame is published before the gateway registers the socket — did NOT reproduce
+// (20/20 immediate-post trials delivered). The diagnostics (frames=, wsError=, wsClose=) are what
+// will explain the next one.
+//
+// TR-05: the gateway now sends `{type:"ready", familyId, ts}` as the FIRST frame on every socket,
+// after it has added the socket to the family set. The harness waits for that frame before it posts
+// the alert, so the ordering is a server contract rather than a guess; the Redis ticket polling that
+// stood in for it under TR-04 is gone (one mechanism, not two). If an alert is ever lost AFTER
+// `ready` was received, that is a finding against the subscriber, not a harness race.
+//
+// The assertion is unchanged — the alert must be delivered, and a genuinely undelivered alert still
+// fails after the last attempt.
 const wsUrl = `${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticketRes.data.ticket)}`;
 const ws = new WebSocket(wsUrl);
-const wsMessage = new Promise((resolve, reject) => {
-  const timer = setTimeout(() => reject(new Error("ws timeout")), 8000);
-  ws.addEventListener("message", (ev) => { clearTimeout(timer); resolve(JSON.parse(ev.data)); });
-  ws.addEventListener("error", reject);
-});
+const wsFrames = [];
+let wsError = "";
+let wsClose = "";
+ws.addEventListener("message", (ev) => wsFrames.push(JSON.parse(ev.data)));
+ws.addEventListener("error", (ev) => { wsError = String(ev?.message ?? "ws error"); });
+// Diagnose a future abort: a server-side close (e.g. 4001 unauthorized ticket) looks identical to a
+// lost frame from the client's side, and that distinction is what a one-off failure needs to explain.
+ws.addEventListener("close", (ev) => { wsClose = `${ev?.code ?? "?"} ${ev?.reason || "(no reason)"}`; });
 await new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", rej); });
 check("parent WebSocket connected", ws.readyState === 1);
 
-const internal = await call("POST", "/v1/alerts/internal", { hmac: true, body: { childId: sam.id, deviceId, severity: "critical", category: "grooming", title: "E2E alert", body: "simulated AI concern", metadata: { source: "e2e" } } });
-check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
-const evt = await wsMessage;
-check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", JSON.stringify(evt).slice(0, 120));
+const waitUntil = async (predicate, ms) => {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const hit = await predicate();
+    if (hit) return hit;
+    if (Date.now() > deadline) return null;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+};
+const ready = await waitUntil(() => wsFrames.find((f) => f.type === "ready"), 5000);
+check(
+  "WebSocket `ready` frame is the first frame and names the family (TR-05)",
+  !!ready && wsFrames[0] === ready && ready.familyId === me.data.family.id && typeof ready.ts === "string",
+  [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160),
+);
+
+let evt = null;
+for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
+  const internal = await call("POST", "/v1/alerts/internal", { hmac: true, body: { childId: sam.id, deviceId, severity: "critical", category: "grooming", title: "E2E alert", body: "simulated AI concern", metadata: { source: "e2e" } } });
+  if (attempt === 1) check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
+  evt = await waitUntil(() => wsFrames.find((f) => f.type === "alert" && f.payload?.title === "E2E alert"), 10000);
+  if (!evt && wsClose) { console.log(`NOTE  socket closed by the server (${wsClose}) — retrying the stimulus cannot help`); break; }
+  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} after ready=${Boolean(ready)} — retrying the stimulus (see the TR-04/TR-05 block comment above)`);
+}
+check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(evt ?? wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160));
 ws.close();
 
 const badSig = await call("POST", "/v1/alerts/internal", { body: { childId: sam.id, severity: "info", category: "sos", title: "x", body: "y" } });
@@ -153,19 +218,27 @@ const ackTarget = list.data.items.find((a) => a.title === "E2E alert");
 const ack = await call("POST", `/v1/alerts/${ackTarget.id}/ack`, { token });
 check("acknowledge alert", ack.status === 200 && ack.data?.alert?.acknowledged === true);
 
-// --- 8. Device command queue (pub/sub + polled drain) ---
-const cmdSub = nextMessage(`device:${deviceId}:commands`);
-const cmd = await call("POST", `/v1/devices/${deviceId}/command`, { token, body: { command: "ring" } });
-check("POST command -> published", cmd.status === 200 && cmd.data?.type === "ring");
+// --- 8. Device command queue (durable rows + pub/sub wake + polled drain + acks) ---
+const cmdSub = nextMessage(`device:${agentId}:commands`);
+const cmd = await call("POST", `/v1/devices/${agentId}/command`, { token, body: { command: "ring" } });
+check("POST command -> persisted pending row with id", cmd.status === 200 && cmd.data?.type === "ring" && cmd.data?.status === "pending" && typeof cmd.data?.id === "string");
 const pubMsg = await cmdSub;
-check("command on Redis pub/sub {type}", pubMsg?.type === "ring");
-const drained = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
-check("GET commands drains queue [{type,payload}]", drained.status === 200 && Array.isArray(drained.data) && drained.data[0]?.type === "ring");
-const drainedAgain = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+check("command on Redis pub/sub {type}", pubMsg?.type === "ring" && pubMsg?.id === cmd.data.id);
+const histPending = await call("GET", `/v1/devices/${agentId}/commands/history`, { token });
+check("parent history shows the command pending before the device polls", histPending.status === 200 && histPending.data?.items?.some((c) => c.id === cmd.data.id && c.status === "pending"));
+const drained = await call("GET", `/v1/devices/${agentId}/commands?ack=1`, { token: agentToken });
+check("GET commands drains queue [{type,payload}]", drained.status === 200 && Array.isArray(drained.data) && drained.data.some((c) => c.type === "ring" && c.id === cmd.data.id));
+const drainedAgain = await call("GET", `/v1/devices/${agentId}/commands?ack=1`, { token: agentToken });
 check("command queue is consumed", drainedAgain.data.length === 0);
+const histDelivered = await call("GET", `/v1/devices/${agentId}/commands/history`, { token });
+check("parent history shows delivered after the drain", histDelivered.data?.items?.some((c) => c.id === cmd.data.id && c.status === "delivered"));
+const ackRes = await call("POST", `/v1/devices/${agentId}/commands/${cmd.data.id}/ack`, { token: agentToken, body: { status: "ok", detail: { rangMs: 60000 } } });
+check("device acks the command -> acked", ackRes.status === 200 && ackRes.data?.command?.status === "acked");
+const parentAck = await call("POST", `/v1/devices/${agentId}/commands/${cmd.data.id}/ack`, { token, body: { status: "ok" } });
+check("parent cannot ack a device command (403)", parentAck.status === 403, `got ${parentAck.status}`);
 
-const pauseCmd = await call("POST", `/v1/devices/${deviceId}/command`, { token, body: { command: "pause" } });
-const pauseDrain = await call("GET", `/v1/devices/${deviceId}/commands`, { token });
+const pauseCmd = await call("POST", `/v1/devices/${agentId}/command`, { token, body: { command: "pause" } });
+const pauseDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
 check("pause command accepted and queued", pauseCmd.status === 200 && pauseDrain.data.some((c) => c.type === "pause"));
 
 // --- 9. Telemetry ---
@@ -208,6 +281,39 @@ if (invite.data?.invite?.id) await call("DELETE", `/v1/family/invites/${invite.d
 const summary = await call("GET", `/v1/reports/summary?childId=${sam.id}&days=7`, { token });
 check("reports summary endpoint live", summary.status === 200 && typeof summary.data?.totalAppMinutes === "number");
 
+// --- 11a. Phase 2c usage model: durable rollups survive a Redis flush (ADR-0013) ---
+const todayKey = new Date().toISOString().slice(0, 10);
+const actBatch = await call("POST", `/v1/devices/${agentId}/activity`, { token: agentToken, body: { events: [
+  { type: "app_usage", payload: { app: "YouTube", minutes: 21 } },
+  { type: "app_usage", payload: { app: "Roblox", minutes: 9 } },
+  { type: "app_usage", payload: { app: "YouTube", minutes: 4, live: true } }, // heartbeat: never counted
+  { type: "url", payload: { url: "https://blocked.example/x", blocked: true, category: "gambling" } },
+  { type: "url", payload: { domain: "news.example" } },
+] } });
+check("activity batch accepted (agent JWT)", actBatch.status === 202, `got ${actBatch.status}`);
+const telTotal = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { totalMinutes: 30, batteryPct: 64 } });
+check("telemetry day total accepted", telTotal.status === 202, `got ${telTotal.status}`);
+// Flush the cache the old code depended on, then read everything back from Postgres.
+const redisFlush = redis.duplicate();
+const flushed = await redisFlush.del(`usage:child:${sam.id}:${todayKey}`).catch(() => -1);
+redisFlush.disconnect();
+const meAfterFlush = await call("GET", "/v1/family/me", { token });
+const samAfter = meAfterFlush.data?.children?.find((c) => c.id === sam.id);
+check("screen time today survives a Redis flush (durable day total)", flushed >= 0 && samAfter?.screenTimeTodayMinutes === 30, `flushed=${flushed} minutes=${samAfter?.screenTimeTodayMinutes}`);
+// #66: a delta AFTER the flush recreates the counter from the delta alone; /me must still report
+// the day total (max of cache and table), not the fresh counter.
+const telDelta = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { totalMinutes: 5, batteryPct: 63 } });
+const meAfterDelta = await call("GET", "/v1/family/me", { token });
+const samAfterDelta = meAfterDelta.data?.children?.find((c) => c.id === sam.id);
+check("a delta after the flush does not make /me under-report (max of cache and durable, #66)", telDelta.status === 202 && samAfterDelta?.screenTimeTodayMinutes === 35, `minutes=${samAfterDelta?.screenTimeTodayMinutes} expected 35`);
+const usage = await call("GET", `/v1/reports/usage?childId=${sam.id}&days=7`, { token });
+const usageToday = usage.data?.series?.find((d) => d.day === todayKey);
+check("reports/usage: per-day series with per-app split from the rollup table", usage.status === 200 && usage.data?.series?.length === 7 && usageToday?.minutes === 35 && usageToday?.apps?.find((a) => a.app === "YouTube")?.minutes === 21 && usageToday?.apps?.find((a) => a.app === "Roblox")?.minutes === 9 && !usageToday?.apps?.find((a) => a.minutes === 4), `got ${usage.status} ${JSON.stringify(usageToday ?? usage.data).slice(0, 140)}`);
+const web = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1`, { token });
+check("reports/web: browsing history rows with domain + blocked flag", web.status === 200 && web.data?.items?.some((v) => v.domain === "blocked.example" && v.blocked === true && v.category === "gambling") && web.data.items.some((v) => v.domain === "news.example" && v.blocked === false), `got ${web.status} ${JSON.stringify(web.data?.items?.map((v) => v.domain))}`);
+const webBlocked = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1&blocked=true`, { token });
+check("reports/web?blocked=true filters to blocked visits only", webBlocked.status === 200 && webBlocked.data?.items?.length >= 1 && webBlocked.data.items.every((v) => v.blocked === true));
+
 const windDown = await call("POST", `/v1/controls/children/${sam.id}/wind-down`, { token, body: { minutes: 15 } });
 check("wind-down command accepted", windDown.status === 200);
 
@@ -223,10 +329,16 @@ const devSecret = CLAIM2.data?.hmacSecret;
 const dev2 = CLAIM2.data?.device?.id;
 check("pair/claim mints a per-device HMAC secret", CLAIM2.status === 201 && typeof devSecret === "string" && devSecret.length === 64);
 const bodyWithDev = JSON.stringify({ childId: sam.id, deviceId: dev2, severity: "info", category: "web_threat", title: "hygiene", body: "x", metadata: {} });
-const devSign = createHmac("sha256", devSecret).update(bodyWithDev).digest("hex");
-check("alert signed with the DEVICE secret -> 201", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", "x-familyshield-signature": devSign }, body: bodyWithDev })).status === 201);
+const devHeaders = signV2(devSecret, bodyWithDev);
+check("alert signed with the DEVICE secret (v2) -> 201", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...devHeaders }, body: bodyWithDev })).status === 201);
+// ADR-0014 / J2: the SAME signed request a second time is a replay — the nonce was consumed.
+const replayRes = await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...devHeaders }, body: bodyWithDev });
+const replayJson = await replayRes.json().catch(() => null);
+check("replaying the identical signed request -> 401 replay (J2 closed)", replayRes.status === 401 && replayJson?.reason === "replay", `got ${replayRes.status} ${JSON.stringify(replayJson)}`);
 const globalSign = createHmac("sha256", HMAC_SECRET).update(bodyWithDev).digest("hex");
-check("same alert with the GLOBAL secret -> 401 (per-device isolation)", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", "x-familyshield-signature": globalSign }, body: bodyWithDev })).status === 401);
+check("same alert with the bare GLOBAL secret (v1, no caller) -> 401 (J5/J6 closed)", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", "x-familyshield-signature": globalSign }, body: bodyWithDev })).status === 401);
+const staleHeaders = signV2(devSecret, bodyWithDev, { ts: Math.floor(Date.now() / 1000) - 600 });
+check("a signature with a 10-minute-old timestamp -> 401 stale_timestamp", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...staleHeaders }, body: bodyWithDev })).status === 401);
 const delDev2 = await call("DELETE", `/v1/devices/${dev2}`, { token });
 check("unpair device -> success", delDev2.status === 200);
 const revokedUse = await call("GET", `/v1/devices/${dev2}`, { token: CLAIM2.data.token });
@@ -237,6 +349,32 @@ const exp = await call("GET", "/v1/family/export", { token });
 check("GDPR export downloads JSON", exp.status === 200 && !!exp.data?.family?.children);
 const erased = await call("DELETE", `/v1/family/children/${sam.id}`, { token });
 check("GDPR erasure cascade", erased.status === 200 && erased.data?.erased === true);
+check("erasure reports the deleted devices and per-table row counts (ADR-0013)", Array.isArray(erased.data?.deletedDevices) && erased.data.deletedDevices.includes(agentId) && erased.data?.rows?.activityEvent >= 4 && erased.data?.rows?.webVisit >= 2 && erased.data?.rows?.appUsageDaily >= 3 && erased.data?.rows?.socialEvent >= 1, JSON.stringify(erased.data?.rows ?? null));
+// The erased child's agent token is revoked like an unpair (#56): its 10-year JWT must now 401.
+const erasedAgent = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
+check("erased child's device JWT is revoked (401)", erasedAgent.status === 401, `got ${erasedAgent.status}`);
+// Zero rows left: counted in the database itself when the gate shell has DATABASE_URL (TESTING.md §3).
+if (process.env.DATABASE_URL) {
+  const { PrismaClient } = await import("@prisma/client");
+  const db = new PrismaClient();
+  try {
+    const where = { where: { childId: sam.id } };
+    const counts = {
+      activityEvent: await db.activityEvent.count(where), socialEvent: await db.socialEvent.count(where),
+      installRequest: await db.installRequest.count(where), webVisit: await db.webVisit.count(where),
+      appUsageDaily: await db.appUsageDaily.count(where), locationPing: await db.locationPing.count(where),
+      alert: await db.alert.count(where), device: await db.device.count(where), ruleSet: await db.ruleSet.count(where),
+      geofence: await db.geofence.count(where), consentRecord: await db.consentRecord.count(where),
+      deviceCommand: await db.deviceCommand.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),
+      child: await db.child.count({ where: { id: sam.id } }),
+    };
+    check("erasure leaves ZERO child-scoped rows in every table (counted in Postgres)", Object.values(counts).every((n) => n === 0), JSON.stringify(counts));
+  } finally {
+    await db.$disconnect();
+  }
+} else {
+  console.log("NOTE  erasure row-count check skipped — set DATABASE_URL in the gate shell to count rows in Postgres (TESTING.md §3)");
+}
 
 redis.disconnect();
 console.log(`\n=== E2E: ${PASS.length} passed, ${FAIL.length} failed ===`);

@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.BatteryManager
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.db.AgentStateEntity
 import com.familyshield.agent.data.db.FamilyShieldDatabase
@@ -38,6 +39,7 @@ class UsageReporter @Inject constructor(
     private val api: ApiService,
     private val settings: AgentSettings,
     private val rules: RuleRepository,
+    private val consent: ConsentState,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -63,6 +65,7 @@ class UsageReporter @Inject constructor(
     /** Aggregates the usage since the last successful run and uploads the delta; no-op without a device id. */
     suspend fun aggregateAndUpload() {
         val deviceId = settings.deviceId() ?: return
+        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
         val dao = db.usageEventDao()
         val stateDao = db.agentStateDao()
         val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return

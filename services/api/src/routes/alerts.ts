@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { raiseAlert } from "../lib/alerts.js";
+import { assertProcessingAllowed } from "../lib/consent.js";
+import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -39,19 +39,6 @@ const InternalAlertSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
-/** Minimal push-enqueue interface; real providers deliver via FCM (Android) / APNs (iOS). */
-export interface PushProvider {
-  sendToFamily(familyId: string, payload: { title: string; body: string; data: unknown }): Promise<void>;
-}
-
-// NOTE: production would inject a real FcmApnsPush wired to Firebase/APNs credentials; this
-// stub only logs so the alert pipeline is complete end-to-end without push infra.
-export class FcmApnsPush implements PushProvider {
-  async sendToFamily(familyId: string, payload: { title: string; body: string; data: unknown }): Promise<void> {
-    console.log(`[push:stub] family=${familyId} title=${payload.title}`);
-  }
-}
-
 type AuthedUser = { familyId: string };
 
 export async function alertsRoutes(app: FastifyInstance) {
@@ -81,7 +68,7 @@ export async function alertsRoutes(app: FastifyInstance) {
   });
 
   /** Acknowledge an alert. */
-  app.post("/:id/ack", { preHandler: [requireParent, requireFamily({ model: "alert" })] }, async (req) => {
+  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
     return { alert };
@@ -96,7 +83,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       req.headers as Record<string, string | string[] | undefined>,
     );
     if (!auth.valid) {
-      return reply.code(401).send({ error: "invalid_signature" });
+      return reply.code(401).send({ error: "invalid_signature", reason: auth.reason });
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -119,18 +106,23 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     const child = await prisma.child.findUnique({ where: { id: childId } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
+    // ADR-0008 §2b: withdrawal of consent stops collection.
+    if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 
-    const alert = await prisma.alert.create({
-      data: { childId, deviceId: effectiveDeviceId, severity, category, title, body, metadata: (metadata ?? {}) as Prisma.InputJsonValue },
+    // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
+    const alert = await raiseAlert({
+      childId,
+      familyId: child.familyId,
+      deviceId: effectiveDeviceId,
+      severity,
+      category,
+      title,
+      body,
+      metadata,
+      childName: child.displayName,
     });
-
-    const event = { type: "alert", payload: alert, ts: new Date().toISOString() };
-    await publishFamilyEvent(child.familyId, event);
-
-    const push: PushProvider = new FcmApnsPush();
-    await push.sendToFamily(child.familyId, { title, body, data: alert });
     return reply.code(201).send({ alert });
   });
 
