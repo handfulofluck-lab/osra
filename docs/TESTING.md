@@ -65,6 +65,7 @@ count was skipped. The probe does not need it.
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
 | `ROLLUP_HOUR_UTC` (default 2), `RETENTION_DAYS` (default 90, floor 7), `ROLLUP_RETENTION_DAYS` (default 365) | Phase 2c nightly usage rollup + retention (ADR-0013); same `JOBS_ENABLED` switch. External cron: call `runUsageRollup()` from `src/jobs/usageRollup.ts`. |
+| `DEVICE_SILENT_MINUTES` (default 30, floor 5) | Device-silence watch (plan 1.9 finding): an `active` device unseen for longer raises one `tamper` / `device_silent` alert and is set `offline`; 5-min tick, Redis claim per episode; same `JOBS_ENABLED` switch. External cron: `runDeviceSilenceCheck()` from `src/jobs/deviceSilence.ts`. |
 | `INTERNAL_SIGNING_ALLOW_V1` (default **off** since 2026-10-17; `1` opts in), `INTERNAL_SERVICE_CALLERS` (default `ai-engine`) | ADR-0014 signing v2: legacy body-only signatures are refused (`401 legacy_signature_disabled`, probe check J7) unless the operator sets `1` for a rollout whose agents still sign v1 — the probe then reports target J7 so the state is visible; the global secret works only as a named service caller. Agents' clocks must be within 5 minutes of the server's or every signed call is `401 stale_timestamp`. |
 
 Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
@@ -175,6 +176,69 @@ that catches up after boot clears the overlay in the same second it appears.
 Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
 The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
 
+## 5c. Web filter / DNS sinkhole on hardware (ADR-0015, plan 1.4)
+
+With the agent paired, tap **Set up web filter** on the status screen and accept the OS VPN dialog
+(the key icon appears in the status bar; `adb shell dumpsys connectivity | grep -i vpn` lists the
+tunnel; `dumpsys activity services FilterVpnService` shows it). Put a rule set on the child with
+`webFilter.blockedDomains: ["example.com"]`, `safeSearchEnforced: true`, `youtubeRestrictedMode: "strict"`
+(`PUT /v1/rules/:childId` with the parent token), then wait for the sync or restart the agent. Prove
+each line:
+
+```bash
+adb shell ping -c1 www.example.com     # → "PING www.example.com (0.0.0.0)" — sunk (subdomain match)
+adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNAME to forcesafesearch.google.com
+adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
+adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
+adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
+# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
+adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
+# resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
+# tamper: Settings › Connections › More › VPN › OSRA › Disconnect → POST /v1/alerts/internal 201
+#   (category tamper, type content_filter_disconnected) and the status row shows "Reconnect web filter"
+```
+
+`ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
+the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
+IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+## 5d. Guided onboarding on hardware (plan 1.6)
+
+Fresh install, pair, set the PIN, then revoke one required grant at a time and confirm the agent
+*notices*: the status screen must read `6 of 7 required grants done` and name the missing one, the
+**Finish protection** button must open the checklist with that row red, its button must open the
+screen that grants it, and coming back without granting must leave the row red. Quick toggles from the
+shell: accessibility `settings put secure enabled_accessibility_services ""`; overlay `appops set
+com.familyshield.agent SYSTEM_ALERT_WINDOW deny`; usage `appops set com.familyshield.agent
+GET_USAGE_STATS deny`; background location `pm revoke com.familyshield.agent
+android.permission.ACCESS_BACKGROUND_LOCATION`; Private DNS `settings put global private_dns_mode
+hostname` + `settings put global private_dns_specifier dns.google` (restore with `off`). "Setup
+complete" must not be reachable from a fresh pairing while any of the seven is missing.
+
+## 5e. Ring and locate on hardware (plan 1.7)
+
+Set the alarm stream to 0 (`adb shell media volume --stream 4 --set 0`), lock the screen, then
+`POST /v1/devices/:id/command {"command":"ring"}`: the phone must ring at full alarm volume with the
+red ring screen on over the lock screen; Back and the volume keys must not stop it; **Stop ringing
+(parent PIN)** → wrong PIN stays, right PIN stops it and the alarm stream returns to 0. A second ring
+and `{"command":"stop_ring"}` must stop it from the parent side. `{"command":"locate_now"}` must
+produce a `LocationPing` whose `timestamp` is within 30 s of the command (`GET /v1/children/:id/location`
+or the `LocationPing` table) — not the last cached fix.
+
+## 5f. The ten-bypass probe (plan 1.9 — the Phase 1 gate)
+
+`scripts/hardware/android-bypass-probe.ps1 -Serial <adb serial> -Port 3023 -StateFile <tr10-state.json>`
+runs, against a paired phone with the PIN set and the test API reachable through `adb reverse`:
+`adb uninstall` · `pm clear` · force-stop (the agent must come back by itself) · accessibility off ·
+overlay revoked · Private DNS provider · escaping a lock (Home / Recents / Settings) · going offline
+to dodge or escape a lock · VPN disconnected in Settings · device admin deactivated from Settings.
+Each row is a measured outcome (what the OS answered, the alert's latency counted in Postgres, what the
+status screen says) and the table it prints goes into the PR verbatim. An eleventh row, **S1**, is a
+safety check rather than a bypass: with the device locked, the emergency dialer must open and stay
+on top (no call is placed) — a lock that covered it would be the one bug worse than every bypass. Two rows need a human tap on
+One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
@@ -192,6 +256,16 @@ process started with `Start-Process` inherits the console's redirected log handl
 after its parent dies.
 
 ## 6. Traps that have cost real time here
+
+| Trap | What happened | Rule |
+|---|---|---|
+| `settings put secure enabled_accessibility_services` with the short component (`pkg/.services.X`) | One UI (Android 16) accepted the write and silently dropped it: the status screen said "Missing: Accessibility service" and the guard/lock re-raise were off for the rest of the run | Always write the **full** class name: `com.familyshield.agent/com.familyshield.agent.services.AccessibilityMonitorService`; read it back with `settings get` before trusting it |
+| `am start-foreground-service` from `adb shell` on a non-exported service | Android 14+ answers `Requires permission not exported from uid …`; the service looked "started" (`ServiceRecord … app=null`) and nothing polled | Start the agent through its launcher activity (`am start -n …/.setup.PairingActivity`) or by enabling the accessibility service; never rely on a shell service start |
+| `media volume` is not on One UI | `ping`-style scripts that read the alarm stream got blank values | Use `cmd media_session volume --stream 4 --get` / `--set N` |
+| A PowerShell wrapper around `adb` eats `-c`, `-d`, `-s` | `adb shell ping -c 1` and `adb logcat -d` inside a function ran without their flags (logcat then streamed forever) | Call the exe directly for anything with dash arguments; `$host` is a reserved variable |
+| `uiautomator dump` on the One UI VPN screen | "could not get idle state" forever (the screen animates) | Screenshot + tap at coordinates for that screen; everything else dumps fine |
+
+Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
 | Symptom | Cause | What to do |
 |---|---|---|

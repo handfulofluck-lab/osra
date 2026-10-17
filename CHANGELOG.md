@@ -11,6 +11,88 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android + API — durable on-device scan queue (plan 2.6, first half)
+- `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
+  before sending, so a process kill, a reboot or an offline stretch loses nothing. Rows go oldest-first
+  in batches of 50, are deleted on 2xx, counted down on failure and dropped after 8 attempts or 48 h
+  (`ScanQueuePolicy`, tested). `ScanFlushWorker` retries under a network constraint with backoff and
+  sweeps every 15 min. `SocialScanDto`/the API's `ScanSchema` carry an optional `source`.
+- The notification-side capture (the second half of 2.6) follows in its own PR.
+
+### API — device-silence watch (a plan-1.9 probe finding)
+- The probe's bypass #2 showed that `pm clear` wipes the agent's pairing with Device Admin active and
+  no client-side alert is possible afterwards. `src/jobs/deviceSilence.ts`: every 5 min, an `active`
+  device unseen for `DEVICE_SILENT_MINUTES` (default 30) gets one critical `tamper` /
+  `device_silent` alert (Redis claim per episode, no duplicates across instances) and is set
+  `offline`; the next telemetry sets it back to `active`. Tests: `device-silence.test.ts`.
+
+### Android — adversarial bypass probe (plan 1.9, the Phase 1 gate)
+- `scripts/hardware/android-bypass-probe.ps1`: an `adb`-driven run of the ten bypasses a child tries
+  on a paired phone — `adb uninstall`, `pm clear`, force-stop, accessibility off, overlay revoked,
+  Private DNS provider, escaping the lock (Home / Recents / Settings), going offline to dodge or
+  escape a lock, disconnecting the web-filter VPN, deactivating device admin — each a measured
+  outcome (blocked, or the tamper alert's latency from Postgres) and a PASS/FAIL table for the PR.
+- Two gaps it found while being written are closed in the agent: a Private DNS provider set outside
+  the guarded dialog and a revoked overlay permission now raise `tamper` alerts
+  (`private_dns_bypass`, `overlay_revoked`) from the 60-s loop.
+
+### Android — release hardening (plan 1.8)
+- `targetSdk 35` / `compileSdk 35` (Play's 2025 bar); `versionName 0.2.0`.
+- Release build is **minified and resource-shrunk** (R8, `proguard-rules.pro` keeps Moshi DTOs,
+  Retrofit, Room, Hilt entry points and OS-instantiated components) and **HTTPS-only**
+  (`src/main/res/xml/network_security_config.xml` → `cleartextTrafficPermitted="false"`); the debug
+  build keeps cleartext for LAN / `adb reverse` dev servers through `src/debug/res/xml/`.
+- Release signing from the same upload keystore as the parent app (`OSRA_UPLOAD_KEYSTORE`,
+  `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`; CI materialises it from
+  `OSRA_UPLOAD_KEYSTORE_B64`), debug key with a warning when absent.
+- The **device JWT and the per-device HMAC secret moved into the keystore-backed encrypted store**
+  (`SecureStore`), migrated from plaintext DataStore on first read — the audit finding ADR-0010 left
+  for "a follow-up".
+- CI asserts `targetSdkVersion:'35'` on the release APK and the cleartext settings of both configs.
+
+### Android + API — ring that cannot be silenced, locate with a fresh fix (plan 1.7)
+- `commands/Ringer` + `RingActivity`: the ring forces the **alarm stream to its maximum** (restored
+  afterwards unless someone changed it), plays on `USAGE_ALARM` (through Do-Not-Disturb), holds a
+  screen-on wake lock, shows a full-screen red "Your parent is ringing this phone" over the lock
+  screen, swallows Back and the volume keys, and stops only on the **parent PIN** (tamper guard,
+  reason `ring`), a parent `stop_ring` / `sos_clear`, or the 5-minute cap (`RingPolicy`, tested).
+- `locate_now` now asks the fused provider for a **fresh high-accuracy fix** with a 30-s timeout and
+  flushes it at once; the cached fix is used only when fresh fails and it is < 5 min old
+  (`LocatePolicy`, tested). Before: `lastLocation` only — whatever the OS had, however old.
+- API: `locate_now` and `stop_ring` accepted by `POST /v1/devices/:id/command` (`stop_ring` is
+  safe-direction, so it works with consent revoked); TTL 10 min like `ring`. Tests extended.
+
+### Android — guided, verified onboarding (plan 1.6)
+- `setup/OnboardingPolicy` (pure) + `setup/GrantChecks`: nine grants — accessibility, usage access,
+  display over other apps, device admin, web-filter consent, location (foreground + background),
+  Private DNS not on a provider (required); battery exemption, notification access (recommended).
+  Each is asked of the OS on every render; each row has its reason, the OEM hint (Samsung / Xiaomi /
+  Huawei / ColorOS) and a button that opens exactly the screen that grants it.
+- **"Setup complete" is reachable only when every required grant is in**; otherwise the checklist is
+  the screen, and the status screen says "`n` of 7 required grants done" with a *Finish protection*
+  button. Background location is asked as the second OS prompt it is on Android 10+.
+- The Private DNS provider dialog is now a protection screen for the accessibility guard (PIN gate)
+  while the web filter is enabled — a named provider would bypass the sinkhole.
+- Tests: `OnboardingPolicyTest` (5), `TamperScreenPolicyTest` +1.
+
+### Android — web filter on the phone: local DNS sinkhole (ADR-0015, plan 1.4)
+- New `vpn/FilterVpnService`: a `VpnService` that routes **only its own resolver** (`10.111.222.2`)
+  into the tunnel, so every app's DNS is decided by the agent and no payload traffic is proxied.
+  `DnsFilterPolicy` (pure, 10 tests) decides pause > allowed > SafeSearch / YouTube rewrite > blocked
+  domain > blocked category > forward; sunk names answer `0.0.0.0`/`::`; SafeSearch and YouTube
+  Restricted are CNAME rewrites to the engines' enforcement hosts with real upstream addresses.
+- `pause_internet` now takes the default route and drops everything except the agent and the parent's
+  always-allowed apps (`addDisallowedApplication`); `resume_internet` returns to DNS-only.
+- Blocked categories now also carry their **domains** from the blocklist pack
+  (`BlocklistStore.mergeDomains`, persisted); `youtubeRestrictedMode` added to the Android rule DTO.
+- Onboarding + status screen: "Set up web filter" (the one-time OS VPN consent) / connected /
+  "Reconnect web filter"; the boot receiver restarts the tunnel; rules sync reloads the table.
+- VPN revoked (another VPN app, or disconnected in Settings) → `tamper` alert
+  `content_filter_disconnected`; the `vpn_detected` check stands down while our own tunnel is up.
+- Manifest: `FOREGROUND_SERVICE_SPECIAL_USE`, service type `specialUse` with the Play subtype text.
+- Tests: `DnsFilterPolicyTest`, `DnsMessageTest`, `IpPacketTest` (RFC 1035 / IPv4+IPv6 UDP codecs).
+- Docs: ADR-0015, TESTING §5c (hardware procedure), README feature line, ROADMAP 1.4.
+
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
   `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies

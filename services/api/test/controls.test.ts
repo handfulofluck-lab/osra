@@ -255,7 +255,7 @@ describe("controls routes (features #10/#11)", () => {
     const app = await buildFullApp();
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
 
-    for (const command of ["pause_internet", "resume_internet", "bonus_time", "wind_down"]) {
+    for (const command of ["pause_internet", "resume_internet", "bonus_time", "wind_down", "locate_now", "stop_ring"]) {
       const res = await app.inject({
         method: "POST",
         url: "/v1/devices/dev-1/command",

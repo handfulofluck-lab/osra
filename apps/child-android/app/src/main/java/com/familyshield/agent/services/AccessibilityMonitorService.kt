@@ -98,6 +98,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
             agentPackage = packageName,
         )
+        if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
         lastGuardMs = now
         performGlobalAction(GLOBAL_ACTION_BACK)
