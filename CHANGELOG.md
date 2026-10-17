@@ -40,6 +40,17 @@ environment where it was written — see `docs/QA/` for the verification state.
   one. Consequence for the record: the *original* S1 FAIL on `main` was measured on a phone without a
   secure lock, so it stands; but it can no longer be reproduced on a locked handset without unlocking
   it first, and the probe says so instead of guessing.
+- **Second cause, and the dominant one: the overlay re-raised *itself*.** With the keyguard down and the
+  exemption in place, S1 still read `LockActivity` on top at 2 s, 6 s and 11 s (`cec3f82`, Flip4,
+  2026-10-17). The control run with the overlay down showed the dialer's task had been created and then
+  never resumed — so the dialer was launched and the overlay took the front back. `LockActivity.onPause()`
+  and `onUserLeaveHint()` started the activity again unconditionally; `onPause` fires on the way out,
+  before the next window is known, so it also fired for the emergency dialer. `shouldReraise` was already
+  returning `false`, and the service never re-raised: the activity did it to itself. The self-re-raise is
+  removed; re-raising is now only `AccessibilityMonitorService`'s job for non-exempt foreground windows
+  (documented in the class: with the accessibility service off there is no self-re-raise, and that
+  service is already a hard requirement for blocking and the tamper guard). JVM suites unchanged:
+  33 suites / 219 tests / 0 failures.
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
   mitigated by `device_silent` plus parent-minted pairing.
 

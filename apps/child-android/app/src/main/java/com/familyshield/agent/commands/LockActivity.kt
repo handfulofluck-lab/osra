@@ -57,24 +57,21 @@ class LockActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (currentMode in setOf(MODE_LOCKED, MODE_PAUSED, MODE_PAUSED_INTERNET)) {
-            val reRaise = Intent(this, LockActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                putExtra(EXTRA_MODE, currentMode)
-            }
-            startActivity(reRaise)
-        }
+        // Deliberately does NOT re-raise. See onPause.
     }
 
     override fun onPause() {
         super.onPause()
-        if (!isFinishing && currentMode in setOf(MODE_LOCKED, MODE_PAUSED, MODE_PAUSED_INTERNET)) {
-            val reRaise = Intent(this, LockActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                putExtra(EXTRA_MODE, currentMode)
-            }
-            startActivity(reRaise)
-        }
+        // The overlay is re-raised by AccessibilityMonitorService for every NON-EXEMPT foreground
+        // window (LockEnforcementPolicy.shouldReraise, debounced), not by this activity. That split
+        // matters: an unconditional self-re-raise here runs on the way out — before the next window
+        // is known — so it also ran when the next window was the emergency dialer, and the overlay
+        // took the front back after the child had opened it (found on the handset 2026-10-17: with
+        // the exemption in place, S1 still read LockActivity on top at 2/6/11 s, and the control run
+        // with the overlay down showed the dialer's task had been created but never resumed).
+        // Cost of the split: with the accessibility service off there is no self-re-raise, and that
+        // service is already a hard requirement for blocking and the tamper guard (status screen:
+        // "nothing works without it").
     }
 
     private fun applyMode(intent: Intent) {
