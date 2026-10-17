@@ -38,7 +38,7 @@ function AgentAlive { ((Sh "pidof $PKG").Trim() -ne "") }
 $results = New-Object System.Collections.ArrayList
 function Record($n, $name, $pass, $evidence) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result=$(if ($pass) { "PASS (blocked/alerted)" } else { "FAIL" }); evidence=$evidence }); W ("#$n $name -> " + $(if ($pass) { "PASS" } else { "FAIL" }) + " : " + $evidence) }
 
-$st = Get-Content $StateFile | ConvertFrom-Json; $T = $st.token; $DEV = $st.deviceId
+$st = Get-Content $StateFile | ConvertFrom-Json; $TOKEN = $st.token; $DEV = $st.deviceId  # NOTE: PowerShell variables are case-insensitive — never name the token `$T` next to `$t = WaitAlert …`
 W ("probe start - device " + $DEV + " - " + (Sh "getprop ro.product.model").Trim() + " / Android " + (Sh "getprop ro.build.version.release").Trim())
 
 # 1. adb uninstall while admin is active
@@ -70,26 +70,26 @@ Record 6 "Private DNS provider set" (($t -ge 0) -and ($stat -match "Private DNS|
 Sh "settings put global private_dns_mode off" | Out-Null
 
 # 7. lock survives Home / Recents / reboot-less escape attempts
-$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $T
+$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $TOKEN
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -notmatch "LockActivity") { Start-Sleep 1 }
 $locked = (Focus) -match "LockActivity"
 Sh "input keyevent 3" | Out-Null; Start-Sleep 3; $h = (Focus) -match "LockActivity"
 Sh "input keyevent 187" | Out-Null; Start-Sleep 3; $rc = (Focus) -match "LockActivity"
 Sh "am start -a android.settings.SETTINGS" | Out-Null; Start-Sleep 3; $se = (Focus) -match "LockActivity"
 Record 7 "escape the lock (Home / Recents / Settings)" ($locked -and $h -and $rc -and $se) ("locked=$locked home=$h recents=$rc settings=$se")
-Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $T | Out-Null
+Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $TOKEN | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
 
 # 8. go offline to dodge a lock, then come back: the lock must hold offline and the queue must drain
 Sh "svc wifi disable; svc data disable" | Out-Null; Start-Sleep 3
-$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $T
+$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $TOKEN
 Sh "svc wifi enable; svc data enable" | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 120 -and (Focus) -notmatch "LockActivity") { Start-Sleep 1 }
 $lockedAfterOffline = (Focus) -match "LockActivity"
 Sh "svc wifi disable; svc data disable" | Out-Null; Start-Sleep 2; Sh "input keyevent 3" | Out-Null; Start-Sleep 3; $holdsOffline = (Focus) -match "LockActivity"
 Sh "svc wifi enable; svc data enable" | Out-Null
 Record 8 "offline / airplane to dodge or escape a lock" ($lockedAfterOffline -and $holdsOffline) ("lock arrived after reconnect: $lockedAfterOffline; held with radios off: $holdsOffline")
-Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $T | Out-Null
+Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $TOKEN | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 120 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
 
 # 9. disconnect the web filter VPN from Settings (needs the screenshot route on Samsung) - here: via the agent's own stop, then check the alert path
@@ -107,7 +107,7 @@ Record 10 "deactivate device admin from Settings" ($guard -or ($t -ge 0)) ("guar
 
 # S1. SAFETY, not a bypass: the emergency dialer must stay reachable under lock (LockEnforcementPolicy exempts
 #     com.android.phone / the dialers; a wrong answer here blocks a child from calling for help). No call is placed.
-$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $T
+$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $TOKEN
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -notmatch "LockActivity") { Start-Sleep 1 }
 $dialer = (Sh "cmd package resolve-activity --brief -a com.android.phone.EmergencyDialer.DIAL" -split "`n" | Select-Object -Last 1).Trim()
 if (-not $dialer -or $dialer -match "No activity") { $dialer = "com.android.phone/.EmergencyDialer" }
@@ -116,7 +116,7 @@ $f1 = Focus; Start-Sleep 5; $f2 = Focus
 $stays = ($f1 -match "Emergency|phone|dialer|incallui") -and ($f2 -match "Emergency|phone|dialer|incallui") -and ($f2 -notmatch "LockActivity")
 Record "S1" "emergency dialer reachable under lock (safety)" $stays ("dialer=$dialer; focus after 6 s: $f1; after 11 s: $f2")
 Sh "input keyevent 4" | Out-Null
-Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $T | Out-Null
+Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $TOKEN | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
 
 # 2. pm clear (wipe app data) while admin is active - DESTRUCTIVE (it un-pairs the phone), so it runs last
