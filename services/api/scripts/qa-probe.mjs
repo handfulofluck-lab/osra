@@ -6,11 +6,22 @@
  * system behaves correctly (i.e. it REJECTS the bad input) and FAIL when it accepts it.
  *
  * Usage:  node scripts/qa-probe.mjs          (see QA-KIMI docs; needs INTERNAL_HMAC_SECRET)
- * Env:    API_BASE, INTERNAL_HMAC_SECRET, REDIS_URL (only for the WS ticket probe)
+ * Env:    API_BASE, INTERNAL_HMAC_SECRET
  *
  * Exit code is non-zero when any probe fails, so CI / the collaborating developer can gate on it.
  */
 import { createHmac, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+
+// Node 20 hides the global WebSocket behind a flag — re-exec ourselves with it (same shim as e2e.mjs).
+if (typeof globalThis.WebSocket === "undefined" && !process.env.FS_WS_FLAGGED) {
+  const child = spawn(process.execPath, ["--experimental-websocket", process.argv[1]], {
+    stdio: "inherit",
+    env: { ...process.env, FS_WS_FLAGGED: "1" },
+  });
+  child.on("exit", (code) => process.exit(code ?? 1));
+  await new Promise(() => {});
+}
 
 const API = process.env.API_BASE ?? "http://localhost:3000";
 const HMAC_SECRET = process.env.INTERNAL_HMAC_SECRET ?? "";
@@ -525,6 +536,65 @@ if (d2?.secret && kidA2) {
       `HTTP ${nRes.status} when signing with the global secret for a child whose device has no per-device secret (201 = the fallback is still open; see ask 16)`,
     );
   }
+}
+
+// ── L. realtime contract — `ready` frame (TR-05) ────────────────────────────
+console.log("\n── L. realtime ──");
+{
+  // Contract: the gateway sends `{type:"ready", familyId, ts}` as the FIRST frame after it has
+  // registered the socket, and no event frame precedes it. A client that has not seen `ready`
+  // cannot know whether a published event reached it; a client that has can treat a missing event
+  // as a delivery failure, not a race. Checked end-to-end here: real ticket, real socket, real alert.
+  const openSocket = async (ticket) => {
+    const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    const frames = [];
+    let close = null;
+    ws.addEventListener("message", (ev) => frames.push(JSON.parse(ev.data)));
+    ws.addEventListener("close", (ev) => { close = ev?.code ?? -1; });
+    ws.addEventListener("error", () => {});
+    const until = async (pred, ms) => {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        if (pred()) return true;
+        if (Date.now() > deadline) return false;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+    return { ws, frames, close: () => close, until };
+  };
+  const meA = await call("GET", "/v1/family/me", { token: tokenA });
+  const familyIdA = meA.data?.family?.id;
+  const ticketA = (await call("POST", "/v1/ws-ticket", { token: tokenA })).data?.ticket;
+  const sock = await openSocket(ticketA ?? "missing");
+  const gotReady = await sock.until(() => sock.frames.some((f) => f.type === "ready"), 5000);
+  const first = sock.frames[0];
+  check(
+    "L1 parent socket receives {type:ready} as the FIRST frame, bound to its own familyId",
+    gotReady && first?.type === "ready" && first?.familyId === familyIdA && typeof first?.ts === "string",
+    `first=${JSON.stringify(first ?? null)} expectedFamily=${familyIdA} close=${sock.close()}`,
+  );
+  const readyIdx = sock.frames.findIndex((f) => f.type === "ready");
+  const alertBody = { childId: kidA, deviceId: deviceIdA, severity: "info", category: "sos", title: `ready-order-${stamp}`, body: "after ready" };
+  const posted = await call("POST", "/v1/alerts/internal", { hmac: true, body: alertBody });
+  const gotAlert = await sock.until(() => sock.frames.some((f) => f.type === "alert" && f.payload?.title === alertBody.title), 10000);
+  const alertIdx = sock.frames.findIndex((f) => f.type === "alert" && f.payload?.title === alertBody.title);
+  check(
+    "L2 an alert published after ready is delivered on that socket, after ready",
+    [200, 201].includes(posted.status) && gotAlert && readyIdx === 0 && alertIdx > readyIdx,
+    `post=${posted.status} readyIdx=${readyIdx} alertIdx=${alertIdx} frames=${sock.frames.length} close=${sock.close()}`,
+  );
+  check("L3 no event frame precedes ready", !sock.frames.slice(0, Math.max(readyIdx, 0)).some((f) => f.type !== "ready"), `frames=${JSON.stringify(sock.frames.map((f) => f.type))}`);
+  sock.ws.close();
+
+  // A bad ticket must close 4001 and must NOT leak a ready frame (ready = "you are subscribed").
+  const bad = await openSocket(`bogus-${stamp}`);
+  const closed = await bad.until(() => bad.close() !== null, 5000);
+  check("L4 invalid ticket -> close 4001 and no ready frame", closed && bad.close() === 4001 && bad.frames.length === 0, `close=${bad.close()} frames=${bad.frames.length}`);
+
+  // A ticket is single-use: the second presentment of the same ticket is refused, no ready frame.
+  const reuse = await openSocket(ticketA ?? "missing");
+  const reuseClosed = await reuse.until(() => reuse.close() !== null, 5000);
+  check("L5 a consumed ticket cannot open a second socket (4001, no ready)", reuseClosed && reuse.close() === 4001 && reuse.frames.length === 0, `close=${reuse.close()} frames=${reuse.frames.length}`);
 }
 
 // ── H. misc surface ─────────────────────────────────────────────────────────

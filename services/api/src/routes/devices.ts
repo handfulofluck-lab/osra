@@ -10,6 +10,15 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 
+/**
+ * Device JWT lifetime (10 years, `ms`-style "10y" = 365.25-day years), in seconds. The SAME constant
+ * bounds the `revoked:device:<id>` key written on unpair (#56): that key is what turns a still-valid
+ * device token into `401 device_revoked` once the `Device` row is gone, so it must outlive any token
+ * the device could present — never shorter than this, never reaped by cleanup. A key written at
+ * unpair with this TTL expires no earlier than the last token minted before the unpair.
+ */
+export const DEVICE_TOKEN_TTL_SECONDS = Math.round(10 * 365.25 * 24 * 60 * 60); // 315 576 000
+
 const PLATFORM = z.enum(["android", "ios", "windows", "macos", "chromebook"]);
 
 const RegisterSchema = z.object({
@@ -183,7 +192,7 @@ export async function deviceRoutes(app: FastifyInstance) {
     });
     const token = app.jwt.sign(
       { sub: device.id, deviceId: device.id, childId: payload.childId, familyId: payload.familyId, role: "device" },
-      { expiresIn: "10y" },
+      { expiresIn: DEVICE_TOKEN_TTL_SECONDS },
     );
     return reply.code(201).send({
       device,
@@ -373,7 +382,12 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.delete("/:id", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
     const { id } = req.params as { id: string };
     await prisma.device.delete({ where: { id } });
-    await getRedis().set(`revoked:device:${id}`, new Date().toISOString());
+    // Security state, not residue (#56): once the row is gone this key is the only thing that makes
+    // the device's 10-year JWT answer 401 (server.ts preHandler, location.ts, gateway.ts, and the
+    // hook below). It is bounded by the token lifetime so an unpaired device cannot leave a key
+    // forever, and it must never be given a shorter TTL or deleted while that token could still be
+    // presented — `scripts/cleanup-test-redis.mjs` deliberately keeps it.
+    await getRedis().set(`revoked:device:${id}`, new Date().toISOString(), "EX", DEVICE_TOKEN_TTL_SECONDS);
     return { deleted: true, id };
   });
 
