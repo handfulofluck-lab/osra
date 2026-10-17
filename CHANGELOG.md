@@ -21,6 +21,11 @@ environment where it was written — see `docs/QA/` for the verification state.
   /v1/alerts/internal` 201 (the TR-07 evidence). Not unit-tested — `TileService` behaviour is a
   platform contract; the hardware run is the test and is recorded on the board.
 
+### QA — environment trap: the shared `:3000` API must not be hosted inside an agent task manager (issue #71)
+- Twice today the shared test API died with **no crash trace** — its log's last lines were normal `200`s — and both times the death coincided with an agent stopping a *different* background task. The likely mechanism is that the task runner kills a **process group**, and the shared server was started inside one.
+- Impact is not data loss but diagnosis: `qa-probe` / `e2e` then fail with **connection refused**, which reads like a product or network bug, and a second tester racing to restart it produces a confusing `EADDRINUSE` while the environment is actually fine.
+- Recorded as a trap row in `docs/TESTING.md` §6 with the rule (start it detached; if it is down, say so on the board rather than starting a competing instance) and the detection cue (a clean log end means killed, not crashed). Full evidence and the open ownership question are in issue #71.
+
 ### CI — `probe-integrity` job (follow-up to #68)
 - `scripts/check-probe-integrity.mjs` now runs on every pull request (`.github/workflows/ci.yml`, job
   `probe-integrity`, `--base origin/<base> --head HEAD`): a removed or demoted probe assertion fails
