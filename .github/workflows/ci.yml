@@ -99,12 +99,35 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Unit tests & build (JVM + debug APK + release APK)
+      # Plan 1.8: same upload keystore as the parent app, materialised from the secret when present.
+      - name: Materialise upload keystore (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release APK will use the debug key (by design)"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > app/upload.jks
+          echo "OSRA_UPLOAD_KEYSTORE=app/upload.jks" >> "$GITHUB_ENV"
+          echo "upload keystore materialised"
+      - name: Unit tests & build (JVM + debug APK + minified release APK)
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
-        # assembleRelease proves the shrunk, release-signed configuration compiles; signing material
-        # comes from secrets when present (see parent-app job) and falls back to the debug key.
+          OSRA_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEYSTORE_PASSWORD }}
+          OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
+          OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
+        # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
+        # comes from the secrets above when present and falls back to the debug key.
         run: ./gradlew testDebugUnitTest assembleDebug assembleRelease --console=plain
+      - name: Release manifest is HTTPS-only and targets 35
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -1)
+          "$AAPT" dump badging "$APK" | grep -q "targetSdkVersion:'35'" && echo "targetSdk 35"
+          # The release config is the one in src/main (src/debug overrides it for the debug build only).
+          grep -q 'cleartextTrafficPermitted="false"' app/src/main/res/xml/network_security_config.xml && echo "release cleartext off"
+          grep -q 'cleartextTrafficPermitted="true"' app/src/debug/res/xml/network_security_config.xml && echo "debug cleartext on (dev servers)"
       - uses: actions/upload-artifact@v4
         with:
           name: child-android-apks

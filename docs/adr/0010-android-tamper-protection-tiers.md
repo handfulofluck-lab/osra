@@ -52,9 +52,14 @@ app blocking); the OS offers no hook to put a PIN prompt *inside* its deactivate
   Settings › Uninstall is greyed until admin is deactivated, and deactivating meets the PIN gate.
 - The guard depends on the accessibility service being on; if the child turns that off first, the
   existing accessibility-off tamper alert (#19) fires, and admin itself still blocks the uninstall.
-  Force-stop from App info remains possible on `ADMIN` (the OS allows it) — the boot receiver and the
-  periodic workers bring the agent back; `OWNER` is the tier that closes it (plan item 1.3's lock-task
-  work and the Full build's provisioning path).
+  Force-stop from App info remains possible on `ADMIN` (the OS allows it). **Measured by the 1.9
+  probe (2026-10-17, Flip4 / Android 16): a force-stopped app is kept in Android's *stopped state* —
+  no broadcast, job, alarm or accessibility rebinding reaches it until it is launched again**, so
+  "the boot receiver brings it back" is only true after the next launch or boot. What holds the line
+  on `ADMIN`: the App-info screen (where Force stop and Clear data live) is PIN-gated by the
+  accessibility guard, and the adb routes (`am force-stop`, `pm clear` — which wipes the pairing
+  even with admin active) are answered server-side by the `device_silent` alert (an active device
+  unseen for 30 min). `OWNER` is the tier that blocks both at the OS.
 - OEM Settings wording differs; the classifier matches generic verbs plus our labels and is covered by
   JVM tests for AOSP/Google/Samsung phrasing. A screen it misses is a finding, not a crash: the device
   stays on the same tier and admin still blocks the uninstall.

@@ -6,17 +6,38 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Plan 1.8: a real release signing config, read from the environment so no key material ever sits in
+// the repo. When the four variables are absent (CI, a tester's machine) the release build falls back
+// to the debug key and says so — the APK still installs, it is just not the store key.
+val releaseKeystore = System.getenv("OSRA_UPLOAD_KEYSTORE")
+val releaseKeystorePassword = System.getenv("OSRA_UPLOAD_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("OSRA_UPLOAD_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("OSRA_UPLOAD_KEY_PASSWORD")
+val hasReleaseKey = !releaseKeystore.isNullOrBlank() && !releaseKeystorePassword.isNullOrBlank() &&
+    !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() && file(releaseKeystore!!).exists()
+
 android {
     namespace = "com.familyshield.agent"
-    compileSdk = 34
-    // build-tools;34.0.0 is not installed in the local SDK (35.0.0/36.0.0 are); pin explicitly.
+    // Plan 1.8: targetSdk 35 (Play's 2025 requirement). compileSdk 35 is one above what AGP 8.4 lists as
+    // tested; it warns and builds.
+    compileSdk = 35
     buildToolsVersion = "35.0.0"
     defaultConfig {
         applicationId = "com.familyshield.agent"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        targetSdk = 35
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+    signingConfigs {
+        create("release") {
+            if (hasReleaseKey) {
+                storeFile = file(releaseKeystore!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
@@ -27,8 +48,20 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildTypes {
         release {
-            // NOTE: debug-signed release so testers can install the APK (§14.2).
-            signingConfig = signingConfigs.getByName("debug")
+            // Plan 1.8: shrunk and obfuscated; the keep rules in proguard-rules.pro cover Moshi's
+            // reflective DTOs, Retrofit, Room, Hilt and the OS-instantiated components.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("OSRA: no release keystore in the environment (OSRA_UPLOAD_KEYSTORE / _PASSWORD / OSRA_UPLOAD_KEY_ALIAS / OSRA_UPLOAD_KEY_PASSWORD) — release APK is debug-signed")
+                signingConfigs.getByName("debug")
+            }
+        }
+        debug {
+            // The debug build keeps cleartext (LAN / 10.0.2.2 dev servers) via src/debug/res/xml/network_security_config.xml.
         }
     }
 }

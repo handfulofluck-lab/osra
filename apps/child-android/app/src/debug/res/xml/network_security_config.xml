@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG BUILD ONLY: cleartext HTTP so agents can pair against LAN/dev servers
+     (http://192.168.x.x:3000, http://10.0.2.2:3000, adb reverse http://127.0.0.1:3023).
+     The release build's config (src/main) is HTTPS-only. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
