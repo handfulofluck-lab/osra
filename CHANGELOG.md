@@ -16,6 +16,12 @@ environment where it was written — see `docs/QA/` for the verification state.
 - Impact is not data loss but diagnosis: `qa-probe` / `e2e` then fail with **connection refused**, which reads like a product or network bug, and a second tester racing to restart it produces a confusing `EADDRINUSE` while the environment is actually fine.
 - Recorded as a trap row in `docs/TESTING.md` §6 with the rule (start it detached; if it is down, say so on the board rather than starting a competing instance) and the detection cue (a clean log end means killed, not crashed). Full evidence and the open ownership question are in issue #71.
 
+### CI — `probe-integrity` job (follow-up to #68)
+- `scripts/check-probe-integrity.mjs` now runs on every pull request (`.github/workflows/ci.yml`, job
+  `probe-integrity`, `--base origin/<base> --head HEAD`): a removed or demoted probe assertion fails
+  the PR unless `scripts/probe-gate-acks.json` acknowledges it. Verified: `main → fix/security-targets`
+  exit 0 with the four TR-07 acks, exit 1 without; a scratch demotion of `M2` to a note → exit 1.
+
 ### QA — the "gates may only be extended" rule is now machine-checked (`scripts/check-probe-integrity.mjs`)
 - **Why:** `AGENTS.md` §4 forbids weakening a check, but the rule depended on a tester reading a diff by
   eye — and these diffs are large (PR #65 changed `qa-probe.mjs` by **225 added / 43 deleted**). A

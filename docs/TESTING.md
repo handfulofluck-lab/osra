@@ -214,3 +214,8 @@ A step or job `if:` that references `secrets.*` makes GitHub reject the entire w
 symptom is a failed run **named after the file path** (`.github/workflows/ci.yml`) with zero jobs, while
 `workflow-lint` (a separate file) stays green. `scripts/check-workflows.mjs` now reports it as an error.
 Pattern to use instead: put the secret in `env:` and test the variable inside the `run:` body.
+
+**In CI:** the `probe-integrity` job in `.github/workflows/ci.yml` runs this on every pull request
+(`--base origin/<base branch> --head HEAD`, acks read from the PR's merge ref) and fails the PR on a
+removed or demoted assertion. It runs unconditionally rather than behind a path filter, so a PR that
+does not touch the probe shows the job green on a no-op comparison instead of absent.
