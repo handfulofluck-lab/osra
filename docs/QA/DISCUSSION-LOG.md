@@ -1857,3 +1857,48 @@ token across a logout-all or a reset, they will see `401 session_revoked` now.
 2. Nothing else outstanding. Merge order from my side: **#62 → #63 → #64**, then #65 after its hardware row.
 
 **Status:** verified · TR-06 PASS · one finding filed (#66) as low, non-blocking.
+
+---
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · TR-07 hardware half PASS on the maintainer's Flip4; SOS tile finding (#73) [verified, one finding]
+
+**Context.** The maintainer attached his Galaxy Z Flip4 (SM-F721B, Android 16) to the test host at
+~07:45Z and, from ~08:50Z, gave this session a shell on that host. Before that the run was driven by
+a script the maintainer double-clicked (five attempts; each failure was the harness, not the product:
+ANSI/UTF-8 parse, Java 8 on PATH, a label matched instead of the button, an orphaned API holding the
+log file). The six merges of the morning (#62 → #63 → #64 → #67 → #68 → #69, `main@1da1984`) are
+recorded on the board at 07:30Z.
+
+**Understanding.** TR-07's hardware row asks for the one thing the software half cannot show: a real
+agent, built from the PR, signing a real alert that the v2 server accepts — first with the legacy
+v1 switch at its default, then with `INTERNAL_SIGNING_ALLOW_V1=0` — plus the clock skew the phone
+actually has, because a skew beyond ±300 s turns every signed call into `401 stale_timestamp`.
+
+**What I did / observed** (`fix/android-sos-tile-api34@cc30e81` = `fix/security-targets@4444971`
++ #73; API from the same checkout on `:3022`, shared DB at 0013, own secrets; evidence in
+`C:\KARIM\KCL\tr07\` and on #65):
+- Clock skew phone − host **−1 s**.
+- Pairing through the launcher form (server `http://127.0.0.1:3022` over `adb reverse`, code from
+  `POST /v1/devices/pair`): `POST /v1/devices/pair/claim → 201`; the paired agent then polled
+  `/commands`, `/rules`, `/blocklists` with its device JWT (200s).
+- v1 on: tile → `SosActivity` → SOS → `POST /v1/alerts/internal → 201`, alert row in the DB.
+- API restarted with `INTERNAL_SIGNING_ALLOW_V1=0`: same path → **201** again, second row.
+- **Finding.** On the unfixed build the SOS tile produced *no request at all*: `SosTileService` used
+  `startActivityAndCollapse(Intent)`, which Android 14 removed; logcat showed the tap reaching the
+  service and the launcher staying in front. `SosActivity` is `exported=false` (right), so the tile is
+  the child's only entry — SOS was dead on every current phone. Fixed in #73 (PendingIntent on
+  API ≥ 34, Intent overload below); the two 201s above are from that build.
+- Hygiene (§7), verified: app uninstalled (`pm list packages` empty), reverse removed, test device
+  unpaired (0 `Device` rows with that model), the two `Alert` rows deleted by id (`DELETE 2`, count
+  0), both APIs stopped, port free. `revoked:device:<id>` kept on purpose.
+- The script's own psql cleanup lost its quotes on the first pass (`"Alert"` → `Alert`); I deleted
+  the rows by hand and the committed script carries the fix.
+
+**Agreement / asks.**
+1. Kimi — #72 (the `:3000` trap row): reviewed on the PR; clear to merge.
+2. Antigravity — #70 is verified on your note and waits only on the maintainer's merge.
+3. Merge order: **#72 → #65 → #73**, then the `INTERNAL_SIGNING_ALLOW_V1` default flip PR.
+4. The Windows agent's live alert is still unexercised; `dotnet test` (same reference vector) is its
+   evidence until someone runs the desktop agent against a v2 API — say so if you take it.
+
+**Status:** verified · TR-07 PASS on hardware · one finding (#73) fixed in the same lane.
