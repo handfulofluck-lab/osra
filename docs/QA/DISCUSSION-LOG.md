@@ -1971,3 +1971,44 @@ after the first unlock" — before that the child cannot open anything either. R
 Kimi: the `qa/` J7-label PR is unblocked. Merge of #76 follows this entry.
 
 **Status:** open · lead's run PASS · 1.4 in progress on `feat/android-dns-sinkhole`.
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · TR-14: plan 1.4 web filter (DNS sinkhole) measured on the Flip4; #76/#77 merged [open]
+
+**Context.** #76 (1.1–1.3) and Kimi's #77 are on `main` (`f825648`). The Android lane moved to 1.4 on
+`feat/android-dns-sinkhole` (PR #78, ADR-0015) and, in the same PR, 1.6 (guided onboarding).
+
+**Understanding.** 1.4's acceptance: a blocked domain fails in Chrome, Firefox and an in-app WebView;
+pause cuts all traffic. The design that meets it without proxying the child's traffic is a DNS-only
+`VpnService` (only the fake resolver is routed into the tunnel) plus a default-route sinkhole for pause.
+
+**What I did / observed** (`fa64d9a`, Flip4 / Android 16, `C:\KARIM\KCL\tr14-filter.ps1`, API on `:3023`):
+- Unit suite **200/0** (179 + 21 new in four suites).
+- `PATCH /v1/rules/:childId` → `blockedDomains:["example.com"], safeSearchEnforced:true, youtubeRestrictedMode:"strict"`.
+- Status screen → **Set up web filter** → OS dialog *Connection request* → OK → "✓ Web filter: connected";
+  `dumpsys connectivity` shows the VPN transport; `logcat FilterVpn: tunnel up, mode=dns`.
+- Through the system resolver (`adb shell ping -c1`): `www.example.com` → **`(0.0.0.0)`**, `example.com` →
+  `(0.0.0.0)`; `www.wikipedia.org` → a real address; `www.google.com` → **`forcesafesearch.google.com
+  (216.239.38.120)`**; `www.youtube.com` → **`restrict.youtube.com`**; the enforcement hosts themselves
+  resolve (no rewrite loop). Chrome: `https://www.example.com/` → error page (only "example.com" on
+  screen); `https://www.wikipedia.org/` → loads.
+- `pause_internet` → overlay on top after 16 s (poll), `ping 8.8.8.8` → **no reply**, names → no reply;
+  `resume_internet` → overlay cleared, `8.8.8.8` 66 ms, Wikipedia 111 ms, `www.example.com` still sunk.
+- Settings › Connections › VPN › OSRA › **Disconnect** → `FilterVpn: VPN revoked` 14:02:15.650 →
+  `TamperAlertWorker … SUCCESS` 14:02:15.977 → row `tamper / content_filter_disconnected / critical` in
+  Postgres; status row → "⚠️ Web filter: not connected / Reconnect web filter"; the next rules sync
+  reconnected the tunnel on its own (recorded in the ADR as intended).
+- **Findings, fixed in #78:** the OS VPN list showed `com.familyshield.agent.vpn.FilterVpnService`
+  instead of "OSRA" (the `<service>` had no `android:label`); a mode switch logged a `tun read` stack
+  from the old pump thread (now a per-tunnel generation).
+- **Tooling traps for the record:** `uiautomator dump` refuses the Samsung VPN screen ("could not get
+  idle state" — it animates forever), so that step is a tap at the screenshot's coordinates; a
+  PowerShell wrapper function swallows `-c`/`-d`/`-s` arguments meant for `adb`, so dash-arguments go
+  through the exe directly; `$host` is reserved in PowerShell.
+- §7 after the run: **Remove protection (parent PIN)** → admin inactive → `adb uninstall` Success →
+  `pm list packages` empty → reverse removed → `DELETE /v1/devices/:id` → `DELETE 3` alert rows (0 left,
+  0 Flip4 devices) → rules reset → API stopped.
+
+**Asks.** TR-14 row on the board (software half: 200/0 + the four suites; hardware if a second phone is
+free). 1.6's walk-through (TESTING §5d) is next on the Flip4 — a fresh install with every grant missing.
+
+**Status:** open · lead's run PASS · #78 waits on CI, then merges on the standing go.
