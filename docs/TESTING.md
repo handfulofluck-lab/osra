@@ -165,6 +165,12 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:c
 `adb shell input keyevent 3` (Home) and `adb shell input keyevent 187` (Recents) → the overlay is back on top
 within ~1 s each time (`dumpsys activity activities | grep topResumed` → `LockActivity`). Then `adb reboot`,
 wait for boot, unlock the phone → the overlay is on top again. `unlock` clears it and it stays cleared.
+Measured on the Flip4 (TR-13): Home 2.1 s, Recents 1.2 s, Settings 2.1 s, Chrome 2.2 s; after the reboot the
+overlay started 6.9 s after `BOOT_COMPLETED` (`logcat | grep "START u0 .*LockActivity"` shows
+`BAL_ALLOW_SAW_PERMISSION` — the overlay permission is what lets the boot receiver raise it). On a phone with
+a secure lock screen nothing of ours runs before the **first unlock** (Direct Boot), so "after boot" means
+"after the first unlock"; do not queue the `unlock` command while the phone is still locked, or the poll
+that catches up after boot clears the overlay in the same second it appears.
 
 Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
 The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
