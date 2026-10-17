@@ -41,17 +41,45 @@ object LockState {
 object LockEnforcementPolicy {
     private val LOCKING_MODES = setOf("locked", "paused", "paused_internet")
 
-    /** Packages the lock must never cover: in-call UI, emergency dialer, the system UI itself. */
+    /**
+     * Packages the lock must never cover: in-call UI, the emergency dialer, the system UI itself.
+     *
+     * Two mechanisms, because OEMs rename these freely and a missed name means a child cannot call for
+     * help. Issue #80: the Flip4's emergency dialer is `com.samsung.android.emergency`, and this list
+     * only had AOSP's `com.android.emergency` — so the overlay covered the dialer on the one device we
+     * test, while the unit test passed.
+     *   1. the explicit prefixes below, for the packages we have actually seen;
+     *   2. a **segment** match (`*.emergency`, `*.incallui`, `*.dialer`), so an OEM we have not seen
+     *      still gets through.
+     * The asymmetry is deliberate: over-exempting a dialer costs one unlocked app, blocking an
+     * emergency call costs the call.
+     */
     private val EXEMPT_PREFIXES = listOf(
         "com.android.incallui",
         "com.samsung.android.incallui",
+        "com.google.android.incallui",
         "com.google.android.dialer",
         "com.android.dialer",
         "com.samsung.android.dialer",
         "com.android.emergency",
+        "com.samsung.android.emergency",
+        "com.google.android.emergency",
         "com.android.systemui",
         "com.android.phone",
+        "com.samsung.android.phone",
     )
+
+    /** Segments that name an emergency/call surface in any OEM's package namespace. */
+    private val EXEMPT_SEGMENTS = setOf("emergency", "incallui", "dialer")
+
+    /** Whether [pkg] is a package the lock must never cover (issue #80). */
+    fun isExemptPackage(pkg: String?): Boolean {
+        if (pkg.isNullOrBlank()) return false
+        val lower = pkg.lowercase()
+        if (EXEMPT_PREFIXES.any { lower.startsWith(it) }) return true
+        // Segment equality, not substring: `com.example.emergencygame` is a game, not a dialer.
+        return lower.split('.').any { it in EXEMPT_SEGMENTS }
+    }
 
     fun isLockingMode(mode: String?): Boolean = mode != null && mode in LOCKING_MODES
 
@@ -59,7 +87,7 @@ object LockEnforcementPolicy {
     fun shouldReraise(mode: String?, foregroundPackage: String?, ownPackage: String): Boolean {
         if (!isLockingMode(mode) || foregroundPackage.isNullOrBlank()) return false
         if (foregroundPackage == ownPackage) return false
-        return EXEMPT_PREFIXES.none { foregroundPackage.startsWith(it) }
+        return !isExemptPackage(foregroundPackage)
     }
 
     /** Minimum gap between two re-raises, so a burst of window events does not start the activity repeatedly. */

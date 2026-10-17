@@ -11,6 +11,28 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security/safety — the lock no longer covers an OEM emergency dialer (issue #80, found by the Phase 1 gate)
+- **Cause.** `LockEnforcementPolicy`'s exemption list was written against AOSP names
+  (`com.android.emergency`, `com.android.dialer`, `com.android.incallui`) and matched with
+  `startsWith`. The one device we test — a Samsung Galaxy Z Flip4 — runs
+  **`com.samsung.android.emergency/.emergencydialer.view.EmergencyDialerActivity`**, which no prefix
+  matched, so `AccessibilityMonitorService` re-raised `LockActivity` over the emergency dialer: on the
+  gate run the dialer started and the lock was on top at 6 s *and* 11 s. The unit test passed because
+  it asserted the platform's names, not the device's.
+- **Fix.** Two mechanisms, deliberately asymmetric: the explicit list now names the Samsung, Google and
+  AOSP call/emergency surfaces, and `isExemptPackage()` additionally matches the **segment** — any
+  package with an `emergency`, `incallui` or `dialer` segment is exempt, so an OEM we have never seen
+  still gets through. Segment equality rather than substring, so `com.example.emergencygame` is still
+  locked.
+- **Why the asymmetry.** Over-exempting a dialer costs one unlocked app; blocking an emergency call
+  costs the call.
+- **Verified:** two JVM cases — a 14-row OEM table (including the exact Flip4 dialer) asserting the lock
+  stays off, and a five-row negative table (`com.whatsapp`, `com.example.emergencygame`, …) asserting
+  ordinary apps are still locked. Hardware re-run of probe row **S1** is the acceptance on the handset
+  and is recorded on #80 when it passes; until then #78 stays held.
+- **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
+  mitigated by `device_silent` plus parent-minted pairing.
+
 ### Android + API — durable on-device scan queue (plan 2.6, first half)
 - `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
   before sending, so a process kill, a reboot or an offline stretch loses nothing. Rows go oldest-first
