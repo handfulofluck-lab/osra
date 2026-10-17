@@ -256,6 +256,16 @@ after its parent dies.
 
 ## 6. Traps that have cost real time here
 
+| Trap | What happened | Rule |
+|---|---|---|
+| `settings put secure enabled_accessibility_services` with the short component (`pkg/.services.X`) | One UI (Android 16) accepted the write and silently dropped it: the status screen said "Missing: Accessibility service" and the guard/lock re-raise were off for the rest of the run | Always write the **full** class name: `com.familyshield.agent/com.familyshield.agent.services.AccessibilityMonitorService`; read it back with `settings get` before trusting it |
+| `am start-foreground-service` from `adb shell` on a non-exported service | Android 14+ answers `Requires permission not exported from uid …`; the service looked "started" (`ServiceRecord … app=null`) and nothing polled | Start the agent through its launcher activity (`am start -n …/.setup.PairingActivity`) or by enabling the accessibility service; never rely on a shell service start |
+| `media volume` is not on One UI | `ping`-style scripts that read the alarm stream got blank values | Use `cmd media_session volume --stream 4 --get` / `--set N` |
+| A PowerShell wrapper around `adb` eats `-c`, `-d`, `-s` | `adb shell ping -c 1` and `adb logcat -d` inside a function ran without their flags (logcat then streamed forever) | Call the exe directly for anything with dash arguments; `$host` is a reserved variable |
+| `uiautomator dump` on the One UI VPN screen | "could not get idle state" forever (the screen animates) | Screenshot + tap at coordinates for that screen; everything else dumps fine |
+
+Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
+
 | Symptom | Cause | What to do |
 |---|---|---|
 | Test counts look unchanged after a change | **Stale test XML** from a previous run (the suite never re-ran) | Check the timestamp of `app/build/test-results/...`; delete `app/build` and re-run |
