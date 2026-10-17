@@ -11,6 +11,75 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security/safety — the lock no longer covers an OEM emergency dialer (issue #80, found by the Phase 1 gate)
+- **Cause.** `LockEnforcementPolicy`'s exemption list was written against AOSP names
+  (`com.android.emergency`, `com.android.dialer`, `com.android.incallui`) and matched with
+  `startsWith`. The one device we test — a Samsung Galaxy Z Flip4 — runs
+  **`com.samsung.android.emergency/.emergencydialer.view.EmergencyDialerActivity`**, which no prefix
+  matched, so `AccessibilityMonitorService` re-raised `LockActivity` over the emergency dialer: on the
+  gate run the dialer started and the lock was on top at 6 s *and* 11 s. The unit test passed because
+  it asserted the platform's names, not the device's.
+- **Fix.** Two mechanisms, deliberately asymmetric: the explicit list now names the Samsung, Google and
+  AOSP call/emergency surfaces, and `isExemptPackage()` additionally matches the **segment** — any
+  package with an `emergency`, `incallui` or `dialer` segment is exempt, so an OEM we have never seen
+  still gets through. Segment equality rather than substring, so `com.example.emergencygame` is still
+  locked.
+- **Why the asymmetry.** Over-exempting a dialer costs one unlocked app; blocking an emergency call
+  costs the call.
+- **Verified:** two JVM cases — a 14-row OEM table (including the exact Flip4 dialer) asserting the lock
+  stays off, and a five-row negative table (`com.whatsapp`, `com.example.emergencygame`, …) asserting
+  ordinary apps are still locked. Hardware re-run of probe row **S1** is the acceptance on the handset
+  and is recorded on #80 when it passes; until then #78 stays held.
+- **The gate itself was measuring the wrong thing (found while re-running S1, same day).** `lock` is a
+  real `lockNow()`, so on a phone with a secure lock the **OS keyguard** sits above `LockActivity` and
+  above anything `am start` launches: the dialer never reaches the front and the row reported
+  `LockActivity` on top whether or not the overlay exempts the dialer. The probe now tries
+  `wm dismiss-keyguard` + a swipe, and if the keyguard survives it records **NOT MEASURED** and exits
+  non-zero instead of FAIL (`RecordNote`; `docs/TESTING.md` §5f). A `NOT MEASURED` row is not green —
+  the run fails, because a hidden precondition that silently flips a verdict is how a gate stops being
+  one. Consequence for the record: the *original* S1 FAIL on `main` was measured on a phone without a
+  secure lock, so it stands; but it can no longer be reproduced on a locked handset without unlocking
+  it first, and the probe says so instead of guessing.
+- **Second cause, and the dominant one: the overlay re-raised *itself*.** With the keyguard down and the
+  exemption in place, S1 still read `LockActivity` on top at 2 s, 6 s and 11 s (`cec3f82`, Flip4,
+  2026-10-17). The control run with the overlay down showed the dialer's task had been created and then
+  never resumed — so the dialer was launched and the overlay took the front back. `LockActivity.onPause()`
+  and `onUserLeaveHint()` started the activity again unconditionally; `onPause` fires on the way out,
+  before the next window is known, so it also fired for the emergency dialer. `shouldReraise` was already
+  returning `false`, and the service never re-raised: the activity did it to itself. The self-re-raise is
+  removed; re-raising is now only `AccessibilityMonitorService`'s job for non-exempt foreground windows
+  (documented in the class: with the accessibility service off there is no self-re-raise, and that
+  service is already a hard requirement for blocking and the tamper guard). JVM suites unchanged:
+  33 suites / 219 tests / 0 failures.
+- **The overlay no longer draws over the OS keyguard (issue #87, found as an owner lockout).** `LockActivity`
+  drew over the keyguard twice — the window flag in `onCreate` **and** `android:showWhenLocked="true"` in
+  the manifest — and a `pause` sent while the bouncer was up put the overlay *in front of* the PIN pad: the owner could not unlock their own phone and the only recovery was `resume` from the
+  server. The flag is gone and `KeyguardPolicy.shouldDeferToKeyguard(mode, keyguardLocked)` makes every
+  locking mode (`locked`, `paused`, `paused_internet`, and the default) finish instead of drawing while a
+  keyguard is up; `unlock` and `dismiss` still run because they *end* the lock. Nothing is lost from the
+  parent's side — `LockState` keeps the mode and the accessibility service re-raises the overlay over the
+  first non-exempt window after the keyguard goes. Trade recorded here on purpose: a child waking a locked
+  phone now sees the keyguard first instead of the parent's message; the same asymmetry as the emergency
+  dialer applies (an owner locked out of their own device costs more than one screen of messaging).
+  Tests: four JVM cases, including a check that pins the policy's mode names to `LockActivity`'s constants
+  so the rule cannot silently invert; 34 suites / 223 tests / 0 failures. Measured on the Flip4 with the
+  keyguard up: `lock` and `pause` delivered, **neither overlay appeared** (`0` activity records for
+  `LockActivity`/`BlockActivity`), the keyguard stayed up.
+- **The same defect was in the app-block screen, found by the S2 run itself.** `BlockActivity` carried the
+  same manifest attribute and window flag; on the handset, with the keyguard up, it was the block overlay
+  that stayed in front (the new `LockActivity` correctly never appeared). It now applies the same
+  `KeyguardPolicy` rule and drops `showWhenLocked`; a block screen has nothing to do while the phone is
+  locked, and covering the bouncer only hides the owner's PIN pad. `RingActivity` keeps `showWhenLocked`
+  on purpose — a parent-triggered ring must be visible while locked, and it is dismissible with the PIN.
+- **The gate now has a row for the opposite failure (issue #87).** `S2` sends `lock` (a real keyguard),
+  then `pause`, and requires `dumpsys window | grep mCurrentFocus` **not** to be `LockActivity`: the owner
+  must always be able to reach their own PIN. It fails on the 2026-10-17 builds — a `pause` over a live
+  bouncer put the overlay in front and the only recovery was `resume` from the server — and it is a safety
+  row, so a `NOT MEASURED` or a FAIL exits the run non-zero. `docs/TESTING.md` §5f carries the reasoning
+  (focus from the window manager, not the activity stack).
+- **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
+  mitigated by `device_silent` plus parent-minted pairing.
+
 ### Android + API — durable on-device scan queue (plan 2.6, first half)
 - `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
   before sending, so a process kill, a reboot or an offline stretch loses nothing. Rows go oldest-first

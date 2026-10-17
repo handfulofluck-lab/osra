@@ -30,6 +30,10 @@ function Bounds($node) { if ($node.bounds -match "\[(\d+),(\d+)\]\[(\d+),(\d+)\]
 function Tap($xy) { Sh ("input tap " + $xy[0] + " " + $xy[1]) | Out-Null; Start-Sleep 1 }
 function Texts($ui) { if ($ui) { @($ui.SelectNodes("//node[@text!='']") | ForEach-Object { $_.text }) -join " | " } else { "(no dump)" } }
 function Focus { $w = (Sh "dumpsys activity activities") -split "`n" | Select-String "topResumedActivity=" | Select-Object -First 1; if ($w) { ($w.ToString() -replace '.*topResumedActivity=ActivityRecord\{\S+ u0 ', '' -replace ' t\d+\}.*', '').Trim() } else { "?" } }
+# The window that holds input focus, which is what tells the owner whether the PIN pad is reachable
+# (issue #87: LockActivity draws over the OS keyguard, so activity focus alone is not enough).
+function FocusWindow { $w = (Sh "dumpsys window") -split "`n" | Select-String "mCurrentFocus=" | Select-Object -First 1; if ($w) { ($w.ToString() -replace '.*mCurrentFocus=', '').Trim() } else { "?" } }
+function KeyguardUp { ((Sh "dumpsys window") -match "isKeyguardShowing=true") }
 function Api($m, $path, $body, $token) { $h=@{}; if ($token) { $h["Authorization"]="Bearer $token" }; try { if ($body -ne $null) { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -ContentType "application/json" -Body ($body|ConvertTo-Json -Depth 8) -TimeoutSec 15 } else { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -TimeoutSec 15 } } catch { W "API $m $path -> $($_.Exception.Message)"; $null } }
 function AlertCount($type) { $sql = "select count(*) from ""Alert"" where ""deviceId""='$DEV' and metadata->>'type'='$type';"; $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); [int]((& $Psql -At -f $f $Db) -join "") }
 function WaitAlert($type, $maxSec) { $before = AlertCount $type; $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt $maxSec) { if ((AlertCount $type) -gt $before) { return [math]::Round($sw.Elapsed.TotalSeconds, 1) }; Start-Sleep 2 }; return -1 }
@@ -37,6 +41,9 @@ function StatusText { Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; S
 function AgentAlive { ((Sh "pidof $PKG").Trim() -ne "") }
 $results = New-Object System.Collections.ArrayList
 function Record($n, $name, $pass, $evidence) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result=$(if ($pass) { "PASS (blocked/alerted)" } else { "FAIL" }); evidence=$evidence }); W ("#$n $name -> " + $(if ($pass) { "PASS" } else { "FAIL" }) + " : " + $evidence) }
+# A row that could not be measured is neither a pass nor a fail: it must not read green, and it must not
+# accuse the product either. It is reported as NOT MEASURED and the run exits non-zero (see the end).
+function RecordNote($n, $name, $note) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOT MEASURED"; evidence=$note }); W ("#$n $name -> NOT MEASURED : " + $note) }
 
 $st = Get-Content $StateFile | ConvertFrom-Json; $TOKEN = $st.token; $DEV = $st.deviceId  # NOTE: PowerShell variables are case-insensitive — never name the token `$T` next to `$t = WaitAlert …`
 if ((Sh "dumpsys window") -match "isKeyguardShowing=true") { W "ABORT: the phone is locked (keyguard showing) - the status screen and the OS screens cannot be read; unlock it and re-run"; exit 2 }
@@ -114,15 +121,52 @@ Record 10 "deactivate device admin from Settings" ($guard -or ($t -ge 0)) ("guar
 #     com.android.phone / the dialers; a wrong answer here blocks a child from calling for help). No call is placed.
 $r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $TOKEN
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -notmatch "LockActivity") { Start-Sleep 1 }
-$dialer = (Sh "cmd package resolve-activity --brief -a com.android.phone.EmergencyDialer.DIAL" -split "`n" | Select-Object -Last 1).Trim()
-if (-not $dialer -or $dialer -match "No activity") { $dialer = "com.android.phone/.EmergencyDialer" }
-Sh "am start -n $dialer" | Out-Null; Start-Sleep 6
-$f1 = Focus; Start-Sleep 5; $f2 = Focus
-$stays = ($f1 -match "Emergency|phone|dialer|incallui") -and ($f2 -match "Emergency|phone|dialer|incallui") -and ($f2 -notmatch "LockActivity")
-Record "S1" "emergency dialer reachable under lock (safety)" $stays ("dialer=$dialer; focus after 6 s: $f1; after 11 s: $f2")
+# `lock` is a real lockNow() (ADR-0010), so on a phone with a secure lock the OS KEYGUARD sits above
+# LockActivity and above anything `am start` can launch. A dialer started by adb then never reaches the
+# front, and the row would read "LockActivity on top" whether or not the overlay exempts the dialer -
+# that is a measurement of the keyguard, not of the policy. Dismiss it (works on a swipe-only lock) and
+# refuse to record a verdict while it is still up; a secure PIN can only be entered by the human.
+Sh "wm dismiss-keyguard" | Out-Null; Start-Sleep 1
+if ((Sh "dumpsys window") -match "isKeyguardShowing=true") { Sh "input swipe 540 1800 540 700 250" | Out-Null; Start-Sleep 2 }
+$keyguardUp = ((Sh "dumpsys window") -match "isKeyguardShowing=true")
+if ($keyguardUp) {
+    RecordNote "S1" "emergency dialer reachable under lock (safety)" "NOT MEASURED: the OS keyguard was still up after the lock, so a dialer launched by adb cannot reach the front and the row would accuse LockActivity no matter what the policy does. Unlock the phone (swipe or the device PIN) with the lock overlay up and re-run."
+} else {
+    $dialer = (Sh "cmd package resolve-activity --brief -a com.android.phone.EmergencyDialer.DIAL" -split "`n" | Select-Object -Last 1).Trim()
+    if (-not $dialer -or $dialer -match "No activity") { $dialer = "com.android.phone/.EmergencyDialer" }
+    Sh "am start -n $dialer" | Out-Null; Start-Sleep 6
+    $f1 = Focus; Start-Sleep 5; $f2 = Focus
+    $stays = ($f1 -match "Emergency|phone|dialer|incallui") -and ($f2 -match "Emergency|phone|dialer|incallui") -and ($f2 -notmatch "LockActivity")
+    Record "S1" "emergency dialer reachable under lock (safety)" $stays ("dialer=$dialer; focus after 6 s: $f1; after 11 s: $f2")
+}
 Sh "input keyevent 4" | Out-Null
 Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $TOKEN | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
+
+# S2. SAFETY/UX (issue #87): the parent overlay must never make the owner's own PIN unreachable.
+#     lock is a real lockNow(), so the OS bouncer comes up; a pause sent while it is up must not draw over
+#     it. Focus is read from the window manager, not the activity manager: "LockActivity on top" and "the
+#     bouncer is reachable" can both be true in the activity stack, and only mCurrentFocus says which one
+#     the owner is looking at. No PIN is entered: the row only requires the bouncer to hold focus.
+$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $TOKEN
+$sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 60 -and -not (KeyguardUp)) { Start-Sleep 1 }
+$keyguardUp = KeyguardUp
+if (-not $keyguardUp) {
+    RecordNote "S2" "owner can reach the keyguard while the overlay is up (safety, #87)" "NOT MEASURED: the keyguard never came up after the lock command, so there is no bouncer to reach."
+} else {
+    $r = Api POST "/v1/devices/$DEV/command" @{ command="pause"; payload=@{} } $TOKEN
+    Start-Sleep 4
+    $fw = FocusWindow
+    $covers = $fw -match "LockActivity|BlockActivity"
+    # Neither overlay may draw, and the keyguard must still be the thing in front: a null focus alone
+    # would also be produced by a dead app, so the two conditions are asserted together.
+    $kgStill = KeyguardUp
+    Record "S2" "owner can reach the keyguard while the overlay is up (safety, #87)" ((-not $covers) -and $kgStill) ("keyguard up before and after the pause: " + $kgStill + "; mCurrentFocus after pause: " + $fw)
+}
+Api POST "/v1/devices/$DEV/command" @{ command="resume"; payload=@{} } $TOKEN | Out-Null
+$sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 60 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
+Sh "wm dismiss-keyguard" | Out-Null; Start-Sleep 1
+if (KeyguardUp) { Sh "input swipe 540 1800 540 700 250" | Out-Null; Start-Sleep 2 }
 
 # 2. pm clear (wipe app data) while admin is active - DESTRUCTIVE (it un-pairs the phone), so it runs last
 $c = Sh "pm clear $PKG"
@@ -135,5 +179,8 @@ $results | Format-Table -AutoSize | Out-String -Width 220 | ForEach-Object { $_ 
 $results | Format-Table -AutoSize | Out-String -Width 220
 $results | ConvertTo-Json | Set-Content (Join-Path $Out "bypass-probe.json") -Encoding utf8
 $fails = @($results | Where-Object { $_.result -eq "FAIL" }).Count
-W ("probe done: " + ($results.Count - $fails) + "/" + $results.Count + " rows PASS (ten bypasses + the emergency-dialer safety check); log " + $LOG)
-exit $fails
+$unmeasured = @($results | Where-Object { $_.result -eq "NOT MEASURED" }).Count
+$passed = @($results | Where-Object { $_.result -like "PASS*" }).Count
+W ("probe done: " + $passed + "/" + $results.Count + " rows PASS, " + $fails + " FAIL, " + $unmeasured + " NOT MEASURED (ten bypasses + the emergency-dialer safety check); log " + $LOG)
+# An unmeasured row is not a green row: fail the run so CI and the operator both notice.
+exit ($fails + $unmeasured)
