@@ -1,11 +1,14 @@
 package com.familyshield.agent.comms
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.database.Cursor
 import android.provider.CallLog
 import android.provider.Telephony
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
@@ -87,8 +90,26 @@ class CommsLogger @Inject constructor(
         }
     }
 
+    /**
+     * Issue #91: the permission is checked BEFORE the query, not only caught afterwards. The old code
+     * relied on the SecurityException and logged a full stack trace, which produced one scare per
+     * session on devices without READ_CALL_LOG and trained readers to ignore the tag.
+     */
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    @Volatile private var warnedCallPermission = false
+    @Volatile private var warnedSmsPermission = false
+
     /** Reads CallLog rows newer than the stored watermark into Room (guarded by permission checks). */
     private suspend fun harvestCalls() {
+        if (!granted(Manifest.permission.READ_CALL_LOG)) {
+            if (!warnedCallPermission) {
+                warnedCallPermission = true
+                Log.i(TAG, "READ_CALL_LOG not granted; call harvesting stays off until the parent grants it")
+            }
+            return
+        }
         val watermark = db.agentStateDao().get(KEY_CALL_WATERMARK) ?: 0L
         val now = System.currentTimeMillis()
         val events = mutableListOf<CommsEventEntity>()
@@ -122,8 +143,11 @@ class CommsLogger @Inject constructor(
                 }
             }
         } catch (e: SecurityException) {
-            // NOTE: READ_CALL_LOG not granted yet — skip this harvest; the observer retries later.
-            Log.w(TAG, "READ_CALL_LOG missing; call harvest skipped", e)
+            // Race: the grant was revoked between the check and the query. Say it once, without a stack.
+            if (!warnedCallPermission) {
+                warnedCallPermission = true
+                Log.i(TAG, "READ_CALL_LOG revoked mid-harvest; call harvesting paused")
+            }
             return
         }
         persist(events, newest, KEY_CALL_WATERMARK, now)
@@ -131,6 +155,13 @@ class CommsLogger @Inject constructor(
 
     /** Reads Telephony.Sms rows newer than the stored watermark into Room (permission-guarded). */
     private suspend fun harvestSms() {
+        if (!granted(Manifest.permission.READ_SMS)) {
+            if (!warnedSmsPermission) {
+                warnedSmsPermission = true
+                Log.i(TAG, "READ_SMS not granted; SMS harvesting stays off until the parent grants it")
+            }
+            return
+        }
         val watermark = db.agentStateDao().get(KEY_SMS_WATERMARK) ?: 0L
         val now = System.currentTimeMillis()
         val events = mutableListOf<CommsEventEntity>()
