@@ -6,11 +6,22 @@
  * system behaves correctly (i.e. it REJECTS the bad input) and FAIL when it accepts it.
  *
  * Usage:  node scripts/qa-probe.mjs          (see QA-KIMI docs; needs INTERNAL_HMAC_SECRET)
- * Env:    API_BASE, INTERNAL_HMAC_SECRET, REDIS_URL (only for the WS ticket probe)
+ * Env:    API_BASE, INTERNAL_HMAC_SECRET
  *
  * Exit code is non-zero when any probe fails, so CI / the collaborating developer can gate on it.
  */
 import { createHmac, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+
+// Node 20 hides the global WebSocket behind a flag — re-exec ourselves with it (same shim as e2e.mjs).
+if (typeof globalThis.WebSocket === "undefined" && !process.env.FS_WS_FLAGGED) {
+  const child = spawn(process.execPath, ["--experimental-websocket", process.argv[1]], {
+    stdio: "inherit",
+    env: { ...process.env, FS_WS_FLAGGED: "1" },
+  });
+  child.on("exit", (code) => process.exit(code ?? 1));
+  await new Promise(() => {});
+}
 
 const API = process.env.API_BASE ?? "http://localhost:3000";
 const HMAC_SECRET = process.env.INTERNAL_HMAC_SECRET ?? "";
@@ -157,8 +168,10 @@ const crossGeofence = await call("POST", "/v1/location/geofences", {
 });
 check("B4 geofence on other family's child (403/404)", [403, 404].includes(crossGeofence.status), `got ${crossGeofence.status}`);
 
-const crossReports = await call("GET", `/v1/reports/usage/${kidA}?days=7`, { token: tokenB });
+const crossReports = await call("GET", `/v1/reports/usage?childId=${kidA}&days=7`, { token: tokenB });
 check("B5 usage report for other family's child (403/404)", [403, 404].includes(crossReports.status), `got ${crossReports.status}`);
+const crossWeb = await call("GET", `/v1/reports/web?childId=${kidA}&days=7`, { token: tokenB });
+check("B5b browsing history for other family's child (403/404)", [403, 404].includes(crossWeb.status), `got ${crossWeb.status}`);
 
 const crossWellbeing = await call("GET", `/v1/reports/wellbeing/${kidA}`, { token: tokenB });
 check("B6 wellbeing for other family's child (403/404)", [403, 404].includes(crossWellbeing.status), `got ${crossWellbeing.status}`);
@@ -524,6 +537,104 @@ if (d2?.secret && kidA2) {
       "J6 global-secret fallback for secret-less devices",
       `HTTP ${nRes.status} when signing with the global secret for a child whose device has no per-device secret (201 = the fallback is still open; see ask 16)`,
     );
+  }
+}
+
+// ── L. realtime contract — `ready` frame (TR-05) ────────────────────────────
+console.log("\n── L. realtime ──");
+{
+  // Contract: the gateway sends `{type:"ready", familyId, ts}` as the FIRST frame after it has
+  // registered the socket, and no event frame precedes it. A client that has not seen `ready`
+  // cannot know whether a published event reached it; a client that has can treat a missing event
+  // as a delivery failure, not a race. Checked end-to-end here: real ticket, real socket, real alert.
+  const openSocket = async (ticket) => {
+    const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    const frames = [];
+    let close = null;
+    ws.addEventListener("message", (ev) => frames.push(JSON.parse(ev.data)));
+    ws.addEventListener("close", (ev) => { close = ev?.code ?? -1; });
+    ws.addEventListener("error", () => {});
+    const until = async (pred, ms) => {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        if (pred()) return true;
+        if (Date.now() > deadline) return false;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+    return { ws, frames, close: () => close, until };
+  };
+  const meA = await call("GET", "/v1/family/me", { token: tokenA });
+  const familyIdA = meA.data?.family?.id;
+  const ticketA = (await call("POST", "/v1/ws-ticket", { token: tokenA })).data?.ticket;
+  const sock = await openSocket(ticketA ?? "missing");
+  const gotReady = await sock.until(() => sock.frames.some((f) => f.type === "ready"), 5000);
+  const first = sock.frames[0];
+  check(
+    "L1 parent socket receives {type:ready} as the FIRST frame, bound to its own familyId",
+    gotReady && first?.type === "ready" && first?.familyId === familyIdA && typeof first?.ts === "string",
+    `first=${JSON.stringify(first ?? null)} expectedFamily=${familyIdA} close=${sock.close()}`,
+  );
+  const readyIdx = sock.frames.findIndex((f) => f.type === "ready");
+  const alertBody = { childId: kidA, deviceId: deviceIdA, severity: "info", category: "sos", title: `ready-order-${stamp}`, body: "after ready" };
+  const posted = await call("POST", "/v1/alerts/internal", { hmac: true, body: alertBody });
+  const gotAlert = await sock.until(() => sock.frames.some((f) => f.type === "alert" && f.payload?.title === alertBody.title), 10000);
+  const alertIdx = sock.frames.findIndex((f) => f.type === "alert" && f.payload?.title === alertBody.title);
+  check(
+    "L2 an alert published after ready is delivered on that socket, after ready",
+    [200, 201].includes(posted.status) && gotAlert && readyIdx === 0 && alertIdx > readyIdx,
+    `post=${posted.status} readyIdx=${readyIdx} alertIdx=${alertIdx} frames=${sock.frames.length} close=${sock.close()}`,
+  );
+  check("L3 no event frame precedes ready", !sock.frames.slice(0, Math.max(readyIdx, 0)).some((f) => f.type !== "ready"), `frames=${JSON.stringify(sock.frames.map((f) => f.type))}`);
+  sock.ws.close();
+
+  // A bad ticket must close 4001 and must NOT leak a ready frame (ready = "you are subscribed").
+  const bad = await openSocket(`bogus-${stamp}`);
+  const closed = await bad.until(() => bad.close() !== null, 5000);
+  check("L4 invalid ticket -> close 4001 and no ready frame", closed && bad.close() === 4001 && bad.frames.length === 0, `close=${bad.close()} frames=${bad.frames.length}`);
+
+  // A ticket is single-use: the second presentment of the same ticket is refused, no ready frame.
+  const reuse = await openSocket(ticketA ?? "missing");
+  const reuseClosed = await reuse.until(() => reuse.close() !== null, 5000);
+  check("L5 a consumed ticket cannot open a second socket (4001, no ready)", reuseClosed && reuse.close() === 4001 && reuse.frames.length === 0, `close=${reuse.close()} frames=${reuse.frames.length}`);
+}
+
+// ── M. usage model + erasure cascade (Phase 2c, ADR-0013) ───────────────────
+console.log("\n── M. usage model & erasure ──");
+{
+  // Bounds on the new report routes.
+  const tooMany = await call("GET", `/v1/reports/usage?childId=${kidA}&days=400`, { token: tokenA });
+  const zero = await call("GET", `/v1/reports/usage?childId=${kidA}&days=0`, { token: tokenA });
+  const webBig = await call("GET", `/v1/reports/web?childId=${kidA}&limit=5000`, { token: tokenA });
+  const webDays = await call("GET", `/v1/reports/web?childId=${kidA}&days=91`, { token: tokenA });
+  check("M1 /reports/usage and /reports/web reject out-of-range days/limit (400)", [tooMany, zero, webBig, webDays].every((r) => r.status === 400), `got ${[tooMany, zero, webBig, webDays].map((r) => r.status).join("/")}`);
+  const own = await call("GET", `/v1/reports/usage?childId=${kidA}&days=3`, { token: tokenA });
+  check("M2 /reports/usage returns a 3-entry series for the owning parent", own.status === 200 && Array.isArray(own.data?.series) && own.data.series.length === 3 && own.data.series.every((d) => typeof d.minutes === "number"), `got ${own.status} len=${own.data?.series?.length}`);
+
+  // Erasure: a scratch child with a real paired device and ingested data, erased by its own parent.
+  const kidC = (await call("POST", "/v1/family/children", {
+    token: tokenA,
+    body: { displayName: `QA Erase ${stamp}`, birthYear: 2016, consent: { method: "sms_plus", jurisdiction: "US" } },
+  })).data?.child?.id;
+  const dC = kidC ? await pairDevice(kidC, "qa-erase-dev") : { status: 0 };
+  if (kidC && dC.token && dC.deviceId) {
+    await call("POST", `/v1/devices/${dC.deviceId}/activity`, { token: dC.token, body: { events: [
+      { type: "app_usage", payload: { app: "YouTube", minutes: 3 } },
+      { type: "url", payload: { url: "https://erase.example/p", blocked: false } },
+    ] } });
+    await call("POST", `/v1/devices/${dC.deviceId}/telemetry`, { token: dC.token, body: { totalMinutes: 3 } });
+    const crossErase = await call("DELETE", `/v1/family/children/${kidC}`, { token: tokenB });
+    check("M3 other family cannot erase a child (403/404), child still readable by its parent", [403, 404].includes(crossErase.status) && (await call("GET", `/v1/family/children/${kidC}`, { token: tokenA })).status === 200, `got ${crossErase.status}`);
+    const erase = await call("DELETE", `/v1/family/children/${kidC}`, { token: tokenA });
+    check("M4 own erasure returns deleted devices + per-table counts incl. activity/web/usage rows", erase.status === 200 && erase.data?.deletedDevices?.includes(dC.deviceId) && erase.data?.rows?.activityEvent >= 2 && erase.data?.rows?.webVisit >= 1 && erase.data?.rows?.appUsageDaily >= 2 && erase.data?.rows?.device >= 1, `got ${erase.status} ${JSON.stringify(erase.data?.rows ?? null)}`);
+    const afterDevice = await call("GET", `/v1/devices/${dC.deviceId}/commands`, { token: dC.token });
+    const afterPing = await call("POST", "/v1/location/ping", { token: dC.token, body: { childId: kidC, deviceId: dC.deviceId, lat: 1, lng: 2, accuracyM: 5 } });
+    check("M5 an erased child's device JWT is revoked on every route (401), not merely orphaned", afterDevice.status === 401 && afterPing.status === 401, `commands=${afterDevice.status} ping=${afterPing.status}`);
+    const gone = await call("GET", `/v1/family/children/${kidC}`, { token: tokenA });
+    const usageGone = await call("GET", `/v1/reports/usage?childId=${kidC}&days=1`, { token: tokenA });
+    check("M6 erased child is gone for its parent too (404 on child and on its reports)", gone.status === 404 && usageGone.status === 404, `child=${gone.status} usage=${usageGone.status}`);
+  } else {
+    check("M3-M6 erasure scratch child + device could not be created", false, `kidC=${kidC} claim=${dC.status}`);
   }
 }
 

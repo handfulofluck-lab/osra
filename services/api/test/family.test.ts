@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { familyRoutes } from "../src/routes/family.js";
+import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -159,6 +160,10 @@ describe("family routes", () => {
     const app = await buildApp(familyRoutes, "/v1/family");
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
     prismaMock.child.delete.mockResolvedValue({ id: CHILD_ID });
+    prismaMock.device.findMany.mockResolvedValue([{ id: "dev-1" }, { id: "dev-2" }]);
+    for (const m of ["deviceCommand", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest", "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 1 });
+    }
 
     const res = await app.inject({
       method: "DELETE",
@@ -173,9 +178,22 @@ describe("family routes", () => {
     expect(prismaMock.geofence.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.alert.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.consentRecord.deleteMany).toHaveBeenCalledWith(cascade);
+    // Phase 2c (ADR-0013): the tables the old cascade left orphaned.
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith(cascade);
+    expect(prismaMock.socialEvent.deleteMany).toHaveBeenCalledWith(cascade);
+    expect(prismaMock.installRequest.deleteMany).toHaveBeenCalledWith(cascade);
+    expect(prismaMock.webVisit.deleteMany).toHaveBeenCalledWith(cascade);
+    expect(prismaMock.appUsageDaily.deleteMany).toHaveBeenCalledWith(cascade);
+    expect(prismaMock.deviceCommand.deleteMany).toHaveBeenCalledWith({ where: { deviceId: { in: ["dev-1", "dev-2"] } } });
     expect(prismaMock.child.delete).toHaveBeenCalledWith({ where: { id: CHILD_ID } });
     const txCalls = prismaMock.$transaction.mock.calls[0][0] as unknown[];
-    expect(txCalls).toHaveLength(7);
+    expect(txCalls).toHaveLength(13);
+    // Each deleted device's token is revoked like an unpair (#56), bounded by the token lifetime.
+    const redis = getRedis() as unknown as MockRedis;
+    for (const id of ["dev-1", "dev-2"]) {
+      expect(redis.set).toHaveBeenCalledWith(`revoked:device:${id}`, expect.any(String), "EX", 315_576_000);
+    }
+    expect(res.json()).toMatchObject({ erased: true, childId: CHILD_ID, deletedDevices: ["dev-1", "dev-2"] });
     await app.close();
   });
 

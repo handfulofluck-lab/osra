@@ -33,6 +33,71 @@ environment where it was written — see `docs/QA/` for the verification state.
   into one comparable entry per assertion family, and dynamically built names cannot be compared (they
   are counted and reported). This narrows a reviewer's search; it does not replace the reviewer.
 
+### Backend — Phase 2c: durable usage model, retention, complete erasure cascade (ADR-0013)
+- **New tables** (migration `0013_usage_model`): `AppUsageDaily` (child × device × UTC day × app →
+  minutes; `app="*"` is the device-reported day total) and `WebVisit` (one row per URL event). Written
+  incrementally by `POST /devices/:id/activity` and `/telemetry`; reconciled nightly from
+  `ActivityEvent` by `src/jobs/usageRollup.ts` (overwrite, idempotent; `ROLLUP_HOUR_UTC`, default 02:00,
+  Redis `SET NX` claim, `JOBS_ENABLED=0` for an external cron). A rollup write failure never rejects a
+  batch.
+- **Reads no longer depend on Redis:** `/v1/family/me` falls back to the durable day total when the
+  `usage:child:*` key is gone; new `GET /v1/reports/usage?childId&days` (per-day series + per-app split,
+  the data for trend charts) and `GET /v1/reports/web?childId&days&limit&blocked&domain` (browsing
+  history) — family-scoped, bounds validated (400).
+- **Retention:** raw `ActivityEvent`/`WebVisit`/`SocialEvent`/`LocationPing` deleted after
+  `RETENTION_DAYS` (90, floor 7), rollups after `ROLLUP_RETENTION_DAYS` (365); instants bound from JS.
+- **Erasure (`DELETE /v1/family/children/:id`) now covers every child-scoped table** — it previously
+  left `ActivityEvent`, `SocialEvent`, `InstallRequest` and `DeviceCommand` rows orphaned — in one
+  transaction (`eraseChildData()`, list pinned by a test), returns `deletedDevices` + per-table `rows`,
+  revokes each deleted device's JWT like an unpair (#56 TTL) and drops the child's Redis keys.
+  `DEVICE_TOKEN_TTL_SECONDS` moved to `src/lib/deviceToken.ts` (re-exported from `devices.ts`).
+- **Gates:** e2e gains 9 checks (rollup survives `DEL usage:child:*`; `/reports/usage` 21/9 with the
+  live heartbeat excluded; `/reports/web` + `blocked=true`; erasure counts; erased device → 401; and,
+  when the gate shell has `DATABASE_URL`, **a Postgres count of 0 rows in all 13 tables**). Probe
+  gains **M1–M6** (bounds; cross-family erasure 403 with the child intact; own erasure counts;
+  erased device 401 on commands *and* ping; 404 afterwards) and `B5b`; `B5` now hits the real route.
+  New unit suite `test/usage-model.test.ts` (13 tests); the cascade test in `test/family.test.ts` now
+  asserts 13 deletes and the revocation writes.
+- **Verified here** (DB from zero, `Asia/Dubai`, API `:3019`): vitest **281/281** (24 files), `tsc`
+  clean, e2e **66 passed, 0 failed**, probe **95 passed · 0 failed · 2 targets · 1 note**; rollup run
+  twice on seeded rows overwrote a stale 999 → 17 and reaped a 107-day-old event, second run identical
+  (rows then removed — hygiene rule §7). ⚠️ Not verified on the testers' hosts yet — **TR-06**.
+
+### Backend — TR-05: WebSocket `ready` frame; Redis state bounded (#56, #57)
+- **Realtime contract (product change, decided under TR-04):** the gateway now sends
+  `{type:"ready", familyId, ts}` as the **first frame on every socket**, immediately after it adds the
+  socket to the family set (`src/realtime/gateway.ts`). A client that has not seen `ready` cannot know
+  whether a published event reached it; one that has can treat a missing event as a delivery failure
+  rather than a race. `docs/SPEC.md` and `README.md` record the contract.
+- **Gates:** `scripts/e2e.mjs` §7 waits for `ready` before posting the alert and no longer polls the
+  Redis ticket key (one mechanism, not two — Kimi's question on #62); a new check asserts `ready` is the
+  first frame and names the family. `scripts/qa-probe.mjs` gains **L1–L5** (ready first and bound to
+  the caller's family; an alert published after ready arrives after it; no event precedes ready;
+  invalid ticket → `4001` with no ready; a consumed ticket cannot open a second socket). The probe now
+  carries the same `--experimental-websocket` re-exec shim as e2e for Node 20. New unit suite
+  `test/realtime.test.ts` opens real sockets against a listening Fastify instance (3 tests; 2 of them
+  fail on the previous gateway).
+- **#56 — `revoked:device:<id>` is bounded, not reaped.** Unpair now writes it with `EX` =
+  `DEVICE_TOKEN_TTL_SECONDS` (10 y = 315 576 000 s), the same constant the device JWT is minted with
+  (`expiresIn` was the `ms` string `"10y"`, now the number — identical lifetime, and a test proves
+  `exp − iat` equals the key's TTL so the two cannot drift). The handler comment states that the key is
+  security state and must never be shortened or deleted while the token could still be presented;
+  `scripts/cleanup-test-redis.mjs` already keeps it. Keys written before this change keep `TTL -1`
+  until the next unpair of that id (the QA tool reports them; they are still controls).
+- **#57 — `refresh:index:<parentId>` no longer leaks.** `/logout` reads the owner from the live record
+  *before* deleting it and `srem`s the hash; the expired-but-present path does the same; both go through
+  one `retireRefreshToken()` helper shared with rotation. The index SET re-arms a 30-day TTL on every
+  issue (`expire`), so an abandoned index disappears a refresh-lifetime after the last login even if a
+  path is ever missed. Four new tests in `test/token-hygiene.test.ts` (logout removes only that
+  session's hash; expired token is retired from the index; TTL re-armed; #56 bound) — all four fail on
+  the previous code.
+- **Verified here** on a database created from zero with session zone `Asia/Dubai`, API on `:3019`:
+  vitest **268/268** (23 files), `tsc` clean, **e2e 57 passed, 0 failed** (56 + the ready check),
+  **qa-probe 88 passed · 0 failed · 2 targets (J2, J6) · 1 note (E4)** (83 + L1–L5). Live Redis:
+  the logged-out session's hash is absent from its `refresh:index:*` set; a fresh unpair's
+  `revoked:device:*` key reports `TTL 315576000`. ⚠️ Not verified on the testers' hosts yet — that is
+  **TR-05**.
+
 ### QA — TR-03 (post-merge smoke of `main`) and TR-04 (e2e WebSocket harness), in the same PR as TR-01/TR-02
 - **TR-03 — `main`@`e1e0f74` smoked on a database created from zero**, session zone `Asia/Dubai`:
   `prisma migrate deploy` applied **all 12 migrations** to an empty database (0001→0012, including the

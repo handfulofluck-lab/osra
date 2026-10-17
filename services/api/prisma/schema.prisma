@@ -140,6 +140,36 @@ model ActivityEvent {
   @@index([childId, ts])
 }
 
+/// Phase 2c (ADR-0013): per-child, per-device, per-app daily minutes. Written incrementally at
+/// ingestion and reconciled from ActivityEvent by the nightly rollup, so the weekly report does not
+/// depend on Redis (`usage:child:*` is a cache of today only) and survives raw-event retention.
+/// `app = "*"` is the device-reported total for the day (telemetry `totalMinutes`).
+model AppUsageDaily {
+  id        String   @id @default(uuid())
+  childId   String
+  deviceId  String   @default("")
+  day       DateTime @db.Date
+  app       String
+  minutes   Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  @@unique([childId, deviceId, day, app])
+  @@index([childId, day])
+}
+
+/// Phase 2c (ADR-0013): one row per URL visit (from ActivityEvent type "url"), queryable as browsing
+/// history without scanning the JSON event log. Subject to the raw-data retention window.
+model WebVisit {
+  id       String   @id @default(uuid())
+  childId  String
+  deviceId String?
+  ts       DateTime @default(now()) @db.Timestamptz(3)
+  domain   String
+  url      String   @default("")
+  blocked  Boolean  @default(false)
+  category String   @default("")
+  @@index([childId, ts])
+}
+
 model SocialEvent {
   id            String   @id @default(uuid())
   childId       String

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { authRoutes } from "../src/routes/auth.js";
-import { deviceRoutes } from "../src/routes/devices.js";
+import { DEVICE_TOKEN_TTL_SECONDS, deviceRoutes } from "../src/routes/devices.js";
+import { createHash } from "node:crypto";
 import { alertsRoutes } from "../src/routes/alerts.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
@@ -115,6 +116,54 @@ describe("token hygiene — refresh store with reuse detection (handoff item 1)"
     expect((await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken: login2.json().refreshToken } })).statusCode).toBe(401);
     await app.close();
   });
+
+  // #57 — refresh:index:<parentId> must not keep hashes of tokens that are gone.
+  const sha = (t: string) => createHash("sha256").update(t).digest("hex");
+  const index = async (parentId = "p1") => (getRedis() as unknown as MockRedis).smembers(`refresh:index:${parentId}`);
+
+  it("#57 logout removes the token's hash from refresh:index (no permanent SET member)", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const l1 = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    const l2 = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    const h1 = sha(l1.json().refreshToken);
+    const h2 = sha(l2.json().refreshToken);
+    expect(await index()).toEqual(expect.arrayContaining([h1, h2]));
+
+    const out = await app.inject({ method: "POST", url: "/v1/auth/logout", payload: { refreshToken: l1.json().refreshToken } });
+    expect(out.statusCode).toBe(200);
+    expect(await index()).not.toContain(h1);
+    expect(await index()).toContain(h2); // the other session is untouched
+    // Logout stays idempotent and always 200, also for an unknown token.
+    expect((await app.inject({ method: "POST", url: "/v1/auth/logout", payload: { refreshToken: "not-a-token" } })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("#57 an expired-but-present refresh token is retired from the index when presented", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const l1 = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    const rt = l1.json().refreshToken as string;
+    const h = sha(rt);
+    const redis = getRedis() as unknown as MockRedis;
+    // Age the stored record past its instant without touching the key (TTL and instant can disagree).
+    const raw = JSON.parse((await redis.get(`refresh:${h}`)) as string) as { parentId: string; expiresAt: number };
+    await redis.set(`refresh:${h}`, JSON.stringify({ ...raw, expiresAt: Date.now() - 1000 }));
+
+    const res = await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken: rt } });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe("invalid_refresh_token");
+    expect(await index()).not.toContain(h);
+    expect(await redis.get(`refresh:${h}`)).toBeNull();
+    await app.close();
+  });
+
+  it("#57 the index SET is bounded: its TTL is re-armed to the refresh lifetime on every issue", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const redis = getRedis() as unknown as MockRedis;
+    redis.expire.mockClear();
+    await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    expect(redis.expire).toHaveBeenCalledWith("refresh:index:p1", 30 * 24 * 60 * 60);
+    await app.close();
+  });
 });
 
 describe("token hygiene — device JWT revocation (handoff item 4)", () => {
@@ -134,6 +183,27 @@ describe("token hygiene — device JWT revocation (handoff item 4)", () => {
     const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: deviceHeader(app) });
     expect(res.statusCode).toBe(401);
     expect(res.json().error).toBe("device_revoked");
+    await app.close();
+  });
+
+  it("#56 the revocation key is bounded by the device token lifetime, and that lifetime is the one minted", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockClear();
+
+    const del = await app.inject({ method: "DELETE", url: "/v1/devices/dev-1", headers: authHeader(app) });
+    expect(del.statusCode).toBe(200);
+    // SET revoked:device:dev-1 <iso> EX <token lifetime> — bounded, not shorter than any token.
+    const call = redis.set.mock.calls.find((c) => c[0] === "revoked:device:dev-1");
+    expect(call).toBeTruthy();
+    expect(call!.slice(2)).toEqual(["EX", DEVICE_TOKEN_TTL_SECONDS]);
+    expect(DEVICE_TOKEN_TTL_SECONDS).toBe(315_576_000); // 10 × 365.25 d, the `ms` meaning of "10y"
+
+    // The JWT minted at pair/claim carries exactly that lifetime (exp − iat), so the two cannot drift.
+    const signed = app.jwt.sign({ sub: "dev-x", role: "device" }, { expiresIn: DEVICE_TOKEN_TTL_SECONDS });
+    const claims = app.jwt.decode(signed) as { iat: number; exp: number };
+    expect(claims.exp - claims.iat).toBe(DEVICE_TOKEN_TTL_SECONDS);
     await app.close();
   });
 });
