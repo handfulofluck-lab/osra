@@ -142,6 +142,25 @@ whose owning row no longer exists; it **never** touches a `revoked:device:*` key
 still exists, because that key is the control that makes an unpaired device's 10-year JWT get `401`
 (issue #56). Any key it reports as kept, keep.
 
+## 5a. Tamper protection on hardware (ADR-0010, plan 1.1/1.2)
+
+With the agent paired and a parent PIN set (the pairing flow asks for it), activate Device Admin from the
+status screen (or, for a test, `adb shell dpm set-active-admin com.familyshield.agent/.security.FamilyShieldDeviceAdmin`).
+Then prove each line of the acceptance:
+
+```bash
+adb uninstall com.familyshield.agent          # must FAIL: Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]
+adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.familyshield.agent
+#   -> within ~1 s the OSRA "Protected" PIN screen is on top (uiautomator dump shows "Parent PIN");
+#      the API log shows POST /v1/alerts/internal 201 (category tamper, type protection_screen_opened)
+adb shell dpm remove-active-admin com.familyshield.agent/.security.FamilyShieldDeviceAdmin
+#   -> POST /v1/alerts/internal 201 (type device_admin_removed) within 60 s; the status screen shows
+#      "alert-only" and `adb uninstall` works again
+```
+
+Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
+The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
+
 ## 6. Traps that have cost real time here
 
 | Symptom | Cause | What to do |
