@@ -33,12 +33,13 @@ function Focus { $w = (Sh "dumpsys activity activities") -split "`n" | Select-St
 function Api($m, $path, $body, $token) { $h=@{}; if ($token) { $h["Authorization"]="Bearer $token" }; try { if ($body -ne $null) { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -ContentType "application/json" -Body ($body|ConvertTo-Json -Depth 8) -TimeoutSec 15 } else { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -TimeoutSec 15 } } catch { W "API $m $path -> $($_.Exception.Message)"; $null } }
 function AlertCount($type) { $sql = "select count(*) from ""Alert"" where ""deviceId""='$DEV' and metadata->>'type'='$type';"; $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); [int]((& $Psql -At -f $f $Db) -join "") }
 function WaitAlert($type, $maxSec) { $before = AlertCount $type; $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt $maxSec) { if ((AlertCount $type) -gt $before) { return [math]::Round($sw.Elapsed.TotalSeconds, 1) }; Start-Sleep 2 }; return -1 }
-function StatusText { Sh "am force-stop $PKG" | Out-Null; Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 4; Texts (UiDump) }
+function StatusText { Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 2; Sh "input keyevent 4" | Out-Null; Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 4; Texts (UiDump) }  # re-open (Back + start) so the status re-renders; never force-stop here, that kills the 60-s loop the rows measure
 function AgentAlive { ((Sh "pidof $PKG").Trim() -ne "") }
 $results = New-Object System.Collections.ArrayList
 function Record($n, $name, $pass, $evidence) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result=$(if ($pass) { "PASS (blocked/alerted)" } else { "FAIL" }); evidence=$evidence }); W ("#$n $name -> " + $(if ($pass) { "PASS" } else { "FAIL" }) + " : " + $evidence) }
 
 $st = Get-Content $StateFile | ConvertFrom-Json; $TOKEN = $st.token; $DEV = $st.deviceId  # NOTE: PowerShell variables are case-insensitive — never name the token `$T` next to `$t = WaitAlert …`
+if ((Sh "dumpsys window") -match "isKeyguardShowing=true") { W "ABORT: the phone is locked (keyguard showing) - the status screen and the OS screens cannot be read; unlock it and re-run"; exit 2 }
 W ("probe start - device " + $DEV + " - " + (Sh "getprop ro.product.model").Trim() + " / Android " + (Sh "getprop ro.build.version.release").Trim())
 
 # 1. adb uninstall while admin is active
