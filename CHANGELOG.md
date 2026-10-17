@@ -11,6 +11,24 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — web filter on the phone: local DNS sinkhole (ADR-0015, plan 1.4)
+- New `vpn/FilterVpnService`: a `VpnService` that routes **only its own resolver** (`10.111.222.2`)
+  into the tunnel, so every app's DNS is decided by the agent and no payload traffic is proxied.
+  `DnsFilterPolicy` (pure, 10 tests) decides pause > allowed > SafeSearch / YouTube rewrite > blocked
+  domain > blocked category > forward; sunk names answer `0.0.0.0`/`::`; SafeSearch and YouTube
+  Restricted are CNAME rewrites to the engines' enforcement hosts with real upstream addresses.
+- `pause_internet` now takes the default route and drops everything except the agent and the parent's
+  always-allowed apps (`addDisallowedApplication`); `resume_internet` returns to DNS-only.
+- Blocked categories now also carry their **domains** from the blocklist pack
+  (`BlocklistStore.mergeDomains`, persisted); `youtubeRestrictedMode` added to the Android rule DTO.
+- Onboarding + status screen: "Set up web filter" (the one-time OS VPN consent) / connected /
+  "Reconnect web filter"; the boot receiver restarts the tunnel; rules sync reloads the table.
+- VPN revoked (another VPN app, or disconnected in Settings) → `tamper` alert
+  `content_filter_disconnected`; the `vpn_detected` check stands down while our own tunnel is up.
+- Manifest: `FOREGROUND_SERVICE_SPECIAL_USE`, service type `specialUse` with the Play subtype text.
+- Tests: `DnsFilterPolicyTest`, `DnsMessageTest`, `IpPacketTest` (RFC 1035 / IPv4+IPv6 UDP codecs).
+- Docs: ADR-0015, TESTING §5c (hardware procedure), README feature line, ROADMAP 1.4.
+
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
   `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies

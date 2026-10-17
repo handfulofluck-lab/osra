@@ -65,7 +65,9 @@ Default-on 13-category web/app protection · pause internet one-tap · WhatsApp/
 monitoring with encrypted snippet vault · calls & SMS timeline · contact allowlist ·
 install alerts with one-tap block · always-allowed apps · bonus time · wind-down · child
 SOS (phone quick-tile / PC hotkey) · multi-parent invites · tamper & VPN alerts · **Device Admin +
-parent PIN** (uninstall/re-pair/deactivate need the PIN; removal alerts the parent — ADR-0010) · usage
+parent PIN** (uninstall/re-pair/deactivate need the PIN; removal alerts the parent — ADR-0010) · **web
+filter on the phone** (local DNS sinkhole: blocked domains/categories, SafeSearch, YouTube Restricted,
+pause-internet drops all traffic — ADR-0015) · usage
 reports with charts · wellbeing score · live activity chip · app insights · digest
 preferences · conversation coach (EN/عربي) · routines · geofences · ring/lock/unlock ·
 MFA (optional TOTP) · refresh-token rotation with reuse detection.

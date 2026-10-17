@@ -169,6 +169,33 @@ wait for boot, unlock the phone → the overlay is on top again. `unlock` clears
 Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
 The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
 
+## 5c. Web filter / DNS sinkhole on hardware (ADR-0015, plan 1.4)
+
+With the agent paired, tap **Set up web filter** on the status screen and accept the OS VPN dialog
+(the key icon appears in the status bar; `adb shell dumpsys connectivity | grep -i vpn` lists the
+tunnel; `dumpsys activity services FilterVpnService` shows it). Put a rule set on the child with
+`webFilter.blockedDomains: ["example.com"]`, `safeSearchEnforced: true`, `youtubeRestrictedMode: "strict"`
+(`PUT /v1/rules/:childId` with the parent token), then wait for the sync or restart the agent. Prove
+each line:
+
+```bash
+adb shell ping -c1 www.example.com     # → "PING www.example.com (0.0.0.0)" — sunk (subdomain match)
+adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNAME to forcesafesearch.google.com
+adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
+adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
+adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
+# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
+adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
+# resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
+# tamper: Settings › Connections › More › VPN › OSRA › Disconnect → POST /v1/alerts/internal 201
+#   (category tamper, type content_filter_disconnected) and the status row shows "Reconnect web filter"
+```
+
+`ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
+the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
+IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
