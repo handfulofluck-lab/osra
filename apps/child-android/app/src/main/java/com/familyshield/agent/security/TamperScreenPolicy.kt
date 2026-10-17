@@ -11,7 +11,7 @@ package com.familyshield.agent.security
  * agent is named on it (label or package name) AND a removal verb is visible. A Settings page that
  * merely lists apps, or the admin list without our row expanded, is not a tamper screen.
  */
-enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO }
+enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PRIVATE_DNS }
 
 object TamperScreenPolicy {
 
@@ -28,6 +28,9 @@ object TamperScreenPolicy {
     private val UNINSTALL_VERBS = listOf("uninstall", "remove app", "delete app")
     private val APP_INFO_VERBS = listOf("force stop", "force close", "clear data", "clear storage", "uninstall")
     private val ADMIN_WORDS = listOf("device admin", "device administrator", "admin app", "device management")
+    /** Plan 1.6/1.4: the Private DNS dialog — a named provider bypasses the DNS sinkhole, so it is a protection screen too. */
+    private val PRIVATE_DNS_WORDS = listOf("private dns provider hostname", "private dns")
+    private val PRIVATE_DNS_FIELDS = listOf("hostname", "provider", "dns.google", "cloudflare-dns")
 
     /**
      * Classifies a foreground window. [packageName] is the window's package; [texts] every visible
@@ -45,6 +48,10 @@ object TamperScreenPolicy {
         if (packageName == null || packageName !in SYSTEM_PACKAGES) return TamperScreen.NONE
         val lower = texts.filterNotNull().map { it.toString().lowercase() }
         if (lower.isEmpty()) return TamperScreen.NONE
+        if (packageName == "com.android.settings") {
+            val joinedAll = lower.joinToString(" | ")
+            if (PRIVATE_DNS_WORDS.any { joinedAll.contains(it) } && PRIVATE_DNS_FIELDS.any { joinedAll.contains(it) }) return TamperScreen.PRIVATE_DNS
+        }
         val namesUs = lower.any { t ->
             t.contains(agentLabel.lowercase()) || t.contains(adminLabel.lowercase()) || t.contains(agentPackage.lowercase())
         }

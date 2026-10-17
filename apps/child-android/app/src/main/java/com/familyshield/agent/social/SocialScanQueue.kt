@@ -32,17 +32,22 @@ class SocialScanQueue @Inject constructor(
     private val api: ApiService,
     private val settings: AgentSettings,
     private val rules: RuleRepository,
+    private val dao: com.familyshield.agent.data.db.PendingScanDao,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
-    private val pending = ArrayList<PendingScan>()
     private val recentHashes = LinkedHashMap<String, Long>() // insertion-ordered for pruning
     private val sendTimestamps = ArrayDeque<Long>()
     private val lastAlertAt = HashMap<String, Long>()
     private var flushJob: Job? = null
 
-    /** Queues one capture; flushes the batch after [FLUSH_DELAY_MS] of quiet. Dropped on overflow. */
-    fun enqueue(app: String, contact: String?, text: String, nowMs: Long = System.currentTimeMillis()) {
+    /**
+     * Queues one capture **durably** (plan 2.6: a Room row, so a kill, a reboot or an offline stretch
+     * loses nothing) and flushes after [FLUSH_DELAY_MS] of quiet. Dedupe and the send-rate cap are
+     * applied before the row is written. [source] is where the text came from (screen / notification).
+     */
+    fun enqueue(app: String, contact: String?, text: String, nowMs: Long = System.currentTimeMillis(), source: String = ScanQueuePolicy.SOURCE_SCREEN) {
         if (text.isBlank()) return
         val hash = dedupeHash(app, contact, text)
         scope.launch {
@@ -54,7 +59,9 @@ class SocialScanQueue @Inject constructor(
                 }
                 recentHashes[hash] = nowMs
                 pruneLocked(nowMs)
-                pending.add(PendingScan(app, contact, text))
+                runCatching {
+                    dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
+                }
                 if (flushJob == null) {
                     flushJob = scope.launch { delay(FLUSH_DELAY_MS); flush() }
                 }
@@ -62,35 +69,50 @@ class SocialScanQueue @Inject constructor(
         }
     }
 
-    /** Sends every queued capture (serialized); empty batches are a no-op. */
+    /**
+     * Sends the oldest queued rows (serialized). A row is deleted on 2xx, kept with `attempts + 1`
+     * on failure, and purged by [ScanQueuePolicy.shouldKeep]'s limits; when a network failure leaves
+     * rows behind, [ScanFlushWorker] is scheduled to retry under a network constraint.
+     */
     suspend fun flush() {
         mutex.withLock {
             flushJob?.cancel()
             flushJob = null
-            if (pending.isEmpty()) return@withLock
-            val batch = pending.toList()
-            pending.clear()
+            val now = System.currentTimeMillis()
+            runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
+            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }.getOrDefault(emptyList())
+            if (batch.isEmpty()) return@withLock
             val childId = settings.childId()
             val deviceId = settings.deviceId()
-            for (scan in batch) {
-                if (childId != null && deviceId != null) {
-                    runCatching {
-                        api.postSocialScan(
-                            SocialScanDto(
-                                childId = childId,
-                                deviceId = deviceId,
-                                app = scan.app,
-                                contact = scan.contact,
-                                text = scan.text,
-                            ),
-                        )
-                    }.onSuccess { sendTimestamps.addLast(System.currentTimeMillis()) }
-                    // NOTE: a failed scan is dropped (no retry queue) — chat capture is best-effort.
+            var networkFailure = false
+            for (row in batch) {
+                if (childId == null || deviceId == null) break // not paired: keep the rows for after pairing
+                val result = runCatching {
+                    api.postSocialScan(
+                        SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source),
+                    )
                 }
-                scan.contact?.let { maybeAlertUnknownContact(it, scan.app) }
+                if (result.isSuccess) {
+                    sendTimestamps.addLast(System.currentTimeMillis())
+                    runCatching { dao.delete(row.id) }
+                    row.contact?.let { maybeAlertUnknownContact(it, row.app) }
+                } else {
+                    val e = result.exceptionOrNull()
+                    if (e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429) {
+                        runCatching { dao.bumpAttempts(row.id) } // the server will never take it: count it down to the drop
+                    } else {
+                        networkFailure = true
+                        runCatching { dao.bumpAttempts(row.id) }
+                    }
+                }
             }
+            val remaining = runCatching { dao.count() }.getOrDefault(0)
+            if (ScanQueuePolicy.retryLater(networkFailure, remaining)) ScanFlushWorker.scheduleRetry(context)
         }
     }
+
+    /** Rows waiting to be sent (for the status screen and tests). */
+    suspend fun pendingCount(): Int = runCatching { dao.count() }.getOrDefault(0)
 
     /** Raises at most one unknown_contact alert per hour for a numeric contact not in the allowlist. */
     private suspend fun maybeAlertUnknownContact(contact: String, app: String) {
@@ -127,8 +149,6 @@ class SocialScanQueue @Inject constructor(
             sendTimestamps.removeFirst()
         }
     }
-
-    private data class PendingScan(val app: String, val contact: String?, val text: String)
 
     companion object {
         /** Quiet period before a batch is flushed. */

@@ -38,12 +38,15 @@ const CommandSchema = z.object({
     "resume_internet",
     "bonus_time",
     "wind_down",
+    // Plan 1.7: a fresh high-accuracy fix on demand, and the parent-side stop for a ring.
+    "locate_now",
+    "stop_ring",
   ]),
   payload: z.record(z.unknown()).optional(),
 });
 
 /** Commands that reduce restriction on the child and therefore never require active consent. */
-const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear"]);
+const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear", "stop_ring"]);
 
 const AckSchema = z.object({
   status: z.enum(["ok", "failed"]),

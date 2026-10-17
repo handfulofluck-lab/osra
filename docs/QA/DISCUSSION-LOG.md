@@ -1971,3 +1971,76 @@ after the first unlock" — before that the child cannot open anything either. R
 Kimi: the `qa/` J7-label PR is unblocked. Merge of #76 follows this entry.
 
 **Status:** open · lead's run PASS · 1.4 in progress on `feat/android-dns-sinkhole`.
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · TR-14: plan 1.4 web filter (DNS sinkhole) measured on the Flip4; #76/#77 merged [open]
+
+**Context.** #76 (1.1–1.3) and Kimi's #77 are on `main` (`f825648`). The Android lane moved to 1.4 on
+`feat/android-dns-sinkhole` (PR #78, ADR-0015) and, in the same PR, 1.6 (guided onboarding).
+
+**Understanding.** 1.4's acceptance: a blocked domain fails in Chrome, Firefox and an in-app WebView;
+pause cuts all traffic. The design that meets it without proxying the child's traffic is a DNS-only
+`VpnService` (only the fake resolver is routed into the tunnel) plus a default-route sinkhole for pause.
+
+**What I did / observed** (`fa64d9a`, Flip4 / Android 16, `C:\KARIM\KCL\tr14-filter.ps1`, API on `:3023`):
+- Unit suite **200/0** (179 + 21 new in four suites).
+- `PATCH /v1/rules/:childId` → `blockedDomains:["example.com"], safeSearchEnforced:true, youtubeRestrictedMode:"strict"`.
+- Status screen → **Set up web filter** → OS dialog *Connection request* → OK → "✓ Web filter: connected";
+  `dumpsys connectivity` shows the VPN transport; `logcat FilterVpn: tunnel up, mode=dns`.
+- Through the system resolver (`adb shell ping -c1`): `www.example.com` → **`(0.0.0.0)`**, `example.com` →
+  `(0.0.0.0)`; `www.wikipedia.org` → a real address; `www.google.com` → **`forcesafesearch.google.com
+  (216.239.38.120)`**; `www.youtube.com` → **`restrict.youtube.com`**; the enforcement hosts themselves
+  resolve (no rewrite loop). Chrome: `https://www.example.com/` → error page (only "example.com" on
+  screen); `https://www.wikipedia.org/` → loads.
+- `pause_internet` → overlay on top after 16 s (poll), `ping 8.8.8.8` → **no reply**, names → no reply;
+  `resume_internet` → overlay cleared, `8.8.8.8` 66 ms, Wikipedia 111 ms, `www.example.com` still sunk.
+- Settings › Connections › VPN › OSRA › **Disconnect** → `FilterVpn: VPN revoked` 14:02:15.650 →
+  `TamperAlertWorker … SUCCESS` 14:02:15.977 → row `tamper / content_filter_disconnected / critical` in
+  Postgres; status row → "⚠️ Web filter: not connected / Reconnect web filter"; the next rules sync
+  reconnected the tunnel on its own (recorded in the ADR as intended).
+- **Findings, fixed in #78:** the OS VPN list showed `com.familyshield.agent.vpn.FilterVpnService`
+  instead of "OSRA" (the `<service>` had no `android:label`); a mode switch logged a `tun read` stack
+  from the old pump thread (now a per-tunnel generation).
+- **Tooling traps for the record:** `uiautomator dump` refuses the Samsung VPN screen ("could not get
+  idle state" — it animates forever), so that step is a tap at the screenshot's coordinates; a
+  PowerShell wrapper function swallows `-c`/`-d`/`-s` arguments meant for `adb`, so dash-arguments go
+  through the exe directly; `$host` is reserved in PowerShell.
+- §7 after the run: **Remove protection (parent PIN)** → admin inactive → `adb uninstall` Success →
+  `pm list packages` empty → reverse removed → `DELETE /v1/devices/:id` → `DELETE 3` alert rows (0 left,
+  0 Flip4 devices) → rules reset → API stopped.
+
+**Asks.** TR-14 row on the board (software half: 200/0 + the four suites; hardware if a second phone is
+free). 1.6's walk-through (TESTING §5d) is next on the Flip4 — a fresh install with every grant missing.
+
+**Status:** open · lead's run PASS · #78 waits on CI, then merges on the standing go.
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · work orders WO-01…05: you own development lanes now, not only verification [open]
+
+**Context.** The maintainer's instruction today: the work that does not need the lead's hardware or the
+Android lane is cheaper done by you, so from now on you each carry a development lane beside QA. The
+Android lane (Phase 1) stays the lead's until its gate passes; the backend seam (2.6) and the store
+work follow. Everything below is a real PR under the template, docs in the same PR, gates raw.
+
+**Who gets what, and why (strengths as the maintainer described them):**
+- **Kimi (DeepSeek, thinking)** — text, data and backend-shaped work: **WO-01** the Phase 4.2/4.3
+  evaluation set and harness under `services/ai-engine/eval/` (schema + provenance doc + a synthetic
+  generator for ≥ 500 EN + 500 AR snippets per run across the seven categories with hard negatives +
+  `run_eval.py` printing precision/recall per category; the regex scorer in `model.py` is the first
+  scorer so the harness runs before the DeepSeek secret exists); **WO-04** the branch-prune list for
+  Phase 0.5 (table of merged branches with their PRs, nothing deleted); **WO-05** the docs sweep (every
+  stale count/sha/env name in TESTING, README, ROADMAP, CHANGELOG, each fix citing its proof).
+- **Antigravity (Gemini flash)** — the parent app's UI lanes: **WO-02** Arabic/RTL (3.1:
+  `flutter_localizations`, `app_en.arb`/`app_ar.arb` covering every string under `lib/features/**`, a
+  test that both locales load with no missing keys, `ar` screenshots of the three main screens in the
+  PR for the maintainer's native-speaker review); then **WO-03** command delivery status in the UI
+  (3.6: poll `/commands/history`, show pending/delivered/acked/failed, never "sent" for an unacked
+  command, widget test for the four states).
+
+**Rules.** One lane, one branch, one owner (`feat/ai-eval-set`, `feat/parent-app-l10n`, `qa/*`).
+You do not edit `apps/child-android` or `services/api` routes in these PRs; if a work order needs an
+API change, say so under its id and the lead does it. Acceptance is the roadmap row's line. Ask under
+the id when anything is unclear; two non-converging exchanges → `needs-human`.
+
+**What the lead does meanwhile.** TR-15..18 on the Flip4 today (the Phase 1 gate), then 2.6 (durable
+scan queue + notification listener), then the Phase 3 items that touch the API.
+
+**Status:** open · five work orders issued · reviews by the lead, merges on the maintainer's standing go.

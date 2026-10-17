@@ -41,25 +41,59 @@ object LockState {
 object LockEnforcementPolicy {
     private val LOCKING_MODES = setOf("locked", "paused", "paused_internet")
 
-    /** Packages the lock must never cover: in-call UI, emergency dialer, the system UI itself. */
+    /**
+     * Packages the lock must never cover: in-call UI, the emergency dialer, the system UI itself.
+     *
+     * Issue #80: the Flip4's emergency dialer is `com.samsung.android.emergency`, and this list only
+     * had AOSP's `com.android.emergency`, so the overlay covered the dialer on the one device we test
+     * while the unit test passed. The first fix matched the package name and the *segment*
+     * (`*.emergency`, `*.incallui`, `*.dialer`), which kept every OEM reachable — and handed a lock
+     * bypass to anyone who published `com.anything.dialer` (review of #83, F1).
+     *
+     * The rule is now about what the OS says a package is, not what it is called:
+     *   1. a **dialer role holder** is always exempt (`TelecomManager` defaults plus the system
+     *      handlers of the emergency-dialer and `ACTION_DIAL` intents) — the OS assigned that role;
+     *   2. otherwise a name is only a hint: the prefix/segment table still applies, but **only when
+     *      the package is a system app**. A sideloaded `com.example.dialer` is a game with a name.
+     * The asymmetry is deliberate: over-exempting a real dialer costs one unlocked app, blocking an
+     * emergency call costs the call.
+     */
     private val EXEMPT_PREFIXES = listOf(
         "com.android.incallui",
         "com.samsung.android.incallui",
+        "com.google.android.incallui",
         "com.google.android.dialer",
         "com.android.dialer",
         "com.samsung.android.dialer",
         "com.android.emergency",
+        "com.samsung.android.emergency",
+        "com.google.android.emergency",
         "com.android.systemui",
         "com.android.phone",
+        "com.samsung.android.phone",
     )
+
+    /** Segments that name an emergency/call surface in any OEM's package namespace. */
+    private val EXEMPT_SEGMENTS = setOf("emergency", "incallui", "dialer")
+
+    /** Whether [pkg] is a package the lock must never cover (issue #80, review of #83 F1). */
+    fun isExemptPackage(pkg: String?, facts: PackageFacts): Boolean {
+        if (pkg.isNullOrBlank()) return false
+        if (pkg in facts.dialerRoleHolders()) return true
+        val lower = pkg.lowercase()
+        // Boundary, not substring: `com.android.phonebook.game` is not `com.android.phone`.
+        val named = EXEMPT_PREFIXES.any { lower == it || lower.startsWith("$it.") } ||
+            lower.split('.').any { it in EXEMPT_SEGMENTS }
+        return named && facts.isSystemApp(pkg)
+    }
 
     fun isLockingMode(mode: String?): Boolean = mode != null && mode in LOCKING_MODES
 
     /** Whether seeing [foregroundPackage] on top while [mode] is active means the overlay must be re-raised. */
-    fun shouldReraise(mode: String?, foregroundPackage: String?, ownPackage: String): Boolean {
+    fun shouldReraise(mode: String?, foregroundPackage: String?, ownPackage: String, facts: PackageFacts): Boolean {
         if (!isLockingMode(mode) || foregroundPackage.isNullOrBlank()) return false
         if (foregroundPackage == ownPackage) return false
-        return EXEMPT_PREFIXES.none { foregroundPackage.startsWith(it) }
+        return !isExemptPackage(foregroundPackage, facts)
     }
 
     /** Minimum gap between two re-raises, so a burst of window events does not start the activity repeatedly. */

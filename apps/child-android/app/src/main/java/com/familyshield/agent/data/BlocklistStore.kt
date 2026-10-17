@@ -27,11 +27,15 @@ class BlocklistStore @Inject constructor(
     private val moshi: Moshi,
 ) {
     @Volatile private var cached: Map<String, String> = emptyMap()
+    @Volatile private var cachedDomains: Map<String, String> = emptyMap()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        scope.launch { cached = loadFromDisk() ?: emptyMap() }
+        scope.launch {
+            cached = loadFromDisk() ?: emptyMap()
+            cachedDomains = settings.blocklistDomainsJson()?.let { runCatching { mapAdapter().fromJson(it) }.getOrNull() } ?: emptyMap()
+        }
     }
 
     /** Returns the blocked category for [packageId], or null when the app is not blocklisted. */
@@ -39,6 +43,9 @@ class BlocklistStore @Inject constructor(
 
     /** Snapshot of the current packageId -> blocked-category map. */
     fun apps(): Map<String, String> = cached
+
+    /** Snapshot of the current domain -> blocked-category map, consumed by the DNS sinkhole (plan 1.4). */
+    fun domains(): Map<String, String> = cachedDomains
 
     /**
      * Fetches the blocklist pack and re-merges it against [blockedCategories]. On success the
@@ -56,6 +63,9 @@ class BlocklistStore @Inject constructor(
         val merged = merge(pack, blockedCategories)
         cached = merged
         runCatching { settings.saveBlocklistJson(mapAdapter().toJson(merged)) }
+        val mergedDomains = mergeDomains(pack, blockedCategories)
+        cachedDomains = mergedDomains
+        runCatching { settings.saveBlocklistDomainsJson(mapAdapter().toJson(mergedDomains)) }
         return true
     }
 
@@ -86,6 +96,22 @@ class BlocklistStore @Inject constructor(
                 PLAIN_MOSHI.adapter(BlocklistPackDto::class.java).fromJson(packJson)
             }.getOrNull() ?: return emptyMap()
             return merge(pack, categories)
+        }
+
+        /** domain -> category for every domain of a blocked category (same rules as [merge]; the DNS sinkhole's table). */
+        fun mergeDomains(pack: BlocklistPackDto, categories: Collection<String>): Map<String, String> {
+            val blocked = categories.map { it.trim().lowercase() }.toSet()
+            if (blocked.isEmpty()) return emptyMap()
+            val result = LinkedHashMap<String, String>()
+            for (entry in pack.categories) {
+                val category = entry.category.trim().lowercase()
+                if (category !in blocked) continue
+                for (d in entry.domains) {
+                    val key = d.trim().trimEnd('.').lowercase().removePrefix("*.")
+                    if (key.isNotEmpty()) result.putIfAbsent(key, category)
+                }
+            }
+            return result
         }
 
         /** Map form of [merge] for callers already holding a parsed [BlocklistPackDto]. */
