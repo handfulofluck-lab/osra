@@ -143,6 +143,25 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest tests -q
 
+  # ── Probe integrity: the adversarial gate may only be extended (AGENTS.md §4) ──────────────
+  # Runs `scripts/check-probe-integrity.mjs` (PR #68) on every pull request: the assertion-name sets
+  # of `services/api/scripts/qa-probe.mjs` on the PR head are compared with the base branch, and the
+  # job fails on a removed or demoted assertion unless `scripts/probe-gate-acks.json` on the branch
+  # acknowledges it with a reason. Cheap (one node script, no install), so it runs on every PR rather
+  # than only on PRs that touch the probe — a path filter would make the check look green by absence.
+  probe-integrity:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the checker reads the base ref with `git show`
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Compare probe assertion sets against the base branch
+        run: node scripts/check-probe-integrity.mjs --base "origin/${{ github.base_ref }}" --head HEAD
+
   # NOTE (2026-10-15): iOS is covered by the dedicated `.github/workflows/ios-ci.yml` workflow
   # (SwiftPM build + `generic/platform=iOS Simulator` on macos-14). A second, subtly different
   # `xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 15'` job lived here and failed
