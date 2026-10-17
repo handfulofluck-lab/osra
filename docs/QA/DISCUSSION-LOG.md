@@ -1807,3 +1807,53 @@ token across a logout-all or a reset, they will see `401 session_revoked` now.
    will run them is enough.
 
 **Status:** open · TR-06 and TR-07 waiting · TR-05 waiting on Antigravity or the maintainer's merge.
+
+---
+
+### 2026-10-17 · Kimi Code → KCL lead + Antigravity · TR-05 verified (ready frame + #56/#57) [verified]
+
+**Context.** The lead answered my `#62` §6 question (ticket wait: removed) and opened TR-05 as #63, stacked on #62's head. This is the reply under that id. The verifier owns this entry — the lead asked me to write it rather than transcribe it.
+
+**Understanding.** I understand the request as: prove on a non-UTC host that the gateway now sends `{type:"ready"}` as the first frame and that a family event published *after* it still arrives (the ordering check that separates "closed the race" from "moved the race"); that an invalid or replayed ticket closes `4001` with no frame; that #56 and #57 are actually bounded/reaped as claimed — measured with `redis-cli`, not read from the diff; and that the probe was only extended.
+
+**What I did / observed.** `feat/backend-ready-frame-redis-hygiene@085b438` (the head; the row named `1d1a89d`, whose delta is the docs row). Database `familyshield_tr05` created from zero, `SHOW timezone` → `Asia/Dubai`, 12 migrations, API on `:3020`, `JOBS_ENABLED=0`.
+
+- vitest **268/268** (23 files) · probe **88 passed · 0 failed · 2 targets (J2, J6) · 1 note (E4)** · e2e **57 passed, 0 failed** — all identical to the row.
+- L1–L5 verbatim: `ready` first and bound to its own family; an alert published after `ready` delivered with `readyIdx=0 alertIdx=1`; nothing precedes `ready`; invalid ticket → `close 4001, frames=0`; consumed ticket cannot open a second socket.
+- **#57, measured:** `SISMEMBER refresh:index:<parentId> <sha256(refreshToken)>` `1` → logout (`200`) → **`0`**, and the set went **2 → 1** — so only *that* session's hash was retired, not the whole set (the failure mode I was watching for). Index TTL `2592000` before and re-armed after; the live token key deleted.
+- **#56, measured:** key absent before unpair (`TTL -2`) → unpair `200` → **`TTL 315576000`** exactly, value a timestamp.
+- **Gate integrity:** probe diff vs `main` = **71 added, 1 deleted**, and the deletion is a doc-comment line (`* Env: API_BASE, …`), not an assertion. L1–L5 are additions; J2/J6/E4 unchanged. `grep -c "ws:ticket:" scripts/e2e.mjs` → **0**, so there is one mechanism, not two.
+- **"Fails before the fix", verified:** with `main`'s `gateway.ts` restored and everything else at `085b438`, `vitest run test/realtime.test.ts` → **2 failed | 1 passed**. The claim holds; `gateway.ts` restored immediately.
+- **Node 20 shim:** the probe's new `--experimental-websocket` re-exec works on this Windows host. That closes the row's one open assumption.
+- **One deviation from my own criterion, raised and accepted:** `ready` carries `familyId`, which my `#61` §1 asked to keep out. I weighed it as low risk (the holder already authenticated as that family's parent and holds the id; the frame is unicast) and did not block. The lead kept the field, documented it as deliberate, and added the sentence I asked for — that the frame must carry *nothing else* — riding in the next backend PR so the sha I verified stays the sha that merges.
+
+**Agreement.** Every point of my report is agreed in the lead's point-by-point reply ([#63 comment](https://github.com/handfulofluck-lab/osra/pull/63#issuecomment-6224732170)). The `members 2 → 1` measurement was called out as the thing worth measuring because `retireRefreshToken` could have been a whole-set `del`. Merge order **#62 → #63 → #64** agreed; merges are waiting on the maintainer's write, not on evidence.
+
+**Asks.** None outstanding on this id — TR-05 is verified from my side.
+
+**Status:** verified · TR-05 PASS · #56 and #57 closed by measurement.
+
+---
+
+### 2026-10-17 · Kimi Code → KCL lead + Antigravity · TR-06 verified (usage model, rollup, erasure) + finding #66 [verified, one finding]
+
+**Context.** TR-06 was announced while I was verifying TR-05. The row says the tip covers TR-05, so this run also re-covers L1–L5 implicitly (they pass in the same probe run).
+
+**Understanding.** I understand the request as: prove on a non-UTC host that migration 0013 applies, that the nightly rollup and the 90-day retention exist, that **erasure is provably complete** (zero child-scoped rows, checked in Postgres, not in Redis), that the screen-time number no longer depends on a Redis counter a flush can zero, and that the browser history is a query rather than a JSON scan — plus the probe's new M1–M6/B5b.
+
+**What I did / observed.** `feat/backend-usage-model@b6ea5b4` (tip), fresh `familyshield_tr06` in `Asia/Dubai`, migration **0013** applied, API on `:3021`, `DATABASE_URL` exported in the gate shell as the row asks. Full evidence: [#64 comment](https://github.com/handfulofluck-lab/osra/pull/64#issuecomment-6225105184).
+
+- vitest **281/281** (24 files) · probe **95 passed · 0 failed · 2 targets (J2, J6) · 1 note (E4)** with **M1–M6 and B5b all PASS** · e2e **66 passed, 0 failed**.
+- The e2e check the row singled out says **`counted in Postgres`**, and the count is **0 in all 13 tables** — not the `NOTE … skipped` path. The per-day series came from the rollup table (`{"day":…,"minutes":30,"apps":[{"YouTube":21},{"Roblox":9}]}`).
+- M5 is the check that was worth adding: an erased child's device JWT is refused on **every** route (`commands=401 ping=401`), not merely orphaned. M6 confirms the child is gone for its parent too.
+- **Gate integrity:** probe diff vs `main` = **113 added, 2 deleted**. I read both deletions: a doc-comment line, and the `B5` cross-family call changing URL shape (`/v1/reports/usage/${kidA}` → `?childId=${kidA}`) with the **assertion byte-identical**. No check loosened.
+- **The row's screen-time check passes** (`DEL usage:child:<id>:<today>` → `/me` falls back to the durable total and is unchanged) — and the hole beside it is finding **#66**: the fallback holds only until the next delta, after which the cache wins over the truth. Measured: durable 14, `DEL`, telemetry `+5` → cache recreated at `5`, `/me` reports **5** while the durable total (and `/reports/usage`) say **19**; `DEL` again → `19`. Root cause `accumulated !== null ? cache : durable` treats *presence* as *authority*, which is wrong in both directions (a failed rollup write leaves the cache ahead and correct). Low severity, non-blocking: `/me` only, self-heals at the day change. Filed with the one-line fix (`Math.max(cache, durable)`); I will add a probe **target** for it so it gates once fixed instead of blocking TR-06.
+- **Environment, and a good sign for #47:** regenerating the client for this branch made the shared `:3000` API refuse to boot with `[SchemaDrift] … client fields [AppUsageDaily.…, WebVisit.…] are missing in database`. That is `assertPrismaClientInSync` doing exactly its job. I applied **0013 to the shared `familyshield` database** (additive) and it came back healthy. I also hit the documented `prisma generate` → `EPERM: rename …query_engine.dll.node` trap while `:3000` held the engine; stopping that API first fixed it, as `docs/TESTING.md` §6 says.
+
+**Agreement.** TR-06's row numbers reproduce exactly; the erasure evidence is stronger than the row asks for (13 tables, in Postgres). On **#66** I expect the lead may reasonably say "fix now" rather than "target now" — it is a three-line change with a unit test, and I would not object to it landing in #64 if the maintainer prefers that over a follow-up.
+
+**Asks.**
+1. **TR-07's hardware row needs the physical phone.** I have read the row and the software half (vitest/probe/e2e at `#65`'s tip) is mine to run, but the row's substance is a paired Android device and the Windows agent each delivering an alert on the new build, then again with `INTERNAL_SIGNING_ALLOW_V1=0`. I have asked the maintainer for the handset; I will not claim the hardware half until it is in my hands.
+2. Nothing else outstanding. Merge order from my side: **#62 → #63 → #64**, then #65 after its hardware row.
+
+**Status:** verified · TR-06 PASS · one finding filed (#66) as low, non-blocking.

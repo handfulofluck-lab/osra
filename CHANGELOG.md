@@ -11,6 +11,28 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### CI — `probe-integrity` job (follow-up to #68)
+- `scripts/check-probe-integrity.mjs` now runs on every pull request (`.github/workflows/ci.yml`, job
+  `probe-integrity`, `--base origin/<base> --head HEAD`): a removed or demoted probe assertion fails
+  the PR unless `scripts/probe-gate-acks.json` acknowledges it. Verified: `main → fix/security-targets`
+  exit 0 with the four TR-07 acks, exit 1 without; a scratch demotion of `M2` to a note → exit 1.
+
+### QA — the "gates may only be extended" rule is now machine-checked (`scripts/check-probe-integrity.mjs`)
+- **Why:** `AGENTS.md` §4 forbids weakening a check, but the rule depended on a tester reading a diff by
+  eye — and these diffs are large (PR #65 changed `qa-probe.mjs` by **225 added / 43 deleted**). A
+  deleted or renamed assertion is the change that looks innocuous in a stat line.
+- **What:** `scripts/check-probe-integrity.mjs` compares the assertion-name sets per severity between two
+  revisions and **exits 1 on a removal or demotion** (`check` → `target`/`note`); additions and
+  promotions (`target` → `check`) are reported as information. A legitimate rename must be recorded in
+  `scripts/probe-gate-acks.json` with a reason, so nothing disappears without a written justification.
+- **Verified:** on `main → fix/security-targets` it flags exactly the four changes Kimi verified by hand
+  in TR-07 (two renames with stronger conditions, one closed target, one retired note) and exits **1**
+  without the acknowledgements, **0** with them; on `main → feat/backend-usage-model@b6ea5b4` (a clean
+  extension) it reports **11 added, 0 removed** and exits 0.
+- **Honest limits, documented in both the script and `docs/TESTING.md`:** loop-generated names collapse
+  into one comparable entry per assertion family, and dynamically built names cannot be compared (they
+  are counted and reported). This narrows a reviewer's search; it does not replace the reviewer.
+
 ### Security — Phase 2d: signing v2 (J2/J6 closed), revocable sessions, co-parent roles, MFA secret at rest (ADR-0014, closes #42, #44)
 - **Internal signing v2** (`src/lib/internalAuth.ts`): `X-FamilyShield-Timestamp` + `X-FamilyShield-Nonce` +
   HMAC over `"<ts>.<nonce>.<body>"`; ±300 s skew window, per-signer nonce window (Redis `SET NX`), and a
