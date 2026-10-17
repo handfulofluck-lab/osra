@@ -32,6 +32,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Document | Contents |
 |---|---|
 | [`TESTING.md`](TESTING.md) | Every suite and gate: how to run it, what it covers, how to read failures, the hardware procedure, environment traps |
+| [`ROADMAP.md`](ROADMAP.md) | The KCL plan (Phases 0–5, five gates, 20 weeks) item by item with acceptance lines and current status; mirrored on issue #50 |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |
 | [`../AGENTS.md`](../AGENTS.md) | Binding working agreement for AI agents and humans: roles, DoD, PR/review protocol, device hygiene |
