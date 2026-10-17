@@ -1,13 +1,16 @@
 package com.familyshield.agent.services
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.enforcement.AndroidPackageFacts
 import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
@@ -35,6 +38,29 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+
+    private val packageFacts by lazy { AndroidPackageFacts(this) }
+
+    /** Issue #83 review F1: the dialer/system flags are cached for the hot path, so refresh on package changes. */
+    private val packageChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) = packageFacts.refresh()
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        runCatching { registerReceiver(packageChangeReceiver, filter) }
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(packageChangeReceiver) }
+        super.onDestroy()
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
@@ -98,6 +124,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
             agentPackage = packageName,
         )
+        if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
         lastGuardMs = now
         performGlobalAction(GLOBAL_ACTION_BACK)
@@ -118,7 +145,7 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private fun enforceLockState(pkg: String) {
         val mode = LockState.mode(this)
-        if (!LockEnforcementPolicy.shouldReraise(mode, pkg, packageName)) return
+        if (!LockEnforcementPolicy.shouldReraise(mode, pkg, packageName, packageFacts)) return
         val now = System.currentTimeMillis()
         if (now - lastReraiseMs < LockEnforcementPolicy.RERAISE_DEBOUNCE_MS) return
         lastReraiseMs = now

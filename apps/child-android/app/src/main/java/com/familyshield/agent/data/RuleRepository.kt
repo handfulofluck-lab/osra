@@ -202,6 +202,9 @@ class RuleRepository @Inject constructor(
         appScope.launch { refresh() }
     }
 
+    /** The cached rule set without touching disk (null before the first load); for services on the hot path. */
+    fun cachedRules(): RuleSetDto? = cached
+
     /** Returns the most recently known rule set, loading it from disk if necessary. */
     suspend fun currentRules(): RuleSetDto? {
         cached?.let { return it }
