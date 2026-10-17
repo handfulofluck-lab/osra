@@ -7,8 +7,8 @@
 
 ## Context
 
-`services/api/src/routes/devices.ts:49` lets five commands through when consent is revoked: `unlock`,
-`resume`, `resume_internet`, `sos_clear`, `stop_ring`. `stop_ring` arrived with plan 1.7 without a recorded
+`services/api/src/routes/devices.ts` (`SAFE_DIRECTION_COMMANDS`) lets four commands through on `main`, and five on
+`feat/android-dns-sinkhole` (#78): `unlock`, `resume`, `resume_internet`, `sos_clear`, plus `stop_ring`, which arrives with plan 1.7 without a recorded
 reason. The consent gate (428) exists so a parent cannot keep monitoring or restricting a child after
 consent ends; it must not trap a device in a restricted state.
 
