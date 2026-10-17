@@ -48,7 +48,11 @@ Record 1 "adb uninstall (device admin active)" ($u -match "DELETE_FAILED_DEVICE_
 # 3. force-stop: the agent must come back on its own (boot receiver / WorkManager / accessibility restart)
 Sh "am force-stop $PKG" | Out-Null; $sw = [Diagnostics.Stopwatch]::StartNew(); $back = $false
 while ($sw.Elapsed.TotalSeconds -lt 120) { if (AgentAlive) { $back = $true; break }; Start-Sleep 3 }
-Record 3 "force-stop the agent" $back ("process back after " + [int]$sw.Elapsed.TotalSeconds + " s")
+Record 3 "force-stop the agent" $back ("process back after " + [int]$sw.Elapsed.TotalSeconds + " s (Android keeps a force-stopped app in the stopped state: no receiver, job or accessibility rebinding until it is launched again; the App-info route is PIN-gated, the adb route is answered by the server's device_silent alert)")
+# the rest of the probe needs a live agent: relaunch it the way the parent (or the next boot) would, and re-enable the
+# accessibility service, which the OS drops from the enabled list when the app is force-stopped
+Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 4; Sh "input keyevent 3" | Out-Null
+Sh "settings put secure enabled_accessibility_services $PKG/$PKG.services.AccessibilityMonitorService" | Out-Null; Sh "settings put secure accessibility_enabled 1" | Out-Null; Start-Sleep 5
 
 # 4. turn the accessibility service off (the OS switch, by adb) -> alert within 90 s
 Sh "settings put secure enabled_accessibility_services ''" | Out-Null
