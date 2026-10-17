@@ -7,8 +7,8 @@ import org.junit.Test
 
 /** Plan 1.4: IPv4/IPv6 + UDP framing for the TUN. */
 class IpPacketTest {
-    private val a = byteArrayOf(10, 111, 222, 1)
-    private val b = byteArrayOf(10, 111, 222, 2)
+    private val a = byteArrayOf(10, 111, 222.toByte(), 1)
+    private val b = byteArrayOf(10, 111, 222.toByte(), 2)
 
     @Test
     fun `ipv4 udp builds, parses back and checksums verify`() {
