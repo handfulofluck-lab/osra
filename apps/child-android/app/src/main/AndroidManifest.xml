@@ -127,10 +127,12 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"/>
 
+        <!-- Issue #87: no showWhenLocked here. Drawing over the keyguard hid the bouncer and locked the
+             owner out of their own PIN; the activity defers to the keyguard instead (KeyguardPolicy).
+             The ring screen above keeps showWhenLocked on purpose: it must be visible while locked. -->
         <activity android:name=".commands.LockActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:showWhenLocked="true"
             android:turnScreenOn="true"/>
         <!-- Plan 1.7: the ring screen — over the lock screen, screen on, PIN to stop. -->
         <activity android:name=".commands.RingActivity"

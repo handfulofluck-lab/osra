@@ -52,8 +52,8 @@ environment where it was written — see `docs/QA/` for the verification state.
   service is already a hard requirement for blocking and the tamper guard). JVM suites unchanged:
   33 suites / 219 tests / 0 failures.
 - **The overlay no longer draws over the OS keyguard (issue #87, found as an owner lockout).** `LockActivity`
-  set `FLAG_SHOW_WHEN_LOCKED`, and a `pause` sent while the bouncer was up put the overlay *in front of*
-  the PIN pad: the owner could not unlock their own phone and the only recovery was `resume` from the
+  drew over the keyguard twice — the window flag in `onCreate` **and** `android:showWhenLocked="true"` in
+  the manifest — and a `pause` sent while the bouncer was up put the overlay *in front of* the PIN pad: the owner could not unlock their own phone and the only recovery was `resume` from the
   server. The flag is gone and `KeyguardPolicy.shouldDeferToKeyguard(mode, keyguardLocked)` makes every
   locking mode (`locked`, `paused`, `paused_internet`, and the default) finish instead of drawing while a
   keyguard is up; `unlock` and `dismiss` still run because they *end* the lock. Nothing is lost from the
