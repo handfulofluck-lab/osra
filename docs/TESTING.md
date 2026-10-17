@@ -65,7 +65,7 @@ count was skipped. The probe does not need it.
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
 | `ROLLUP_HOUR_UTC` (default 2), `RETENTION_DAYS` (default 90, floor 7), `ROLLUP_RETENTION_DAYS` (default 365) | Phase 2c nightly usage rollup + retention (ADR-0013); same `JOBS_ENABLED` switch. External cron: call `runUsageRollup()` from `src/jobs/usageRollup.ts`. |
-| `INTERNAL_SIGNING_ALLOW_V1` (default on), `INTERNAL_SERVICE_CALLERS` (default `ai-engine`) | ADR-0014 signing v2: keep v1 on until every paired agent runs a v2 build (probe target J7 shows the state); the global secret works only as a named service caller. Agents' clocks must be within 5 minutes of the server's or every signed call is `401 stale_timestamp`. |
+| `INTERNAL_SIGNING_ALLOW_V1` (default **off** since 2026-10-17; `1` opts in), `INTERNAL_SERVICE_CALLERS` (default `ai-engine`) | ADR-0014 signing v2: legacy body-only signatures are refused (`401 legacy_signature_disabled`, probe check J7) unless the operator sets `1` for a rollout whose agents still sign v1 — the probe then reports target J7 so the state is visible; the global secret works only as a named service caller. Agents' clocks must be within 5 minutes of the server's or every signed call is `401 stale_timestamp`. |
 
 Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
 200 req/min rate limit and every later check reads `429` — wait 60 s between runs; it is the limiter,
@@ -141,6 +141,22 @@ removed or explained, and the SQL script cannot see them. `cleanup-test-redis.mj
 whose owning row no longer exists; it **never** touches a `revoked:device:*` key for a device that
 still exists, because that key is the control that makes an unpaired device's 10-year JWT get `401`
 (issue #56). Any key it reports as kept, keep.
+
+## 5b. Hardware runs on the Windows test host (scripted)
+
+`scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
+USB-attached Android phone: builds the agent and the API from `<branch>` under `C:\KARIM\KCL\osra`, pairs
+the phone through its own launcher form, fires an SOS through the **OSRA SOS** quick-settings tile (the
+`SosActivity` is not exported, so the tile is the only child-side entry), and asserts
+`POST /v1/alerts/internal → 201` with `INTERNAL_SIGNING_ALLOW_V1=1` and again with it off. It records the
+phone's clock skew (the signing window is ±300 s), screenshots every phone step, and cleans up (§7:
+uninstall, `adb reverse --remove-all`, unpair, alert rows deleted). Evidence lands in `C:\KARIM\KCL\run\`.
+Needs Postgres/Redis up, JDK 17 (`C:\KARIM\tools\jdk-17`), the Android SDK, and USB debugging authorised.
+Traps met while writing it: Java 8 on `PATH` (AGP needs 17), `Get-Date -UFormat %s` returns a *local*
+epoch in Windows PowerShell 5.1 (use `[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()`), `adb exec-out
+screencap` prefixes a text warning on multi-display phones (strip to the PNG signature), and a child
+process started with `Start-Process` inherits the console's redirected log handle and keeps it locked
+after its parent dies.
 
 ## 6. Traps that have cost real time here
 
