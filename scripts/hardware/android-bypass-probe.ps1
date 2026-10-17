@@ -45,11 +45,6 @@ W ("probe start - device " + $DEV + " - " + (Sh "getprop ro.product.model").Trim
 $u = (& $Adb @S uninstall $PKG 2>&1) -join " "
 Record 1 "adb uninstall (device admin active)" ($u -match "DELETE_FAILED_DEVICE_POLICY_MANAGER") $u
 
-# 2. pm clear (wipe app data) while admin is active
-$c = Sh "pm clear $PKG"
-$stillPaired = ((Sh "dumpsys activity services $PKG") -match "LocationService") -or ((StatusText) -match "This device is paired")
-Record 2 "pm clear (wipe data) with admin active" (($c -match "Failed") -or $stillPaired) ("pm clear -> " + $c.Trim() + "; paired after: " + $stillPaired)
-
 # 3. force-stop: the agent must come back on its own (boot receiver / WorkManager / accessibility restart)
 Sh "am force-stop $PKG" | Out-Null; $sw = [Diagnostics.Stopwatch]::StartNew(); $back = $false
 while ($sw.Elapsed.TotalSeconds -lt 120) { if (AgentAlive) { $back = $true; break }; Start-Sleep 3 }
@@ -123,6 +118,12 @@ Record "S1" "emergency dialer reachable under lock (safety)" $stays ("dialer=$di
 Sh "input keyevent 4" | Out-Null
 Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $T | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
+
+# 2. pm clear (wipe app data) while admin is active - DESTRUCTIVE (it un-pairs the phone), so it runs last
+$c = Sh "pm clear $PKG"
+$stillPaired = ((Sh "dumpsys activity services $PKG") -match "LocationService") -or ((StatusText) -match "This device is paired")
+Record 2 "pm clear (wipe data) with admin active" (($c -match "Failed") -or $stillPaired) ("pm clear -> " + $c.Trim() + "; paired after: " + $stillPaired)
+
 
 W "---- RESULTS ----"
 $results | Format-Table -AutoSize | Out-String -Width 220 | ForEach-Object { $_ } | Add-Content $LOG -Encoding utf8
