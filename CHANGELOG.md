@@ -30,6 +30,16 @@ environment where it was written — see `docs/QA/` for the verification state.
   stays off, and a five-row negative table (`com.whatsapp`, `com.example.emergencygame`, …) asserting
   ordinary apps are still locked. Hardware re-run of probe row **S1** is the acceptance on the handset
   and is recorded on #80 when it passes; until then #78 stays held.
+- **The gate itself was measuring the wrong thing (found while re-running S1, same day).** `lock` is a
+  real `lockNow()`, so on a phone with a secure lock the **OS keyguard** sits above `LockActivity` and
+  above anything `am start` launches: the dialer never reaches the front and the row reported
+  `LockActivity` on top whether or not the overlay exempts the dialer. The probe now tries
+  `wm dismiss-keyguard` + a swipe, and if the keyguard survives it records **NOT MEASURED** and exits
+  non-zero instead of FAIL (`RecordNote`; `docs/TESTING.md` §5f). A `NOT MEASURED` row is not green —
+  the run fails, because a hidden precondition that silently flips a verdict is how a gate stops being
+  one. Consequence for the record: the *original* S1 FAIL on `main` was measured on a phone without a
+  secure lock, so it stands; but it can no longer be reproduced on a locked handset without unlocking
+  it first, and the probe says so instead of guessing.
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
   mitigated by `device_silent` plus parent-minted pairing.
 

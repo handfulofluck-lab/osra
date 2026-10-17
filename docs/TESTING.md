@@ -239,6 +239,14 @@ safety check rather than a bypass: with the device locked, the emergency dialer 
 on top (no call is placed) — a lock that covered it would be the one bug worse than every bypass. Two rows need a human tap on
 One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
 
+**S1 has a precondition the other rows do not: the OS keyguard must be down.** `lock` is a real
+`lockNow()` (ADR-0010), so on a phone with a secure lock the keyguard sits above `LockActivity` and above
+anything `am start` launches; the dialer can never reach the front and the row would accuse
+`LockActivity` whatever the policy does. The script tries `wm dismiss-keyguard` and a swipe, and if the
+keyguard survives it reports the row as **NOT MEASURED** and exits non-zero (2026-10-17: it used to
+report FAIL, which is how a measurement of the keyguard was mistaken for a measurement of the lock).
+Unlock the phone with the lock overlay up and re-run.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
