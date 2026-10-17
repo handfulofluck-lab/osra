@@ -90,10 +90,24 @@ class PairingActivity : ComponentActivity() {
                 // Short yield so the activity window is fully resumed before starting FGS
                 kotlinx.coroutines.delay(200)
                 startLocationServiceIfPermitted()
+                // Plan 1.6: background location is a second, separate OS prompt on Android 10+.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                    ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    backgroundLocationLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    return@launch
+                }
             }
             if (settings.isPaired()) showStatus() else showComplete()
         }
     }
+
+    private val backgroundLocationLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+    }
+
+    /** Plan 1.6: live grant state, asked of the OS on every render. */
+    private val grants: GrantChecks by lazy { GrantChecks(this, deviceAdmin) }
 
     private lateinit var root: LinearLayout
 
@@ -272,14 +286,13 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun showComplete() {
+        val rows = OnboardingPolicy.rows { grants.isGranted(it) }
+        if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = true); return }
         replaceWith {
             addView(label("Setup complete"))
-            addView(
-                label(
-                    "The agent is now monitoring this device.\n\n" +
-                        "Next: enable the OSRA accessibility service so app usage can be tracked.",
-                ),
-            )
+            addView(label(OnboardingPolicy.progressLine(rows)).apply { setTextColor(0xFF2E7D32.toInt()) })
+            addView(label("The agent is now monitoring this device."))
+            for (row in rows.filter { !it.granted }) addGrantRow(this, row) // the recommended ones still open
             addView(
                 label(
                     "Optional: grant Call Log and SMS permissions so calls and messages are " +
@@ -292,32 +305,65 @@ class PairingActivity : ComponentActivity() {
                     setOnClickListener { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
                 },
             )
-            val hasFine = ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val hasCoarse = ContextCompat.checkSelfPermission(this@PairingActivity, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (!hasFine && !hasCoarse) {
-                addView(
-                    label(
-                        "Location permission is required for live GPS tracking and geofence alerts.",
-                    ),
-                )
-                addView(
-                    Button(this@PairingActivity).apply {
-                        text = "Grant location permission"
-                        setOnClickListener { requestLocationPermission() }
-                    },
-                )
-            } else {
-                addView(label("✓ Location permission granted"))
-            }
+            addView(Button(this@PairingActivity).apply { text = "Open status"; setOnClickListener { lifecycleScope.launch { showStatus() } } })
+        }
+    }
+
+    /**
+     * Plan 1.6: the guided checklist. Every grant is a row with its reason, the OEM hint when there is
+     * one, and a button that opens exactly the screen that grants it; the rows are re-asked of the OS
+     * on every resume, so coming back from Settings without granting leaves the row red. Pairing is
+     * not "complete" (and the status screen says so) until the required rows are green.
+     */
+    private fun showChecklist(rows: List<OnboardingPolicy.Row>, firstRun: Boolean) {
+        replaceWith {
+            addView(label(if (firstRun) "Finish protecting this device · أسرة" else "Protection checklist · أسرة"))
             addView(
-                Button(this@PairingActivity).apply {
-                    text = "Open accessibility settings"
-                    setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                label(OnboardingPolicy.progressLine(rows)).apply {
+                    setTextColor(if (OnboardingPolicy.canComplete(rows)) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
                 },
             )
-            addOverlayPermissionRow(this)
-            addWebFilterRow(this)
+            if (firstRun) addView(label("Each item below opens the one screen that grants it. Come back here after each one; the list re-checks itself."))
+            for (row in rows) addGrantRow(this, row)
+            if (!firstRun) {
+                addView(Button(this@PairingActivity).apply { text = "Back"; setOnClickListener { lifecycleScope.launch { showStatus() } } })
+            } else if (OnboardingPolicy.canComplete(rows)) {
+                addView(Button(this@PairingActivity).apply { text = "Done"; setOnClickListener { showComplete() } })
+            }
         }
+    }
+
+    private fun addGrantRow(container: LinearLayout, row: OnboardingPolicy.Row) {
+        val g = row.grant
+        val mark = if (row.granted) "✓" else if (g.required) "⚠️" else "○"
+        val suffix = if (g.required) "" else " (recommended)"
+        container.addView(
+            label("$mark ${g.title}$suffix").apply {
+                setTextColor(if (row.granted) 0xFF2E7D32.toInt() else if (g.required) 0xFFB00020.toInt() else 0xFF616161.toInt())
+            },
+        )
+        if (row.granted) return
+        container.addView(label(g.why))
+        OnboardingPolicy.oemHint(g, Build.MANUFACTURER)?.let { container.addView(label(it)) }
+        val button = Button(this).apply { text = "Grant: ${g.title}" }
+        when (g) {
+            OnboardingPolicy.Grant.DEVICE_ADMIN -> button.setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+            OnboardingPolicy.Grant.WEB_FILTER -> button.setOnClickListener {
+                val prepare = android.net.VpnService.prepare(this)
+                if (prepare != null) vpnConsentLauncher.launch(prepare) else {
+                    com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
+                    com.familyshield.agent.vpn.FilterVpnService.start(this)
+                    lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                }
+            }
+            OnboardingPolicy.Grant.LOCATION -> button.setOnClickListener {
+                val hasAny = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (hasAny && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundLocationLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                else requestLocationPermission()
+            }
+            else -> button.setOnClickListener { grants.fixIntent(g)?.let { runCatching { startActivity(it) } } }
+        }
+        container.addView(button)
     }
 
     /**
@@ -359,32 +405,6 @@ class PairingActivity : ComponentActivity() {
                 },
             )
         }
-    }
-
-    /**
-     * Plan 1.3: the lock/pause overlay (and the PIN gate) can only be raised over other apps once
-     * "display over other apps" is granted; onboarding asks for it explicitly instead of hoping.
-     */
-    private fun addOverlayPermissionRow(container: LinearLayout) {
-        if (Settings.canDrawOverlays(this)) {
-            container.addView(label("✓ Display over other apps: allowed (lock screen can be shown)"))
-            return
-        }
-        container.addView(
-            label("⚠️ Allow OSRA to display over other apps — without it the lock and pause screens cannot be shown.").apply {
-                setTextColor(0xFFB00020.toInt())
-            },
-        )
-        container.addView(
-            Button(this).apply {
-                text = "Allow display over other apps"
-                setOnClickListener {
-                    startActivity(
-                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")),
-                    )
-                }
-            },
-        )
     }
 
     private fun showStatus() {
@@ -476,7 +496,19 @@ class PairingActivity : ComponentActivity() {
                         setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 )
-                addOverlayPermissionRow(this)
+                val rows = OnboardingPolicy.rows { grants.isGranted(it) }
+                val missing = OnboardingPolicy.missingRequired(rows)
+                addView(
+                    label("\n" + OnboardingPolicy.progressLine(rows) + if (missing.isEmpty()) "" else "\nMissing: " + missing.joinToString { it.title }).apply {
+                        setTextColor(if (missing.isEmpty()) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
+                    },
+                )
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = if (missing.isEmpty()) "Protection checklist" else "Finish protection (${missing.size} to grant)"
+                        setOnClickListener { showChecklist(OnboardingPolicy.rows { grants.isGranted(it) }, firstRun = false) }
+                    },
+                )
                 addWebFilterRow(this)
                 addView(
                     Button(this@PairingActivity).apply {
