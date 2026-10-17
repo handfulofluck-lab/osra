@@ -15,9 +15,9 @@ import { getRedis } from "../redis.js";
  * what closes probe target J2: a byte-identical request cannot be accepted twice.
  *
  * v1 (body-only signature, no timestamp header) is the format the shipped agents used. It is
- * accepted for per-device secrets only while `INTERNAL_SIGNING_ALLOW_V1` is not `0` — the switch
- * exists so a fleet can update agent by agent; set it to `0` once every agent signs v2. The global
- * secret is never accepted in v1.
+ * refused by default and accepted for per-device secrets only while `INTERNAL_SIGNING_ALLOW_V1=1`
+ * — the switch exists so a fleet can update agent by agent. The global secret is never accepted
+ * in v1.
  *
  * Who may sign with what (handoff item 5 + target J6):
  *   - A body that names a device (`deviceId`, or `X-Device-Id`) must be signed with THAT device's
@@ -54,8 +54,13 @@ export const HEADER_NONCE = "x-familyshield-nonce";
 export const HEADER_CALLER = "x-familyshield-caller";
 export const HEADER_DEVICE_ID = "x-device-id";
 
+/**
+ * Legacy v1 is OFF unless `INTERNAL_SIGNING_ALLOW_V1=1`. The default flipped on 2026-10-17 once the
+ * three agents' v2 signers were verified (Android on hardware, TR-07); an operator with agents that
+ * still sign v1 opts back in for the length of the rollout and the probe reports it as target J7.
+ */
 export function allowLegacyV1(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.INTERNAL_SIGNING_ALLOW_V1 !== "0";
+  return env.INTERNAL_SIGNING_ALLOW_V1 === "1";
 }
 
 export function serviceCallers(env: NodeJS.ProcessEnv = process.env): Set<string> {

@@ -11,6 +11,24 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security — legacy v1 agent signatures are now refused by default (`INTERNAL_SIGNING_ALLOW_V1` opt-in)
+- `allowLegacyV1()` returns true only for `INTERNAL_SIGNING_ALLOW_V1=1` (was: anything but `0`). Body-only
+  signatures from a per-device secret get `401 legacy_signature_disabled` unless an operator opts in for a
+  rollout whose agents still sign v1; the probe then reports **J7** as a target, so the state is visible.
+  Promised in ADR-0014 "after hardware verification of the agents": TR-07's hardware half verified the
+  Android v2 signer on a Galaxy Z Flip4 (Android 16) on 2026-10-17 (alert 201 with v1 on and off); the
+  Windows and iOS signers are verified by their unit tests against the shared reference vector.
+- Three unit tests that still signed v1 (`content.test.ts` ×2, `token-hygiene.test.ts`) now sign v2 — they
+  failed on the new default, which is the fails-before evidence for the flip. `internal-signing.test.ts`
+  asserts: refused with the variable unset, refused with `0`, accepted with `1`.
+- Docs: `docs/TESTING.md` env table, `README.md` limitations (J7 is a gating check now), `docs/SPEC.md`,
+  `.env.example` (`=0`), ADR-0014 follow-up note.
+- **Gates here** (zero-migrated `Asia/Dubai` DB, API `:3019`, default env): vitest **296/296**, `tsc`
+  clean, probe **109 passed · 0 failed · 0 targets · 0 notes** (J7 PASS), e2e **69/69**.
+- New `scripts/hardware/android-signing-tr07.ps1`: the TR-07 hardware half as a script for the Windows
+  test host (pairs the phone through the real launcher via `uiautomator`, fires SOS through the
+  quick-settings tile, checks the API log + DB, cleans up per AGENTS.md §7). Seed of plan item 1.9.
+
 ### Android — SOS quick-settings tile did nothing on Android 14+ (found in TR-07 on hardware)
 - `SosTileService.onClick` used `TileService.startActivityAndCollapse(Intent)`, which Android 14 (API 34)
   removed: the system delivered the tap (`TileLifecycleManager: onClick … SosTileService` in logcat) and

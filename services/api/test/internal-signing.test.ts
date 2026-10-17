@@ -79,13 +79,15 @@ describe("internal signing v2 — replay, skew, callers (ADR-0014, closes J2/J6)
     expect(prismaMock.device.findUnique).toHaveBeenCalledTimes(1);
   });
 
-  it("v1 (body-only) device signatures: accepted by default, refused with INTERNAL_SIGNING_ALLOW_V1=0", async () => {
+  it("v1 (body-only) device signatures: refused by default, accepted only with INTERNAL_SIGNING_ALLOW_V1=1", async () => {
     const v1 = createHmac("sha256", DEV.internalSecret).update(body).digest("hex");
-    expect((await authenticateInternalRequest(body, v1, {}, NOW, env))).toMatchObject({ valid: true, version: 1 });
-    // No nonce window for v1: the same request is accepted again (this is exactly why v1 must go).
-    expect((await authenticateInternalRequest(body, v1, {}, NOW, env)).valid).toBe(true);
-    const strict = { ...env, INTERNAL_SIGNING_ALLOW_V1: "0" } as NodeJS.ProcessEnv;
-    expect((await authenticateInternalRequest(body, v1, {}, NOW, strict))).toEqual({ valid: false, reason: "legacy_signature_disabled" });
+    expect((await authenticateInternalRequest(body, v1, {}, NOW, env))).toEqual({ valid: false, reason: "legacy_signature_disabled" });
+    const zero = { ...env, INTERNAL_SIGNING_ALLOW_V1: "0" } as NodeJS.ProcessEnv;
+    expect((await authenticateInternalRequest(body, v1, {}, NOW, zero))).toEqual({ valid: false, reason: "legacy_signature_disabled" });
+    const optIn = { ...env, INTERNAL_SIGNING_ALLOW_V1: "1" } as NodeJS.ProcessEnv;
+    expect((await authenticateInternalRequest(body, v1, {}, NOW, optIn))).toMatchObject({ valid: true, version: 1 });
+    // No nonce window for v1: the same request is accepted again (this is exactly why v1 is opt-in only).
+    expect((await authenticateInternalRequest(body, v1, {}, NOW, optIn)).valid).toBe(true);
   });
 
   it("the global secret authenticates only as a named service in v2 — never bare, never v1 (J5/J6)", async () => {
