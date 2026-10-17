@@ -34,6 +34,24 @@ environment where it was written — see `docs/QA/` for the verification state.
 - Tests: `ParentPinTest`, `TamperPolicyTest`, `TamperScreenPolicyTest` (JVM). Hardware acceptance per
   `docs/TESTING.md` §5a — ⚠️ recorded on the board as **TR-10** when run; not claimed here until then.
 
+### Security — legacy v1 agent signatures are now refused by default (`INTERNAL_SIGNING_ALLOW_V1` opt-in)
+- `allowLegacyV1()` returns true only for `INTERNAL_SIGNING_ALLOW_V1=1` (was: anything but `0`). Body-only
+  signatures from a per-device secret get `401 legacy_signature_disabled` unless an operator opts in for a
+  rollout whose agents still sign v1; the probe then reports **J7** as a target, so the state is visible.
+  Promised in ADR-0014 "after hardware verification of the agents": TR-07's hardware half verified the
+  Android v2 signer on a Galaxy Z Flip4 (Android 16) on 2026-10-17 (alert 201 with v1 on and off); the
+  Windows and iOS signers are verified by their unit tests against the shared reference vector.
+- Three unit tests that still signed v1 (`content.test.ts` ×2, `token-hygiene.test.ts`) now sign v2 — they
+  failed on the new default, which is the fails-before evidence for the flip. `internal-signing.test.ts`
+  asserts: refused with the variable unset, refused with `0`, accepted with `1`.
+- Docs: `docs/TESTING.md` env table, `README.md` limitations (J7 is a gating check now), `docs/SPEC.md`,
+  `.env.example` (`=0`), ADR-0014 follow-up note.
+- **Gates here** (zero-migrated `Asia/Dubai` DB, API `:3019`, default env): vitest **296/296**, `tsc`
+  clean, probe **109 passed · 0 failed · 0 targets · 0 notes** (J7 PASS), e2e **69/69**.
+- New `scripts/hardware/android-signing-tr07.ps1`: the TR-07 hardware half as a script for the Windows
+  test host (pairs the phone through the real launcher via `uiautomator`, fires SOS through the
+  quick-settings tile, checks the API log + DB, cleans up per AGENTS.md §7). Seed of plan item 1.9.
+
 ### Android — SOS quick-settings tile did nothing on Android 14+ (found in TR-07 on hardware)
 - `SosTileService.onClick` used `TileService.startActivityAndCollapse(Intent)`, which Android 14 (API 34)
   removed: the system delivered the tap (`TileLifecycleManager: onClick … SosTileService` in logcat) and
@@ -43,6 +61,11 @@ environment where it was written — see `docs/QA/` for the verification state.
   keep the Intent overload. Verified on the Flip4: tile tap → `SosActivity` → SOS → `POST
   /v1/alerts/internal` 201 (the TR-07 evidence). Not unit-tested — `TileService` behaviour is a
   platform contract; the hardware run is the test and is recorded on the board.
+
+### QA — environment trap: the shared `:3000` API must not be hosted inside an agent task manager (issue #71)
+- Twice today the shared test API died with **no crash trace** — its log's last lines were normal `200`s — and both times the death coincided with an agent stopping a *different* background task. The likely mechanism is that the task runner kills a **process group**, and the shared server was started inside one.
+- Impact is not data loss but diagnosis: `qa-probe` / `e2e` then fail with **connection refused**, which reads like a product or network bug, and a second tester racing to restart it produces a confusing `EADDRINUSE` while the environment is actually fine.
+- Recorded as a trap row in `docs/TESTING.md` §6 with the rule (start it detached; if it is down, say so on the board rather than starting a competing instance) and the detection cue (a clean log end means killed, not crashed). Full evidence and the open ownership question are in issue #71.
 
 ### CI — `probe-integrity` job (follow-up to #68)
 - `scripts/check-probe-integrity.mjs` now runs on every pull request (`.github/workflows/ci.yml`, job

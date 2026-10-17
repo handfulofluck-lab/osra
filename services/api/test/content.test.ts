@@ -202,14 +202,12 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
       query: "how to kill myself",
     };
     const raw = JSON.stringify(body);
-    const sig = createHmac("sha256", devSecret).update(raw).digest("hex");
-
     const res = await app.inject({
       method: "POST",
       url: "/v1/content/search-event",
       headers: {
         "content-type": "application/json",
-        "x-familyshield-signature": sig,
+        ...signV2(devSecret, raw, { nonce: "nonce-content-search-0001" }),
       },
       payload: raw,
     });
@@ -235,14 +233,12 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
       channel: "bad channel",
     };
     const raw = JSON.stringify(body);
-    const sig = createHmac("sha256", devSecret).update(raw).digest("hex");
-
     const res = await app.inject({
       method: "POST",
       url: "/v1/content/youtube-watch",
       headers: {
         "content-type": "application/json",
-        "x-familyshield-signature": sig,
+        ...signV2(devSecret, raw, { nonce: "nonce-content-youtube-0001" }),
       },
       payload: raw,
     });

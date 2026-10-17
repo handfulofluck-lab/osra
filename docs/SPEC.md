@@ -58,7 +58,7 @@ currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/
   HMAC-SHA256(secret, `"<ts>.<nonce>.<body>"`), where `secret` is the device's per-device secret
   (minted at pair/claim). The server rejects |skew| > 300 s and any reused nonce. The global
   `INTERNAL_HMAC_SECRET` is a service credential only: v2 + `X-FamilyShield-Caller: ai-engine`.
-  Body-only (v1) device signatures are accepted only while `INTERNAL_SIGNING_ALLOW_V1` ≠ 0.
+  Body-only (v1) device signatures are refused unless `INTERNAL_SIGNING_ALLOW_V1=1` (rollout opt-in).
 - Parent JWTs: `role: "parent"` always; `familyRole` (owner | co-parent | guardian) and `jti` on
   every token. Mutating routes check the Parent row's `permissions` (rules, alerts, devices,
   location); owners hold all; child create/erase, consent and invites are owner-only.

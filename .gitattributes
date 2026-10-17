@@ -16,3 +16,4 @@
 *.jar  binary
 *.apk  binary
 *.exe  binary
+*.ps1 text eol=crlf

@@ -29,10 +29,12 @@ targets or findings since 2026-10-11:
    the Windows `InternalSigner`, the iOS `InternalSigner` — are pinned to one reference vector
    (`ce725cf9…c220508` for secret `device-secret-1`, ts `1800000000`, nonce `nonce-0123456789abcdef`)
    in their own unit tests, so they cannot drift apart.
-2. **v1 is a switch, not a format.** Body-only signatures from a per-device secret are still accepted
-   while `INTERNAL_SIGNING_ALLOW_V1` is not `0` — so a fleet can update agent by agent — and the probe
-   reports that state as target **J7**. Set it to `0` once every agent signs v2; v1 then returns
-   `legacy_signature_disabled`. The global secret is never accepted in v1.
+2. **v1 is a switch, not a format.** Body-only signatures from a per-device secret are accepted only
+   while `INTERNAL_SIGNING_ALLOW_V1=1` — so a fleet can update agent by agent — and the probe reports
+   that state as target **J7**; with the switch unset v1 returns `legacy_signature_disabled` and J7
+   gates. (Decided here as "on until hardware-verified"; the default flipped to off on 2026-10-17
+   after TR-07 verified the Android signer on a device — see the follow-up note below.) The global
+   secret is never accepted in v1.
 3. **The global secret is a service credential.** It authenticates only in v2 and only with
    `X-FamilyShield-Caller` naming a known service (`INTERNAL_SERVICE_CALLERS`, default `ai-engine`).
    With that header a service may name a child or a device in its body (it is the trusted scorer,
@@ -90,8 +92,10 @@ targets or findings since 2026-10-11:
   read); agents must keep their clocks within 5 minutes (a device with a wildly wrong clock will see
   `stale_timestamp` — the parent app should surface that); the v1 switch is debt until flipped.
 - **Not done:** method/path in the signing string; per-family audit log of who used the service
-  secret; UI for permissions (Phase 3); flipping `INTERNAL_SIGNING_ALLOW_V1=0` (after hardware
-  verification of the three agents — TR-07 asks for it).
+  secret; UI for permissions (Phase 3). ~~Flipping `INTERNAL_SIGNING_ALLOW_V1=0`~~ — done
+  2026-10-17 (follow-up PR to #65): default is now off, `1` opts in, after TR-07's hardware half
+  verified the Android v2 signer on a Galaxy Z Flip4; Windows/iOS signers verified by unit tests
+  against the shared reference vector.
 
 ## Evidence
 

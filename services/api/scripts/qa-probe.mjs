@@ -555,13 +555,13 @@ if (d2?.secret && kidA2) {
     const svc = await call("POST", "/v1/alerts/internal", { rawBody: nBody, headers: sign(nBody) });
     check("J6b the ai-engine service path (global secret + caller, v2) still raises a child-only alert (201)", svc.status === 201, `got ${svc.status}`);
   }
-  // J7 (target until the fleet is on v2): legacy v1 device signatures. Accepted while the server runs
-  // with INTERNAL_SIGNING_ALLOW_V1 (default) so shipped agents keep working; must be 401 once it is 0.
+  // J7: legacy v1 device signatures. Refused by default since 2026-10-17 (the gating check); an operator
+  // who set INTERNAL_SIGNING_ALLOW_V1=1 for a rollout sees the target instead, so the state is never silent.
   if (d2?.secret) {
     const v1Body = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, category: "sos", severity: "info", title: "legacy-v1", body: "x" });
     const v1Res = await call("POST", "/v1/alerts/internal", { rawBody: v1Body, headers: signV1(d2.secret, v1Body) });
     if ([200, 201].includes(v1Res.status)) {
-      target("J7 legacy v1 (body-only) device signatures", `HTTP ${v1Res.status} — still accepted; set INTERNAL_SIGNING_ALLOW_V1=0 once every agent signs v2 (ADR-0014)`);
+      target("J7 legacy v1 (body-only) device signatures", `HTTP ${v1Res.status} — accepted because INTERNAL_SIGNING_ALLOW_V1=1 is set; unset it once every agent signs v2 (ADR-0014)`);
     } else {
       check("J7 legacy v1 device signatures refused (INTERNAL_SIGNING_ALLOW_V1=0)", v1Res.status === 401 && v1Res.data?.reason === "legacy_signature_disabled", `got ${v1Res.status} ${JSON.stringify(v1Res.data)}`);
     }

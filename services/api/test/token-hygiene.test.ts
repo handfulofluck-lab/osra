@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
+import { signV2 } from "../src/lib/internalAuth.js";
 import { authRoutes } from "../src/routes/auth.js";
 import { DEVICE_TOKEN_TTL_SECONDS, deviceRoutes } from "../src/routes/devices.js";
 import { createHash } from "node:crypto";
@@ -227,7 +228,7 @@ describe("token hygiene — per-device HMAC secrets (handoff item 5)", () => {
     const withDeviceSecret = await app.inject({
       method: "POST",
       url: "/v1/alerts/internal",
-      headers: { "content-type": "application/json", "x-familyshield-signature": sign(body, "per-device-secret") },
+      headers: { "content-type": "application/json", ...signV2("per-device-secret", body, { nonce: "nonce-token-hygiene-0001" }) },
       payload: body,
     });
     expect(withDeviceSecret.statusCode).toBe(201);
