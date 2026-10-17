@@ -30,6 +30,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * The local DNS sinkhole (plan item 1.4, ADR-0015). A [VpnService] whose tunnel carries only the
@@ -93,13 +95,29 @@ class FilterVpnService : VpnService() {
 
     override fun onDestroy() {
         stopTunnel()
+        scope.cancel()
         workers.shutdownNow()
         isRunning = false
         super.onDestroy()
     }
 
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    /**
+     * Re-reads the table: first from whatever is cached or on disk (so a fresh process is filtering
+     * within milliseconds of the tunnel coming up), then again after a server refresh so a rule the
+     * parent just saved is live without waiting for the periodic sync.
+     */
     private fun reloadConfig() {
-        val set = rules.cachedRules()
+        upstream = systemDnsServers()
+        applyRules(rules.cachedRules())
+        scope.launch {
+            applyRules(rules.currentRules())
+            runCatching { rules.refresh() }.getOrNull()?.let { applyRules(it) }
+        }
+    }
+
+    private fun applyRules(set: com.familyshield.agent.network.dto.RuleSetDto?) {
         val wf = set?.webFilter
         config = DnsFilterPolicy.Config(
             pausedInternet = rules.isInternetPaused(),
@@ -109,7 +127,6 @@ class FilterVpnService : VpnService() {
             blockedDomains = wf?.blockedDomains ?: emptyList(),
             categoryDomains = blocklist.domains(),
         )
-        upstream = systemDnsServers()
     }
 
     private fun openTunnel() {
