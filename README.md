@@ -126,7 +126,7 @@ cd services/api
 INTERNAL_HMAC_SECRET=<...> node scripts/qa-probe.mjs   # the merge gate
 INTERNAL_HMAC_SECRET=<...> VAULT_KEY=<...> node scripts/e2e.mjs
 cd ../parent-app && flutter test && flutter analyze
-cd ../child-android && ANDROID_HOME=... ./gradlew testDebugUnitTest
+cd ../child-android && ANDROID_HOME=... ./gradlew testPlayDebugUnitTest testFullDebugUnitTest
 cd ../agent-desktop && dotnet test tests/FamilyShield.Agent.Tests
 cd ../../services/ai-engine && pytest tests -q
 node scripts/check-workflows.mjs --strict   # a rejected workflow file means zero jobs run

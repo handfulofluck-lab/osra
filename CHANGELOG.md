@@ -11,6 +11,31 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — two distribution builds, and the notification listener exists only in Full (ADR-0016, plan 2.6 second half)
+- **`play` and `full` flavors.** `app/src/main/AndroidManifest.xml` declares neither
+  `BIND_NOTIFICATION_LISTENER_SERVICE` nor a listener, so the Play artefact cannot read notifications at
+  all; `app/src/full/AndroidManifest.xml` declares both and registers
+  `services.NotificationCaptureService`. The judgement stays single-copy in `main`
+  (`NotificationCapturePolicy`, shipped in part 1): the service is a thin adapter that maps a
+  `StatusBarNotification` to the policy's `Snapshot`, checks consent (ADR-0008 §3 — a revoked agent keeps
+  the listener bound but records nothing) and enqueues with `SOURCE_NOTIFICATION` into the existing scan
+  queue. The Play build keeps the accessibility **screen** path and says so in onboarding (ADR-0016 §4).
+- **`FlavorManifestTest`** pins the split from the text of both manifests plus the source location: the
+  Play manifest must not contain the permission, the action, or the class name, and the Full manifest must
+  require the system permission and register the class. A flavor split is exactly the kind of fact that
+  regresses silently when someone "simplifies" a manifest.
+- **Variant names are spelled out at every call site** — `ci.yml` (now `testPlayDebugUnitTest`,
+  `testFullDebugUnitTest`, `assemblePlayDebug`, `assembleFullDebug`, `assemblePlayRelease`), the TR-07
+  signing script (`assembleFullDebug`: hardware runs install the sideloaded build), `docs/TESTING.md`
+  (suite table and CI table) and `README.md`. No aliases: a missing variant is a build error, not a
+  silently different artefact.
+- **Part 1 fixed while wiring part 2:** `NotificationCapturePolicy` passed `List<String?>` where
+  `ScanQueuePolicy.fromNotification` takes `List<CharSequence?>`; the branch never compiled, so part 1 had
+  not been built since that call was written. The upcast is now explicit and commented.
+- **Not verified here:** the listener on hardware (grant the notification-access row in the Full build,
+  then send a WhatsApp message and see one row in the scan queue, not two for its group summary). The
+  unit suite covers the decision; the OS wiring is the hardware row.
+
 ### Security/safety — the lock no longer covers an OEM emergency dialer (issue #80, found by the Phase 1 gate)
 - **Cause.** `LockEnforcementPolicy`'s exemption list was written against AOSP names
   (`com.android.emergency`, `com.android.dialer`, `com.android.incallui`) and matched with

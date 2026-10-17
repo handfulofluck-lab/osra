@@ -159,11 +159,11 @@ $SRV = Join-Path $WORK "services\api\dist\server.js"
 if ((Test-Path $STAMP) -and (Test-Path $APK) -and (Test-Path $SRV)) {
   W ("reusing APK and API build from this checkout ($HEAD, stamp " + (Get-Item $STAMP).LastWriteTime + ")")
 } else {
-Section "3. build child-android (assembleDebug)"
+Section "3. build child-android (assembleFullDebug - the sideloaded Full build, ADR-0016)"
 Push-Location (Join-Path $WORK "apps\child-android")
 "sdk.dir=" + ($sdk -replace "\\", "/") | Set-Content local.properties
 $gradleLog = Join-Path $OUT "gradle.log"
-& .\gradlew.bat :app:assembleDebug --console=plain --no-daemon 2>&1 | Tee-Object -FilePath $gradleLog | Select-Object -Last 3 | ForEach-Object { W ("  " + $_) }
+& .\gradlew.bat :app:assembleFullDebug --console=plain --no-daemon 2>&1 | Tee-Object -FilePath $gradleLog | Select-Object -Last 3 | ForEach-Object { W ("  " + $_) }
 Pop-Location
 if (-not (Test-Path $APK)) { W "gradle tail:"; Get-Content $gradleLog -Tail 40 | ForEach-Object { W ("  " + $_) }; Fail "APK not produced" }
 W ("APK: $APK (" + [math]::Round((Get-Item $APK).Length / 1MB, 1) + " MB)")

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Full (sideloaded) build only - ADR-0016. The Play build declares neither this permission nor the
+  listener, so the store artefact physically cannot read notifications. `src/main` must stay free of
+  both; FlavorManifestTest asserts that difference, because a flavor split regresses silently the
+  moment someone "simplifies" a manifest.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+
+    <application>
+        <service
+            android:name=".services.NotificationCaptureService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
