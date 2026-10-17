@@ -153,9 +153,11 @@ adb uninstall com.familyshield.agent          # must FAIL: Failure [DELETE_FAILE
 adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.familyshield.agent
 #   -> within ~1 s the OSRA "Protected" PIN screen is on top (uiautomator dump shows "Parent PIN");
 #      the API log shows POST /v1/alerts/internal 201 (category tamper, type protection_screen_opened)
-adb shell dpm remove-active-admin com.familyshield.agent/.security.FamilyShieldDeviceAdmin
-#   -> POST /v1/alerts/internal 201 (type device_admin_removed) within 60 s; the status screen shows
-#      "alert-only" and `adb uninstall` works again
+# Revoke admin the only way the OS allows (the shell refuses: `dpm remove-active-admin` throws
+# "Attempt to remove non-test admin" on Android 14+): enter the PIN once on the guard to open a grace
+# window, then Settings > Device admin apps > OSRA parental controls > Deactivate > OK
+#   -> POST /v1/alerts/internal 201 (type device_admin_removed) within 60 s (3.3 s on the Flip4);
+#      the status screen shows "alert-only" and `adb uninstall` works again
 ```
 
 Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
