@@ -196,8 +196,24 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
       payload: { command: "unlock" },
     });
 
+    // Plan 1.7: stop_ring reduces restriction, so it stays available; locate_now does not.
+    const stopRing = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app, "fam-1"),
+      payload: { command: "stop_ring" },
+    });
+    const locate = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app, "fam-1"),
+      payload: { command: "locate_now" },
+    });
+
     expect(lock.statusCode).toBe(428);
     expect(unlock.statusCode).toBe(200);
+    expect(stopRing.statusCode).toBe(200);
+    expect(locate.statusCode).toBe(428);
     await app.close();
   });
 

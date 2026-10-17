@@ -11,6 +11,18 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android + API — ring that cannot be silenced, locate with a fresh fix (plan 1.7)
+- `commands/Ringer` + `RingActivity`: the ring forces the **alarm stream to its maximum** (restored
+  afterwards unless someone changed it), plays on `USAGE_ALARM` (through Do-Not-Disturb), holds a
+  screen-on wake lock, shows a full-screen red "Your parent is ringing this phone" over the lock
+  screen, swallows Back and the volume keys, and stops only on the **parent PIN** (tamper guard,
+  reason `ring`), a parent `stop_ring` / `sos_clear`, or the 5-minute cap (`RingPolicy`, tested).
+- `locate_now` now asks the fused provider for a **fresh high-accuracy fix** with a 30-s timeout and
+  flushes it at once; the cached fix is used only when fresh fails and it is < 5 min old
+  (`LocatePolicy`, tested). Before: `lastLocation` only — whatever the OS had, however old.
+- API: `locate_now` and `stop_ring` accepted by `POST /v1/devices/:id/command` (`stop_ring` is
+  safe-direction, so it works with consent revoked); TTL 10 min like `ring`. Tests extended.
+
 ### Android — guided, verified onboarding (plan 1.6)
 - `setup/OnboardingPolicy` (pure) + `setup/GrantChecks`: nine grants — accessibility, usage access,
   display over other apps, device admin, web-filter consent, location (foreground + background),

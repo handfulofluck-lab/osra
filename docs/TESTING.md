@@ -215,6 +215,16 @@ android.permission.ACCESS_BACKGROUND_LOCATION`; Private DNS `settings put global
 hostname` + `settings put global private_dns_specifier dns.google` (restore with `off`). "Setup
 complete" must not be reachable from a fresh pairing while any of the seven is missing.
 
+## 5e. Ring and locate on hardware (plan 1.7)
+
+Set the alarm stream to 0 (`adb shell media volume --stream 4 --set 0`), lock the screen, then
+`POST /v1/devices/:id/command {"command":"ring"}`: the phone must ring at full alarm volume with the
+red ring screen on over the lock screen; Back and the volume keys must not stop it; **Stop ringing
+(parent PIN)** → wrong PIN stays, right PIN stops it and the alarm stream returns to 0. A second ring
+and `{"command":"stop_ring"}` must stop it from the parent side. `{"command":"locate_now"}` must
+produce a `LocationPing` whose `timestamp` is within 30 s of the command (`GET /v1/children/:id/location`
+or the `LocationPing` table) — not the last cached fix.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a

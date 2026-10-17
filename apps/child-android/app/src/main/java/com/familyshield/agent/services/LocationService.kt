@@ -125,14 +125,7 @@ class LocationService : Service() {
             }
         }
         if (intent?.action == ACTION_PING_NOW) {
-            serviceScope.launch {
-                runCatching {
-                    fused.lastLocation.addOnSuccessListener { location ->
-                        location?.let { onLocation(it) }
-                    }
-                }
-                runCatching { flushPings() }
-            }
+            serviceScope.launch { locateNowOnce() }
         }
         return START_STICKY
     }
@@ -145,6 +138,50 @@ class LocationService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Plan 1.7: `locate_now` asks the fused provider for a **fresh high-accuracy fix** and waits up to
+     * [com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS] for it; only if that fails is
+     * the last known fix used, and only while it is recent ([LocatePolicy.MAX_CACHED_AGE_MS]). Either way
+     * the ping is flushed at once so the parent's map moves within the timeout, not at the next batch.
+     */
+    private suspend fun locateNowOnce() {
+        val fresh: Location? = try {
+            kotlinx.coroutines.withTimeoutOrNull(com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS) {
+                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                    val cts = com.google.android.gms.tasks.CancellationTokenSource()
+                    cont.invokeOnCancellation { cts.cancel() }
+                    try {
+                        fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+                            .addOnSuccessListener { if (cont.isActive) cont.resume(it) {} }
+                            .addOnFailureListener { if (cont.isActive) cont.resume(null) {} }
+                    } catch (e: SecurityException) {
+                        if (cont.isActive) cont.resume(null) {}
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+        val cached: Location? = if (fresh == null) {
+            try {
+                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                    try {
+                        fused.lastLocation
+                            .addOnSuccessListener { if (cont.isActive) cont.resume(it) {} }
+                            .addOnFailureListener { if (cont.isActive) cont.resume(null) {} }
+                    } catch (e: SecurityException) { if (cont.isActive) cont.resume(null) {} }
+                }
+            } catch (e: Exception) { null }
+        } else null
+        val now = System.currentTimeMillis()
+        when (com.familyshield.agent.commands.LocatePolicy.choose(fresh != null, cached?.time, now)) {
+            com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> onLocation(fresh!!)
+            com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> onLocation(cached!!)
+            com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
+        }
+        runCatching { flushPings() }
+    }
 
     /** Queues one ping and adapts the update interval to the current speed. */
     private fun onLocation(location: Location) {

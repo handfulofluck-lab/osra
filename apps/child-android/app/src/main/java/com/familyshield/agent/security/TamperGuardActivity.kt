@@ -84,6 +84,7 @@ class TamperGuardActivity : ComponentActivity() {
                         text = when (reason) {
                             REASON_REPAIR -> "Re-pairing this device needs your parent's PIN."
                             REASON_REMOVE -> "Removing protection needs your parent's PIN."
+                            REASON_RING -> "Stopping the ring needs your parent's PIN."
                             else -> "Changing this setting needs your parent's PIN.\nYour parent has been notified."
                         }
                         setTextColor(0xFFAEB0B8.toInt())
@@ -121,6 +122,7 @@ class TamperGuardActivity : ComponentActivity() {
         const val REASON_SETTINGS = "settings"
         const val REASON_REPAIR = "repair"
         const val REASON_REMOVE = "remove"
+        const val REASON_RING = "ring"
         private const val MAX_ATTEMPTS = 5
     }
 }
