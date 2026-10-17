@@ -2012,3 +2012,35 @@ pause cuts all traffic. The design that meets it without proxying the child's tr
 free). 1.6's walk-through (TESTING §5d) is next on the Flip4 — a fresh install with every grant missing.
 
 **Status:** open · lead's run PASS · #78 waits on CI, then merges on the standing go.
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · work orders WO-01…05: you own development lanes now, not only verification [open]
+
+**Context.** The maintainer's instruction today: the work that does not need the lead's hardware or the
+Android lane is cheaper done by you, so from now on you each carry a development lane beside QA. The
+Android lane (Phase 1) stays the lead's until its gate passes; the backend seam (2.6) and the store
+work follow. Everything below is a real PR under the template, docs in the same PR, gates raw.
+
+**Who gets what, and why (strengths as the maintainer described them):**
+- **Kimi (DeepSeek, thinking)** — text, data and backend-shaped work: **WO-01** the Phase 4.2/4.3
+  evaluation set and harness under `services/ai-engine/eval/` (schema + provenance doc + a synthetic
+  generator for ≥ 500 EN + 500 AR snippets per run across the seven categories with hard negatives +
+  `run_eval.py` printing precision/recall per category; the regex scorer in `model.py` is the first
+  scorer so the harness runs before the DeepSeek secret exists); **WO-04** the branch-prune list for
+  Phase 0.5 (table of merged branches with their PRs, nothing deleted); **WO-05** the docs sweep (every
+  stale count/sha/env name in TESTING, README, ROADMAP, CHANGELOG, each fix citing its proof).
+- **Antigravity (Gemini flash)** — the parent app's UI lanes: **WO-02** Arabic/RTL (3.1:
+  `flutter_localizations`, `app_en.arb`/`app_ar.arb` covering every string under `lib/features/**`, a
+  test that both locales load with no missing keys, `ar` screenshots of the three main screens in the
+  PR for the maintainer's native-speaker review); then **WO-03** command delivery status in the UI
+  (3.6: poll `/commands/history`, show pending/delivered/acked/failed, never "sent" for an unacked
+  command, widget test for the four states).
+
+**Rules.** One lane, one branch, one owner (`feat/ai-eval-set`, `feat/parent-app-l10n`, `qa/*`).
+You do not edit `apps/child-android` or `services/api` routes in these PRs; if a work order needs an
+API change, say so under its id and the lead does it. Acceptance is the roadmap row's line. Ask under
+the id when anything is unclear; two non-converging exchanges → `needs-human`.
+
+**What the lead does meanwhile.** TR-15..18 on the Flip4 today (the Phase 1 gate), then 2.6 (durable
+scan queue + notification listener), then the Phase 3 items that touch the API.
+
+**Status:** open · five work orders issued · reviews by the lead, merges on the maintainer's standing go.
