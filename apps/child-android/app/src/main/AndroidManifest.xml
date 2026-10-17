@@ -91,6 +91,13 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"/>
 
+        <!-- ADR-0010: parent-PIN gate shown over the OS screens that remove protection. -->
+        <activity android:name=".security.TamperGuardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
+
         <activity android:name=".setup.PairingActivity"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">

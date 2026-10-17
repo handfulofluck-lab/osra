@@ -46,4 +46,10 @@ interface WorkerEntryPoint {
 
     /** Call/SMS logger for the telemetry-worker flush backstop (Feature #6). */
     fun commsLogger(): CommsLogger
+
+    /** Device-admin façade (ADR-0010) for the tamper checks. */
+    fun deviceAdminManager(): com.familyshield.agent.security.DeviceAdminManager
+
+    /** Parent-PIN store (ADR-0010). */
+    fun parentPinStore(): com.familyshield.agent.security.ParentPinStore
 }

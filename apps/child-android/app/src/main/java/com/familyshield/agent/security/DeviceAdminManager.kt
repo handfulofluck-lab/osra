@@ -68,6 +68,8 @@ class DeviceAdminManager @Inject constructor(
      * warning; this method is for the in-app "remove protection" flow behind the PIN.
      */
     fun removeAdmin() {
+        TamperState.markSanctionedRemoval(context, System.currentTimeMillis() + 60_000L)
+        TamperState.setLastTier(context, ProtectionTier.NONE.name)
         runCatching { if (isAdminActive()) dpm.removeActiveAdmin(adminComponent) }
             .onFailure { Log.w(TAG, "removeActiveAdmin failed", it) }
     }

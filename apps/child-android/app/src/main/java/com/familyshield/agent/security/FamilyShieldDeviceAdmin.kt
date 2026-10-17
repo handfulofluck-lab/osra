@@ -26,8 +26,17 @@ class FamilyShieldDeviceAdmin : DeviceAdminReceiver() {
             "Your parent will be notified."
 
     override fun onDisabled(context: Context, intent: Intent) {
+        if (TamperState.isRemovalSanctioned(context, System.currentTimeMillis())) {
+            Log.i(TAG, "device admin disabled by the parent (PIN verified) — no alert")
+            TamperState.setLastTier(context, ProtectionTier.NONE.name)
+            return
+        }
         Log.w(TAG, "device admin disabled — flagging tamper alert")
         TamperState.setAdminDisabledPending(context, true)
+        // Tell the parent now, not at the next poll: expedited work survives the process death that
+        // usually follows an admin removal, and LocationService's 60-s loop is the fallback.
+        runCatching { TamperAlertWorker.enqueue(context, TamperAlertWorker.TYPE_ADMIN_REMOVED) }
+            .onFailure { Log.w(TAG, "could not enqueue tamper alert", it) }
     }
 
     private companion object {

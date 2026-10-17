@@ -37,6 +37,7 @@ class CommandDispatcher @Inject constructor(
     private val rules: RuleRepository,
     private val devicePolicyManager: DevicePolicyManager,
     private val consent: ConsentState,
+    private val deviceAdmin: com.familyshield.agent.security.DeviceAdminManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val ringLock = Any()

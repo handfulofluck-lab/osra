@@ -286,6 +286,26 @@ class LocationService : Service() {
             .onFailure { Log.w(TAG, "accessibility tamper check failed", it) }
         runCatching { vpnCheckOnce(nowMs) }
             .onFailure { Log.w(TAG, "vpn check failed", it) }
+        runCatching { deviceAdminCheckOnce() }
+            .onFailure { Log.w(TAG, "device admin check failed", it) }
+    }
+
+    /**
+     * ADR-0010 §4: if the admin receiver recorded a removal that has not reached the parent yet
+     * (the expedited worker is the fast path; this is the backstop), or the protection tier dropped
+     * to NONE since the last loop, post one tamper alert.
+     */
+    private fun deviceAdminCheckOnce() {
+        val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(applicationContext, com.familyshield.agent.di.WorkerEntryPoint::class.java)
+        val admin = entry.deviceAdminManager()
+        val tier = admin.tier()
+        val previous = com.familyshield.agent.security.TamperState.lastTier(this)
+            ?.let { runCatching { com.familyshield.agent.security.ProtectionTier.valueOf(it) }.getOrNull() }
+        com.familyshield.agent.security.TamperState.setLastTier(this, tier.name)
+        val dropped = previous != null && com.familyshield.agent.security.TamperPolicy.shouldAlertOnTier(previous, tier)
+        if (com.familyshield.agent.security.TamperState.isAdminDisabledPending(this) || dropped) {
+            com.familyshield.agent.security.TamperAlertWorker.enqueue(this, com.familyshield.agent.security.TamperAlertWorker.TYPE_ADMIN_REMOVED)
+        }
     }
 
     /** Feature #20: posts a vpn_detected warning when the active network routes through a VPN. */
