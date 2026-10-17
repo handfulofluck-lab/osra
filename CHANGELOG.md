@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — ADR-0017 family-local digest, ADR-0018 shared test API ownership, ADR-0019 safe-direction rule (2026-10-17)
+- Decisions only, no code. ADR-0017 is implemented in a later PR (plan 2.2 follow-up / 3.x); ADR-0018 settles the ownership half of #71; ADR-0019 records why `stop_ring` passes the consent gate and gives the rule for future commands.
+
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
   `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies

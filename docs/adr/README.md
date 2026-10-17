@@ -23,6 +23,9 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0012](0012-durable-device-command-queue.md) | Durable device command queue: delivery state, acks, per-type expiry, device-only drain | accepted |
 | [0013](0013-usage-model-retention-and-erasure.md) | Durable usage model (`AppUsageDaily`, `WebVisit`), nightly rollup + retention, complete erasure cascade | accepted |
 | [0014](0014-signing-v2-sessions-and-family-roles.md) | Signing v2 (timestamp + nonce, service callers), revocable parent sessions, enforced family roles, MFA secret at rest | accepted |
+| [0017](0017-family-local-digest-time.md) | The weekly digest is sent at the family's local hour (`Family.timezone`, hourly wake, one send per week) | accepted |
+| [0018](0018-shared-test-api-ownership.md) | The shared `:3000` test API is owned by the lead, serves `main@HEAD`, and runs outside agent task trees | accepted |
+| [0019](0019-safe-direction-commands.md) | A command is safe-direction only if it can never start, extend or escalate a restriction | accepted |
 
 ## Writing a new ADR
 
