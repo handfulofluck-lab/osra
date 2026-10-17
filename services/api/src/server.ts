@@ -21,6 +21,7 @@ import { meRoutes } from "./routes/me.js";
 import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
 import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
+import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { isParentSessionLive } from "./lib/sessions.js";
 import { healthRoutes } from "./routes/health.js";
 
@@ -124,3 +125,5 @@ await app.listen({ port, host: "0.0.0.0" });
 startDigestScheduler();
 // Phase 2c: nightly usage rollup + retention (ADR-0013); same JOBS_ENABLED switch.
 startUsageRollupScheduler();
+// Plan 1.9 finding: a wiped or removed agent cannot alert; the server notices the silence instead.
+startDeviceSilenceScheduler();

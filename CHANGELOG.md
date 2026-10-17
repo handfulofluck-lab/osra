@@ -19,6 +19,13 @@ environment where it was written — see `docs/QA/` for the verification state.
   sweeps every 15 min. `SocialScanDto`/the API's `ScanSchema` carry an optional `source`.
 - The notification-side capture (the second half of 2.6) follows in its own PR.
 
+### API — device-silence watch (a plan-1.9 probe finding)
+- The probe's bypass #2 showed that `pm clear` wipes the agent's pairing with Device Admin active and
+  no client-side alert is possible afterwards. `src/jobs/deviceSilence.ts`: every 5 min, an `active`
+  device unseen for `DEVICE_SILENT_MINUTES` (default 30) gets one critical `tamper` /
+  `device_silent` alert (Redis claim per episode, no duplicates across instances) and is set
+  `offline`; the next telemetry sets it back to `active`. Tests: `device-silence.test.ts`.
+
 ### Android — adversarial bypass probe (plan 1.9, the Phase 1 gate)
 - `scripts/hardware/android-bypass-probe.ps1`: an `adb`-driven run of the ten bypasses a child tries
   on a paired phone — `adb uninstall`, `pm clear`, force-stop, accessibility off, overlay revoked,
