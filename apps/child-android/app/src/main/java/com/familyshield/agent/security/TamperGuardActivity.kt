@@ -34,6 +34,12 @@ class TamperGuardActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val reason = intent.getStringExtra(EXTRA_REASON) ?: REASON_SETTINGS
+        // Plan 1.7 (found on the Flip4, TR-17): the ring screen sits over the lock screen, so the PIN gate it
+        // opens must too — otherwise the keyguard comes up instead and the parent cannot stop the ring.
+        if (reason == REASON_RING && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
 
         val pin = EditText(this).apply {
             hint = "Parent PIN"
