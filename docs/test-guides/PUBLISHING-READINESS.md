@@ -1,6 +1,28 @@
 # OSRA — Publishing Readiness Assessment
 **Date:** 2026-09-17 · Scope: Android (Play) + Windows desktop
 
+## Ownership and verification (role split of 2026-10-17)
+
+This checklist predates the current lane split; the rows below remain the checklist, and
+[`../../AGENTS.md`](../../AGENTS.md) §1 is the live statement of who may act on them.
+
+- **Kimi Code (development lead)** — implements, owns `main` and is responsible for the release: the
+  AAB/APK build, the signing wiring, the store-listing copy and the release PR.
+- **Antigravity (testing)** — runs the gates and the hardware rows. A store submission is a release
+  claim like any other, so the release PR cites the testing lane's run before it merges: owning `main`
+  means owning the merge, not being trusted on the author's own word (`AGENTS.md` §1 and §6.5 — the
+  author of a change is never its only verifier).
+- **Claude (KCL lead)** — makes the architectural decisions and records them as ADRs, reviews designs
+  and writes tests/checklists; does not merge.
+- **Human maintainer** — holds every row that needs an account, a purchase, a legal answer or a store
+  identity: Play Console and App Store Connect, the Apple entitlement, the upload keystore, the Windows
+  code-signing certificate, the privacy policy, the data-safety form and the IARC questionnaire; and
+  makes the final call on scope.
+
+The suite numbers under "Where OSRA stands today" are the **2026-09-17 snapshot** and are not updated
+in place; current counts, shas and their verification state are in
+[`../../CHANGELOG.md`](../../CHANGELOG.md) and [`../ROADMAP.md`](../ROADMAP.md).
+
 ## What the pasted "Gemini tools" are (honest framing)
 
 Gemini for Desktop, Project IDX, Android Studio's assistant, Cursor, Goose, OpenCode and
@@ -26,7 +48,7 @@ Plus: on-device emulator smoke (see below) when the emulator image finishes down
 
 | Requirement | Status | Action |
 |---|---|---|
-| `targetSdk 34` | ✅ met | — |
+| `targetSdk 35` | ✅ met (child agent and parent app) | — |
 | Release signing (own keystore) | 🟡 **plumbed, key not yet issued** | `build.gradle.kts` reads `OSRA_UPLOAD_KEYSTORE`, `OSRA_UPLOAD_KEYSTORE_PASSWORD`, `OSRA_UPLOAD_KEY_ALIAS`, `OSRA_UPLOAD_KEY_PASSWORD` from `android/local.properties` or the environment; CI materialises the keystore from the `OSRA_UPLOAD_KEYSTORE_B64` secret and builds the **AAB** on every run (falls back to the debug key when unset). Maintainer action: `keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`, then `base64 -w0 upload.jks` into the secret. Also set `MAPS_API_KEY`. |
 | 16 KB page-size compatibility (Android 15+) | 🟡 AGP 8.4 / current NDK — verify with `zipalign`/`apkanalyzer` on the AAB | Run the Play pre-launch report; bump NDK if flagged. |
 | Privacy policy URL | ❌ missing | Host a policy covering: collected data (location, app usage, calls/SMS metadata, social snippets **encrypted**), COPPA/GDPR-K consent flow, retention, contact. |

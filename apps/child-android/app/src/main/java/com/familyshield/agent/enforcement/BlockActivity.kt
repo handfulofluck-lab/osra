@@ -55,11 +55,17 @@ class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
-        window.addFlags(
-            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
-        )
+        // Issue #87: same rule as the lock overlay - never over the keyguard. A block screen that covers
+        // the bouncer hides the owner's PIN pad, and the blocked app is not in use while the phone is
+        // locked anyway. turnScreenOn stays so a time-limit screen still wakes a dimmed device.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        val keyguardLocked = getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
+        if (KeyguardPolicy.shouldDeferToKeyguard("blocked", keyguardLocked)) {
+            finish()
+            return
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {

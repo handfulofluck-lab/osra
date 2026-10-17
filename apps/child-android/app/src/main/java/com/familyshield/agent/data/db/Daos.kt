@@ -72,3 +72,26 @@ interface CommsEventDao {
     @Query("DELETE FROM comms_events")
     suspend fun clear()
 }
+
+/** Plan 2.6: the durable scan queue. */
+@Dao
+interface PendingScanDao {
+    @Insert
+    suspend fun insert(scan: PendingScanEntity): Long
+
+    /** Oldest rows first, so a backlog drains in order. */
+    @Query("SELECT * FROM pending_scans ORDER BY createdAt ASC LIMIT :limit")
+    suspend fun oldest(limit: Int): List<PendingScanEntity>
+
+    @Query("DELETE FROM pending_scans WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE pending_scans SET attempts = attempts + 1 WHERE id = :id")
+    suspend fun bumpAttempts(id: Long)
+
+    @Query("SELECT COUNT(*) FROM pending_scans")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM pending_scans WHERE createdAt < :olderThanMs OR attempts >= :maxAttempts")
+    suspend fun purge(olderThanMs: Long, maxAttempts: Int): Int
+}

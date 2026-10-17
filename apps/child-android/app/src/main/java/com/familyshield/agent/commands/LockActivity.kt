@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.familyshield.agent.enforcement.KeyguardPolicy
 
 /**
  * Full-screen overlay used by CommandDispatcher. MODE_LOCKED shows "device locked by your
@@ -38,10 +39,10 @@ class LockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
-        window.addFlags(
-            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
-        )
+        // Issue #87: FLAG_SHOW_WHEN_LOCKED is deliberately NOT set. Drawing over the keyguard put this
+        // activity in front of the bouncer and locked the owner out of their own PIN (2026-10-17, handset).
+        // The overlay defers to the keyguard instead — see applyMode and KeyguardPolicy.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 // Intercept and swallow back press: lock/pause overlay cannot be dismissed by child (AND-05)
@@ -57,28 +58,34 @@ class LockActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (currentMode in setOf(MODE_LOCKED, MODE_PAUSED, MODE_PAUSED_INTERNET)) {
-            val reRaise = Intent(this, LockActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                putExtra(EXTRA_MODE, currentMode)
-            }
-            startActivity(reRaise)
-        }
+        // Deliberately does NOT re-raise. See onPause.
     }
 
     override fun onPause() {
         super.onPause()
-        if (!isFinishing && currentMode in setOf(MODE_LOCKED, MODE_PAUSED, MODE_PAUSED_INTERNET)) {
-            val reRaise = Intent(this, LockActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                putExtra(EXTRA_MODE, currentMode)
-            }
-            startActivity(reRaise)
-        }
+        // The overlay is re-raised by AccessibilityMonitorService for every NON-EXEMPT foreground
+        // window (LockEnforcementPolicy.shouldReraise, debounced), not by this activity. That split
+        // matters: an unconditional self-re-raise here runs on the way out — before the next window
+        // is known — so it also ran when the next window was the emergency dialer, and the overlay
+        // took the front back after the child had opened it (found on the handset 2026-10-17: with
+        // the exemption in place, S1 still read LockActivity on top at 2/6/11 s, and the control run
+        // with the overlay down showed the dialer's task had been created but never resumed).
+        // Cost of the split: with the accessibility service off there is no self-re-raise, and that
+        // service is already a hard requirement for blocking and the tamper guard (status screen:
+        // "nothing works without it").
     }
 
     private fun applyMode(intent: Intent) {
         val mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_LOCKED
+        // Issue #87: never draw over the keyguard. The bouncer must stay reachable so the owner can
+        // enter their PIN; LockState keeps the mode and AccessibilityMonitorService re-raises the
+        // overlay over the first non-exempt window after the keyguard is gone.
+        val keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+        if (KeyguardPolicy.shouldDeferToKeyguard(mode, keyguardLocked)) {
+            currentMode = mode
+            finish()
+            return
+        }
         when (mode) {
             MODE_UNLOCK -> {
                 currentMode = MODE_UNLOCK

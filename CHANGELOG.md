@@ -18,6 +18,217 @@ environment where it was written — see `docs/QA/` for the verification state.
 - Board cadence shortened from 30/60 to **15/30 minutes** (`docs/QA/TESTING-STRATEGY.md` §4,
   `docs/QA/TEST-REQUESTS.md` header). `docs/COLLABORATION-ROADMAP.md` marked superseded.
 
+### Android — two distribution builds, and the notification listener exists only in Full (ADR-0016, plan 2.6 second half)
+- **`play` and `full` flavors.** `app/src/main/AndroidManifest.xml` declares neither
+  `BIND_NOTIFICATION_LISTENER_SERVICE` nor a listener, so the Play artefact cannot read notifications at
+  all; `app/src/full/AndroidManifest.xml` declares both and registers
+  `services.NotificationCaptureService`. The judgement stays single-copy in `main`
+  (`NotificationCapturePolicy`, shipped in part 1): the service is a thin adapter that maps a
+  `StatusBarNotification` to the policy's `Snapshot`, checks consent (ADR-0008 §3 — a revoked agent keeps
+  the listener bound but records nothing) and enqueues with `SOURCE_NOTIFICATION` into the existing scan
+  queue. The Play build keeps the accessibility **screen** path and says so in onboarding (ADR-0016 §4).
+- **`FlavorManifestTest`** pins the split from the text of both manifests plus the source location: the
+  Play manifest must not contain the permission, the action, or the class name, and the Full manifest must
+  require the system permission and register the class. A flavor split is exactly the kind of fact that
+  regresses silently when someone "simplifies" a manifest.
+- **Variant names are spelled out at every call site** — `ci.yml` (now `testPlayDebugUnitTest`,
+  `testFullDebugUnitTest`, `assemblePlayDebug`, `assembleFullDebug`, `assemblePlayRelease`), the TR-07
+  signing script (`assembleFullDebug`: hardware runs install the sideloaded build), `docs/TESTING.md`
+  (suite table and CI table) and `README.md`. No aliases: a missing variant is a build error, not a
+  silently different artefact.
+- **Part 1 fixed while wiring part 2:** `NotificationCapturePolicy` passed `List<String?>` where
+  `ScanQueuePolicy.fromNotification` takes `List<CharSequence?>`; the branch never compiled, so part 1 had
+  not been built since that call was written. The upcast is now explicit and commented.
+- **Not verified here:** the listener on hardware (grant the notification-access row in the Full build,
+  then send a WhatsApp message and see one row in the scan queue, not two for its group summary). The
+  unit suite covers the decision; the OS wiring is the hardware row.
+
+### Security/safety — the lock no longer covers an OEM emergency dialer (issue #80, found by the Phase 1 gate)
+- **Cause.** `LockEnforcementPolicy`'s exemption list was written against AOSP names
+  (`com.android.emergency`, `com.android.dialer`, `com.android.incallui`) and matched with
+  `startsWith`. The one device we test — a Samsung Galaxy Z Flip4 — runs
+  **`com.samsung.android.emergency/.emergencydialer.view.EmergencyDialerActivity`**, which no prefix
+  matched, so `AccessibilityMonitorService` re-raised `LockActivity` over the emergency dialer: on the
+  gate run the dialer started and the lock was on top at 6 s *and* 11 s. The unit test passed because
+  it asserted the platform's names, not the device's.
+- **Fix.** Two mechanisms, deliberately asymmetric: the explicit list now names the Samsung, Google and
+  AOSP call/emergency surfaces, and `isExemptPackage()` additionally matches the **segment** — any
+  package with an `emergency`, `incallui` or `dialer` segment is exempt, so an OEM we have never seen
+  still gets through. Segment equality rather than substring, so `com.example.emergencygame` is still
+  locked.
+- **Why the asymmetry.** Over-exempting a dialer costs one unlocked app; blocking an emergency call
+  costs the call.
+- **Verified:** two JVM cases — a 14-row OEM table (including the exact Flip4 dialer) asserting the lock
+  stays off, and a five-row negative table (`com.whatsapp`, `com.example.emergencygame`, …) asserting
+  ordinary apps are still locked. Hardware re-run of probe row **S1** is the acceptance on the handset
+  and is recorded on #80 when it passes; until then #78 stays held.
+- **The gate itself was measuring the wrong thing (found while re-running S1, same day).** `lock` is a
+  real `lockNow()`, so on a phone with a secure lock the **OS keyguard** sits above `LockActivity` and
+  above anything `am start` launches: the dialer never reaches the front and the row reported
+  `LockActivity` on top whether or not the overlay exempts the dialer. The probe now tries
+  `wm dismiss-keyguard` + a swipe, and if the keyguard survives it records **NOT MEASURED** and exits
+  non-zero instead of FAIL (`RecordNote`; `docs/TESTING.md` §5f). A `NOT MEASURED` row is not green —
+  the run fails, because a hidden precondition that silently flips a verdict is how a gate stops being
+  one. Consequence for the record: the *original* S1 FAIL on `main` was measured on a phone without a
+  secure lock, so it stands; but it can no longer be reproduced on a locked handset without unlocking
+  it first, and the probe says so instead of guessing.
+- **Second cause, and the dominant one: the overlay re-raised *itself*.** With the keyguard down and the
+  exemption in place, S1 still read `LockActivity` on top at 2 s, 6 s and 11 s (`cec3f82`, Flip4,
+  2026-10-17). The control run with the overlay down showed the dialer's task had been created and then
+  never resumed — so the dialer was launched and the overlay took the front back. `LockActivity.onPause()`
+  and `onUserLeaveHint()` started the activity again unconditionally; `onPause` fires on the way out,
+  before the next window is known, so it also fired for the emergency dialer. `shouldReraise` was already
+  returning `false`, and the service never re-raised: the activity did it to itself. The self-re-raise is
+  removed; re-raising is now only `AccessibilityMonitorService`'s job for non-exempt foreground windows
+  (documented in the class: with the accessibility service off there is no self-re-raise, and that
+  service is already a hard requirement for blocking and the tamper guard). JVM suites unchanged:
+  33 suites / 219 tests / 0 failures.
+- **The overlay no longer draws over the OS keyguard (issue #87, found as an owner lockout).** `LockActivity`
+  drew over the keyguard twice — the window flag in `onCreate` **and** `android:showWhenLocked="true"` in
+  the manifest — and a `pause` sent while the bouncer was up put the overlay *in front of* the PIN pad: the owner could not unlock their own phone and the only recovery was `resume` from the
+  server. The flag is gone and `KeyguardPolicy.shouldDeferToKeyguard(mode, keyguardLocked)` makes every
+  locking mode (`locked`, `paused`, `paused_internet`, and the default) finish instead of drawing while a
+  keyguard is up; `unlock` and `dismiss` still run because they *end* the lock. Nothing is lost from the
+  parent's side — `LockState` keeps the mode and the accessibility service re-raises the overlay over the
+  first non-exempt window after the keyguard goes. Trade recorded here on purpose: a child waking a locked
+  phone now sees the keyguard first instead of the parent's message; the same asymmetry as the emergency
+  dialer applies (an owner locked out of their own device costs more than one screen of messaging).
+  Tests: four JVM cases, including a check that pins the policy's mode names to `LockActivity`'s constants
+  so the rule cannot silently invert; 34 suites / 223 tests / 0 failures. Measured on the Flip4 with the
+  keyguard up: `lock` and `pause` delivered, **neither overlay appeared** (`0` activity records for
+  `LockActivity`/`BlockActivity`), the keyguard stayed up.
+- **The same defect was in the app-block screen, found by the S2 run itself.** `BlockActivity` carried the
+  same manifest attribute and window flag; on the handset, with the keyguard up, it was the block overlay
+  that stayed in front (the new `LockActivity` correctly never appeared). It now applies the same
+  `KeyguardPolicy` rule and drops `showWhenLocked`; a block screen has nothing to do while the phone is
+  locked, and covering the bouncer only hides the owner's PIN pad. `RingActivity` keeps `showWhenLocked`
+  on purpose — a parent-triggered ring must be visible while locked, and it is dismissible with the PIN.
+- **The gate now has a row for the opposite failure (issue #87).** `S2` sends `lock` (a real keyguard),
+  then `pause`, and requires `dumpsys window | grep mCurrentFocus` **not** to be `LockActivity`: the owner
+  must always be able to reach their own PIN. It fails on the 2026-10-17 builds — a `pause` over a live
+  bouncer put the overlay in front and the only recovery was `resume` from the server — and it is a safety
+  row, so a `NOT MEASURED` or a FAIL exits the run non-zero. `docs/TESTING.md` §5f carries the reasoning
+  (focus from the window manager, not the activity stack).
+- **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
+  mitigated by `device_silent` plus parent-minted pairing.
+
+### Android + API — durable on-device scan queue (plan 2.6, first half)
+- `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
+  before sending, so a process kill, a reboot or an offline stretch loses nothing. Rows go oldest-first
+  in batches of 50, are deleted on 2xx, counted down on failure and dropped after 8 attempts or 48 h
+  (`ScanQueuePolicy`, tested). `ScanFlushWorker` retries under a network constraint with backoff and
+  sweeps every 15 min. `SocialScanDto`/the API's `ScanSchema` carry an optional `source`.
+- The notification-side capture (the second half of 2.6) follows in its own PR.
+
+### API — device-silence watch (a plan-1.9 probe finding)
+- The probe's bypass #2 showed that `pm clear` wipes the agent's pairing with Device Admin active and
+  no client-side alert is possible afterwards. `src/jobs/deviceSilence.ts`: every 5 min, an `active`
+  device unseen for `DEVICE_SILENT_MINUTES` (default 30) gets one critical `tamper` /
+  `device_silent` alert (Redis claim per episode, no duplicates across instances) and is set
+  `offline`; the next telemetry sets it back to `active`. Tests: `device-silence.test.ts`.
+
+### Android — adversarial bypass probe (plan 1.9, the Phase 1 gate)
+- `scripts/hardware/android-bypass-probe.ps1`: an `adb`-driven run of the ten bypasses a child tries
+  on a paired phone — `adb uninstall`, `pm clear`, force-stop, accessibility off, overlay revoked,
+  Private DNS provider, escaping the lock (Home / Recents / Settings), going offline to dodge or
+  escape a lock, disconnecting the web-filter VPN, deactivating device admin — each a measured
+  outcome (blocked, or the tamper alert's latency from Postgres) and a PASS/FAIL table for the PR.
+- Two gaps it found while being written are closed in the agent: a Private DNS provider set outside
+  the guarded dialog and a revoked overlay permission now raise `tamper` alerts
+  (`private_dns_bypass`, `overlay_revoked`) from the 60-s loop.
+
+### Android — release hardening (plan 1.8)
+- `targetSdk 35` / `compileSdk 35` (Play's 2025 bar); `versionName 0.2.0`.
+- Release build is **minified and resource-shrunk** (R8, `proguard-rules.pro` keeps Moshi DTOs,
+  Retrofit, Room, Hilt entry points and OS-instantiated components) and **HTTPS-only**
+  (`src/main/res/xml/network_security_config.xml` → `cleartextTrafficPermitted="false"`); the debug
+  build keeps cleartext for LAN / `adb reverse` dev servers through `src/debug/res/xml/`.
+- Release signing from the same upload keystore as the parent app (`OSRA_UPLOAD_KEYSTORE`,
+  `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`; CI materialises it from
+  `OSRA_UPLOAD_KEYSTORE_B64`), debug key with a warning when absent.
+- The **device JWT and the per-device HMAC secret moved into the keystore-backed encrypted store**
+  (`SecureStore`), migrated from plaintext DataStore on first read — the audit finding ADR-0010 left
+  for "a follow-up".
+- CI asserts `targetSdkVersion:'35'` on the release APK and the cleartext settings of both configs.
+
+### Android + API — ring that cannot be silenced, locate with a fresh fix (plan 1.7)
+- `commands/Ringer` + `RingActivity`: the ring forces the **alarm stream to its maximum** (restored
+  afterwards unless someone changed it), plays on `USAGE_ALARM` (through Do-Not-Disturb), holds a
+  screen-on wake lock, shows a full-screen red "Your parent is ringing this phone" over the lock
+  screen, swallows Back and the volume keys, and stops only on the **parent PIN** (tamper guard,
+  reason `ring`), a parent `stop_ring` / `sos_clear`, or the 5-minute cap (`RingPolicy`, tested).
+- `locate_now` now asks the fused provider for a **fresh high-accuracy fix** with a 30-s timeout and
+  flushes it at once; the cached fix is used only when fresh fails and it is < 5 min old
+  (`LocatePolicy`, tested). Before: `lastLocation` only — whatever the OS had, however old.
+- API: `locate_now` and `stop_ring` accepted by `POST /v1/devices/:id/command` (`stop_ring` is
+  safe-direction, so it works with consent revoked); TTL 10 min like `ring`. Tests extended.
+
+### Android — guided, verified onboarding (plan 1.6)
+- `setup/OnboardingPolicy` (pure) + `setup/GrantChecks`: nine grants — accessibility, usage access,
+  display over other apps, device admin, web-filter consent, location (foreground + background),
+  Private DNS not on a provider (required); battery exemption, notification access (recommended).
+  Each is asked of the OS on every render; each row has its reason, the OEM hint (Samsung / Xiaomi /
+  Huawei / ColorOS) and a button that opens exactly the screen that grants it.
+- **"Setup complete" is reachable only when every required grant is in**; otherwise the checklist is
+  the screen, and the status screen says "`n` of 7 required grants done" with a *Finish protection*
+  button. Background location is asked as the second OS prompt it is on Android 10+.
+- The Private DNS provider dialog is now a protection screen for the accessibility guard (PIN gate)
+  while the web filter is enabled — a named provider would bypass the sinkhole.
+- Tests: `OnboardingPolicyTest` (5), `TamperScreenPolicyTest` +1.
+
+### Android — web filter on the phone: local DNS sinkhole (ADR-0015, plan 1.4)
+- New `vpn/FilterVpnService`: a `VpnService` that routes **only its own resolver** (`10.111.222.2`)
+  into the tunnel, so every app's DNS is decided by the agent and no payload traffic is proxied.
+  `DnsFilterPolicy` (pure, 10 tests) decides pause > allowed > SafeSearch / YouTube rewrite > blocked
+  domain > blocked category > forward; sunk names answer `0.0.0.0`/`::`; SafeSearch and YouTube
+  Restricted are CNAME rewrites to the engines' enforcement hosts with real upstream addresses.
+- `pause_internet` now takes the default route and drops everything except the agent and the parent's
+  always-allowed apps (`addDisallowedApplication`); `resume_internet` returns to DNS-only.
+- Blocked categories now also carry their **domains** from the blocklist pack
+  (`BlocklistStore.mergeDomains`, persisted); `youtubeRestrictedMode` added to the Android rule DTO.
+- Onboarding + status screen: "Set up web filter" (the one-time OS VPN consent) / connected /
+  "Reconnect web filter"; the boot receiver restarts the tunnel; rules sync reloads the table.
+- VPN revoked (another VPN app, or disconnected in Settings) → `tamper` alert
+  `content_filter_disconnected`; the `vpn_detected` check stands down while our own tunnel is up.
+- Manifest: `FOREGROUND_SERVICE_SPECIAL_USE`, service type `specialUse` with the Play subtype text.
+- Tests: `DnsFilterPolicyTest`, `DnsMessageTest`, `IpPacketTest` (RFC 1035 / IPv4+IPv6 UDP codecs).
+- Docs: ADR-0015, TESTING §5c (hardware procedure), README feature line, ROADMAP 1.4.
+### Process — role split, release runbook, and work-state labels (`AGENTS.md` §1, §2, §6.5, §10; `docs/RELEASING.md`)
+- **The maintainer re-cut the roles on 2026-10-17.** `AGENTS.md` §1 now reads: **Kimi Code** is the
+  development lead — implements, **owns `main`** (the only merging agent) and **owns releases**; **Claude
+  (KCL lead)** owns architecture and constructive testing support (ADRs, design review, tests,
+  checklists); **Antigravity** is the testing lane (gates, falsifiable claims, hardware rows, `TR-*`
+  results); the **human maintainer** holds every account, purchase, entitlement and the final scope call.
+  The old table said Kimi "must not ship product fixes", which by afternoon described the opposite of
+  the job.
+- The principle the old document was built on is unchanged and re-expressed: **the author of a change is
+  never its only verifier.** §6.5 now makes that operational — the lead may merge, but not work
+  (including their own) that another lane has not verified, and the merge message must cite the
+  verifier, the `TR-*` row, the sha and the numbers.
+- **New `docs/RELEASING.md`** — the runbook for the responsibility that came with the role: entry
+  criteria (E1–E6), the nine release steps (freeze → version and changelog → clean build → prove the
+  artifacts → release record → merge with its verification line → tag → distribute → close), key custody,
+  withdrawal/rollback, hotfix, thirteen traps, and a copy-paste checklist. It is written for the fact
+  that every artifact claim must rest on a gate run by another lane.
+- **New `AGENTS.md` §10 — work-state labels**, so nobody tests a half-finished tree or interrupts a run:
+  `state:wip` (the default for a draft PR), `state:ready-for-verification`, `state:verifying`,
+  `state:verified`, `state:changes-requested`, `state:needs-arch`, `state:blocked`. Read from a single
+  API call; a draft PR is WIP regardless of labels; a head commit younger than 10 minutes is treated as
+  in flux; silence is not readiness; and a label never grants the phone (that is the lease, §9).
+- **Cadence shortened deliberately, twice, and agreed with Claude's #84 rather than beside it:** the board
+  heartbeat is **every 15 minutes while a request is open** (60 minutes when nothing is open), one line
+  per agent in the host mailbox `status/`, and each pass is one API call unless something is labelled
+  ready. The labels — not the heartbeat — are the signal that a tree is testable: `state:wip` forbids
+  testing, reviewing and merging; `state:ready-for-verification` invites it. A head commit younger than
+  10 minutes is treated as in flux. The point of the labels is that the cheap check is also the accurate
+  one. **The floor is Claude's, not mine:** its scheduler allows a 60-minute check, so every OSRA ask
+  carries a default that proceeds at 60 minutes of silence; a shorter heartbeat on this side must never
+  turn into a blocked lane.
+- **Not verified here**: the role text and the runbook describe intent, not behaviour. The label
+  protocol is exercised by this PR itself (it carries `state:ready-for-verification`), and the release
+  steps have not been run end to end because no release is being cut.
+
+
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
   `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies
