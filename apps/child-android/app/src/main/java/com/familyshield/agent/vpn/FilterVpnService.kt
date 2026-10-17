@@ -58,6 +58,7 @@ class FilterVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var mode: String = MODE_DNS
     private val running = AtomicBoolean(false)
+    private val generation = java.util.concurrent.atomic.AtomicInteger(0)
     private var pump: Thread? = null
     private val workers: ExecutorService = Executors.newFixedThreadPool(4)
     @Volatile private var config: DnsFilterPolicy.Config = DnsFilterPolicy.Config()
@@ -164,7 +165,8 @@ class FilterVpnService : VpnService() {
         VpnState.setEstablished(this, true)
         VpnState.setRevokedAt(this, 0L)
         running.set(true)
-        pump = Thread({ pumpLoop(fd) }, "osra-dns-sinkhole").also { it.isDaemon = true; it.start() }
+        val gen = generation.incrementAndGet()
+        pump = Thread({ pumpLoop(fd, gen) }, "osra-dns-sinkhole-$gen").also { it.isDaemon = true; it.start() }
         Log.i(TAG, "tunnel up, mode=$mode")
     }
 
@@ -176,12 +178,16 @@ class FilterVpnService : VpnService() {
         VpnState.setEstablished(this, false)
     }
 
-    private fun pumpLoop(fd: ParcelFileDescriptor) {
+    private fun pumpLoop(fd: ParcelFileDescriptor, gen: Int) {
         val input = FileInputStream(fd.fileDescriptor)
         val output = FileOutputStream(fd.fileDescriptor)
         val buf = ByteArray(MTU + 64)
-        while (running.get()) {
-            val n = try { input.read(buf) } catch (e: Exception) { if (running.get()) Log.w(TAG, "tun read", e); break }
+        while (running.get() && generation.get() == gen) {
+            val n = try { input.read(buf) } catch (e: Exception) {
+                // A closed fd ends the loop; only a failure on the *current* tunnel is worth a warning.
+                if (running.get() && generation.get() == gen) Log.w(TAG, "tun read: ${e.message}")
+                break
+            }
             if (n <= 0) continue
             val udp = IpPacket.parseUdp(buf, n) ?: continue // sink everything that is not UDP
             if (udp.dstPort != IpPacket.DNS_PORT) continue   // and every UDP that is not DNS

@@ -47,7 +47,9 @@ DuckDuckGo and YouTube all publish DNS-level enforcement hosts for exactly this
    commands switch the mode immediately.
 5. **Revocation is tamper**: `onRevoke` (another VPN app took the slot, or the child disconnected
    the VPN in Settings) posts a `tamper` alert `content_filter_disconnected` through the same
-   expedited worker as ADR-0010 and the status row shows "not connected / Reconnect". The existing
+   expedited worker as ADR-0010 and the status row shows "not connected / Reconnect"; the next rules
+   sync (and any `pause_internet` / `resume_internet`) restarts the tunnel if the slot is free, so a
+   one-off disconnect heals itself without the parent doing anything. The existing
    `vpn_detected` check (feature #20) stands down while our own tunnel is established — Android runs
    one VPN at a time, so the VPN transport is ours.
 6. **Foreground service type `specialUse`** with the `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` text Play
