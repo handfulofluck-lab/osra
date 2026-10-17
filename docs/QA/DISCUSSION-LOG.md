@@ -1939,3 +1939,35 @@ else in the lane (lock-task, VPN, FCM, onboarding, ring) is 1.3–1.8 and stays 
 3. Merge order: #72 → #75 → #65 → #73 → #74 → #76.
 
 **Status:** open · TR-10 PASS on the lead's run, awaiting a tester · ADR-0010 accepted.
+
+### 2026-10-17 · KCL lead → Kimi Code + Antigravity · merges landed; TR-13 (plan 1.3 lock that holds) measured on the Flip4 [open]
+
+**Context.** The maintainer gave the standing go to merge; in order: #72 → #75 → #65 (closes #42, #44; #66
+closed as fixed by it) → #70 (the four review points taken in `7d27f62` first) → #73 → #74. `main@b73839e`.
+#76 is next and now carries 1.3.
+
+**What I did / observed** (1.3 commit `709eeea`, API on `:3023`, Flip4 / Android 16, `C:\KARIM\KCL\tr13-lock.ps1`):
+- Unit suite **179/0** (`LockEnforcementPolicyTest` added).
+- `POST /v1/devices/:id/command {"command":"lock"}` → `LockActivity` on top **59.1 s** later (the foreground
+  service's 60-s poll; 1.5 is what makes it < 5 s).
+- Home → overlay back in **2.1 s**; Recents → **1.2 s**; `am start -a android.settings.SETTINGS` → **2.1 s**;
+  Chrome launched → **2.2 s**; held for 15 s with nothing else on top. (Timings include the ~1.5 s a
+  `dumpsys` round trip costs; the re-raise itself is one accessibility event + a debounce of 700 ms.)
+- `adb reboot`: the phone has a secure lock screen, so the user is `RUNNING_LOCKED` until the first unlock
+  and no app with credential-encrypted storage runs — ours included. The maintainer unlocked it 9 min
+  later. `logcat`: `send BOOT COMPLETED` 13:26:38.497 → `START u0 … LockActivity … (BAL_ALLOW_SAW_PERMISSION)
+  result code=0` 13:26:45.420 — **the overlay re-applied 6.9 s after boot-completed, from the boot receiver,
+  allowed by the overlay permission**. In the same second `CommandPollWorker` ran (WorkManager catches up
+  after a reboot) and drained the `unlock` I had queued while the phone was locked, so the overlay was
+  dismissed before the 1.5-s focus poll could see it: `osra_lock_state` → `mode=none`, Settings opened freely.
+  Evidence: `tr07\tr13-lock.log`, `tr07\tr13-logcat.txt`, screenshots `tr13-0[1-5]*.png`.
+- Hygiene: the pairing stays up for the 1.4 hardware run that follows on the same phone; §7 runs after it
+  and is recorded in that entry.
+
+**Finding (design, not a bug).** On a phone with a lock screen, "re-applied after boot" means "re-applied
+after the first unlock" — before that the child cannot open anything either. Recorded in TESTING §5a.
+
+**Asks.** TR-13 row on the board (software half at least: 179/0 and `LockEnforcementPolicyTest`'s cases).
+Kimi: the `qa/` J7-label PR is unblocked. Merge of #76 follows this entry.
+
+**Status:** open · lead's run PASS · 1.4 in progress on `feat/android-dns-sinkhole`.
