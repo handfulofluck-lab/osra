@@ -103,12 +103,14 @@ class CommsLogger @Inject constructor(
 
     /** Reads CallLog rows newer than the stored watermark into Room (guarded by permission checks). */
     private suspend fun harvestCalls() {
-        if (!granted(Manifest.permission.READ_CALL_LOG)) {
-            if (!warnedCallPermission) {
+        when (CommsAccessPolicy.decide(granted(Manifest.permission.READ_CALL_LOG), warnedCallPermission)) {
+            CommsAccessPolicy.Decision.HARVEST -> Unit
+            CommsAccessPolicy.Decision.SKIP_QUIETLY -> return
+            CommsAccessPolicy.Decision.SKIP_AND_REPORT -> {
                 warnedCallPermission = true
                 Log.i(TAG, "READ_CALL_LOG not granted; call harvesting stays off until the parent grants it")
+                return
             }
-            return
         }
         val watermark = db.agentStateDao().get(KEY_CALL_WATERMARK) ?: 0L
         val now = System.currentTimeMillis()
@@ -155,12 +157,14 @@ class CommsLogger @Inject constructor(
 
     /** Reads Telephony.Sms rows newer than the stored watermark into Room (permission-guarded). */
     private suspend fun harvestSms() {
-        if (!granted(Manifest.permission.READ_SMS)) {
-            if (!warnedSmsPermission) {
+        when (CommsAccessPolicy.decide(granted(Manifest.permission.READ_SMS), warnedSmsPermission)) {
+            CommsAccessPolicy.Decision.HARVEST -> Unit
+            CommsAccessPolicy.Decision.SKIP_QUIETLY -> return
+            CommsAccessPolicy.Decision.SKIP_AND_REPORT -> {
                 warnedSmsPermission = true
                 Log.i(TAG, "READ_SMS not granted; SMS harvesting stays off until the parent grants it")
+                return
             }
-            return
         }
         val watermark = db.agentStateDao().get(KEY_SMS_WATERMARK) ?: 0L
         val now = System.currentTimeMillis()
