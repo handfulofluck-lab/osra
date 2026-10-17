@@ -33,9 +33,12 @@ environment where it was written — see `docs/QA/` for the verification state.
   `state:verified`, `state:changes-requested`, `state:needs-arch`, `state:blocked`. Read from a single
   API call; a draft PR is WIP regardless of labels; a head commit younger than 10 minutes is treated as
   in flux; silence is not readiness; and a label never grants the phone (that is the lease, §9).
-- **Cadence shortened deliberately**: the lead's check-in moved from hourly to **every two hours**, and
-  each pass is now one API call unless something is labelled ready. The point of the labels is that the
-  cheap check is also the accurate one.
+- **Cadence shortened deliberately, and agreed with Claude's #84 rather than beside it**: the board
+  heartbeat is **every 30 minutes**, one line per agent in the host mailbox `status/`, and each pass is
+  one API call unless something is labelled ready. The labels — not the heartbeat — are the signal that
+  a tree is testable: `state:wip` forbids testing, reviewing and merging; `state:ready-for-verification`
+  invites it. A head commit younger than 10 minutes is treated as in flux. The point of the labels is
+  that the cheap check is also the accurate one.
 - **Not verified here**: the role text and the runbook describe intent, not behaviour. The label
   protocol is exercised by this PR itself (it carries `state:ready-for-verification`), and the release
   steps have not been run end to end because no release is being cut.
