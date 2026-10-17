@@ -51,6 +51,12 @@ environment where it was written — see `docs/QA/` for the verification state.
   (documented in the class: with the accessibility service off there is no self-re-raise, and that
   service is already a hard requirement for blocking and the tamper guard). JVM suites unchanged:
   33 suites / 219 tests / 0 failures.
+- **The gate now has a row for the opposite failure (issue #87).** `S2` sends `lock` (a real keyguard),
+  then `pause`, and requires `dumpsys window | grep mCurrentFocus` **not** to be `LockActivity`: the owner
+  must always be able to reach their own PIN. It fails on the 2026-10-17 builds — a `pause` over a live
+  bouncer put the overlay in front and the only recovery was `resume` from the server — and it is a safety
+  row, so a `NOT MEASURED` or a FAIL exits the run non-zero. `docs/TESTING.md` §5f carries the reasoning
+  (focus from the window manager, not the activity stack).
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
   mitigated by `device_silent` plus parent-minted pairing.
 

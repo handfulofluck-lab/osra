@@ -30,6 +30,10 @@ function Bounds($node) { if ($node.bounds -match "\[(\d+),(\d+)\]\[(\d+),(\d+)\]
 function Tap($xy) { Sh ("input tap " + $xy[0] + " " + $xy[1]) | Out-Null; Start-Sleep 1 }
 function Texts($ui) { if ($ui) { @($ui.SelectNodes("//node[@text!='']") | ForEach-Object { $_.text }) -join " | " } else { "(no dump)" } }
 function Focus { $w = (Sh "dumpsys activity activities") -split "`n" | Select-String "topResumedActivity=" | Select-Object -First 1; if ($w) { ($w.ToString() -replace '.*topResumedActivity=ActivityRecord\{\S+ u0 ', '' -replace ' t\d+\}.*', '').Trim() } else { "?" } }
+# The window that holds input focus, which is what tells the owner whether the PIN pad is reachable
+# (issue #87: LockActivity draws over the OS keyguard, so activity focus alone is not enough).
+function FocusWindow { $w = (Sh "dumpsys window") -split "`n" | Select-String "mCurrentFocus=" | Select-Object -First 1; if ($w) { ($w.ToString() -replace '.*mCurrentFocus=', '').Trim() } else { "?" } }
+function KeyguardUp { ((Sh "dumpsys window") -match "isKeyguardShowing=true") }
 function Api($m, $path, $body, $token) { $h=@{}; if ($token) { $h["Authorization"]="Bearer $token" }; try { if ($body -ne $null) { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -ContentType "application/json" -Body ($body|ConvertTo-Json -Depth 8) -TimeoutSec 15 } else { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -TimeoutSec 15 } } catch { W "API $m $path -> $($_.Exception.Message)"; $null } }
 function AlertCount($type) { $sql = "select count(*) from ""Alert"" where ""deviceId""='$DEV' and metadata->>'type'='$type';"; $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); [int]((& $Psql -At -f $f $Db) -join "") }
 function WaitAlert($type, $maxSec) { $before = AlertCount $type; $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt $maxSec) { if ((AlertCount $type) -gt $before) { return [math]::Round($sw.Elapsed.TotalSeconds, 1) }; Start-Sleep 2 }; return -1 }
@@ -138,6 +142,28 @@ if ($keyguardUp) {
 Sh "input keyevent 4" | Out-Null
 Api POST "/v1/devices/$DEV/command" @{ command="unlock"; payload=@{} } $TOKEN | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 90 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
+
+# S2. SAFETY/UX (issue #87): the parent overlay must never make the owner's own PIN unreachable.
+#     lock is a real lockNow(), so the OS bouncer comes up; a pause sent while it is up must not draw over
+#     it. Focus is read from the window manager, not the activity manager: "LockActivity on top" and "the
+#     bouncer is reachable" can both be true in the activity stack, and only mCurrentFocus says which one
+#     the owner is looking at. No PIN is entered: the row only requires the bouncer to hold focus.
+$r = Api POST "/v1/devices/$DEV/command" @{ command="lock"; payload=@{} } $TOKEN
+$sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 60 -and -not (KeyguardUp)) { Start-Sleep 1 }
+$keyguardUp = KeyguardUp
+if (-not $keyguardUp) {
+    RecordNote "S2" "owner can reach the keyguard while the overlay is up (safety, #87)" "NOT MEASURED: the keyguard never came up after the lock command, so there is no bouncer to reach."
+} else {
+    $r = Api POST "/v1/devices/$DEV/command" @{ command="pause"; payload=@{} } $TOKEN
+    Start-Sleep 4
+    $fw = FocusWindow
+    $covers = $fw -match "LockActivity"
+    Record "S2" "owner can reach the keyguard while the overlay is up (safety, #87)" (-not $covers) ("keyguard up; mCurrentFocus after pause: " + $fw)
+}
+Api POST "/v1/devices/$DEV/command" @{ command="resume"; payload=@{} } $TOKEN | Out-Null
+$sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 60 -and (Focus) -match "LockActivity") { Start-Sleep 1 }
+Sh "wm dismiss-keyguard" | Out-Null; Start-Sleep 1
+if (KeyguardUp) { Sh "input swipe 540 1800 540 700 250" | Out-Null; Start-Sleep 2 }
 
 # 2. pm clear (wipe app data) while admin is active - DESTRUCTIVE (it un-pairs the phone), so it runs last
 $c = Sh "pm clear $PKG"
