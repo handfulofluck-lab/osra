@@ -11,6 +11,19 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — guided, verified onboarding (plan 1.6)
+- `setup/OnboardingPolicy` (pure) + `setup/GrantChecks`: nine grants — accessibility, usage access,
+  display over other apps, device admin, web-filter consent, location (foreground + background),
+  Private DNS not on a provider (required); battery exemption, notification access (recommended).
+  Each is asked of the OS on every render; each row has its reason, the OEM hint (Samsung / Xiaomi /
+  Huawei / ColorOS) and a button that opens exactly the screen that grants it.
+- **"Setup complete" is reachable only when every required grant is in**; otherwise the checklist is
+  the screen, and the status screen says "`n` of 7 required grants done" with a *Finish protection*
+  button. Background location is asked as the second OS prompt it is on Android 10+.
+- The Private DNS provider dialog is now a protection screen for the accessibility guard (PIN gate)
+  while the web filter is enabled — a named provider would bypass the sinkhole.
+- Tests: `OnboardingPolicyTest` (5), `TamperScreenPolicyTest` +1.
+
 ### Android — web filter on the phone: local DNS sinkhole (ADR-0015, plan 1.4)
 - New `vpn/FilterVpnService`: a `VpnService` that routes **only its own resolver** (`10.111.222.2`)
   into the tunnel, so every app's DNS is decided by the agent and no payload traffic is proxied.

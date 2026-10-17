@@ -202,6 +202,19 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
 
+## 5d. Guided onboarding on hardware (plan 1.6)
+
+Fresh install, pair, set the PIN, then revoke one required grant at a time and confirm the agent
+*notices*: the status screen must read `6 of 7 required grants done` and name the missing one, the
+**Finish protection** button must open the checklist with that row red, its button must open the
+screen that grants it, and coming back without granting must leave the row red. Quick toggles from the
+shell: accessibility `settings put secure enabled_accessibility_services ""`; overlay `appops set
+com.familyshield.agent SYSTEM_ALERT_WINDOW deny`; usage `appops set com.familyshield.agent
+GET_USAGE_STATS deny`; background location `pm revoke com.familyshield.agent
+android.permission.ACCESS_BACKGROUND_LOCATION`; Private DNS `settings put global private_dns_mode
+hostname` + `settings put global private_dns_specifier dns.google` (restore with `off`). "Setup
+complete" must not be reachable from a fresh pairing while any of the seven is missing.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
