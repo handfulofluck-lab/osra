@@ -62,14 +62,21 @@ environment where it was written — see `docs/QA/` for the verification state.
   phone now sees the keyguard first instead of the parent's message; the same asymmetry as the emergency
   dialer applies (an owner locked out of their own device costs more than one screen of messaging).
   Tests: four JVM cases, including a check that pins the policy's mode names to `LockActivity`'s constants
-  so the rule cannot silently invert; 34 suites / 223 tests / 0 failures. Gate: probe row **S2**
-  (`mCurrentFocus` must not be `LockActivity` with the keyguard up, run on the handset).
+  so the rule cannot silently invert; 34 suites / 223 tests / 0 failures. Measured on the Flip4 with the
+  keyguard up: `lock` and `pause` delivered, **neither overlay appeared** (`0` activity records for
+  `LockActivity`/`BlockActivity`), the keyguard stayed up.
 - **The same defect was in the app-block screen, found by the S2 run itself.** `BlockActivity` carried the
   same manifest attribute and window flag; on the handset, with the keyguard up, it was the block overlay
   that stayed in front (the new `LockActivity` correctly never appeared). It now applies the same
   `KeyguardPolicy` rule and drops `showWhenLocked`; a block screen has nothing to do while the phone is
   locked, and covering the bouncer only hides the owner's PIN pad. `RingActivity` keeps `showWhenLocked`
   on purpose — a parent-triggered ring must be visible while locked, and it is dismissible with the PIN.
+- **The gate now has a row for the opposite failure (issue #87).** `S2` sends `lock` (a real keyguard),
+  then `pause`, and requires `dumpsys window | grep mCurrentFocus` **not** to be `LockActivity`: the owner
+  must always be able to reach their own PIN. It fails on the 2026-10-17 builds — a `pause` over a live
+  bouncer put the overlay in front and the only recovery was `resume` from the server — and it is a safety
+  row, so a `NOT MEASURED` or a FAIL exits the run non-zero. `docs/TESTING.md` §5f carries the reasoning
+  (focus from the window manager, not the activity stack).
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
   mitigated by `device_silent` plus parent-minted pairing.
 

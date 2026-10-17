@@ -247,6 +247,15 @@ keyguard survives it reports the row as **NOT MEASURED** and exits non-zero (202
 report FAIL, which is how a measurement of the keyguard was mistaken for a measurement of the lock).
 Unlock the phone with the lock overlay up and re-run.
 
+**S2 (issue #87) is the mirror image: the keyguard must stay reachable while the overlay is up.** `lock`
+raises a real keyguard; the probe then sends `pause` and requires `dumpsys window | grep mCurrentFocus`
+**not** to be `LockActivity`. Reading focus from the window manager rather than the activity manager is the
+whole point: "LockActivity is on top" and "the bouncer is reachable" can both be true in the activity
+stack, and only `mCurrentFocus` says which one the owner sees. The row fails on the 2026-10-17 builds — a
+`pause` over a live bouncer put `LockActivity` in front and the owner could not enter their PIN (recovery
+needed `resume` from the server). No PIN is entered by the row; it only asserts that the bouncer holds
+focus. It is a safety row, so it exits non-zero like the others.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
