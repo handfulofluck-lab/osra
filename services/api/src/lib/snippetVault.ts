@@ -6,7 +6,9 @@ import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
 // without extra config — never rely on it outside dev/test.
 function getVaultKey(): string {
   if (process.env.VAULT_KEY) return process.env.VAULT_KEY;
-  return createHash("sha256").update(process.env.JWT_SECRET!).digest("base64");
+  if (process.env.NODE_ENV === "production") throw new Error("VAULT_KEY is required in production");
+  // Same dev fallback secret as server.ts uses for JWT_SECRET, so unit tests and bare dev stacks boot.
+  return createHash("sha256").update(process.env.JWT_SECRET ?? "dev-insecure-jwt-secret").digest("base64");
 }
 
 /** Encrypt a captured message snippet for the server-side vault; returns a JSON-storable string. */

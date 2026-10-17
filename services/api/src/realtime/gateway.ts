@@ -70,6 +70,9 @@ export function registerRealtime(app: FastifyInstance) {
       // bound to, and no event frame is sent before it. Harnesses wait for it; the parent app can
       // use it to end a reconnect spinner. Sent after the set add, so a message that races the
       // send is delivered on this socket (the subscriber iterates the set it was just added to).
+      // `familyId` is deliberate (TR-05 review): the holder authenticated as that family's parent
+      // and already has the id; it lets a client assert which family the stream is bound to. Add
+      // NOTHING else — no child id, device id or ticket — this frame reaches devtools and proxy logs.
       sendFrame(socket, { type: "ready", familyId, ts: new Date().toISOString() });
     } catch {
       socket.close(4001, "unauthorized");

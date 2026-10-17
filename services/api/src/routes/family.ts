@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireFamily, requireOwner, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
@@ -61,12 +61,15 @@ export async function familyRoutes(app: FastifyInstance) {
         const childUsageKey = `usage:child:${c.id}:${today}`;
         const accumulated = await redis.get(childUsageKey).catch(() => null);
         // Phase 2c: the Redis key is a cache of the durable AppUsageDaily rows; a flush or restart
-        // must not read as "0 minutes today".
-        const durable = accumulated === null ? await screenTimeTodayFromDb(c.id).catch(() => 0) : 0;
-        if (accumulated !== null) {
-          screenTimeTodayMinutes = parseInt(accumulated, 10) || 0;
-        } else if (durable > 0) {
-          screenTimeTodayMinutes = durable;
+        // must not read as "0 minutes today". #66: presence is not authority — after a flush the
+        // next delta recreates the counter from that delta alone, and a failed rollup write leaves
+        // the cache AHEAD of the table. Deltas only grow within a day, so the larger of the two is
+        // right in both directions.
+        const cached = accumulated !== null ? parseInt(accumulated, 10) || 0 : 0;
+        const durable = await screenTimeTodayFromDb(c.id).catch(() => 0);
+        const best = Math.max(cached, durable);
+        if (best > 0) {
+          screenTimeTodayMinutes = best;
         } else {
           for (const d of c.devices) {
             const raw = await redis.get(`device:${d.id}:telemetry`).catch(() => null);
@@ -93,7 +96,7 @@ export async function familyRoutes(app: FastifyInstance) {
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */
-  app.post("/children", { preHandler: requireParent }, async (req, reply) => {
+  app.post("/children", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const parsed = ChildCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -161,13 +164,13 @@ export async function familyRoutes(app: FastifyInstance) {
    * device's token is revoked like an unpair (#56). The response reports the row counts so a caller
    * (and the e2e gate) can see what was removed.
    */
-  app.delete("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
+  app.delete("/children/:id", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req) => {
     const { id } = req.params as { id: string };
     return eraseChildData(id, DEVICE_TOKEN_TTL_SECONDS);
   });
 
   /** Record a parental-consent event (VPC) for an existing child. */
-  app.post("/children/:id/consent", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.post("/children/:id/consent", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req, reply) => {
     const parsed = ConsentCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -213,7 +216,7 @@ export async function familyRoutes(app: FastifyInstance) {
    * device reads answer 428 until a parent re-grants consent. Device pairings are kept so that
    * re-granting resumes without re-enrolment.
    */
-  app.post("/children/:id/consent/revoke", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req, reply) => {
+  app.post("/children/:id/consent/revoke", { preHandler: [requireParent, requireOwner, requireFamily({ model: "child" })] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const user = req.user as AuthedUser;
     const now = new Date();

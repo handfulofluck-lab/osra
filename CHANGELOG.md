@@ -38,6 +38,45 @@ environment where it was written — see `docs/QA/` for the verification state.
   into one comparable entry per assertion family, and dynamically built names cannot be compared (they
   are counted and reported). This narrows a reviewer's search; it does not replace the reviewer.
 
+### Security — Phase 2d: signing v2 (J2/J6 closed), revocable sessions, co-parent roles, MFA secret at rest (ADR-0014, closes #42, #44)
+- **Internal signing v2** (`src/lib/internalAuth.ts`): `X-FamilyShield-Timestamp` + `X-FamilyShield-Nonce` +
+  HMAC over `"<ts>.<nonce>.<body>"`; ±300 s skew window, per-signer nonce window (Redis `SET NX`), and a
+  `reason` code on every 401 (`replay`, `stale_timestamp`, `missing_nonce`, `legacy_signature_disabled`,
+  `global_secret_requires_service_caller`, `device_has_no_secret`). The global secret is a **service
+  credential**: v2 + `X-FamilyShield-Caller` ∈ `INTERNAL_SERVICE_CALLERS` (default `ai-engine`), never
+  bare. **J2 and J6 are now gating probe checks**; the E4 note is gone. Legacy body-only (v1) device
+  signatures stay accepted while `INTERNAL_SIGNING_ALLOW_V1` ≠ 0 (new target **J7** reports it).
+- **All three agents sign v2:** Android `SignatureInterceptor` (timestamp/nonce headers, `signingBytes`),
+  Windows `Services/InternalSigner.cs` used by `ApiClient.PostAlert`, iOS `InternalSigner.swift` used by
+  `AlertReporter`. Each has a unit test pinned to the **same reference vector** as the API test
+  (`ce725cf9…c220508`). ⚠️ Agent suites not run here (no SDK/.NET/Xcode in the sandbox) — CI runs the
+  Android and .NET ones; hardware verification is TR-07.
+- **Parent sessions** (`src/lib/sessions.ts`): `jti` + `familyRole` on every token (login, register,
+  refresh, invite accept); `auth:invalid-before:<parentId>` bumped by password reset / MFA enable /
+  logout-all / theft, so live access tokens die immediately (`401 session_revoked`); `/logout` with a
+  refresh token also revokes its access token; rotation keeps the old-hash → new-jti link so reuse of
+  a consumed refresh token still kills the session it rotated into (F3).
+- **Family roles**: invite acceptance mints `role: "parent"` + `familyRole` (co-parents were locked out
+  by `requireParent` before); `requireOwner` on child create/erase, consent grant/revoke, invites;
+  `requirePermission` on rules writes + controls (`rules`), alert ack (`alerts`), device command/unpair
+  (`devices`), geofences (`location`). Reads are never gated. `PERMISSIONS` exported from the middleware.
+- **MFA secret encrypted at rest** (`src/lib/secretVault.ts`, `enc1:` prefix under `VAULT_KEY`); legacy
+  plaintext rows verify and are re-encrypted at next login. `VAULT_KEY` is required in production.
+- **Gates:** e2e **68/68** (+2: replay → 401 `replay`; 10-min-old timestamp → 401; the device/global
+  isolation check now also proves bare global fails). Probe **108 passed · 0 failed · 1 target (J7) ·
+  0 notes**: E4/J2, E4b, E4c, J5 (v1 and v2-no-caller), J6, J6b, F8, **N1–N7** (jti/familyRole,
+  logout-all kills the live token, single logout kills its token, invite → working co-parent token,
+  permission 403s, owner-only erasure, granted permission works). New unit suites
+  `internal-signing.test.ts` (7) and `sessions-and-roles.test.ts` (7); **14 fail on `main`**.
+  vitest **295/295**.
+- **#66 (Kimi, TR-06 verification):** `/v1/family/me` preferred the Redis counter whenever the key
+  existed, so a flush was survived only until the next telemetry delta recreated the counter from
+  that delta alone (5 instead of 19). Now the larger of the cache and the durable day total wins —
+  deltas are monotonic within a day, so that is right in both directions (a failed rollup write
+  leaves the cache ahead). Unit test (fails before) + e2e check (`+5` after the flush → 35, not 5).
+- **Verified here** on a zero-migrated `Asia/Dubai` database, API `:3019`: e2e **69/69** after the
+  #66 fix. ⚠️ Not verified on the testers' hosts or hardware yet — **TR-07**.
+
 ### Backend — Phase 2c: durable usage model, retention, complete erasure cascade (ADR-0013)
 - **New tables** (migration `0013_usage_model`): `AppUsageDaily` (child × device × UTC day × app →
   minutes; `app="*"` is the device-reported day total) and `WebVisit` (one row per URL event). Written

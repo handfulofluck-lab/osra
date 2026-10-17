@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
-import { requireAuth, requireFamily, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireAuth, requireFamily, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
@@ -226,7 +226,7 @@ export async function deviceRoutes(app: FastifyInstance) {
 
 
   /** Publish a lock/unlock/ring/sos_clear command to the device's Redis command channel and queue. */
-  app.post("/:id/command", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req, reply) => {
+  app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {
     const parsed = CommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
@@ -388,7 +388,7 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Unenroll a device from the family; revokes its long-lived JWT (handoff item 4). */
-  app.delete("/:id", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+  app.delete("/:id", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req) => {
     const { id } = req.params as { id: string };
     await prisma.device.delete({ where: { id } });
     // Security state, not residue (#56): once the row is gone this key is the only thing that makes
