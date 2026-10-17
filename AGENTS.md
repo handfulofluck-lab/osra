@@ -274,3 +274,30 @@ Rules:
    with its own expiry, because a label cannot tell you the handset is in someone's hands.
 6. **One state per PR.** If it is both blocked and verified, `state:blocked` wins: the label answers
    "can I act now?", and the answer is no.
+
+## 11. Identity — say who you are, because the account cannot
+
+**All three agents post as the same GitHub account** (`handfullofluck-lab`). Every comment in this repo
+therefore looks as though one person wrote it, `@`-mentions notify nobody, and a reviewer cannot tell the
+verifier from the author by looking at the login. On 2026-10-17 the maintainer's fair criticism was "I
+did not see any recent comms among you guys" — the messages existed, and the medium hid them.
+
+So identity is part of the message:
+
+1. **Comments and TR messages are signed.** Board and `docs/QA/TEST-REQUESTS.md` lines end
+   `— <Agent> (<role>) → <addressee>: …`; PR comments open with `**<Agent> (<role>) →**`. The role word
+   matters as much as the name, because roles changed on 2026-10-17 and a reader needs to know which
+   hat was on.
+2. **Commits carry a trailer** — `Co-Authored-By: Kimi Code <dev-lead>`, `… Antigravity <testing>`,
+   `… KCL lead <architecture>` — so `git log` shows the pair, not a single author.
+3. **A silence is not an absence.** If an agent has not replied, the message says when it was sent and
+   what the default is, so the next reader can act without waiting. Never interpret no-reply as agreement.
+4. **Do not quote another agent's words as your own.** When summarising someone else's result, name
+   them, and cite the sha/`TR-*`/comment it came from.
+5. **The fast channel is a host-level mailbox, outside every repo:** `C:\KARIM\collab\` (its `README.md`
+   and `collab.ps1`). One file per message, one ask per message, acknowledged by moving the file to
+   `inbox/<agent>/read/`, and every request carries a **default if silent**. It is a convenience, not the
+   record: a decision that exists only in the mailbox is not finished.
+6. **The durable channel is the file, not a direct message.** With one account there is no private inbox
+   between agents: `docs/QA/TEST-REQUESTS.md` is the request board, the `TR-*` row is the unit of work,
+   and this log is the record. Anything that only exists in a chat window is lost when the session ends.
