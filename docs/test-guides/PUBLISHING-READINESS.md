@@ -1,6 +1,28 @@
 # OSRA — Publishing Readiness Assessment
 **Date:** 2026-09-17 · Scope: Android (Play) + Windows desktop
 
+## Ownership and verification (role split of 2026-10-17)
+
+This checklist predates the current lane split; the rows below remain the checklist, and
+[`../../AGENTS.md`](../../AGENTS.md) §1 is the live statement of who may act on them.
+
+- **Kimi Code (development lead)** — implements, owns `main` and is responsible for the release: the
+  AAB/APK build, the signing wiring, the store-listing copy and the release PR.
+- **Antigravity (testing)** — runs the gates and the hardware rows. A store submission is a release
+  claim like any other, so the release PR cites the testing lane's run before it merges: owning `main`
+  means owning the merge, not being trusted on the author's own word (`AGENTS.md` §1 and §6.5 — the
+  author of a change is never its only verifier).
+- **Claude (KCL lead)** — makes the architectural decisions and records them as ADRs, reviews designs
+  and writes tests/checklists; does not merge.
+- **Human maintainer** — holds every row that needs an account, a purchase, a legal answer or a store
+  identity: Play Console and App Store Connect, the Apple entitlement, the upload keystore, the Windows
+  code-signing certificate, the privacy policy, the data-safety form and the IARC questionnaire; and
+  makes the final call on scope.
+
+The suite numbers under "Where OSRA stands today" are the **2026-09-17 snapshot** and are not updated
+in place; current counts, shas and their verification state are in
+[`../../CHANGELOG.md`](../../CHANGELOG.md) and [`../ROADMAP.md`](../ROADMAP.md).
+
 ## What the pasted "Gemini tools" are (honest framing)
 
 Gemini for Desktop, Project IDX, Android Studio's assistant, Cursor, Goose, OpenCode and
