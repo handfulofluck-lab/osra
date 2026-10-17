@@ -9,6 +9,11 @@ import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
+import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
+
+import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
+// Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
+export { DEVICE_TOKEN_TTL_SECONDS };
 
 const PLATFORM = z.enum(["android", "ios", "windows", "macos", "chromebook"]);
 
@@ -183,7 +188,7 @@ export async function deviceRoutes(app: FastifyInstance) {
     });
     const token = app.jwt.sign(
       { sub: device.id, deviceId: device.id, childId: payload.childId, familyId: payload.familyId, role: "device" },
-      { expiresIn: "10y" },
+      { expiresIn: DEVICE_TOKEN_TTL_SECONDS },
     );
     return reply.code(201).send({
       device,
@@ -306,6 +311,12 @@ export async function deviceRoutes(app: FastifyInstance) {
       const redis = getRedis();
       await redis.incrby(childUsageKey, parsed.data.totalMinutes);
       await redis.expire(childUsageKey, 86400 * 2);
+      // Phase 2c: the same delta into the durable day total, so "today" survives a Redis flush.
+      try {
+        await recordDeviceTotal(device.childId, id, parsed.data.totalMinutes);
+      } catch (err) {
+        req.log.warn({ err }, "usage rollup write failed (telemetry)");
+      }
     }
 
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
@@ -343,6 +354,13 @@ export async function deviceRoutes(app: FastifyInstance) {
           payload: e.payload as Prisma.InputJsonValue,
         })),
       });
+      // Phase 2c: fold the batch into AppUsageDaily / WebVisit. A failure here must not reject the
+      // batch (the raw log is the source of truth; the nightly rollup reconciles from it).
+      try {
+        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>);
+      } catch (err) {
+        req.log.warn({ err }, "usage rollup write failed (activity)");
+      }
     }
     // Live activity (#29): broadcast the latest app_usage event of the batch so the
     // parent dashboard's live chip updates without polling.
@@ -373,7 +391,12 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.delete("/:id", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
     const { id } = req.params as { id: string };
     await prisma.device.delete({ where: { id } });
-    await getRedis().set(`revoked:device:${id}`, new Date().toISOString());
+    // Security state, not residue (#56): once the row is gone this key is the only thing that makes
+    // the device's 10-year JWT answer 401 (server.ts preHandler, location.ts, gateway.ts, and the
+    // hook below). It is bounded by the token lifetime so an unpaired device cannot leave a key
+    // forever, and it must never be given a shorter TTL or deleted while that token could still be
+    // presented — `scripts/cleanup-test-redis.mjs` deliberately keeps it.
+    await getRedis().set(`revoked:device:${id}`, new Date().toISOString(), "EX", DEVICE_TOKEN_TTL_SECONDS);
     return { deleted: true, id };
   });
 

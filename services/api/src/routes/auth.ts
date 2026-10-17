@@ -72,7 +72,9 @@ export async function authRoutes(app: FastifyInstance) {
   // --- Redis-backed refresh-token store (handoff items 1-3) ---
   // Live key  refresh:{sha256(token)}            -> JSON {parentId, expiresAt} (30 d TTL)
   // Marker    refresh:used:{sha256(token)}       -> "1" (rotation/reuse detection, same TTL)
-  // Index     refresh:index:{parentId}           -> SET of live token hashes (for logout-all)
+  // Index     refresh:index:{parentId}           -> SET of live token hashes (for logout-all); TTL re-armed
+  //                                                  to 30 d on every issue, members removed on
+  //                                                  rotation / logout / expiry (#57)
   const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
   const liveKey = (hash: string) => `refresh:${hash}`;
   const usedKey = (hash: string) => `refresh:used:${hash}`;
@@ -85,7 +87,25 @@ export async function authRoutes(app: FastifyInstance) {
     const redis = getRedis();
     await redis.set(liveKey(hash), JSON.stringify({ parentId, expiresAt: Date.now() + REFRESH_TTL_MS }), "EX", Math.floor(REFRESH_TTL_MS / 1000));
     await redis.sadd(indexKey(parentId), hash);
+    // #57: a SET member does not expire with the live key it indexes, so the index itself is bounded —
+    // it lives exactly as long as the newest token it could still reference. Refreshed on every issue,
+    // so an abandoned index disappears one refresh-lifetime after the last login even if a removal
+    // path is ever missed. The members are still removed eagerly below (rotation, logout, expiry).
+    await redis.expire(indexKey(parentId), Math.floor(REFRESH_TTL_MS / 1000));
     return token;
+  };
+
+  /**
+   * Retire one refresh token: drop the live key, mark the hash consumed (reuse detection), and remove
+   * it from its parent's index (#57 — a logout or a naturally expired token used to leave the hash in
+   * the SET forever). `parentId` comes from the live record when it is still there; a token whose
+   * record is already gone needs no index work.
+   */
+  const retireRefreshToken = async (hash: string, parentId: string | null): Promise<void> => {
+    const redis = getRedis();
+    await redis.del(liveKey(hash));
+    await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    if (parentId) await redis.srem(indexKey(parentId), hash);
   };
 
   /** Revoke every refresh token of a parent (password reset / MFA enable / logout-all / theft). */
@@ -242,14 +262,14 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const stored = JSON.parse(raw) as { parentId: string; expiresAt: number };
     if (stored.expiresAt < Date.now()) {
-      await redis.del(liveKey(hash));
+      // Expired-but-present (the key's TTL and the stored instant can disagree by a few seconds):
+      // retire it fully so the hash leaves the index too (#57).
+      await retireRefreshToken(hash, stored.parentId);
       return reply.code(401).send({ error: "invalid_refresh_token" });
     }
     // Rotation: mark the presented token consumed before issuing new credentials.
-    await redis.del(liveKey(hash));
-    await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    await retireRefreshToken(hash, stored.parentId);
     await redis.set(`refresh:owner:${hash}`, stored.parentId, "EX", Math.floor(REFRESH_TTL_MS / 1000));
-    await redis.srem(indexKey(stored.parentId), hash);
     const parent = await prisma.parent.findUnique({ where: { id: stored.parentId } });
     if (!parent) return reply.code(401).send({ error: "invalid_refresh_token" });
     const jti = randomBytes(16).toString("hex");
@@ -263,9 +283,12 @@ export async function authRoutes(app: FastifyInstance) {
     const parsed = z.object({ refreshToken: z.string().min(1) }).safeParse(req.body);
     if (parsed.success) {
       const hash = hashToken(parsed.data.refreshToken);
-      const redis = getRedis();
-      await redis.del(liveKey(hash));
-      await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+      // Read the owner BEFORE deleting the live key — it is the only place the parentId lives for a
+      // token that has never been rotated (#57).
+      const raw = await getRedis().get(liveKey(hash)).catch(() => null);
+      let parentId: string | null = null;
+      try { parentId = raw ? (JSON.parse(raw) as { parentId?: string }).parentId ?? null : null; } catch { parentId = null; }
+      await retireRefreshToken(hash, parentId);
     }
     return { ok: true };
   });
