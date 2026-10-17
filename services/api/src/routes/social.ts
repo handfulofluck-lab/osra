@@ -14,6 +14,8 @@ const ScanSchema = z.object({
   app: z.string().min(1),
   contact: z.string().default(""),
   text: z.string().min(1),
+  /** Plan 2.6: where the agent captured the text — screen (accessibility) or notification. */
+  source: z.enum(["screen", "notification"]).optional(),
 });
 
 const EventsQuerySchema = z.object({

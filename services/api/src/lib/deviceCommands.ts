@@ -31,6 +31,7 @@ export interface DeviceCommandMessage {
 /** How long a command stays claimable. Ringing a phone an hour late is worse than not ringing it. */
 export const COMMAND_TTL_SECONDS: Record<string, number> = {
   ring: 10 * 60,
+  stop_ring: 10 * 60,
   locate_now: 10 * 60,
   sos_clear: 60 * 60,
   rules_updated: 24 * 3600,

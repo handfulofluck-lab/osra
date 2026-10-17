@@ -52,4 +52,7 @@ interface WorkerEntryPoint {
 
     /** Parent-PIN store (ADR-0010). */
     fun parentPinStore(): com.familyshield.agent.security.ParentPinStore
+
+    /** Plan 2.6: the durable scan queue, for ScanFlushWorker. */
+    fun socialScanQueue(): com.familyshield.agent.social.SocialScanQueue
 }

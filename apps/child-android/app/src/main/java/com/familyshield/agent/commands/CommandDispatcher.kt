@@ -5,9 +5,6 @@ import android.app.NotificationManager
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -40,9 +37,6 @@ class CommandDispatcher @Inject constructor(
     private val deviceAdmin: com.familyshield.agent.security.DeviceAdminManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val ringLock = Any()
-    private var ringer: MediaPlayer? = null
-    private var ringJob: Job? = null
     private var windDownJob: Job? = null
 
     /** Executes the command [type] with its string [data] payload; unknown types are ignored. */
@@ -66,6 +60,7 @@ class CommandDispatcher @Inject constructor(
             "resume" -> unlock()
             "ring" -> ring()
             "sos_clear" -> sosClear()
+            "stop_ring" -> Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND)
             "rules_updated" -> scope.launch { rules.refresh() }
             "locate_now" -> locateNow()
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
@@ -133,13 +128,17 @@ class CommandDispatcher @Inject constructor(
     /**
      * Enables pause-the-internet (Feature #11): RuleRepository blocks every app except
      * alwaysAllowedApps and the overlay stays up until resume_internet.
-     * NOTE: the production path additionally routes all traffic through a VpnService
-     * sinkhole (vpn builder allowing only alwaysAllowedApps' traffic); the test build
-     * enforces via the overlay plus app blocking in the accessibility monitor.
+     * Plan 1.4: when the parent granted the VPN consent, the sinkhole also takes the default
+     * route and drops every packet that is not from an always-allowed app, so "paused" holds
+     * even for an app the accessibility monitor never sees (background sync, a game's own
+     * network stack). Without the consent the overlay plus app blocking is what enforces it.
      */
     private fun pauseInternet() {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
+        if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
+            runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
+        }
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -151,6 +150,9 @@ class CommandDispatcher @Inject constructor(
     private fun resumeInternet() {
         rules.setPausedInternet(false)
         com.familyshield.agent.enforcement.LockState.clear(context)
+        if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
+            runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_DNS) }
+        }
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -194,35 +196,14 @@ class CommandDispatcher @Inject constructor(
     }
 
     /** Rings the alarm stream at full volume until stopped or after 60 s. */
+    /** Plan 1.7: the ring is [Ringer] — max alarm volume, screen on, stop needs the parent PIN or a parent command. */
     private fun ring() {
-        synchronized(ringLock) { stopRingerLocked() }
-        val player = MediaPlayer()
-        try {
-            player.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build(),
-            )
-            player.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
-            player.isLooping = true
-            player.prepare()
-            player.start()
-        } catch (e: Exception) {
-            player.release()
-            return
-        }
-        synchronized(ringLock) { ringer = player }
-        ringJob = scope.launch {
-            delay(RING_DURATION_MS)
-            synchronized(ringLock) { stopRingerLocked() }
-        }
+        Ringer.start(context)
     }
 
     /** Stops any active ring and dismisses the SOS screen (parent-side sos_clear, Feature #14). */
     private fun sosClear() {
-        ringJob?.cancel()
-        synchronized(ringLock) { stopRingerLocked() }
+        Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND)
         // NOTE: single-task SosActivity re-delivers via onNewIntent and finishes on EXTRA_DISMISS.
         context.startActivity(
             Intent(context, SosActivity::class.java)
@@ -245,17 +226,9 @@ class CommandDispatcher @Inject constructor(
         }
     }
 
-    private fun stopRingerLocked() {
-        ringer?.let {
-            runCatching { it.stop() }
-            it.release()
-        }
-        ringer = null
-    }
 
     companion object {
         private const val TAG = "CommandDispatcher"
-        private const val RING_DURATION_MS = 60_000L
         private const val CHANNEL_COMMANDS = "commands"
         private const val WIND_DOWN_NOTIFICATION_ID = 42
         private const val MIN_MINUTES = 1

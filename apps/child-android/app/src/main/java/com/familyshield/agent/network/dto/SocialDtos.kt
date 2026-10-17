@@ -12,6 +12,8 @@ data class SocialScanDto(
     val contact: String? = null,
     /** Redacted message candidate (may be empty). */
     val text: String,
+    /** screen | notification (plan 2.6). */
+    val source: String = "screen",
 )
 
 /** One activity event for POST /v1/devices/<id>/activity (Feature #6/#29, server ActivityEvent). */

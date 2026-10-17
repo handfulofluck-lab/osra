@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
@@ -30,6 +32,18 @@
 
         <service android:name=".services.LocationService"
             android:foregroundServiceType="location" android:exported="false"/>
+        <!-- Plan 1.4: the local DNS sinkhole / pause-internet tunnel (ADR-0015). -->
+        <service android:name=".vpn.FilterVpnService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService"/>
+            </intent-filter>
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="parental-control web filter: local DNS sinkhole that enforces the family's web rules and pause-internet"/>
+        </service>
 
         <service android:name=".services.FirebaseMessagingSvc" android:exported="false">
             <intent-filter>
@@ -107,16 +121,26 @@
             </intent-filter>
         </activity>
 
+        <!-- Issue #87: no showWhenLocked - a block screen must not cover the keyguard's PIN pad. -->
         <activity android:name=".enforcement.BlockActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:showWhenLocked="true"
             android:turnScreenOn="true"/>
 
+        <!-- Issue #87: no showWhenLocked here. Drawing over the keyguard hid the bouncer and locked the
+             owner out of their own PIN; the activity defers to the keyguard instead (KeyguardPolicy).
+             The ring screen above keeps showWhenLocked on purpose: it must be visible while locked. -->
         <activity android:name=".commands.LockActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:showWhenLocked="true"
             android:turnScreenOn="true"/>
+        <!-- Plan 1.7: the ring screen — over the lock screen, screen on, PIN to stop. -->
+        <activity android:name=".commands.RingActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
     </application>
 </manifest>

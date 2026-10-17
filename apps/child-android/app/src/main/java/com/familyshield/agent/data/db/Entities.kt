@@ -42,3 +42,20 @@ data class CommsEventEntity(
     val bodyPreview: String? = null,
     val timestamp: Long,
 )
+
+/**
+ * Plan 2.6: a redacted social capture waiting to be scanned by the server. Rows survive a process
+ * kill, a reboot and an offline stretch; [attempts] counts failed POSTs so a poison row is dropped
+ * instead of blocking the queue (see [com.familyshield.agent.social.ScanQueuePolicy]).
+ */
+@Entity(tableName = "pending_scans")
+data class PendingScanEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val app: String,
+    val contact: String?,
+    val text: String,
+    /** screen | notification — where the text came from. */
+    val source: String,
+    val createdAt: Long,
+    val attempts: Int = 0,
+)

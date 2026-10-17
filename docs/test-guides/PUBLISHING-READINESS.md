@@ -26,7 +26,7 @@ Plus: on-device emulator smoke (see below) when the emulator image finishes down
 
 | Requirement | Status | Action |
 |---|---|---|
-| `targetSdk 34` | ✅ met | — |
+| `targetSdk 35` | ✅ met (child agent and parent app) | — |
 | Release signing (own keystore) | 🟡 **plumbed, key not yet issued** | `build.gradle.kts` reads `OSRA_UPLOAD_KEYSTORE`, `OSRA_UPLOAD_KEYSTORE_PASSWORD`, `OSRA_UPLOAD_KEY_ALIAS`, `OSRA_UPLOAD_KEY_PASSWORD` from `android/local.properties` or the environment; CI materialises the keystore from the `OSRA_UPLOAD_KEYSTORE_B64` secret and builds the **AAB** on every run (falls back to the debug key when unset). Maintainer action: `keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`, then `base64 -w0 upload.jks` into the secret. Also set `MAPS_API_KEY`. |
 | 16 KB page-size compatibility (Android 15+) | 🟡 AGP 8.4 / current NDK — verify with `zipalign`/`apkanalyzer` on the AAB | Run the Play pre-launch report; bump NDK if flagged. |
 | Privacy policy URL | ❌ missing | Host a policy covering: collected data (location, app usage, calls/SMS metadata, social snippets **encrypted**), COPPA/GDPR-K consent flow, retention, contact. |
