@@ -38,8 +38,16 @@ object ScanQueuePolicy {
         if (body.isEmpty()) return null
         val lower = body.lowercase()
         if (NOISE.any { lower == it || lower.startsWith(it) }) return null
+        // A collapsed group says "3 new messages" — a leading count defeats the literal NOISE list
+        // above (none of those entries starts with a digit), so the placeholder has to be matched as
+        // a shape. Without this, a summary becomes a scan row with the sender as the group and the
+        // count as the message (plan 2.6).
+        if (NOISE_PATTERN.matches(lower)) return null
         return contact to body
     }
+
+    /** "3 new messages", "12 new messages from Work" — the collapsed-notification placeholders. */
+    private val NOISE_PATTERN = Regex("^\\d+\\s+new messages?(\\s+from\\s+.+)?$")
 
     private val NOISE = listOf(
         "checking for new messages", "incoming voice call", "incoming video call", "ongoing voice call",

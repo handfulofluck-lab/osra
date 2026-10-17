@@ -1,0 +1,72 @@
+package com.familyshield.agent
+
+import java.io.File
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * ADR-0016 §5: the flavor split is a build-time fact, and it is exactly the kind of fact that
+ * regresses silently when someone "simplifies" a manifest. This reads the two manifests as text —
+ * the unit suite has no AGP model — and pins the difference that matters: the Play (main) manifest
+ * must not be able to receive a notification, and the Full manifest must register the listener.
+ */
+class FlavorManifestTest {
+
+    private fun manifest(relative: String): String {
+        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, relative)
+            if (candidate.isFile) return candidate.readText()
+            dir = dir.parentFile
+        }
+        throw AssertionError("could not find $relative from ${System.getProperty("user.dir")}")
+    }
+
+    private val mainManifest by lazy { manifest("app/src/main/AndroidManifest.xml") }
+    private val fullManifest by lazy { manifest("app/src/full/AndroidManifest.xml") }
+
+    @Test
+    fun `the shared manifest cannot receive a notification`() {
+        assertFalse(
+            "src/main must not declare the listener permission - the Play artefact would carry it",
+            mainManifest.contains("BIND_NOTIFICATION_LISTENER_SERVICE"),
+        )
+        assertFalse(
+            "src/main must not register a NotificationListenerService",
+            mainManifest.contains("android.service.notification.NotificationListenerService"),
+        )
+        assertFalse(
+            "the capture service class must not be referenced from src/main",
+            mainManifest.contains("NotificationCaptureService"),
+        )
+    }
+
+    @Test
+    fun `the full manifest declares the permission and registers the service`() {
+        assertTrue(fullManifest.contains("BIND_NOTIFICATION_LISTENER_SERVICE"))
+        assertTrue(fullManifest.contains("android.service.notification.NotificationListenerService"))
+        assertTrue(
+            "the registered class must be the one under src/full",
+            fullManifest.contains(".services.NotificationCaptureService"),
+        )
+        assertTrue(
+            "the service must require the system permission, not merely declare it",
+            fullManifest.contains("android:permission=\"android.permission.BIND_NOTIFICATION_LISTENER_SERVICE\""),
+        )
+    }
+
+    @Test
+    fun `the capture service source exists only in the full source set`() {
+        val fullSource = manifest("app/src/full/java/com/familyshield/agent/services/NotificationCaptureService.kt")
+        assertTrue(fullSource.contains("NotificationListenerService"))
+        val playSource = File(System.getProperty("user.dir"))
+        var dir: File? = playSource.absoluteFile
+        while (dir != null) {
+            if (File(dir, "app/src/main/java/com/familyshield/agent/services/NotificationCaptureService.kt").isFile) {
+                throw AssertionError("NotificationCaptureService must not exist in src/main (ADR-0016)")
+            }
+            dir = dir.parentFile
+        }
+    }
+}

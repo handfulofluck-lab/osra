@@ -11,6 +11,31 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — two distribution builds, and the notification listener exists only in Full (ADR-0016, plan 2.6 second half)
+- **`play` and `full` flavors.** `app/src/main/AndroidManifest.xml` declares neither
+  `BIND_NOTIFICATION_LISTENER_SERVICE` nor a listener, so the Play artefact cannot read notifications at
+  all; `app/src/full/AndroidManifest.xml` declares both and registers
+  `services.NotificationCaptureService`. The judgement stays single-copy in `main`
+  (`NotificationCapturePolicy`, shipped in part 1): the service is a thin adapter that maps a
+  `StatusBarNotification` to the policy's `Snapshot`, checks consent (ADR-0008 §3 — a revoked agent keeps
+  the listener bound but records nothing) and enqueues with `SOURCE_NOTIFICATION` into the existing scan
+  queue. The Play build keeps the accessibility **screen** path and says so in onboarding (ADR-0016 §4).
+- **`FlavorManifestTest`** pins the split from the text of both manifests plus the source location: the
+  Play manifest must not contain the permission, the action, or the class name, and the Full manifest must
+  require the system permission and register the class. A flavor split is exactly the kind of fact that
+  regresses silently when someone "simplifies" a manifest.
+- **Variant names are spelled out at every call site** — `ci.yml` (now `testPlayDebugUnitTest`,
+  `testFullDebugUnitTest`, `assemblePlayDebug`, `assembleFullDebug`, `assemblePlayRelease`), the TR-07
+  signing script (`assembleFullDebug`: hardware runs install the sideloaded build), `docs/TESTING.md`
+  (suite table and CI table) and `README.md`. No aliases: a missing variant is a build error, not a
+  silently different artefact.
+- **Part 1 fixed while wiring part 2:** `NotificationCapturePolicy` passed `List<String?>` where
+  `ScanQueuePolicy.fromNotification` takes `List<CharSequence?>`; the branch never compiled, so part 1 had
+  not been built since that call was written. The upcast is now explicit and commented.
+- **Not verified here:** the listener on hardware (grant the notification-access row in the Full build,
+  then send a WhatsApp message and see one row in the scan queue, not two for its group summary). The
+  unit suite covers the decision; the OS wiring is the hardware row.
+
 ### Security/safety — the lock no longer covers an OEM emergency dialer (issue #80, found by the Phase 1 gate)
 - **Cause.** `LockEnforcementPolicy`'s exemption list was written against AOSP names
   (`com.android.emergency`, `com.android.dialer`, `com.android.incallui`) and matched with
@@ -197,6 +222,41 @@ environment where it was written — see `docs/QA/` for the verification state.
 - Manifest: `FOREGROUND_SERVICE_SPECIAL_USE`, service type `specialUse` with the Play subtype text.
 - Tests: `DnsFilterPolicyTest`, `DnsMessageTest`, `IpPacketTest` (RFC 1035 / IPv4+IPv6 UDP codecs).
 - Docs: ADR-0015, TESTING §5c (hardware procedure), README feature line, ROADMAP 1.4.
+### Process — role split, release runbook, and work-state labels (`AGENTS.md` §1, §2, §6.5, §10; `docs/RELEASING.md`)
+- **The maintainer re-cut the roles on 2026-10-17.** `AGENTS.md` §1 now reads: **Kimi Code** is the
+  development lead — implements, **owns `main`** (the only merging agent) and **owns releases**; **Claude
+  (KCL lead)** owns architecture and constructive testing support (ADRs, design review, tests,
+  checklists); **Antigravity** is the testing lane (gates, falsifiable claims, hardware rows, `TR-*`
+  results); the **human maintainer** holds every account, purchase, entitlement and the final scope call.
+  The old table said Kimi "must not ship product fixes", which by afternoon described the opposite of
+  the job.
+- The principle the old document was built on is unchanged and re-expressed: **the author of a change is
+  never its only verifier.** §6.5 now makes that operational — the lead may merge, but not work
+  (including their own) that another lane has not verified, and the merge message must cite the
+  verifier, the `TR-*` row, the sha and the numbers.
+- **New `docs/RELEASING.md`** — the runbook for the responsibility that came with the role: entry
+  criteria (E1–E6), the nine release steps (freeze → version and changelog → clean build → prove the
+  artifacts → release record → merge with its verification line → tag → distribute → close), key custody,
+  withdrawal/rollback, hotfix, thirteen traps, and a copy-paste checklist. It is written for the fact
+  that every artifact claim must rest on a gate run by another lane.
+- **New `AGENTS.md` §10 — work-state labels**, so nobody tests a half-finished tree or interrupts a run:
+  `state:wip` (the default for a draft PR), `state:ready-for-verification`, `state:verifying`,
+  `state:verified`, `state:changes-requested`, `state:needs-arch`, `state:blocked`. Read from a single
+  API call; a draft PR is WIP regardless of labels; a head commit younger than 10 minutes is treated as
+  in flux; silence is not readiness; and a label never grants the phone (that is the lease, §9).
+- **Cadence shortened deliberately, twice, and agreed with Claude's #84 rather than beside it:** the board
+  heartbeat is **every 15 minutes while a request is open** (60 minutes when nothing is open), one line
+  per agent in the host mailbox `status/`, and each pass is one API call unless something is labelled
+  ready. The labels — not the heartbeat — are the signal that a tree is testable: `state:wip` forbids
+  testing, reviewing and merging; `state:ready-for-verification` invites it. A head commit younger than
+  10 minutes is treated as in flux. The point of the labels is that the cheap check is also the accurate
+  one. **The floor is Claude's, not mine:** its scheduler allows a 60-minute check, so every OSRA ask
+  carries a default that proceeds at 60 minutes of silence; a shorter heartbeat on this side must never
+  turn into a blocked lane.
+- **Not verified here**: the role text and the runbook describe intent, not behaviour. The label
+  protocol is exercised by this PR itself (it carries `state:ready-for-verification`), and the release
+  steps have not been run end to end because no release is being cut.
+
 
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
