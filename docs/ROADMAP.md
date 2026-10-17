@@ -22,7 +22,7 @@ probe; a green unit suite does not open a gate.
 | Phase | Weeks | Gate | Items done | Status |
 |---|---|---|---|---|
 | 0 Stabilise | 1 | — | 4 / 5 | ✅ (branch pruning pending a go) |
-| 1 Android credibility | 2–8 | 10 bypasses fail on hardware | 0 / 9 (1.1–1.2 🔵) | 🔵 |
+| 1 Android credibility | 2–8 | 10 bypasses fail on hardware | 2 / 9 built + measured (1.1, 1.2 🟡 #76) | 🔵 |
 | 2 Backend as a product | 4–10 | probe 0 targets, push lands | 5 / 6 (2.5 🟡 verified on hardware, merging) | 🟡 |
 | 3 Parent app to store grade | 6–14 | parent pairs in 5 min | 0 / 9 | ⬜ |
 | 4 AI that earns the word | 8–16 | recall ≥ 0.85 EN+AR | 0 / 5 | ⬜ |
@@ -46,8 +46,8 @@ the lead's time until its gate passes.
 
 | # | Item | Acceptance | Status · evidence |
 |---|---|---|---|
-| 1.1 | Device Admin receiver + uninstall block + parent PIN to disable; Accessibility detects Settings/uninstall/force-stop screens and overlays them | `adb uninstall` and Settings › Uninstall both fail without PIN; alert within 60 s if admin revoked | 🔵 `feat/android-tamper-and-lock@99f6d1e` — receiver, PBKDF2 PIN, tamper tiers, encrypted store written (ADR-0010 draft), **not wired yet** |
-| 1.2 | Remove the unauthenticated Re-pair; require parent PIN or server-issued unpair | no path from the child UI clears pairing | 🔵 same branch |
+| 1.1 | Device Admin receiver + uninstall block + parent PIN to disable; Accessibility detects Settings/uninstall/force-stop screens and overlays them | `adb uninstall` and Settings › Uninstall both fail without PIN; alert within 60 s if admin revoked | 🟡 **#76** (ADR-0010): measured on the Flip4 — `adb uninstall` → `DELETE_FAILED_DEVICE_POLICY_MANAGER`; App info → PIN gate + alert; admin deactivated via Settings → alert in **3.3 s**. Waiting on a tester (TR-10) and the merge chain |
+| 1.2 | Remove the unauthenticated Re-pair; require parent PIN or server-issued unpair | no path from the child UI clears pairing | 🟡 **#76**: Re-pair and Remove-protection open the PIN gate; verified on the Flip4 (TR-10) |
 | 1.3 | Lock that holds: lock-task mode (or device-owner `lockNow`), state persisted, re-applied on boot, overlay permission in onboarding | lock survives Recents swipe and reboot | ⬜ |
 | 1.4 | Local `VpnService` DNS/SNI sinkhole: pause-internet, category blocklist, SafeSearch via DNS CNAME, YouTube restricted via DNS | blocked domain fails in Chrome, Firefox and an in-app WebView; pause cuts all traffic | ⬜ |
 | 1.5 | Real FCM: `google-services.json`, gms plugin, data messages for commands; poll stays as fallback | lock lands in < 5 s with the app backgrounded | ⬜ (server side done in 2.1: `src/lib/push/notify.ts`) |
@@ -112,7 +112,7 @@ warning accepted). Both flavors land with 1.8.
 ## Needs the maintainer (open)
 
 - Phase 0.5: a go to delete the merged branches.
-- Merges: #70, #72, #65 → #73 → #74 (the lead's merge write on its own PRs is blocked; the maintainer merges).
+- Merges: #70, #72, #75, then #65 → #73 → #74 → #76 (the lead's merge write on its own PRs is blocked; the maintainer merges).
 - Phase 4.1: `DEEPSEEK_API_KEY` as a repository Actions secret.
 - Phase 5.1: Apple Family Controls distribution entitlement request.
 - Phase 5.4: the code-signing certificate purchase (approved; needs the purchase).
