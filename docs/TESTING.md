@@ -142,6 +142,39 @@ whose owning row no longer exists; it **never** touches a `revoked:device:*` key
 still exists, because that key is the control that makes an unpaired device's 10-year JWT get `401`
 (issue #56). Any key it reports as kept, keep.
 
+## 5a. Tamper protection on hardware (ADR-0010, plan 1.1/1.2)
+
+With the agent paired and a parent PIN set (the pairing flow asks for it), activate Device Admin from the
+status screen (or, for a test, `adb shell dpm set-active-admin com.familyshield.agent/.security.FamilyShieldDeviceAdmin`).
+Then prove each line of the acceptance:
+
+```bash
+adb uninstall com.familyshield.agent          # must FAIL: Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]
+adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.familyshield.agent
+#   -> within ~1 s the OSRA "Protected" PIN screen is on top (uiautomator dump shows "Parent PIN");
+#      the API log shows POST /v1/alerts/internal 201 (category tamper, type protection_screen_opened)
+# Revoke admin the only way the OS allows (the shell refuses: `dpm remove-active-admin` throws
+# "Attempt to remove non-test admin" on Android 14+): enter the PIN once on the guard to open a grace
+# window, then Settings > Device admin apps > OSRA parental controls > Deactivate > OK
+#   -> POST /v1/alerts/internal 201 (type device_admin_removed) within 60 s (3.3 s on the Flip4);
+#      the status screen shows "alert-only" and `adb uninstall` works again
+```
+
+**Lock that holds (plan 1.3):** with the agent paired and "display over other apps" allowed, send a `lock`
+(parent app, or `POST /v1/devices/:id/command {"type":"lock"}`); the overlay appears. Then
+`adb shell input keyevent 3` (Home) and `adb shell input keyevent 187` (Recents) → the overlay is back on top
+within ~1 s each time (`dumpsys activity activities | grep topResumed` → `LockActivity`). Then `adb reboot`,
+wait for boot, unlock the phone → the overlay is on top again. `unlock` clears it and it stays cleared.
+Measured on the Flip4 (TR-13): Home 2.1 s, Recents 1.2 s, Settings 2.1 s, Chrome 2.2 s; after the reboot the
+overlay started 6.9 s after `BOOT_COMPLETED` (`logcat | grep "START u0 .*LockActivity"` shows
+`BAL_ALLOW_SAW_PERMISSION` — the overlay permission is what lets the boot receiver raise it). On a phone with
+a secure lock screen nothing of ours runs before the **first unlock** (Direct Boot), so "after boot" means
+"after the first unlock"; do not queue the `unlock` command while the phone is still locked, or the poll
+that catches up after boot clears the overlay in the same second it appears.
+
+Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
+The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a

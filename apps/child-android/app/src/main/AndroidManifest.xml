@@ -37,6 +37,21 @@
             </intent-filter>
         </service>
 
+        <!-- ADR-0010: Device Admin — enables remote lock and uninstall protection (behind the parent PIN). -->
+        <receiver
+            android:name=".security.FamilyShieldDeviceAdmin"
+            android:label="@string/device_admin_label"
+            android:description="@string/device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <receiver android:name=".receivers.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
@@ -75,6 +90,13 @@
             android:launchMode="singleTask"
             android:showWhenLocked="true"
             android:turnScreenOn="true"/>
+
+        <!-- ADR-0010: parent-PIN gate shown over the OS screens that remove protection. -->
+        <activity android:name=".security.TamperGuardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
 
         <activity android:name=".setup.PairingActivity"
             android:exported="true"

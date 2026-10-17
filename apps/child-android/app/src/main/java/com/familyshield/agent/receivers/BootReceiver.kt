@@ -14,5 +14,16 @@ class BootReceiver : BroadcastReceiver() {
         ContextCompat.startForegroundService(ctx, Intent(ctx, LocationService::class.java))
         WorkScheduler.scheduleAll(ctx)
         PendingPingWorker.schedule(ctx)
+        // Plan 1.3: a lock/pause the parent set before the reboot is still in force after it.
+        val mode = com.familyshield.agent.enforcement.LockState.mode(ctx)
+        if (com.familyshield.agent.enforcement.LockEnforcementPolicy.isLockingMode(mode)) {
+            runCatching {
+                ctx.startActivity(
+                    Intent(ctx, com.familyshield.agent.commands.LockActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra(com.familyshield.agent.commands.LockActivity.EXTRA_MODE, mode),
+                )
+            }
+        }
     }
 }

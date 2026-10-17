@@ -11,6 +11,29 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
+- **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
+  `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies
+  `force-lock` + `watch-login`). The status screen shows the protection tier (owner / admin /
+  alert-only) and offers activation when it is missing.
+- **No child-side path clears pairing any more:** Re-pair and the new Remove-protection button open the
+  PIN gate (`TamperGuardActivity`) first; five wrong PINs or Back go to the launcher.
+- **The accessibility service guards the three OS screens** that strip protection — Settings ›
+  deactivate device admin, the package installer's uninstall dialog, App info for this package
+  (`TamperScreenPolicy`, pure + JVM-tested for AOSP/Google/Samsung wording). It presses Back, raises
+  the PIN gate and sends the parent a `tamper` alert (`protection_screen_opened`). A verified PIN
+  grants a 2-minute grace window.
+- **Admin removal reaches the parent within seconds:** `onDisabled` enqueues an expedited
+  `TamperAlertWorker` (`device_admin_removed`); the 60-s loop in `LocationService` is the backstop and
+  also alerts on a tier drop. A removal done by the parent through the app (PIN) is sanctioned and silent.
+- `lock` now calls `DevicePolicyManager.lockNow()` on admin/owner and still shows the overlay.
+- **Lock that holds (plan 1.3):** the lock/pause mode is persisted (`LockState`); the accessibility
+  service re-raises the overlay over any other window while it is active (phone calls, emergency dialer
+  and the system UI excepted — `LockEnforcementPolicy`, JVM-tested); `BootReceiver` re-applies it after
+  a restart; onboarding and the status screen ask for "display over other apps" explicitly.
+- Tests: `ParentPinTest`, `TamperPolicyTest`, `TamperScreenPolicyTest` (JVM). Hardware acceptance per
+  `docs/TESTING.md` §5a — ⚠️ recorded on the board as **TR-10** when run; not claimed here until then.
+
 ### Security — legacy v1 agent signatures are now refused by default (`INTERNAL_SIGNING_ALLOW_V1` opt-in)
 - `allowLegacyV1()` returns true only for `INTERNAL_SIGNING_ALLOW_V1=1` (was: anything but `0`). Body-only
   signatures from a per-device secret get `401 legacy_signature_disabled` unless an operator opts in for a

@@ -20,6 +20,11 @@ import androidx.lifecycle.lifecycleScope
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.network.ServerUrls
+import com.familyshield.agent.security.DeviceAdminManager
+import com.familyshield.agent.security.ParentPin
+import com.familyshield.agent.security.ParentPinStore
+import com.familyshield.agent.security.ProtectionTier
+import com.familyshield.agent.security.TamperGuardActivity
 import com.familyshield.agent.services.LocationService
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.concurrent.TimeUnit
@@ -43,6 +48,22 @@ import org.json.JSONObject
 class PairingActivity : ComponentActivity() {
 
     @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var pinStore: ParentPinStore
+    @Inject lateinit var deviceAdmin: DeviceAdminManager
+
+    /** ADR-0010: the OS "activate device admin" screen; whatever the answer, continue to the status screen. */
+    private val deviceAdminLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        deviceAdmin.applyUninstallProtection()
+        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+    }
+
+    /** ADR-0010: parent-PIN gate for Re-pair / Remove protection; RESULT_OK means the PIN was verified. */
+    private var pendingGuardedAction: (() -> Unit)? = null
+    private val guardLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val action = pendingGuardedAction
+        pendingGuardedAction = null
+        if (result.resultCode == RESULT_OK) action?.invoke()
+    }
 
     // NOTE: READ_CALL_LOG/READ_SMS are dangerous permissions; the request is optional (the agent
     // stays in log-only skip mode without them) so pairing never blocks on it.
@@ -143,7 +164,9 @@ class PairingActivity : ComponentActivity() {
                     result.onSuccess { pairing ->
                         settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)
                         startAgent()
-                        showComplete()
+                        // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
+                        // that gates every protection-removal action from here on.
+                        if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
                     }.onFailure { e ->
                         error.text = userMessage(e)
                         error.visibility = View.VISIBLE
@@ -158,6 +181,85 @@ class PairingActivity : ComponentActivity() {
             addView(progress)
             addView(error)
         }
+    }
+
+    /** ADR-0010 step 1: the parent chooses the PIN (4–8 digits, not a weak one). */
+    private fun showSetPin() {
+        replaceWith {
+            addView(label("Paired. Now set the parent PIN · أسرة"))
+            addView(
+                label(
+                    "This PIN is asked for whenever someone tries to remove OSRA's protection on this device " +
+                        "(turn off device admin, uninstall, re-pair). Keep it to yourself — your child must not know it.",
+                ),
+            )
+            val pin = editText("", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply {
+                hint = "4–8 digits"
+                filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
+            }
+            val again = editText("", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply {
+                hint = "Repeat the PIN"
+                filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
+            }
+            val error = TextView(this@PairingActivity).apply { setTextColor(0xFFB00020.toInt()); visibility = View.GONE }
+            addView(labeled("Parent PIN", pin))
+            addView(labeled("Repeat", again))
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = "Save PIN"
+                    setOnClickListener {
+                        val p = pin.text.toString()
+                        val reason = ParentPin.validationError(p) ?: if (p != again.text.toString()) "The two PINs differ." else null
+                        if (reason != null) {
+                            error.text = reason
+                            error.visibility = View.VISIBLE
+                            return@setOnClickListener
+                        }
+                        pinStore.set(p)
+                        showProtectionSetup()
+                    }
+                },
+            )
+            addView(error)
+        }
+    }
+
+    /** ADR-0010 step 2: activate Device Admin (uninstall needs the PIN from then on; remote lock works). */
+    private fun showProtectionSetup() {
+        if (deviceAdmin.isAdminActive()) {
+            deviceAdmin.applyUninstallProtection()
+            showComplete()
+            return
+        }
+        replaceWith {
+            addView(label("Protect this device · أسرة"))
+            addView(
+                label(
+                    "On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app " +
+                        "cannot be uninstalled without the parent PIN and your parent can lock the device remotely. " +
+                        "Without it, protection is alert-only.",
+                ),
+            )
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = "Activate device admin"
+                    setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+                },
+            )
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = "Skip for now (alert-only protection)"
+                    setOnClickListener { showComplete() }
+                },
+            )
+        }
+    }
+
+    /** Runs [action] only after the parent PIN is verified on the guard screen; no PIN yet → runs at once. */
+    private fun requirePin(reason: String, action: () -> Unit) {
+        if (!pinStore.isConfigured()) { action(); return }
+        pendingGuardedAction = action
+        guardLauncher.launch(Intent(this, TamperGuardActivity::class.java).putExtra(TamperGuardActivity.EXTRA_REASON, reason))
     }
 
     private fun showComplete() {
@@ -204,7 +306,34 @@ class PairingActivity : ComponentActivity() {
                     setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                 },
             )
+            addOverlayPermissionRow(this)
         }
+    }
+
+    /**
+     * Plan 1.3: the lock/pause overlay (and the PIN gate) can only be raised over other apps once
+     * "display over other apps" is granted; onboarding asks for it explicitly instead of hoping.
+     */
+    private fun addOverlayPermissionRow(container: LinearLayout) {
+        if (Settings.canDrawOverlays(this)) {
+            container.addView(label("✓ Display over other apps: allowed (lock screen can be shown)"))
+            return
+        }
+        container.addView(
+            label("⚠️ Allow OSRA to display over other apps — without it the lock and pause screens cannot be shown.").apply {
+                setTextColor(0xFFB00020.toInt())
+            },
+        )
+        container.addView(
+            Button(this).apply {
+                text = "Allow display over other apps"
+                setOnClickListener {
+                    startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")),
+                    )
+                }
+            },
+        )
     }
 
     private fun showStatus() {
@@ -222,9 +351,35 @@ class PairingActivity : ComponentActivity() {
 
             val isRunning = LocationService.isServiceRunning
 
+            val tier = deviceAdmin.tier()
             replaceWith {
                 addView(label("This device is paired · أسرة"))
                 addView(label("Child: $childId\nDevice: $deviceId\nServer: $server"))
+                addView(
+                    label(
+                        when (tier) {
+                            ProtectionTier.OWNER -> "\n✓ Protection: device owner (uninstall blocked by the OS)"
+                            ProtectionTier.ADMIN -> "\n✓ Protection: device admin (uninstall needs the parent PIN)"
+                            ProtectionTier.NONE -> "\n⚠️ Protection: alert-only — device admin is not active"
+                        },
+                    ).apply { setTextColor(if (tier == ProtectionTier.NONE) 0xFFB00020.toInt() else 0xFF2E7D32.toInt()) },
+                )
+                if (tier == ProtectionTier.NONE) {
+                    addView(
+                        Button(this@PairingActivity).apply {
+                            text = "Activate device admin"
+                            setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+                        },
+                    )
+                }
+                if (!pinStore.isConfigured()) {
+                    addView(
+                        Button(this@PairingActivity).apply {
+                            text = "Set parent PIN"
+                            setOnClickListener { showSetPin() }
+                        },
+                    )
+                }
 
                 if (!hasLocation) {
                     addView(
@@ -270,13 +425,30 @@ class PairingActivity : ComponentActivity() {
                         setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 )
+                addOverlayPermissionRow(this)
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = "Re-pair"
+                        text = "Re-pair (parent PIN)"
                         setOnClickListener {
-                            lifecycleScope.launch {
-                                settings.clearPairing()
-                                showForm()
+                            requirePin(TamperGuardActivity.REASON_REPAIR) {
+                                lifecycleScope.launch {
+                                    settings.clearPairing()
+                                    showForm()
+                                }
+                            }
+                        }
+                    },
+                )
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = "Remove protection (parent PIN)"
+                        setOnClickListener {
+                            requirePin(TamperGuardActivity.REASON_REMOVE) {
+                                deviceAdmin.removeAdmin()
+                                lifecycleScope.launch {
+                                    kotlinx.coroutines.delay(300)
+                                    showStatus()
+                                }
                             }
                         }
                     },

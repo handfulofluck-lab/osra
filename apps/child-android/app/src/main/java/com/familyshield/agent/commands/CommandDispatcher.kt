@@ -37,6 +37,7 @@ class CommandDispatcher @Inject constructor(
     private val rules: RuleRepository,
     private val devicePolicyManager: DevicePolicyManager,
     private val consent: ConsentState,
+    private val deviceAdmin: com.familyshield.agent.security.DeviceAdminManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val ringLock = Any()
@@ -96,19 +97,20 @@ class CommandDispatcher @Inject constructor(
 
     /** Locks the device immediately when device owner, otherwise shows the full-screen overlay. */
     private fun lock() {
-        if (devicePolicyManager.isDeviceOwnerApp(context.packageName)) {
-            devicePolicyManager.lockNow()
-        } else {
-            context.startActivity(
-                Intent(context, LockActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_LOCKED),
-            )
-        }
+        // ADR-0010: a real screen lock when admin/owner permits it; the overlay stays up either way
+        // so the child sees the "locked by your parent" screen and cannot swipe back to their apps.
+        com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_LOCKED)
+        deviceAdmin.lockNow()
+        context.startActivity(
+            Intent(context, LockActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_LOCKED),
+        )
     }
 
     /** Shows the paused overlay (never device-owner lockNow — pause must be resumable via "resume"). */
     private fun pause() {
+        com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED)
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -120,6 +122,7 @@ class CommandDispatcher @Inject constructor(
     private fun unlock() {
         windDownJob?.cancel()
         windDownJob = null
+        com.familyshield.agent.enforcement.LockState.clear(context)
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -136,6 +139,7 @@ class CommandDispatcher @Inject constructor(
      */
     private fun pauseInternet() {
         rules.setPausedInternet(true)
+        com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -146,6 +150,7 @@ class CommandDispatcher @Inject constructor(
     /** Clears pause-the-internet and dismisses the paused-internet overlay (single-task onNewIntent). */
     private fun resumeInternet() {
         rules.setPausedInternet(false)
+        com.familyshield.agent.enforcement.LockState.clear(context)
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
