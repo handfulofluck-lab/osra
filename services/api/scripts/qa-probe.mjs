@@ -168,8 +168,10 @@ const crossGeofence = await call("POST", "/v1/location/geofences", {
 });
 check("B4 geofence on other family's child (403/404)", [403, 404].includes(crossGeofence.status), `got ${crossGeofence.status}`);
 
-const crossReports = await call("GET", `/v1/reports/usage/${kidA}?days=7`, { token: tokenB });
+const crossReports = await call("GET", `/v1/reports/usage?childId=${kidA}&days=7`, { token: tokenB });
 check("B5 usage report for other family's child (403/404)", [403, 404].includes(crossReports.status), `got ${crossReports.status}`);
+const crossWeb = await call("GET", `/v1/reports/web?childId=${kidA}&days=7`, { token: tokenB });
+check("B5b browsing history for other family's child (403/404)", [403, 404].includes(crossWeb.status), `got ${crossWeb.status}`);
 
 const crossWellbeing = await call("GET", `/v1/reports/wellbeing/${kidA}`, { token: tokenB });
 check("B6 wellbeing for other family's child (403/404)", [403, 404].includes(crossWellbeing.status), `got ${crossWellbeing.status}`);
@@ -595,6 +597,45 @@ console.log("\n── L. realtime ──");
   const reuse = await openSocket(ticketA ?? "missing");
   const reuseClosed = await reuse.until(() => reuse.close() !== null, 5000);
   check("L5 a consumed ticket cannot open a second socket (4001, no ready)", reuseClosed && reuse.close() === 4001 && reuse.frames.length === 0, `close=${reuse.close()} frames=${reuse.frames.length}`);
+}
+
+// ── M. usage model + erasure cascade (Phase 2c, ADR-0013) ───────────────────
+console.log("\n── M. usage model & erasure ──");
+{
+  // Bounds on the new report routes.
+  const tooMany = await call("GET", `/v1/reports/usage?childId=${kidA}&days=400`, { token: tokenA });
+  const zero = await call("GET", `/v1/reports/usage?childId=${kidA}&days=0`, { token: tokenA });
+  const webBig = await call("GET", `/v1/reports/web?childId=${kidA}&limit=5000`, { token: tokenA });
+  const webDays = await call("GET", `/v1/reports/web?childId=${kidA}&days=91`, { token: tokenA });
+  check("M1 /reports/usage and /reports/web reject out-of-range days/limit (400)", [tooMany, zero, webBig, webDays].every((r) => r.status === 400), `got ${[tooMany, zero, webBig, webDays].map((r) => r.status).join("/")}`);
+  const own = await call("GET", `/v1/reports/usage?childId=${kidA}&days=3`, { token: tokenA });
+  check("M2 /reports/usage returns a 3-entry series for the owning parent", own.status === 200 && Array.isArray(own.data?.series) && own.data.series.length === 3 && own.data.series.every((d) => typeof d.minutes === "number"), `got ${own.status} len=${own.data?.series?.length}`);
+
+  // Erasure: a scratch child with a real paired device and ingested data, erased by its own parent.
+  const kidC = (await call("POST", "/v1/family/children", {
+    token: tokenA,
+    body: { displayName: `QA Erase ${stamp}`, birthYear: 2016, consent: { method: "sms_plus", jurisdiction: "US" } },
+  })).data?.child?.id;
+  const dC = kidC ? await pairDevice(kidC, "qa-erase-dev") : { status: 0 };
+  if (kidC && dC.token && dC.deviceId) {
+    await call("POST", `/v1/devices/${dC.deviceId}/activity`, { token: dC.token, body: { events: [
+      { type: "app_usage", payload: { app: "YouTube", minutes: 3 } },
+      { type: "url", payload: { url: "https://erase.example/p", blocked: false } },
+    ] } });
+    await call("POST", `/v1/devices/${dC.deviceId}/telemetry`, { token: dC.token, body: { totalMinutes: 3 } });
+    const crossErase = await call("DELETE", `/v1/family/children/${kidC}`, { token: tokenB });
+    check("M3 other family cannot erase a child (403/404), child still readable by its parent", [403, 404].includes(crossErase.status) && (await call("GET", `/v1/family/children/${kidC}`, { token: tokenA })).status === 200, `got ${crossErase.status}`);
+    const erase = await call("DELETE", `/v1/family/children/${kidC}`, { token: tokenA });
+    check("M4 own erasure returns deleted devices + per-table counts incl. activity/web/usage rows", erase.status === 200 && erase.data?.deletedDevices?.includes(dC.deviceId) && erase.data?.rows?.activityEvent >= 2 && erase.data?.rows?.webVisit >= 1 && erase.data?.rows?.appUsageDaily >= 2 && erase.data?.rows?.device >= 1, `got ${erase.status} ${JSON.stringify(erase.data?.rows ?? null)}`);
+    const afterDevice = await call("GET", `/v1/devices/${dC.deviceId}/commands`, { token: dC.token });
+    const afterPing = await call("POST", "/v1/location/ping", { token: dC.token, body: { childId: kidC, deviceId: dC.deviceId, lat: 1, lng: 2, accuracyM: 5 } });
+    check("M5 an erased child's device JWT is revoked on every route (401), not merely orphaned", afterDevice.status === 401 && afterPing.status === 401, `commands=${afterDevice.status} ping=${afterPing.status}`);
+    const gone = await call("GET", `/v1/family/children/${kidC}`, { token: tokenA });
+    const usageGone = await call("GET", `/v1/reports/usage?childId=${kidC}&days=1`, { token: tokenA });
+    check("M6 erased child is gone for its parent too (404 on child and on its reports)", gone.status === 404 && usageGone.status === 404, `child=${gone.status} usage=${usageGone.status}`);
+  } else {
+    check("M3-M6 erasure scratch child + device could not be created", false, `kidC=${kidC} claim=${dC.status}`);
+  }
 }
 
 // ── H. misc surface ─────────────────────────────────────────────────────────

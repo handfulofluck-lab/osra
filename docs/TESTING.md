@@ -50,6 +50,10 @@ INTERNAL_HMAC_SECRET=<from dist/start-backend.bat> VAULT_KEY=<same> node scripts
 INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                                        # must be 0 failed
 ```
 
+Also export `DATABASE_URL` in the shell that runs `e2e.mjs`: the erasure step then counts the child's
+rows in Postgres itself (must be 0 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the
+count was skipped. The probe does not need it.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |
@@ -60,6 +64,7 @@ INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                           
 | `RESEND_API_KEY`, `EMAIL_FROM` | Enables real email. Without them emails are logged (dev) or a warning is logged (production); invites then echo `acceptToken` in dev only. |
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR_UTC` (default 18), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
+| `ROLLUP_HOUR_UTC` (default 2), `RETENTION_DAYS` (default 90, floor 7), `ROLLUP_RETENTION_DAYS` (default 365) | Phase 2c nightly usage rollup + retention (ADR-0013); same `JOBS_ENABLED` switch. External cron: call `runUsageRollup()` from `src/jobs/usageRollup.ts`. |
 
 Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
 200 req/min rate limit and every later check reads `429` — wait 60 s between runs; it is the limiter,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireFamily, requireParent } from "../middleware/requireFamily.js";
 import { computeWellbeingScore, currentIsoWeek, summarizeChildActivity } from "../lib/activitySummary.js";
+import { usageSeries, webHistory } from "../lib/usageModel.js";
 
 const ActivityReportQuerySchema = z.object({
   childId: z.string().min(1),
@@ -15,6 +16,19 @@ const ActivityReportQuerySchema = z.object({
 const SummaryQuerySchema = z.object({
   childId: z.string().min(1),
   days: z.coerce.number().int().min(1).max(90).default(7),
+});
+
+const UsageQuerySchema = z.object({
+  childId: z.string().min(1),
+  days: z.coerce.number().int().min(1).max(366).default(7),
+});
+
+const WebQuerySchema = z.object({
+  childId: z.string().min(1),
+  days: z.coerce.number().int().min(1).max(90).default(7),
+  limit: z.coerce.number().int().min(1).max(1000).default(200),
+  blocked: z.enum(["true", "false"]).optional(),
+  domain: z.string().min(1).max(253).optional(),
 });
 
 const WellbeingQuerySchema = z.object({
@@ -47,6 +61,31 @@ export async function reportsRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const summary = await summarizeChildActivity(parsed.data.childId, parsed.data.days);
     return { childId: parsed.data.childId, days: parsed.data.days, ...summary };
+  });
+
+  /**
+   * Phase 2c: per-day screen time from the durable rollup (`AppUsageDaily`), oldest first, with the
+   * per-app split — the data behind the parent app's daily/weekly trend charts. Does not touch Redis.
+   */
+  app.get("/usage", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
+    const parsed = UsageQuerySchema.safeParse(req.query ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const days = await usageSeries(parsed.data.childId, parsed.data.days);
+    return {
+      childId: parsed.data.childId,
+      days: parsed.data.days,
+      totalMinutes: days.reduce((n, d) => n + d.minutes, 0),
+      series: days,
+    };
+  });
+
+  /** Phase 2c: browsing history from `WebVisit`, newest first, filterable by blocked/domain. */
+  app.get("/web", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
+    const parsed = WebQuerySchema.safeParse(req.query ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const q = parsed.data;
+    const items = await webHistory(q.childId, q.days, q.limit, { blockedOnly: q.blocked === "true", domain: q.domain });
+    return { childId: q.childId, days: q.days, items };
   });
 
   /** Computed 0-100 wellbeing score for the trailing week, with penalty breakdown (#28). */

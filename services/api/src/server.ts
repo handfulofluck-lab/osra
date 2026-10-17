@@ -20,6 +20,7 @@ import { insightsRoutes } from "./routes/insights.js";
 import { meRoutes } from "./routes/me.js";
 import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
+import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { healthRoutes } from "./routes/health.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
@@ -124,3 +125,5 @@ const port = Number(process.env.PORT ?? 3000);
 await app.listen({ port, host: "0.0.0.0" });
 // Phase 2a: in-process digest scheduler (hourly tick; JOBS_ENABLED=0 disables, e.g. behind an external cron).
 startDigestScheduler();
+// Phase 2c: nightly usage rollup + retention (ADR-0013); same JOBS_ENABLED switch.
+startUsageRollupScheduler();

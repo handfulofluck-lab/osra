@@ -191,6 +191,8 @@ verified where it was written is stated as such. Details:
   protection (`J2`), consent revocation enforcement (`J3`), and the global-secret fallback for devices
   without a per-device secret (`J6`).
 - No push notifications in test builds (agents poll ~60 s); FCM/APNs is a roadmap item.
+- Raw activity, browsing, social and location rows are kept **90 days** (rollups one year) by a
+  nightly job — a global setting today, not per family (ADR-0013).
 - Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the production path. HTTPS
   inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`).
 - Test APKs are debug-signed; store signing, AABs, privacy policy and permission declarations are
