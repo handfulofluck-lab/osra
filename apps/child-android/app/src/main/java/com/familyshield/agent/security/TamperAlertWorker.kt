@@ -51,6 +51,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
     companion object {
         const val TYPE_ADMIN_REMOVED = "device_admin_removed"
         const val TYPE_GUARD_TRIGGERED = "protection_screen_opened"
+        const val TYPE_VPN_REVOKED = "content_filter_disconnected"
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
         private const val TAG = "TamperAlertWorker"
@@ -58,10 +59,12 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         private val TITLES = mapOf(
             TYPE_ADMIN_REMOVED to "Device admin was removed",
             TYPE_GUARD_TRIGGERED to "Someone tried to remove protection",
+            TYPE_VPN_REVOKED to "Content filter was disconnected",
         )
         private val BODIES = mapOf(
             TYPE_ADMIN_REMOVED to "OSRA's device-admin rights were turned off on this device. Uninstall is no longer blocked.",
             TYPE_GUARD_TRIGGERED to "A protection-removal screen was opened on this device and the PIN was asked for.",
+            TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
         )
 
         /** Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the first. */

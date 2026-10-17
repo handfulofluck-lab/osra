@@ -48,6 +48,8 @@ data class WebFilterRuleDto(
     val allowedDomains: List<String> = emptyList(),
     val blockedDomains: List<String> = emptyList(),
     val safeSearchEnforced: Boolean = false,
+    /** "strict" | "moderate" | "off" (API default "strict"); enforced by the DNS sinkhole (plan 1.4). */
+    val youtubeRestrictedMode: String = "strict",
 )
 
 /**

@@ -59,4 +59,14 @@ class TamperScreenPolicyTest {
         assertFalse(TamperScreenPolicy.shouldGuard(TamperScreen.NONE, pinConfigured = true, graceUntilMs = 0L, nowMs = now))
         assertTrue(TamperScreenPolicy.shouldGuard(TamperScreen.DEACTIVATE_ADMIN, pinConfigured = true, graceUntilMs = now, nowMs = now))
     }
+
+    @Test
+    fun `the Private DNS provider dialog is PRIVATE_DNS even though it does not name us`() {
+        assertEquals(TamperScreen.PRIVATE_DNS, classify("com.android.settings", "Private DNS", "Off", "Automatic", "Private DNS provider hostname", "Save"))
+        assertEquals(TamperScreen.PRIVATE_DNS, classify("com.android.settings", "Select Private DNS Mode", "Private DNS provider hostname", "dns.google"))
+        // the Network settings list that merely mentions Private DNS as a row is not the dialog
+        assertEquals(TamperScreen.NONE, classify("com.android.settings", "Connections", "Wi-Fi", "Private DNS", "Automatic"))
+        // and only Settings hosts it
+        assertEquals(TamperScreen.NONE, classify("com.android.chrome", "Private DNS provider hostname"))
+    }
 }

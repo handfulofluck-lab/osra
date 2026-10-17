@@ -65,7 +65,9 @@ Default-on 13-category web/app protection · pause internet one-tap · WhatsApp/
 monitoring with encrypted snippet vault · calls & SMS timeline · contact allowlist ·
 install alerts with one-tap block · always-allowed apps · bonus time · wind-down · child
 SOS (phone quick-tile / PC hotkey) · multi-parent invites · tamper & VPN alerts · **Device Admin +
-parent PIN** (uninstall/re-pair/deactivate need the PIN; removal alerts the parent — ADR-0010) · usage
+parent PIN** (uninstall/re-pair/deactivate need the PIN; removal alerts the parent — ADR-0010) · **web
+filter on the phone** (local DNS sinkhole: blocked domains/categories, SafeSearch, YouTube Restricted,
+pause-internet drops all traffic — ADR-0015) · usage
 reports with charts · wellbeing score · live activity chip · app insights · digest
 preferences · conversation coach (EN/عربي) · routines · geofences · ring/lock/unlock ·
 MFA (optional TOTP) · refresh-token rotation with reuse detection.
@@ -124,7 +126,7 @@ cd services/api
 INTERNAL_HMAC_SECRET=<...> node scripts/qa-probe.mjs   # the merge gate
 INTERNAL_HMAC_SECRET=<...> VAULT_KEY=<...> node scripts/e2e.mjs
 cd ../parent-app && flutter test && flutter analyze
-cd ../child-android && ANDROID_HOME=... ./gradlew testDebugUnitTest
+cd ../child-android && ANDROID_HOME=... ./gradlew testPlayDebugUnitTest testFullDebugUnitTest
 cd ../agent-desktop && dotnet test tests/FamilyShield.Agent.Tests
 cd ../../services/ai-engine && pytest tests -q
 node scripts/check-workflows.mjs --strict   # a rejected workflow file means zero jobs run
@@ -199,7 +201,9 @@ verified where it was written is stated as such. Details:
   nightly job — a global setting today, not per family (ADR-0013).
 - Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the production path. HTTPS
   inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`).
-- Test APKs are debug-signed; store signing, AABs, privacy policy and permission declarations are
+- Release APKs are minified, HTTPS-only and signed with the upload key when `OSRA_UPLOAD_KEYSTORE*` is
+  set (debug key otherwise); the **debug** build is what pairs against LAN / `adb reverse` servers.
+  Store listing, AABs, privacy policy and permission declarations are
   tracked in [`docs/test-guides/PUBLISHING-READINESS.md`](docs/test-guides/PUBLISHING-READINESS.md).
 
 ## License

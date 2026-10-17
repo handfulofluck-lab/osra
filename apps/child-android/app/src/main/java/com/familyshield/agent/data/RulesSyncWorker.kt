@@ -24,6 +24,10 @@ class RulesSyncWorker(
             // categories; a pack fetch failure keeps the previously stored merged list.
             val blocked = rules?.webFilter?.blockedCategories ?: emptyList()
             entryPoint.blocklistStore().refresh(blocked)
+            // Plan 1.4: the sinkhole re-reads the web filter (domains, SafeSearch, YouTube mode) after every sync.
+            if (com.familyshield.agent.vpn.VpnState.isEnabled(applicationContext)) {
+                runCatching { com.familyshield.agent.vpn.FilterVpnService.reload(applicationContext) }
+            }
             Result.success()
         } catch (e: Exception) {
             if (runAttemptCount < 3) Result.retry() else Result.failure()
