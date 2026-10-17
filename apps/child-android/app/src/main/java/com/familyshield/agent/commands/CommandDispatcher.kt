@@ -133,13 +133,17 @@ class CommandDispatcher @Inject constructor(
     /**
      * Enables pause-the-internet (Feature #11): RuleRepository blocks every app except
      * alwaysAllowedApps and the overlay stays up until resume_internet.
-     * NOTE: the production path additionally routes all traffic through a VpnService
-     * sinkhole (vpn builder allowing only alwaysAllowedApps' traffic); the test build
-     * enforces via the overlay plus app blocking in the accessibility monitor.
+     * Plan 1.4: when the parent granted the VPN consent, the sinkhole also takes the default
+     * route and drops every packet that is not from an always-allowed app, so "paused" holds
+     * even for an app the accessibility monitor never sees (background sync, a game's own
+     * network stack). Without the consent the overlay plus app blocking is what enforces it.
      */
     private fun pauseInternet() {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
+        if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
+            runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
+        }
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -151,6 +155,9 @@ class CommandDispatcher @Inject constructor(
     private fun resumeInternet() {
         rules.setPausedInternet(false)
         com.familyshield.agent.enforcement.LockState.clear(context)
+        if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
+            runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_DNS) }
+        }
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

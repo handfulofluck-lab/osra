@@ -57,6 +57,15 @@ class PairingActivity : ComponentActivity() {
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
     }
 
+    /** Plan 1.4: the OS VPN consent dialog; on OK the sinkhole starts and comes back on every boot. */
+    private val vpnConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
+            com.familyshield.agent.vpn.FilterVpnService.start(this)
+        }
+        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+    }
+
     /** ADR-0010: parent-PIN gate for Re-pair / Remove protection; RESULT_OK means the PIN was verified. */
     private var pendingGuardedAction: (() -> Unit)? = null
     private val guardLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -307,6 +316,48 @@ class PairingActivity : ComponentActivity() {
                 },
             )
             addOverlayPermissionRow(this)
+            addWebFilterRow(this)
+        }
+    }
+
+    /**
+     * Plan 1.4: the web filter (DNS sinkhole) needs the one-time OS VPN consent. The row shows the
+     * state (consent missing / connected / disconnected) and offers the consent dialog or a reconnect.
+     */
+    private fun addWebFilterRow(container: LinearLayout) {
+        val prepare = android.net.VpnService.prepare(this)
+        if (prepare != null) {
+            container.addView(
+                label("⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).").apply {
+                    setTextColor(0xFFB00020.toInt())
+                },
+            )
+            container.addView(
+                Button(this).apply {
+                    text = "Set up web filter"
+                    setOnClickListener { vpnConsentLauncher.launch(prepare) }
+                },
+            )
+            return
+        }
+        if (!com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
+            com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
+        }
+        if (com.familyshield.agent.vpn.VpnState.isEstablished(this)) {
+            container.addView(label("✓ Web filter: connected (SafeSearch, blocked sites, pause-internet)"))
+        } else {
+            container.addView(
+                label("⚠️ Web filter: not connected").apply { setTextColor(0xFFB00020.toInt()) },
+            )
+            container.addView(
+                Button(this).apply {
+                    text = "Reconnect web filter"
+                    setOnClickListener {
+                        com.familyshield.agent.vpn.FilterVpnService.start(this@PairingActivity)
+                        lifecycleScope.launch { kotlinx.coroutines.delay(800); if (settings.isPaired()) showStatus() }
+                    }
+                },
+            )
         }
     }
 
@@ -426,6 +477,7 @@ class PairingActivity : ComponentActivity() {
                     },
                 )
                 addOverlayPermissionRow(this)
+                addWebFilterRow(this)
                 addView(
                     Button(this@PairingActivity).apply {
                         text = "Re-pair (parent PIN)"

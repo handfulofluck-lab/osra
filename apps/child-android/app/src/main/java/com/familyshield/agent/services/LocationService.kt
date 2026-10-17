@@ -313,6 +313,8 @@ class LocationService : Service() {
         val cm = getSystemService(ConnectivityManager::class.java) ?: return
         val caps = cm.getNetworkCapabilities(cm.activeNetwork)
         if (!VpnDetectPolicy.hasVpnTransport(caps)) return
+        // Plan 1.4: Android runs one VPN at a time — while our own sinkhole holds the slot, the transport is ours.
+        if (com.familyshield.agent.vpn.VpnState.isEstablished(this)) return
         if (!AlertThrottlePolicy.shouldAlert(settings.tamperAlertTimestamp(VpnDetectPolicy.TYPE), nowMs)) return
         val childId = settings.childId() ?: return
         runCatching {

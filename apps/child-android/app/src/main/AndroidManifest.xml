@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
@@ -30,6 +31,17 @@
 
         <service android:name=".services.LocationService"
             android:foregroundServiceType="location" android:exported="false"/>
+        <!-- Plan 1.4: the local DNS sinkhole / pause-internet tunnel (ADR-0015). -->
+        <service android:name=".vpn.FilterVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService"/>
+            </intent-filter>
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="parental-control web filter: local DNS sinkhole that enforces the family's web rules and pause-internet"/>
+        </service>
 
         <service android:name=".services.FirebaseMessagingSvc" android:exported="false">
             <intent-filter>

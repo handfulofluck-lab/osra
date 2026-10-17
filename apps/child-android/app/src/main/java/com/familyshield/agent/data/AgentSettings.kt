@@ -71,6 +71,12 @@ class AgentSettings @Inject constructor(
     /** Returns the persisted merged blocklist JSON, or null. */
     suspend fun blocklistJson(): String? = read(KEY_BLOCKLIST_JSON)
 
+    suspend fun saveBlocklistDomainsJson(json: String) {
+        store.edit { it[KEY_BLOCKLIST_DOMAINS_JSON] = json }
+    }
+
+    suspend fun blocklistDomainsJson(): String? = read(KEY_BLOCKLIST_DOMAINS_JSON)
+
     /**
      * Synchronous snapshot of the device JWT for interceptors.
      * // NOTE: blocking read once per process — interceptors cannot suspend. Without this, a cold
@@ -216,6 +222,7 @@ class AgentSettings @Inject constructor(
         private val KEY_HMAC_SECRET = stringPreferencesKey("hmac_secret")
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
+        private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")
         private val KEY_BASE_URL = stringPreferencesKey("base_url")
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
