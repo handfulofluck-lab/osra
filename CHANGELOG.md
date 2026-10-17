@@ -11,6 +11,18 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — WO-04: the branch-prune list for plan 0.5 (`docs/QA/BRANCH-PRUNE-2026-10-17.md`)
+- Every remote branch with the PR that carried it and whether its tip is an ancestor of `main`: **40 merged**
+  (39 with a PR, `ANTIGRAVITY` predating the workflow) and **3 not merged**. Recommendation: delete the 40,
+  keep `KCL` (plan provenance), `feat/android-dns-sinkhole` (open PR #78) and treat
+  `qa/verify-track12-2026-10-12` as a superseded second copy of a log entry `main` already has
+  (`DISCUSSION-LOG.md:978`).
+- **Nothing was deleted.** Plan 0.5 needs the maintainer's go, and the document exists so that go can be given
+  against a table instead of a guess; the delete command is one copy-paste block inside it.
+- Also in this PR: the trap row for the failure I hit today — a background build that reports a *plausible but
+  wrong* count after the working tree changed under it (`docs/TESTING.md` §6), with the sha check that catches it.
+
+
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
   `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies
