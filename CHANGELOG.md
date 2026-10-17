@@ -11,6 +11,16 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — SOS quick-settings tile did nothing on Android 14+ (found in TR-07 on hardware)
+- `SosTileService.onClick` used `TileService.startActivityAndCollapse(Intent)`, which Android 14 (API 34)
+  removed: the system delivered the tap (`TileLifecycleManager: onClick … SosTileService` in logcat) and
+  the SOS screen never opened — on every current phone, the child's SOS button was dead. Found on a
+  Galaxy Z Flip4 / Android 16 while running the TR-07 hardware half; the unit suite could not see it.
+- Fix: API 34+ hands the system a `PendingIntent` (`FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT`); API 26–33
+  keep the Intent overload. Verified on the Flip4: tile tap → `SosActivity` → SOS → `POST
+  /v1/alerts/internal` 201 (the TR-07 evidence). Not unit-tested — `TileService` behaviour is a
+  platform contract; the hardware run is the test and is recorded on the board.
+
 ### CI — `probe-integrity` job (follow-up to #68)
 - `scripts/check-probe-integrity.mjs` now runs on every pull request (`.github/workflows/ci.yml`, job
   `probe-integrity`, `--base origin/<base> --head HEAD`): a removed or demoted probe assertion fails
