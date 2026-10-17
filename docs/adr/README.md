@@ -25,6 +25,9 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0014](0014-signing-v2-sessions-and-family-roles.md) | Signing v2 (timestamp + nonce, service callers), revocable parent sessions, enforced family roles, MFA secret at rest | accepted |
 | [0015](0015-android-dns-sinkhole.md) | Android web filter as a local DNS sinkhole: DNS-only `VpnService`, SafeSearch/YouTube CNAME rewrites, pause-internet takes the default route, revocation is tamper | accepted |
 | [0016](0016-play-vs-full-flavors-and-notification-capture.md) | Two Android flavors (`play`, `full`): `NotificationListenerService` and its permission live in `full` only, decision logic shared in `main`, manifest difference tested | proposed |
+| [0017](0017-family-local-digest-time.md) | The weekly digest is sent at the family's local hour (`Family.timezone`, hourly wake, one send per week) | accepted |
+| [0018](0018-shared-test-api-ownership.md) | The shared `:3000` test API is owned by the lead, serves `main@HEAD`, and runs outside agent task trees | accepted |
+| [0019](0019-safe-direction-commands.md) | A command is safe-direction only if it can never start, extend or escalate a restriction | accepted |
 
 ## Writing a new ADR
 

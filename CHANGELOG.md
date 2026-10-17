@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — ADR-0017 family-local digest, ADR-0018 shared test API ownership, ADR-0019 safe-direction rule (2026-10-17)
+- Decisions only, no code. ADR-0017 is implemented in a later PR (plan 2.2 follow-up / 3.x); ADR-0018 settles the ownership half of #71; ADR-0019 records why `stop_ring` passes the consent gate and gives the rule for future commands.
+
 ### Android — two distribution builds, and the notification listener exists only in Full (ADR-0016, plan 2.6 second half)
 - **`play` and `full` flavors.** `app/src/main/AndroidManifest.xml` declares neither
   `BIND_NOTIFICATION_LISTENER_SERVICE` nor a listener, so the Play artefact cannot read notifications at
