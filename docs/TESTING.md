@@ -160,6 +160,12 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:c
 #      the status screen shows "alert-only" and `adb uninstall` works again
 ```
 
+**Lock that holds (plan 1.3):** with the agent paired and "display over other apps" allowed, send a `lock`
+(parent app, or `POST /v1/devices/:id/command {"type":"lock"}`); the overlay appears. Then
+`adb shell input keyevent 3` (Home) and `adb shell input keyevent 187` (Recents) → the overlay is back on top
+within ~1 s each time (`dumpsys activity activities | grep topResumed` → `LockActivity`). Then `adb reboot`,
+wait for boot, unlock the phone → the overlay is on top again. `unlock` clears it and it stays cleared.
+
 Re-pair from the status screen must show the PIN gate first; a wrong PIN five times returns to the launcher.
 The Remove-protection button (PIN verified) deactivates admin **without** a tamper alert — that is the parent.
 

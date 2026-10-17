@@ -306,7 +306,34 @@ class PairingActivity : ComponentActivity() {
                     setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                 },
             )
+            addOverlayPermissionRow(this)
         }
+    }
+
+    /**
+     * Plan 1.3: the lock/pause overlay (and the PIN gate) can only be raised over other apps once
+     * "display over other apps" is granted; onboarding asks for it explicitly instead of hoping.
+     */
+    private fun addOverlayPermissionRow(container: LinearLayout) {
+        if (Settings.canDrawOverlays(this)) {
+            container.addView(label("✓ Display over other apps: allowed (lock screen can be shown)"))
+            return
+        }
+        container.addView(
+            label("⚠️ Allow OSRA to display over other apps — without it the lock and pause screens cannot be shown.").apply {
+                setTextColor(0xFFB00020.toInt())
+            },
+        )
+        container.addView(
+            Button(this).apply {
+                text = "Allow display over other apps"
+                setOnClickListener {
+                    startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")),
+                    )
+                }
+            },
+        )
     }
 
     private fun showStatus() {
@@ -398,6 +425,7 @@ class PairingActivity : ComponentActivity() {
                         setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 )
+                addOverlayPermissionRow(this)
                 addView(
                     Button(this@PairingActivity).apply {
                         text = "Re-pair (parent PIN)"

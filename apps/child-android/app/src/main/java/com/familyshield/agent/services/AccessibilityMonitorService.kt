@@ -9,6 +9,8 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.enforcement.AppBlocker
+import com.familyshield.agent.enforcement.LockEnforcementPolicy
+import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
@@ -41,6 +43,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // ADR-0010 §3: the protection guard runs even while consent is paused — a paused agent is
         // still an installed one, and the parent must still hear about an uninstall attempt.
         guardProtectionScreens(event, pkg)
+        enforceLockState(pkg)
         // ADR-0008 §3: consent withdrawn — the service keeps polling (to learn about a re-grant) but
         // records, captures and enforces nothing.
         if (consentState.isPaused()) return
@@ -104,6 +107,26 @@ class AccessibilityMonitorService : AccessibilityService() {
                 .putExtra(TamperGuardActivity.EXTRA_REASON, TamperGuardActivity.REASON_SETTINGS),
         )
         TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_GUARD_TRIGGERED, "Screen: ${screen.name.lowercase()} in $pkg")
+    }
+
+    private var lastReraiseMs = 0L
+
+    /**
+     * Plan 1.3: a parent's lock/pause survives a swipe from Recents, a Home press and a reboot because
+     * the overlay is re-raised the moment any other window is in front while [LockState] is active
+     * (phone calls and the system UI excepted, see [LockEnforcementPolicy]).
+     */
+    private fun enforceLockState(pkg: String) {
+        val mode = LockState.mode(this)
+        if (!LockEnforcementPolicy.shouldReraise(mode, pkg, packageName)) return
+        val now = System.currentTimeMillis()
+        if (now - lastReraiseMs < LockEnforcementPolicy.RERAISE_DEBOUNCE_MS) return
+        lastReraiseMs = now
+        startActivity(
+            Intent(this, com.familyshield.agent.commands.LockActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(com.familyshield.agent.commands.LockActivity.EXTRA_MODE, mode),
+        )
     }
 
     private fun collectTexts(node: AccessibilityNodeInfo, out: MutableList<CharSequence?>, depth: Int) {

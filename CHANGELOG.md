@@ -27,6 +27,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   `TamperAlertWorker` (`device_admin_removed`); the 60-s loop in `LocationService` is the backstop and
   also alerts on a tier drop. A removal done by the parent through the app (PIN) is sanctioned and silent.
 - `lock` now calls `DevicePolicyManager.lockNow()` on admin/owner and still shows the overlay.
+- **Lock that holds (plan 1.3):** the lock/pause mode is persisted (`LockState`); the accessibility
+  service re-raises the overlay over any other window while it is active (phone calls, emergency dialer
+  and the system UI excepted — `LockEnforcementPolicy`, JVM-tested); `BootReceiver` re-applies it after
+  a restart; onboarding and the status screen ask for "display over other apps" explicitly.
 - Tests: `ParentPinTest`, `TamperPolicyTest`, `TamperScreenPolicyTest` (JVM). Hardware acceptance per
   `docs/TESTING.md` §5a — ⚠️ recorded on the board as **TR-10** when run; not claimed here until then.
 
