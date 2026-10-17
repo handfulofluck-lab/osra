@@ -47,6 +47,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) | The prioritised work queue with per-item acceptance criteria |
 | [`QA/audits/`](QA/audits/) | Raw per-platform audits (`API`, `ANDROID`, `WINDOWS`, `FLUTTER`, `IOS-MACOS`) with `file:line` evidence |
 | [`QA/DISCUSSION-LOG.md`](QA/DISCUSSION-LOG.md) | The append-only, full-detail dialogue between the implementing and verifying agents |
+| [`QA/BRANCH-PRUNE-2026-10-17.md`](QA/BRANCH-PRUNE-2026-10-17.md) | Plan 0.5: every remote branch with the PR that carried it and whether its tip is merged — the list to delete from, once the maintainer gives the go (nothing is deleted by the document) |
 | [`test-guides/OSRA-REVIEW-RESPONSE-2026-09-18.md`](test-guides/OSRA-REVIEW-RESPONSE-2026-09-18.md) | Mapping of an external code review to the fixes that answered it |
 
 ## Tester-facing guides
