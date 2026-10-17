@@ -64,6 +64,12 @@ environment where it was written — see `docs/QA/` for the verification state.
   Tests: four JVM cases, including a check that pins the policy's mode names to `LockActivity`'s constants
   so the rule cannot silently invert; 34 suites / 223 tests / 0 failures. Gate: probe row **S2**
   (`mCurrentFocus` must not be `LockActivity` with the keyguard up, run on the handset).
+- **The same defect was in the app-block screen, found by the S2 run itself.** `BlockActivity` carried the
+  same manifest attribute and window flag; on the handset, with the keyguard up, it was the block overlay
+  that stayed in front (the new `LockActivity` correctly never appeared). It now applies the same
+  `KeyguardPolicy` rule and drops `showWhenLocked`; a block screen has nothing to do while the phone is
+  locked, and covering the bouncer only hides the owner's PIN pad. `RingActivity` keeps `showWhenLocked`
+  on purpose — a parent-triggered ring must be visible while locked, and it is dismissible with the PIN.
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
   mitigated by `device_silent` plus parent-minted pairing.
 

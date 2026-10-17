@@ -12,7 +12,7 @@ class KeyguardPolicyTest {
 
     @Test
     fun `every locking mode defers while the keyguard is up`() {
-        for (mode in listOf("locked", "paused", "paused_internet", null, "")) {
+        for (mode in listOf("locked", "paused", "paused_internet", "blocked", null, "")) {
             assertTrue("$mode must defer", KeyguardPolicy.shouldDeferToKeyguard(mode, keyguardLocked = true))
         }
     }

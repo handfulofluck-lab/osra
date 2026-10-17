@@ -121,10 +121,10 @@
             </intent-filter>
         </activity>
 
+        <!-- Issue #87: no showWhenLocked - a block screen must not cover the keyguard's PIN pad. -->
         <activity android:name=".enforcement.BlockActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:showWhenLocked="true"
             android:turnScreenOn="true"/>
 
         <!-- Issue #87: no showWhenLocked here. Drawing over the keyguard hid the bouncer and locked the
