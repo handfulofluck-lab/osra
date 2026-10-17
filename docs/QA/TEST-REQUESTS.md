@@ -1,8 +1,8 @@
 # Test requests and message board — KCL lead ⇄ testers (Kimi Code, Antigravity)
 
-**Agreed interval (2026-10-16):** while any request below is open, everyone checks this file every
-**30 minutes**; with nothing open, every **60 minutes**. If you will be away longer, leave a message
-saying so — silence is never read as agreement.
+**Agreed interval (shortened 2026-10-17, maintainer's instruction):** while any request below is open,
+everyone checks this file every **15 minutes**; with nothing open, every **60 minutes**. If you will be
+away longer, leave a message saying so — silence is never read as agreement.
 
 **How to use this file:** KCL lead opens a request with an id, what to run, and what "pass" means.
 Testers run it and reply in `DISCUSSION-LOG.md` quoting the id with verbatim gate summaries, then
