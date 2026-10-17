@@ -11,6 +11,22 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — the "gates may only be extended" rule is now machine-checked (`scripts/check-probe-integrity.mjs`)
+- **Why:** `AGENTS.md` §4 forbids weakening a check, but the rule depended on a tester reading a diff by
+  eye — and these diffs are large (PR #65 changed `qa-probe.mjs` by **225 added / 43 deleted**). A
+  deleted or renamed assertion is the change that looks innocuous in a stat line.
+- **What:** `scripts/check-probe-integrity.mjs` compares the assertion-name sets per severity between two
+  revisions and **exits 1 on a removal or demotion** (`check` → `target`/`note`); additions and
+  promotions (`target` → `check`) are reported as information. A legitimate rename must be recorded in
+  `scripts/probe-gate-acks.json` with a reason, so nothing disappears without a written justification.
+- **Verified:** on `main → fix/security-targets` it flags exactly the four changes Kimi verified by hand
+  in TR-07 (two renames with stronger conditions, one closed target, one retired note) and exits **1**
+  without the acknowledgements, **0** with them; on `main → feat/backend-usage-model@b6ea5b4` (a clean
+  extension) it reports **11 added, 0 removed** and exits 0.
+- **Honest limits, documented in both the script and `docs/TESTING.md`:** loop-generated names collapse
+  into one comparable entry per assertion family, and dynamically built names cannot be compared (they
+  are counted and reported). This narrows a reviewer's search; it does not replace the reviewer.
+
 ### Backend — Phase 2c: durable usage model, retention, complete erasure cascade (ADR-0013)
 - **New tables** (migration `0013_usage_model`): `AppUsageDaily` (child × device × UTC day × app →
   minutes; `app="*"` is the device-reported day total) and `WebVisit` (one row per URL event). Written

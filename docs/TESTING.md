@@ -167,6 +167,31 @@ is green **including the new checks for the behaviour you changed**, e2e is gree
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
 
+### A PR that touches the probe must not narrow it — and that is now machine-checked
+
+`AGENTS.md` §4 forbids weakening a check to make a gate green, but until now the rule was only
+enforceable by a tester reading the diff by eye. That is not a control: PR #65 rewrote the signing
+helper and moved two targets to gates inside a **225-added / 43-deleted** change to
+`services/api/scripts/qa-probe.mjs`, and an assertion that quietly disappears looks exactly like an
+assertion that was renamed.
+
+```bash
+node scripts/check-probe-integrity.mjs                                  # origin/main -> working tree
+node scripts/check-probe-integrity.mjs --base origin/main --head origin/<branch>
+```
+
+It compares the **sets of assertion names per severity** (`check` gating, `target` tracked, `note`
+advisory) and fails on an **unacknowledged removal or demotion** (`check` -> `target`/`note`), while
+reporting additions and promotions (`target` -> `check`) as information. A legitimate rename is
+allowed but must be *written down* in `scripts/probe-gate-acks.json` with a reason — deliberate
+friction, so no assertion vanishes without a sentence saying why. Read that file's entries when you
+review the diff; each one cites who verified it and where.
+
+Two honest limits, so nobody over-trusts it: loop-generated assertion names collapse into one entry
+per family, so it detects *a family disappearing*, not *one iteration of it*; and dynamically built
+names cannot be compared at all (the script counts those and says so). It narrows a reviewer's search
+— it does not replace the reviewer.
+
 ### The live gates must run against a non-UTC database (issue #53)
 
 A clock or time-zone bug cannot show up when the author's database, API and test runner all sit in

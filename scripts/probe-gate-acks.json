@@ -1,0 +1,30 @@
+[
+  {
+    "kind": "check",
+    "name": "E4 signed-request replay rejected",
+    "reason": "Renamed and strengthened in TR-07 (#65): the assertion is now 'E4/J2 byte-identical signed request replayed -> 401 replay (nonce consumed)', which additionally requires reason === \"replay\" and that the first call was accepted. Verified by Kimi on 2026-10-17 at 085b438->921452d: probe 108/0 with the new name gating, and the old body-only behaviour is refused (J2 closed).",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-17"
+  },
+  {
+    "kind": "check",
+    "name": "J5 global secret cannot sign as a device that has its own secret",
+    "reason": "Renamed and strengthened in TR-07 (#65): now 'J5 bare global secret (v1, or v2 without a caller) cannot sign as a device that has its own secret', which asserts 401 for BOTH signer shapes (v1 and v2-without-caller) instead of one. Verified by Kimi 2026-10-17: 'v1=401 v2nocaller=401'.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-17"
+  },
+  {
+    "kind": "target",
+    "name": "J2 signed-request replay protection",
+    "reason": "Retired because the defect it tracked is fixed, not because it was inconvenient: replay protection now exists (timestamp + nonce, HMAC over ts.nonce.body), so the target's own text ('a byte-identical signed agent request is accepted twice') is no longer true. The gating check 'E4/J2 ... 401 replay (nonce consumed)' replaces it. Verified by Kimi 2026-10-17; tracked as issue #42, closed by TR-07.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-17"
+  },
+  {
+    "kind": "note",
+    "name": "E4 signed-request replay",
+    "reason": "Retired because the behaviour it observed is fixed: the note recorded 'accepted twice and created two alerts'. The replacement is the gating E4/J2 check, so the observation moved from advisory to enforced. Probe on the TR-07 tip reports 0 notes. Verified by Kimi 2026-10-17.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-17"
+  }
+]
