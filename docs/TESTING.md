@@ -272,6 +272,8 @@ after its parent dies.
 | `media volume` is not on One UI | `ping`-style scripts that read the alarm stream got blank values | Use `cmd media_session volume --stream 4 --get` / `--set N` |
 | A PowerShell wrapper around `adb` eats `-c`, `-d`, `-s` | `adb shell ping -c 1` and `adb logcat -d` inside a function ran without their flags (logcat then streamed forever) | Call the exe directly for anything with dash arguments; `$host` is a reserved variable |
 | `uiautomator dump` on the One UI VPN screen | "could not get idle state" forever (the screen animates) | Screenshot + tap at coordinates for that screen; everything else dumps fine |
+| The JVM `LockEnforcementPolicyTest` is green and the device still locks the wrong window | The test proves the **rule**, not the device's package names: on the Flip4 the emergency dialer is `com.samsung.android.emergency`, which no AOSP name contains (issue #80) | Treat probe row **S1** as the only proof that the lock leaves the dialer reachable; a green JVM suite is necessary, never sufficient |
+| Probe row S1 reads "LockActivity on top" on a phone with a secure lock | `lock` is a real `lockNow()` (ADR-0010): the OS keyguard sits above `LockActivity` **and** above anything `am start` launches, so the dialer can never reach the front whatever the policy does | Unlock the phone (swipe or PIN) with the lock overlay up before measuring. The probe now reports the row as **NOT MEASURED** and exits non-zero instead of FAIL (`scripts/hardware/android-bypass-probe.ps1`, 2026-10-17) |
 
 Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
