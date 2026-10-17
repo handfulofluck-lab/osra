@@ -24,6 +24,7 @@ object StorageModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): FamilyShieldDatabase =
         Room.databaseBuilder(context, FamilyShieldDatabase::class.java, "familyshield.db")
+            .addMigrations(FamilyShieldDatabase.MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -42,4 +43,8 @@ object StorageModule {
     /** DAO for unsent call/SMS events (Feature #6). */
     @Provides
     fun provideCommsEventDao(db: FamilyShieldDatabase): CommsEventDao = db.commsEventDao()
+
+    /** DAO for the durable scan queue (plan 2.6). */
+    @Provides
+    fun providePendingScanDao(db: FamilyShieldDatabase): com.familyshield.agent.data.db.PendingScanDao = db.pendingScanDao()
 }

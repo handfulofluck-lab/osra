@@ -11,6 +11,14 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android + API — durable on-device scan queue (plan 2.6, first half)
+- `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
+  before sending, so a process kill, a reboot or an offline stretch loses nothing. Rows go oldest-first
+  in batches of 50, are deleted on 2xx, counted down on failure and dropped after 8 attempts or 48 h
+  (`ScanQueuePolicy`, tested). `ScanFlushWorker` retries under a network constraint with backoff and
+  sweeps every 15 min. `SocialScanDto`/the API's `ScanSchema` carry an optional `source`.
+- The notification-side capture (the second half of 2.6) follows in its own PR.
+
 ### Android — adversarial bypass probe (plan 1.9, the Phase 1 gate)
 - `scripts/hardware/android-bypass-probe.ps1`: an `adb`-driven run of the ten bypasses a child tries
   on a paired phone — `adb uninstall`, `pm clear`, force-stop, accessibility off, overlay revoked,

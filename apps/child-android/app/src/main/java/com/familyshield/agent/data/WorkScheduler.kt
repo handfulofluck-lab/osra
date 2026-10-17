@@ -40,6 +40,8 @@ object WorkScheduler {
                 .setConstraints(network)
                 .build(),
         )
+        // Plan 2.6: the scan queue's periodic drain (network-constrained).
+        com.familyshield.agent.social.ScanFlushWorker.schedulePeriodic(context)
         wm.enqueueUniquePeriodicWork(
             TelemetryWorker.WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
