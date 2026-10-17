@@ -1,6 +1,6 @@
 # ADR-0016 — Play vs Full flavor split, and why notification capture lives only in Full
 
-**Status:** proposed (plan item 2.6, second half; supersedes nothing)
+**Status:** accepted and implemented 2026-10-17 (plan item 2.6, second half; supersedes nothing)
 **Date:** 2026-10-17
 **Deciders:** maintainer decision of 2026-10-16 ("two Android builds: Play + sideloaded Full"), implemented here
 

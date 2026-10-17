@@ -50,7 +50,12 @@ object NotificationCapturePolicy {
         // alerts for one message, which is the failure mode this whole class exists to prevent.
         if (snapshot.isGroupSummary) return null
         val (contact, body) = ScanQueuePolicy.fromNotification(
-            snapshot.title, snapshot.text, snapshot.bigText, snapshot.messages,
+            snapshot.title,
+            snapshot.text,
+            snapshot.bigText,
+            // Snapshot keeps primitives (it is built from a Bundle in an Android-free unit suite);
+            // fromNotification takes CharSequence, so the upcast is explicit rather than positional.
+            snapshot.messages.map { it as CharSequence? },
         ) ?: return null
         return Capture(appKey = appKey, contact = contact, text = body, key = snapshot.key, postedAtMs = snapshot.postedAtMs)
     }

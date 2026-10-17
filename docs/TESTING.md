@@ -12,7 +12,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | **Adversarial probe** (merge gate) | `node scripts/qa-probe.mjs` | Tries to **break** documented invariants against a live stack | Any invariant is violable |
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
 | Flutter | `cd apps/parent-app && flutter test` (+ `flutter analyze`) | Dashboard, rules editor, providers, layout at 320×568 | UI/contract regressions |
-| Android JVM | `cd apps/child-android && ./gradlew testDebugUnitTest` | Rule engine, counters, monitored apps, HMAC signing logic | Agent logic regressions |
+| Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference | Agent logic regressions, a Play build that gained the notification permission |
 | Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
 | iOS | `.github/workflows/ios-ci.yml` (macOS runner) | SwiftPM build + simulator build | Swift compile/behaviour regressions |
@@ -92,7 +92,7 @@ explicitly, in its own commit, with the reasoning in the PR.
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | api · parent-app · child-android (`testDebugUnitTest` **and** `assembleDebug`) · agent-desktop · ai-engine |
+| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug`) · agent-desktop · ai-engine |
 | `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
 | `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
