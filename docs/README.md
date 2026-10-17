@@ -9,6 +9,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | New to the project | [`../README.md`](../README.md) → [`../docs/SPEC.md`](SPEC.md) |
 | Setting the test environment up | [`TESTING.md`](TESTING.md) → [`test-guides/INSTALLATION-GUIDE.md`](test-guides/INSTALLATION-GUIDE.md) |
 | Running or interpreting tests | [`TESTING.md`](TESTING.md) |
+| Needing the one physical test phone (Galaxy Z Flip4, `R5CW116Y6GF`) | [`../AGENTS.md`](../AGENTS.md) §9 — who may hold it, the lease and its expiry, release and takeover → [`TESTING.md`](TESTING.md) §5.0 — claim text, pre-flight checks and reset commands → [`QA/DEVICE-REGISTER.md`](QA/DEVICE-REGISTER.md) — the durable per-device register, run checklist and recovery order; local helper [`../scripts/hardware/phone-claim.ps1`](../scripts/hardware/phone-claim.ps1) |
 | Touching an agent (human or AI) | [`../AGENTS.md`](../AGENTS.md) — roles, definition of done, PR rules, hygiene |
 | Wondering **why** something is built this way | [`adr/`](adr/README.md) — decision records with the rejected alternatives |
 | Fixing a known defect | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) — the prioritised queue |
