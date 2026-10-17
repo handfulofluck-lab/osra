@@ -23,7 +23,7 @@ probe; a green unit suite does not open a gate.
 |---|---|---|---|---|
 | 0 Stabilise | 1 | — | 4 / 5 | ✅ (branch pruning pending a go) |
 | 1 Android credibility | 2–8 | 10 bypasses fail on hardware | 0 / 9 (1.1–1.2 🔵) | 🔵 |
-| 2 Backend as a product | 4–10 | probe 0 targets, push lands | 5 / 6 (2.5 🟡 on TR-07 hardware) | 🟡 |
+| 2 Backend as a product | 4–10 | probe 0 targets, push lands | 5 / 6 (2.5 🟡 verified on hardware, merging) | 🟡 |
 | 3 Parent app to store grade | 6–14 | parent pairs in 5 min | 0 / 9 | ⬜ |
 | 4 AI that earns the word | 8–16 | recall ≥ 0.85 EN+AR | 0 / 5 | ⬜ |
 | 5 Store and iOS | 10–20 | 20 families install without help | 0 / 7 (entitlement 🟥) | ⬜ |
@@ -53,8 +53,9 @@ the lead's time until its gate passes.
 | 1.5 | Real FCM: `google-services.json`, gms plugin, data messages for commands; poll stays as fallback | lock lands in < 5 s with the app backgrounded | ⬜ (server side done in 2.1: `src/lib/push/notify.ts`) |
 | 1.6 | Guided, verified onboarding: Accessibility, Usage Access, Overlay, Battery exemption, Device Admin, Notification Listener, Background Location — each checked on return, OEM guidance (Samsung, Xiaomi) | pairing cannot complete with a required permission missing | ⬜ |
 | 1.7 | Ring forces alarm stream to max, wake lock, screen on, stop needs PIN; Locate takes a fresh high-accuracy fix with timeout | ring audible at volume 0; locate fix < 30 s old | ⬜ |
+| 1.x | **Found on hardware (TR-07):** the SOS quick-settings tile did nothing on Android 14+ (`startActivityAndCollapse(Intent)` removed on API 34); the child's only SOS entry was dead on every current phone | tile tap opens `SosActivity` on API 34+ | 🟡 #73 (one method, PendingIntent on 34+), verified on the Flip4 — the TR-07 201s are from that build |
 | 1.8 | Encrypted prefs for JWT/HMAC, release signing, `targetSdk 35`, minify, cleartext off outside debug | Play pre-launch report passes | ⬜ (encrypted store exists on the 1.1 branch; the rest open) |
-| 1.9 | Device-level adversarial probe: an `adb`-driven script that attempts the top ten bypasses, run on hardware before merge | script under `scripts/`, run recorded in the PR | ⬜ — this is what opens the Phase 1 gate |
+| 1.9 | Device-level adversarial probe: an `adb`-driven script that attempts the top ten bypasses, run on hardware before merge | script under `scripts/`, run recorded in the PR | 🔵 seed landed with #74: `scripts/hardware/android-signing-tr07.ps1` (pair via `uiautomator`, SOS via the QS tile, API/DB checks, §7 cleanup). The ten bypass attempts are the remaining work — this is what opens the Phase 1 gate |
 
 Two builds (decision 1): Play flavor (no calls/SMS, limited social, Accessibility declaration + video)
 and Full flavor (calls/SMS/WhatsApp; `isMonitoringTool=child_monitoring`; sideloaded, Play Protect
@@ -68,7 +69,7 @@ warning accepted). Both flavors land with 1.8.
 | 2.2 | Email provider: password reset, invites, weekly digest cron | reset email delivered; digest Sunday 18:00 family-local | ✅ #51 (`src/jobs/digestScheduler.ts`, `src/lib/email/templates.ts`) |
 | 2.3 | Persistent command queue (id, status, ack, expiry); agents ack; parent UI shows delivered/pending/failed | Redis restart loses no command; UI never says "sent" for an unacked command | ✅ #52 (ADR-0012), TR-01 verified on non-UTC hosts; parent-UI half is 3.x |
 | 2.4 | Usage model: `AppUsageDaily` + `WebVisit`, nightly rollup, 90-day retention, erasure cascade | weekly report correct after a Redis flush; erasure leaves zero rows | ✅ #64 (ADR-0013), TR-06 verified by Kimi (0 rows in 13 tables, counted in Postgres); finding #66 fixed on #65 |
-| 2.5 | Close J2 (timestamp + nonce) and J6 (no global fallback), fix co-parent role, `jti` on access tokens, encrypt `mfaSecret` | probe 0 targets | 🟡 #65 (ADR-0014): software half verified by Kimi (probe 109/0, **0 targets** with `INTERNAL_SIGNING_ALLOW_V1=0`); **hardware half (TR-07) runs 2026-10-17 on the maintainer's phone** |
+| 2.5 | Close J2 (timestamp + nonce) and J6 (no global fallback), fix co-parent role, `jti` on access tokens, encrypt `mfaSecret` | probe 0 targets | 🟡 #65 (ADR-0014) verified both halves: Kimi (software, probe 109/0) and the KCL lead on the maintainer's Galaxy Z Flip4 / Android 16 (TR-07: SOS → 201 with v1 on and off, skew −1 s). **Gate met**: #74 makes v1 opt-in → probe **0 targets by default**. Waiting to merge: #65 → #73 → #74 |
 | 2.6 | Durable on-device scan queue + notification-listener capture (WhatsApp items 1 and 2) | a message received with WhatsApp backgrounded produces a scan event | ⬜ next in the backend/Android seam |
 | 2.x | Added from review: WebSocket `ready` frame (TR-05), Redis hygiene #56/#57, probe-integrity CI gate | — | ✅ #63, #68, #69 |
 
@@ -111,7 +112,7 @@ warning accepted). Both flavors land with 1.8.
 ## Needs the maintainer (open)
 
 - Phase 0.5: a go to delete the merged branches.
-- Phase 2.5: TR-07's phone step (scheduled 2026-10-17 on the maintainer's handset).
+- Merges: #70, #72, #65 → #73 → #74 (the lead's merge write on its own PRs is blocked; the maintainer merges).
 - Phase 4.1: `DEEPSEEK_API_KEY` as a repository Actions secret.
 - Phase 5.1: Apple Family Controls distribution entitlement request.
 - Phase 5.4: the code-signing certificate purchase (approved; needs the purchase).
