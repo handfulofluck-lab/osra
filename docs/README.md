@@ -10,6 +10,8 @@ Start here. This page is the map: what each document is for, and which one to re
 | Deciding who does what | [`../AGENTS.md`](../AGENTS.md) §1 — the live split: Kimi Code implements and merges, Claude (KCL lead) decides architecture, Antigravity verifies, the maintainer holds the trade-offs and the final call |
 | Setting the test environment up | [`TESTING.md`](TESTING.md) → [`test-guides/INSTALLATION-GUIDE.md`](test-guides/INSTALLATION-GUIDE.md) |
 | Running or interpreting tests | [`TESTING.md`](TESTING.md) |
+| Needing the one physical test phone (Galaxy Z Flip4, `R5CW116Y6GF`) | [`../AGENTS.md`](../AGENTS.md) §9 — who may hold it, the lease and its expiry, release and takeover → [`TESTING.md`](TESTING.md) §5.0 — claim text, pre-flight checks and reset commands → [`QA/DEVICE-REGISTER.md`](QA/DEVICE-REGISTER.md) — the durable per-device register, run checklist and recovery order; local helper [`../scripts/hardware/phone-claim.ps1`](../scripts/hardware/phone-claim.ps1) |
+| Touching an agent (human or AI) | [`../AGENTS.md`](../AGENTS.md) — roles, definition of done, PR rules, hygiene |
 | Implementing a change | [`ROADMAP.md`](ROADMAP.md) for the item → [`../AGENTS.md`](../AGENTS.md) §3 (definition of done) → [`TESTING.md`](TESTING.md) for the gates that must be green before review |
 | Verifying a change | [`TESTING.md`](TESTING.md) → [`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) → the open rows in [`QA/TEST-REQUESTS.md`](QA/TEST-REQUESTS.md) |
 | Wondering **why** something is built this way | [`adr/`](adr/README.md) — decision records with the rejected alternatives |

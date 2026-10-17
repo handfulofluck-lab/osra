@@ -106,9 +106,96 @@ node scripts/check-workflows.mjs --strict
 
 ## 5. Hardware verification (physical device)
 
-Only the verifying agent does this, and only with the human's go-ahead — the phone belongs to a person.
-`adb reverse` is the trick that makes it repeatable: the device reaches the API on *this* machine without
-LAN or firewall changes.
+### 5.0 One lease at a time (binding — `AGENTS.md` §9)
+
+The handset is the maintainer's Samsung Galaxy Z Flip4, `adb` serial **R5CW116Y6GF**, attached to this
+Windows host; every agent session here reaches the same phone. The lease recorded by
+`scripts/hardware/phone-claim.ps1` is what authorises `adb`, and the human's need for the phone outranks
+any lease. Why this exists: on 2026-10-17 a `lock` was left applied while the agent that sent it went
+unreachable, and the Phase 1 gate (`TR-15`) needed the handset. A lease ends at a stated time, not when
+its owner replies.
+
+**Claim.** From the repo root, take an exclusive claim (two racers cannot both win) and record the
+holder, purpose and expiry:
+
+```powershell
+.\scripts\hardware\phone-claim.ps1 -Action Claim -Owner "<agent>" -Purpose "TR-15: bypass probe"
+```
+
+Exit 0 means the phone is yours; exit 1 means it is held — `-Action Status` shows the holder and the time
+left, and `-Action Wait -WaitMinutes 20` queues for it. Then post the same claim on the board
+(`docs/QA/TEST-REQUESTS.md`, Messages), one line:
+
+```text
+DEVICE R5CW116Y6GF — <agent> — TR-15 — claimed until <HH:MM> UTC
+```
+
+The store is the lock; the board line is how a human or a remote agent sees it.
+
+Default 60 minutes (5..240). Renew with `-Action Heartbeat -Owner "<agent>"` before the end time —
+before a build and between long probe sections; nothing renews it in the background. At the end time the
+claim expires and the next claimant takes it; expiry does not clean the phone. One lease, one agent;
+build and analysis happen before the claim, not during it. The store is local to this Windows host, so
+a remote agent must honour the board line.
+
+**Pre-flight** — do this before the first command of every lease. Confirm the handset with the
+`adb devices -l` line in the run block below; `$API`, `$DEV` and `$TOKEN` below are the test stack's
+base URL, the paired device id and the test family's parent token.
+
+```powershell
+.\scripts\hardware\phone-claim.ps1 -Action Status   # HELD by you until HH:MM, or FREE/EXPIRED
+```
+
+```bash
+adb shell dumpsys window | grep isKeyguardShowing   # true: the human unlocks it; see below
+adb shell dumpsys activity activities | grep -i "topResumedActivity=.*LockActivity"   # no output = no overlay
+adb reverse --list                                  # empty, or forwards you know are yours
+adb shell pidof com.familyshield.agent              # a live process is the previous run's, not yours
+curl -s "$API/v1/devices/$DEV/commands/history?limit=10" -H "Authorization: Bearer $TOKEN"
+# no pending/delivered lock, pause, pause_internet or ring from the previous owner: the queue is
+# durable and a lock waits 24 h (services/api/src/lib/deviceCommands.ts:41), so it can land on you
+```
+
+If that history shows a pending restriction, do not start: the warden settles it (relaunch the agent so
+the queue drains, then `unlock`) or waits for `expiresAt`.
+
+**Takeover.** An expired claim needs no permission: `-Action Claim` renames it aside, journals `EXPIRE`
+and grants the phone to you. A live claim whose owner is unreachable is the warden's call —
+`-Action Break -Owner "<warden>" -Purpose "recover the handset" -Reason "<why>" -Force`
+(`AGENTS.md` §9.4). Either way the previous owner is not required to respond; apply the reset, allow up
+to 90 s (the agent polls every 60 s; a `lock` took 59 s in TR-13, §5a), then verify:
+
+```bash
+curl -s -X POST "$API/v1/devices/$DEV/command" \
+  -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"command":"unlock"}'                    # {"published":true,"status":"pending",...}
+adb shell dumpsys activity activities | grep -i "topResumedActivity=.*LockActivity"   # no output = overlay gone
+```
+
+`unlock` is safe-direction (no consent needed, `services/api/src/routes/devices.ts:49`) and asks the
+system to dismiss the keyguard as well; it does not bypass a secure keyguard, and agents must never try
+the human's PIN. If the keyguard is showing, the takeover stops there and waits for the human.
+
+Last resort when the API or agent is unreachable: `adb shell am force-stop com.familyshield.agent`
+removes the overlay with the process, but it also leaves the app in the stopped state — no receiver, job
+or accessibility rebinding until it is launched again (measured by probe row 3, §5f). Record that you
+did it; the next owner relaunches and re-grants.
+
+**Release** is the last step of every run: clear `unlock` / `stop_ring` / `resume_internet` and verify,
+then follow §7 (deactivate device admin first if it is active, or `adb uninstall` fails — §5a), then
+release the claim with the state you are handing over:
+
+```powershell
+.\scripts\hardware\phone-claim.ps1 -Action Release -Owner "<agent>" -LeftState Clean -Note "app uninstalled, reverse removed"
+```
+
+`-LeftState` is mandatory and must be honest: `Clean`, `Locked` (the OSRA overlay is still up) or
+`Unknown` (not checked). `Locked` prints the recovery step and is exactly the state that stranded the
+phone once. A `lock` is never a way to reserve the phone.
+
+Only a lease-holder does hardware verification, and only for an accepted request — the phone belongs to
+a person, and the human may take it back at any time. `adb reverse` is the trick that makes it
+repeatable: the device reaches the API on *this* machine without LAN or firewall changes.
 
 ```bash
 export PATH="/c/KARIM/tools/android-sdk/platform-tools:$PATH"
@@ -162,7 +249,7 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:c
 ```
 
 **Lock that holds (plan 1.3):** with the agent paired and "display over other apps" allowed, send a `lock`
-(parent app, or `POST /v1/devices/:id/command {"type":"lock"}`); the overlay appears. Then
+(parent app, or `POST /v1/devices/:id/command {"command":"lock"}`); the overlay appears. Then
 `adb shell input keyevent 3` (Home) and `adb shell input keyevent 187` (Recents) → the overlay is back on top
 within ~1 s each time (`dumpsys activity activities | grep topResumed` → `LockActivity`). Then `adb reboot`,
 wait for boot, unlock the phone → the overlay is on top again. `unlock` clears it and it stays cleared.

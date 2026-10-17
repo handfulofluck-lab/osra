@@ -104,6 +104,42 @@ environment where it was written — see `docs/QA/` for the verification state.
   (focus from the window manager, not the activity stack).
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
   mitigated by `device_silent` plus parent-minted pairing.
+### Process — the one physical test phone is leased, one agent at a time (`AGENTS.md` §9)
+- Why: on 2026-10-17 a parental `lock` was left applied on the Galaxy Z Flip4 (`R5CW116Y6GF`) while the
+  agent that sent it went unreachable. The phone sat behind the overlay and the Phase 1 gate (`TR-15`,
+  the ten-bypass probe) needed the handset. The rule that replaces "ask whoever had it" does not depend
+  on the previous owner answering (`AGENTS.md:191`).
+- `AGENTS.md` §9.1–9.5: the device warden (Kimi Code, programme lead from 2026-10-17) is the arbiter, but
+  the routine mechanism is a **lease held through `scripts/hardware/phone-claim.ps1`** — one claim per
+  serial, **60 minutes by default, hard ceiling 240** (`-Minutes` is rejected outside 5..240), renewed
+  with `Heartbeat`, and **expiring on its own** so ownership returns to the pool without the previous
+  owner's consent. The board line in `docs/QA/TEST-REQUESTS.md` is a *mirror* of the lease for humans,
+  not a second lock: a manual "GRANTED" step was rejected because it reintroduces the unreachable-warden
+  failure this rule exists to remove. A restriction (`lock`, `pause`, `pause_internet`, ring) is a test
+  action, never a reservation; release clears and verifies it and ends with
+  `DEVICE R5CW116Y6GF — released <time> UTC — clean`. A run without a live lease, or one that collides
+  with another agent's, is not evidence and may be required again (`AGENTS.md:283`).
+- `docs/QA/DEVICE-REGISTER.md`: the durable register for the handset — its identity, the state a run
+  leaves behind, the per-run checklist, the locked-phone recovery order, and an append-only decision log.
+  It defers to §9 and the script rather than restating a second protocol.
+- `docs/TESTING.md` §5.0 (`docs/TESTING.md:109`): pre-flight before the first `adb` — keyguard state,
+  no `LockActivity`, `adb reverse --list`, live agent pid, and **queued** restrictions via
+  `GET /v1/devices/:id/commands/history` (the queue is durable; a `lock` sent near the end of a lease
+  can land on the next owner). Takeover of an expired lease applies `unlock` (safe-direction) and waits
+  up to 90 s; if the keyguard is showing it stops and waits for the human. `am force-stop` is the last
+  resort and leaves the agent in the stopped state (probe row 3, §5f).
+- `scripts/hardware/phone-claim.ps1`: `Claim` / `Heartbeat` / `Release` / `Status` / `Wait` / `Break`.
+  The store is `%LOCALAPPDATA%\OSRA\phone-claims` (or `OSRA_PHONE_CLAIM_STORE`), outside every checkout
+  so one claim is visible to every clone and does not appear in `git status`. `FileMode.CreateNew`
+  decides the claim race, and an expired claim is renamed aside and re-read before takeover, so two
+  takers cannot delete each other's fresh claim. `-LeftState Clean|Locked|Unknown` is mandatory on
+  release; `Locked` prints the recovery step and is journalled. The helper never calls `adb`: it records
+  permission, not hygiene, and is coordination rather than access control — a remote agent that does not
+  read the board is still governed by the board (`scripts/hardware/phone-claim.ps1:10`).
+- **Not verified here**: this entry describes the rule, the procedure and the helper; no hardware run was
+  performed for it (the handset was in use by the 11-row probe). The script parses cleanly under Windows
+  PowerShell 5.1 (`Parser::ParseFile`), but its claim/expiry races were not exercised, and the takeover
+  sequence has not been re-run. The first live use is the verification.
 
 ### Android + API — durable on-device scan queue (plan 2.6, first half)
 - `SocialScanQueue` writes every capture to Room (`pending_scans`; migration 2→3 keeps existing rows)
