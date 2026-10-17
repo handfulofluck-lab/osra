@@ -137,14 +137,22 @@ check("geofence enter/exit alerts raised", geoAlerts.status === 200 && (geoAlert
 // --- 7. HMAC internal alert -> WebSocket delivery to parent ---
 const ticketRes = await call("POST", "/v1/ws-ticket", { token });
 check("WS ticket issued", ticketRes.status === 200 && !!ticketRes.data?.ticket);
-// TR-04: the client's `open` fires before the server has registered the socket — the route awaits
-// the single-use ticket's Redis GET+DEL and only then adds the socket to the family's set — so a
-// frame published in that window reaches nobody. The old harness raced that window with a one-shot
-// promise and aborted with `Error: ws timeout`, recording 0 FAILs and hiding the rest of the run.
-// The assertion is unchanged (the alert must be delivered); the *stimulus* is made repeatable
-// instead of lucky: wait for the ticket to be consumed, then re-post the alert if no frame arrives.
-// By any retry the registration has long since completed, so the retry is deterministic, and a
-// genuinely undelivered alert still fails after the last attempt.
+// TR-04: the old harness armed a ONE-SHOT promise on the socket and aborted the entire run when it
+// timed out, recording 0 FAILs — so every later check silently never ran and a flake read as a hard
+// failure. That shape is gone: frames are collected, and the stimulus is made repeatable instead of
+// lucky, with a bounded re-post. On the CAUSE of the single abort that started this: the plausible
+// mechanism — the frame is published before the gateway registers the socket — did NOT reproduce
+// (20/20 immediate-post trials delivered). The diagnostics (frames=, wsError=, wsClose=) are what
+// will explain the next one.
+//
+// TR-05: the gateway now sends `{type:"ready", familyId, ts}` as the FIRST frame on every socket,
+// after it has added the socket to the family set. The harness waits for that frame before it posts
+// the alert, so the ordering is a server contract rather than a guess; the Redis ticket polling that
+// stood in for it under TR-04 is gone (one mechanism, not two). If an alert is ever lost AFTER
+// `ready` was received, that is a finding against the subscriber, not a harness race.
+//
+// The assertion is unchanged — the alert must be delivered, and a genuinely undelivered alert still
+// fails after the last attempt.
 const wsUrl = `${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticketRes.data.ticket)}`;
 const ws = new WebSocket(wsUrl);
 const wsFrames = [];
@@ -158,8 +166,6 @@ ws.addEventListener("close", (ev) => { wsClose = `${ev?.code ?? "?"} ${ev?.reaso
 await new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", rej); });
 check("parent WebSocket connected", ws.readyState === 1);
 
-// The `redis` client above is in subscriber mode, so query the ticket through a duplicate.
-const redisDirect = redis.duplicate();
 const waitUntil = async (predicate, ms) => {
   const deadline = Date.now() + ms;
   for (;;) {
@@ -169,13 +175,12 @@ const waitUntil = async (predicate, ms) => {
     await new Promise((r) => setTimeout(r, 100));
   }
 };
-// The gateway deletes the ticket and registers the socket in the same tick, so a consumed ticket
-// means the registration is imminent — this only makes the common case deterministic.
-const consumed = await waitUntil(
-  () => redisDirect.get(`ws:ticket:${ticketRes.data.ticket}`).then((v) => v === null, () => false),
-  4000,
+const ready = await waitUntil(() => wsFrames.find((f) => f.type === "ready"), 5000);
+check(
+  "WebSocket `ready` frame is the first frame and names the family (TR-05)",
+  !!ready && wsFrames[0] === ready && ready.familyId === me.data.family.id && typeof ready.ts === "string",
+  [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160),
 );
-console.log(`NOTE  ws ticket consumed before the alert: ${Boolean(consumed)}${consumed ? "" : " (registration still in flight)"}`);
 
 let evt = null;
 for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
@@ -183,10 +188,9 @@ for (let attempt = 1; attempt <= 3 && !evt; attempt += 1) {
   if (attempt === 1) check("HMAC internal alert -> 201", internal.status === 201, `got ${internal.status}`);
   evt = await waitUntil(() => wsFrames.find((f) => f.type === "alert" && f.payload?.title === "E2E alert"), 10000);
   if (!evt && wsClose) { console.log(`NOTE  socket closed by the server (${wsClose}) — retrying the stimulus cannot help`); break; }
-  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} (registration race) — retrying the stimulus`);
+  if (!evt && attempt < 3) console.log(`NOTE  no ws frame within 10s on attempt ${attempt} after ready=${Boolean(ready)} — retrying the stimulus (see the TR-04/TR-05 block comment above)`);
 }
 check("WebSocket delivered {type:alert}", evt?.type === "alert" && evt?.payload?.title === "E2E alert", [wsError && `wsError=${wsError}`, wsClose && `wsClose=${wsClose}`, `frames=${wsFrames.length}`, JSON.stringify(evt ?? wsFrames[0] ?? null)].filter(Boolean).join(" ").slice(0, 160));
-redisDirect.disconnect();
 ws.close();
 
 const badSig = await call("POST", "/v1/alerts/internal", { body: { childId: sam.id, severity: "info", category: "sos", title: "x", body: "y" } });
@@ -261,6 +265,33 @@ if (invite.data?.invite?.id) await call("DELETE", `/v1/family/invites/${invite.d
 const summary = await call("GET", `/v1/reports/summary?childId=${sam.id}&days=7`, { token });
 check("reports summary endpoint live", summary.status === 200 && typeof summary.data?.totalAppMinutes === "number");
 
+// --- 11a. Phase 2c usage model: durable rollups survive a Redis flush (ADR-0013) ---
+const todayKey = new Date().toISOString().slice(0, 10);
+const actBatch = await call("POST", `/v1/devices/${agentId}/activity`, { token: agentToken, body: { events: [
+  { type: "app_usage", payload: { app: "YouTube", minutes: 21 } },
+  { type: "app_usage", payload: { app: "Roblox", minutes: 9 } },
+  { type: "app_usage", payload: { app: "YouTube", minutes: 4, live: true } }, // heartbeat: never counted
+  { type: "url", payload: { url: "https://blocked.example/x", blocked: true, category: "gambling" } },
+  { type: "url", payload: { domain: "news.example" } },
+] } });
+check("activity batch accepted (agent JWT)", actBatch.status === 202, `got ${actBatch.status}`);
+const telTotal = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { totalMinutes: 30, batteryPct: 64 } });
+check("telemetry day total accepted", telTotal.status === 202, `got ${telTotal.status}`);
+// Flush the cache the old code depended on, then read everything back from Postgres.
+const redisFlush = redis.duplicate();
+const flushed = await redisFlush.del(`usage:child:${sam.id}:${todayKey}`).catch(() => -1);
+redisFlush.disconnect();
+const meAfterFlush = await call("GET", "/v1/family/me", { token });
+const samAfter = meAfterFlush.data?.children?.find((c) => c.id === sam.id);
+check("screen time today survives a Redis flush (durable day total)", flushed >= 0 && samAfter?.screenTimeTodayMinutes === 30, `flushed=${flushed} minutes=${samAfter?.screenTimeTodayMinutes}`);
+const usage = await call("GET", `/v1/reports/usage?childId=${sam.id}&days=7`, { token });
+const usageToday = usage.data?.series?.find((d) => d.day === todayKey);
+check("reports/usage: per-day series with per-app split from the rollup table", usage.status === 200 && usage.data?.series?.length === 7 && usageToday?.minutes === 30 && usageToday?.apps?.find((a) => a.app === "YouTube")?.minutes === 21 && usageToday?.apps?.find((a) => a.app === "Roblox")?.minutes === 9 && !usageToday?.apps?.find((a) => a.minutes === 4), `got ${usage.status} ${JSON.stringify(usageToday ?? usage.data).slice(0, 140)}`);
+const web = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1`, { token });
+check("reports/web: browsing history rows with domain + blocked flag", web.status === 200 && web.data?.items?.some((v) => v.domain === "blocked.example" && v.blocked === true && v.category === "gambling") && web.data.items.some((v) => v.domain === "news.example" && v.blocked === false), `got ${web.status} ${JSON.stringify(web.data?.items?.map((v) => v.domain))}`);
+const webBlocked = await call("GET", `/v1/reports/web?childId=${sam.id}&days=1&blocked=true`, { token });
+check("reports/web?blocked=true filters to blocked visits only", webBlocked.status === 200 && webBlocked.data?.items?.length >= 1 && webBlocked.data.items.every((v) => v.blocked === true));
+
 const windDown = await call("POST", `/v1/controls/children/${sam.id}/wind-down`, { token, body: { minutes: 15 } });
 check("wind-down command accepted", windDown.status === 200);
 
@@ -290,6 +321,32 @@ const exp = await call("GET", "/v1/family/export", { token });
 check("GDPR export downloads JSON", exp.status === 200 && !!exp.data?.family?.children);
 const erased = await call("DELETE", `/v1/family/children/${sam.id}`, { token });
 check("GDPR erasure cascade", erased.status === 200 && erased.data?.erased === true);
+check("erasure reports the deleted devices and per-table row counts (ADR-0013)", Array.isArray(erased.data?.deletedDevices) && erased.data.deletedDevices.includes(agentId) && erased.data?.rows?.activityEvent >= 4 && erased.data?.rows?.webVisit >= 2 && erased.data?.rows?.appUsageDaily >= 3 && erased.data?.rows?.socialEvent >= 1, JSON.stringify(erased.data?.rows ?? null));
+// The erased child's agent token is revoked like an unpair (#56): its 10-year JWT must now 401.
+const erasedAgent = await call("GET", `/v1/devices/${agentId}/commands`, { token: agentToken });
+check("erased child's device JWT is revoked (401)", erasedAgent.status === 401, `got ${erasedAgent.status}`);
+// Zero rows left: counted in the database itself when the gate shell has DATABASE_URL (TESTING.md §3).
+if (process.env.DATABASE_URL) {
+  const { PrismaClient } = await import("@prisma/client");
+  const db = new PrismaClient();
+  try {
+    const where = { where: { childId: sam.id } };
+    const counts = {
+      activityEvent: await db.activityEvent.count(where), socialEvent: await db.socialEvent.count(where),
+      installRequest: await db.installRequest.count(where), webVisit: await db.webVisit.count(where),
+      appUsageDaily: await db.appUsageDaily.count(where), locationPing: await db.locationPing.count(where),
+      alert: await db.alert.count(where), device: await db.device.count(where), ruleSet: await db.ruleSet.count(where),
+      geofence: await db.geofence.count(where), consentRecord: await db.consentRecord.count(where),
+      deviceCommand: await db.deviceCommand.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),
+      child: await db.child.count({ where: { id: sam.id } }),
+    };
+    check("erasure leaves ZERO child-scoped rows in every table (counted in Postgres)", Object.values(counts).every((n) => n === 0), JSON.stringify(counts));
+  } finally {
+    await db.$disconnect();
+  }
+} else {
+  console.log("NOTE  erasure row-count check skipped — set DATABASE_URL in the gate shell to count rows in Postgres (TESTING.md §3)");
+}
 
 redis.disconnect();
 console.log(`\n=== E2E: ${PASS.length} passed, ${FAIL.length} failed ===`);

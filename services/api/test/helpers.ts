@@ -45,6 +45,9 @@ function makePrismaMock() {
     "familyInvite",
     "parentPushToken",
     "deviceCommand",
+    "installRequest",
+    "appUsageDaily",
+    "webVisit",
   ]) {
     root[model] = autoMockModel();
   }

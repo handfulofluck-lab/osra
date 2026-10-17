@@ -49,7 +49,10 @@ currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/
 ## Wiring contracts (§12.3)
 
 - API paths must match the route TODOs below exactly.
-- WebSocket events use shape `{ type, payload, ts }` published to `family:${familyId}:events`.
+- WebSocket events use shape `{ type, payload, ts }` published to `family:${familyId}:events`. The
+  gateway sends `{ type: "ready", familyId, ts }` as the first frame on every socket, after it has
+  registered the socket for the family; no event frame precedes it (TR-05). Clients wait for it
+  before treating the stream as live (e.g. to end a reconnect spinner).
 - Agent internal calls must carry header `X-FamilyShield-Signature` = HMAC-SHA256(body, INTERNAL_HMAC_SECRET).
 
 ## Data isolation (§12.4 — non-negotiable)
@@ -113,8 +116,16 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
   password reset via email token, refresh tokens with rotation.
 - src/routes/family.ts — GENERATE THIS:
     GET /me; POST /children (428 without active consent); GET/PATCH/DELETE /children/:id
-    (DELETE = GDPR erasure cascade); POST /children/:id/consent; GET /export (GDPR export;
-    simplest: JSON download is acceptable — leave NOTE).
+    (DELETE = GDPR erasure cascade — ADR-0013: every child-scoped table in one transaction,
+    response carries `deletedDevices` + per-table `rows`, each device token revoked as on unpair);
+    POST /children/:id/consent; GET /export (GDPR export; simplest: JSON download is acceptable
+    — leave NOTE).
+- src/routes/reports.ts — GET /activity, GET /summary, GET /wellbeing/:childId; Phase 2c (ADR-0013):
+    GET /usage?childId&days=1..366 (per-UTC-day series from `AppUsageDaily`, per-app split, zeros for
+    empty days; `minutes` is the device-reported total when any device sent one, else the per-app sum)
+    and GET /web?childId&days=1..90&limit&blocked=true|false&domain (browsing history from `WebVisit`).
+    Nightly job `src/jobs/usageRollup.ts` reconciles yesterday from ActivityEvent and applies
+    retention (`RETENTION_DAYS`, `ROLLUP_RETENTION_DAYS`).
 - src/routes/devices.ts — GENERATE THIS:
     POST /register; GET /; GET /:id (+last 24h telemetry summary); POST /:id/command
     (lock, unlock, ring, sos_clear — Redis pub/sub channel `device:${deviceId}:commands`);
