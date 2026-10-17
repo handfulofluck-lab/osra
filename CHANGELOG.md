@@ -11,6 +11,20 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — release hardening (plan 1.8)
+- `targetSdk 35` / `compileSdk 35` (Play's 2025 bar); `versionName 0.2.0`.
+- Release build is **minified and resource-shrunk** (R8, `proguard-rules.pro` keeps Moshi DTOs,
+  Retrofit, Room, Hilt entry points and OS-instantiated components) and **HTTPS-only**
+  (`src/main/res/xml/network_security_config.xml` → `cleartextTrafficPermitted="false"`); the debug
+  build keeps cleartext for LAN / `adb reverse` dev servers through `src/debug/res/xml/`.
+- Release signing from the same upload keystore as the parent app (`OSRA_UPLOAD_KEYSTORE`,
+  `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`; CI materialises it from
+  `OSRA_UPLOAD_KEYSTORE_B64`), debug key with a warning when absent.
+- The **device JWT and the per-device HMAC secret moved into the keystore-backed encrypted store**
+  (`SecureStore`), migrated from plaintext DataStore on first read — the audit finding ADR-0010 left
+  for "a follow-up".
+- CI asserts `targetSdkVersion:'35'` on the release APK and the cleartext settings of both configs.
+
 ### Android + API — ring that cannot be silenced, locate with a fresh fix (plan 1.7)
 - `commands/Ringer` + `RingActivity`: the ring forces the **alarm stream to its maximum** (restored
   afterwards unless someone changed it), plays on `USAGE_ALARM` (through Do-Not-Disturb), holds a

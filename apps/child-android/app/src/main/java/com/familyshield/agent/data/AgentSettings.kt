@@ -25,6 +25,7 @@ private val Context.familyShieldDataStore: DataStore<Preferences> by preferences
 @Singleton
 class AgentSettings @Inject constructor(
     @ApplicationContext context: Context,
+    private val secure: com.familyshield.agent.security.SecureStore,
 ) {
     private val store = context.familyShieldDataStore
 
@@ -44,15 +45,28 @@ class AgentSettings @Inject constructor(
     suspend fun childId(): String? = read(KEY_CHILD_ID).also { childIdCache = it }
 
     /** Returns the device JWT used for device-authenticated calls, or null. */
-    suspend fun deviceToken(): String? = read(KEY_DEVICE_TOKEN).also {
+    suspend fun deviceToken(): String? = readSecret(KEY_DEVICE_TOKEN, SECURE_DEVICE_TOKEN).also {
         tokenCache = it
         tokenLoaded = true
     }
 
     /** Returns the HMAC secret for internal calls, or null when not provisioned (fail-closed). */
-    suspend fun hmacSecret(): String? = read(KEY_HMAC_SECRET).also {
+    suspend fun hmacSecret(): String? = readSecret(KEY_HMAC_SECRET, SECURE_HMAC_SECRET).also {
         hmacCache = it
         hmacLoaded = true
+    }
+
+    /**
+     * Plan 1.8: the device JWT and the per-device HMAC secret live in the keystore-backed
+     * [com.familyshield.agent.security.SecureStore]. A value still in plaintext DataStore from an
+     * older build is migrated on first read (copied into the encrypted store, then removed).
+     */
+    private suspend fun readSecret(plainKey: Preferences.Key<String>, secureKey: String): String? {
+        secure.getString(secureKey)?.let { return it }
+        val legacy = read(plainKey) ?: return null
+        secure.putString(secureKey, legacy)
+        store.edit { it.remove(plainKey) }
+        return legacy
     }
 
     /** Persists the latest rule set JSON. */
@@ -86,7 +100,7 @@ class AgentSettings @Inject constructor(
         if (!tokenLoaded) {
             synchronized(this) {
                 if (!tokenLoaded) {
-                    tokenCache = runBlocking { read(KEY_DEVICE_TOKEN) }
+                    tokenCache = runBlocking { readSecret(KEY_DEVICE_TOKEN, SECURE_DEVICE_TOKEN) }
                     tokenLoaded = true
                 }
             }
@@ -104,7 +118,7 @@ class AgentSettings @Inject constructor(
         if (!hmacLoaded) {
             synchronized(this) {
                 if (!hmacLoaded) {
-                    hmacCache = runBlocking { read(KEY_HMAC_SECRET) }
+                    hmacCache = runBlocking { readSecret(KEY_HMAC_SECRET, SECURE_HMAC_SECRET) }
                     hmacLoaded = true
                 }
             }
@@ -123,12 +137,14 @@ class AgentSettings @Inject constructor(
 
     /** Persists the pairing result (§14.2) and refreshes the interceptor caches. */
     suspend fun savePairing(baseUrl: String, deviceJwt: String, deviceId: String, childId: String, hmacSecret: String? = null) {
+        secure.putString(SECURE_DEVICE_TOKEN, deviceJwt)
+        if (hmacSecret != null) secure.putString(SECURE_HMAC_SECRET, hmacSecret)
         store.edit {
             it[KEY_BASE_URL] = baseUrl
-            it[KEY_DEVICE_TOKEN] = deviceJwt
+            it.remove(KEY_DEVICE_TOKEN)
             it[KEY_DEVICE_ID] = deviceId
             it[KEY_CHILD_ID] = childId
-            if (hmacSecret != null) it[KEY_HMAC_SECRET] = hmacSecret
+            if (hmacSecret != null) it.remove(KEY_HMAC_SECRET)
         }
         baseUrlCache = baseUrl
         tokenCache = deviceJwt
@@ -141,6 +157,7 @@ class AgentSettings @Inject constructor(
 
     /** Clears pairing state (re-pair); rules/HMAC stay. */
     suspend fun clearPairing() {
+        secure.putString(SECURE_DEVICE_TOKEN, null)
         store.edit {
             it.remove(KEY_BASE_URL)
             it.remove(KEY_DEVICE_TOKEN)
@@ -220,6 +237,8 @@ class AgentSettings @Inject constructor(
         private val KEY_CHILD_ID = stringPreferencesKey("child_id")
         private val KEY_DEVICE_TOKEN = stringPreferencesKey("device_token")
         private val KEY_HMAC_SECRET = stringPreferencesKey("hmac_secret")
+        private const val SECURE_DEVICE_TOKEN = "device_token"
+        private const val SECURE_HMAC_SECRET = "hmac_secret"
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")

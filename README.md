@@ -201,7 +201,9 @@ verified where it was written is stated as such. Details:
   nightly job — a global setting today, not per family (ADR-0013).
 - Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the production path. HTTPS
   inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`).
-- Test APKs are debug-signed; store signing, AABs, privacy policy and permission declarations are
+- Release APKs are minified, HTTPS-only and signed with the upload key when `OSRA_UPLOAD_KEYSTORE*` is
+  set (debug key otherwise); the **debug** build is what pairs against LAN / `adb reverse` servers.
+  Store listing, AABs, privacy policy and permission declarations are
   tracked in [`docs/test-guides/PUBLISHING-READINESS.md`](docs/test-guides/PUBLISHING-READINESS.md).
 
 ## License
