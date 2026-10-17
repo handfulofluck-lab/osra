@@ -64,6 +64,22 @@ android {
             // The debug build keeps cleartext (LAN / 10.0.2.2 dev servers) via src/debug/res/xml/network_security_config.xml.
         }
     }
+    /**
+     * ADR-0016: two distribution builds. `play` declares neither the notification listener nor
+     * BIND_NOTIFICATION_LISTENER_SERVICE, so the store artefact cannot read notifications at all;
+     * `full` adds `src/full/AndroidManifest.xml` and the listener service. Variant names are spelled
+     * out at every call site (CI, the signing script, the docs) — no aliases, so a missing variant is
+     * a build error rather than a silently different artefact.
+     */
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("play") {
+            dimension = "distribution"
+        }
+        create("full") {
+            dimension = "distribution"
+        }
+    }
 }
 
 kapt {

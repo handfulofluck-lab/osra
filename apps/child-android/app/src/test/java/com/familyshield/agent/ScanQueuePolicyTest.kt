@@ -40,4 +40,15 @@ class ScanQueuePolicyTest {
         assertNull(ScanQueuePolicy.fromNotification("WhatsApp", "Checking for new messages", null, emptyList()))
         assertNull(ScanQueuePolicy.fromNotification("Sam", "", null, emptyList()))
     }
+
+    @Test
+    fun `a collapsed count placeholder is housekeeping, with or without a group name`() {
+        // "3 new messages" defeats a literal list because none of its entries starts with a digit;
+        // the shape is matched instead (plan 2.6, second half).
+        assertNull(ScanQueuePolicy.fromNotification("WhatsApp", "3 new messages", null, emptyList()))
+        assertNull(ScanQueuePolicy.fromNotification("Work", "12 new messages from Work", null, emptyList()))
+        assertNull(ScanQueuePolicy.fromNotification("WhatsApp", "1 new message", null, emptyList()))
+        // A real line that merely contains the words is still a message.
+        assertEquals("Mum" to "I have 3 new messages for you", ScanQueuePolicy.fromNotification("Mum", "I have 3 new messages for you", null, emptyList()))
+    }
 }
