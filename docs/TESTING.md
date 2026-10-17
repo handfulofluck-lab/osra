@@ -239,6 +239,14 @@ safety check rather than a bypass: with the device locked, the emergency dialer 
 on top (no call is placed) — a lock that covered it would be the one bug worse than every bypass. Two rows need a human tap on
 One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
 
+**S1 has a precondition the other rows do not: the OS keyguard must be down.** `lock` is a real
+`lockNow()` (ADR-0010), so on a phone with a secure lock the keyguard sits above `LockActivity` and above
+anything `am start` launches; the dialer can never reach the front and the row would accuse
+`LockActivity` whatever the policy does. The script tries `wm dismiss-keyguard` and a swipe, and if the
+keyguard survives it reports the row as **NOT MEASURED** and exits non-zero (2026-10-17: it used to
+report FAIL, which is how a measurement of the keyguard was mistaken for a measurement of the lock).
+Unlock the phone with the lock overlay up and re-run.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
@@ -264,6 +272,8 @@ after its parent dies.
 | `media volume` is not on One UI | `ping`-style scripts that read the alarm stream got blank values | Use `cmd media_session volume --stream 4 --get` / `--set N` |
 | A PowerShell wrapper around `adb` eats `-c`, `-d`, `-s` | `adb shell ping -c 1` and `adb logcat -d` inside a function ran without their flags (logcat then streamed forever) | Call the exe directly for anything with dash arguments; `$host` is a reserved variable |
 | `uiautomator dump` on the One UI VPN screen | "could not get idle state" forever (the screen animates) | Screenshot + tap at coordinates for that screen; everything else dumps fine |
+| The JVM `LockEnforcementPolicyTest` is green and the device still locks the wrong window | The test proves the **rule**, not the device's package names: on the Flip4 the emergency dialer is `com.samsung.android.emergency`, which no AOSP name contains (issue #80) | Treat probe row **S1** as the only proof that the lock leaves the dialer reachable; a green JVM suite is necessary, never sufficient |
+| Probe row S1 reads "LockActivity on top" on a phone with a secure lock | `lock` is a real `lockNow()` (ADR-0010): the OS keyguard sits above `LockActivity` **and** above anything `am start` launches, so the dialer can never reach the front whatever the policy does | Unlock the phone (swipe or PIN) with the lock overlay up before measuring. The probe now reports the row as **NOT MEASURED** and exits non-zero instead of FAIL (`scripts/hardware/android-bypass-probe.ps1`, 2026-10-17) |
 
 Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
@@ -274,6 +284,7 @@ Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 | `prisma generate` → `EPERM: rename …query_engine.dll.node` | A running API holds the engine DLL | Stop the API, generate, restart. If the API is not yours and you may not stop it, generate against a second checkout instead |
 | The shared `:3000` API **refuses connections mid-session**, and its own log ends on `200`s with no stack trace | It was started inside an agent's task manager, and stopping a sibling task killed the process group — observed twice on the host PC (issue `#71`) | Do not host the shared API inside an agent task: start it detached (your copy of `start-backend.bat` — `docs/test-guides/start-backend.example.bat` ships in the repo — or `nohup … &` with output redirected). If you find it down, **say so on the board rather than starting a second instance** — the second start fails with `EADDRINUSE` and makes a healthy environment look broken. Then check the dead process's log: clean end = killed, not crashed |
 | An API on a spare port answers `curl` with **nothing** and a Node script dies on `fetch failed` / `connect ECONNREFUSED ::1:<port>` — while `netstat` shows it **LISTENING on `0.0.0.0:<port>`** | The server bound IPv4 only, and `localhost` resolved to `::1` first on this host. It looks exactly like a dead server, which is why it reads as an outage | Use `127.0.0.1` in `API_BASE` (and in `curl`) for spare-port instances, or bind `::`. Bit me twice today: `qa-probe` exited 1 against a server that was up, and `curl http://localhost:<port>` returned empty |
+| `git push` hangs for minutes with no output, and `curl`/`gh api` against `repos/handfullofluck-lab/osra` return **404** — while `git ls-remote` and `gh pr list` still work | The `ghp_…` token copied into scripts/`GH_TOKEN` was rotated; the `gh` CLI and Git Credential Manager now hold a **fine-grained PAT** from the keyring. The stale token authenticates (so nothing says "bad credentials") but is not authorised for this repo, which GitHub reports as 404 | Do not override `GH_TOKEN` with the old token. Push with plain `git push` (keyring), use `gh` without overrides, and read the live token with `gh auth token` only when a script genuinely needs it. Verified 2026-10-17: the same push that stalled four times for 4+ minutes completed in 67 s on the keyring credential |
 | "Gates green" but nothing ran | Pipe masking: `cmd \| tail` hides the real exit code | Check `${PIPESTATUS[0]}`, or grep the output for the failure |
 | A workflow shows as failed with **0 jobs** | GitHub rejected the workflow file (schema), YAML parsers accept it | `node scripts/check-workflows.mjs --strict` |
 | Connections fail for some apps after agent testing | WinINET proxy left on a dead `127.0.0.1:8877` (and the `Connections` blob survives `reset-proxy.bat`) | See issue `#32`; delete the `Connections` values after resetting. Set `FS_SET_SYSTEM_PROXY=0` for developer machine test isolation; `reset-proxy.bat` now flushes WinINET immediately |
