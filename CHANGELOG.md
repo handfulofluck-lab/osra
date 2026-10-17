@@ -11,6 +11,16 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — adversarial bypass probe (plan 1.9, the Phase 1 gate)
+- `scripts/hardware/android-bypass-probe.ps1`: an `adb`-driven run of the ten bypasses a child tries
+  on a paired phone — `adb uninstall`, `pm clear`, force-stop, accessibility off, overlay revoked,
+  Private DNS provider, escaping the lock (Home / Recents / Settings), going offline to dodge or
+  escape a lock, disconnecting the web-filter VPN, deactivating device admin — each a measured
+  outcome (blocked, or the tamper alert's latency from Postgres) and a PASS/FAIL table for the PR.
+- Two gaps it found while being written are closed in the agent: a Private DNS provider set outside
+  the guarded dialog and a revoked overlay permission now raise `tamper` alerts
+  (`private_dns_bypass`, `overlay_revoked`) from the 60-s loop.
+
 ### Android — release hardening (plan 1.8)
 - `targetSdk 35` / `compileSdk 35` (Play's 2025 bar); `versionName 0.2.0`.
 - Release build is **minified and resource-shrunk** (R8, `proguard-rules.pro` keeps Moshi DTOs,

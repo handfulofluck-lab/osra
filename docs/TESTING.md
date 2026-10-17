@@ -225,6 +225,17 @@ and `{"command":"stop_ring"}` must stop it from the parent side. `{"command":"lo
 produce a `LocationPing` whose `timestamp` is within 30 s of the command (`GET /v1/children/:id/location`
 or the `LocationPing` table) — not the last cached fix.
 
+## 5f. The ten-bypass probe (plan 1.9 — the Phase 1 gate)
+
+`scripts/hardware/android-bypass-probe.ps1 -Serial <adb serial> -Port 3023 -StateFile <tr10-state.json>`
+runs, against a paired phone with the PIN set and the test API reachable through `adb reverse`:
+`adb uninstall` · `pm clear` · force-stop (the agent must come back by itself) · accessibility off ·
+overlay revoked · Private DNS provider · escaping a lock (Home / Recents / Settings) · going offline
+to dodge or escape a lock · VPN disconnected in Settings · device admin deactivated from Settings.
+Each row is a measured outcome (what the OS answered, the alert's latency counted in Postgres, what the
+status screen says) and the table it prints goes into the PR verbatim. Two rows need a human tap on
+One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
