@@ -184,3 +184,25 @@ Every test — automated or on hardware — ends with the environment as it was 
 
 Rationale: the phone belongs to the human and carries real notifications/accounts; the database is what
 the human and testers look at for demos and decisions. Test residue in either one is misleading.
+
+## 12. Roadmap alignment, documentation and findings (maintainer, 2026-10-17)
+
+The maintainer re-cut the roles on 2026-10-17, in his words: *"architecture is your [Claude's] decision
+and that is clear to the team, you help with constructive testing with detailed feedback on how to fix
+the bug or issue. KIMI do the developments, antigravity support with testing solely and reporting
+findings."* §1 carries the table; this section carries the three rules he attached to it.
+
+1. **Every PR names its roadmap item and moves its row.** The PR title or first line cites the
+   `docs/ROADMAP.md` item it delivers (`plan 2.6`, `plan 1.9`), and the same PR updates that row's status
+   and evidence. Work that matches no roadmap item gets a row first, agreed on the board
+   (`docs/QA/TEST-REQUESTS.md`), before the code. A row's *Acceptance* line is the contract: scope beyond
+   it is a new row, not a bigger PR.
+2. **Every change is documented in the same PR** (§8, unchanged and enforced): `CHANGELOG.md`, an ADR for an
+   architectural decision, `docs/TESTING.md` for a procedure or gate. A reviewer returns a PR whose docs are
+   missing, the same way as a red gate.
+3. **A finding carries its fix.** Claude's review findings and test failures state: what was run and what it
+   printed (verbatim), the cause with `file:line`, the change to make, and the test that must fail before
+   that change and pass after it. Antigravity reports findings with the same evidence (run, output,
+   expected/actual); the fix guidance is Claude's job, the fix is Kimi's.
+4. **Claude checks each PR against its roadmap row** before a TR row is marked verified, and says on the
+   board when a PR drifts from its row (unmet acceptance, or scope the row does not hold).

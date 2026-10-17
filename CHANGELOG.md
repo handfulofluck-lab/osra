@@ -11,6 +11,13 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — roles re-cut, 15/30-minute board cadence, roadmap and documentation rules (2026-10-17)
+- Maintainer re-cut the roles: Kimi develops, Claude owns architecture and does constructive testing with
+  fix guidance, Antigravity tests and reports. `AGENTS.md` §12 adds: every PR names and moves its
+  `docs/ROADMAP.md` row, docs land in the same PR, and every finding carries its fix.
+- Board cadence shortened from 30/60 to **15/30 minutes** (`docs/QA/TESTING-STRATEGY.md` §4,
+  `docs/QA/TEST-REQUESTS.md` header). `docs/COLLABORATION-ROADMAP.md` marked superseded.
+
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
   `EncryptedSharedPreferences`) and activating **Device Admin** (`FamilyShieldDeviceAdmin`, policies
