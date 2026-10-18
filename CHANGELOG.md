@@ -11,6 +11,44 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Fix — the device-silence window is validated against the agent's reporting cadence (issue #166)
+- **The collision.** The 5-minute floor for `DEVICE_SILENT_MINUTES` equalled the agent's stationary
+  location ping (`apps/child-android/.../services/LocationService.kt:430`) and was shorter than one
+  telemetry interval (`.../data/WorkScheduler.kt:48`, 15 minutes). At that floor a healthy stationary
+  phone could be reported `device_silent` — a **critical** alert saying the child's phone went silent —
+  depending on where the 5-minute job tick landed relative to the last report. TR-22 measured the
+  alert correctly at a 5-minute window; the trap was for the next tester, and for any future per-family
+  setting.
+- **The rule (`services/api/src/jobs/deviceSilence.ts`).** The server now mirrors both cadences
+  (`TELEMETRY_INTERVAL_MINUTES = 15`, `STATIONARY_PING_INTERVAL_MINUTES = 5`) and requires the window to
+  leave **two telemetry intervals** of headroom: `SILENT_MIN_SAFE_MINUTES = 30`. A configured value
+  below 30 is **clamped to 30** at boot with a warning naming the cadence
+  (`resolveSilenceConfig` / `silenceConfigWarning`); a value that is not an integer ≥ 5 still falls back
+  to 30, now with a warning too. **The default (30) is unchanged in behaviour**, and an unset or valid
+  ≥ 30 value logs nothing.
+- **Why clamp, not reject.** Refusing to start would take the whole API (all alerts) down over a tuning
+  mistake; falling back to 30 would be the same clamp without saying so. The clamp is deterministic,
+  keeps the safe default, and the warning makes the operator's value visible at boot.
+- **Testability kept.** `DEVICE_SILENT_ALLOW_TIGHT=1` restores the old floor of 5 (never below it) and
+  logs a `TEST ONLY` warning. It exists for the TR-22 hardware row, which needs a real elapsed short
+  window; it is documented as test-only in `docs/TESTING.md` §5f and `.env.example`. The Android
+  constants are **not** changed: the policy lives on the server, and slowing the phone's reports to
+  satisfy a misconfigured alert threshold would trade a false alert for a later one.
+- **Tests (`services/api/test/device-silence.test.ts`, +6 cases).** The tight 5 and 15 are clamped to
+  30 with the warning text; 30 and 45 are accepted untouched; the override keeps 5 and is refused below
+  it; invalid values fall back to 30; the startup path warns and logs the **effective** window. One
+  test reads `WorkScheduler.kt` and `LocationService.kt` and asserts the mirrored constants and the
+  `min = 2 × telemetry` relationship, so moving either cadence in the app fails the API suite.
+- **Docs.** `docs/TESTING.md` §5f and the env table, `docs/QA/TESTING-STRATEGY.md` §3a (amendment under
+  the accepted quote; the quote itself is untouched), TR-22's "how to re-run" and a superseding note
+  under the TR-22 row, `services/api/.env.example`.
+- **Verified here:** `pnpm --filter @familyshield/api test` 369/369; a branch API booted with
+  `DEVICE_SILENT_MINUTES=5` logged the clamp warning (raw line in the PR) and started with
+  `after=30m`; against that branch instance on `:3416`, `qa-probe` **130 passed · 0 failed · 0 targets**
+  and `e2e` **69/69** with the Postgres row-count check (0 rows in 13 tables). **Not verified here:** a hardware re-run of TR-22 with the override — the row's
+  existing PASS was measured before the clamp and its precondition now needs
+  `DEVICE_SILENT_ALLOW_TIGHT=1`; that re-run is for a tester on the merged sha.
+
 ### Security hygiene — the test app PIN is no longer published (issue #151)
 - The paired device's app PIN was written in clear text across `docs/TESTING.md`,
   `docs/QA/TEST-REQUESTS.md`, both verification ledgers and the probe's default. The literal is gone
