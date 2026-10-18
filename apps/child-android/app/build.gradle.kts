@@ -82,10 +82,13 @@ android {
             // No NotificationListenerService and no BIND_NOTIFICATION_LISTENER_SERVICE in this artefact,
             // so onboarding must not ask for a permission the build cannot use (ADR-0016 §4).
             buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "false")
+            // ADR-0021: no READ_CALL_LOG / READ_SMS in this artefact, so the observer must not register.
+            buildConfigField("boolean", "CAPTURE_CALL_SMS", "false")
         }
         create("full") {
             dimension = "distribution"
             buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "true")
+            buildConfigField("boolean", "CAPTURE_CALL_SMS", "true")
         }
     }
 }

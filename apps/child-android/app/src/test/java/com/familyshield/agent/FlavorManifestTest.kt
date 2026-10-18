@@ -69,4 +69,42 @@ class FlavorManifestTest {
             dir = dir.parentFile
         }
     }
+
+    /**
+     * ADR-0021: Play's SMS/Call-Log policy has no exception for parental control, so the shared manifest
+     * must not declare those permissions; the Full manifest carries them. The narrow `<queries>` block
+     * replaces QUERY_ALL_PACKAGES and must keep the two dialer intents — #83's emergency-dialer exemption
+     * resolves them at runtime (S1 on the store build depends on it).
+     */
+    @Test
+    fun `play declares no call-log or SMS permission and keeps the dialer queries`() {
+        for (permission in listOf("READ_CALL_LOG", "READ_SMS", "QUERY_ALL_PACKAGES")) {
+            assertFalse(
+                "src/main must not declare $permission (ADR-0021)",
+                mainManifest.contains("android.permission.$permission"),
+            )
+        }
+        assertTrue("the launcher query is needed for the app grid", mainManifest.contains("android.intent.category.LAUNCHER"))
+        assertTrue(
+            "the emergency-dialer intent must stay visible (#83/S1)",
+            mainManifest.contains("com.android.phone.EmergencyDialer.DIAL"),
+        )
+        assertTrue("the DIAL intent must stay visible (#83)", mainManifest.contains("android.intent.action.DIAL"))
+    }
+
+    @Test
+    fun `the shared manifest declares isMonitoringTool and full carries the call and SMS permissions`() {
+        // The declaration lives in src/main on purpose, so manifest merging puts it in BOTH artefacts;
+        // asserting it in the full *source file* is wrong, because that file only adds the capability.
+        assertTrue(
+            "src/main must declare isMonitoringTool=child_monitoring (Play monitoring policy)",
+            mainManifest.contains("isMonitoringTool") && mainManifest.contains("child_monitoring"),
+        )
+        assertFalse(
+            "the full source file must not declare it again - one declaration, merged into both",
+            fullManifest.contains("isMonitoringTool"),
+        )
+        assertTrue(fullManifest.contains("android.permission.READ_CALL_LOG"))
+        assertTrue(fullManifest.contains("android.permission.READ_SMS"))
+    }
 }
