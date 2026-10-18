@@ -80,4 +80,17 @@ class OnboardingPolicyTest {
         assertTrue(OnboardingPolicy.canComplete(playAllGranted))
         assertTrue(OnboardingPolicy.canComplete(OnboardingPolicy.rows(notificationCaptureAvailable = true) { true }))
     }
+
+    /** ADR-0021 B3: a build that cannot capture something says so, next to the grants. */
+    @Test
+    fun `the capture notice names exactly what this build cannot do`() {
+        assertNull(OnboardingPolicy.captureNotice(notificationCaptureAvailable = true, callSmsCaptureAvailable = true))
+        val play = OnboardingPolicy.captureNotice(notificationCaptureAvailable = false, callSmsCaptureAvailable = false)
+        assertNotNull(play)
+        assertTrue(play!!.contains("notification"))
+        assertTrue(play.contains("call and SMS"))
+        val listenerOnly = OnboardingPolicy.captureNotice(notificationCaptureAvailable = false, callSmsCaptureAvailable = true)
+        assertTrue(listenerOnly!!.contains("notification"))
+        assertFalse(listenerOnly.contains("call and SMS"))
+    }
 }

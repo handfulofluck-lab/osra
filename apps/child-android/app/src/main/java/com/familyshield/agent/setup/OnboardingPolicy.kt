@@ -87,4 +87,19 @@ object OnboardingPolicy {
 
     /** Private DNS: Android's `private_dns_mode` is "off", "opportunistic" (Automatic) or "hostname" (a provider). */
     fun privateDnsOk(mode: String?): Boolean = mode == null || mode.trim().lowercase() != "hostname"
+
+    /**
+     * ADR-0021 B3 (and #95's sibling rule): a build that cannot capture something must **say so**, next to
+     * the grants, instead of leaving the parent to discover a silent gap. Returns null when this build has
+     * every capture path, so the caller renders nothing.
+     */
+    fun captureNotice(notificationCaptureAvailable: Boolean, callSmsCaptureAvailable: Boolean): String? {
+        val missing = buildList {
+            if (!notificationCaptureAvailable) add("notification")
+            if (!callSmsCaptureAvailable) add("call and SMS")
+        }
+        if (missing.isEmpty()) return null
+        val what = missing.joinToString(" and ")
+        return "This build captures messages from the screen only. The sideloaded Full build adds $what capture."
+    }
 }
