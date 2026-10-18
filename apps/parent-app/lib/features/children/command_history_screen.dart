@@ -3,39 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/family_provider.dart';
-
-/// Human label for a command type from the durable queue
-/// (`services/api/src/lib/deviceCommands.ts`).
-String commandTypeLabel(String type) => switch (type) {
-      'lock' => 'Lock',
-      'unlock' => 'Unlock',
-      'ring' => 'Ring',
-      'stop_ring' => 'Stop ringing',
-      'sos_clear' => 'Clear SOS',
-      'pause' => 'Pause device',
-      'resume' => 'Resume device',
-      'pause_internet' => 'Pause internet',
-      'resume_internet' => 'Resume internet',
-      'bonus_time' => 'Bonus time',
-      'wind_down' => 'Wind down',
-      'locate_now' => 'Locate now',
-      'rules_updated' => 'Rules update',
-      'consent_granted' => 'Consent granted',
-      'consent_revoked' => 'Consent revoked',
-      _ => type.replaceAll('_', ' '),
-    };
-
-/// Parent-facing delivery wording. It never claims a command was "sent" or
-/// executed before the device acked it: `delivered` is only a collection by
-/// the agent, and `pending` has not reached the device at all.
-String commandStatusLabel(String status) => switch (status) {
-      'acked' => 'Confirmed by device',
-      'delivered' => 'Delivered — awaiting device confirmation',
-      'failed' => 'Failed on device',
-      'expired' => 'Expired before delivery',
-      _ => 'Pending — waiting for the device',
-    };
 
 IconData commandStatusIcon(String status) => switch (status) {
       'acked' => Icons.check_circle,
@@ -54,9 +23,9 @@ Color commandStatusColor(BuildContext context, String status) =>
       _ => Colors.amber.shade800,
     };
 
-String formatCommandTime(DateTime? at) => at == null
-    ? 'time unknown'
-    : DateFormat.yMMMd().add_Hm().format(at.toLocal());
+String formatCommandTime(BuildContext context, DateTime? at) => at == null
+    ? context.l10n.timeUnknown
+    : DateFormat.yMMMd(context.localeName).add_Hm().format(at.toLocal());
 
 /// Plan 3.6: per-device command delivery status, read from the durable queue's
 /// parent-only history endpoint. Non-destructive; refresh with pull-to-refresh.
@@ -66,23 +35,24 @@ class CommandHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final overview = ref.watch(familyProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Command delivery')),
+      appBar: AppBar(title: Text(l10n.commandDeliveryTitle)),
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
-          title: 'Could not load this child',
+          title: l10n.couldNotLoadChild,
           detail: '$e',
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (data) {
           final devices = data.devicesFor(childId);
           if (devices.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No devices registered for this child',
+                padding: const EdgeInsets.all(24),
+                child: Text(l10n.noDevicesForChild,
                     textAlign: TextAlign.center),
               ),
             );
@@ -91,8 +61,7 @@ class CommandHistoryScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                'A command is confirmed only when the child device reports back. '
-                'Delivered means the device collected it; it has not confirmed it ran.',
+                l10n.deliveryExplanation,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
@@ -114,10 +83,11 @@ class _DeviceCommandSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final history = ref.watch(deviceCommandHistoryProvider(device.id));
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -153,7 +123,7 @@ class _DeviceCommandSection extends ConsumerWidget {
                 children: [
                   const SizedBox(height: 8),
                   Text(
-                    'Could not load command history',
+                    l10n.couldNotLoadCommandHistory,
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
@@ -166,14 +136,14 @@ class _DeviceCommandSection extends ConsumerWidget {
                     onPressed: () =>
                         ref.invalidate(deviceCommandHistoryProvider(device.id)),
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Retry'),
+                    label: Text(l10n.retry),
                   ),
                 ],
               ),
               data: (commands) => commands.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No commands yet'),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(l10n.noCommandsYet),
                     )
                   : Column(
                       children: [
@@ -195,23 +165,24 @@ class _CommandTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final color = commandStatusColor(context, command.status);
     final events = <String>[
-      'Created ${formatCommandTime(command.createdAt)}',
+      l10n.createdEvent(formatCommandTime(context, command.createdAt)),
       if (command.deliveredAt != null)
-        'Delivered ${formatCommandTime(command.deliveredAt)}',
+        l10n.deliveredEvent(formatCommandTime(context, command.deliveredAt)),
       if (command.ackedAt != null)
-        'Confirmed ${formatCommandTime(command.ackedAt)}',
+        l10n.confirmedEvent(formatCommandTime(context, command.ackedAt)),
     ];
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
       leading: Icon(commandStatusIcon(command.status), color: color, size: 20),
-      title: Text(commandTypeLabel(command.type)),
+      title: Text(l10n.commandType(command.type)),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(commandStatusLabel(command.status),
+          Text(l10n.commandStatus(command.status),
               style: TextStyle(color: color)),
           Text(events.join(' · '),
               style: Theme.of(context).textTheme.bodySmall),
@@ -251,7 +222,7 @@ class _ErrorState extends StatelessWidget {
             TextButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Retry')),
+                label: Text(context.l10n.retry)),
           ],
         ),
       ),

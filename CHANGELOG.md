@@ -11,6 +11,36 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — English/Arabic localization with RTL (`plan 3.1`, first slice; follow-up #159)
+- **Toolchain.** `flutter_localizations` + `intl 0.20.3`, a new `l10n.yaml`, `lib/l10n/app_en.arb`
+  (template) and `lib/l10n/app_ar.arb`; generated `AppLocalizations` is checked in. `MaterialApp`
+  (`lib/app.dart`) now carries `localizationsDelegates`, `supportedLocales` and a locale that
+  follows the device. Settings → Appearance pins System / English / العربية, persisted under
+  `shared_preferences` key `app_locale` with the same `StateNotifier` pattern as `theme_mode`
+  (`lib/providers/locale_provider.dart`).
+- **RTL is real.** The touched screens use `EdgeInsetsDirectional`/`AlignmentDirectional` and
+  `start`/`end`; no screen hard-codes `TextDirection`. `AndroidManifest.xml` sets
+  `android:supportsRtl="true"`. The child-detail app bar was compacted after the Arabic
+  "تعديل القواعد" label overflowed 320 px by 12 px.
+- **Translated surfaces.** Login, dashboard, child detail (including command labels/times and
+  the embedded social tab), alerts and the alert-detail dialog, rules editor (all four tabs and
+  dialogs), reports, usage history, pairing QR, Settings → Appearance, and the snippet-vault
+  modal. API enum values (web-filter/alert categories, severities, command types/statuses) are
+  mapped to labels instead of being shown raw. Dates use the app locale via
+  `DateFormat(..., context.localeName)`.
+- **Tests.** `test/localization_test.dart` adds 12 tests: each translated screen renders in
+  Arabic + `Directionality(rtl)` at 320×568 with zero layout exceptions, the locale override
+  survives a rebuilt `ProviderScope` (proving the preference round-trip), and the ARB gate fails
+  on a missing or empty Arabic key or a placeholder mismatch.
+- **Deliberately not translated.** The verifiable-parental-consent notice stays English pending a
+  product/legal decision (`TODO(#159)`); family members, family map, search & web safety and
+  digest preferences screens remain English; server-provided alert titles/bodies are displayed
+  as supplied. Native-speaker review of Arabic screenshots — the row's acceptance — is still
+  open (#159).
+- **Gates** (2026-10-19, `apps/parent-app`): `flutter analyze` → **No issues found**;
+  `flutter test` → **158 passed**. ⚠️ These are the author's runs (Kimi Code); no independent
+  verification has been recorded yet.
+
 ### Android — no background location FGS without the background grant, and `locate_now` says why it failed (issue #132)
 - **The #128 rule now covers every background start, not just boot.** `AccessibilityMonitorService.ensureLocationServiceRunning()`
   and `CommandDispatcher.locateNow()` requested `LocationService` on a fine/coarse check alone. Both

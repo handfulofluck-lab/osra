@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -20,15 +21,16 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final family = ref.watch(familyProvider);
     final unread = ref.watch(unacknowledgedCountProvider);
+    final l10n = context.l10n;
     // Keep the live WS channel subscribed so the activity chips update (#29).
     ref.watch(wsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('OSRA'),
+        title: Text(l10n.appName),
         actions: [
-          IconButton(icon: const Icon(Icons.map_outlined), tooltip: 'Family map', onPressed: () => context.push('/map')),
+          IconButton(icon: const Icon(Icons.map_outlined), tooltip: l10n.familyMapTooltip, onPressed: () => context.push('/map')),
           IconButton(
-            tooltip: 'Alerts',
+            tooltip: l10n.alertsTooltip,
             onPressed: () => context.push('/alerts'),
             icon: Badge(
               isLabelVisible: unread.hasValue && (unread.value ?? 0) > 0,
@@ -42,15 +44,15 @@ class DashboardScreen extends ConsumerWidget {
               'appearance' => '/settings/appearance',
               _ => '/settings/digests',
             }),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'family', child: Text('Family members')),
-              PopupMenuItem(value: 'appearance', child: Text('Appearance')),
-              PopupMenuItem(value: 'digests', child: Text('Digest preferences')),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'family', child: Text(l10n.familyMembersMenu)),
+              PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
+              PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
             ],
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
+            tooltip: l10n.signOutTooltip,
             onPressed: () async {
               await ref.read(authProvider.notifier).logout();
               if (context.mounted) context.go('/login');
@@ -60,14 +62,14 @@ class DashboardScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load family: $e')),
+        error: (e, _) => Center(child: Text(l10n.familyLoadFailed('$e'))),
         data: (overview) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(familyProvider),
           child: overview.children.isEmpty
               ? ListView(
-                  children: const [
-                    SizedBox(height: 200),
-                    Center(child: Text('No children yet — tap "Add child"')),
+                  children: [
+                    const SizedBox(height: 200),
+                    Center(child: Text(l10n.noChildrenYet)),
                   ],
                 )
               : GridView.count(
@@ -84,7 +86,7 @@ class DashboardScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const AddChildDialog()),
         icon: const Icon(Icons.person_add),
-        label: const Text('Add child'),
+        label: Text(l10n.addChild),
       ),
     );
   }
@@ -112,6 +114,7 @@ class ChildCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final device = overview?.devicesFor(child.id).firstOrNull;
     final location = ref.watch(locationProvider(child.id)).valueOrNull;
@@ -122,6 +125,7 @@ class ChildCard extends ConsumerWidget {
     final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
 
     final tokens = context.tokens;
+    final status = device == null ? null : _effectiveStatus(device);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -148,11 +152,11 @@ class ChildCard extends ConsumerWidget {
                 runSpacing: AppSpace.xs,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (device != null)
+                  if (device != null && status != null)
                     Chip(
                       visualDensity: VisualDensity.compact,
-                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, _effectiveStatus(device))),
-                      label: Text(_effectiveStatus(device)),
+                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, status)),
+                      label: Text(status == 'online' ? l10n.statusOnline : l10n.statusOffline),
                     ),
                   if (device != null && device.batteryPct > 0)
                     Chip(
@@ -171,7 +175,7 @@ class ChildCard extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       location == null
-                          ? 'No location yet'
+                          ? l10n.noLocationYet
                           : '${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}',
                       style: Theme.of(context).textTheme.bodySmall,
                       overflow: TextOverflow.ellipsis,
@@ -183,10 +187,10 @@ class ChildCard extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Screen time', style: Theme.of(context).textTheme.bodySmall),
+                  Text(l10n.screenTime, style: Theme.of(context).textTheme.bodySmall),
                   // NOTE: flexible + ellipsis — narrow cards overflowed this row.
                   Flexible(
-                    child: Text('${child.screenTimeTodayMinutes} / ${dailyLimit > 0 ? dailyLimit : '—'} min',
+                    child: Text(l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? '$dailyLimit' : '—'),
                         style: Theme.of(context).textTheme.bodySmall,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.end),
@@ -223,7 +227,7 @@ class LiveActivityChip extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
         child: Text(
-          '● ${activity.app} · ${activity.minutesToday}m today',
+          '● ${context.l10n.liveActivityToday(activity.app, activity.minutesToday)}',
           key: ValueKey('liveChip-$childId'),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.ok),
           overflow: TextOverflow.ellipsis,
@@ -242,6 +246,7 @@ class WellbeingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final l10n = context.l10n;
     // Legacy rings keep their pinned Material thresholds (Colors.red/amber/
     // green in light mode) through the token layer, so the colours can differ
     // per brightness without changing the documented thresholds.
@@ -251,9 +256,10 @@ class WellbeingRow extends StatelessWidget {
             ? tokens.wellbeingMid
             : tokens.wellbeingHigh;
     final breakdown = score.breakdown;
-    String part(String k) => '$k: ${breakdown[k] ?? '—'}';
+    String part(String label, String k) => '$label: ${breakdown[k] ?? '—'}';
     return Tooltip(
-      message: '${part('usage')} · ${part('social')} · ${part('safety')}',
+      message: '${part(l10n.wellbeingUsage, 'usage')} · ${part(l10n.wellbeingSocial, 'social')} · '
+          '${part(l10n.wellbeingSafety, 'safety')}',
       child: Row(
         children: [
           SizedBox(
@@ -281,7 +287,7 @@ class WellbeingRow extends StatelessWidget {
           ),
           const SizedBox(width: AppSpace.sm),
           // NOTE: flexible — the row overflowed 320px-wide cards.
-          Flexible(child: Text('Wellbeing ${score.score}/100', style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+          Flexible(child: Text(l10n.wellbeingScore(score.score), style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
         ],
       ),
     );
@@ -315,7 +321,7 @@ class InternetPill extends ConsumerWidget {
           children: [
             Icon(paused ? Icons.wifi_off : Icons.wifi, size: 14, color: color),
             const SizedBox(width: AppSpace.xs),
-            Text(paused ? 'Paused' : 'Internet', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color)),
+            Text(paused ? context.l10n.paused : context.l10n.internet, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color)),
           ],
         ),
       ),
@@ -326,14 +332,15 @@ class InternetPill extends ConsumerWidget {
 /// Family Link style confirm dialog for the internet pill; POSTs the toggle
 /// only on confirm.
 Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Child child, bool paused) async {
+  final l10n = context.l10n;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(paused ? 'Resume internet for ${child.displayName}?' : 'Pause internet for ${child.displayName}?'),
-      content: Text(paused ? 'All apps and sites work again.' : 'Educational apps keep working.'),
+      title: Text(paused ? l10n.resumeInternetTitle(child.displayName) : l10n.pauseInternetTitle(child.displayName)),
+      content: Text(paused ? l10n.resumeInternetBody : l10n.pauseInternetBody),
       actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(paused ? 'Resume' : 'Pause')),
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(l10n.cancel)),
+        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(paused ? l10n.resume : l10n.pause)),
       ],
     ),
   );
@@ -346,7 +353,7 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Internet change failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
     }
   }
 }
@@ -412,44 +419,47 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final l10n = context.l10n;
     return AlertDialog(
-      title: Text(_consentDone ? 'Child details' : 'Parental consent'),
+      title: Text(_consentDone ? l10n.childDetails : l10n.parentalConsent),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (!_consentDone) ...[
-              const Text('Verifiable parental consent is required before adding a child (COPPA/GDPR-K).'),
+              // TODO(#159): legal consent wording needs a product/legal
+              // decision before it can be translated; it stays English.
+              Text(l10n.consentNotice),
               const SizedBox(height: AppSpace.md),
               DropdownButtonFormField<String>(
                 initialValue: _method,
-                decoration: const InputDecoration(labelText: 'Consent method', border: OutlineInputBorder()),
-                items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(m))],
+                decoration: InputDecoration(labelText: l10n.consentMethodLabel, border: const OutlineInputBorder()),
+                items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))],
                 onChanged: (v) => setState(() => _method = v ?? _methods.first),
               ),
               const SizedBox(height: AppSpace.md),
               DropdownButtonFormField<String>(
                 initialValue: _jurisdiction,
-                decoration: const InputDecoration(labelText: 'Jurisdiction', border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'US', child: Text('US')),
-                  DropdownMenuItem(value: 'EU', child: Text('EU')),
-                  DropdownMenuItem(value: 'UK', child: Text('UK')),
-                  DropdownMenuItem(value: 'OTHER', child: Text('OTHER')),
+                decoration: InputDecoration(labelText: l10n.jurisdictionLabel, border: const OutlineInputBorder()),
+                items: [
+                  DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
+                  DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
+                  DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
+                  DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
                 ],
                 onChanged: (v) => setState(() => _jurisdiction = v ?? 'US'),
               ),
             ] else ...[
               TextField(
                 controller: _name,
-                decoration: const InputDecoration(labelText: 'Child name', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: l10n.childNameLabel, border: const OutlineInputBorder()),
               ),
               const SizedBox(height: AppSpace.md),
               TextField(
                 controller: _birthYear,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Birth year',
+                  labelText: l10n.birthYearLabel,
                   border: const OutlineInputBorder(),
                   hintText: '${DateTime.now().year}',
                 ),
@@ -463,18 +473,19 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: Text(l10n.cancel)),
         FilledButton(
           onPressed: _busy ? null : (_consentDone ? _createChild : _recordConsent),
           child: _busy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(_consentDone ? 'Add child' : 'Continue'),
+              : Text(_consentDone ? l10n.addChild : l10n.continueLabel),
         ),
       ],
     );
   }
 }
 
-/// Formats a device last-seen timestamp for display.
-String formatLastSeen(DateTime? lastSeen) =>
-    lastSeen == null ? 'never' : DateFormat.yMMMd().add_Hm().format(lastSeen.toLocal());
+/// Formats a device last-seen timestamp for display in the app locale.
+String formatLastSeen(BuildContext context, DateTime? lastSeen) => lastSeen == null
+    ? context.l10n.never
+    : DateFormat.yMMMd(context.localeName).add_Hm().format(lastSeen.toLocal());

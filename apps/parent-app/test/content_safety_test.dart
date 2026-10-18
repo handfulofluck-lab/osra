@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +25,7 @@ void main() {
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: MaterialApp(home: home),
+      child: localizedTestApp(home),
     ));
     await tester.pumpAndSettle();
   }
@@ -174,8 +175,8 @@ void main() {
 
   group('SnippetVaultModal', () {
     testWidgets('displays security trust banner, snippet, concern types, and coach card', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
+      await tester.pumpWidget(localizedTestApp(
+        Scaffold(
           body: Builder(
             builder: (context) => ElevatedButton(
               onPressed: () => SnippetVaultModal.show(

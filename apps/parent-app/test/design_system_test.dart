@@ -17,6 +17,7 @@ import 'package:familyshield_parent/theme/app_theme.dart';
 import 'package:familyshield_parent/theme/app_tokens.dart';
 
 import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -88,11 +89,11 @@ void main() {
   Widget themedApp(Widget home, FakeApiClient api) => ProviderScope(
         overrides: [apiClientProvider.overrideWithValue(api)],
         child: Consumer(
-          builder: (context, ref, _) => MaterialApp(
+          builder: (context, ref, _) => localizedTestApp(
+            home,
             theme: AppTheme.light,
             darkTheme: AppTheme.dark,
             themeMode: ref.watch(themeModeProvider),
-            home: home,
           ),
         ),
       );

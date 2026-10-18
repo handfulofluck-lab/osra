@@ -1,0 +1,674 @@
+{
+  "@@locale": "en",
+  "appName": "OSRA",
+  "cancel": "Cancel",
+  "save": "Save",
+  "add": "Add",
+  "continueLabel": "Continue",
+  "close": "Close",
+  "tryAgain": "Try again",
+  "retry": "Retry",
+  "dismiss": "Dismiss",
+  "system": "System",
+  "light": "Light",
+  "dark": "Dark",
+  "english": "English",
+  "arabic": "العربية",
+  "unknown": "Unknown",
+  "never": "never",
+  "timeUnknown": "time unknown",
+  "saving": "Saving…",
+  "minutesShort": "{minutes} min",
+  "@minutesShort": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "appTagline": "أسرة — parental control for your family",
+  "serverLabel": "Server",
+  "serverHint": "http://host:port",
+  "serverShown": "Server: {url}",
+  "@serverShown": {
+    "placeholders": {
+      "url": { "type": "String" }
+    }
+  },
+  "invalidServer": "Enter a valid server, e.g. http://192.168.1.5:3000",
+  "emailLabel": "Email",
+  "passwordLabel": "Password",
+  "mfaCodeLabel": "Authentication code (if MFA is on)",
+  "signIn": "Sign in",
+  "createAccount": "Create account",
+  "familyNameLabel": "Family name",
+  "yourNameLabel": "Your name",
+  "regionLabel": "Region",
+  "regionUS": "United States",
+  "regionEU": "European Union",
+  "regionUK": "United Kingdom",
+  "regionOther": "Other",
+  "register": "Register",
+  "familyMapTooltip": "Family map",
+  "alertsTooltip": "Alerts",
+  "familyMembersMenu": "Family members",
+  "appearanceMenu": "Appearance",
+  "digestPreferencesMenu": "Digest preferences",
+  "signOutTooltip": "Sign out",
+  "familyLoadFailed": "Failed to load family: {error}",
+  "@familyLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "noChildrenYet": "No children yet — tap \"Add child\"",
+  "addChild": "Add child",
+  "statusOnline": "online",
+  "statusOffline": "offline",
+  "noLocationYet": "No location yet",
+  "screenTime": "Screen time",
+  "screenTimeValue": "{minutes} / {limit} min",
+  "@screenTimeValue": {
+    "placeholders": {
+      "minutes": { "type": "int" },
+      "limit": { "type": "String" }
+    }
+  },
+  "liveActivityToday": "{app} · {minutes}m today",
+  "@liveActivityToday": {
+    "placeholders": {
+      "app": { "type": "String" },
+      "minutes": { "type": "int" }
+    }
+  },
+  "wellbeingScore": "Wellbeing {score}/100",
+  "@wellbeingScore": {
+    "placeholders": {
+      "score": { "type": "int" }
+    }
+  },
+  "wellbeingUsage": "usage",
+  "wellbeingSocial": "social",
+  "wellbeingSafety": "safety",
+  "paused": "Paused",
+  "internet": "Internet",
+  "pauseInternetTitle": "Pause internet for {name}?",
+  "@pauseInternetTitle": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "resumeInternetTitle": "Resume internet for {name}?",
+  "@resumeInternetTitle": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "pauseInternetBody": "Educational apps keep working.",
+  "resumeInternetBody": "All apps and sites work again.",
+  "pause": "Pause",
+  "resume": "Resume",
+  "internetChangeFailed": "Internet change failed: {error}",
+  "@internetChangeFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "parentalConsent": "Parental consent",
+  "childDetails": "Child details",
+  "consentNotice": "Verifiable parental consent is required before adding a child (COPPA/GDPR-K).",
+  "consentMethodLabel": "Consent method",
+  "consentMethodSmsPlus": "SMS +",
+  "consentMethodKba": "Knowledge-based questions",
+  "consentMethodFaceMatch": "Face match",
+  "consentMethodCreditCard": "Credit card",
+  "jurisdictionLabel": "Jurisdiction",
+  "childNameLabel": "Child name",
+  "birthYearLabel": "Birth year",
+  "childFallback": "Child",
+  "tabOverview": "Overview",
+  "tabApps": "Apps",
+  "tabSocial": "Social",
+  "tabLocation": "Location",
+  "tabAlerts": "Alerts",
+  "reportsTooltip": "Reports",
+  "searchSafetyTooltip": "Search & web safety",
+  "editRules": "Edit rules",
+  "bornYear": "Born {year}",
+  "@bornYear": {
+    "placeholders": {
+      "year": { "type": "int" }
+    }
+  },
+  "socialMonitoringTitle": "Social monitoring",
+  "devices": "Devices",
+  "pairADevice": "Pair a device",
+  "noDevicesRegistered": "No devices registered",
+  "lastSeenLabel": "Last seen: {time}",
+  "@lastSeenLabel": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "deliveryStatus": "Delivery status",
+  "ring": "Ring",
+  "lock": "Lock",
+  "unlock": "Unlock",
+  "pauseNet": "Pause net",
+  "resumeNet": "Resume net",
+  "checkingCommandDelivery": "Checking command delivery…",
+  "commandDeliveryUnavailable": "Command delivery unavailable",
+  "noCommandsYet": "No commands yet",
+  "latestCommand": "Latest: {type} · {status} · {time}",
+  "@latestCommand": {
+    "placeholders": {
+      "type": { "type": "String" },
+      "status": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+  "bonusTime": "Bonus time",
+  "extraScreenTimeToday": "Extra screen time today only",
+  "bonusGranted": "{minutes, plural, =1{+1 extra minute granted today} other{+{minutes} extra minutes granted today}}",
+  "@bonusGranted": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "bonusFailed": "Bonus failed: {error}",
+  "@bonusFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "windDown": "Wind down",
+  "windDownBody": "The device shows a soft bedtime warning, then locks.",
+  "windDownSubtitle": "Soft warning, then the screen locks",
+  "windDownConfirm": "{minutes, plural, =1{Screen will lock in 1 minute on the device} other{Screen will lock in {minutes} minutes on the device}}",
+  "@windDownConfirm": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "windDownFailed": "Wind down failed: {error}",
+  "@windDownFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "commandQueued": "{command} queued for {device} — the device has not confirmed it yet.",
+  "@commandQueued": {
+    "placeholders": {
+      "command": { "type": "String" },
+      "device": { "type": "String" }
+    }
+  },
+  "netQueued": "{action} queued for {device} — the device has not confirmed it yet.",
+  "@netQueued": {
+    "placeholders": {
+      "action": { "type": "String" },
+      "device": { "type": "String" }
+    }
+  },
+  "commandFailed": "Command failed: {error}",
+  "@commandFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "rulesLoadFailed": "Failed to load rules: {error}",
+  "@rulesLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "noPerAppRules": "No per-app rules",
+  "appActionBlock": "Block",
+  "appActionTimeLimit": "Time limit",
+  "appActionAllow": "Allow",
+  "locationLoadFailed": "Failed to load location: {error}",
+  "@locationLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "noLocationReported": "No location reported yet",
+  "accuracyLabel": "Accuracy ±{meters} m · {time}",
+  "@accuracyLabel": {
+    "placeholders": {
+      "meters": { "type": "int" },
+      "time": { "type": "String" }
+    }
+  },
+  "mapPreview": "Map preview",
+  "locationHistoryLoadFailed": "Failed to load history: {error}",
+  "@locationHistoryLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "noLocationHistoryToday": "No location history for today",
+  "todaysRoute": "Today's route",
+  "back15Tooltip": "Back 15 min",
+  "forward15Tooltip": "Forward 15 min",
+  "accuracyUnknown": "accuracy unknown",
+  "alertsLoadFailed": "Failed to load alerts: {error}",
+  "@alertsLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "noRecentAlerts": "No recent alerts",
+  "acknowledgeTooltip": "Acknowledge",
+  "ageRating": "Age rating: {rating}",
+  "@ageRating": {
+    "placeholders": {
+      "rating": { "type": "String" }
+    }
+  },
+  "risks": "Risks",
+  "saferAlternatives": "Safer alternatives",
+  "noInsightsYet": "No insights for this app yet",
+  "insightsLoadFailed": "Failed to load insights: {error}",
+  "@insightsLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "commandLock": "Lock",
+  "commandUnlock": "Unlock",
+  "commandRing": "Ring",
+  "commandStopRing": "Stop ringing",
+  "commandClearSos": "Clear SOS",
+  "commandPauseDevice": "Pause device",
+  "commandResumeDevice": "Resume device",
+  "commandPauseInternet": "Pause internet",
+  "commandResumeInternet": "Resume internet",
+  "commandBonusTime": "Bonus time",
+  "commandWindDown": "Wind down",
+  "commandLocateNow": "Locate now",
+  "commandRulesUpdated": "Rules update",
+  "commandConsentGranted": "Consent granted",
+  "commandConsentRevoked": "Consent revoked",
+  "statusConfirmed": "Confirmed by device",
+  "statusDelivered": "Delivered — awaiting device confirmation",
+  "statusFailed": "Failed on device",
+  "statusExpired": "Expired before delivery",
+  "statusPending": "Pending — waiting for the device",
+  "alertsTitle": "Alerts",
+  "noAlertsYet": "No alerts yet",
+  "loadMore": "Load more",
+  "acknowledgeFailed": "Acknowledge failed: {error}",
+  "@acknowledgeFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "categoryLabel": "Category: {category}",
+  "@categoryLabel": {
+    "placeholders": {
+      "category": { "type": "String" }
+    }
+  },
+  "severityLabel": "Severity: {severity}",
+  "@severityLabel": {
+    "placeholders": {
+      "severity": { "type": "String" }
+    }
+  },
+  "timeLabel": "Time: {time}",
+  "@timeLabel": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "allowAction": "Allow",
+  "blockThisApp": "Block this app",
+  "allowedSnack": "Allowed",
+  "appBlockedSnack": "App blocked",
+  "blockFailed": "Block failed: {error}",
+  "@blockFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "severityCritical": "Critical",
+  "severityWarning": "Warning",
+  "severityInfo": "Info",
+  "alertCategorySos": "SOS",
+  "alertCategoryWebFilter": "Web filter",
+  "alertCategoryScreenTime": "Screen time",
+  "alertCategoryInstallRequest": "App install request",
+  "alertCategorySocialConcern": "Social concern",
+  "alertCategoryLocation": "Location",
+  "alertCategoryDevice": "Device",
+  "alertCategorySafety": "Safety",
+  "tabScreenTime": "Screen time",
+  "tabWebFilter": "Web filter",
+  "tabRoutines": "Routines",
+  "dailyLimit": "Daily limit: {minutes} min",
+  "@dailyLimit": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "weekendLimit": "Weekend limit: {minutes} min",
+  "@weekendLimit": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "bedtime": "Bedtime",
+  "starts": "Starts",
+  "ends": "Ends",
+  "schoolHours": "School hours",
+  "weekdayMon": "Mon",
+  "weekdayTue": "Tue",
+  "weekdayWed": "Wed",
+  "weekdayThu": "Thu",
+  "weekdayFri": "Fri",
+  "weekdaySat": "Sat",
+  "weekdaySun": "Sun",
+  "recommendedProtection": "Recommended protection",
+  "recommendedProtectionSubtitle": "Block all 13 recommended categories",
+  "disablingRecommended": "Disabling recommended categories reduces protection. Continue?",
+  "blockedCategories": "Blocked categories",
+  "categoryPornography": "Pornography",
+  "categoryGambling": "Gambling",
+  "categoryDrugs": "Drugs",
+  "categoryViolence": "Violence",
+  "categoryWeapons": "Weapons",
+  "categoryHate": "Hate speech",
+  "categorySelfHarm": "Self-harm",
+  "categoryDating": "Dating",
+  "categorySocialMediaNsfw": "NSFW social media",
+  "categoryChatRandom": "Random chat",
+  "categoryProxiesVpn": "Proxies & VPN",
+  "categoryWarez": "Piracy",
+  "categoryAiChatbots": "AI chatbots",
+  "categorySocialMedia": "Social media",
+  "categoryChat": "Chat",
+  "allowedDomainsLabel": "Allowed domains (comma-separated)",
+  "blockedDomainsLabel": "Blocked domains (comma-separated)",
+  "enforceSafeSearch": "Enforce SafeSearch",
+  "youtubeRestrictedMode": "YouTube Restricted Mode",
+  "youtubeRestrictedDesc": "Filters out potentially mature content on YouTube across child devices.",
+  "strict": "Strict",
+  "moderate": "Moderate",
+  "off": "Off",
+  "alwaysAllowed": "Always allowed",
+  "alwaysAllowedDesc": "These apps stay open during bedtime, school time, pause and routines.",
+  "noAlwaysAllowedApps": "No always-allowed apps yet",
+  "addApp": "Add app",
+  "addAppRule": "Add app rule",
+  "addAlwaysAllowedTitle": "Add always-allowed app",
+  "appNameLabel": "App name",
+  "packageIdLabel": "Package ID (e.g. com.example.app)",
+  "limitPerDayLabel": "Limit (minutes/day)",
+  "addRoutine": "Add routine",
+  "editRoutine": "Edit routine",
+  "nameLabel": "Name",
+  "startTimeButton": "Start {time}",
+  "@startTimeButton": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "endTimeButton": "End {time}",
+  "@endTimeButton": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "blockedAppsLabel": "Blocked apps (comma-separated)",
+  "allowedAppsLabel": "Allowed apps (comma-separated)",
+  "rulesSaved": "Rules saved",
+  "reportsTitle": "Reports",
+  "screenTimeWebHistoryTooltip": "Screen time & web history",
+  "sevenDays": "7 days",
+  "thirtyDays": "30 days",
+  "reportLoadFailed": "Failed to load report: {error}",
+  "@reportLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "noActivityDays": "{days, plural, =1{No activity recorded in the last day} other{No activity recorded in the last {days} days}}",
+  "@noActivityDays": {
+    "placeholders": {
+      "days": { "type": "int" }
+    }
+  },
+  "appUsage": "App usage",
+  "totalAverage": "Total {total} min · avg {avg} min/day",
+  "@totalAverage": {
+    "placeholders": {
+      "total": { "type": "int" },
+      "avg": { "type": "int" }
+    }
+  },
+  "noAppUsage": "No app usage recorded",
+  "webSection": "Web",
+  "urlVisits": "{count, plural, =0{No URL visits} =1{1 URL visit} other{{count} URL visits}}",
+  "@urlVisits": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "noBlockedDomains": "No blocked domains",
+  "blockedTimes": "{count, plural, =1{blocked once} other{{count}× blocked}}",
+  "@blockedTimes": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "safeSearchForced": "YouTube search is forced to SafeSearch",
+  "restrictedModeNote": "Restricted Mode needs HTTPS inspection on the child PC (see guide)",
+  "socialAndCommunication": "Social & communication",
+  "socialConcerns": "{count, plural, =0{No social concerns} =1{1 social concern} other{{count} social concerns}}",
+  "@socialConcerns": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "callsCount": "{count, plural, =0{No calls} =1{1 call} other{{count} calls}}",
+  "@callsCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "smsCount": "{count, plural, =0{No SMS} =1{1 SMS} other{{count} SMS}}",
+  "@smsCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "screenTimeWebTitle": "Screen time & web",
+  "daysShort": "{days}d",
+  "@daysShort": {
+    "placeholders": {
+      "days": { "type": "int" }
+    }
+  },
+  "couldNotLoadScreenTime": "Could not load screen time",
+  "noScreenTimeData": "{days, plural, =1{No screen time data in the last day} other{No screen time data in the last {days} days}}",
+  "@noScreenTimeData": {
+    "placeholders": {
+      "days": { "type": "int" }
+    }
+  },
+  "noScreenTimeRecorded": "{days, plural, =1{No screen time recorded in the last day} other{No screen time recorded in the last {days} days}}",
+  "@noScreenTimeRecorded": {
+    "placeholders": {
+      "days": { "type": "int" }
+    }
+  },
+  "totalOverDays": "Total {total} min over {count, plural, =1{1 day} other{{count} days}}",
+  "@totalOverDays": {
+    "placeholders": {
+      "total": { "type": "int" },
+      "count": { "type": "int" }
+    }
+  },
+  "fewerDaysReturned": "Only {returned} of the {requested} requested days were returned; showing those days as-is.",
+  "@fewerDaysReturned": {
+    "placeholders": {
+      "returned": { "type": "int" },
+      "requested": { "type": "int" }
+    }
+  },
+  "dayByDay": "Day by day",
+  "browsingHistory": "Browsing history",
+  "blockedOnly": "Blocked only",
+  "showLabel": "Show",
+  "couldNotLoadBrowsing": "Could not load browsing history",
+  "noBlockedSites": "{days, plural, =1{No blocked sites in the last day} other{No blocked sites in the last {days} days}}",
+  "@noBlockedSites": {
+    "placeholders": {
+      "days": { "type": "int" }
+    }
+  },
+  "noBrowsingHistory": "{days, plural, =1{No browsing history in the last day} other{No browsing history in the last {days} days}}",
+  "@noBrowsingHistory": {
+    "placeholders": {
+      "days": { "type": "int" }
+    }
+  },
+  "showingLatestVisits": "Showing the latest {limit} visits — raise the limit to see more.",
+  "@showingLatestVisits": {
+    "placeholders": {
+      "limit": { "type": "int" }
+    }
+  },
+  "blocked": "Blocked",
+  "allowed": "Allowed",
+  "dayTooltip": "{date}: {minutes} min",
+  "@dayTooltip": {
+    "placeholders": {
+      "date": { "type": "String" },
+      "minutes": { "type": "int" }
+    }
+  },
+  "scanQr": "Scan this QR code with the OSRA child app.",
+  "typeSixDigit": "If the camera cannot scan it, type the 6-digit code below on the child device.",
+  "codeExpired": "Code expired",
+  "generateNewCode": "Generate a new code to keep pairing.",
+  "pairingQrSemantics": "Pairing QR code for {code}",
+  "@pairingQrSemantics": {
+    "placeholders": {
+      "code": { "type": "String" }
+    }
+  },
+  "expiresIn": "Expires in {time}",
+  "@expiresIn": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "regenerate": "Regenerate",
+  "copyCode": "Copy code",
+  "codeCopied": "Code copied",
+  "codeWorksOnce": "{minutes, plural, =1{The code works once and expires after 1 minute.} other{The code works once and expires after {minutes} minutes.}}",
+  "@codeWorksOnce": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "pairCodeError": "The server did not return a usable pairing code. Try Regenerate.",
+  "pairCreateError": "Could not create a pairing code. Check the connection and try again.",
+  "appearanceTitle": "Appearance",
+  "themeLabel": "Theme",
+  "appearanceDesc": "System follows this device. Light or Dark overrides it for OSRA only.",
+  "followingDevice": "Following the device (currently {mode}).",
+  "@followingDevice": {
+    "placeholders": {
+      "mode": { "type": "String" }
+    }
+  },
+  "lightAlwaysOn": "Light theme is always on.",
+  "darkAlwaysOn": "Dark theme is always on.",
+  "languageLabel": "Language",
+  "languageDesc": "System follows this device. English or Arabic overrides it for OSRA only.",
+  "followingLanguage": "Following the device (currently {language}).",
+  "@followingLanguage": {
+    "placeholders": {
+      "language": { "type": "String" }
+    }
+  },
+  "englishAlwaysOn": "English is always on.",
+  "arabicAlwaysOn": "Arabic is always on.",
+  "monitoring": "Monitoring",
+  "monitoringSaved": "Monitoring saved",
+  "saveFailed": "Save failed: {error}",
+  "@saveFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "saveMonitoring": "Save monitoring",
+  "concerns": "Concerns",
+  "vaultTrustCopy": "Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.",
+  "noConcernsDetected": "No concerns detected",
+  "unknownContact": "Unknown contact",
+  "unknownApp": "Unknown app",
+  "noPreviewAvailable": "No preview available",
+  "viewInDecryptionVault": "View in Decryption Vault",
+  "socialMessage": "Social message",
+  "callsAndTexts": "Calls & texts",
+  "iosNoCallMonitoring": "iOS does not support call/text monitoring.",
+  "noCallsOrTexts": "No calls or texts yet",
+  "unknownNumber": "Unknown number",
+  "trustedContacts": "Trusted contacts",
+  "trustedContactsDesc": "Numbers here never raise social concerns.",
+  "phoneNumberLabel": "Phone number",
+  "saveAllowlist": "Save allowlist",
+  "allowlistSaved": "Allowlist saved",
+  "relativeJustNow": "just now",
+  "relativeMinutesAgo": "{count}m ago",
+  "@relativeMinutesAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "relativeHoursAgo": "{count}h ago",
+  "@relativeHoursAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "relativeDaysAgo": "{count}d ago",
+  "@relativeDaysAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "decryptedVaultContent": "Decrypted Vault Content",
+  "encryptedFamilyVault": "Encrypted Family Vault",
+  "vaultEncryptionDesc": "Protected by AES-256-GCM encryption. Decrypted on-demand for authenticated guardians only.",
+  "decryptedContent": "Decrypted content",
+  "copy": "Copy",
+  "contentCopied": "Content copied to clipboard",
+  "noPreviewContent": "No preview content available",
+  "detectedConcernTypes": "Detected concern types",
+  "commandDeliveryTitle": "Command delivery",
+  "couldNotLoadChild": "Could not load this child",
+  "noDevicesForChild": "No devices registered for this child",
+  "deliveryExplanation": "A command is confirmed only when the child device reports back. Delivered means the device collected it; it has not confirmed it ran.",
+  "couldNotLoadCommandHistory": "Could not load command history",
+  "createdEvent": "Created {time}",
+  "@createdEvent": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "deliveredEvent": "Delivered {time}",
+  "@deliveredEvent": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "confirmedEvent": "Confirmed {time}",
+  "@confirmedEvent": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  }
+}

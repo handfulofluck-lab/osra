@@ -13,6 +13,7 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/world_class_provider.dart';
 
 import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -25,7 +26,7 @@ void main() {
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: MaterialApp(home: home),
+      child: localizedTestApp(home),
     ));
     await tester.pumpAndSettle();
   }

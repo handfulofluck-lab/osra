@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 
@@ -23,16 +24,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final summary = ref.watch(reportSummaryProvider((childId: widget.childId, days: _days)));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reports'),
+        title: Text(l10n.reportsTitle),
         actions: [
           // Roadmap 3.5: the summary here is top-apps only; the durable
           // per-day trend and the browsing history live on their own screen.
           IconButton(
             key: const ValueKey('usageHistoryButton'),
-            tooltip: 'Screen time & web history',
+            tooltip: l10n.screenTimeWebHistoryTooltip,
             icon: const Icon(Icons.show_chart),
             onPressed: () => context.push('/child/${widget.childId}/history'),
           ),
@@ -42,9 +44,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: AppSpace.sm),
             child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 7, label: Text('7 days')),
-                ButtonSegment(value: 30, label: Text('30 days')),
+              segments: [
+                ButtonSegment(value: 7, label: Text(l10n.sevenDays)),
+                ButtonSegment(value: 30, label: Text(l10n.thirtyDays)),
               ],
               selected: {_days},
               onSelectionChanged: (s) => setState(() => _days = s.first),
@@ -54,9 +56,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ),
       body: summary.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load report: $e')),
+        error: (e, _) => Center(child: Text(l10n.reportLoadFailed('$e'))),
         data: (data) => data.isEmpty
-            ? Center(child: Text('No activity recorded in the last $_days days'))
+            ? Center(child: Text(l10n.noActivityDays(_days)))
             : ListView(
                 padding: const EdgeInsets.all(AppSpace.lg),
                 children: [
@@ -80,17 +82,18 @@ class _UsageSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final avg = days > 0 ? (summary.totalAppMinutes / days).round() : 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('App usage', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.appUsage, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
-        Text('Total ${summary.totalAppMinutes} min · avg $avg min/day'),
+        Text(l10n.totalAverage(summary.totalAppMinutes, avg)),
         if (summary.topApps.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: AppSpace.md),
-            child: Text('No app usage recorded'),
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpace.md),
+            child: Text(l10n.noAppUsage),
           )
         else ...[
           const SizedBox(height: AppSpace.md),
@@ -144,15 +147,16 @@ class _WebSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Web', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.webSection, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
-        Text('${summary.urlVisits} URL visits'),
+        Text(l10n.urlVisits(summary.urlVisits)),
         const SizedBox(height: AppSpace.sm),
         if (summary.topBlockedDomains.isEmpty)
-          const Text('No blocked domains')
+          Text(l10n.noBlockedDomains)
         else
           for (final d in summary.topBlockedDomains)
             ListTile(
@@ -160,15 +164,15 @@ class _WebSection extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.block, size: 16),
               title: Text(d.domain),
-              trailing: Text('${d.count}× blocked'),
+              trailing: Text(l10n.blockedTimes(d.count)),
             ),
         const SizedBox(height: AppSpace.sm),
         Card(
           color: context.tokens.surfaceVariant,
-          child: const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('YouTube search is forced to SafeSearch'),
-            subtitle: Text('Restricted Mode needs HTTPS inspection on the child PC (see guide)'),
+          child: ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: Text(l10n.safeSearchForced),
+            subtitle: Text(l10n.restrictedModeNote),
           ),
         ),
       ],
@@ -183,10 +187,11 @@ class _SocialSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Social & communication', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.socialAndCommunication, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.sm),
         Wrap(
           spacing: AppSpace.sm,
@@ -195,17 +200,17 @@ class _SocialSection extends StatelessWidget {
             Chip(
               visualDensity: VisualDensity.compact,
               avatar: const Icon(Icons.flag_outlined, size: 14),
-              label: Text('${summary.socialConcerns} social concerns'),
+              label: Text(l10n.socialConcerns(summary.socialConcerns)),
             ),
             Chip(
               visualDensity: VisualDensity.compact,
               avatar: const Icon(Icons.call_outlined, size: 14),
-              label: Text('${summary.calls} calls'),
+              label: Text(l10n.callsCount(summary.calls)),
             ),
             Chip(
               visualDensity: VisualDensity.compact,
               avatar: const Icon(Icons.sms_outlined, size: 14),
-              label: Text('${summary.sms} SMS'),
+              label: Text(l10n.smsCount(summary.sms)),
             ),
           ],
         ),

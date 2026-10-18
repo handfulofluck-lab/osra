@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -12,7 +13,7 @@ import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
-import 'command_history_screen.dart' show commandStatusLabel, commandTypeLabel, formatCommandTime;
+import 'command_history_screen.dart' show formatCommandTime;
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -23,32 +24,43 @@ class ChildDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
+    final l10n = context.l10n;
     return DefaultTabController(
       length: 5,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(child?.displayName ?? 'Child'),
+          title: Text(child?.displayName ?? l10n.childFallback),
           // NOTE: scrollable — five labels no longer fit at 320px width.
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
-            tabs: [Tab(text: 'Overview'), Tab(text: 'Apps'), Tab(text: 'Social'), Tab(text: 'Location'), Tab(text: 'Alerts')],
+            tabs: [
+              Tab(text: l10n.tabOverview),
+              Tab(text: l10n.tabApps),
+              Tab(text: l10n.tabSocial),
+              Tab(text: l10n.tabLocation),
+              Tab(text: l10n.tabAlerts),
+            ],
           ),
           actions: [
             IconButton(
-              tooltip: 'Reports',
+              tooltip: l10n.reportsTooltip,
               icon: const Icon(Icons.insights),
               onPressed: () => context.push('/child/$childId/reports'),
             ),
             IconButton(
               key: const ValueKey('searchSafetyButton'),
-              tooltip: 'Search & web safety',
+              tooltip: l10n.searchSafetyTooltip,
               icon: const Icon(Icons.saved_search_outlined),
               onPressed: () => context.push('/child/$childId/searches'),
             ),
             TextButton.icon(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+              ),
               onPressed: () => context.push('/child/$childId/rules'),
-              icon: const Icon(Icons.rule),
-              label: const Text('Edit rules'),
+              icon: const Icon(Icons.rule, size: 18),
+              label: Text(l10n.editRules),
             ),
           ],
         ),
@@ -72,6 +84,7 @@ class _OverviewTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final child = overview?.children.where((c) => c.id == childId).firstOrNull;
     final devices = overview?.devicesFor(childId) ?? const <Device>[];
@@ -85,7 +98,7 @@ class _OverviewTab extends ConsumerWidget {
             child: ListTile(
               leading: CircleAvatar(child: Text(child.initials)),
               title: Text(child.displayName),
-              subtitle: Text('Born ${child.birthYear}'),
+              subtitle: Text(l10n.bornYear(child.birthYear)),
             ),
           ),
         // NOTE: simplest entry — the chevron jumps to the Social tab instead
@@ -93,7 +106,7 @@ class _OverviewTab extends ConsumerWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.forum_outlined),
-            title: const Text('Social monitoring'),
+            title: Text(l10n.socialMonitoringTitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => DefaultTabController.of(context).animateTo(2),
           ),
@@ -104,17 +117,17 @@ class _OverviewTab extends ConsumerWidget {
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text('Devices', style: Theme.of(context).textTheme.titleMedium),
+            Text(l10n.devices, style: Theme.of(context).textTheme.titleMedium),
             TextButton.icon(
               onPressed: () => _pairDevice(context, ref, childId),
               icon: const Icon(Icons.phonelink_setup, size: 18),
-              label: const Text('Pair a device'),
+              label: Text(l10n.pairADevice),
             ),
           ],
         ),
         const SizedBox(height: AppSpace.xs),
         if (devices.isEmpty)
-          const Card(child: ListTile(leading: Icon(Icons.devices_other), title: Text('No devices registered')))
+          Card(child: ListTile(leading: const Icon(Icons.devices_other), title: Text(l10n.noDevicesRegistered)))
         else
           for (final d in devices)
             Card(
@@ -127,7 +140,7 @@ class _OverviewTab extends ConsumerWidget {
                       _ => Icons.devices_other,
                     }),
                     title: Text(d.model),
-                    subtitle: Text('${d.platform} ${d.osVersion} · ${_statusLabel(d)}'),
+                    subtitle: Text('${d.platform} ${d.osVersion} · ${_statusLabel(context, d)}'),
                     trailing: d.batteryPct > 0
                         ? Chip(
                             visualDensity: VisualDensity.compact,
@@ -137,23 +150,23 @@ class _OverviewTab extends ConsumerWidget {
                         : null,
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
+                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
                     child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Last seen: ${formatLastSeen(d.lastSeen)}', style: Theme.of(context).textTheme.bodySmall),
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(l10n.lastSeenLabel(formatLastSeen(context, d.lastSeen)), style: Theme.of(context).textTheme.bodySmall),
                     ),
                   ),
                   // Plan 3.6: the latest command's real state, straight from the
                   // durable queue. An unacked command is never described as sent.
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xxs),
+                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xxs),
                     child: Align(
-                      alignment: Alignment.centerLeft,
+                      alignment: AlignmentDirectional.centerStart,
                       child: _DeviceDeliverySummary(deviceId: d.id),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(AppSpace.sm, 0, AppSpace.sm, 6),
+                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.sm, 0, AppSpace.sm, 6),
                     // NOTE: Wrap instead of Row — the command buttons
                     // overflowed on 320px-wide screens.
                     child: Wrap(
@@ -162,37 +175,37 @@ class _OverviewTab extends ConsumerWidget {
                         TextButton.icon(
                           onPressed: () => context.push('/child/$childId/commands'),
                           icon: const Icon(Icons.receipt_long, size: 18),
-                          label: const Text('Delivery status'),
+                          label: Text(l10n.deliveryStatus),
                         ),
                         TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'ring'),
                           icon: const Icon(Icons.notifications_active, size: 18),
-                          label: const Text('Ring'),
+                          label: Text(l10n.ring),
                         ),
                         TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'lock'),
                           icon: const Icon(Icons.lock, size: 18),
-                          label: const Text('Lock'),
+                          label: Text(l10n.lock),
                         ),
                         TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'unlock'),
                           icon: const Icon(Icons.lock_open, size: 18),
-                          label: const Text('Unlock'),
+                          label: Text(l10n.unlock),
                         ),
                         TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'pause'),
                           icon: const Icon(Icons.pause_circle, size: 18),
-                          label: const Text('Pause'),
+                          label: Text(l10n.pause),
                         ),
                         TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'resume'),
                           icon: const Icon(Icons.play_circle, size: 18),
-                          label: const Text('Resume'),
+                          label: Text(l10n.resume),
                         ),
                         TextButton.icon(
                           onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
-                          label: Text(internetPaused ? 'Resume net' : 'Pause net'),
+                          label: Text(internetPaused ? l10n.resumeNet : l10n.pauseNet),
                         ),
                       ],
                     ),
@@ -209,10 +222,10 @@ class _OverviewTab extends ConsumerWidget {
   }
 
   /// Online when the device checked in within the last 3 minutes.
-  static String _statusLabel(Device d) {
+  static String _statusLabel(BuildContext context, Device d) {
     final last = d.lastSeen;
     final online = last != null && DateTime.now().difference(last) < const Duration(minutes: 3);
-    return online ? 'online' : 'offline';
+    return online ? context.l10n.statusOnline : context.l10n.statusOffline;
   }
 }
 
@@ -227,15 +240,19 @@ class _DeviceDeliverySummary extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final history = ref.watch(deviceCommandHistoryProvider(deviceId));
     final style = Theme.of(context).textTheme.bodySmall;
+    final l10n = context.l10n;
     return history.when(
-      loading: () => Text('Checking command delivery…', style: style),
-      error: (e, _) => Text('Command delivery unavailable', style: style),
+      loading: () => Text(l10n.checkingCommandDelivery, style: style),
+      error: (e, _) => Text(l10n.commandDeliveryUnavailable, style: style),
       data: (commands) {
-        if (commands.isEmpty) return Text('No commands yet', style: style);
+        if (commands.isEmpty) return Text(l10n.noCommandsYet, style: style);
         final latest = commands.first;
         return Text(
-          'Latest: ${commandTypeLabel(latest.type)} · ${commandStatusLabel(latest.status)} · '
-          '${formatCommandTime(latest.createdAt)}',
+          l10n.latestCommand(
+            l10n.commandType(latest.type),
+            l10n.commandStatus(latest.status),
+            formatCommandTime(context, latest.createdAt),
+          ),
           style: style,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -260,6 +277,7 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
   bool _granting = false;
 
   Future<void> _grant(int minutes) async {
+    final l10n = context.l10n;
     setState(() => _granting = true);
     try {
       await ref.read(apiClientProvider).raw.post(
@@ -269,12 +287,12 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
       ref.invalidate(rulesProvider(widget.childId));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('+$minutes extra minutes granted today')),
+          SnackBar(content: Text(l10n.bonusGranted(minutes))),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bonus failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.bonusFailed('$e'))));
       }
     } finally {
       if (mounted) setState(() => _granting = false);
@@ -283,15 +301,16 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Bonus time', style: Theme.of(context).textTheme.titleMedium),
+            Text(l10n.bonusTime, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpace.xxs),
-            Text('Extra screen time today only', style: Theme.of(context).textTheme.bodySmall),
+            Text(l10n.extraScreenTimeToday, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: AppSpace.sm),
             Wrap(
               spacing: AppSpace.sm,
@@ -318,15 +337,16 @@ class _WindDownCard extends ConsumerWidget {
   const _WindDownCard({required this.childId});
 
   Future<void> _pickAndSend(BuildContext context, WidgetRef ref) async {
+    final l10n = context.l10n;
     final minutes = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Wind down'),
-        content: const Text('The device shows a soft bedtime warning, then locks.'),
+        title: Text(l10n.windDown),
+        content: Text(l10n.windDownBody),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
           for (final m in const [15, 30])
-            FilledButton.tonal(onPressed: () => Navigator.of(ctx).pop(m), child: Text('$m min')),
+            FilledButton.tonal(onPressed: () => Navigator.of(ctx).pop(m), child: Text(l10n.minutesShort(m))),
         ],
       ),
     );
@@ -338,32 +358,33 @@ class _WindDownCard extends ConsumerWidget {
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Screen will lock in $minutes minutes on the device')),
+          SnackBar(content: Text(l10n.windDownConfirm(minutes))),
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Wind down failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.windDownFailed('$e'))));
       }
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Wind down', style: Theme.of(context).textTheme.titleMedium),
+            Text(l10n.windDown, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpace.xxs),
-            Text('Soft warning, then the screen locks', style: Theme.of(context).textTheme.bodySmall),
+            Text(l10n.windDownSubtitle, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: AppSpace.sm),
             OutlinedButton.icon(
               onPressed: () => _pickAndSend(context, ref),
               icon: const Icon(Icons.bedtime_outlined),
-              label: const Text('Wind down'),
+              label: Text(l10n.windDown),
             ),
           ],
         ),
@@ -376,17 +397,18 @@ class _WindDownCard extends ConsumerWidget {
 /// card. The snackbar says "queued", never "sent": the POST only creates a
 /// pending row (`POST /v1/devices/:id/command` → `{status: "pending"}`).
 Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
+  final l10n = context.l10n;
   try {
     await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${command[0].toUpperCase()}${command.substring(1)} queued for ${device.model} — the device has not confirmed it yet.')),
+        SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
       );
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Command failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));
     }
   }
 }
@@ -395,6 +417,7 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
 /// status flips optimistically and reverts when the POST fails. The snackbar
 /// reports a queued command, not a delivered one.
 Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId, bool paused, Device device) async {
+  final l10n = context.l10n;
   try {
     if (paused) {
       await resumeInternet(ref, childId);
@@ -404,12 +427,12 @@ Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId
     ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${paused ? 'Resume' : 'Pause'} queued for ${device.model} — the device has not confirmed it yet.')),
+        SnackBar(content: Text(l10n.netQueued(paused ? l10n.resume : l10n.pause, device.model))),
       );
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Command failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));
     }
   }
 }
@@ -420,12 +443,13 @@ class _AppsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(childId));
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Failed to load rules: $e')),
+      error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),
       data: (ruleSet) {
-        if (ruleSet.appRules.isEmpty) return const Center(child: Text('No per-app rules'));
+        if (ruleSet.appRules.isEmpty) return Center(child: Text(l10n.noPerAppRules));
         return ListView(
           children: [
             for (final r in ruleSet.appRules)
@@ -437,7 +461,13 @@ class _AppsTab extends ConsumerWidget {
                 }),
                 title: Text(r.appName),
                 subtitle: Text(r.packageId),
-                trailing: Text(r.action == 'time_limit' ? '${r.dailyLimitMinutes ?? '—'} min' : r.action),
+                trailing: Text(r.action == 'time_limit'
+                    ? (r.dailyLimitMinutes == null ? '—' : l10n.minutesShort(r.dailyLimitMinutes!))
+                    : switch (r.action) {
+                        'block' => l10n.appActionBlock,
+                        'allow' => l10n.appActionAllow,
+                        _ => r.action,
+                      }),
                 // Feature #12: tap a row for the curated insight sheet.
                 onTap: () => showAppInsightSheet(context, r.packageId),
               ),
@@ -462,22 +492,27 @@ class _LocationTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final ping = ref.watch(locationProvider(childId));
     return ping.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Failed to load location: $e')),
+      error: (e, _) => Center(child: Text(l10n.locationLoadFailed('$e'))),
       data: (p) => ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
           if (p == null)
-            const Text('No location reported yet')
+            Text(l10n.noLocationReported)
           else ...[
             Card(
               child: ListTile(
                 leading: const Icon(Icons.location_on),
                 title: Text('${p.lat.toStringAsFixed(6)}, ${p.lng.toStringAsFixed(6)}'),
-                subtitle: Text('Accuracy ±${p.accuracyM.round()} m · '
-                    '${p.timestamp == null ? 'unknown time' : DateFormat.yMMMd().add_Hms().format(p.timestamp!.toLocal())}'),
+                subtitle: Text(l10n.accuracyLabel(
+                  p.accuracyM.round(),
+                  p.timestamp == null
+                      ? l10n.timeUnknown
+                      : DateFormat.yMMMd(context.localeName).add_Hms().format(p.timestamp!.toLocal()),
+                )),
               ),
             ),
             const SizedBox(height: AppSpace.md),
@@ -491,7 +526,11 @@ class _LocationTab extends ConsumerWidget {
             child: Card(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [Icon(Icons.map_outlined, size: 48), SizedBox(height: AppSpace.sm), Text('Map preview')],
+                children: [
+                  const Icon(Icons.map_outlined, size: 48),
+                  const SizedBox(height: AppSpace.sm),
+                  Text(l10n.mapPreview),
+                ],
               ),
             ),
           ),
@@ -538,23 +577,24 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final history = ref.watch(locationHistoryProvider(widget.childId));
     return history.when(
       loading: () => const Card(child: Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator()))),
-      error: (e, _) => Card(child: ListTile(leading: const Icon(Icons.history), title: Text('Failed to load history: $e'))),
+      error: (e, _) => Card(child: ListTile(leading: const Icon(Icons.history), title: Text(l10n.locationHistoryLoadFailed('$e')))),
       data: (pings) {
         if (pings.isEmpty) {
-          return const Card(child: ListTile(leading: Icon(Icons.history), title: Text('No location history for today')));
+          return Card(child: ListTile(leading: const Icon(Icons.history), title: Text(l10n.noLocationHistoryToday)));
         }
         final ping = pings[_index.clamp(0, pings.length - 1)];
         final ts = ping.timestamp;
         return Card(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.sm),
+            padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.sm),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Today's route", style: Theme.of(context).textTheme.titleMedium),
+                Text(l10n.todaysRoute, style: Theme.of(context).textTheme.titleMedium),
                 Slider(
                   value: _index.clamp(0, pings.length - 1).toDouble(),
                   min: 0,
@@ -565,12 +605,12 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                 Row(
                   children: [
                     IconButton(
-                      tooltip: 'Back 15 min',
+                      tooltip: l10n.back15Tooltip,
                       icon: const Icon(Icons.chevron_left),
                       onPressed: () => _step(pings, -1),
                     ),
                     IconButton(
-                      tooltip: 'Forward 15 min',
+                      tooltip: l10n.forward15Tooltip,
                       icon: const Icon(Icons.chevron_right),
                       onPressed: () => _step(pings, 1),
                     ),
@@ -578,8 +618,8 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                     Expanded(
                       child: Text(
                         ts == null
-                            ? '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · accuracy unknown'
-                            : '${DateFormat.Hm().format(ts.toLocal())} · '
+                            ? '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · ${l10n.accuracyUnknown}'
+                            : '${DateFormat.Hm(context.localeName).format(ts.toLocal())} · '
                                 '${ping.lat.toStringAsFixed(5)}, ${ping.lng.toStringAsFixed(5)} · '
                                 '±${ping.accuracyM.round()} m',
                         style: Theme.of(context).textTheme.bodySmall,
@@ -596,17 +636,19 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
   }
 }
 
-class _AlertsTab extends ConsumerWidget {  final String childId;
+class _AlertsTab extends ConsumerWidget {
+  final String childId;
   const _AlertsTab({required this.childId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final alerts = ref.watch(alertsProvider(AlertFilter(childId: childId)));
     return alerts.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Failed to load alerts: $e')),
+      error: (e, _) => Center(child: Text(l10n.alertsLoadFailed('$e'))),
       data: (page) {
-        if (page.items.isEmpty) return const Center(child: Text('No recent alerts'));
+        if (page.items.isEmpty) return Center(child: Text(l10n.noRecentAlerts));
         return ListView(
           children: [
             for (final a in page.items.take(10))
@@ -640,6 +682,7 @@ class _AppInsightSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final insight = ref.watch(appInsightsProvider(packageId));
     return insight.when(
       loading: () => const Padding(
@@ -648,25 +691,25 @@ class _AppInsightSheet extends ConsumerWidget {
       ),
       error: (e, _) => Padding(
         padding: const EdgeInsets.all(AppSpace.xl),
-        child: Text('Failed to load insights: $e'),
+        child: Text(l10n.insightsLoadFailed('$e')),
       ),
       data: (data) {
         if (data == null) {
-          return const Padding(
-            padding: EdgeInsets.all(AppSpace.xl),
-            child: Text('No insights for this app yet'),
+          return Padding(
+            padding: const EdgeInsets.all(AppSpace.xl),
+            child: Text(l10n.noInsightsYet),
           );
         }
         return ListView(
           shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
+          padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
           children: [
             Text(data.appName.isEmpty ? packageId : data.appName, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppSpace.xs),
-            Text('Age rating: ${data.ageRating.isEmpty ? '—' : data.ageRating}'),
+            Text(l10n.ageRating(data.ageRating.isEmpty ? '—' : data.ageRating)),
             if (data.risks.isNotEmpty) ...[
               const SizedBox(height: AppSpace.md),
-              Text('Risks', style: Theme.of(context).textTheme.titleSmall),
+              Text(l10n.risks, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: AppSpace.xs),
               Wrap(
                 spacing: AppSpace.sm,
@@ -676,7 +719,7 @@ class _AppInsightSheet extends ConsumerWidget {
             ],
             if (data.alternatives.isNotEmpty) ...[
               const SizedBox(height: AppSpace.md),
-              Text('Safer alternatives', style: Theme.of(context).textTheme.titleSmall),
+              Text(l10n.saferAlternatives, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: AppSpace.xs),
               for (final a in data.alternatives)
                 Padding(
@@ -712,12 +755,16 @@ class AlertTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final when = alert.createdAt == null
+        ? ''
+        : DateFormat.MMMd(context.localeName).add_Hm().format(alert.createdAt!.toLocal());
     return Card(
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
         title: Text(alert.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${alert.category} · ${alert.createdAt == null ? '' : DateFormat.MMMd().add_Hm().format(alert.createdAt!.toLocal())}'),
-        trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: 'Acknowledge', onPressed: onAck),
+        subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
+        trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,
       ),
     );

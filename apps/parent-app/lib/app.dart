@@ -15,7 +15,9 @@ import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/social/social_screen.dart';
 import 'features/content/search_safety_screen.dart';
+import 'l10n/l10n.dart';
 import 'providers/auth_provider.dart';
+import 'providers/locale_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_theme.dart';
 
@@ -52,6 +54,7 @@ class FamilyShieldApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider);
     return MaterialApp.router(
       title: 'OSRA',
       theme: AppTheme.light,
@@ -59,6 +62,11 @@ class FamilyShieldApp extends ConsumerWidget {
       // ThemeMode.system follows MediaQuery.platformBrightness; Settings can
       // pin light or dark (persisted in shared_preferences).
       themeMode: mode,
+      // A null locale follows the device; Appearance can pin English or
+      // Arabic (persisted under the `app_locale` key).
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: router,
     );
   }

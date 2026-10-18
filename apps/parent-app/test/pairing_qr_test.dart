@@ -11,6 +11,7 @@ import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -52,8 +53,8 @@ void main() {
     }
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: MaterialApp(
-        home: PairingQrScreen(childId: 'child-1', clock: () => currentNow),
+      child: localizedTestApp(
+        PairingQrScreen(childId: 'child-1', clock: () => currentNow),
       ),
     ));
     await flushFakeHttp(tester);
@@ -165,7 +166,7 @@ void main() {
     });
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: const MaterialApp(home: ChildDetailScreen(childId: 'child-1')),
+      child: localizedTestApp(const ChildDetailScreen(childId: 'child-1')),
     ));
     await tester.pumpAndSettle();
 

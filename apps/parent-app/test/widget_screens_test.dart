@@ -15,6 +15,7 @@ import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +38,7 @@ void main() {
     }
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: MaterialApp(home: home),
+      child: localizedTestApp(home),
     ));
     await tester.pumpAndSettle();
   }
@@ -562,8 +563,10 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Finder categoryTile(String category) => find.byKey(ValueKey('category-$category'));
+
     bool categoryChecked(WidgetTester tester, String category) =>
-        tester.widget<CheckboxListTile>(find.widgetWithText(CheckboxListTile, category)).value!;
+        tester.widget<CheckboxListTile>(categoryTile(category)).value!;
 
     testWidgets('switch is ON when all 13 recommended categories are blocked', (tester) async {
       final api = FakeApiClient(standardRoutes(blockedCategories: kRecommendedCategories));
@@ -571,7 +574,7 @@ void main() {
 
       expect(tester.widget<SwitchListTile>(recommendedSwitch()).value, isTrue);
       for (final c in kRecommendedCategories) {
-        await reveal(tester, find.widgetWithText(CheckboxListTile, c));
+        await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isTrue, reason: '$c should be checked');
       }
     });
@@ -589,7 +592,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(recommendedSwitch()).value, isFalse);
       for (final c in kRecommendedCategories) {
-        await reveal(tester, find.widgetWithText(CheckboxListTile, c));
+        await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isFalse, reason: '$c should be unchecked');
       }
 
@@ -613,7 +616,7 @@ void main() {
 
       expect(tester.widget<SwitchListTile>(recommendedSwitch()).value, isTrue);
       for (final c in kRecommendedCategories) {
-        await reveal(tester, find.widgetWithText(CheckboxListTile, c));
+        await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isTrue, reason: '$c should stay checked');
       }
       expect(api.calls('PUT', '/v1/rules/child-1'), isEmpty);
@@ -630,7 +633,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(recommendedSwitch()).value, isTrue);
       for (final c in kRecommendedCategories) {
-        await reveal(tester, find.widgetWithText(CheckboxListTile, c));
+        await reveal(tester, categoryTile(c));
         expect(categoryChecked(tester, c), isTrue, reason: '$c should be checked');
       }
     });
