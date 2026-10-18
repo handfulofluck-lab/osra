@@ -20,10 +20,11 @@ environment where it was written — see `docs/QA/` for the verification state.
   chosen in the pairing window (typed twice; `PairingDialog.cs`) and persisted in
   `agent.config.json` as `parentPin` — the same file and the same plaintext store that already holds
   the device JWT/HMAC secret (no new crypto scheme; audit WIN-11 on that store stays open).
-- **Migration is one-shot.** `AgentConfig.Load` (`Services/AgentConfig.cs:76-98`) adopts
+- **Migration is one-shot.** `AgentConfig.Load` (`Services/AgentConfig.cs:76-101`) adopts
   `DESKTOP_PARENT_PIN` once, persists it, and then the stored PIN wins; a literal `0000` in the env
   var is treated as unset and is not written. An install that relied on the old default therefore
-  starts with no PIN and says so.
+  starts with no PIN and says so. An identity supplied purely by env vars is not copied to disk by
+  this migration — the env PIN stays effective for that process.
 - **No PIN means no restriction, not a guessable one.** `lock`, `pause` and `wind_down`
   (`RuleSyncService.cs:228-292`, gate at `:328-347`) and bedtime/screen-time
   (`ScreenTimeEnforcer.cs:68-146`) refuse to arm without a configured PIN and log an error with the
@@ -39,9 +40,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   opt-out for a disposable test machine and logs a loud warning through the agent logger.
   `README.md` and `docs/test-guides/INSTALLATION-GUIDE.md` now state what inspection does and does
   not protect (pinned apps, WinHTTP/VPN bypass, and the local root CA as the trust anchor).
-- **Tests:** +36 xunit cases (`ParentPinPolicyTests`, the PIN gate cases in
+- **Tests:** +37 xunit cases (`ParentPinPolicyTests`, the PIN gate cases in
   `RuleSyncDispatchTests` and `ScreenTimePinGateTests`, the TLS policy cases in
-  `HttpsInterceptionTests`, and six `AgentConfigTests` migration cases) — **224/224 pass**
+  `HttpsInterceptionTests`, and seven `AgentConfigTests` migration cases) — **225/225 pass**
   (`dotnet test apps/agent-desktop/tests/FamilyShield.Agent.Tests`). Fail-before: with the two old
   behaviours restored in place (accept-all upstream; no-PIN default `0000`) the new policy cases
   fail (`SelfSignedUpstreamCertificateIsRejectedByDefault`, `BedtimeRefusesToArmWithoutAParentPin`,

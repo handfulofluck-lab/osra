@@ -67,6 +67,9 @@ public sealed class AgentConfig
         }
 
         config ??= new AgentConfig();
+        // NOTE: capture whether a paired identity came from the file before the env overrides, so
+        // the PIN migration below never creates/rewrites a config file for an env-only identity.
+        var fileHadIdentity = !string.IsNullOrWhiteSpace(config.DeviceJwt);
         config.ApiBase = Environment.GetEnvironmentVariable("API_BASE") ?? config.ApiBase;
         config.DeviceJwt = Environment.GetEnvironmentVariable("DEVICE_JWT") ?? config.DeviceJwt;
         config.DeviceId = Environment.GetEnvironmentVariable("DEVICE_ID") ?? config.DeviceId;
@@ -76,14 +79,15 @@ public sealed class AgentConfig
         // Desktop audit finding 1: no default parent PIN. A stored PIN wins; an install that only
         // has DESKTOP_PARENT_PIN adopts it once into this file (the legacy literal 0000 is not
         // adopted). Adoption is persisted so removing the env var later cannot silently disarm
-        // the lock — and so "no PIN" is a visible state, not a fallback. Only a paired config is
-        // rewritten here; the unpaired first run still goes through the pairing dialog.
+        // the lock — and so "no PIN" is a visible state, not a fallback. Only an existing paired
+        // config is rewritten here; the unpaired first run goes through the pairing dialog, and an
+        // identity supplied purely by env vars is not copied to disk by this migration.
         var resolvedPin = ParentPinPolicy.Resolve(
             config.ParentPin, Environment.GetEnvironmentVariable(ParentPinPolicy.EnvVar));
         if (!string.Equals(config.ParentPin, resolvedPin, StringComparison.Ordinal))
         {
             config.ParentPin = resolvedPin;
-            if (!string.IsNullOrWhiteSpace(config.DeviceJwt))
+            if (fileHadIdentity)
             {
                 try
                 {

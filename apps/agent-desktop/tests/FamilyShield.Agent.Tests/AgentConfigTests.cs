@@ -159,4 +159,18 @@ public sealed class AgentConfigTests : IDisposable
 
         Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
     }
+
+    [Fact]
+    public void EnvOnlyIdentityKeepsThePinInTheEnvWithoutWritingAConfigFile()
+    {
+        Environment.SetEnvironmentVariable("DEVICE_JWT", "env-jwt");
+        Environment.SetEnvironmentVariable("CHILD_ID", "env-child");
+        Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "4821");
+
+        var loaded = AgentConfig.Load(_dir);
+
+        Assert.Equal("4821", loaded!.ParentPin);
+        // The migration must not copy an env-only JWT (or the PIN) onto disk.
+        Assert.False(File.Exists(Path.Combine(_dir, AgentConfig.FileName)));
+    }
 }
