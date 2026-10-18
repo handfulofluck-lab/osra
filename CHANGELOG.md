@@ -35,6 +35,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   precondition and the run time (≈10.5 min at a 5-minute window, ≈35.5 min at the default); TR-21's row
   points at the replacement instead of implying the row is still open; `docs/ROADMAP.md` 0.6/1.9 and the
   Phase 1 summary carry the accepted definition.
+
 ### Security — `/token/refresh` cannot resurrect a session revoked mid-flight (#158)
 - **The race.** `/token/refresh` accepted a refresh token, retired it, did a `Parent` DB round trip,
   and only then minted with `sv` read at that moment. A password reset / MFA enable / logout-all /
