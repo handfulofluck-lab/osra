@@ -63,17 +63,22 @@ class AppearanceScreen extends ConsumerWidget {
             style: text.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpace.md),
-          DropdownButtonFormField<String>(
-            key: const ValueKey('localeSelector'),
-            initialValue: appLocaleName(locale),
+          InputDecorator(
             decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: [
-              DropdownMenuItem(value: 'system', child: Text(l10n.system)),
-              DropdownMenuItem(value: 'en', child: Text(l10n.english)),
-              DropdownMenuItem(value: 'ar', child: Text(l10n.arabic)),
-            ],
-            onChanged: (value) =>
-                ref.read(localeProvider.notifier).setLocale(appLocaleFromName(value)),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                key: const ValueKey('localeSelector'),
+                value: appLocaleName(locale),
+                isExpanded: true,
+                items: [
+                  DropdownMenuItem(value: 'system', child: Text(l10n.system)),
+                  DropdownMenuItem(value: 'en', child: Text(l10n.english)),
+                  DropdownMenuItem(value: 'ar', child: Text(l10n.arabic)),
+                ],
+                onChanged: (value) =>
+                    ref.read(localeProvider.notifier).setLocale(appLocaleFromName(value)),
+              ),
+            ),
           ),
           const SizedBox(height: AppSpace.md),
           Text(
