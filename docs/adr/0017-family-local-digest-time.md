@@ -45,3 +45,31 @@ regions stay on UTC until the 3.x setting ships.
 Clock fixed at Sunday 14:00Z: the Dubai family sends (18:00 local), the UTC family does not. At 18:00Z the
 UTC family sends and Dubai does not resend. Re-running either hour sends nothing. A unit test covers the
 DST repeat and skipped hours for `Africa/Cairo`.
+
+## Amendment 2026-10-18 — implementing it (Kimi), and the one defect found in review
+
+**B1: there is no country to backfill from.** The decision above backfills `Family.timezone` from
+`Family.region` using country codes (`AE`, `SA`, `EG`, …). Review of this ADR found that `region` is a
+**market**, not a country: `packages/shared-types/src/index.ts` types it `"US"|"EU"|"UK"|"OTHER"` and
+`services/api/src/routes/auth.ts` validates the same enum, so every existing row falls to the fallback.
+The backfill is therefore `UTC` **by construction**, not by accident; migration
+`0014_family_timezone_digest_send` says so in its first line, and the 3.x app setting remains the real
+source. Extending `region` to ISO-3166 codes is a separate decision with its own migration and copy
+changes — it is not smuggled in here.
+
+**B2: the ISO week is the family's local week.** `isoWeekKey` is computed from the family's local
+calendar date (`services/api/src/lib/digestSchedule.ts`), not from UTC, so a Sunday 22:00 Dubai send and
+the following Sunday 18:00 UTC send cannot land in different weeks. The unique
+`DigestSend(familyId, kind, period)` key is only as good as the period it stores.
+
+**What shipped instead of Redis claims.** The previous scheduler claimed each (family, kind, date) with a
+Redis `SET NX`. The implementation writes a `DigestSend` row before the email and treats its unique key as
+the claim — the ADR asks for "the same transaction that queues the send", and a row survives a Redis
+flush. A provider refusal deletes the row so the next tick can retry; a duplicate key means the period is
+done.
+
+**Acceptance, as run.** `services/api/test/digest-schedule.test.ts` fixes the clock and asserts: 14:00Z
+Sunday → Dubai sends at 18:00 local while UTC does not; 18:00Z → UTC sends and Dubai resolves to the same
+weekly period (no resend); a London spring-forward that deletes local hour 01 still sends at 02; a
+fall-back repeated hour resolves to one period; 31 Dec and 1 Jan share one ISO week; and the scheduler
+claims `(familyId=…, kind=daily, period=2026-10-14)` in the database while a `P2002` duplicate is skipped.

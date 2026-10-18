@@ -11,6 +11,24 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — the digest is due at the family's local hour (ADR-0017, plan 2.2)
+- **`Family.timezone`** (IANA, default `UTC`) and a `DigestSend(familyId, kind, period)` table with a unique
+  key; migration `0014_family_timezone_digest_send`. The backfill is UTC **by construction**: `Family.region`
+  is a market (`US/EU/UK/OTHER`), not a country, so there is nothing to map — recorded as Amendment B1 in
+  the ADR rather than pretended.
+- **`src/lib/digestSchedule.ts`** is the pure clock: local calendar fields and ISO week per family zone,
+  "at or past `DIGEST_HOUR`" selection (default 18 **local**), so a DST spring-forward that deletes the
+  configured hour sends at the next one instead of skipping the day, and a repeated fall-back hour resolves
+  to one period. `isoWeekKey` uses the family's local date, so a Sunday-evening send cannot land in the
+  next ISO week (Amendment B2).
+- **The claim is the database row**, not a Redis `SET NX`: `runDigestsDue` inserts `DigestSend` before the
+  email, skips on `P2002`, and deletes the row when the provider refuses so the next tick retries. A
+  restart, two API instances or a clock repeat can no longer double-send.
+- **Tests:** 11 cases in `test/digest-schedule.test.ts` (Dubai/UTC at 14:00Z and 18:00Z, Kiritimati/Pago
+  Pago weekdays, London DST both directions, year-boundary ISO week) plus the scheduler claim test in
+  `test/email.test.ts`. Full API suite: 28 files / 309 tests / 0 failures.
+- **Not done here:** the parent-app setting that chooses the zone (3.x, as the ADR says); until it ships,
+  every family is on UTC and the digest arrives at 18:00 UTC.
 ### Process — roles re-cut, 15/30-minute board cadence, roadmap and documentation rules (2026-10-17)
 - Maintainer re-cut the roles: Kimi develops, Claude owns architecture and does constructive testing with
   fix guidance, Antigravity tests and reports. `AGENTS.md` §12 adds: every PR names and moves its
@@ -255,7 +273,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   API call; a draft PR is WIP regardless of labels; a head commit younger than 10 minutes is treated as
   in flux; silence is not readiness; and a label never grants the phone (that is the lease, §9).
 - **Cadence shortened deliberately, twice, and agreed with Claude's #84 rather than beside it:** the board
-  heartbeat is **every 15 minutes while a request is open** (60 minutes when nothing is open), one line
+  heartbeat is **every 15 minutes while a request is open** (30 minutes when nothing is open), one line
   per agent in the host mailbox `status/`, and each pass is one API call unless something is labelled
   ready. The labels — not the heartbeat — are the signal that a tree is testable: `state:wip` forbids
   testing, reviewing and merging; `state:ready-for-verification` invites it. A head commit younger than
