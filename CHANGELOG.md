@@ -36,6 +36,12 @@ environment where it was written — see `docs/QA/` for the verification state.
   and `READ_SMS`, which Play does not permit for parental control, and moves them (with `CommsLogger`) to
   `full`; adds `isMonitoringTool=child_monitoring`; replaces `QUERY_ALL_PACKAGES` in `play` with a launcher
   `<queries>`; keeps the notification listener Full-only.
+### Process — roles re-cut, 15/30-minute board cadence, roadmap and documentation rules (2026-10-17)
+- Maintainer re-cut the roles: Kimi develops, Claude owns architecture and does constructive testing with
+  fix guidance, Antigravity tests and reports. `AGENTS.md` §12 adds: every PR names and moves its
+  `docs/ROADMAP.md` row, docs land in the same PR, and every finding carries its fix.
+- Board cadence shortened from 30/60 to **15/30 minutes** (`docs/QA/TESTING-STRATEGY.md` §4,
+  `docs/QA/TEST-REQUESTS.md` header). `docs/COLLABORATION-ROADMAP.md` marked superseded.
 
 ### Architecture — ADR-0017 family-local digest, ADR-0018 shared test API ownership, ADR-0019 safe-direction rule (2026-10-17)
 - Decisions only, no code. ADR-0017 is implemented in a later PR (plan 2.2 follow-up / 3.x); ADR-0018 settles the ownership half of #71; ADR-0019 records why `stop_ring` passes the consent gate and gives the rule for future commands.
@@ -274,7 +280,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   API call; a draft PR is WIP regardless of labels; a head commit younger than 10 minutes is treated as
   in flux; silence is not readiness; and a label never grants the phone (that is the lease, §9).
 - **Cadence shortened deliberately, twice, and agreed with Claude's #84 rather than beside it:** the board
-  heartbeat is **every 15 minutes while a request is open** (60 minutes when nothing is open), one line
+  heartbeat is **every 15 minutes while a request is open** (30 minutes when nothing is open), one line
   per agent in the host mailbox `status/`, and each pass is one API call unless something is labelled
   ready. The labels — not the heartbeat — are the signal that a tree is testable: `state:wip` forbids
   testing, reviewing and merging; `state:ready-for-verification` invites it. A head commit younger than

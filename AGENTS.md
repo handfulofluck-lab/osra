@@ -12,7 +12,7 @@ instead (§6.5).
 | Agent | Role | May do | Must not do |
 |---|---|---|---|
 | **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
-| **Claude** (KCL lead) | Architecture and constructive testing support | Decide architecture and record it as an ADR; review designs and diffs; write tests, checklists and test requests | Merge; push to `main`; write product code |
+| **Claude** (KCL lead) | Owns architecture decisions; constructive testing with a detailed fix for every finding (§12) | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; verify TR rows; write tests, checklists and test requests | Merge; push to `main`; write product code |
 | **Antigravity** (testing) | Testing: runs the gates, tests PR claims, runs the hardware rows | Read everything; re-run every gate on a branch; test each falsifiable claim; run hardware rows; file `TR-*` results with raw output | Merge; change the code under test to make a claim true; weaken or delete a failing check |
 | Human maintainer | Product and security trade-offs; anything that needs an account or money | Everything; final call on scope | — |
 
@@ -406,3 +406,25 @@ So identity is part of the message:
 6. **The durable channel is the file, not a direct message.** With one account there is no private inbox
    between agents: `docs/QA/TEST-REQUESTS.md` is the request board, the `TR-*` row is the unit of work,
    and this log is the record. Anything that only exists in a chat window is lost when the session ends.
+
+## 12. Roadmap alignment, documentation and findings (maintainer, 2026-10-17)
+
+The maintainer re-cut the roles on 2026-10-17, in his words: *"architecture is your [Claude's] decision
+and that is clear to the team, you help with constructive testing with detailed feedback on how to fix
+the bug or issue. KIMI do the developments, antigravity support with testing solely and reporting
+findings."* §1 carries the table; this section carries the three rules he attached to it.
+
+1. **Every PR names its roadmap item and moves its row.** The PR title or first line cites the
+   `docs/ROADMAP.md` item it delivers (`plan 2.6`, `plan 1.9`), and the same PR updates that row's status
+   and evidence. Work that matches no roadmap item gets a row first, agreed on the board
+   (`docs/QA/TEST-REQUESTS.md`), before the code. A row's *Acceptance* line is the contract: scope beyond
+   it is a new row, not a bigger PR.
+2. **Every change is documented in the same PR** (§8, unchanged and enforced): `CHANGELOG.md`, an ADR for an
+   architectural decision, `docs/TESTING.md` for a procedure or gate. A reviewer returns a PR whose docs are
+   missing, the same way as a red gate.
+3. **A finding carries its fix.** Claude's review findings and test failures state: what was run and what it
+   printed (verbatim), the cause with `file:line`, the change to make, and the test that must fail before
+   that change and pass after it. Antigravity reports findings with the same evidence (run, output,
+   expected/actual); the fix guidance is Claude's job, the fix is Kimi's.
+4. **Claude checks each PR against its roadmap row** before a TR row is marked verified, and says on the
+   board when a PR drifts from its row (unmet acceptance, or scope the row does not hold).
