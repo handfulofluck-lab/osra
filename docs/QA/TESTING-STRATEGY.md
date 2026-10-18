@@ -59,6 +59,69 @@ rather than implying coverage.
 6. **Stacked PRs: verify the tip** (it covers its ancestors) and re-verify after any rebase.
 7. **Escalate to the human** after 24h blocked, or immediately on a second disagreement.
 
+## 3a. Amendment **proposed** 2026-10-18 — hardware probe row 3 (`am force-stop`): a proposal, not a gate change
+
+**Status: PROPOSED — not accepted.** Until the maintainer or a reviewer accepts it, probe **row 3
+remains FAIL** (TR-21, 2026-10-18) and nobody may record it as passed, retitle it, or edit the probe's
+assertion on the strength of this section. This heading exists because the failure mode is an amendment
+that reads like a decision while nobody decided: `AGENTS.md` §4 says a check that is wrong is fixed
+*explicitly, with the evidence, and the human decides*.
+
+**The row as it stands.** `scripts/hardware/android-bypass-probe.ps1:56-59`: `am force-stop` the agent,
+then require its pid back within 120 s. It is a gating row, so red means red probe.
+
+**What it measured on hardware, and why no code change can pass it.** TR-21 ran it on the Flip4
+(`R5CW116Y6GF`, SM-F721B, Android 16) at `main@7435592`:
+
+```text
+17:24:54.926 pid before: 10790
+17:26:56.135 row 3 force-stop -> came back=False after 121 s; pid= => FAIL
+```
+
+(raw log `C:\KARIM\tr-kimi\hw-2026-10-18\rows-1-3.log`, result table `RESULTS.md`; the pid came back only
+when the app was launched — `17:27:04.586 relaunch pid=13330`). Android puts a force-stopped package in
+the **stopped state**: no broadcast, alarm, job or accessibility rebinding is delivered until a user
+launches the app or the device reboots. The agent cannot restart itself, so "back within 120 s" is not a
+requirement any change can meet; the row would stay red forever, and a permanently red row teaches the
+next tester to ignore the probe.
+
+**The row's intent, restated.** The threat it was written for is *the server stops hearing from the device
+and the parent is never told* — a **silent device**. That intent is measurable, and it is what the row
+should assert.
+
+**Evidence that the intent is now reachable — the alert fires.**
+- **#124** (`4c41a07`, 2026-10-18): `src/jobs/deviceSilence.ts` matched `status = "active"`, a value no
+  writer produces (`packages/shared-types` and every writer use `online`/`offline`/`locked`/`sos`), so the
+  watch never raised anything at all. It matches `online` now, and `test/device-silence.test.ts` drives a
+  **real telemetry POST** into `runDeviceSilenceCheck(now, env)` with a backdated `lastSeen`, asserting one
+  critical `tamper`/`device_silent` alert per episode and the flip to `offline`.
+- **#150** (`4adc601`, 2026-10-18): the live half is gated — probe `G22` (a real telemetry POST reads back
+  `status:"online"` with a fresh `lastSeen`, the value the watch matches) and `G23` (every status written
+  is inside the shared vocabulary); the run reported 130 passed / 0 failed. The *timing* half stays a unit
+  test because the watch has no HTTP trigger and the probe deliberately has no `DATABASE_URL`
+  (`docs/TESTING.md` §6). (#149, merged the same day, is the digest-claim fix: it bears on neither the
+  silence alert nor this row, and is not part of this evidence.)
+- **#127 comment** (Claude, 2026-10-18 13:47:54Z) is the architecture decision on what the row *means*.
+  It is evidence for this proposal; it is not the maintainer's acceptance of this amendment, and by
+  itself it changes no gate.
+
+**Proposal — replace the assertion, keep the row.** After `am force-stop`, wait one silence window
+(`DEVICE_SILENT_MINUTES`, default 30, floor 5) plus one 5-minute tick, then require: exactly **one**
+critical alert with category `tamper` / type `device_silent` for the device, and `Device.status =
+"offline"`. That is PASS or FAIL from Postgres, and it is the property the parent actually depends on.
+Two further rows #127's decision proposes are kept separate, so each can be argued on its own:
+- **row 3b** — force-stop *then* `adb reboot`: the agent must be running again within 60 s of boot. This
+  one *is* a self-recovery requirement and it waits on #128's `BootStartPolicy` fix (landed; not yet
+  measured on hardware).
+- **a tamper row** — the child can reach the same state from Settings ▸ App info ▸ Force stop; the
+  accessibility service should treat our own App-info page as a protected screen (leave within 1 s, raise
+  `tamper_attempt`). Not gate-blocking yet, and no issue exists for it (#127 asked for one).
+
+**What stays true either way.** The adb route is a *host* route, not a child route — no child can run
+`am force-stop`. So row 3 guards "an agent that died and nobody noticed", not "a child stopped the
+agent". If the amendment is rejected, row 3 stays FAIL and the probe stays red: that is the honest state,
+and the alternative is not a green row but a deleted one, which §3 rule 2 and `AGENTS.md` §4 forbid.
+
 ## 4. Cadence and where messages go (agreed 2026-10-16)
 
 - **Interval (shortened 2026-10-17 at the maintainer's request):** while any request in

@@ -11,6 +11,51 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Docs — the two review promises of 2026-10-18 that never landed, and the gate commands that had drifted from CI
+
+- **The two promises, by name.** The 2026-10-18 discussion log records them as carry-overs: the merge-ref
+  trap row Kimi promised in the #96 thread (PR comment 07:33:17Z, "Recorded as worth a trap row in
+  `docs/TESTING.md`") and the row-3 amendment Claude asked for in #127 (13:47:54Z, "record this as an
+  amendment in `docs/QA/TESTING-STRATEGY.md`, next to the gate table"). The log's own carry-over check at
+  `f099aa9` found neither; both are still absent at `4adc601`, which is where this branch starts.
+- **`docs/TESTING.md` §6 — a trap row for "No checks reported".** A PR whose branch conflicts with its
+  base has no `refs/pull/<n>/merge` ref, GitHub therefore creates no `pull_request` CI run at all, and the
+  checks area is empty while every other PR is running normally. Empty reads as *pending* and the wait
+  never ends. The row gives the diagnosis (`gh pr view <n> --json mergeable,mergeStateStatus` →
+  `CONFLICTING`) and the exact fix (`git fetch origin && git merge origin/main`, resolve, push), dated
+  2026-10-18 with #96 as the occurrence.
+- **`docs/QA/TESTING-STRATEGY.md` §3a — probe row 3 as a *proposal*, not a gate change.** Row 3 demands
+  the agent back within 120 s of `am force-stop`; on the Flip4 it measured `came back=False after 121 s`
+  (TR-21, `main@7435592`) because Android keeps a force-stopped package stopped, so no code change can
+  satisfy it. The section records the row's real intent ("the server notices a silent device"), the
+  evidence that the alert now works — #124 (`4c41a07`: the watch matched `status=active`, which no writer
+  produced; it matches `online` now, with a route-to-job test) and #150 (`4adc601`: probe `G22`/`G23` gate
+  the live half, 130 passed / 0 failed) — and the proposed replacement assertion (one critical
+  `tamper`/`device_silent` alert and `status=offline` within one silence window plus one tick). It states
+  in its own heading that **row 3 remains FAIL until the maintainer or a reviewer accepts it**, and that
+  nobody may edit the probe or record the row green on the strength of the proposal (`AGENTS.md` §4).
+- **Command audit of the Flutter/API sections against the workflows.** Re-read `ci.yml` and
+  `workflow-lint.yml` and fixed what would not work here: `VAULT_KEY=<same>` in §3 was wrong — the
+  launcher's `VAULT_KEY` is its own 44-character base64 key, not the 64-character `INTERNAL_HMAC_SECRET`,
+  and the old form produces `500 ERR_CRYPTO_INVALID_KEYLEN` on `/v1/social/scan` (the trap the same page
+  already warned about) — verified without printing either secret; `API_BASE=http://127.0.0.1:3000` is now
+  explicit because both scripts default to `http://localhost:3000` (`qa-probe.mjs:30`, `e2e.mjs:28`) and
+  `localhost` can resolve to `::1` here; the health check uses `127.0.0.1` and shows the real body
+  (`{"ok":true,"version":"0.1.0","db":"up","redis":"up"}`); the API suite now names the
+  `prisma generate` step CI runs first; the Flutter row gained `flutter pub get` and the note that
+  `C:\KARIM\tools\flutter\bin` is not on this host's `PATH`; the stale `e2e 50/50` became 69/69 as of
+  #150 with the instruction to read `0 failed` rather than a count; the launcher's real location
+  (`C:\KARIM\familyshield\dist\start-backend.bat`, outside the repo, absent from a fresh worktree) is
+  named; and the CI table gained `probe-integrity` and the `check-docs-links.mjs` step, with both local
+  commands listed.
+- **Gates** (2026-10-18, docs-only change, so no code gate applies — `AGENTS.md` §6.5 "docs-only is no
+  exception, but the check is proportional"): `node scripts/check-docs-links.mjs` → **0 broken link(s) out
+  of 131 checked in 68 Markdown file(s)**, exit 0.
+- **Deliberately not done.** No change to `services/api/scripts/qa-probe.mjs`,
+  `scripts/hardware/android-bypass-probe.ps1` or any application code; row 3 is not marked passed and
+  TR-21 keeps its FAIL; the issue #127 asked for (our own App-info page as a protected screen) is still
+  not opened. No hardware run and no live gate — a hardware run holds the only phone.
+
 ### QA — `qa-probe` gates the three fixes #124 merged (audit findings 4–6)
 - **What was missing.** #124 merged three security fixes with unit tests only; the probe had no live
   assertion for any of them, and the 2026-10-18 ledger records that gap under #124 ("no probe check
