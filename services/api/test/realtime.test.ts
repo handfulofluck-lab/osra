@@ -111,4 +111,26 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     expect(c.close()).toBe(4001);
     expect(c.frames).toEqual([]);
   });
+
+  // Issue #120: the legacy `?token=<jwt>` handshake is removed. A stale client must get a
+  // JSON 401 that names the reason, not a silent 404 (the websocket plugin's non-upgrade reply).
+  it("refuses a parent JWT in the query string with HTTP 401 ticket_required", async () => {
+    const token = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent" });
+    const res = await app.inject({ method: "GET", url: `/v1/ws?token=${encodeURIComponent(token)}` });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: "ticket_required" });
+  });
+
+  it("refuses a device JWT in the query string with HTTP 401 ticket_required", async () => {
+    const token = app.jwt.sign({ sub: "dev-1", deviceId: "dev-1", childId: "child-1", familyId: "fam-1", role: "device" });
+    const res = await app.inject({ method: "GET", url: `/v1/ws?token=${encodeURIComponent(token)}` });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: "ticket_required" });
+  });
+
+  it("refuses a handshake with no ticket with HTTP 401 ticket_required", async () => {
+    const res = await app.inject({ method: "GET", url: "/v1/ws" });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: "ticket_required" });
+  });
 });

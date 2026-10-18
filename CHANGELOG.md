@@ -11,6 +11,36 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — the WebSocket handshake is ticket-only; the legacy `?token=` bypass is gone (issue #120)
+- **`GET /v1/ws` no longer accepts a JWT in the query string.** On `main` the `?token=<jwt>` branch
+  (`services/api/src/realtime/gateway.ts:56-58`) verified the signature with `app.jwt.verify()` but never
+  consulted the parent-session revocation state in `services/api/src/server.ts:82-84`, so a logged-out
+  or theft-revoked parent token could still subscribe to `family:<familyId>:events`; the bearer token
+  also leaked into proxy/access logs. A route-level `preValidation` now answers any handshake that
+  carries `token` — or carries no ticket at all — with **401 `{"error":"ticket_required"}`**
+  (`gateway.ts:54-63`). A missing/invalid/consumed ticket still closes the socket with **4001**.
+  `POST /v1/ws-ticket` and the single-use ticket flow are unchanged.
+- **Callers:** no client used the legacy path. `apps/parent-app/lib/providers/family_provider.dart:138,145`
+  already mints and presents `?ticket=`; `services/api/scripts/e2e.mjs:154,172` and
+  `services/api/scripts/qa-probe.mjs:713` do the same. Two documents still advertised `?token=` as
+  accepted — `docs/test-guides/HANDOFF-FOR-TESTING.md:38` and
+  `docs/SPEC-ADDENDUM-WORLD-CLASS.md:93` — and now state the 401. `README.md:152-153` claimed "JWTs
+  never appear in URLs"; that was false before this change and is now literal, so it is kept and made
+  explicit about the refused legacy query.
+- **Tests:** three new cases in `services/api/test/realtime.test.ts` (parent JWT, device JWT, no
+  credentials) fail on `origin/main` with `404 !== 401` and pass here; the existing ticket/ready and
+  single-use cases still pass. Full suite: **338 passed / 0 failed**.
+- **Probe:** L6 (revoked parent token), L7 (device JWT), L7b (revoked device JWT), L8 (no ticket →
+  JSON 401, not 404) and L9 (a fresh ticket still opens the stream) added;
+  `check-probe-integrity.mjs --base origin/main` reports **5 added, 0 removed/demoted**. Live run on a
+  branch instance (`127.0.0.1:3100`, shared Postgres/Redis): **120 passed · 0 failed · 0 targets · 0
+  notes · 0 x 429**; `e2e.mjs` (run ≥60 s later): **69 passed / 0 failed**, with the Postgres erasure
+  count executed (`DATABASE_URL` set).
+- **Not verified on `:3000`:** the shared instance runs `main@7435592`, whose gateway still accepts
+  `?token=`, so the gates above ran against a spare-port server started from this worktree. The test
+  database was returned to the seeded demo state afterwards (`cleanup-test-data.sql -v apply=1`:
+  1 family / 1 parent / 1 child / 1 device — demo family only).
+
 ### API — location/rules authorization: a JWT is not automatically a location writer, and a device reads only its own child
 - **`POST /v1/location/ping` now admits exactly three callers** (`services/api/src/routes/location.ts:57-98`):
   a parent JWT (`role: "parent"` **and** a `familyId`), a device JWT (`role: "device"` with `deviceId` and
