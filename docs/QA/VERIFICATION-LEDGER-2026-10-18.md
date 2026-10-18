@@ -141,7 +141,7 @@ time, ≥ 60 s apart** — the shared API rate-limits at 200 req/min and the lat
    `FS_HTTPS_INSPECT_ALLOW_INSECURE` unset, a self-signed upstream must be rejected. `dotnet test` covers
    the policy; the pairing dialog and a live proxy handshake need a desktop row nobody has run.
 6. **#93 — the digest claim.** Read `services/api/src/jobs/digestScheduler.ts:107-122` first: F1 is open
-   (§3.1). Then run the schedule tests and decide whether F1/F2/F3 block a release.
+   (§3, item 1). Then run the schedule tests and decide whether F1/F2/F3 block a release.
 7. **#124 — device silence, self-scoped telemetry, push-token shape.** No probe check exists; the three
    things to try by hand are the ones the PR lists in §5 (A→B telemetry 403, push-token without
    `internalSecret`, and a real `device_silent` alert after backdating `lastSeen`).
