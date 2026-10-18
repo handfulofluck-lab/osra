@@ -11,7 +11,6 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ### Parent app — pairing code rendered as a QR (`plan 3.2`, first half)
 - **What changed.** The child-detail device-card pair action (`Pair a device`, Overview tab) now
   opens a full-screen `PairingQrScreen` instead of a dialog. It still POSTs `/v1/devices/pair`, and
@@ -39,7 +38,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   typed six-digit code and a server URL — so the QR cannot be read yet; that scanner and the 5-minute
   non-engineer first-run test are the second half of row 3.2. No merge sha and no independent
   verification; the physical phone was deliberately not touched while another hardware run owns it.
-=======
 ### Docs — the two review promises of 2026-10-18 that never landed, and the gate commands that had drifted from CI
 
 - **The two promises, by name.** The 2026-10-18 discussion log records them as carry-overs: the merge-ref
@@ -87,7 +85,6 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **Roadmap rows.** `docs/ROADMAP.md` gains Phase 0 row **0.6** for this debt, and row **1.9** now names
   the row-3 proposal and says it is unaccepted, so the Phase 1 gate row no longer reads as if force-stop
   self-recovery were still an open defect waiting for a fix.
->>>>>>> origin/main
 
 ### QA — `qa-probe` gates the three fixes #124 merged (audit findings 4–6)
 - **What was missing.** #124 merged three security fixes with unit tests only; the probe had no live
