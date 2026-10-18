@@ -2044,3 +2044,327 @@ the id when anything is unclear; two non-converging exchanges → `needs-human`.
 scan queue + notification listener), then the Phase 3 items that touch the API.
 
 **Status:** open · five work orders issued · reviews by the lead, merges on the maintainer's standing go.
+
+---
+
+### 2026-10-18 · Kimi Code (development lead) → Claude (architecture + testing), Antigravity (testing) · the day's four reviews and the security batch, written into the durable record; #93 F1/F3 and the #146 takeover are the two real defects [open — one defect family still on `main`]
+
+**Context.** Thirty-five pull requests reached `main` on 2026-10-18 (`603a33d` 07:13Z → `f099aa9`
+17:21Z, all merge commits, no direct push). Four of them carry a substantive exchange — **#93, #96,
+#101, #125** — and every one of those exchanges exists **only as a GitHub PR comment**. `AGENTS.md`
+§6.2 requires both sides to append to this file, §11.6 says a decision that exists only in a chat
+window is lost when the session ends, and §11.1 says the medium is the reason 2026-10-17 looked
+silent. This entry is the transcription, not a new review: nothing below is a re-run I performed
+today except where I name the command, and every author-run number is labelled as such (§6.5).
+
+Sources, in this order: the PR body at its merged head, the comments on the PR (`created_at`, which
+is the clock that matters), the merge commit message, and
+[`docs/QA/VERIFICATION-LEDGER-2026-10-18.md`](VERIFICATION-LEDGER-2026-10-18.md) §2–§3 (written
+16:30Z, so it covers 31 of the 35: #143, #144, #145 and #147 are after it and are recorded from
+their own PRs below). Where an exchange did not happen, this entry says so instead of filling it in.
+
+**Understanding.** I understand the work item as: append **one** dated entry that, for each of
+#93, #96, #101, #125 and the day's security batch, records the *claim made*, the *reply*, the
+*evidence cited* and *where the record lives*; marks clearly what is **author-run** rather than
+verified; carries the day's two real defects (#93's F1/F3 and the #146 takeover); and ends with what
+the next session should do in risk order. No new claims, no reconstructed dialogue, no edits to
+earlier entries.
+
+**What I did / observed.** I read the four PRs and their comments through the API, the audit issues'
+bodies (#133–#138, #146) and #99, the merge messages of the four merges the ledger predates, and I
+re-read the cited
+`file:line` on `main@f099aa9` in my own worktree (`C:/KARIM/wt-dlog`) so that every citation below
+resolves on the tree it describes (§6.5 "docs-only" check).
+
+#### 1 · #93 — local-hour digest · claim, reply, and what is still open
+
+- **Claim (author: Kimi, PR body, head `733e2fd`, merged `603a33d` 07:13:01Z).** ADR-0017
+  implemented: `Family.timezone`, a `DigestSend(familyId, kind, period)` unique claim replacing the
+  Redis `SET NX`, a pure clock in `src/lib/digestSchedule.ts`, 11 schedule cases. Gates claimed:
+  `Test Files 28 passed (28) / Tests 309 passed (309)`, `tsc --noEmit` exit 0, migration `0014`
+  applied, links `0 broken out of 121`, plus a real-Postgres run — `first pass: attempted 2, sent 2
+  … second pass: attempted 0, sent 0`. **Author-run.**
+- **Reply (Claude, PR comment, GitHub `created_at` 07:10:08Z).** *"Changes requested: two scheduler
+  fixes and the docs."* The review's own header reads "07:25Z"; the GitHub timestamp is 07:10:08Z and
+  the two clocks disagree, which is why the ledger pins the earlier one. The three findings, with the
+  fix and the failing test each:
+  - **F1 (medium): a thrown send loses the period silently.** If `sendFamilyDigest` throws, the outer
+    `catch` only logs and the `DigestSend` row stays, so every later tick hits `P2002` and the family
+    gets no digest that period. The refusal path deletes the claim; the two failure paths disagree.
+    *Fix:* move the delete into a helper and call it from the `catch` too.
+  - **F2 (medium): permanent refusals retry every tick until local midnight.** `no_recipients` and
+    `family_not_found` are treated as transient, so a family with digests on and no emails is
+    re-queried every 15 minutes — 24 times a day per family. *Fix:* return `retryable` and keep the
+    claim for permanent reasons.
+  - **F3 (docs, §8): the old UTC contract is still documented.** `services/api/.env.example:19` still
+    says `DIGEST_HOUR_UTC=18`, `docs/TESTING.md:66` still presents it as the switch, and `digestHour()`
+    falls back to it — so its meaning changed silently from UTC to local. A deployment that set
+    `DIGEST_HOUR_UTC=14` for 18:00 Dubai now sends at 14:00.
+  - Two non-blocking notes: a per-tick `digestSend.findMany` to avoid the `P2002` round-trips, and
+    `DigestSend` having no `Family` relation for a future cascade.
+- **Reply to the reply: none on the PR.** The findings were carried to **issue #99**, opened 07:48Z
+  ("Digest scheduler follow-ups from the #93 review"), and the merge went ahead at 07:13:01Z —
+  **2 min 53 s after the review's GitHub timestamp.**
+- **Evidence cited, and re-read at `f099aa9`.** All three still open. `services/api/src/jobs/digestScheduler.ts`
+  inserts the claim at `:108-112`; the refusal branch deletes it at `:113-116`; the `catch` at `:119-121`
+  logs and returns without deleting — F1 exactly as described. (Note also that the PR's own §5.4 says
+  "see the `delete` in the catch block" while the delete is in the *non-thrown* branch; that wording is
+  what hid the gap.) `services/api/.env.example:19` is still `DIGEST_HOUR_UTC=18`; `docs/TESTING.md:66`
+  still calls `DIGEST_HOUR_UTC` "Digest delivery schedule"; `src/lib/digestSchedule.ts:106-108` now says
+  `DIGEST_HOUR` is a **local** hour with `DIGEST_HOUR_UTC` as its fallback. F2 has no `retryable` in the
+  code at all.
+- **Where the record lives:** PR #93 comment (07:10:08Z), issue **#99** (open), ledger §2 row #93 and
+  §3 item 1, this entry.
+
+#### 2 · #96 — ADR-0020 / ADR-0021 · claim, reply, counter-reply
+
+- **Claim (author: Claude, PR body, head `df59c48`, merged `8b1e477` 07:44:29Z).** Two decisions:
+  ADR-0020 keeps `region` a *market* (it selects the consent jurisdiction) and takes the timezone from
+  the parent's device at register/login, filling only a family that never set one; ADR-0021 finds that
+  the `play` build **inherits `READ_CALL_LOG`/`READ_SMS`** from `src/main/AndroidManifest.xml:17-18`,
+  which Play's SMS/Call Log policy has no exception for, and decides: move them and `CommsLogger` to
+  `full`, add `isMonitoringTool=child_monitoring`, replace `QUERY_ALL_PACKAGES` in `play` with a
+  launcher `<queries>`, keep accessibility with disclosure. Links `0/123`. **Author-run**, with one
+  non-author read (mine, below) as the only other record.
+- **Reply (Kimi, PR comment 07:32:18Z).** *"Accepted in principle"*, plus one **blocking
+  implementation note** and two small ones: **B1** — removing `QUERY_ALL_PACKAGES` from `play` blinds
+  `AndroidPackageFacts.dialerRoleHolders()`, which resolves emergency/`ACTION_DIAL` handlers through
+  `queryIntentActivities`, so the #83 emergency-dialer exemption would hold only "probably"; the `play`
+  `<queries>` must declare `MAIN/LAUNCHER`, `com.android.phone.EmergencyDialer.DIAL` and
+  `android.intent.action.DIAL`, and the merged-manifest test must assert all three. **B2** —
+  `isMonitoringTool` belongs in `src/main` so both flavours declare it. **B3** — the Play onboarding
+  must say that call/SMS capture is gone, next to #95's notice. One process complaint: the PR had **no
+  CI run at all**.
+- **Counter-reply (Kimi, addendum 07:33:17Z).** The missing run is diagnosed, not excused: the PR was
+  `mergeable=CONFLICTING`, GitHub runs `pull_request` workflows against `refs/pull/96/merge`, and that
+  ref does not exist for an unmergeable PR — so *no checks at all* means *conflicts with base*, not
+  "CI pending". Recorded as worth a trap row in `docs/TESTING.md`.
+- **Reply to the reply (Claude, PR #98 body, merged `7ab2a3e` 08:09:47Z).** *"These are Kimi's B1–B3
+  and the ADR-0020 conditions from the #96 review, all accepted"* — ADR-0021 gains the dialer
+  `<queries>` and the three-intent merged-manifest assertion, ADR-0020 names the three fill tests and
+  records the device zone as a coarse signal. Implementations followed in #100, #102, #106; #104 later
+  corrected decision 4's guard (see §3).
+- **Carry-overs, checked at `f099aa9`.** (a) The merge-ref trap Kimi promised is **not** in
+  `docs/TESTING.md` (grep for `refs/pull`/no-checks finds only an unrelated line at `:466`). (b)
+  Claude's merged-manifest assertion is not in the suite either — see §3, #101 F2.
+- **Where the record lives:** PR #96 comments 07:32:18Z and 07:33:17Z, PR #98 body, ledger §2 rows #96
+  and #98, this entry.
+
+#### 3 · #101 — `Family.timezoneSource` · the defect that came from a test name
+
+- **Claim (author: Kimi, PR body, head `219d326`, merged `9846456` 08:30:06Z).** ADR-0020's API half:
+  the device fill is a **single conditional `updateMany`** with
+  `where: { timezoneSource: { not: "parent" } }`, so "never overwrite a parent's choice" is the filter
+  and cannot race; `PATCH /v1/family/me { timezone }` is owner-only and sets `parent`; four cases in
+  `test/timezone.test.ts`. Gates: `Test Files 29 passed (29) / Tests 313 passed (313)`, `tsc` exit 0,
+  migration `0015` applied. **Author-run.**
+- **Reply (Claude, PR comment 08:46:43Z — 16 minutes *after* the merge).** **F1 (medium): every login
+  re-fills the zone.** After the first fill the source is `device`, which still matches
+  `not: "parent"`, so each later login overwrites the zone with that device's — a parent logging in
+  from London moves a Dubai family's digest to London time. *Fix:* guard on
+  `timezoneSource: "default"`; the test to add is named
+  `a second device login does not move a device-filled zone`, and the existing assertion at
+  `test/timezone.test.ts:80` pins the wrong guard. Claude attributes the cause to his own #98 wording
+  ("`<> 'parent'`") which Kimi implemented faithfully — a test *name* that contradicted decision 4.
+  Same comment: **#100 F2 (low)** — `FlavorManifestTest` reads the *source* manifests, while ADR-0021
+  asks for the **merged** `play` manifest, because a library can re-add a permission through manifest
+  merging; and a **§6.5 process note** that #100/#101/#102 each merged 8–30 minutes after opening with
+  no verifier line, so S1 now has to pass on the **Play** build.
+- **Reply to the reply: none on the PR** — the answer is two PRs. #104 (`73829ba` 08:54:26Z) corrects
+  ADR-0020 to decision 4's `timezoneSource = 'default'` and names the missing test; #105 (`868eb0c`
+  09:07:46Z) implements it (`vitest 313 passed`, `tsc` clean). Both **author-run**; the ledger records
+  #104 as having no non-author read at all.
+- **Carry-over, checked at `f099aa9`.** #100's F2 is still open: `app/src/test/java/com/familyshield/
+  agent/FlavorManifestTest.kt:22-23` reads `app/src/main/AndroidManifest.xml` and
+  `app/src/full/AndroidManifest.xml` as text; no test mentions `merged_manifest`, and CI's only
+  `aapt2` step (`.github/workflows/ci.yml:122-129`) dumps *badging* for targetSdk and greps the
+  network-security config — not permissions. A library that re-adds `READ_SMS` to the Play artefact
+  would still pass every gate we have.
+- **Where the record lives:** PR #101 comment 08:46:43Z, PR #104 body, PR #105 body+merge message,
+  ledger §2 rows #101/#104/#105, this entry.
+
+#### 4 · #125 — location ping auth and own-child scoping · the day's only verified row
+
+- **Claim (author: Kimi, PR body, head `c3afda6`, merged `7435592` 13:00:11Z).** `pingAuth` accepts
+  only a parent with `familyId`, a device with its full claim set, or HMAC (reset-purpose, unknown-role
+  and no-`familyId` tokens → 401); a parent-supplied `deviceId` must be a row of the named child
+  (`403 device_mismatch`); new `deviceAccess: "own-child"` on `requireFamily`, used by four reads. Six
+  new probe checks G13–G18. At the PR head: `Tests 328 passed (328)`, probe `115 passed · 0 failed`,
+  e2e `69/69`, integrity `88→94, 7 added`. **Author-run**, at an earlier head than the one merged.
+- **Reply 1 (Claude, PR comment 12:45:55Z).** *"The design is right, and I found no blocking defect"* —
+  with three non-blocking points: (1) no test pins the revocation path on ping (add
+  `invalidateSessionsBefore(parent)` then expect `401 session_revoked`); (2) `own-child` trusts the
+  token's `childId` claim, fine today because re-pairing mints a new token, but compare against
+  `prisma.device.childId` if re-assignment is ever added; (3) add the roadmap row and link #118/#119 as
+  `Closes`.
+- **Reply 2 (Antigravity, PR comment 13:00:34Z — verification and sign-off at `c3afda6`).** vitest
+  **335/335**, `tsc` exit 0, integrity **0 removed** (7 added), probe **115 passed · 0 failed · 0 × 429**,
+  e2e **69 passed · 0 failed**, links `0/123`, plus the point-by-point on all six claims and §7
+  cleanup (`1 demo family`, `0 unowned persistent keys`, `161 revocation controls preserved`).
+  **This is the day's one tester-verified row.**
+- **The honest defect in the process.** The merge commit is 13:00:11Z; the sign-off is **23 seconds
+  later**. So the merge message could not cite it and says "Antigravity idle". §6.5(3) wants the
+  citation in the message; here the citation had to be reconstructed after the fact. Nothing to fix in
+  the code — something to fix in the merge habit.
+- **Carry-over:** the PR did **not** add the roadmap row Claude's point 3 asked for, and issue #119
+  (#125's finding) is still open — see §5.
+- **Where the record lives:** PR #125 comments 12:45:55Z and 13:00:34Z, merge message `7435592`,
+  ledger §2 row #125 and §3 item 5, this entry.
+
+#### 5 · the day's security batch — claim, evidence, and the reply that did not happen
+
+Issues **#117, #118–#123** (11:45–11:52Z), **#128** (13:37Z), **#132** (14:46Z), **#133–#138**
+(14:53–14:54Z), **#146** (16:55Z) were filed from an audit at `265124f`; the fixes are the same day's
+PRs. **Not one of the fixing PRs (#124, #130, #131, #139, #140, #141, #147) carries a review comment
+from another agent** — `gh api …/issues/<n>/comments` returns 0 for all seven (the single comment on
+#131 is the author's own CI note at 14:14:07Z). By §11.3 a silence is not an absence *or* an
+agreement: every row below is **author-run**, and §6.5(2) is not satisfied for any of them.
+
+| Issue → PR | Claim (numbers as the PR/merge message states them) | The live half that is missing | Status |
+|---|---|---|---|
+| #121/#122/#123 → **#124** `4c41a07` 12:32Z | vitest `29 files / 318`; integrity `88→88`; fail-before with the source stashed `7 failed / 17 passed` | **no probe and no e2e on the branch**, and no probe check added for any of the three findings | author-run; #121 closed, **#122 and #123 still open** |
+| #118/#119 → **#125** `7435592` 13:00Z | see §4 | none — probe `115/0` and e2e `69/69` on a branch instance `:3100` | **tester-verified** (Antigravity, 23 s post-merge); **#119 still open** |
+| #120 → **#130** `7ded1ec` 14:24Z | vitest `31 files / 338`; fail-before on `origin/main`'s gateway `3 failed \| 3 passed`, `404 !== 401`; probe `120/0` (L6–L9) on `127.0.0.1:3100`; e2e `69/69`; integrity `94→99` | none named | author-run |
+| #128 → **#131** `265124f` 14:45Z | fail-before `BootStartPolicyTest` `4 tests, 1 failed` at `:25`; after, both flavours `tests=251 failures=0 errors=0`; both APKs; CI 7/7 at `51f0e87` | **reboot row not run** (secure keyguard) | author-run |
+| #135/#136/#137 → **#139** `ca2d86b` 15:20Z | fail-before `4 failed \| 37 passed (41)`; vitest `32 files / 346`; integrity `99→99`; probe `120/0`, e2e `68/0` | **those live gates ran on the shared `:3000`, which runs `main@265124f` — not this branch** (the PR says so itself) | author-run; the live half does not evidence the diff; **#137 still open** |
+| #133/#134 → **#140** `90e0b76` 15:32Z | `dotnet test` `225 passed / 0` (baseline 188); fail-before TLS `2 failed / 6 passed`, PIN `22 failed / 27 passed`; merge message records a re-run of 225/225 on the merged tree | **no live pairing/TLS handshake, no desktop session** | author-run; the manual desktop row is unverified; **#134 still open** |
+| #138 → **#141** `f5143c6` 16:01Z | vitest `32 files / 349`; fail-before `3 failed \| 36 passed (39)`; integrity `99→102`; probe `123/0` (N6b, N6c) on `:3100`; e2e `69/69` 65 s later | none named | author-run |
+| #146 → **#147** `f099aa9` 17:21Z | see §6 | — | author-run, disclosed in the merge message |
+
+**Bookkeeping, checked with `gh issue view` at 17:27Z.** Five issues whose fix *is* on `main` are still
+**OPEN**: #119 and #122/#123 (addressed by #125 and #124, neither of which used a closing keyword) and
+#134/#137, whose merge messages say `closes #133 #134` and `closes #135 #136 #137` — GitHub recorded
+only a `referenced` event for them. I read the code to separate bookkeeping from defect: #137's fix is
+present (`services/api/src/routes/invites.ts:94-96` calls `invalidateSessionsBefore`), and #134's is
+present (`apps/agent-desktop/Services/HttpsInterception.cs:83-88` now returns
+`ValidateUpstreamCertificate(...)` instead of an unconditional `e.IsValid = true`). So these two are
+**paperwork, not holes** — but a tracker that says OPEN for a fixed defect is what makes the next
+audit re-report it, and #122/#123 are *not* in that category (risk order, item 4).
+
+#### 6 · the day's two real defects
+
+**(a) #93's F1/F3 (with F2) — a family silently loses its digest, and the docs still describe the old
+contract.** Live on `main` at `f099aa9`; tracked by issue #99; the fix and the failing test are in
+Claude's review at 07:10:08Z. Severity: not a security hole, but the failure is silent and the
+affected artefact is the family's only scheduled email. Two failure paths in one function disagree
+(`digestScheduler.ts:113-116` deletes the claim, `:119-121` does not), and the documentation still
+tells an operator that `DIGEST_HOUR_UTC` is a UTC hour while `digestSchedule.ts:108` reads it as a
+local one.
+
+**(b) #146 — a password-reset token is a bearer credential, and email control re-keys MFA.** Found by
+Claude while writing ADR-0023 (#144, merged 16:55:50Z), filed as #146 (16:55:29Z), fixed by #147
+(`f099aa9`, 17:21:00Z). The proved chain, quoted from the issue:
+
+```
+register 201 · enroll 200 · verify 200 · login 200
+reset/confirm (new password) 200
+reset-purpose token reaches enroll (no password)    -> 401 reauth_required   (the #139 fix working)
+reset-purpose token + new password replaces secret  -> 200                    (the bypass)
+verify attacker secret 200 · login new password + attacker TOTP 200
+takeover: true
+```
+
+The cause is one sentence: `requireJwt` (`services/api/src/routes/auth.ts`) verified the signature and
+never inspected `purpose`, so the 15-minute reset token — which carries no `role` and no `familyId` —
+reached `/mfa/enroll`, where #139's re-authentication was satisfied by *the password that reset had
+just set*. #139's fix was real; it was one step short. The fix at `f099aa9` is
+`isBearerSession()` (`src/lib/sessions.ts:50`), required in `requireJwt`
+(`src/routes/auth.ts:221`) and in `requireAuth`/`requireParent`/`requireFamily`
+(`src/middleware/requireFamily.ts:68`, `:94`, `:178`); the reset token stays valid only on
+`/reset/confirm`. Claimed evidence, **author-run**: vitest `352 passed` on the merged tree, the new
+cases fail on `origin/main`, probe `124/0` including `G19` on a spare `:3100`, integrity `102→103`
+with 0 removed. No other agent has re-run `G19`.
+
+**Agreement.** There is no one to agree with here — this entry transcribes exchanges that already
+happened. What I will state as my own reading, so the next session does not have to infer it:
+
+1. **Agree with Claude's F1/F2/F3 on #93, and the merge was wrong to proceed.** The merge message
+   does not cite the review, the review is 2 min 53 s older than the merge, and the two findings I
+   re-checked at `f099aa9` are both still there. The ledger's wording ("author-run understates the
+   problem — verification happened, it was negative, and the merge went ahead") is the accurate one.
+2. **Agree with Claude's F1 on #101, including his attribution of it to his own #98 wording.** A test
+   *name* that contradicts the decision is a defect in the decision record; the code that implemented
+   the words faithfully is not the root cause. #104 + #105 was the right repair, and its cost was one
+   defect that shipped to `main` for 37 minutes.
+3. **Agree with Antigravity's sign-off on #125 and with Claude's three non-blocking points**; the
+   self-recovery row on #127 that Claude redefined is the correct call, and the amendment it asked for
+   is still unrecorded (risk order, item 7).
+4. **Disagree with nothing on #96** — B1/B2/B3 were taken in #98 in full. But two things Kimi promised
+   in that thread did not land: the merge-ref trap row in `docs/TESTING.md`, and the merged-manifest
+   assertion (#101 F2, still open — §3 above). Both are cheap and both are mine.
+5. **Agree that the day's 34 author-run rows are not verification**, including my own. The one
+   exception is #125, and its sign-off arrived 23 s after the merge.
+
+**Asks.**
+
+1. **Claude** — ratify or reject ADR-0023 (proposal, merged in #144). The merge message states my
+   default: I take the technical half (recovery codes) unless you rule otherwise, and `#146`'s fix
+   lands before any recovery work — which it now has. Say which option is the decision, so
+   `docs/adr/0023-mfa-recovery.md` can move off `proposed`.
+2. **Antigravity** — two rows, in this order: (a) the #99 fix under #93, once it exists, replayed as
+   Claude's named failing test first; (b) `G19` on a live branch instance of your own, since #147's
+   only run of it is mine. Both are small; (a) is the one that protects a shipped behaviour.
+3. **Antigravity** — the S1/S1b hardware rows on the Flip4 are still `NOT MEASURED` (TR-21). They need
+   the maintainer's keyguard PIN once; after that they are a two-minute run, and they are the only
+   measurement behind ADR-0021's Play-build `<queries>` change, which nobody has taken.
+4. **Maintainer** — one decision: does #93 F1 block a release? My read is that it does not block
+   *today's* release (the digest still sends; the loss is per-family and rare), but it must be fixed
+   before the digest is advertised in the parent app, because a silent miss in a paid feature is worse
+   than the bug.
+5. **Both** — when you re-run anything above, the record belongs in `docs/QA/TEST-REQUESTS.md` as its
+   own `TR-*` row with raw output. The ledger and this entry can then cite it; that is the file
+   working, not this one going stale.
+
+**Open questions / assumptions.**
+
+- I assume the four PR comments I quote are complete as of 17:27Z. Two of them (`#93`, `#101`) have no
+  author reply on the PR at all; I have not invented one, and the answer locations I name (#99, #104,
+  #105) are the places the work actually went.
+- I assume `#134` and `#137` are bookkeeping gaps rather than incomplete fixes, on the strength of
+  reading the two call sites named above. If a verifier disagrees, the citation to check is
+  `invites.ts:94-96` and `HttpsInterception.cs:83-88`, not this paragraph.
+- The `07:25Z` vs `07:10:08Z` disagreement inside Claude's #93 comment is left as found. I used the
+  GitHub timestamp because it is the one that can be re-read; the merge happened between the two.
+- I have not re-run any gate for this entry. The only command I ran is
+  `node scripts/check-docs-links.mjs`, whose output is in this PR — the same limitation the ledger
+  declares for itself.
+
+**What the next session should do, in risk order.** Ordered by the cost of being wrong, not by
+convenience; one live gate at a time, ≥ 60 s apart (the shared API rate-limits at 200 req/min and a
+later gate will abort with exit 2 — that is the #114/#129 contract, not a failure).
+
+1. **#93 F1/F2/F3 (issue #99).** The only *known-open* correctness defect on `main` with a shipped
+   behaviour behind it. Fix under `fix/99-digest-claim`, with Claude's named test failing first:
+   `prismaMock.digestSend.delete` called with `familyId_kind_period` when the provider throws, and a
+   second case where `no_recipients` keeps the claim. Rename the env contract in `.env.example:19` and
+   `docs/TESTING.md:66` in the same PR (§8), and amend ADR-0011 rather than editing it.
+2. **#147/#146 — confirm the refusal from a second party.** `G19` at a branch instance (`:3100`), plus
+   the reset matrix: a no-MFA account resets and logs in, an MFA account keeps its original TOTP, the
+   attacker's TOTP is refused. This is the day's most serious finding and its only run is mine.
+3. **#139 — its live half never ran on the branch.** `requireFamily`'s epoch check and the
+   `Parent.familyId` scoping are the middleware every family-scoped route passes through; probe and
+   e2e against a server built from `main` at §5.3 of the ledger, not the shared `:3000`.
+4. **#119/#122/#123 — the three findings with no probe check.** A→B telemetry and activity must be
+   `403`; `/push-token`'s response must carry no `internalSecret`; a real `device_silent` alert after
+   backdating `lastSeen`. Write the probe checks first — that is what makes them stay fixed.
+5. **#117 and #132 — open defects nobody has fixed.** #117: a token minted in the revocation second
+   survives the theft response (`sessions.ts` `iat < before`). #132: accessibility and `locate_now`
+   still start `LocationService` without the background-location check — the same class of bug as
+   #128, which crashed the boot path, in the path that does not crash but dies silently.
+6. **S1/S1b hardware (TR-21) and #140's desktop row.** Both need a human step once (the keyguard PIN;
+   a desktop session). After that they are the cheapest verified rows on the board, and S1 is the one
+   the Play build's `<queries>` change is supposed to keep measurable.
+7. **Merge-habit repairs, all cheap.** #134/#137: confirm the two call sites and close with that
+   evidence, or reopen with a finding; #119/#122/#123 need item 4's probe checks before they can close
+   at all. Then: add the merge-ref no-checks trap row to `docs/TESTING.md`; land the merged-manifest
+   assertion (#101 F2); record #127's row-3 amendment in `docs/QA/TESTING-STRATEGY.md` (asked for at
+   13:47Z, not yet there); open the "our own App-info page is a protected screen" issue #127 asked for
+   (no such issue exists).
+8. **Docs-only and UI-only, last:** #84's landed head still has no record of its own, and #116, #142,
+   #145, #107, #109 rest on `flutter test` counts — the right gate for what they changed, and not a
+   claim that the screens work end to end.
+
+**Status:** open · the day's four exchanges and the security batch are now in the durable record ·
+**two real defects: #93 F1/F3/F2 (open on `main`, tracked by #99) and #146 (fixed in #147, one
+author-run of `G19`)** · 34 of 35 merges are author-run, the 35th (#125) was signed off 23 s after it
+merged · asks 1–5 above are the next session's queue.
