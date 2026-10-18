@@ -35,11 +35,11 @@ const EXPECTED = {
     "play merged manifest declares exactly the reviewed permission allow-list",
     "play merged manifest declares none of the Play-forbidden permissions",
     "play merged manifest registers no notification, call-log or SMS component",
-    "play merged manifest keeps isMonitoringTool and the three dialer queries",
+    "play merged manifest keeps isMonitoringTool and the required queries",
   ],
   "com.familyshield.agent.manifest.FullMergedManifestTest": [
     "full merged manifest keeps the capture permissions and the listener service",
-    "full merged manifest keeps isMonitoringTool and the dialer queries",
+    "full merged manifest keeps isMonitoringTool and the required queries",
   ],
 };
 
