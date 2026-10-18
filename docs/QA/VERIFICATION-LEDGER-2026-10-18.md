@@ -7,6 +7,10 @@ commits, no direct push. Source of each entry, in this order: the merge commit m
 below is a re-run I performed — except `node scripts/check-docs-links.mjs`, whose raw output is in this
 change's pull request. It is a ledger of **what is on record**, not a new verification.
 
+> **Later batch:** the merges after `f2437a9` are in
+> [`VERIFICATION-LEDGER-2026-10-19.md`](VERIFICATION-LEDGER-2026-10-19.md) (13 merges, `162a3e4` →
+> `4e56410`). This file is not edited by that one; the two together are the 2026-10-18 UTC day, 44 merges.
+
 > One boundary case, so the count cannot be argued with: `f25ed54` (#86, ADR-0017/0018/0019) carries the
 > commit date `2026-10-18 00:05:35 +0400`, which is `2026-10-17T20:05:35Z`. It belongs to the 2026-10-17
 > batch and is **not** one of the 31 below. `git log --first-parent --since=2026-10-18T00:00:00+0400`
