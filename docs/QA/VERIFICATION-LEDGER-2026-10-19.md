@@ -119,6 +119,9 @@ Named claims inside these PRs that **no one has run**:
    `known incomplete: #132` (`grep -n "#132" docs/QA/VERIFICATION-LEDGER-2026-10-18.md` → no output),
    and re-run item 8 still omits the while-in-use-only case. The code half of the first one is moot —
    #155 closed the #132 hole — but the record still reads as if it were clean.
+   **Amended 2026-10-19: all three are now met — see §4.4.** The `TEST-REQUESTS.md:20` citation above
+   no longer resolves either: later board inserts moved that message to `:22` (§8: a citation that no
+   longer resolves is a documentation bug).
 2. **A decision that exists only as a comment.** Claude's row-3 acceptance (§4.2) is the batch's only
    architecture acceptance and it is not in the file it governs. One docs line, and it is not mine to
    write as accepted without the citation; it is in the re-run list (§5, item 10).
@@ -133,6 +136,26 @@ Named claims inside these PRs that **no one has run**:
 5. **#150's checks have never been shown to fail.** The PR names the three mutations that should turn
    `G20`/`G22`/`N6e` red and says the experiment was **not** run. A check nobody has seen fail is a
    check that may be vacuous — the same criticism #157's fail-before answers for its own gate.
+
+### 4.4 Claude's three conditions on #143 — where each stands after 2026-10-19
+
+Claude's diff read of [#143](https://github.com/handfulofluck-lab/osra/pull/143) at 16:46:16Z
+(§3, the #143 row) set three conditions before a merge that then happened without them. This section is
+the **dated disposition**, not a rewrite of §4.3: two of the three were record bugs, the code half was
+fixed the same evening, and none of it upgrades a run.
+
+| # | The condition, as Claude wrote it | Met? | By what |
+|---|---|---|---|
+| **1a** | the #131 row must read "author-run, known incomplete: #132" | **met** | [`VERIFICATION-LEDGER-2026-10-18.md`](VERIFICATION-LEDGER-2026-10-18.md) §2's #131 row now carries the words, with a dated note that #132 is fixed by [#155](https://github.com/handfulofluck-lab/osra/pull/155) (`4e56410`, 20:00:18Z; issue #132 closed 20:00:20Z). The code it describes, read at `1733d83`: `BootStartPolicy.kt:36`, `AccessibilityMonitorService.kt:144-166` and `CommandDispatcher.kt:247` all consult `LocationStartPolicy.kt:41-49` |
+| **1b** | #111 fixed the probe only — add the #117 debt | **met** | that ledger's §3 **item 8**, which names the fix: [#156](https://github.com/handfulofluck-lab/osra/pull/156) (`0d0418c`, 19:40:02Z; issue #117 closed 19:40:04Z). Read at `1733d83`: `services/api/src/lib/sessions.ts:114` (`incrby` the counter), `:128-129` (refuse a lower `sv`), `:133-134` (inclusive legacy fallback — the revocation second is dead) |
+| **2** | the app PIN must come out of `docs/QA/TEST-REQUESTS.md` (and TR-21) | **met** | [#164](https://github.com/handfulofluck-lab/osra/pull/164) (`e202c9e`, 2026-10-18 21:47:25Z) removed the literal from `docs/` and `scripts/` and made the hardware probe require `-Pin` with no default (`docs/TESTING.md:356-360`). The 2026-10-18 13:05Z message now reads "the app PIN (held outside this repo)" at `TEST-REQUESTS.md:22`; `grep -rnE 'app PIN [0-9]{4}' docs scripts` returns nothing. #164 used prose instead of Claude's suggested `<app-PIN>` placeholder — the condition's point, no credential in the record, is met. The **rotation** half is not one of the three and is still open: issue [#151](https://github.com/handfulofluck-lab/osra/issues/151) |
+| **3** | re-run item 8 (#131) must add the while-in-use-only case | **met** | both re-run lists carry it with the commands: the 2026-10-18 ledger's §4 item 8, and **Block B item 5** below |
+
+**What this section does not claim.** None of the three fixes is tester-verified: #155 and #156 are
+`author-run` (the #155 hardware path and the #156 same-second live assertion have only my run), and #164
+is a docs change. The conditions were about the **record** being honest, not about promoting a run — the
+rows in §3 stay as they are. A second party still owes Block B item 5 (the while-in-use row) and Block A
+item 1 (`F8`/`N2` with no sleep).
 
 ## 5. What a verifier should re-run first — in risk order
 
@@ -167,7 +190,47 @@ failure).
 5. **#155 — no location FGS without the background grant** (`4e56410`). Both flavours on a clean build,
    then the one row nobody ran: revoke background location while the agent polls and confirm the
    `locate_now` **failed ack with `reason: background_location_missing`** appears in
-   `/v1/devices/:id/commands/history` (needs the lease; §6.7).
+   `/v1/devices/:id/commands/history` (needs the lease; §6.7). **Amended 2026-10-19 (Claude's
+   condition 3):** the same row must also run the **while-in-use-only** case this ledger's §3 lists as
+   never run — grant foreground location without the background grant, turn accessibility on, and
+   expect an empty crash buffer. Without it a run can pass on the boot path and miss the live
+   `AccessibilityMonitorService` / `CommandDispatcher` starts that #132 was about. Precondition: the
+   agent is **paired**, or the decision returns `null` and the empty buffer proves nothing
+   (`AccessibilityMonitorService.kt:262`).
+
+   ```bash
+   SERIAL=R5CW116Y6GF; PKG=com.familyshield.agent
+   A11Y="$PKG/$PKG.services.AccessibilityMonitorService"   # full class name; short form dropped on One UI (TESTING.md:439)
+
+   # while-in-use only: fine + coarse granted, background explicitly not
+   adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_FINE_LOCATION
+   adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_COARSE_LOCATION
+   adb -s $SERIAL shell pm revoke $PKG android.permission.ACCESS_BACKGROUND_LOCATION
+   adb -s $SERIAL shell dumpsys package $PKG | grep -E "ACCESS_(FINE|COARSE|BACKGROUND)_LOCATION"
+   adb -s $SERIAL shell appops get $PKG FINE_LOCATION        # expect "FINE_LOCATION: allow"
+
+   # nothing of ours in front, clear the crash buffer, then accessibility on (background bind)
+   adb -s $SERIAL shell input keyevent KEYCODE_HOME
+   adb -s $SERIAL logcat -b crash -c
+   adb -s $SERIAL shell settings put secure enabled_accessibility_services "$A11Y"
+   adb -s $SERIAL shell settings put secure accessibility_enabled 1
+   adb -s $SERIAL shell settings get secure enabled_accessibility_services   # must echo the full name
+
+   # two minutes, then: empty crash buffer, no LocationService, and the positive control
+   sleep 120
+   adb -s $SERIAL logcat -b crash -d                          # expect no com.familyshield.agent frame
+   adb -s $SERIAL logcat -b crash -d | grep -c "com.familyshield.agent"        # expect 0
+   adb -s $SERIAL shell dumpsys activity services $PKG | grep -c LocationService  # expect 0
+   adb -s $SERIAL logcat -d -s AccessibilityMonitor | grep "not starting LocationService"
+   #   expect "... not starting LocationService: background_location_missing ... (#132)"
+   ```
+
+   Pass means the lines above read as marked, plus the failed `locate_now` ack with
+   `detail.reason = background_location_missing` in `/commands/history`. An empty crash buffer **with**
+   `LocationService` running is not a pass — the FGS started, so the guard did not engage. Restore
+   `enabled_accessibility_services` / `accessibility_enabled` to their pre-run values before the
+   release (`AGENTS.md` §9.3), and re-grant background location only if the run revoked it. The full
+   step-by-step, including the parent-side `locate_now` send, is the 2026-10-18 ledger's §4 item 8.
 
 ### Block C — the rest of the API, and the gates themselves
 
@@ -337,11 +400,15 @@ its parent still exists before deleting it.
   are `node scripts/check-docs-links.mjs` (output in the PR's gate section), `git log`/`git show` for the
   merge shas, times, heads and message text, `git diff --stat` for the docs-only claims, and the
   `grep`/`sed` reads of `digestScheduler.ts`, `.env.example`, `qa-probe.mjs`, `sessions.ts`,
-  `TESTING-STRATEGY.md` and `TEST-REQUESTS.md` that back the "paid" verdicts in §4.
+  `TESTING-STRATEGY.md` and `TEST-REQUESTS.md` that back the "paid" verdicts in §4. The **2026-10-19
+  amendments** (§4.3 item 1, §4.4, Block B item 5) add no run: they are the `file:line` re-reads at
+  `1733d83`, the PR/issue records they name, and one `grep -rnE 'app PIN [0-9]{4}'` over `docs`/`scripts`.
 - **Not a status upgrade.** All 13 rows are `author-run` because that is what the records say. The two
   non-author records in the batch are quoted with their timestamps so a reader can see what they were:
   a conditional approval whose conditions did not land (#143) and an acceptance that arrived after the
-  merge (#154).
+  merge (#154). The **conditions** of that approval landed as dated record amendments on 2026-10-19
+  (§4.4) — that closes the approval's asks, not the verification gap: every #155/#156 row stays
+  `author-run`.
 - **Not a substitute for a `TR-*` row.** When a verifier does re-run a row above, the record belongs in
   [`TEST-REQUESTS.md`](TEST-REQUESTS.md) as its own request with raw output, and this file can then cite
   it — that is the file working, not this one going stale.
