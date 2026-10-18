@@ -79,7 +79,7 @@ app.addHook("preHandler", async (req, reply) => {
       return reply.code(401).send({ error: "device_revoked" });
     }
   }
-  if (user?.role === "parent" && !(await isParentSessionLive(user as { sub?: string; jti?: string; iat?: number }))) {
+  if (user?.role === "parent" && !(await isParentSessionLive(user as { sub?: string; jti?: string; iat?: number; sv?: number }))) {
     return reply.code(401).send({ error: "session_revoked" });
   }
 });
