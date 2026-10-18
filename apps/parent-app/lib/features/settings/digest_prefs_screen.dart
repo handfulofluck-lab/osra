@@ -23,11 +23,73 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   bool _initialized = false;
   bool _saving = false;
   bool _sending = false;
+  // ADR-0020 / #101: the family's timezone decides the local hour the digest is sent at.
+  String? _timezone;
+  bool _timezoneSaving = false;
+
+  /// A curated list rather than the full IANA database: these are the markets OSRA ships to, and the
+  /// API validates the value anyway (an unknown name is refused with invalid_timezone).
+  static const _timezones = <String>[
+    'UTC',
+    'Asia/Dubai',
+    'Asia/Riyadh',
+    'Asia/Kuwait',
+    'Asia/Qatar',
+    'Asia/Bahrain',
+    'Asia/Muscat',
+    'Asia/Amman',
+    'Africa/Cairo',
+    'Europe/London',
+    'Europe/Berlin',
+    'Europe/Paris',
+    'America/New_York',
+    'America/Chicago',
+    'America/Los_Angeles',
+    'Asia/Karachi',
+    'Asia/Kolkata',
+    'Asia/Singapore',
+  ];
 
   @override
   void dispose() {
     _emails.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTimezone();
+  }
+
+  Future<void> _loadTimezone() async {
+    try {
+      final res = await ref.read(apiClientProvider).raw.get('/v1/family/me');
+      final family = (res.data is Map ? res.data['family'] : null);
+      final tz = family is Map ? family['timezone']?.toString() : null;
+      if (mounted && tz != null) setState(() => _timezone = tz);
+    } catch (_) {
+      // A failed load leaves the dropdown empty; the parent can still pick a zone.
+    }
+  }
+
+  Future<void> _saveTimezone(String tz) async {
+    setState(() {
+      _timezone = tz;
+      _timezoneSaving = true;
+    });
+    try {
+      await ref.read(apiClientProvider).raw.patch('/v1/family/me', data: {'timezone': tz});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Digest timezone set to $tz')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Timezone not saved: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _timezoneSaving = false);
+    }
   }
 
   List<String> get _emailList => _emails.text
@@ -140,6 +202,27 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                   labelText: 'Digest emails (comma separated)',
                   border: OutlineInputBorder(),
                 ),
+              ),
+              const SizedBox(height: 16),
+              // ADR-0020: the family's local hour. A parent who picks a zone here owns it: the API marks
+              // the source as `parent`, and no device login can move it again (#101, #105).
+              Text('Digest timezone (local send hour)', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                _timezone == null
+                    ? 'Loading…'
+                    : 'The digest is sent at 18:00 your local time${_timezoneSaving ? ' · saving…' : ''}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                key: const ValueKey('digestTimezone'),
+                initialValue: _timezones.contains(_timezone) ? _timezone : 'UTC',
+                decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Timezone'),
+                items: [
+                  for (final tz in _timezones) DropdownMenuItem(value: tz, child: Text(tz)),
+                ],
+                onChanged: _timezoneSaving ? null : (v) { if (v != null) _saveTimezone(v); },
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
