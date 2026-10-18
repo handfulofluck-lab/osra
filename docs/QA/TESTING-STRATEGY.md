@@ -68,9 +68,9 @@ back within 120 s — is still measured and printed by the script as a **NOTE**,
 because Android cannot meet it (evidence below). `AGENTS.md` §4 still governs the next change to this row:
 fix it explicitly, with the evidence, and let the human decide — never by quietly retitling it.
 
-**The row before the amendment (kept as history).** `scripts/hardware/android-bypass-probe.ps1:56-59`:
-`am force-stop` the agent, then require its pid back within 120 s. It was a gating row, so red meant red
-probe.
+**The row before the amendment (kept as history).** `scripts/hardware/android-bypass-probe.ps1`, row 3 as
+it stood in TR-21: `am force-stop` the agent, then require its pid back within 120 s. It was a gating row,
+so red meant red probe.
 
 **What it measured on hardware, and why no code change can pass it.** TR-21 ran it on the Flip4
 (`R5CW116Y6GF`, SM-F721B, Android 16) at `main@7435592`:
