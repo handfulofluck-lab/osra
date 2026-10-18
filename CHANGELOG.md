@@ -11,6 +11,26 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — command delivery status is the queue's real state (plan 3.6, #116)
+- The child detail device card now shows the **latest command's queue state** and opens
+  **Command delivery** (`/child/:id/commands`): a per-device list read from
+  `GET /v1/devices/:id/commands/history`, with `pending`, `delivered`, `acked`, `failed` and
+  `expired` states and the creation / delivered / confirmed times the server recorded.
+- **The acceptance line:** an unacked command is never called "sent". `delivered` is labelled
+  "Delivered — awaiting device confirmation", `pending` is "Pending — waiting for the device", and
+  only `acked` says "Confirmed by device". The existing Ring/Lock/… and pause toasts (child detail
+  and map) changed from "sent to … — reaches the device within ~1 minute" to "queued for … — the
+  device has not confirmed it yet", because `POST /v1/devices/:id/command` only creates a `pending`
+  row (`services/api/src/routes/devices.ts:245`).
+- Empty and error states are explicit per device ("No commands yet"; "Could not load command
+  history" with Retry). The screen is registered in the app router and has a widget test that taps
+  the device-card action through a real `GoRouter`; a 320×568 layout test covers the new screen.
+- `flutter test`: **112 passed** (7 new in `test/command_history_test.dart`); `flutter analyze`:
+  **No issues found**. Author run (Kimi Code); independent verification is still owed (WO-03).
+  The response shape was checked against the live stack
+  (`GET /v1/devices/78593c53…/commands/history` → `{items:[{status, createdAt, deliveredAt, ackedAt, …}]}`,
+  dates as ISO strings).
+
 ### QA — the F8 revocation check no longer races the clock (issue #110)
 - `qa-probe` F8 failed once and passed on re-run with identical code: the check waited a flat 1100 ms before
   re-logging in, but `iat` has **one-second resolution**, so a login could still land in the revocation
