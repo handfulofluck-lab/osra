@@ -53,6 +53,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) | The prioritised defect queue with per-item acceptance criteria (historical filename; the queue is worked by the development lane) |
 | [`QA/audits/`](QA/audits/) | Raw per-platform audits (`API`, `ANDROID`, `WINDOWS`, `FLUTTER`, `IOS-MACOS`) with `file:line` evidence |
 | [`QA/DISCUSSION-LOG.md`](QA/DISCUSSION-LOG.md) | The append-only, full-detail dialogue between the implementing and verifying agents |
+| [`QA/VERIFICATION-LEDGER-2026-10-18.md`](QA/VERIFICATION-LEDGER-2026-10-18.md) | The 2026-10-18 batch (31 merges) in one table: merged sha, who ran which gate, the exact numbers claimed, and whether it is tester-verified, author-run or unverified — plus the debts the table exposes and the risk-ordered re-run list with this machine's commands |
 | [`QA/BRANCH-PRUNE-2026-10-17.md`](QA/BRANCH-PRUNE-2026-10-17.md) | Plan 0.5: every remote branch with the PR that carried it and whether its tip is merged — the list to delete from, once the maintainer gives the go (nothing is deleted by the document) |
 | [`QA/DISCUSSION-LOG.md`](QA/DISCUSSION-LOG.md) | The append-only, full-detail dialogue between the lanes: implementation, architecture and verification |
 | [`test-guides/OSRA-REVIEW-RESPONSE-2026-09-18.md`](test-guides/OSRA-REVIEW-RESPONSE-2026-09-18.md) | Mapping of an external code review to the fixes that answered it |
