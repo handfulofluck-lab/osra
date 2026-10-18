@@ -52,6 +52,34 @@ describe("internal signing v2 — replay, skew, callers (ADR-0014, closes J2/J6)
     expect((await authenticateInternalRequest(body, h2["x-familyshield-signature"], h2, NOW, env)).valid).toBe(true);
   });
 
+  it("a nonce-store failure fails CLOSED in production, and is permissive (logged) outside it", async () => {
+    const redis = getRedis() as unknown as MockRedis;
+    redis.set.mockRejectedValue(new Error("redis down"));
+    const h = signV2(DEV.internalSecret, body, { timestamp: NOW, nonce: "nonce-redis-down-01" });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Production: no nonce claim means no replay guarantee, so the request must be rejected.
+    const prod = { ...env, NODE_ENV: "production" } as NodeJS.ProcessEnv;
+    expect(await authenticateInternalRequest(body, h["x-familyshield-signature"], h, NOW, prod)).toEqual({
+      valid: false,
+      reason: "nonce_store_unavailable",
+    });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("nonce store unreachable"), expect.any(Error));
+
+    // Dev/test: explicitly permissive, with a warning — never silent.
+    const dev = { ...env, NODE_ENV: "test" } as NodeJS.ProcessEnv;
+    expect(await authenticateInternalRequest(body, h["x-familyshield-signature"], h, NOW, dev)).toMatchObject({
+      valid: true,
+      version: 2,
+      device: { id: "dev-1" },
+    });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("replay protection disabled"), expect.any(Error));
+
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
   it("the signing string binds timestamp, nonce and body — tampering with any of them fails", async () => {
     const h = signV2(DEV.internalSecret, body, { timestamp: NOW, nonce: "nonce-0123456789abcdef" });
     expect(signingStringV2("1", "n", "b").toString()).toBe("1.n.b");

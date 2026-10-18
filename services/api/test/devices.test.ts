@@ -216,7 +216,11 @@ describe("device enrollment & management", () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
     const redis = getRedis() as unknown as import("./helpers.js").MockRedis;
-    redis.get.mockResolvedValueOnce(JSON.stringify({ batteryPct: 55, receivedAt: "2026-09-15T00:00:00Z" }));
+    // Keyed, not `mockResolvedValueOnce`: session liveness (and now the epoch check in
+    // requireFamily) reads Redis before the telemetry key does.
+    redis.get.mockImplementation(async (k: string) =>
+      k === "device:dev-1:telemetry" ? JSON.stringify({ batteryPct: 55, receivedAt: "2026-09-15T00:00:00Z" }) : null,
+    );
 
     const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);

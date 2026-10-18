@@ -50,6 +50,42 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **⚠️ Not verified here:** the pairing dialog was not driven on a real desktop session, and the
   TLS cases exercise the validation policy the proxy callback delegates to, not a live TLS
   handshake through the proxy. Both need a manual desktop row.
+### API — audit findings 3–5: nonce store fails closed, MFA re-enrolment needs re-auth, family moves revoke the old scope (#139)
+- **Finding 3 — a Redis outage no longer disables HMAC replay protection
+  (`services/api/src/lib/internalAuth.ts:120-140`).** `claimNonce` used to `catch(() => "OK")`, so an
+  unreachable replay store read as a successful claim and every byte-identical request was accepted.
+  It now returns `claimed | replayed | unavailable`; production rejects with
+  `401 { reason: "nonce_store_unavailable" }` and logs `[security] nonce store unreachable`, matching
+  the fail-closed pattern in `lib/sessions.ts:62-67` and `routes/auth.ts:56-59`. Outside production the
+  request stays permissive **and logs the degradation** (`replay protection disabled (dev/test only)`).
+- **Finding 4 — replacing an enrolled TOTP secret requires re-authentication
+  (`services/api/src/routes/auth.ts:221-260`).** `POST /v1/auth/mfa/enroll` overwrote `mfaSecret` on a
+  bare session token, so a stolen 7-day access token could rebind the second factor. When the Parent
+  row already has a secret, the body must now carry the account password (preferred; `argon2.verify`)
+  or a current TOTP code (the existing `verifyTotpFresh` replay guard). A first enrolment — no secret
+  yet — still works with the session token, so onboarding is unchanged; a failed re-auth is
+  `401 { error: "reauth_required" }` and writes nothing.
+  **Password reset still does not clear MFA** (that would let a reset bypass the second factor). The
+  recovery path is deliberately out of scope here: a parent with an enrolled secret who has lost the
+  authenticator cannot log in after a reset, because login still demands TOTP; clearing MFA requires
+  a support-assisted identity check that this API does not implement yet. A parent who is still
+  logged in can rotate the secret with their password through the new re-auth body.
+- **Finding 5 — an invite accept kills the previous family's sessions, and family scoping reads the
+  current row (`routes/invites.ts:82-92`, `middleware/requireFamily.ts:150-190`).** Accepting an invite
+  moves `Parent.familyId` but used to leave the old 7-day access token carrying the old `familyId`
+  claim, so it kept access to the previous family. Accept now calls the same
+  `invalidateSessionsBefore(parent.id)` epoch that logout-all/password-reset/MFA-enable use; the fresh
+  token is minted afterwards and stays live. `requireFamily` also stops trusting the token snapshot:
+  for parent tokens it checks the session epoch and scopes the resource against the **current**
+  `Parent.familyId`; a token whose claim disagrees with the row is `403 forbidden`, and a token older
+  than the epoch is `401 session_revoked`. (Both layers are kept: the epoch also covers routes that
+  compose `requireParent`, and the row check still protects family-scoped routes when Redis is
+  unavailable.)
+- **Tests:** `services/api` `pnpm test` → **346/346 passed** (4 new cases in
+  `test/internal-signing.test.ts`, `test/auth.test.ts`, `test/invites.test.ts` and
+  `test/sessions-and-roles.test.ts`). Fail-before evidence on `origin/main@265124f`: the same four
+  cases fail (`nonce-store failure` returned `valid: true`; re-enrol returned `200` instead of `401`;
+  no `auth:invalid-before` key was written; the old-family token read the old child with `200`).
 
 ### Android — a boot before location is granted no longer kills the agent (issue #128)
 - **`BootReceiver` no longer requests `LocationService` unless the app can hold a location FGS.**

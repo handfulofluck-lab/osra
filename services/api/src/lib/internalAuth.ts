@@ -32,7 +32,7 @@ import { getRedis } from "../redis.js";
 export interface InternalAuthResult {
   valid: boolean;
   /** Set when `valid` is false: a stable code for the 401 body and the logs. */
-  reason?: "missing_signature" | "invalid_signature" | "stale_timestamp" | "missing_nonce" | "replay" | "legacy_signature_disabled" | "global_secret_requires_service_caller" | "device_has_no_secret";
+  reason?: "missing_signature" | "invalid_signature" | "stale_timestamp" | "missing_nonce" | "replay" | "nonce_store_unavailable" | "legacy_signature_disabled" | "global_secret_requires_service_caller" | "device_has_no_secret";
   version?: 1 | 2;
   device?: {
     id: string;
@@ -117,10 +117,31 @@ function verifyWith(secret: string, rawBody: string | Buffer, env: Envelope): bo
   return safeEq(env.sig, hmacHex(secret, data));
 }
 
-/** Claim a nonce for a signer; false when it was already used inside the window (replay). */
-async function claimNonce(signerId: string, nonce: string): Promise<boolean> {
-  const r = await getRedis().set(`nonce:${signerId}:${nonce}`, "1", "EX", NONCE_TTL_SECONDS, "NX").catch(() => "OK");
-  return r === "OK";
+type NonceClaim = "claimed" | "replayed" | "unavailable";
+
+/**
+ * Claim a nonce for a signer. `replayed` means the NX write lost (the nonce is inside its window);
+ * `unavailable` means the replay store could not be reached. A store failure must never read as a
+ * successful claim — production fails closed, dev/test stay permissive and say so in the log.
+ */
+async function claimNonce(signerId: string, nonce: string, envVars: NodeJS.ProcessEnv = process.env): Promise<NonceClaim> {
+  try {
+    const r = await getRedis().set(`nonce:${signerId}:${nonce}`, "1", "EX", NONCE_TTL_SECONDS, "NX");
+    return r === "OK" ? "claimed" : "replayed";
+  } catch (err) {
+    const production = (envVars.NODE_ENV ?? process.env.NODE_ENV) === "production";
+    if (production) {
+      console.error(`[security] nonce store unreachable for ${signerId} — rejecting request (replay protection unavailable)`, err);
+      return "unavailable";
+    }
+    console.warn("[security] nonce store unreachable; replay protection disabled (dev/test only)", err);
+    return "claimed";
+  }
+}
+
+/** Map a failed nonce claim to the 401 result for the caller. */
+function nonceFailure(claim: Exclude<NonceClaim, "claimed">): InternalAuthResult {
+  return { valid: false, reason: claim === "unavailable" ? "nonce_store_unavailable" : "replay" };
 }
 
 /**
@@ -157,7 +178,8 @@ export async function authenticateInternalRequest(
     if (env.version !== 2 || !caller || !serviceCallers(envVars).has(caller)) {
       return { valid: false, reason: "global_secret_requires_service_caller" };
     }
-    if (!(await claimNonce(`service:${caller}`, env.nonce))) return { valid: false, reason: "replay" };
+    const claim = await claimNonce(`service:${caller}`, env.nonce, envVars);
+    if (claim !== "claimed") return nonceFailure(claim);
     return { valid: true, version: 2, isGlobalSecret: true, caller };
   }
 
@@ -168,7 +190,10 @@ export async function authenticateInternalRequest(
     if (!device?.internalSecret) return { valid: false, reason: "device_has_no_secret" };
     if (!verifyWith(device.internalSecret, rawBody, env)) return { valid: false, reason: "invalid_signature" };
     if (env.version === 1 && !allowLegacyV1(envVars)) return { valid: false, reason: "legacy_signature_disabled" };
-    if (env.version === 2 && !(await claimNonce(device.id, env.nonce))) return { valid: false, reason: "replay" };
+    if (env.version === 2) {
+      const claim = await claimNonce(device.id, env.nonce, envVars);
+      if (claim !== "claimed") return nonceFailure(claim);
+    }
     return { valid: true, version: env.version, device };
   }
 
@@ -178,7 +203,10 @@ export async function authenticateInternalRequest(
     for (const dev of childDevices) {
       if (dev.internalSecret && verifyWith(dev.internalSecret, rawBody, env)) {
         if (env.version === 1 && !allowLegacyV1(envVars)) return { valid: false, reason: "legacy_signature_disabled" };
-        if (env.version === 2 && !(await claimNonce(dev.id, env.nonce))) return { valid: false, reason: "replay" };
+        if (env.version === 2) {
+          const claim = await claimNonce(dev.id, env.nonce, envVars);
+          if (claim !== "claimed") return nonceFailure(claim);
+        }
         return { valid: true, version: env.version, device: dev };
       }
     }

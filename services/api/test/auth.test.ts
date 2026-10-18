@@ -123,6 +123,65 @@ describe("auth routes", () => {
     await app.close();
   });
 
+  it("replacing an existing MFA secret requires re-authentication (password or current TOTP)", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const passwordHash = await argon2.hash(PASSWORD);
+    const oldSecret = "JBSWY3DPEHPK3PXP";
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1",
+      email: registerBody.email,
+      passwordHash,
+      mfaSecret: oldSecret,
+      mfaEnabled: true,
+    });
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1", email: registerBody.email });
+
+    const h = authHeader(app);
+    // A bare session token can no longer rebind the second factor.
+    const noReauth = await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: h, payload: {} });
+    expect(noReauth.statusCode).toBe(401);
+    expect(noReauth.json().error).toBe("reauth_required");
+    const wrongPassword = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/enroll",
+      headers: h,
+      payload: { password: "WrongHorseBatteryStaple!" },
+    });
+    expect(wrongPassword.statusCode).toBe(401);
+    expect(wrongPassword.json().error).toBe("reauth_required");
+    const wrongCode = await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: h, payload: { code: "000000" } });
+    expect(wrongCode.statusCode).toBe(401);
+    expect(prismaMock.parent.update).not.toHaveBeenCalled();
+
+    // The account password is enough to rotate the secret.
+    const byPassword = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/enroll",
+      headers: h,
+      payload: { password: PASSWORD },
+    });
+    expect(byPassword.statusCode).toBe(200);
+    expect(byPassword.json().secret).toMatch(/^[A-Z2-7]{32}$/);
+    expect(byPassword.json().secret).not.toBe(oldSecret);
+    expect(prismaMock.parent.update).toHaveBeenCalledWith({
+      where: { id: "parent-1" },
+      data: { mfaSecret: expect.stringMatching(/^enc1:/) },
+    });
+
+    // A current TOTP code from the existing authenticator is the alternative.
+    prismaMock.parent.update.mockClear();
+    const counter = Math.floor(Date.now() / 1000 / 30);
+    const byCode = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/enroll",
+      headers: h,
+      payload: { code: totpAtCounter(oldSecret, counter) },
+    });
+    expect(byCode.statusCode).toBe(200);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
   it("requires a JWT for MFA endpoints (401 without one)", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const res = await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", payload: {} });
