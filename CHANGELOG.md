@@ -11,6 +11,43 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — a token minted in the revocation second no longer survives the theft response (#117)
+- **What changed.** Parent session revocation is a monotonic counter, not a wall-clock comparison.
+  `signParentToken` stamps every access token with `sv` — the value of
+  `auth:session-version:<parentId>` read at mint time — and `invalidateSessionsBefore` increments
+  that counter (`services/api/src/lib/sessions.ts`). `isParentSessionLive` refuses `sv < current`,
+  so a token minted in the same second as the revocation is dead, and a token minted after it works
+  without waiting for the clock to tick. Password reset, MFA enable, logout-all, invite accept and
+  the refresh-reuse/theft response all revoke through the same function. `/logout` still revokes its
+  single `jti`.
+- **Why a counter rather than `iat <= epoch`.** The inclusive-epoch variant (the issue's other
+  option) still trusts each instance's clock: a revocation written by a host whose clock lags the
+  minting host by ≥1 s leaves a token minted around the revocation alive, and it needs a mint-time
+  `iat = max(now, epoch + 1)` adjustment. The counter lives in the shared Redis and compares
+  integers, so clock skew and the number of API instances do not matter. Cost: one Redis `GET` per
+  mint, one `INCRBY` per revocation, an `sv` claim, and a persistent `auth:session-version:<parentId>`
+  key (it must not expire while a token minted above it is valid). Full reasoning and the rejected
+  alternatives are in `docs/adr/0025-session-revocation-counter.md`.
+- **Migration.** Tokens minted before this change have no `sv`; they are judged by the legacy
+  `auth:invalid-before` epoch, now **inclusive** (`iat <= epoch`), and revocation still writes the
+  epoch for them. That branch can be deleted 8 days after the last pre-#117 instance is gone. During
+  a rolling deploy, a revocation served by a not-yet-upgraded instance writes only the epoch, which
+  `sv` tokens ignore — deploy all instances (today: one) before relying on the guarantee.
+  `services/api/scripts/cleanup-test-redis.mjs` now reaps an `auth:session-version:<parentId>` whose
+  Parent row is gone; the key is deliberately TTL-less while the row exists.
+- **Tests (they fail on `main@69d1575`).** Three new tests in
+  `services/api/test/sessions-and-roles.test.ts` freeze the clock: a login at T then revocation at T
+  is refused; a token minted at T-1 is refused while one at T+1 works; a legacy token (no `sv`) at T
+  is refused. Against `origin/main`'s `sessions.ts` the same-second tests fail on the security assertion
+  (`expected 200 to be 401`), not merely on the new claim. Probe F8 and N2 no longer wait for a second
+  boundary — they now exercise the same-second property against a live stack.
+- **Gates** (2026-10-18, on a spare-port instance `127.0.0.1:3017` running this branch):
+  `pnpm --filter @familyshield/api test` **32 files / 361 tests passed**; `qa-probe`
+  **130 passed · 0 failed · 0 x 429** (F8 and N2 pass, in the same second); `e2e` **69 passed,
+  0 failed**; `check-probe-integrity.mjs --base origin/main` **109→109 checks, 0 removed/demoted**.
+- **Not verified here.** No independent (Antigravity) re-run yet; running the raw gate output in the
+  PR is the author's floor, not the merge evidence (AGENTS.md §6.5).
+
 ### Parent app — pairing code rendered as a QR (`plan 3.2`, first half)
 - **What changed.** The child-detail device-card pair action (`Pair a device`, Overview tab) now
   opens a full-screen `PairingQrScreen` instead of a dialog. It still POSTs `/v1/devices/pair`, and

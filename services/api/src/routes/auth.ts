@@ -134,7 +134,8 @@ export async function authRoutes(app: FastifyInstance) {
       await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
     }
     await redis.del(indexKey(parentId));
-    // ADR-0014: the live access tokens die with the sessions, not 7 days later.
+    // ADR-0014 / ADR-0025: the live access tokens die with the sessions, not 7 days later. The
+    // counter bump also covers a token minted in this same second (#117).
     await invalidateSessionsBefore(parentId);
   };
 
@@ -159,7 +160,7 @@ export async function authRoutes(app: FastifyInstance) {
       return { family, parent };
     });
 
-    const { token, jti } = signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" });
+    const { token, jti } = await signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" });
     return reply.code(201).send({ token, refreshToken: await issueRefreshToken(result.parent.id, jti), parent: { id: result.parent.id, email, displayName } });
   });
 
@@ -197,7 +198,7 @@ export async function authRoutes(app: FastifyInstance) {
         data: { timezone: zone, timezoneSource: "device" },
       }).catch((err) => req.log.warn({ err }, "timezone fill failed"));
     }
-    const { token, jti } = signParentToken(app, parent);
+    const { token, jti } = await signParentToken(app, parent);
     return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
   });
 
@@ -217,12 +218,13 @@ export async function authRoutes(app: FastifyInstance) {
       await reply.code(401).send({ error: "unauthorized" });
       return;
     }
-    const user = req.user as { sub?: string; role?: string; purpose?: string; jti?: string; iat?: number };
+    const user = req.user as { sub?: string; role?: string; purpose?: string; jti?: string; iat?: number; sv?: number };
     if (!isBearerSession(user) || user.role !== "parent") {
       await reply.code(401).send({ error: "unauthorized" });
       return;
     }
-    // ADR-0014: a revoked or pre-epoch token is dead here too, not only behind the global hook.
+    // ADR-0014 / ADR-0025: a revoked or pre-revocation-generation token is dead here too, not
+    // only behind the global hook.
     if (!(await isParentSessionLive(user))) {
       await reply.code(401).send({ error: "session_revoked" });
     }
@@ -357,7 +359,7 @@ export async function authRoutes(app: FastifyInstance) {
     await redis.set(`refresh:owner:${hash}`, stored.parentId, "EX", Math.floor(REFRESH_TTL_MS / 1000));
     const parent = await prisma.parent.findUnique({ where: { id: stored.parentId } });
     if (!parent) return reply.code(401).send({ error: "invalid_refresh_token" });
-    const { token, jti } = signParentToken(app, parent);
+    const { token, jti } = await signParentToken(app, parent);
     // Theft response: if the token we just consumed is ever presented again, the SESSION IT ROTATED
     // INTO (this jti) is what must die — `refresh:jwt:<old hash>` is how the reuse path finds it.
     await redis.set(`refresh:jwt:${hash}`, jti, "EX", Math.floor(REFRESH_TTL_MS / 1000));

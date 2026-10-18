@@ -90,7 +90,8 @@ export async function inviteRoutes(app: FastifyInstance) {
     });
     // The move happens here: every access token minted while this parent belonged to the previous
     // family (which still carries the old `familyId` claim) must die now, exactly like logout-all /
-    // password reset. The fresh token below is issued after the bump, so its `iat` is not older.
+    // password reset. The fresh token below is minted after the counter bump, so it carries the new
+    // sessions version (#117).
     // If Redis is unreachable `invalidateSessionsBefore` is best-effort; `requireFamily` separately
     // compares against the current Parent row, so the old family claim still cannot read its data.
     await invalidateSessionsBefore(parent.id);
@@ -100,7 +101,7 @@ export async function inviteRoutes(app: FastifyInstance) {
     // ADR-0014: the JWT `role` is always "parent" (it selects the parent surface — `requireParent`
     // used to reject the "co-parent"/"guardian" tokens minted here, locking invitees out until they
     // logged in again); the family role travels as `familyRole`.
-    const { token: freshToken } = signParentToken(app, { id: parent.id, familyId: token.familyId, role: token.role }, { expiresIn: "15m" });
+    const { token: freshToken } = await signParentToken(app, { id: parent.id, familyId: token.familyId, role: token.role }, { expiresIn: "15m" });
     return {
       family,
       parent: sanitizeParent(updated as unknown as Record<string, unknown>),

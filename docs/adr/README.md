@@ -33,6 +33,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0022](0022-websocket-ticket-only.md) | WebSocket authentication is ticket-only; the legacy `?token=` handshake is removed (supersedes that clause of ADR-0004) | accepted |
 | [0023](0023-mfa-recovery.md) | MFA recovery: one-time recovery codes at enrolment, with a support break-glass for the cohort that has none (proposal for the KCL lead) | proposed |
 | [0024](0024-digest-claim-failure-lifecycle.md) | A digest send claim outlives a permanent refusal (`DigestSend.failedReason`), not a transient one; the sender classifies `retryable` | accepted |
+| [0025](0025-session-revocation-counter.md) | Parent session revocation is a monotonic counter (`sv` claim), not a second-grained `iat` epoch; a token minted in the revocation second is dead (#117) | accepted |
 
 ## Writing a new ADR
 

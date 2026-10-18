@@ -13,9 +13,6 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-/** Resolve just after the wall clock crosses a second boundary (#110: `iat` is per-second). */
-const waitForNextSecond = () => new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 60));
-
 
 // Node 20 hides the global WebSocket behind a flag — re-exec ourselves with it (same shim as e2e.mjs).
 if (typeof globalThis.WebSocket === "undefined" && !process.env.FS_WS_FLAGGED) {
@@ -421,11 +418,10 @@ const revokedParentToken = freshLogin.data?.token;
 // registration token this probe has been using — exactly as a real theft should. Prove it, then log
 // in again for the rest of the run.
 const stolenEra = await call("GET", "/v1/family/me", { token: tokenA });
-// #110: `iat` has one-second resolution, so a flat 1100 ms wait could still land a login in the same
-// second as the revocation epoch (the fresh token is then revoked on arrival, and the row failed once
-// and passed on re-run with identical code). Wait for the clock to cross a boundary instead, and then
-// assert the CAUSE - the fresh token actually works - rather than trusting the instant of the login.
-await waitForNextSecond();
+// #117: revocation is a monotonic sessions version (`sv`) read when a token is minted, not a
+// second-grained `iat` epoch, so a login issued in the SAME second as the theft response is live and
+// the old token is dead. No clock boundary to wait for (that wait was #110's workaround); the check
+// still asserts the CAUSE - the fresh token actually works - rather than trusting the login status.
 const relogin = await call("POST", "/v1/auth/login", { body: { email: emailA, password: PASSWORD } });
 const freshTokenWorks = relogin.data?.token
   ? (await call("GET", "/v1/family/me", { token: relogin.data.token })).status === 200
@@ -893,7 +889,8 @@ console.log("\n── N. sessions & roles ──");
   const liveTok = loginA.data?.token;
   const claims = liveTok ? JSON.parse(Buffer.from(liveTok.split(".")[1], "base64url").toString()) : {};
   check("N1 every parent access token carries a jti and a familyRole", typeof claims.jti === "string" && claims.jti.length === 32 && claims.role === "parent" && typeof claims.familyRole === "string", JSON.stringify({ jti: claims.jti, role: claims.role, familyRole: claims.familyRole }));
-  await new Promise((r) => setTimeout(r, 1100)); // iat has 1-second resolution: let the revocation epoch pass the token's iat
+  // #117: the revocation bumps the parent's sessions version, so this token dies even when it was
+  // minted in the same wall-clock second - no sleep needed (the old 1100 ms wait is gone on purpose).
   const killAll = await call("POST", "/v1/auth/logout-all", { token: liveTok });
   const afterKill = await call("GET", "/v1/family/me", { token: liveTok });
   check("N2 logout-all revokes the live access token (401 session_revoked), not only the refresh token", killAll.status === 200 && afterKill.status === 401 && afterKill.data?.error === "session_revoked", `logoutAll=${killAll.status} then=${afterKill.status} ${JSON.stringify(afterKill.data)}`);
