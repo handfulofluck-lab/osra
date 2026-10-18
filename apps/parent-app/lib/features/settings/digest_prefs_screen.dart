@@ -92,6 +92,15 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
     }
   }
 
+  /// The curated list, plus the family's actual zone when it is not in it (#108). Without this the
+  /// control shows `UTC` for a family on, say, Asia/Tokyo while the server keeps the real value - the
+  /// PATCH would not lie, but the screen would.
+  List<String> get _zoneOptions {
+    final tz = _timezone;
+    if (tz == null || _timezones.contains(tz)) return _timezones;
+    return [tz, ..._timezones];
+  }
+
   List<String> get _emailList => _emails.text
       .split(',')
       .map((e) => e.trim())
@@ -217,10 +226,10 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 key: const ValueKey('digestTimezone'),
-                initialValue: _timezones.contains(_timezone) ? _timezone : 'UTC',
+                initialValue: _zoneOptions.contains(_timezone) ? _timezone : 'UTC',
                 decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Timezone'),
                 items: [
-                  for (final tz in _timezones) DropdownMenuItem(value: tz, child: Text(tz)),
+                  for (final tz in _zoneOptions) DropdownMenuItem(value: tz, child: Text(tz)),
                 ],
                 onChanged: _timezoneSaving ? null : (v) { if (v != null) _saveTimezone(v); },
               ),

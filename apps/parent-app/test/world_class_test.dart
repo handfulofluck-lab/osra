@@ -246,6 +246,32 @@ void main() {
       expect(find.textContaining('Digest timezone set to Asia/Dubai'), findsOneWidget);
     });
 
+    testWidgets('a zone outside the curated list is shown, not replaced by UTC (#108)', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': <String>[],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'Asia/Tokyo', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final dropdown = tester.widget<DropdownButtonFormField<String>>(
+        find.byKey(const ValueKey('digestTimezone')),
+      );
+      expect(dropdown.initialValue, 'Asia/Tokyo');
+      expect(find.textContaining('sent at 18:00 your local time'), findsOneWidget);
+      // The displayed value matches the server: no PATCH was needed to correct it.
+      expect(api.calls('PATCH', '/v1/family/me'), isEmpty);
+    });
+
     testWidgets('loads server prefs; saving PUTs the switches and emails', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
