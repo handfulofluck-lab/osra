@@ -375,41 +375,48 @@ void main() {
     });
   });
 
-  group('PairDeviceDialog', () {
-    // NOTE: no pumpAndSettle while the dialog is open — its 1s countdown timer
-    // would make pumpAndSettle time out. Short pumps flush the fake POST.
-    Future<void> openPairDialog(WidgetTester tester, FakeApiClient api) async {
+  group('Pairing screen', () {
+    // NOTE: no pumpAndSettle while the pairing screen is open — its 1s
+    // countdown timer would make pumpAndSettle time out. Short pumps flush the
+    // fake POST.
+    Future<void> openPairing(WidgetTester tester, FakeApiClient api) async {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
       await tester.tap(find.text('Pair a device'));
       await flushFakeHttp(tester);
     }
 
-    testWidgets('POSTs /v1/devices/pair on open and shows the 6-digit code', (tester) async {
+    /// Pops the pairing route and lets the countdown timer dispose.
+    Future<void> closePairing(WidgetTester tester) async {
+      await tester.pageBack();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('POSTs /v1/devices/pair on open and shows the QR and the 6-digit code', (tester) async {
       final api = FakeApiClient(standardRoutes());
-      await openPairDialog(tester, api);
+      await openPairing(tester, api);
 
       final posts = api.calls('POST', '/v1/devices/pair');
       expect(posts, hasLength(1));
       expect(posts.single.body['childId'], 'child-1');
       expect(find.text('482916'), findsOneWidget);
       expect(find.textContaining('Expires in'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairingQr')), findsOneWidget);
 
-      await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
+      await closePairing(tester);
     });
 
-    testWidgets("'New code' button re-POSTs the pair request", (tester) async {
+    testWidgets('Regenerate button re-POSTs the pair request', (tester) async {
       final api = FakeApiClient(standardRoutes());
-      await openPairDialog(tester, api);
+      await openPairing(tester, api);
 
-      await tester.tap(find.text('New code'));
+      await tester.tap(find.byKey(const ValueKey('pairingRegenerate')));
       await flushFakeHttp(tester);
 
       expect(api.calls('POST', '/v1/devices/pair'), hasLength(2));
       expect(find.text('482916'), findsOneWidget);
 
-      await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
+      await closePairing(tester);
     });
   });
 

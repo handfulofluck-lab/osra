@@ -413,8 +413,20 @@ agent endpoints accept device tokens.
   `api.raw.options.baseUrl` (client.dart stays untouched). wsProvider must derive its URL
   from the runtime dio base (read apiClientProvider.raw.options.baseUrl), not the const.
 - Pair a device: button on the child detail Overview tab → POST /v1/devices/pair →
-  full-screen dialog showing the 6-digit code, a 10:00 countdown (server expiresAt) and a
-  "Done" button; invalidate familyProvider on close so the new device appears.
+  full-screen `PairingQrScreen` (`apps/parent-app/lib/features/pairing/`) showing the code as
+  a QR, the same 6-digit code in large type, copy and Regenerate actions, and a countdown to
+  the server-supplied `expiresAt` (TTL 600 s, `services/api/src/routes/devices.ts`); at zero
+  the QR/code are hidden and copy is disabled until Regenerate. The typed-code path is
+  unchanged. `familyProvider` is invalidated on return so a newly claimed device appears.
+  The QR carries a versioned payload, encoded/decoded by pure Dart
+  `pair_qr_payload.dart`:
+  ```
+  osra://pair?v=1&code=<6 digits>&host=<API base URL, percent-encoded>
+  ```
+  `host` is the parent app's runtime API base (`api.raw.options.baseUrl`), so the scanner
+  learns the server as well as the code. Decoders must reject unknown `v` and non-http(s)
+  hosts. The child agent has **no scanner yet** (`PairingActivity.kt` is typed-code only), so
+  reading this payload is the second half of roadmap item 3.2.
 - Build artifact: `flutter build apk --release` (debug-signed, installable) → copy
   build\app\outputs\flutter-apk\app-release.apk to
   C:\KARIM\familyshield\dist\FamilyShield-Parent.apk

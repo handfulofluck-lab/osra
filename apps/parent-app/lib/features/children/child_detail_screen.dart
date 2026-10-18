@@ -1,8 +1,4 @@
-import 'dart:async';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -14,6 +10,7 @@ import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
+import '../pairing/pair_qr_screen.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
 import 'command_history_screen.dart' show commandStatusLabel, commandTypeLabel, formatCommandTime;
 
@@ -727,162 +724,11 @@ class AlertTile extends StatelessWidget {
   }
 }
 
-/// Opens the pairing dialog for [childId]; refreshes the family on close so a
+/// Opens the pairing screen for [childId]; refreshes the family on return so a
 /// newly claimed device shows up in the Overview tab.
 Future<void> _pairDevice(BuildContext context, WidgetRef ref, String childId) async {
-  await showDialog<void>(
-    context: context,
-    builder: (_) => _PairDeviceDialog(childId: childId),
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => PairingQrScreen(childId: childId)),
   );
   ref.invalidate(familyProvider);
-}
-
-/// Pairing dialog: POSTs /v1/devices/pair on open, shows the 6-digit code
-/// with a countdown to the server-supplied expiresAt, and auto-closes when
-/// the code expires (a "New code" button re-POSTs on demand).
-class _PairDeviceDialog extends ConsumerStatefulWidget {
-  final String childId;
-  const _PairDeviceDialog({required this.childId});
-
-  @override
-  ConsumerState<_PairDeviceDialog> createState() => _PairDeviceDialogState();
-}
-
-class _PairDeviceDialogState extends ConsumerState<_PairDeviceDialog> {
-  String? _code;
-  DateTime? _expiresAt;
-  String? _error;
-  bool _loading = true;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _generate();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _generate() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final res = await ref.read(apiClientProvider).raw.post('/v1/devices/pair', data: {'childId': widget.childId});
-      final data = Map<String, dynamic>.from(res.data as Map);
-      final code = data['code'] as String?;
-      final expiresAt = DateTime.tryParse(data['expiresAt'] as String? ?? '');
-      if (!mounted) return;
-      if (code == null || expiresAt == null) {
-        throw const FormatException('pair response missing code/expiresAt');
-      }
-      setState(() {
-        _code = code;
-        _expiresAt = expiresAt;
-        _loading = false;
-      });
-      _startCountdown();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e is DioException ? 'Request failed (${e.response?.statusCode ?? 'network'})' : e.toString();
-      });
-    }
-  }
-
-  void _startCountdown() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final expiresAt = _expiresAt;
-      if (expiresAt == null || !mounted) return;
-      if (!DateTime.now().isBefore(expiresAt)) {
-        _timer?.cancel();
-        // auto-close on expiry; _pairDevice invalidates familyProvider
-        if (ModalRoute.of(context)?.isCurrent ?? false) {
-          Navigator.of(context).pop();
-        }
-      } else {
-        setState(() {});
-      }
-    });
-  }
-
-  /// Time left until the server-side expiry, clamped at zero.
-  Duration get _remaining {
-    final expiresAt = _expiresAt;
-    if (expiresAt == null) return Duration.zero;
-    final diff = expiresAt.difference(DateTime.now());
-    return diff.isNegative ? Duration.zero : diff;
-  }
-
-  Future<void> _copyCode() async {
-    final code = _code;
-    if (code == null) return;
-    await Clipboard.setData(ClipboardData(text: code));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code copied')));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final remaining = _remaining;
-    final mm = remaining.inMinutes.toString().padLeft(2, '0');
-    final ss = (remaining.inSeconds % 60).toString().padLeft(2, '0');
-    final tokens = context.tokens;
-    return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpace.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Pair a device', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: AppSpace.sm),
-              Text('Enter this code on the child device', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: AppSpace.xl),
-              if (_loading)
-                const Padding(
-                  padding: EdgeInsets.all(AppSpace.xl),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (_error != null) ...[
-                Text(_error!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
-                const SizedBox(height: AppSpace.md),
-                FilledButton.tonal(onPressed: _generate, child: const Text('Try again')),
-              ] else ...[
-                Text(
-                  _code!,
-                  textAlign: TextAlign.center,
-                  style: AppType.pairingCode,
-                ),
-                const SizedBox(height: AppSpace.sm),
-                Text('Expires in $mm:$ss', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: AppSpace.lg),
-                // NOTE: Wrap instead of Row — the two buttons overflowed the
-                // 312px-wide dialog content by 36px at small widths.
-                Wrap(
-                  alignment: WrapAlignment.spaceEvenly,
-                  children: [
-                    TextButton.icon(onPressed: _copyCode, icon: const Icon(Icons.copy), label: const Text('Copy code')),
-                    TextButton.icon(onPressed: _generate, icon: const Icon(Icons.refresh), label: const Text('New code')),
-                  ],
-                ),
-              ],
-              const SizedBox(height: AppSpace.sm),
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

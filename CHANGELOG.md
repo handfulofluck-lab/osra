@@ -11,6 +11,34 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — pairing code rendered as a QR (`plan 3.2`, first half)
+- **What changed.** The child-detail device-card pair action (`Pair a device`, Overview tab) now
+  opens a full-screen `PairingQrScreen` instead of a dialog. It still POSTs `/v1/devices/pair`, and
+  shows the returned code three ways: a scannable QR, the six digits in large type, and a Copy
+  action. A countdown runs to the server-supplied `expiresAt` — the route's `PAIR_TTL_SECONDS = 600`
+  (`services/api/src/routes/devices.ts:69`) — and at zero the QR and digits are hidden, Copy is
+  disabled, and Regenerate is the only way forward. Regenerate re-POSTs and replaces code and QR.
+  The typed-code path is untouched: the parent still displays digits for the child agent, and the
+  child app is unchanged.
+- **Payload format (stable, versioned).** `osra://pair?v=1&code=<6 digits>&host=<API base URL>`, with
+  `host` percent-encoded and taken from the parent app's runtime `api.raw.options.baseUrl` so a
+  scanner learns the server as well as the code. `apps/parent-app/lib/features/pairing/pair_qr_payload.dart`
+  is pure Dart, has a `decode`/`tryDecode` counterpart that rejects unknown versions and non-http(s)
+  hosts, and is pinned by 7 unit tests including the exact encoded string. The format is documented
+  in `docs/SPEC.md` §14.4.
+- **Why `qr_flutter`.** Flutter has no built-in QR encoder and hand-rolling Reed–Solomon would be a
+  security-sensitive liability for a first-run path. `qr_flutter` 4.1.0 (which depends on the pure-Dart
+  `qr` package) is the maintained, widely used widget; it is the only new dependency.
+- **Tests.** 12 new tests: 7 payload unit tests and 5 widget tests (QR renders with the documented
+  payload, digits match, countdown reaches zero and disables the display, Regenerate POSTs again and
+  changes the code, Copy writes the clipboard, and the action works at 320×568 with no overflow).
+- **Gates** (2026-10-18, `apps/parent-app`): `flutter test` **146 passed** (was 134) and
+  `flutter analyze` **no issues**.
+- **Not verified here / still open.** The child agent has no QR scanner — `PairingActivity.kt` takes a
+  typed six-digit code and a server URL — so the QR cannot be read yet; that scanner and the 5-minute
+  non-engineer first-run test are the second half of row 3.2. No merge sha and no independent
+  verification; the physical phone was deliberately not touched while another hardware run owns it.
+
 ### QA — `qa-probe` gates the three fixes #124 merged (audit findings 4–6)
 - **What was missing.** #124 merged three security fixes with unit tests only; the probe had no live
   assertion for any of them, and the 2026-10-18 ledger records that gap under #124 ("no probe check
