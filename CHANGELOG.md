@@ -11,7 +11,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### Parent app — command delivery status is the queue's real state (plan 3.6)
+### Parent app — command delivery status is the queue's real state (plan 3.6, #116)
 - The child detail device card now shows the **latest command's queue state** and opens
   **Command delivery** (`/child/:id/commands`): a per-device list read from
   `GET /v1/devices/:id/commands/history`, with `pending`, `delivered`, `acked`, `failed` and
