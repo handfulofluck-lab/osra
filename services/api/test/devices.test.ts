@@ -136,6 +136,66 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  // Issue #138: enrollment creates device credentials, so it requires the same `devices`
+  // permission as command, push-token and unpair. A guardian invited with `[]` used to mint a
+  // Device row (and, via pair/claim, its HMAC signing key) while being refused `command`.
+  it("register requires the devices permission: co-parent without it 403, with it 201", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.device.create.mockResolvedValue({ id: "dev-2", childId: "child-1", platform: "android" });
+    const payload = { childId: "child-1", platform: "android", model: "Pixel 7a", osVersion: "14" };
+
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["location"] });
+    const denied = await app.inject({
+      method: "POST",
+      url: "/v1/devices/register",
+      headers: authHeader(app, "fam-1", "p-co"),
+      payload,
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toEqual({ error: "permission_required", permission: "devices" });
+    expect(prismaMock.child.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.device.create).not.toHaveBeenCalled();
+
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["devices"] });
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/v1/devices/register",
+      headers: authHeader(app, "fam-1", "p-co"),
+      payload,
+    });
+    expect(allowed.statusCode).toBe(201);
+    expect(allowed.json().device.id).toBe("dev-2");
+    await app.close();
+  });
+
+  // Issue #138: /register returned the raw Prisma row — the internalSecret column (the per-device
+  // HMAC key; null at enrollment, minted at claim) and any pushToken — through a route no
+  // sanitizeDevice call covered.
+  it("register response is sanitized: no internalSecret, no pushToken", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.device.create.mockResolvedValue({
+      id: "dev-2",
+      childId: "child-1",
+      platform: "android",
+      internalSecret: "per-device-hmac-secret",
+      pushToken: "fcm-token",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/register",
+      headers: authHeader(app),
+      payload: { childId: "child-1", platform: "android", model: "Pixel 7a", osVersion: "14" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().device.id).toBe("dev-2");
+    expect(res.json().device).not.toHaveProperty("internalSecret");
+    expect(res.json().device).not.toHaveProperty("pushToken");
+    await app.close();
+  });
+
   it("rejects register with an invalid body (400)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     const badPlatform = await app.inject({
