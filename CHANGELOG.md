@@ -48,6 +48,59 @@ environment where it was written — see `docs/QA/` for the verification state.
   need a second API instance built from `4c41a07^`, and the shared `:3000` must not be restarted. The
   fail-before evidence for the three fixes themselves is #124's own unit run (7 failed / 17 passed with
   the source stashed, per the ledger).
+### API — a failed digest send no longer costs the family its period, and `DIGEST_HOUR` is documented as local (#93 review F1/F2/F3)
+
+- **The two findings, verified on `main@f099aa9` before touching them.** F1:
+  `services/api/src/jobs/digestScheduler.ts:119-120` logged a thrown `sendFamilyDigest` and left the
+  `DigestSend` claim row in place, so every later tick's insert hit `P2002` and the family got no digest
+  for that period — the refusal branch at `:113-117` deleted the claim, the two failure paths disagreed.
+  F3: `services/api/.env.example:19` still said `DIGEST_HOUR_UTC=18` and `docs/TESTING.md:66` presented it
+  as the switch, while `services/api/src/lib/digestSchedule.ts:108` had read it as the family's **local**
+  hour since ADR-0017. F2 (permanent refusals retried every 15 minutes) was open in the same code and is
+  fixed with F1.
+- **F1/F2 — the claim now has a lifecycle** (ADR-0024). A transient failure — the provider refuses with
+  `retryable: true`, or `send` **throws** — releases the claim (delete), so the next tick retries inside
+  the same period. A permanent failure — `retryable: false`, e.g. an address the provider will never
+  accept — keeps the row and sets the new `DigestSend.failedReason` (migration
+  `0016_digest_send_failed_reason`), which is terminal for that period: the unique key skips every later
+  tick and the row says why. The classification lives in the sender: `EmailResult`'s failure variant now
+  carries `retryable`, and `ResendEmailSender` maps 408/429/5xx to retryable and every other 4xx to
+  permanent, so the scheduler no longer infers failure class from an HTTP string.
+- **Why a terminal state, not an attempt counter.** Transient retries are already bounded by the period
+  boundary (one call per 15-minute tick until the local day or week rolls over), so a counter would buy a
+  smaller number at the price of a re-claimable row — a state column plus an atomic `waiting → sending`
+  update, which is a concurrency protocol and a new way to send twice. The terminal state buys the
+  property that matters (a permanent refusal stops retrying) with one nullable column. The rejected
+  alternatives and the costs (a misclassified permanent failure loses the day; a deterministic throw
+  retries all evening; a retired row is log-visible only) are in `docs/adr/0024-digest-claim-failure-lifecycle.md`.
+- **F3 — docs now say what the code does.** `.env.example` sets `DIGEST_HOUR=18` with the local-hour rule
+  in the comment, and `docs/TESTING.md` names `DIGEST_HOUR` as the family's local hour. No rename was
+  needed: the code already prefers `DIGEST_HOUR`; `DIGEST_HOUR_UTC` stays as the deprecated alias, read as
+  a **local** hour, and `startDigestScheduler` now warns once at boot when it is the variable in use, so
+  a deployment still on the old name learns the meaning changed instead of silently shifting its send
+  hour. Historical mentions in `CHANGELOG.md` and the accepted ADR-0011 are left as they were written.
+- **Tests that failed before.** Run against `origin/main`'s `digestScheduler.ts`, `email/index.ts` and
+  `digestSchedule.ts` with this branch's tests: `5 failed | 25 passed (30)` — *a thrown send releases the
+  claim and the next tick retries the same period* (`expected "spy" to be called … Number of calls: 0`),
+  *a permanent provider refusal keeps the claim terminal and is not retried* (`expected "spy" to not be
+  called at all, but actually been called 1 times`), the `EmailResult.retryable` classification test, the
+  429 shape assertion, and the boot-warning test. The F3 clock test itself passes on `main` — the code
+  was already correct; the defect was the documentation, and the test pins the local-hour reading so the
+  docs cannot drift back.
+- **Gates.** `pnpm --filter @familyshield/api test` **32 files / 358 passed, 0 failed** (352 on `main`;
+  6 new) · `tsc --noEmit` exit 0 · `node scripts/check-probe-integrity.mjs --base origin/main`
+  **check=103 both sides, 0 removed** · `check-docs-links` **0 broken / 129 in 68 files**.
+- **Real Postgres, on a scratch database.** `familyshield_f93` was created, all 16 migrations applied
+  (including `0016`), and a throwaway `runDigestsDue` script drove the four paths: thrown →
+  `attempted 1, sent 0`, **0 rows**; 503 → `attempted 1, sent 0`, **0 rows**; 422 permanent →
+  `attempted 1, sent 0`, **1 row with `failedReason: "HTTP 422 invalid to"`**; the next tick →
+  `attempted 0, sent 0` with the provider called once in total; the next day → `attempted 1, sent 1`.
+  The database was dropped afterwards (`SELECT count(*) … datname='familyshield_f93'` → `0`). The shared
+  `familyshield` database and `:3000` were not touched: **`0016` must be applied before this code runs**
+  (nullable and additive, so an older binary keeps working).
+- **Not run here.** `qa-probe` and `e2e` — no route, probe check or response shape changed, and the
+  shared `:3000` runs `main`, so it could not exercise this branch; the unit suite plus the real-Postgres
+  run are the evidence for the claim paths.
 
 ### API — password-reset tokens are no longer bearer credentials (issue #146)
 - **The hole.** `/reset/request` mints a 15-minute JWT with `purpose:"password_reset"` and no role, and
