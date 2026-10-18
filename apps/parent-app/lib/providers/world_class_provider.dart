@@ -18,6 +18,39 @@ final reportSummaryProvider = FutureProvider.family<ReportSummary, ReportQuery>(
   return ReportSummary.fromJson(Map<String, dynamic>.from(res.data as Map));
 });
 
+/// Composite key for [usageReportProvider]: child + requested day window.
+typedef UsageQuery = ({String childId, int days});
+
+/// Daily screen-time series for one child (roadmap 3.5,
+/// `GET /v1/reports/usage?childId&days=`, max 366). The server returns the whole
+/// window oldest first and fills missing days with 0 (`usageSeries`).
+final usageReportProvider = FutureProvider.family<UsageReport, UsageQuery>((ref, query) async {
+  final api = ref.watch(apiClientProvider);
+  final res = await api.raw.get('/v1/reports/usage', queryParameters: {
+    'childId': query.childId,
+    'days': query.days,
+  });
+  return UsageReport.fromJson(Map<String, dynamic>.from(res.data as Map));
+});
+
+/// Composite key for [webHistoryProvider]: child, window, blocked filter, limit.
+/// The endpoint has no offset, so [limit] is the only paging control.
+typedef WebHistoryQuery = ({String childId, int days, bool blockedOnly, int limit});
+
+/// Browsing history for one child, newest first (roadmap 3.5,
+/// `GET /v1/reports/web?childId&days=&limit=&blocked=`).
+final webHistoryProvider = FutureProvider.family<List<WebVisit>, WebHistoryQuery>((ref, query) async {
+  final api = ref.watch(apiClientProvider);
+  final res = await api.raw.get('/v1/reports/web', queryParameters: {
+    'childId': query.childId,
+    'days': query.days,
+    'limit': query.limit,
+    if (query.blockedOnly) 'blocked': 'true',
+  });
+  final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};
+  return [for (final m in (data['items'] is List ? data['items'] as List : const [])) WebVisit.fromJson(Map<String, dynamic>.from(m as Map))];
+});
+
 /// Weekly wellbeing score for one child (feature #28, `GET /v1/reports/wellbeing/:childId`).
 /// The server computes the current 7-day window when no `week` is passed.
 final wellbeingProvider = FutureProvider.family<WellbeingScore, String>((ref, childId) async {

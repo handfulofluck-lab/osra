@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
 import '../../providers/world_class_provider.dart';
@@ -25,6 +26,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reports'),
+        actions: [
+          // Roadmap 3.5: the summary here is top-apps only; the durable
+          // per-day trend and the browsing history live on their own screen.
+          IconButton(
+            key: const ValueKey('usageHistoryButton'),
+            tooltip: 'Screen time & web history',
+            icon: const Icon(Icons.show_chart),
+            onPressed: () => context.push('/child/${widget.childId}/history'),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(

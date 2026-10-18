@@ -9,6 +9,7 @@ import 'features/alerts/alerts_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
 import 'features/reports/reports_screen.dart';
+import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/social/social_screen.dart';
@@ -30,6 +31,7 @@ final router = GoRouter(
     GoRoute(path: '/child/:id', builder: (_, s) => ChildDetailScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/commands', builder: (_, s) => CommandHistoryScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
+    GoRoute(path: '/child/:id/history', builder: (_, s) => UsageHistoryScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/rules', builder: (_, s) => RulesEditorScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),

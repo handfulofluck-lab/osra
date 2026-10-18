@@ -768,6 +768,96 @@ class ReportSummary {
       totalAppMinutes == 0 && topApps.isEmpty && urlVisits == 0 && topBlockedDomains.isEmpty && socialConcerns == 0 && calls == 0 && sms == 0;
 }
 
+/// One app's minutes inside a [UsageDay] (`GET /v1/reports/usage`).
+@immutable
+class UsageApp {
+  final String app;
+  final int minutes;
+
+  const UsageApp({required this.app, this.minutes = 0});
+
+  factory UsageApp.fromJson(Map<String, dynamic> json) => UsageApp(
+        app: _str(json['app']),
+        minutes: _int(json['minutes']),
+      );
+}
+
+/// One UTC calendar day of the durable usage rollup (`UsageDay` in
+/// `services/api/src/lib/usageModel.ts`). `day` is `YYYY-MM-DD` and `minutes` is
+/// the device-reported total when the device sent one, else the per-app sum.
+@immutable
+class UsageDay {
+  final String day;
+  final int minutes;
+  final List<UsageApp> apps;
+
+  const UsageDay({required this.day, this.minutes = 0, this.apps = const []});
+
+  factory UsageDay.fromJson(Map<String, dynamic> json) => UsageDay(
+        day: _str(json['day']),
+        minutes: _int(json['minutes']),
+        apps: [for (final m in _mapList(json['apps'])) UsageApp.fromJson(m)],
+      );
+}
+
+/// `GET /v1/reports/usage?childId&days=` — oldest first, one entry per
+/// requested day. The API already fills a day with no rows as 0 (see
+/// `usageSeries`), so the UI never invents padding; if a shorter series ever
+/// arrives, only what was returned is shown.
+@immutable
+class UsageReport {
+  final String childId;
+  final int days;
+  final int totalMinutes;
+  final List<UsageDay> series;
+
+  const UsageReport({required this.childId, this.days = 0, this.totalMinutes = 0, this.series = const []});
+
+  factory UsageReport.fromJson(Map<String, dynamic> json) {
+    final series = [for (final m in _mapList(json['series'])) UsageDay.fromJson(m)];
+    return UsageReport(
+      childId: _str(json['childId']),
+      days: _int(json['days'], series.length),
+      totalMinutes: _int(json['totalMinutes'], series.fold<int>(0, (n, d) => n + d.minutes)),
+      series: series,
+    );
+  }
+
+  /// Sum of the days actually returned — what the chart, the total and the
+  /// per-day list all agree on.
+  int get seriesMinutes => series.fold<int>(0, (n, d) => n + d.minutes);
+}
+
+/// One `WebVisit` row from `GET /v1/reports/web` (newest first). `blocked` is
+/// what the web filter decided at visit time; `ts` is the visit instant.
+@immutable
+class WebVisit {
+  final String id;
+  final String domain;
+  final String url;
+  final String category;
+  final bool blocked;
+  final DateTime? ts;
+
+  const WebVisit({
+    required this.id,
+    this.domain = '',
+    this.url = '',
+    this.category = '',
+    this.blocked = false,
+    this.ts,
+  });
+
+  factory WebVisit.fromJson(Map<String, dynamic> json) => WebVisit(
+        id: _str(json['id']),
+        domain: _str(json['domain'], 'unknown'),
+        url: _str(json['url']),
+        category: _str(json['category']),
+        blocked: _bool(json['blocked']),
+        ts: DateTime.tryParse(_str(json['ts'] ?? json['createdAt'])),
+      );
+}
+
 /// `GET /v1/reports/wellbeing/:childId` weekly score (feature #28). `breakdown` holds
 /// the usage/social/safety sub-scores.
 @immutable
