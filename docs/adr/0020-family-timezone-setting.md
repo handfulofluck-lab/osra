@@ -57,13 +57,16 @@ is therefore a change to who must give consent and how.
 - Good: new families get the right hour with no extra step, and existing families correct themselves on the
   next parent login.
 - Good: `region` keeps one meaning, so the consent gate is untouched.
-- Cost: one more column (`timezoneSource`) and one more rule in the login path, which needs tests:
-  - a `default` source is filled from the device;
-  - a `parent` source is not overwritten;
-  - an invalid zone is ignored.
+- Cost: one more column (`timezoneSource`) and one more rule in the login path. Tests, named as the rule:
+  - `login fills timezone from the device while timezoneSource is default`;
+  - `login never overwrites a timezone the parent chose` (the update is conditional on
+    `timezoneSource <> 'parent'`, in the same statement, not read-then-write);
+  - `an invalid or absent timezone leaves the family unchanged` (the field is optional and additive, so
+    existing clients send nothing and nothing changes).
 - Cost: a family whose parents never log in again stays on UTC. That is acceptable; it's the behaviour
   before #93.
-- Risk: the device zone can be wrong (a parent signing up while abroad). The settings screen in step 3 is the
+- Risk: the device zone is a **coarse, weak signal**. A VPN, a flight or a parent signing up abroad changes
+  it. It's used only to choose a send hour, and must never be treated as location or identity. The settings screen in step 3 is the
   correction, and the digest email footer should name the zone it uses ("sent at 18:00 Asia/Dubai").
 
 ## Not decided here
