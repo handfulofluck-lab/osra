@@ -411,6 +411,9 @@ const freshLogin = await call("POST", "/v1/auth/login", { body: { email: emailA,
 const logoutRes = await call("POST", "/v1/auth/logout", { token: freshLogin.data?.token, body: { refreshToken: freshLogin.data?.refreshToken } });
 const refreshAfterLogout = await call("POST", "/v1/auth/token/refresh", { body: { refreshToken: freshLogin.data?.refreshToken } });
 check("F4 refresh token dead after logout", logoutRes.status < 300 && refreshAfterLogout.status === 401, `logout=${logoutRes.status} refresh=${refreshAfterLogout.status}`);
+// Kept for L6 (#120): this access token was revoked by the F4 logout, so presenting it on the
+// legacy WebSocket `?token=` path proves the bypass accepted a dead parent session.
+const revokedParentToken = freshLogin.data?.token;
 // ADR-0014: the theft response in F2/F3 revoked EVERY session of parent A, including the
 // registration token this probe has been using — exactly as a real theft should. Prove it, then log
 // in again for the rest of the run.
@@ -760,6 +763,34 @@ console.log("\n── L. realtime ──");
   const reuse = await openSocket(ticketA ?? "missing");
   const reuseClosed = await reuse.until(() => reuse.close() !== null, 5000);
   check("L5 a consumed ticket cannot open a second socket (4001, no ready)", reuseClosed && reuse.close() === 4001 && reuse.frames.length === 0, `close=${reuse.close()} frames=${reuse.frames.length}`);
+
+  // Issue #120: the legacy `?token=<jwt>` handshake is removed. A stale client must fail loudly with
+  // a JSON 401 that names the reason — the websocket plugin would otherwise answer a non-upgrade
+  // request with 404, which reads as "wrong route" rather than "your handshake is no longer accepted".
+  const revokedQuery = revokedParentToken
+    ? await call("GET", `/v1/ws?token=${encodeURIComponent(revokedParentToken)}`)
+    : { status: 0, data: null };
+  check("L6 revoked parent JWT in ?token= is refused with 401 ticket_required (#120)", revokedQuery.status === 401 && revokedQuery.data?.error === "ticket_required", `got ${revokedQuery.status} ${JSON.stringify(revokedQuery.data)}`);
+
+  const deviceQuery = d2.token
+    ? await call("GET", `/v1/ws?token=${encodeURIComponent(d2.token)}`)
+    : { status: 0, data: null };
+  check("L7 device JWT in ?token= is refused with 401 ticket_required (#120)", deviceQuery.status === 401 && deviceQuery.data?.error === "ticket_required", `got ${deviceQuery.status} ${JSON.stringify(deviceQuery.data)}`);
+
+  const revokedDeviceQuery = d1.token
+    ? await call("GET", `/v1/ws?token=${encodeURIComponent(d1.token)}`)
+    : { status: 0, data: null };
+  check("L7b revoked device JWT in ?token= is refused with 401 ticket_required (#120)", revokedDeviceQuery.status === 401 && revokedDeviceQuery.data?.error === "ticket_required", `got ${revokedDeviceQuery.status} ${JSON.stringify(revokedDeviceQuery.data)}`);
+
+  const noTicket = await call("GET", "/v1/ws");
+  check("L8 /v1/ws without a ticket is a JSON 401 ticket_required, not a 404 (#120)", noTicket.status === 401 && noTicket.data?.error === "ticket_required", `got ${noTicket.status} ${JSON.stringify(noTicket.data)}`);
+
+  // ...and the replacement still works: a fresh ticket opens the stream and delivers `ready`.
+  const ticketOnly = (await call("POST", "/v1/ws-ticket", { token: tokenA })).data?.ticket;
+  const ticketOnlySock = await openSocket(ticketOnly ?? "missing");
+  const ticketOnlyReady = await ticketOnlySock.until(() => ticketOnlySock.frames.some((f) => f.type === "ready"), 5000);
+  check("L9 a fresh single-use ticket still opens the stream (ready is the first frame)", ticketOnlyReady && ticketOnlySock.close() === null && ticketOnlySock.frames[0]?.type === "ready", `ready=${ticketOnlyReady} close=${ticketOnlySock.close()} first=${ticketOnlySock.frames[0]?.type}`);
+  ticketOnlySock.ws.close();
 }
 
 // ── M. usage model + erasure cascade (Phase 2c, ADR-0013) ───────────────────

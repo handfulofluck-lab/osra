@@ -150,8 +150,9 @@ Full procedure, failure interpretation and the environment traps that have cost 
 - The snippet vault is AES-encrypted server-side (`VAULT_KEY`); the server stores
   bounded excerpts, never full chat histories.
 - WebSocket connections use single-use tickets (`POST /v1/ws-ticket`) so JWTs never
-  appear in URLs; the first frame on every socket is `{type:"ready", familyId, ts}`, sent once the
-  socket is registered for the family.
+  appear in URLs; the legacy `?token=<jwt>` handshake is refused with `401 ticket_required`. The first
+  frame on every socket is `{type:"ready", familyId, ts}`, sent once the socket is registered for the
+  family.
 
 ## Documentation
 
