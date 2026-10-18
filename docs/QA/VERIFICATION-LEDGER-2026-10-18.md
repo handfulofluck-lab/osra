@@ -78,9 +78,10 @@ Inside those author-run PRs, these named claims have **no run by anyone**: the h
 ## 3. The debts this table exposes, with evidence
 
 1. **#93 merged over a changes-requested review, and two of its findings are still open on `main`.**
-   Claude's review at 07:10Z asked for F1 (a thrown send loses the period), F2 (permanent refusals retry
-   every 15 minutes) and F3 (the old UTC contract is still documented); the merge landed at 07:13:01Z.
-   Read today at `f2437a9`:
+   Claude's review (posted 07:10:08Z; its own header says "07:25Z" — the two clocks disagree, and the
+   GitHub timestamp is the one that matters here) asked for F1 (a thrown send loses the period), F2
+   (permanent refusals retry every 15 minutes) and F3 (the old UTC contract is still documented); the
+   merge landed at 07:13:01Z, under three minutes later. Read today at `f2437a9`:
    - F1 still open — `services/api/src/jobs/digestScheduler.ts:119-120`: the `catch` around
      `sendFamilyDigest` logs and leaves the `DigestSend` claim in place, so every later tick hits
      `P2002` and the family gets no digest that period. The refusal branch at `:113-117` does delete it;
