@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
+import '../../theme/app_tokens.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -36,9 +37,14 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ),
           PopupMenuButton<String>(
-            onSelected: (v) => context.push(v == 'family' ? '/family' : '/settings/digests'),
+            onSelected: (v) => context.push(switch (v) {
+              'family' => '/family',
+              'appearance' => '/settings/appearance',
+              _ => '/settings/digests',
+            }),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'family', child: Text('Family members')),
+              PopupMenuItem(value: 'appearance', child: Text('Appearance')),
               PopupMenuItem(value: 'digests', child: Text('Digest preferences')),
             ],
           ),
@@ -68,9 +74,9 @@ class DashboardScreen extends ConsumerWidget {
                   // NOTE: one column under 400px — two 110px-wide cards made
                   // the card content overflow on 320px-wide screens.
                   crossAxisCount: MediaQuery.sizeOf(context).width < 400 ? 1 : 2,
-                  padding: const EdgeInsets.all(12),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
+                  padding: const EdgeInsets.all(AppSpace.md),
+                  mainAxisSpacing: AppSpace.md,
+                  crossAxisSpacing: AppSpace.md,
                   children: [for (final child in overview.children) ChildCard(child: child)],
                 ),
         ),
@@ -90,11 +96,11 @@ class ChildCard extends ConsumerWidget {
   final Child child;
   const ChildCard({super.key, required this.child});
 
-  Color _statusColor(String status) => switch (status) {
-        'online' => Colors.green,
-        'locked' => Colors.amber,
-        'sos' => Colors.red,
-        _ => Colors.grey,
+  Color _statusColor(AppTokens tokens, String status) => switch (status) {
+        'online' => tokens.ok,
+        'locked' => tokens.warn,
+        'sos' => tokens.danger,
+        _ => tokens.onSurfaceVariant,
       };
 
   /// Online only when the device checked in within the last 3 minutes.
@@ -115,36 +121,37 @@ class ChildCard extends ConsumerWidget {
     final live = ref.watch(liveActivityProvider)[child.id];
     final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
 
+    final tokens = context.tokens;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => context.push('/child/${child.id}'),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpace.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   CircleAvatar(child: Text(child.initials)),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpace.sm),
                   Expanded(child: Text(child.displayName, style: Theme.of(context).textTheme.titleMedium, overflow: TextOverflow.ellipsis)),
                 ],
               ),
               if (live != null && live.isFresh()) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpace.xs),
                 LiveActivityChip(childId: child.id, activity: live),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               Wrap(
-                spacing: 8,
-                runSpacing: 4,
+                spacing: AppSpace.sm,
+                runSpacing: AppSpace.xs,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (device != null)
                     Chip(
                       visualDensity: VisualDensity.compact,
-                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(_effectiveStatus(device))),
+                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, _effectiveStatus(device))),
                       label: Text(_effectiveStatus(device)),
                     ),
                   if (device != null && device.batteryPct > 0)
@@ -156,11 +163,11 @@ class ChildCard extends ConsumerWidget {
                   InternetPill(child: child),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               Row(
                 children: [
                   const Icon(Icons.location_on_outlined, size: 14),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppSpace.xs),
                   Expanded(
                     child: Text(
                       location == null
@@ -186,10 +193,10 @@ class ChildCard extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               LinearProgressIndicator(value: dailyLimit > 0 ? progress : null),
               if (wellbeing != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 WellbeingRow(score: wellbeing),
               ],
             ],
@@ -209,15 +216,16 @@ class LiveActivityChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: () => context.push('/child/$childId'),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
         child: Text(
           '● ${activity.app} · ${activity.minutesToday}m today',
           key: ValueKey('liveChip-$childId'),
-          style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w500),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.ok),
           overflow: TextOverflow.ellipsis,
         ),
       ),
@@ -233,7 +241,15 @@ class WellbeingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = wellbeingColor(score.score);
+    final tokens = context.tokens;
+    // Legacy rings keep their pinned Material thresholds (Colors.red/amber/
+    // green in light mode) through the token layer, so the colours can differ
+    // per brightness without changing the documented thresholds.
+    final color = score.score < 50
+        ? tokens.wellbeingLow
+        : score.score < 75
+            ? tokens.wellbeingMid
+            : tokens.wellbeingHigh;
     final breakdown = score.breakdown;
     String part(String k) => '$k: ${breakdown[k] ?? '—'}';
     return Tooltip(
@@ -252,11 +268,18 @@ class WellbeingRow extends StatelessWidget {
                   color: color,
                   backgroundColor: color.withValues(alpha: 0.15),
                 ),
-                Text('${score.score}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+                Text(
+                  '${score.score}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        height: 1,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpace.sm),
           // NOTE: flexible — the row overflowed 320px-wide cards.
           Flexible(child: Text('Wellbeing ${score.score}/100', style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
         ],
@@ -275,23 +298,24 @@ class InternetPill extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paused = ref.watch(internetPausedProvider(child.id)).valueOrNull ?? false;
-    final color = paused ? Colors.red : Colors.green;
+    final tokens = context.tokens;
+    final color = paused ? tokens.danger : tokens.ok;
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       onTap: () => toggleInternetWithConfirm(context, ref, child, paused),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: AppSpace.xs),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(color: color),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(paused ? Icons.wifi_off : Icons.wifi, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(paused ? 'Paused' : 'Internet', style: TextStyle(fontSize: 12, color: color)),
+            const SizedBox(width: AppSpace.xs),
+            Text(paused ? 'Paused' : 'Internet', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color)),
           ],
         ),
       ),
@@ -387,6 +411,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     return AlertDialog(
       title: Text(_consentDone ? 'Child details' : 'Parental consent'),
       content: SingleChildScrollView(
@@ -395,14 +420,14 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
           children: [
             if (!_consentDone) ...[
               const Text('Verifiable parental consent is required before adding a child (COPPA/GDPR-K).'),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               DropdownButtonFormField<String>(
                 initialValue: _method,
                 decoration: const InputDecoration(labelText: 'Consent method', border: OutlineInputBorder()),
                 items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(m))],
                 onChanged: (v) => setState(() => _method = v ?? _methods.first),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               DropdownButtonFormField<String>(
                 initialValue: _jurisdiction,
                 decoration: const InputDecoration(labelText: 'Jurisdiction', border: OutlineInputBorder()),
@@ -419,7 +444,7 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
                 controller: _name,
                 decoration: const InputDecoration(labelText: 'Child name', border: OutlineInputBorder()),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               TextField(
                 controller: _birthYear,
                 keyboardType: TextInputType.number,
@@ -431,8 +456,8 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
               ),
             ],
             if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: AppSpace.md),
+              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
             ],
           ],
         ),

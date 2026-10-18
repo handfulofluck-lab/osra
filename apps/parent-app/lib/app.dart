@@ -11,10 +11,13 @@ import 'features/map/family_map_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
+import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/social/social_screen.dart';
 import 'features/content/search_safety_screen.dart';
 import 'providers/auth_provider.dart';
+import 'providers/theme_provider.dart';
+import 'theme/app_theme.dart';
 
 final router = GoRouter(
   initialLocation: '/login',
@@ -36,18 +39,27 @@ final router = GoRouter(
     GoRoute(path: '/child/:id/social', builder: (_, s) => SocialScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
+    GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
     GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
     GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
     GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),
   ],
 );
 
-class FamilyShieldApp extends StatelessWidget {
+class FamilyShieldApp extends ConsumerWidget {
   const FamilyShieldApp({super.key});
+
   @override
-  Widget build(BuildContext context) => MaterialApp.router(
-        title: 'OSRA',
-        theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-        routerConfig: router,
-      );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    return MaterialApp.router(
+      title: 'OSRA',
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      // ThemeMode.system follows MediaQuery.platformBrightness; Settings can
+      // pin light or dark (persisted in shared_preferences).
+      themeMode: mode,
+      routerConfig: router,
+    );
+  }
 }

@@ -12,6 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../social/social_screen.dart' show SocialSectionsView;
 import 'command_history_screen.dart' show commandStatusLabel, commandTypeLabel, formatCommandTime;
@@ -80,7 +81,7 @@ class _OverviewTab extends ConsumerWidget {
     final internetPaused = ref.watch(internetPausedProvider(childId)).valueOrNull ?? false;
     if (overview == null) return const Center(child: CircularProgressIndicator());
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         if (child != null)
           Card(
@@ -100,7 +101,7 @@ class _OverviewTab extends ConsumerWidget {
             onTap: () => DefaultTabController.of(context).animateTo(2),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         // NOTE: Wrap instead of Row — the header overflowed on 320px-wide screens.
         Wrap(
           alignment: WrapAlignment.spaceBetween,
@@ -114,7 +115,7 @@ class _OverviewTab extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         if (devices.isEmpty)
           const Card(child: ListTile(leading: Icon(Icons.devices_other), title: Text('No devices registered')))
         else
@@ -139,7 +140,7 @@ class _OverviewTab extends ConsumerWidget {
                         : null,
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                    padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text('Last seen: ${formatLastSeen(d.lastSeen)}', style: Theme.of(context).textTheme.bodySmall),
@@ -148,18 +149,18 @@ class _OverviewTab extends ConsumerWidget {
                   // Plan 3.6: the latest command's real state, straight from the
                   // durable queue. An unacked command is never described as sent.
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+                    padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xxs),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: _DeviceDeliverySummary(deviceId: d.id),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                    padding: const EdgeInsets.fromLTRB(AppSpace.sm, 0, AppSpace.sm, 6),
                     // NOTE: Wrap instead of Row — the command buttons
                     // overflowed on 320px-wide screens.
                     child: Wrap(
-                      spacing: 8,
+                      spacing: AppSpace.sm,
                       children: [
                         TextButton.icon(
                           onPressed: () => context.push('/child/$childId/commands'),
@@ -202,9 +203,9 @@ class _OverviewTab extends ConsumerWidget {
                 ],
               ),
             ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         _BonusTimeCard(childId: childId),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         _WindDownCard(childId: childId),
       ],
     );
@@ -287,16 +288,16 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Bonus time', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 2),
+            const SizedBox(height: AppSpace.xxs),
             Text('Extra screen time today only', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.sm),
             Wrap(
-              spacing: 8,
+              spacing: AppSpace.sm,
               children: [
                 for (final minutes in const [15, 30, 60])
                   OutlinedButton(
@@ -354,14 +355,14 @@ class _WindDownCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Wind down', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 2),
+            const SizedBox(height: AppSpace.xxs),
             Text('Soft warning, then the screen locks', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.sm),
             OutlinedButton.icon(
               onPressed: () => _pickAndSend(context, ref),
               icon: const Icon(Icons.bedtime_outlined),
@@ -469,7 +470,7 @@ class _LocationTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Failed to load location: $e')),
       data: (p) => ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpace.lg),
         children: [
           if (p == null)
             const Text('No location reported yet')
@@ -482,18 +483,18 @@ class _LocationTab extends ConsumerWidget {
                     '${p.timestamp == null ? 'unknown time' : DateFormat.yMMMd().add_Hms().format(p.timestamp!.toLocal())}'),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
           ],
           // Feature #15: today's location history with a time scrubber.
           _HistoryScrubber(childId: childId),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.md),
           // NOTE: map placeholder — a full per-child map lives on /map.
           AspectRatio(
             aspectRatio: 16 / 9,
             child: Card(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [Icon(Icons.map_outlined, size: 48), SizedBox(height: 8), Text('Map preview')],
+                children: const [Icon(Icons.map_outlined, size: 48), SizedBox(height: AppSpace.sm), Text('Map preview')],
               ),
             ),
           ),
@@ -542,7 +543,7 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
   Widget build(BuildContext context) {
     final history = ref.watch(locationHistoryProvider(widget.childId));
     return history.when(
-      loading: () => const Card(child: Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))),
+      loading: () => const Card(child: Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator()))),
       error: (e, _) => Card(child: ListTile(leading: const Icon(Icons.history), title: Text('Failed to load history: $e'))),
       data: (pings) {
         if (pings.isEmpty) {
@@ -552,7 +553,7 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
         final ts = ping.timestamp;
         return Card(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.sm),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -576,7 +577,7 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
                       icon: const Icon(Icons.chevron_right),
                       onPressed: () => _step(pings, 1),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: AppSpace.xs),
                     Expanded(
                       child: Text(
                         ts == null
@@ -645,45 +646,45 @@ class _AppInsightSheet extends ConsumerWidget {
     final insight = ref.watch(appInsightsProvider(packageId));
     return insight.when(
       loading: () => const Padding(
-        padding: EdgeInsets.all(32),
+        padding: EdgeInsets.all(AppSpace.xxl),
         child: Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpace.xl),
         child: Text('Failed to load insights: $e'),
       ),
       data: (data) {
         if (data == null) {
           return const Padding(
-            padding: EdgeInsets.all(24),
+            padding: EdgeInsets.all(AppSpace.xl),
             child: Text('No insights for this app yet'),
           );
         }
         return ListView(
           shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
           children: [
             Text(data.appName.isEmpty ? packageId : data.appName, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpace.xs),
             Text('Age rating: ${data.ageRating.isEmpty ? '—' : data.ageRating}'),
             if (data.risks.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               Text('Risks', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               Wrap(
-                spacing: 8,
-                runSpacing: 4,
+                spacing: AppSpace.sm,
+                runSpacing: AppSpace.xs,
                 children: [for (final r in data.risks) Chip(visualDensity: VisualDensity.compact, label: Text(r))],
               ),
             ],
             if (data.alternatives.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               Text('Safer alternatives', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               for (final a in data.alternatives)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(children: [const Icon(Icons.swap_horiz, size: 16), const SizedBox(width: 8), Expanded(child: Text(a))]),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
+                  child: Row(children: [const Icon(Icons.swap_horiz, size: 16), const SizedBox(width: AppSpace.sm), Expanded(child: Text(a))]),
                 ),
             ],
           ],
@@ -693,24 +694,30 @@ class _AppInsightSheet extends ConsumerWidget {
   }
 }
 
-/// Shared alert list tile with severity coloring.
+/// Shared alert list tile with severity coloring. Severity is its own semantic
+/// role ([AppTokens.severityCritical] and friends) because the alert-dot
+/// palette is pinned by the alert-screen test and is not the body-text
+/// danger/warn/ok palette.
 class AlertTile extends StatelessWidget {
   final Alert alert;
   final VoidCallback? onTap;
   final VoidCallback? onAck;
   const AlertTile({super.key, required this.alert, this.onTap, this.onAck});
 
-  static Color severityColor(String severity) => switch (severity) {
-        'warning' => Colors.amber,
-        'critical' => Colors.red,
-        _ => Colors.blue,
-      };
+  static Color severityColor(String severity, [BuildContext? context]) {
+    final tokens = context?.tokens ?? AppTokens.light;
+    return switch (severity) {
+      'warning' => tokens.severityWarning,
+      'critical' => tokens.severityCritical,
+      _ => tokens.severityInfo,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
-        leading: Icon(Icons.circle, color: severityColor(alert.severity), size: 14),
+        leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
         title: Text(alert.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text('${alert.category} · ${alert.createdAt == null ? '' : DateFormat.MMMd().add_Hm().format(alert.createdAt!.toLocal())}'),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: 'Acknowledge', onPressed: onAck),
@@ -828,37 +835,38 @@ class _PairDeviceDialogState extends ConsumerState<_PairDeviceDialog> {
     final remaining = _remaining;
     final mm = remaining.inMinutes.toString().padLeft(2, '0');
     final ss = (remaining.inSeconds % 60).toString().padLeft(2, '0');
+    final tokens = context.tokens;
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpace.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Pair a device', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               Text('Enter this code on the child device', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpace.xl),
               if (_loading)
                 const Padding(
-                  padding: EdgeInsets.all(24),
+                  padding: EdgeInsets.all(AppSpace.xl),
                   child: Center(child: CircularProgressIndicator()),
                 )
               else if (_error != null) ...[
-                Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                const SizedBox(height: 12),
+                Text(_error!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                const SizedBox(height: AppSpace.md),
                 FilledButton.tonal(onPressed: _generate, child: const Text('Try again')),
               ] else ...[
                 Text(
                   _code!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 56, fontWeight: FontWeight.bold, letterSpacing: 12),
+                  style: AppType.pairingCode,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 Text('Expires in $mm:$ss', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpace.lg),
                 // NOTE: Wrap instead of Row — the two buttons overflowed the
                 // 312px-wide dialog content by 36px at small widths.
                 Wrap(
@@ -869,7 +877,7 @@ class _PairDeviceDialogState extends ConsumerState<_PairDeviceDialog> {
                   ],
                 ),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),
             ],
           ),

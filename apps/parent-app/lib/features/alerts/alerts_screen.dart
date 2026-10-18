@@ -79,7 +79,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity)),
+            Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity, dialogContext)),
             const SizedBox(width: 8),
             Expanded(child: Text(alert.title, style: Theme.of(dialogContext).textTheme.titleMedium)),
           ],
