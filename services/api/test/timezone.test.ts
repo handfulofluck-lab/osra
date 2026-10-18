@@ -61,7 +61,7 @@ describe("family timezone source (ADR-0020)", () => {
     await app.close();
   });
 
-  it("login fills from the device while source is default, and the filter spares a parent's choice", async () => {
+  it("login fills only while source is default; a device-filled or parent-chosen zone never moves", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const hash = await argon2.hash("correct-horse-battery");
     prismaMock.parent.findUnique.mockResolvedValue({
@@ -77,11 +77,12 @@ describe("family timezone source (ADR-0020)", () => {
     const ok = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "parent@example.com", password: "correct-horse-battery", timezone: "Asia/Dubai" } });
     expect(ok.statusCode).toBe(200);
     expect(prismaMock.family.updateMany).toHaveBeenCalledWith({
-      where: { id: "fam-1", timezoneSource: { not: "parent" } },
+      where: { id: "fam-1", timezoneSource: "default" },
       data: { timezone: "Asia/Dubai", timezoneSource: "device" },
     });
-    // The same statement with count 0 is what "a parent already chose" looks like: nothing changes and
-    // login still succeeds. The filter, not a read-then-write check, is the guarantee.
+    // count 0 is what BOTH later cases look like: a zone filled by an earlier login (`device`) and one
+    // the parent chose (`parent`) are outside the filter, so a travelling parent cannot move the digest.
+    // The filter, not a read-then-write check, is the guarantee.
     prismaMock.family.updateMany.mockResolvedValue({ count: 0 });
     const again = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "parent@example.com", password: "correct-horse-battery", timezone: "Europe/London" } });
     expect(again.statusCode).toBe(200);
