@@ -11,7 +11,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### API — audit findings 3–5: nonce store fails closed, MFA re-enrolment needs re-auth, family moves revoke the old scope
+### API — audit findings 3–5: nonce store fails closed, MFA re-enrolment needs re-auth, family moves revoke the old scope (#139)
 - **Finding 3 — a Redis outage no longer disables HMAC replay protection
   (`services/api/src/lib/internalAuth.ts:120-140`).** `claimNonce` used to `catch(() => "OK")`, so an
   unreachable replay store read as a successful claim and every byte-identical request was accepted.
