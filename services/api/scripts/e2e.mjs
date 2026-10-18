@@ -35,6 +35,79 @@ const check = (name, cond, extra = "") => {
 };
 
 /**
+ * Issue #126: e2e is the second gate a runner hits in the same sitting as `qa-probe`, against the
+ * shared `:3000` instance that rate-limits 200 requests/min per IP (auth routes 20/min). A 429 burst
+ * is the API's own limiter, not a product defect. This is the contract `qa-probe` already uses
+ * (#112/#114): count every 429 once, retry once when `Retry-After` is short, and above a small
+ * threshold stop with one ABORT line and exit **2** — never manufacture a `FAIL` from a throttled
+ * response. Exit 1 keeps its meaning: a real assertion failed.
+ */
+const RATE_LIMIT_ABORT_AFTER = 5;
+/** Honour Retry-After only when it is shorter than this; the API asks for up to 60 s. */
+const RATE_LIMIT_RETRY_CAP_MS = 3000;
+let rateLimited429 = 0;
+
+class RateLimitAbort extends Error {}
+/** Thrown by `stop()` so module evaluation ends without a stack trace or a second summary. */
+class HarnessStop extends Error {}
+/** Socket opened in section 7, so a mid-run abort can close it and let the process exit. */
+const OPEN_SOCKETS = new Set();
+
+/** Print the summary once, close Redis, and set the exit code from what was recorded. */
+const finish = () => {
+  console.log(`\n=== E2E: ${PASS.length} passed, ${FAIL.length} failed ===`);
+  if (FAIL.length) console.log(`failures: ${FAIL.join("; ")}`);
+  process.exitCode = FAIL.length ? 1 : 0;
+  redis.disconnect();
+};
+
+/**
+ * End the run at a point the remaining checks cannot get past (e.g. `/me` returned no envelope).
+ * The failure that caused it is already recorded; printing the summary and stopping is the whole
+ * contract — the old code threw a TypeError here and the run died with no summary (issue #126).
+ */
+const stop = (reason) => {
+  console.log(`\nSTOP  ${reason}`);
+  finish();
+  throw new HarnessStop(reason);
+};
+
+process.on("uncaughtException", (err) => {
+  if (err instanceof RateLimitAbort) {
+    for (const ws of OPEN_SOCKETS) { try { ws.close(); } catch { /* already closing */ } }
+    redis.disconnect();
+    process.exitCode = 2;
+    return; // let the loop drain: process.exit() after several fetches trips a Node 24/Windows libuv assertion
+  }
+  if (err instanceof HarnessStop) return; // stop() already printed the summary and set the exit code
+  console.error(err);
+  process.exit(1);
+});
+
+const abortRateLimited = (why) => {
+  console.log(`\nABORT: rate limited by the API (${rateLimited429} x 429) - wait 60 s and re-run`);
+  if (why) console.log(`       ${why}`);
+  console.log("       No 429-induced check was recorded as a failure; the run stopped first.");
+  process.exitCode = 2;
+  throw new RateLimitAbort("rate limited by the API");
+};
+
+/** Count one observed 429 and abort once the run is clearly being throttled. */
+const count429 = (where) => {
+  rateLimited429 += 1;
+  if (rateLimited429 > RATE_LIMIT_ABORT_AFTER) {
+    abortRateLimited(`${where} — more than ${RATE_LIMIT_ABORT_AFTER} x 429 in one run`);
+  }
+};
+
+/** Retry-After is seconds per RFC 9110; absent or unparseable = one short default wait. */
+const retryAfterMs = (res) => {
+  const header = res.headers.get("retry-after");
+  const seconds = header === null ? NaN : Number(header);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : 1000;
+};
+
+/**
  * v2 internal signing (ADR-0014): HMAC-SHA256(secret, `${ts}.${nonce}.${body}`) plus the timestamp
  * and nonce headers. The global secret is a SERVICE credential — it is accepted only with the
  * caller header (`ai-engine`), which is what this harness models; device signers pass their own
@@ -54,7 +127,7 @@ const sign = (body) => signV2(HMAC_SECRET, body, { caller: "ai-engine" });
 
 async function call(method, path, { token, body, hmac, secret } = {}) {
   const raw = body === undefined ? undefined : JSON.stringify(body);
-  const res = await fetch(`${API}${path}`, {
+  const send = () => fetch(`${API}${path}`, {
     method,
     headers: {
       ...(raw ? { "content-type": "application/json" } : {}),
@@ -63,6 +136,22 @@ async function call(method, path, { token, body, hmac, secret } = {}) {
     },
     body: raw,
   });
+  let res = await send();
+  if (res.status === 429) {
+    count429(`${method} ${path}`);
+    const waitMs = retryAfterMs(res);
+    // A 60 s window would stretch this gate by a minute per hit; a retry is allowed only when it
+    // does not extend the run meaningfully, so a long Retry-After means stop, not sleep.
+    if (waitMs > RATE_LIMIT_RETRY_CAP_MS) {
+      abortRateLimited(`Retry-After ${Math.round(waitMs / 1000)} s exceeds the ${RATE_LIMIT_RETRY_CAP_MS / 1000} s retry cap (${method} ${path})`);
+    }
+    await new Promise((r) => setTimeout(r, waitMs));
+    res = await send();
+    if (res.status === 429) {
+      count429(`${method} ${path} (retry)`);
+      abortRateLimited(`the single retry after ${waitMs} ms was also 429 (${method} ${path})`);
+    }
+  }
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
   return { status: res.status, data };
@@ -81,11 +170,18 @@ const nextMessage = (channel) =>
 // --- 1. Seeded parent login + /me envelope ---
 const login = await call("POST", "/v1/auth/login", { body: { email: "demo@familyshield.dev", password: "CorrectHorseBatteryStaple!" } });
 check("seeded parent login", login.status === 200 && !!login.data?.token);
-const token = login.data.token;
+const token = login.data?.token;
 
 const me = await call("GET", "/v1/family/me", { token });
 check("GET /me returns family envelope", me.status === 200 && !!me.data?.family?.id && Array.isArray(me.data?.children) && Array.isArray(me.data?.devices));
 check("/me strips passwordHash", me.status === 200 && JSON.stringify(me.data).indexOf("passwordHash") === -1 && JSON.stringify(me.data).indexOf("argon2") === -1);
+// Issue #126: a missing envelope used to be dereferenced here and the TypeError truncated the run
+// with no summary. The envelope check above already recorded the failure; print the body, print the
+// summary and stop — the rest of the flow has no child to talk about, so guessing at it would only
+// manufacture more failures.
+if (!Array.isArray(me.data?.children) || typeof me.data?.family?.id !== "string") {
+  stop(`GET /family/me status ${me.status} returned no family envelope — body: ${JSON.stringify(me.data ?? null).slice(0, 400)}`);
+}
 const alex = me.data.children.find((c) => c.displayName === "Alex");
 check("seeded child Alex present with device + ruleset", !!alex && alex.devices.length >= 1 && !!alex.ruleSet);
 
@@ -171,6 +267,7 @@ check("WS ticket issued", ticketRes.status === 200 && !!ticketRes.data?.ticket);
 // fails after the last attempt.
 const wsUrl = `${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticketRes.data.ticket)}`;
 const ws = new WebSocket(wsUrl);
+OPEN_SOCKETS.add(ws);
 const wsFrames = [];
 let wsError = "";
 let wsClose = "";
@@ -178,7 +275,7 @@ ws.addEventListener("message", (ev) => wsFrames.push(JSON.parse(ev.data)));
 ws.addEventListener("error", (ev) => { wsError = String(ev?.message ?? "ws error"); });
 // Diagnose a future abort: a server-side close (e.g. 4001 unauthorized ticket) looks identical to a
 // lost frame from the client's side, and that distinction is what a one-off failure needs to explain.
-ws.addEventListener("close", (ev) => { wsClose = `${ev?.code ?? "?"} ${ev?.reason || "(no reason)"}`; });
+ws.addEventListener("close", (ev) => { wsClose = `${ev?.code ?? "?"} ${ev?.reason || "(no reason)"}`; OPEN_SOCKETS.delete(ws); });
 await new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", rej); });
 check("parent WebSocket connected", ws.readyState === 1);
 
@@ -376,6 +473,4 @@ if (process.env.DATABASE_URL) {
   console.log("NOTE  erasure row-count check skipped — set DATABASE_URL in the gate shell to count rows in Postgres (TESTING.md §3)");
 }
 
-redis.disconnect();
-console.log(`\n=== E2E: ${PASS.length} passed, ${FAIL.length} failed ===`);
-if (FAIL.length) { console.log("failures:", FAIL.join("; ")); process.exit(1); }
+finish();
