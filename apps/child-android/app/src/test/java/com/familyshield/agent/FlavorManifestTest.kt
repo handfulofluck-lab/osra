@@ -93,13 +93,17 @@ class FlavorManifestTest {
     }
 
     @Test
-    fun `both flavours declare isMonitoringTool and full carries the call and SMS permissions`() {
-        for ((label, text) in listOf("main" to mainManifest, "full" to fullManifest)) {
-            assertTrue(
-                "$label must declare isMonitoringTool=child_monitoring (Play monitoring policy)",
-                text.contains("isMonitoringTool") && text.contains("child_monitoring"),
-            )
-        }
+    fun `the shared manifest declares isMonitoringTool and full carries the call and SMS permissions`() {
+        // The declaration lives in src/main on purpose, so manifest merging puts it in BOTH artefacts;
+        // asserting it in the full *source file* is wrong, because that file only adds the capability.
+        assertTrue(
+            "src/main must declare isMonitoringTool=child_monitoring (Play monitoring policy)",
+            mainManifest.contains("isMonitoringTool") && mainManifest.contains("child_monitoring"),
+        )
+        assertFalse(
+            "the full source file must not declare it again - one declaration, merged into both",
+            fullManifest.contains("isMonitoringTool"),
+        )
         assertTrue(fullManifest.contains("android.permission.READ_CALL_LOG"))
         assertTrue(fullManifest.contains("android.permission.READ_SMS"))
     }
