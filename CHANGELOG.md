@@ -11,6 +11,36 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — design system and dark theme (roadmap 3.8, `feat/3.8-design-system`)
+- **One token layer.** `apps/parent-app/lib/theme/app_tokens.dart` defines the colour roles
+  (`surface`, `surfaceVariant`, `primary`, `danger`/`warn`/`ok`, plus the legacy alert-severity and
+  wellbeing-ring roles), the `AppSpace` spacing scale, `AppRadius`, `AppElevation` and `AppType` text
+  styles. `apps/parent-app/lib/theme/app_theme.dart` turns those into `ThemeData` for both
+  brightnesses and publishes the colours as an `AppTokens` theme extension, reached in a screen as
+  `context.tokens`. Screens no longer name `Color(0x…)`, `Colors.*`, magic paddings or inline
+  `TextStyle`s on the migrated surfaces.
+- **Light and dark.** `FamilyShieldApp` (`apps/parent-app/lib/app.dart:61`) now passes `theme`,
+  `darkTheme` and `themeMode`; the default `ThemeMode.system` follows
+  `MediaQuery.platformBrightness`. Settings → Appearance (`/settings/appearance`, reached from the
+  dashboard menu) pins System / Light / Dark; the choice is persisted with the existing
+  `shared_preferences` package under key `theme_mode`, following the `ServerUrlNotifier` pattern
+  (`apps/parent-app/lib/providers/theme_provider.dart`). No package was added.
+- **Screens migrated without behaviour change.** Dashboard (`dashboard_screen.dart`), reports
+  (`reports_screen.dart`), usage history (`usage_history_screen.dart`) and child detail
+  (`child_detail_screen.dart`) now use the tokens for cards, padding/gaps, chart bars and labels,
+  status dots, pills and inline text styles. Copy, testIDs and the 320×568 layout rules are unchanged.
+  The alerts list keeps its pinned legacy severity palette, now expressed as severity tokens so dark
+  mode can re-map it.
+- **Tests:** 8 new tests in `apps/parent-app/test/design_system_test.dart` — the four migrated screens
+  render in dark mode at 320×568 with no overflow, system mode follows a dark platform brightness, the
+  Settings override survives a full widget-tree rebuild, and danger/warn/ok are checked at a computed
+  ≥ 4.5:1 contrast against both surfaces in both themes. `flutter test` **134 passed** (126 before,
+  all still green); `flutter analyze` clean. **⚠️ Author's run only** (Kimi Code) — no independent
+  verifier has repeated the gates.
+- **Not done here:** login, family, map, rules editor, social, content-safety and digest settings keep
+  their existing spacing and colours; the token layer is available to them, but migrating each is its
+  own layout-sensitive change. No hardware run and no visual/RTL review.
+
 ### Parent app — daily screen-time trends and browsing history from the durable usage model (roadmap 3.5, `feat/3.5-usage-web-trends`)
 - **One screen, both reads.** `UsageHistoryScreen` (`apps/parent-app/lib/features/reports/usage_history_screen.dart`)
   is reachable from the Reports app bar (`/child/:id/history`). Its 7/14/30-day selector drives both

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../providers/world_class_provider.dart';
+import '../../theme/app_tokens.dart';
 
 /// Roadmap 3.5: the durable usage model in the parent app. One screen carries
 /// both reads, because they share the 7/14/30-day window:
@@ -37,7 +38,7 @@ class _UsageHistoryScreenState extends ConsumerState<UsageHistoryScreen> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: AppSpace.sm),
             // NOTE: '7d'/'14d'/'30d' instead of '7 days' — three full labels
             // overflow a 320px-wide AppBar.
             child: SegmentedButton<int>(
@@ -55,10 +56,10 @@ class _UsageHistoryScreenState extends ConsumerState<UsageHistoryScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpace.lg),
         children: [
           _UsageSection(childId: widget.childId, days: _days),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.lg),
           _BrowsingSection(
             childId: widget.childId,
             days: _days,
@@ -89,7 +90,7 @@ class _UsageSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Screen time', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         report.when(
           loading: () => const SizedBox(
             height: 180,
@@ -139,13 +140,13 @@ class _UsageBody extends StatelessWidget {
         Text('Total $total min over ${series.length} days'),
         if (series.length < requestedDays)
           Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: AppSpace.xs),
             child: Text(
               'Only ${series.length} of the $requestedDays requested days were returned; showing those days as-is.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpace.md),
         // NOTE: bars are plain Containers — no charting dependency, and no
         // fixed-width tick labels that would overflow 30 bars at 320px.
         SizedBox(
@@ -172,12 +173,12 @@ class _UsageBody extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [Text(_shortDay(series.first.day)), Text(_shortDay(series.last.day))],
         ),
-        const Divider(height: 24),
+        const Divider(height: AppSpace.xl),
         Text('Day by day', style: Theme.of(context).textTheme.titleSmall),
         // NOTE: every returned day is listed, including 0-minute days, so the
         // list stays honest when the chart is too small to read.
@@ -213,8 +214,8 @@ class UsageBar extends StatelessWidget {
       height: _maxHeight * factor,
       margin: const EdgeInsets.symmetric(horizontal: 1),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+        color: context.tokens.primary,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xs)),
       ),
     );
   }
@@ -246,12 +247,12 @@ class _BrowsingSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Browsing history', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         // NOTE: Wrap, not Row — filter + limit control do not fit one line at
         // 320px and must wrap instead of overflowing.
         Wrap(
-          spacing: 8,
-          runSpacing: 4,
+          spacing: AppSpace.sm,
+          runSpacing: AppSpace.xs,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             FilterChip(
@@ -274,7 +275,7 @@ class _BrowsingSection extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         visits.when(
           loading: () => const SizedBox(
             height: 120,
@@ -298,7 +299,7 @@ class _BrowsingSection extends ConsumerWidget {
               children: [
                 if (items.length >= limit)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.only(bottom: AppSpace.xs),
                     child: Text(
                       'Showing the latest $limit visits — raise the limit to see more.',
                       style: Theme.of(context).textTheme.bodySmall,
@@ -320,7 +321,7 @@ class _WebVisitTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
     final when = visit.ts == null ? 'Time unknown' : DateFormat.MMMd().add_Hm().format(visit.ts!.toLocal());
     return ListTile(
       key: ValueKey('webVisit-${visit.id}'),
@@ -329,14 +330,14 @@ class _WebVisitTile extends StatelessWidget {
       leading: Icon(
         visit.blocked ? Icons.block : Icons.public,
         size: 18,
-        color: visit.blocked ? colors.error : null,
+        color: visit.blocked ? tokens.danger : null,
       ),
       title: Text(visit.domain, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(when),
       trailing: Text(
         visit.blocked ? 'Blocked' : 'Allowed',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: visit.blocked ? colors.error : colors.onSurfaceVariant,
+              color: visit.blocked ? tokens.danger : tokens.onSurfaceVariant,
             ),
       ),
     );
@@ -350,7 +351,7 @@ class _EmptyBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
       child: Text(text),
     );
   }
@@ -367,12 +368,12 @@ class _ErrorBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('$message: $detail'),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpace.xs),
           TextButton(onPressed: onRetry, child: const Text('Try again')),
         ],
       ),
