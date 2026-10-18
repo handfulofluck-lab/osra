@@ -26,7 +26,7 @@ class CommandPollWorker(
                 runCatching {
                     // NOTE: server payload values are untyped JSON; dispatcher takes strings.
                     val payload = command.payload?.mapValues { (_, v) -> v?.toString() ?: "" } ?: emptyMap()
-                    dispatcher.dispatch(command.type, payload)
+                    dispatcher.dispatch(command.type, payload, command.id)
                 }.onFailure { Log.w(TAG, "command '${command.type}' failed; swallowed", it) }
             }
             Result.success()

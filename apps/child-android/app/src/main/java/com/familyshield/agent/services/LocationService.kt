@@ -302,7 +302,8 @@ class LocationService : Service() {
             for (command in commands) {
                 runCatching {
                     val data = (command.payload ?: emptyMap()).mapValues { it.value.toString() }
-                    dispatcher.dispatch(command.type, data)
+                    // Issue #132: the row id lets a refused locate_now report a `failed` ack.
+                    dispatcher.dispatch(command.type, data, command.id)
                 }.onFailure { Log.w(TAG, "command failed: ${command.type}", it) }
             }
         }.onFailure {

@@ -11,6 +11,47 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — no background location FGS without the background grant, and `locate_now` says why it failed (issue #132)
+- **The #128 rule now covers every background start, not just boot.** `AccessibilityMonitorService.ensureLocationServiceRunning()`
+  and `CommandDispatcher.locateNow()` requested `LocationService` on a fine/coarse check alone. Both
+  run with no visible activity (an accessibility-service callback; a poll/FCM delivery), so on
+  API 29+ that is a while-in-use grant, and Android 14+ refuses a location FGS created from the
+  background without `ACCESS_BACKGROUND_LOCATION` — the `startForegroundService()` clock then ends in
+  `ForegroundServiceDidNotStartInTimeException` (#128's failure) or `locate_now` dies silently with
+  the parent told nothing. The rule moved to a shared `LocationStartPolicy`
+  (`app/src/main/java/com/familyshield/agent/services/LocationStartPolicy.kt:1-61`): fine **or**
+  coarse plus the background grant on API 29+; `BootStartPolicy` delegates to it, so there is one
+  implementation and #128's boot tests still pin it.
+- **Refusals are visible, not silent.** `AccessibilityMonitorService` logs
+  `not starting LocationService: <reason>` once per distinct reason
+  (`AccessibilityMonitorService.kt:92-131,201-224`). `CommandDispatcher` posts a `failed` command ack for
+  the durable row (`POST /v1/devices/:id/commands/:commandId/ack`) with
+  `detail.reason` = `background_location_missing` or `location_permission_missing`
+  (`CommandDispatcher.kt:229-295,310-322`), so `/v1/devices/:id/commands/history` reads `failed` with
+  the reason instead of `delivered` forever. The poll paths now pass `DeviceCommand.id`
+  (`LocationService.kt:303-307`, `CommandPollWorker.kt:24-33`), and the ack surface is
+  `ApiService.ackCommand` + `CommandAckDto` (`ApiService.kt:46-55`). A start the OS still refuses after
+  the grants looked right is reported as `foreground_service_start_failed`.
+- **`PairingActivity` is deliberately not gated.** Its start runs with the activity resumed, so the
+  while-in-use grant is sufficient (the background rule applies to background starts). The
+  distinction is written at the call site (`PairingActivity.kt:621-636`) and pinned by
+  `LocationServiceStartSitesTest`, which scans the sources for `startForegroundService(… LocationService)`
+  call sites and fails if a new one has neither a policy reference nor a foreground-site entry.
+- **Tests.** 16 new tests in four classes: `LocationStartPolicyTest` (the rule),
+  `AccessibilityMonitorLocationStartTest` and `CommandDispatcherLocateNowTest` (one per call site,
+  `BootStartPolicyTest` style), and `LocationServiceStartSitesTest` (the call-site inventory).
+  Fail-before at the pre-fix rule and unwired call sites:
+  `16 tests completed, 6 failed` — the background cases in all three rule suites plus the inventory.
+- **Gates** (2026-10-18, `apps/child-android`, JDK 17, `ANDROID_HOME`):
+  `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug --no-daemon`
+  → `BUILD SUCCESSFUL` (12m 41s on the first full build, 3m 7s on the final incremental re-run),
+  **267 tests / 0 failures / 0 errors in each flavour** (42 suites; the #128 baseline was 251, +16
+  here), both debug APKs built (`app-play-debug.apk`, `app-full-debug.apk`). Fail-before in the same
+  tree, with the pre-fix rule and unwired call sites: `16 tests completed, 6 failed`.
+- **⚠️ Not verified on hardware in this PR.** No phone lease was taken: proving the `locate_now`
+  failure path needs a device whose background location is revoked while the agent polls, and a
+  run holds the lease. The rule and both call-site decisions are JVM-tested only; the row stays open
+  until a leased run shows `failed` in the command history.
 ### Child agent — the merged manifest is what the gate reads, not the source (`plan 2.6`, ADR-0021)
 - **The hole this closes.** `FlavorManifestTest` asserted `app/src/main/AndroidManifest.xml` and
   `app/src/full/AndroidManifest.xml` **as text**, and CI's Android step only ran `aapt2 dump badging`,
