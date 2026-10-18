@@ -59,8 +59,9 @@ is therefore a change to who must give consent and how.
 - Good: `region` keeps one meaning, so the consent gate is untouched.
 - Cost: one more column (`timezoneSource`) and one more rule in the login path. Tests, named as the rule:
   - `login fills timezone from the device while timezoneSource is default`;
-  - `login never overwrites a timezone the parent chose` (the update is conditional on
-    `timezoneSource <> 'parent'`, in the same statement, not read-then-write);
+  - `login never overwrites a timezone the parent chose` and `a second device login does not move a
+    device-filled zone` (the update is conditional on `timezoneSource = 'default'`, in the same statement,
+    not read-then-write);
   - `an invalid or absent timezone leaves the family unchanged` (the field is optional and additive, so
     existing clients send nothing and nothing changes).
 - Cost: a family whose parents never log in again stays on UTC. That is acceptable; it's the behaviour
@@ -73,3 +74,11 @@ is therefore a change to who must give consent and how.
 
 - Quiet hours and schedules in the child agent use the **device's** local clock, not `Family.timezone`. This
   ADR doesn't change that.
+
+## Amendment 2026-10-18 (correction)
+
+The test wording in the first amendment said the fill is conditional on `timezoneSource <> 'parent'`. That
+contradicts decision 4 and was my error. With that guard, every parent login re-fills the zone from whichever
+device logs in, so a parent travelling abroad moves the family's digest, which is exactly what decision 4
+rules out. The guard is `timezoneSource = 'default'`: the device fills a family once, and only the parent's
+setting changes it after that.
