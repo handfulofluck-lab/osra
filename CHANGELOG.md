@@ -11,6 +11,11 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — ADR-0020 correction: the device fill is guarded by `timezoneSource = 'default'` (2026-10-18)
+- The first amendment's test wording (`<> 'parent'`) let every login re-fill the zone from the logging-in
+  device. Decision 4 always said "only while the source is `default`"; the wording now matches. The code
+  change is tracked on #101.
+
 ### Architecture — ADR-0021 and ADR-0020 amended after review on #96 (2026-10-18)
 - ADR-0021: the `play` `<queries>` also declares the two dialer intents, so the #83 emergency-dialer
   exemption still resolves handlers without `QUERY_ALL_PACKAGES`. The manifest test asserts them and
