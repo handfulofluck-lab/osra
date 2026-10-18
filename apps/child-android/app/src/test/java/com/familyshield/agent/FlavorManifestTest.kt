@@ -85,6 +85,7 @@ class FlavorManifestTest {
             )
         }
         assertTrue("the launcher query is needed for the app grid", mainManifest.contains("android.intent.category.LAUNCHER"))
+        assertTrue("the HOME query is needed for the launcher exemption (#165)", mainManifest.contains("android.intent.category.HOME"))
         assertTrue(
             "the emergency-dialer intent must stay visible (#83/S1)",
             mainManifest.contains("com.android.phone.EmergencyDialer.DIAL"),

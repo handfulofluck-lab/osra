@@ -8,11 +8,13 @@ import javax.inject.Singleton
 
 /**
  * Shows the full-screen block overlay (BlockActivity) for a package, debounced to once per
- * 2 s per package, and never for the agent's own package (prevents overlay loops).
+ * 2 s per package, and never for the agent's own package or an [EssentialPackages] screen (prevents
+ * overlay loops and an unusable phone, issue #165).
  */
 @Singleton
 class AppBlocker @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val packageFacts: PackageFacts,
 ) {
     private val lock = Any()
     private val lastShownMs = HashMap<String, Long>()
@@ -32,6 +34,11 @@ class AppBlocker @Inject constructor(
 
     private fun show(pkg: String, reason: String) {
         if (pkg.isBlank() || pkg == context.packageName) return
+        // Issue #165: an essential screen gets no overlay at all — not the launcher, the system UI or
+        // the dialer/emergency surfaces, whatever rule answered BLOCK. The decision path already
+        // exempts the static set; this check adds the OS-assigned HOME/dialer roles, which is what
+        // covers an OEM launcher or dialer the table has never heard of.
+        if (EssentialPackages.isEssential(pkg, packageFacts)) return
         synchronized(lock) {
             val now = System.currentTimeMillis()
             // NOTE: purge stale entries so the map cannot grow unboundedly over weeks of uptime.

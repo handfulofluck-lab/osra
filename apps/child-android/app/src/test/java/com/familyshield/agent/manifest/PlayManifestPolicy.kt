@@ -69,9 +69,14 @@ object PlayManifestPolicy {
 
     data class RequiredQuery(val action: String, val category: String?, val why: String)
 
-    /** ADR-0021 decision 5: the three intents the Play `<queries>` block must keep. */
+    /** ADR-0021 decision 5: the intents the Play `<queries>` block must keep (#165 added HOME). */
     val REQUIRED_QUERIES: List<RequiredQuery> = listOf(
         RequiredQuery("android.intent.action.MAIN", "android.intent.category.LAUNCHER", "the user-visible app list / app limits"),
+        RequiredQuery(
+            "android.intent.action.MAIN",
+            "android.intent.category.HOME",
+            "#165 launcher exemption — PackageFacts.homePackages() returns nothing without it",
+        ),
         RequiredQuery("com.android.phone.EmergencyDialer.DIAL", null, "#83 emergency-dialer exemption — S1 depends on it"),
         RequiredQuery("android.intent.action.DIAL", null, "#83 emergency-dialer exemption — S1 depends on it"),
     )

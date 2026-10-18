@@ -11,6 +11,46 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — bedtime no longer covers the launcher, the system UI or the dialer (issue #165)
+- The app-block overlay (`BlockActivity`) now exempts the launcher, the system UI and the
+  dialer/emergency surfaces for **every** rule, not just on the empty-cache path. Before this only the
+  fail-closed branch (`RuleRepository.evaluate`) consulted the essential list, so an active bedtime
+  rule — and equally an "everything except an allow-list" routine, school hours, pause-internet, the
+  category blocklist, a screen-time limit or an explicit per-app block — answered BLOCK for the home
+  screen and the overlay followed the launcher. The child could not press Home, reach the dialer, or
+  read what would still work. Observed during TR-22 on the Flip4
+  (`C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-ROW3.md`, observation 2: "This app is blocked by your parent
+  — com.sec.android.app.launcher" after a relaunch) and recorded as a bug rather than fixed there.
+- One set, one shared call-surface rule. `enforcement/EssentialPackages.kt` owns the list;
+  `RuleRepository` (`decide`, called by `evaluate`) and `AppBlocker` read it, and its OS-aware form
+  reuses the lock's call-surface exemption (`LockEnforcementPolicy.isExemptPackage`) instead of keeping
+  a second call table. `RuleRepository.isEssentialApp` stays as the JVM-visible name and delegates.
+- The overlay path is OS-aware as well: `AppBlocker` asks `PackageFacts`, so whatever currently holds
+  the HOME role and any *system* dialer are exempt even when the table has never seen the OEM's name
+  (`AndroidPackageFacts.homePackages()`, provided as one Hilt singleton and shared with the
+  accessibility service, whose package-change receiver clears both caches). The narrow `<queries>` block
+  gains the HOME intent — without it package visibility on API 30+ hides the launcher and the role
+  lookup would silently return nothing; `PlayManifestPolicy.REQUIRED_QUERIES` and both merged-manifest
+  gates now require it.
+- Tightening in the same change: the fail-closed path exempted any name ending in `.dialer`/`.telecom`
+  — the name-based bypass the review of #83 (F1) removed from the lock. A sideloaded `com.evil.dialer`
+  is now blocked like any other app; a system dialer with that name stays exempt through `PackageFacts`.
+- What still blocks: bedtime, allow-list routines, school hours, pause-internet, the category blocklist
+  and screen-time limits block every app they name — only the essential set is exempt. The overlay's
+  wording is unchanged for an app it covers; an exempt screen shows nothing.
+- Tests: `RuleRepositoryEssentialExemptionTest` drives every policy that can raise `BlockActivity`
+  through the real `RuleEngine` and the real `decide` gate (it fails against the unfixed gate — see the
+  PR), `EssentialPackagesTest` pins the set, the name-spoof cases and the fact that the lock still
+  covers the launcher, and `RuleRepositoryTest` keeps the `isEssentialApp` contract.
+  Gate `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug --no-daemon`:
+  **297 tests / 0 failures / 0 errors in each flavour** (47 suites), `BUILD SUCCESSFUL in 1m 9s`,
+  `app/build/outputs/apk/play/debug/app-play-debug.apk` built; the same new class fails 8/12 against
+  the pre-fix gate (see the PR).
+- **⚠️ Hardware not verified here.** The falsifiable check is in #165: with a bedtime rule active and
+  an empty cache, Home leaves the launcher focused (`mCurrentFocus`) and
+  `adb shell am start -a android.intent.action.DIAL` reaches the dialer. The phone was not taken for
+  this change; that row stays open for a tester.
+
 ### Security hygiene — the test app PIN is no longer published (issue #151)
 - The paired device's app PIN was written in clear text across `docs/TESTING.md`,
   `docs/QA/TEST-REQUESTS.md`, both verification ledgers and the probe's default. The literal is gone

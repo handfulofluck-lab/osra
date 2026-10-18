@@ -14,11 +14,15 @@ import org.junit.Test
  */
 class PlayManifestPolicyTest {
 
-    private val dialerQueries = """
+    private val requiredQueries = """
         <queries>
             <intent>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent>
+            <intent>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
             </intent>
             <intent>
                 <action android:name="com.android.phone.EmergencyDialer.DIAL" />
@@ -32,7 +36,7 @@ class PlayManifestPolicyTest {
     private fun merged(
         extraPermissions: List<String> = emptyList(),
         extraComponents: String = "",
-        queries: String = dialerQueries,
+        queries: String = requiredQueries,
         monitoringValue: String = PlayManifestPolicy.MONITORING_VALUE,
     ): MergedManifest {
         val permissions = (PlayManifestPolicy.ALLOWED_PERMISSIONS.keys + extraPermissions)
@@ -119,6 +123,10 @@ class PlayManifestPolicyTest {
                 <intent>
                     <action android:name="android.intent.action.MAIN" />
                     <category android:name="android.intent.category.LAUNCHER" />
+                </intent>
+                <intent>
+                    <action android:name="android.intent.action.MAIN" />
+                    <category android:name="android.intent.category.HOME" />
                 </intent>
             </queries>
         """.trimIndent()

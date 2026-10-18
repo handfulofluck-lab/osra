@@ -67,7 +67,7 @@ class PlayMergedManifestTest {
     }
 
     @Test
-    fun `play merged manifest keeps isMonitoringTool and the three dialer queries`() {
+    fun `play merged manifest keeps isMonitoringTool and the required queries`() {
         val violations = PlayManifestPolicy.monitoringViolations(merged) + PlayManifestPolicy.queryViolations(merged)
         assertTrue(
             "the Play artefact lost a declaration Play or S1 depends on (ADR-0021 decisions 3 and 5):\n" +
