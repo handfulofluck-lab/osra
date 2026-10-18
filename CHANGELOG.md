@@ -11,6 +11,38 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — daily screen-time trends and browsing history from the durable usage model (roadmap 3.5, `feat/3.5-usage-web-trends`)
+- **One screen, both reads.** `UsageHistoryScreen` (`apps/parent-app/lib/features/reports/usage_history_screen.dart`)
+  is reachable from the Reports app bar (`/child/:id/history`). Its 7/14/30-day selector drives both
+  `GET /v1/reports/usage?childId&days=` and `GET /v1/reports/web?childId&days=&limit=&blocked=true`,
+  so the trend and the browsing list always describe the same window.
+- **Trend.** The chart is a row of plain `Container` bars (height proportional to the window's
+  busiest day) — no new package; `fl_chart` is already a dependency for the top-apps summary but is not
+  needed for a per-day bar series, and plain bars avoid 30 tick labels at 320 px. The honest total
+  (`Total N min over M days`) and a day-by-day list (every returned day, including 0-minute days) are
+  below the chart, so the numbers stay readable if the chart is not. `GET /v1/reports/usage` already
+  fills a day with no rows as 0 (`usageSeries`), so the client draws exactly `series.length` bars and
+  adds no padding; if a series shorter than requested ever arrives, it is shown as-is with `Only M of
+  the N requested days were returned` rather than zero-filled.
+- **Browsing history.** Each `WebVisit` row shows the domain, the local visit time and `Blocked` /
+  `Allowed`; a `Blocked only` filter sends `blocked=true`, and a 20/50/100 limit control is the paging
+  (the endpoint has no offset). When the API returns a full page the screen says the list is the latest
+  N and raising the limit shows more.
+- **States.** Both sections have an explicit loading placeholder that reserves the chart/list height,
+  an empty state that distinguishes "no activity" from "no blocked sites", and an error line carrying
+  the status/exception plus a `Try again` retry — an error never renders as an empty chart or a 0-minute
+  day. All-zero windows show the empty state, not a chart of zeros.
+- **Tests:** 14 widget tests in `apps/parent-app/test/usage_history_test.dart` — the selector refetches
+  both endpoints with 7/14/30, a 30-day series renders 30 bars and its total/list, a short series is
+  disclosed not padded, empty and error states for both sections, the blocked filter (`blocked=true`,
+  allowed rows hidden), the limit control, the loading placeholders, the Reports entry point, and the
+  320×568 layout with a 30-day series and a long domain. `flutter test` **126 passed**;
+  `flutter analyze` clean. **⚠️ Author's run only** (Kimi Code) — no tester has repeated it, and the
+  two endpoints were not re-run against a live stack from this branch (their API tests already cover
+  the fields this screen reads).
+- **Not done here:** no hardware/device run, no Arabic/RTL pass (roadmap 3.1), and no per-app split
+  under each day even though the API returns `apps` — the list keeps to day totals for now.
+
 ### Windows agent — the `0000` lock PIN is gone, and HTTPS inspection validates its upstream (`fix/desktop-pin-and-tls`, desktop audit findings 1–2)
 - **No default parent PIN.** `RuleSyncService` and `ScreenTimeEnforcer` each had
   `Environment.GetEnvironmentVariable("DESKTOP_PARENT_PIN") ?? "0000"`, so any install without the

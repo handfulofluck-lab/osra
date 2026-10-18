@@ -1,0 +1,381 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../api/models.dart';
+import '../../providers/world_class_provider.dart';
+
+/// Roadmap 3.5: the durable usage model in the parent app. One screen carries
+/// both reads, because they share the 7/14/30-day window:
+///
+///  - `GET /v1/reports/usage` — per-day screen time from `AppUsageDaily`
+///    (`UsageDay`), drawn as a bar per returned day plus a readable per-day list.
+///  - `GET /v1/reports/web` — `WebVisit` rows, newest first, with a blocked-only
+///    filter and a limit (the endpoint has no offset, so limit is the paging control).
+///
+/// The API fills every requested day with 0 when there are no rows, so this
+/// screen never pads: it draws exactly `series.length` bars and says so when a
+/// shorter series than requested arrives.
+class UsageHistoryScreen extends ConsumerStatefulWidget {
+  final String childId;
+  const UsageHistoryScreen({super.key, required this.childId});
+
+  @override
+  ConsumerState<UsageHistoryScreen> createState() => _UsageHistoryScreenState();
+}
+
+class _UsageHistoryScreenState extends ConsumerState<UsageHistoryScreen> {
+  int _days = 7;
+  bool _blockedOnly = false;
+  int _limit = 20;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Screen time & web'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            // NOTE: '7d'/'14d'/'30d' instead of '7 days' — three full labels
+            // overflow a 320px-wide AppBar.
+            child: SegmentedButton<int>(
+              key: const ValueKey('usageWindowSelector'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 7, label: Text('7d')),
+                ButtonSegment(value: 14, label: Text('14d')),
+                ButtonSegment(value: 30, label: Text('30d')),
+              ],
+              selected: {_days},
+              onSelectionChanged: (s) => setState(() => _days = s.first),
+            ),
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _UsageSection(childId: widget.childId, days: _days),
+          const SizedBox(height: 16),
+          _BrowsingSection(
+            childId: widget.childId,
+            days: _days,
+            blockedOnly: _blockedOnly,
+            limit: _limit,
+            onBlockedChanged: (v) => setState(() => _blockedOnly = v),
+            onLimitChanged: (v) => setState(() => _limit = v),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Screen time: honest total, bar chart and a per-day list. The header is
+/// outside the async body so it does not move while the request is in flight;
+/// the loading placeholder reserves the chart's height.
+class _UsageSection extends ConsumerWidget {
+  final String childId;
+  final int days;
+  const _UsageSection({required this.childId, required this.days});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final query = (childId: childId, days: days);
+    final report = ref.watch(usageReportProvider(query));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Screen time', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        report.when(
+          loading: () => const SizedBox(
+            height: 180,
+            child: Center(child: CircularProgressIndicator(key: ValueKey('usageLoading'))),
+          ),
+          error: (e, _) => _ErrorBody(
+            message: 'Could not load screen time',
+            detail: '$e',
+            onRetry: () => ref.invalidate(usageReportProvider(query)),
+          ),
+          data: (data) => _UsageBody(report: data, requestedDays: days),
+        ),
+      ],
+    );
+  }
+}
+
+class _UsageBody extends StatelessWidget {
+  final UsageReport report;
+  final int requestedDays;
+  const _UsageBody({required this.report, required this.requestedDays});
+
+  static String _dayLabel(String day) {
+    final date = DateTime.tryParse(day);
+    return date == null ? day : DateFormat('EEE, MMM d').format(date);
+  }
+
+  static String _shortDay(String day) {
+    final date = DateTime.tryParse(day);
+    return date == null ? day : DateFormat('MMM d').format(date);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final series = report.series;
+    final total = report.seriesMinutes;
+    if (series.isEmpty) {
+      return _EmptyBody(text: 'No screen time data in the last $requestedDays days');
+    }
+    if (total == 0) {
+      return _EmptyBody(text: 'No screen time recorded in the last $requestedDays days');
+    }
+    final maxMinutes = series.fold<int>(0, (m, d) => d.minutes > m ? d.minutes : m);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Total $total min over ${series.length} days'),
+        if (series.length < requestedDays)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Only ${series.length} of the $requestedDays requested days were returned; showing those days as-is.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        const SizedBox(height: 12),
+        // NOTE: bars are plain Containers — no charting dependency, and no
+        // fixed-width tick labels that would overflow 30 bars at 320px.
+        SizedBox(
+          key: const ValueKey('usageChart'),
+          height: 160,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final day in series)
+                Expanded(
+                  child: Tooltip(
+                    message: '${_dayLabel(day.day)}: ${day.minutes} min',
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: UsageBar(
+                        key: ValueKey('usageBar-${day.day}'),
+                        day: day.day,
+                        minutes: day.minutes,
+                        maxMinutes: maxMinutes,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [Text(_shortDay(series.first.day)), Text(_shortDay(series.last.day))],
+        ),
+        const Divider(height: 24),
+        Text('Day by day', style: Theme.of(context).textTheme.titleSmall),
+        // NOTE: every returned day is listed, including 0-minute days, so the
+        // list stays honest when the chart is too small to read.
+        for (final day in series.reversed)
+          ListTile(
+            key: ValueKey('usageDay-${day.day}'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(_dayLabel(day.day)),
+            trailing: Text('${day.minutes} min'),
+          ),
+      ],
+    );
+  }
+}
+
+/// One day's bar: height is proportional to the window's busiest day.
+///
+/// Public so widget tests can count the rendered days — the count is the
+/// evidence that no zero padding was added in the client.
+class UsageBar extends StatelessWidget {
+  final String day;
+  final int minutes;
+  final int maxMinutes;
+  const UsageBar({super.key, required this.day, required this.minutes, required this.maxMinutes});
+
+  static const _maxHeight = 120.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final factor = maxMinutes <= 0 ? 0.0 : minutes / maxMinutes;
+    return Container(
+      height: _maxHeight * factor,
+      margin: const EdgeInsets.symmetric(horizontal: 1),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+      ),
+    );
+  }
+}
+
+/// Browsing history: blocked-only filter, limit control, and one row per visit.
+class _BrowsingSection extends ConsumerWidget {
+  final String childId;
+  final int days;
+  final bool blockedOnly;
+  final int limit;
+  final ValueChanged<bool> onBlockedChanged;
+  final ValueChanged<int> onLimitChanged;
+
+  const _BrowsingSection({
+    required this.childId,
+    required this.days,
+    required this.blockedOnly,
+    required this.limit,
+    required this.onBlockedChanged,
+    required this.onLimitChanged,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final query = (childId: childId, days: days, blockedOnly: blockedOnly, limit: limit);
+    final visits = ref.watch(webHistoryProvider(query));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Browsing history', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        // NOTE: Wrap, not Row — filter + limit control do not fit one line at
+        // 320px and must wrap instead of overflowing.
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilterChip(
+              key: const ValueKey('blockedOnlyFilter'),
+              label: const Text('Blocked only'),
+              selected: blockedOnly,
+              onSelected: onBlockedChanged,
+            ),
+            const Text('Show'),
+            SegmentedButton<int>(
+              key: const ValueKey('webLimitSelector'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 20, label: Text('20')),
+                ButtonSegment(value: 50, label: Text('50')),
+                ButtonSegment(value: 100, label: Text('100')),
+              ],
+              selected: {limit},
+              onSelectionChanged: (s) => onLimitChanged(s.first),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        visits.when(
+          loading: () => const SizedBox(
+            height: 120,
+            child: Center(child: CircularProgressIndicator(key: ValueKey('webLoading'))),
+          ),
+          error: (e, _) => _ErrorBody(
+            message: 'Could not load browsing history',
+            detail: '$e',
+            onRetry: () => ref.invalidate(webHistoryProvider(query)),
+          ),
+          data: (items) {
+            if (items.isEmpty) {
+              return _EmptyBody(
+                text: blockedOnly
+                    ? 'No blocked sites in the last $days days'
+                    : 'No browsing history in the last $days days',
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (items.length >= limit)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      'Showing the latest $limit visits — raise the limit to see more.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                for (final visit in items) _WebVisitTile(visit: visit),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _WebVisitTile extends StatelessWidget {
+  final WebVisit visit;
+  const _WebVisitTile({required this.visit});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final when = visit.ts == null ? 'Time unknown' : DateFormat.MMMd().add_Hm().format(visit.ts!.toLocal());
+    return ListTile(
+      key: ValueKey('webVisit-${visit.id}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        visit.blocked ? Icons.block : Icons.public,
+        size: 18,
+        color: visit.blocked ? colors.error : null,
+      ),
+      title: Text(visit.domain, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(when),
+      trailing: Text(
+        visit.blocked ? 'Blocked' : 'Allowed',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: visit.blocked ? colors.error : colors.onSurfaceVariant,
+            ),
+      ),
+    );
+  }
+}
+
+class _EmptyBody extends StatelessWidget {
+  final String text;
+  const _EmptyBody({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Text(text),
+    );
+  }
+}
+
+/// Error body with the action that retries the same query. [detail] is the
+/// raw exception so a 403/500 is visible, not hidden behind a friendly line.
+class _ErrorBody extends StatelessWidget {
+  final String message;
+  final String detail;
+  final VoidCallback onRetry;
+  const _ErrorBody({required this.message, required this.detail, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$message: $detail'),
+          const SizedBox(height: 4),
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    );
+  }
+}
