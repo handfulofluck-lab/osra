@@ -29,6 +29,13 @@ environment where it was written — see `docs/QA/` for the verification state.
   `test/email.test.ts`. Full API suite: 28 files / 309 tests / 0 failures.
 - **Not done here:** the parent-app setting that chooses the zone (3.x, as the ADR says); until it ships,
   every family is on UTC and the digest arrives at 18:00 UTC.
+### Architecture — ADR-0020 family timezone source, ADR-0021 Play policy review of the child agent (2026-10-18)
+- Decisions only, no code (work orders C1 and C2 on #92). ADR-0020 answers B1: `region` stays a market and
+  consent jurisdiction; `Family.timezone` is filled from the parent's device at signup/login (never over a
+  parent's own choice) and editable in settings. ADR-0021 finds that the `play` build inherits `READ_CALL_LOG`
+  and `READ_SMS`, which Play does not permit for parental control, and moves them (with `CommsLogger`) to
+  `full`; adds `isMonitoringTool=child_monitoring`; replaces `QUERY_ALL_PACKAGES` in `play` with a launcher
+  `<queries>`; keeps the notification listener Full-only.
 
 ### Architecture — ADR-0017 family-local digest, ADR-0018 shared test API ownership, ADR-0019 safe-direction rule (2026-10-17)
 - Decisions only, no code. ADR-0017 is implemented in a later PR (plan 2.2 follow-up / 3.x); ADR-0018 settles the ownership half of #71; ADR-0019 records why `stop_ring` passes the consent gate and gives the rule for future commands.
