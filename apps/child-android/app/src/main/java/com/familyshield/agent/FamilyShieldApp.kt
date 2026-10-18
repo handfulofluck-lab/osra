@@ -13,7 +13,7 @@ class FamilyShieldApp : Application() {
         // Feature #6: start the call/SMS content observers as early as possible (they no-op until
         // READ_CALL_LOG/READ_SMS are granted, then pick up automatically).
         EntryPointAccessors.fromApplication(this, WorkerEntryPoint::class.java)
-            .commsLogger()
+            .commsCapture()
             .start()
     }
 }

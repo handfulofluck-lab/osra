@@ -51,7 +51,7 @@ class CommsLogger @Inject constructor(
     private val settings: AgentSettings,
     private val rules: RuleRepository,
     private val consent: ConsentState,
-) {
+) : CommsCapture {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushMutex = Mutex()
     private val lastAlertAt = HashMap<String, Long>()
@@ -59,7 +59,7 @@ class CommsLogger @Inject constructor(
     @Volatile private var started = false
 
     /** Registers the content observers and starts the periodic flush loop (idempotent). */
-    fun start() {
+    override fun start() {
         // ADR-0021: the Play artefact declares neither READ_CALL_LOG nor READ_SMS, so it must not
         // register the observers either — nothing to read, and the registration is what a reviewer sees.
         if (!BuildConfig.CAPTURE_CALL_SMS) return
@@ -224,7 +224,7 @@ class CommsLogger @Inject constructor(
     }
 
     /** Uploads all buffered comms events; the Room table is cleared only on success. */
-    suspend fun flush() {
+    override suspend fun flush() {
         val deviceId = settings.deviceId() ?: return
         flushMutex.withLock {
             val dao = db.commsEventDao()

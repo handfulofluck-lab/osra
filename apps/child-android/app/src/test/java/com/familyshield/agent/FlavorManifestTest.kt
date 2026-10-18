@@ -107,4 +107,24 @@ class FlavorManifestTest {
         assertTrue(fullManifest.contains("android.permission.READ_CALL_LOG"))
         assertTrue(fullManifest.contains("android.permission.READ_SMS"))
     }
+
+    /**
+     * ADR-0021's class clause: the call/SMS capture implementation lives in `full` and the shared source
+     * set only knows the interface, so the Play artefact cannot contain the code path at all.
+     */
+    @Test
+    fun `the call and SMS capture implementation exists only in the full source set`() {
+        val full = manifest("app/src/full/java/com/familyshield/agent/comms/CommsLogger.kt")
+        assertTrue(full.contains("CommsCapture"))
+        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        while (dir != null) {
+            if (File(dir, "app/src/main/java/com/familyshield/agent/comms/CommsLogger.kt").isFile) {
+                throw AssertionError("CommsLogger must not exist in src/main (ADR-0021)")
+            }
+            dir = dir.parentFile
+        }
+        assertTrue(manifest("app/src/main/java/com/familyshield/agent/comms/CommsCapture.kt").contains("interface CommsCapture"))
+        assertTrue(manifest("app/src/play/java/com/familyshield/agent/di/CommsBindingModule.kt").contains("NoopCommsCapture"))
+        assertTrue(manifest("app/src/full/java/com/familyshield/agent/di/CommsBindingModule.kt").contains("CommsLogger"))
+    }
 }
