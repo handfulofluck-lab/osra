@@ -1,3 +1,5 @@
+using System.Net.Security;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using FamilyShield.Agent.Services;
 using Titanium.Web.Proxy;
@@ -10,6 +12,7 @@ namespace FamilyShield.Agent.Tests;
 /// always; the root-CA generation + CurrentUser\Root installation test is integration-only and
 /// runs only when FS_HTTPS_INTEGRATION=1 (it touches the user's certificate store).
 /// </summary>
+[Collection("Environment variables")]
 public sealed class HttpsInterceptionTests
 {
     [Fact]
@@ -54,6 +57,68 @@ public sealed class HttpsInterceptionTests
         {
             Environment.SetEnvironmentVariable(HttpsInterception.EnvVar, original);
         }
+    }
+
+    [Fact]
+    public void InsecureUpstreamOptOutIsOffByDefault()
+    {
+        var original = Environment.GetEnvironmentVariable(HttpsInterception.InsecureEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(HttpsInterception.InsecureEnvVar, null);
+            Assert.False(HttpsInterception.AllowInsecureUpstream);
+
+            Environment.SetEnvironmentVariable(HttpsInterception.InsecureEnvVar, "true");
+            Assert.False(HttpsInterception.AllowInsecureUpstream);
+
+            Environment.SetEnvironmentVariable(HttpsInterception.InsecureEnvVar, "1");
+            Assert.True(HttpsInterception.AllowInsecureUpstream);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(HttpsInterception.InsecureEnvVar, original);
+        }
+    }
+
+    [Fact]
+    public void SelfSignedUpstreamCertificateIsRejectedByDefault()
+    {
+        using var cert = SelfSignedCertificate();
+
+        // A real handshake reports the untrusted chain; a chain error must reject.
+        Assert.False(HttpsInterception.ValidateUpstreamCertificate(
+            cert, SslPolicyErrors.RemoteCertificateChainErrors, allowInsecure: false));
+
+        // Even with no reported error the certificate must build a chain against the Windows
+        // trust store — IsValid is never simply forced true.
+        Assert.False(HttpsInterception.ValidateUpstreamCertificate(
+            cert, SslPolicyErrors.None, allowInsecure: false));
+    }
+
+    [Fact]
+    public void InsecureOptOutAcceptsTheSameSelfSignedUpstreamCertificate()
+    {
+        using var cert = SelfSignedCertificate();
+
+        Assert.True(HttpsInterception.ValidateUpstreamCertificate(
+            cert, SslPolicyErrors.RemoteCertificateChainErrors, allowInsecure: true));
+        Assert.True(HttpsInterception.ValidateUpstreamCertificate(
+            cert, SslPolicyErrors.RemoteCertificateNameMismatch, allowInsecure: true));
+    }
+
+    [Fact]
+    public void MissingUpstreamCertificateIsRejectedEvenWithoutOptOut()
+    {
+        Assert.False(HttpsInterception.ValidateUpstreamCertificate(
+            null, SslPolicyErrors.RemoteCertificateNotAvailable, allowInsecure: false));
+    }
+
+    private static X509Certificate2 SelfSignedCertificate()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=selfsigned.example", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
     }
 
     [Fact]

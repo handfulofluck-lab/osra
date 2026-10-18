@@ -7,8 +7,6 @@ namespace FamilyShield.Agent.Services;
 public sealed class RuleSyncService : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
-    private static readonly string ParentPin =
-        Environment.GetEnvironmentVariable("DESKTOP_PARENT_PIN") ?? "0000";
 
     private readonly ILogger<RuleSyncService> _log;
     private readonly LocalRuleStore _store;
@@ -17,6 +15,13 @@ public sealed class RuleSyncService : BackgroundService
 
     // Feature #22: at most one pending wind-down; a newer wind_down or an unlock cancels it.
     private CancellationTokenSource? _windDownCts;
+
+    // Test seam: production shows the real LockOverlay; tests capture the call instead of
+    // starting the WinForms message loop. Returns false when the overlay refused to arm.
+    internal Func<string, string, string, bool> ShowOverlay = LockOverlay.ShowIfPinned;
+
+    /// <summary>The last lock/pause/wind_down that was refused for want of a parent PIN, or null.</summary>
+    internal string? LastArmRefusal { get; private set; }
 
     // internal so wind_down scheduling is unit-testable: tests substitute the delay instead of
     // waiting real minutes (NOTE: defaulting to Task.Delay keeps production behaviour).
@@ -223,9 +228,13 @@ public sealed class RuleSyncService : BackgroundService
             case "lock":
                 // Agent-owned overlay (not LockWorkStation) so the parent's Unlock command
                 // can actually dismiss it; the child cannot bypass it without the PIN.
+                // Audit finding 1: no PIN means no restriction — refuse rather than use a default.
                 _log.LogInformation("Command: lock");
-                LockOverlay.Show(ParentPin, "OSRA — Locked",
-                    "This PC was locked by a parent. Ask a parent to enter the PIN.");
+                if (TryGetParentPin("lock", out var lockPin))
+                {
+                    ShowOverlay(lockPin, "OSRA — Locked",
+                        "This PC was locked by a parent. Ask a parent to enter the PIN.");
+                }
                 break;
             case "unlock":
                 _log.LogInformation("Command: unlock");
@@ -235,8 +244,11 @@ public sealed class RuleSyncService : BackgroundService
             case "pause":
                 // Same overlay mechanics as lock with paused messaging; resumable via "resume".
                 _log.LogInformation("Command: pause");
-                LockOverlay.Show(ParentPin, "OSRA — Paused",
-                    "This PC was paused by a parent. Ask a parent to resume it or enter the PIN.");
+                if (TryGetParentPin("pause", out var pausePin))
+                {
+                    ShowOverlay(pausePin, "OSRA — Paused",
+                        "This PC was paused by a parent. Ask a parent to resume it or enter the PIN.");
+                }
                 break;
             case "resume":
                 _log.LogInformation("Command: resume");
@@ -269,8 +281,14 @@ public sealed class RuleSyncService : BackgroundService
             case "wind_down":
                 // Feature #22: warn now (log heads-up — desktop has no notification center
                 // dependency), then lock after N minutes. A newer wind_down replaces the
-                // pending one and unlock cancels it.
-                if (ParseMinutes(payload) is > 0 and var windDown)
+                // pending one and unlock cancels it. Refused without a parent PIN, because the
+                // lock it ends in must be dismissable only by that PIN.
+                var windDown = ParseMinutes(payload);
+                if (windDown <= 0)
+                {
+                    _log.LogWarning("Command: wind_down with missing/invalid minutes; ignored");
+                }
+                else if (TryGetParentPin("wind_down", out _))
                 {
                     _log.LogInformation("Command: wind_down; screen will lock in {Minutes} min", windDown);
                     _windDownCts?.Cancel();
@@ -278,10 +296,6 @@ public sealed class RuleSyncService : BackgroundService
                     var cts = new CancellationTokenSource();
                     _windDownCts = cts;
                     _ = WindDownAfterAsync(TimeSpan.FromMinutes(windDown), cts.Token);
-                }
-                else
-                {
-                    _log.LogWarning("Command: wind_down with missing/invalid minutes; ignored");
                 }
                 break;
             case "rules_updated":
@@ -307,6 +321,29 @@ public sealed class RuleSyncService : BackgroundService
         };
     }
 
+    /// <summary>
+    /// Resolves the configured parent PIN for an arming action. With none configured the action is
+    /// refused and logged at error level (audit finding 1: never fall back to a default PIN).
+    /// </summary>
+    private bool TryGetParentPin(string action, out string pin)
+    {
+        var configured = ParentPinPolicy.Normalize(_config.ParentPin);
+        if (configured is not null)
+        {
+            pin = configured;
+            LastArmRefusal = null;
+            return true;
+        }
+
+        pin = string.Empty;
+        LastArmRefusal = action;
+        _log.LogError(
+            "Refusing to {Action}: no parent PIN is configured. Set parentPin in {Config} to a {Min}-{Max} " +
+            "digit PIN, or set DESKTOP_PARENT_PIN and restart once; OSRA does not use a default PIN.",
+            action, AgentConfig.FileName, ParentPinPolicy.MinLength, ParentPinPolicy.MaxLength);
+        return false;
+    }
+
     private void CancelWindDown()
     {
         _windDownCts?.Cancel();
@@ -325,7 +362,10 @@ public sealed class RuleSyncService : BackgroundService
             return; // superseded by a newer wind_down or cancelled by unlock
         }
         _log.LogInformation("Wind-down elapsed; locking the screen");
-        LockOverlay.Show(ParentPin, "OSRA", "Wind-down: screen locked.");
+        if (TryGetParentPin("wind_down", out var pin))
+        {
+            ShowOverlay(pin, "OSRA", "Wind-down: screen locked.");
+        }
     }
 
     private async Task RefreshRulesAsync()

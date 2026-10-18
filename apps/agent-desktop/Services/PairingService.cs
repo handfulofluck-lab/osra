@@ -15,13 +15,22 @@ public static class PairingService
 
     /// <summary>
     /// Claims <paramref name="code"/> at <paramref name="apiBase"/> and maps a 201 response to a new
-    /// <see cref="AgentConfig"/> (not yet persisted). Returns null when the request is rejected or the
-    /// response is unusable; network errors propagate to the caller for message display.
+    /// <see cref="AgentConfig"/> (not yet persisted). <paramref name="parentPin"/> is the per-install
+    /// PIN the parent enters (or is shown once) at pairing; a claim without a well-formed PIN is
+    /// rejected, because an agent with no PIN refuses to arm lock/bedtime/screen-time. Returns null
+    /// when the request is rejected or the response is unusable; network errors propagate to the
+    /// caller for message display.
     /// </summary>
-    public static async Task<AgentConfig?> ClaimAsync(string apiBase, string code, string platform = "windows", CancellationToken ct = default)
+    public static async Task<AgentConfig?> ClaimAsync(
+        string apiBase,
+        string code,
+        string platform = "windows",
+        string? parentPin = null,
+        CancellationToken ct = default)
     {
         var baseUrl = (apiBase ?? string.Empty).Trim().TrimEnd('/');
-        if (baseUrl.Length == 0 || string.IsNullOrWhiteSpace(code)) return null;
+        var pin = ParentPinPolicy.Normalize(parentPin);
+        if (baseUrl.Length == 0 || string.IsNullOrWhiteSpace(code) || pin is null) return null;
 
         Uri baseUri;
         try
@@ -57,6 +66,7 @@ public static class PairingService
             DeviceId = payload.DeviceId,
             ChildId = payload.ChildId,
             HmacSecret = payload.HmacSecret,
+            ParentPin = pin,
         };
     }
 

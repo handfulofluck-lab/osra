@@ -27,6 +27,16 @@ if (config is null)
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddSingleton(config);
+
+// Audit finding 1: a lock/bedtime/screen-time restriction needs a per-install parent PIN; there is
+// no default. Say so at startup, because the enforcement services will refuse to arm (and log it).
+if (ParentPinPolicy.Normalize(config.ParentPin) is null)
+{
+    Console.Error.WriteLine(
+        "OSRA: WARNING — no parent PIN is configured. Lock, bedtime and screen-time will NOT arm " +
+        $"until the parent sets one (parentPin in {AgentConfig.FileName}, or DESKTOP_PARENT_PIN " +
+        "on the next start).");
+}
 builder.Services.AddHttpClient<ApiClient>(c =>
     // NOTE: config.ApiBase already carries the API_BASE env override (see AgentConfig.Load).
     c.BaseAddress = new Uri(config.ApiBase ?? "http://localhost:3000"));

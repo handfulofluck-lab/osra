@@ -28,7 +28,8 @@ that requires a rooted device or a corporate MDM:
   limits, routines, bedtime windows) — no root, no device-owner mode required for the
   test build.
 - **A real Windows agent** — local filtering proxy with SafeSearch rewrite, process
-  blocking, screen-time overlay, bedtime workstation lock, opt-in HTTPS inspection.
+  blocking, screen-time overlay, bedtime workstation lock, opt-in HTTPS inspection
+  (upstream certificates validated by default).
 - **AI that helps parents talk to their kids** — WhatsApp/social concern detection with
   bounded, encrypted snippets (not full-chat surveillance) and conversation-coach cards
   in English and العربية.
@@ -115,7 +116,7 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 | API vitest | routes, auth, token hygiene, blocklists, content | 205/205 |
 | Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568 | 94/94, analyze clean |
 | Android JVM tests | rule engine, counters, monitored apps, HMAC logic | 151/151 |
-| Desktop xunit | Windows agent services | 170/170 |
+| Desktop xunit | Windows agent services | 225/225 (2026-10-18) |
 | AI pytest | classifier + API smoke | 21 passed |
 | Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 50/50 |
 | Hardware (physical device) | first-run crash, FGS start, location upload, overlays | procedure in [`docs/TESTING.md`](docs/TESTING.md) §5 |
@@ -201,7 +202,17 @@ verified where it was written is stated as such. Details:
 - Raw activity, browsing, social and location rows are kept **90 days** (rollups one year) by a
   nightly job — a global setting today, not per family (ADR-0013).
 - Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the production path. HTTPS
-  inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`).
+  inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`); it validates the upstream certificate chain
+  and host name by default, and while enabled the agent mints per-site certificates from its own root
+  CA, so *traffic decryption* is only as trustworthy as that local root. A disposable test machine may
+  set `FS_HTTPS_INSPECT_ALLOW_INSECURE=1` to accept any upstream certificate — it is off by default and
+  logs a loud warning; never set it on a family PC.
+- The Windows parent PIN is **per install and has no default**. The parent chooses it in the pairing
+  window (4–8 digits; `0000` is refused) and it is stored beside the device JWT/HMAC secret in
+  `agent.config.json`. A pre-existing install that only set `DESKTOP_PARENT_PIN` adopts that value once;
+  if it was the old literal `0000`, the value is treated as unset. With no PIN configured, lock,
+  bedtime and screen-time **refuse to arm** and say so in the agent log — a PC cannot be locked into a
+  PIN that anyone can guess.
 - Release APKs are minified, HTTPS-only and signed with the upload key when `OSRA_UPLOAD_KEYSTORE*` is
   set (debug key otherwise); the **debug** build is what pairs against LAN / `adb reverse` servers.
   Store listing, AABs, privacy policy and permission declarations are
