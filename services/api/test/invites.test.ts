@@ -176,6 +176,53 @@ describe("family invites (Feature #13)", () => {
     await app.close();
   });
 
+  it("accept invalidates sessions minted for the previous family (invalid-before epoch)", async () => {
+    const app = await buildApp(inviteRoutes, "/v1/family");
+    store.set(
+      "invite:inv-1",
+      JSON.stringify({ familyId: "fam-1", email: "mom@example.com", role: "co-parent", permissions: [] }),
+    );
+    prismaMock.familyInvite.findUnique.mockResolvedValue(INVITE_ROW);
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-2",
+      familyId: "fam-2",
+      email: "mom@example.com",
+      role: "owner",
+      passwordHash: "secret",
+      mfaSecret: null,
+    });
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-2", familyId: "fam-1", role: "co-parent", permissions: [] });
+    prismaMock.familyInvite.update.mockResolvedValue({ ...INVITE_ROW, status: "accepted" });
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", name: "The Family" });
+    prismaMock.familyInvite.findMany.mockResolvedValue([]);
+
+    const oldIat = Math.floor(Date.now() / 1000) - 5;
+    const oldToken = app.jwt.sign(
+      { sub: "parent-2", familyId: "fam-2", role: "parent", jti: "cccccccccccccccccccccccccccccccc", iat: oldIat },
+      { expiresIn: "7d" },
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/family/invites/inv-1/accept",
+      headers: { authorization: `Bearer ${oldToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const epoch = Number(store.get("auth:invalid-before:parent-2"));
+    expect(epoch).toBeGreaterThanOrEqual(oldIat);
+    // The freshly minted token was issued after the epoch, so it stays live.
+    const freshClaims = app.jwt.decode(res.json().token) as { iat: number; familyId: string };
+    expect(freshClaims.familyId).toBe("fam-1");
+    expect(freshClaims.iat).toBeGreaterThanOrEqual(epoch);
+    const fresh = await app.inject({ method: "GET", url: "/v1/family/invites", headers: { authorization: `Bearer ${res.json().token}` } });
+    expect(fresh.statusCode).toBe(200);
+    // The token minted for the previous family is dead on a parent-gated route.
+    const stale = await app.inject({ method: "GET", url: "/v1/family/invites", headers: { authorization: `Bearer ${oldToken}` } });
+    expect(stale.statusCode).toBe(401);
+    expect(stale.json().error).toBe("session_revoked");
+    await app.close();
+  });
+
   it("accept rejects an email mismatch with 403", async () => {
     const app = await buildApp(inviteRoutes, "/v1/family");
     store.set("invite:inv-1", JSON.stringify({ familyId: "fam-1", email: "mom@example.com", role: "co-parent", permissions: [] }));

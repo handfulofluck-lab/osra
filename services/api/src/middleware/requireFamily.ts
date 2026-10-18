@@ -100,13 +100,15 @@ export async function requireParent(req: FastifyRequest, reply: FastifyReply): P
 export const PERMISSIONS = ["rules", "alerts", "location", "social", "devices"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-type ParentRoleRow = { id: string; role: string; permissions: string[] };
+type ParentRoleRow = { id: string; role: string; permissions: string[]; familyId: string };
 
 async function loadParentRole(req: FastifyRequest): Promise<ParentRoleRow | null> {
   const cached = (req as unknown as { parentRole?: ParentRoleRow | null }).parentRole;
   if (cached !== undefined) return cached;
   const user = req.user as { sub?: string } | undefined;
-  const row = user?.sub ? await prisma.parent.findUnique({ where: { id: user.sub }, select: { id: true, role: true, permissions: true } }) : null;
+  const row = user?.sub
+    ? await prisma.parent.findUnique({ where: { id: user.sub }, select: { id: true, role: true, permissions: true, familyId: true } })
+    : null;
   (req as unknown as { parentRole?: ParentRoleRow | null }).parentRole = row;
   return row;
 }
@@ -146,19 +148,45 @@ export function requirePermission(permission: Permission) {
  * authenticated parent's family (403 otherwise, 401 without a JWT), and attaches
  * the resource to the request as `req.<model>`. With `deviceAccess: "own-child"` a device
  * token is also confined to the child its Device row belongs to (403 `cross_child_forbidden`).
+ * For parent tokens the family is read from the current Parent row (and the session epoch is
+ * checked), so a token minted for a family the parent has since left cannot be reused.
  */
 export function requireFamily({ param = "id", source = "params", model, deviceAccess = "family" }: RequireFamilyOptions) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    let user = req.user as { familyId?: string; role?: string; childId?: string } | undefined;
+    let user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; childId?: string } | undefined;
     if (!user?.familyId) {
       try {
         await req.jwtVerify();
-        user = req.user as { familyId?: string; role?: string; childId?: string };
+        user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; childId?: string };
       } catch {
         await reply.code(401).send({ error: "unauthorized" });
         return;
       }
     }
+
+    // The token's `familyId` claim is a snapshot from minting time. A parent whose family changed
+    // (invite accept) or whose sessions were revoked must not keep the old scope, so for parent
+    // tokens the CURRENT Parent row is authoritative — the claim is only a cross-check.
+    let familyId = user?.familyId;
+    if (user?.role === "parent") {
+      if (!(await isParentSessionLive(user))) {
+        await reply.code(401).send({ error: "session_revoked" });
+        return;
+      }
+      const parent = await loadParentRole(req);
+      if (!parent) {
+        await reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+      if (user.familyId !== parent.familyId) {
+        // Stale token: revoked-but-not-yet-expired, or minted before a family move. 403 keeps the
+        // family-isolation contract (the caller is not a member of the family it names).
+        await reply.code(403).send({ error: "forbidden" });
+        return;
+      }
+      familyId = parent.familyId;
+    }
+
     const id =
       source === "params"
         ? (req.params as Record<string, string>)[param]
@@ -174,7 +202,7 @@ export function requireFamily({ param = "id", source = "params", model, deviceAc
       await reply.code(404).send({ error: "not_found" });
       return;
     }
-    if (resourceFamilyId(resource) !== user.familyId) {
+    if (resourceFamilyId(resource) !== familyId) {
       await reply.code(403).send({ error: "forbidden" });
       return;
     }

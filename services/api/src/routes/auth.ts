@@ -29,6 +29,16 @@ const LoginSchema = z.object({
 });
 
 /**
+ * Re-authentication for replacing an already-enrolled TOTP secret: the account password (preferred)
+ * or a code from the current authenticator. Either one proves the person holding the session is the
+ * parent; without it a stolen session could swap the second factor for its own.
+ */
+const MfaEnrollSchema = z.object({
+  password: z.string().min(1).optional(),
+  code: z.string().regex(/^\d{6}$/).optional(),
+});
+
+/**
  * Verify a login TOTP code with replay protection (review 3.1): the accepted
  * time-step counter is stored per parent, so a captured code cannot be reused
  * within its validity window.
@@ -205,15 +215,41 @@ export async function authRoutes(app: FastifyInstance) {
     }
   };
 
-  /** Generate a TOTP secret for the authenticated parent and return an otpauth URL. */
-  app.post("/mfa/enroll", { preHandler: requireJwt, config: RL }, async (req) => {
+  /**
+   * Generate a TOTP secret for the authenticated parent and return an otpauth URL.
+   *
+   * First-time enrolment needs only the session (onboarding). Replacing an existing secret requires
+   * re-authentication with the account password or a current TOTP code — otherwise a bearer token
+   * alone would let whoever holds it rebind the second factor and lock the parent out.
+   */
+  app.post("/mfa/enroll", { preHandler: requireJwt, config: RL }, async (req, reply) => {
     const user = req.user as { sub: string };
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!parent) return reply.code(404).send({ error: "parent_not_found" });
+
+    if (parent.mfaSecret) {
+      const parsed = MfaEnrollSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+      let reauthenticated = false;
+      if (parsed.data.password) {
+        try {
+          reauthenticated = await argon2.verify(parent.passwordHash, parsed.data.password);
+        } catch (err) {
+          req.log.warn({ err }, "MFA enrol re-authentication password check failed");
+        }
+      }
+      if (!reauthenticated && parsed.data.code) {
+        reauthenticated = await verifyTotpFresh(parent.id, parent.mfaSecret, parsed.data.code);
+      }
+      if (!reauthenticated) return reply.code(401).send({ error: "reauth_required" });
+    }
+
     const secret = generateTotpSecret();
-    const parent = await prisma.parent.update({
-      where: { id: user.sub },
+    const updated = await prisma.parent.update({
+      where: { id: parent.id },
       data: { mfaSecret: encryptSecret(secret) },
     });
-    const otpauthUrl = `otpauth://totp/OSRA:${encodeURIComponent(parent.email)}?secret=${secret}&issuer=OSRA`;
+    const otpauthUrl = `otpauth://totp/OSRA:${encodeURIComponent(updated.email)}?secret=${secret}&issuer=OSRA`;
     return { secret, otpauthUrl };
   });
 
