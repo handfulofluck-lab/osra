@@ -13,10 +13,10 @@ import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
-import com.familyshield.agent.enforcement.AndroidPackageFacts
 import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
+import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
@@ -39,13 +39,14 @@ class AccessibilityMonitorService : AccessibilityService() {
     @Inject lateinit var consentState: ConsentState
     @Inject lateinit var pinStore: ParentPinStore
 
+    /** Issue #83 review F1 / #165: what the OS says a package is, shared with [AppBlocker]'s overlay guard. */
+    @Inject lateinit var packageFacts: PackageFacts
+
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
 
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
     private var loggedStartDecision: LocationStartPolicy.Decision? = null
-
-    private val packageFacts by lazy { AndroidPackageFacts(this) }
 
     /** Issue #83 review F1: the dialer/system flags are cached for the hot path, so refresh on package changes. */
     private val packageChangeReceiver = object : BroadcastReceiver() {

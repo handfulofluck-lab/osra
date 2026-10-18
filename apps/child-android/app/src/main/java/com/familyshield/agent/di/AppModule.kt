@@ -2,6 +2,8 @@ package com.familyshield.agent.di
 
 import android.app.admin.DevicePolicyManager
 import android.content.Context
+import com.familyshield.agent.enforcement.AndroidPackageFacts
+import com.familyshield.agent.enforcement.PackageFacts
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,4 +21,13 @@ object AppModule {
     @Singleton
     fun provideDevicePolicyManager(@ApplicationContext context: Context): DevicePolicyManager =
         context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+
+    /**
+     * One cached view of what the OS calls a package (issue #165): the lock and the block overlay ask
+     * on every window event, so the role/HOME lookups are shared and invalidated together.
+     */
+    @Provides
+    @Singleton
+    fun providePackageFacts(@ApplicationContext context: Context): PackageFacts =
+        AndroidPackageFacts(context)
 }

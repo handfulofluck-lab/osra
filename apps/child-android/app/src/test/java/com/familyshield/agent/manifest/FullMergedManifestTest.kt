@@ -53,11 +53,12 @@ class FullMergedManifestTest {
     }
 
     @Test
-    fun `full merged manifest keeps isMonitoringTool and the dialer queries`() {
+    fun `full merged manifest keeps isMonitoringTool and the required queries`() {
         val violations = PlayManifestPolicy.monitoringViolations(merged) +
             PlayManifestPolicy.queryViolations(merged)
         assertTrue(
-            "the Full artefact must carry the same monitoring declaration and dialer queries as Play " +
+            "the Full artefact must carry the same monitoring declaration and package-visibility " +
+                "queries as Play " +
                 "(ADR-0021 decisions 3 and 5; Play Protect reads the flag on sideloads):\n" +
                 violations.joinToString("\n"),
             violations.isEmpty(),

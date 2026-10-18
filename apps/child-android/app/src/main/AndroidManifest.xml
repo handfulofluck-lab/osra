@@ -2,13 +2,21 @@
     <!--
       ADR-0021: package visibility is declared narrowly instead of QUERY_ALL_PACKAGES (which Play does
       not list parental control for). The two dialer intents are load-bearing: AndroidPackageFacts resolves
-      the emergency/DIAL handlers to keep the lock off the dialer (#83, S1). Remove them and the safety
-      exemption silently weakens on the store build.
+      the emergency/DIAL handlers to keep the lock off the dialer (#83, S1). The HOME intent is
+      load-bearing for #165: it is how the block overlay learns the launcher's package on an OEM the
+      static table does not name. Remove any of them and a safety exemption silently weakens on the
+      store build.
     -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Issue #165: the current HOME handler is exempt from the block overlay by role, because an
+             OEM launcher's package name is not knowable in advance (AndroidPackageFacts.homePackages). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
         </intent>
         <intent>
             <action android:name="com.android.phone.EmergencyDialer.DIAL" />

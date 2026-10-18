@@ -1,6 +1,7 @@
 package com.familyshield.agent.data
 
 import com.familyshield.agent.data.db.UsageEventDao
+import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.RuleSetDto
 import com.squareup.moshi.Moshi
@@ -68,26 +69,23 @@ class RuleRepository @Inject constructor(
 
     /** Returns the decision for [packageId] based on the cached rules, the blocklist and today's usage counters. */
     fun evaluate(packageId: String): Decision {
-        // ADR-0008 §3: no enforcement while the parent has withdrawn consent.
-        if (consent.isPaused()) return Decision.ALLOW
         val ruleSet = cached
-        if (ruleSet == null) {
-            // AND-03: Fail-closed when paired but no rules are cached yet.
-            if (settings.isPairedSync()) {
-                return if (isEssentialApp(packageId)) Decision.ALLOW else Decision.BLOCK
-            }
-            return Decision.ALLOW
+        return decide(
+            packageId = packageId,
+            ruleSet = ruleSet,
+            paired = settings.isPairedSync(),
+            consentPaused = consent.isPaused(),
+        ) { rules ->
+            engine.evaluate(
+                rules,
+                packageId,
+                ZonedDateTime.now(),
+                counters.snapshot(System.currentTimeMillis()),
+                blocklist.apps(),
+                pausedInternet = pausedInternet,
+                bonusMinutes = bonusMinutes(),
+            )
         }
-        val snapshot = counters.snapshot(System.currentTimeMillis())
-        return engine.evaluate(
-            ruleSet,
-            packageId,
-            ZonedDateTime.now(),
-            snapshot,
-            blocklist.apps(),
-            pausedInternet = pausedInternet,
-            bonusMinutes = bonusMinutes(),
-        )
     }
 
     /** Enables or clears pause-the-internet (Feature #11); while paused every app except alwaysAllowedApps is blocked. */
@@ -217,28 +215,37 @@ class RuleRepository @Inject constructor(
     }
 
     companion object {
-        private val ESSENTIAL_PACKAGES = setOf(
-            "com.familyshield.agent",
-            "com.android.systemui",
-            "com.android.settings",
-            "com.android.phone",
-            "com.android.server.telecom",
-            "com.android.dialer",
-            "com.google.android.dialer",
-            "com.samsung.android.dialer",
-            "com.android.launcher3",
-            "com.google.android.apps.nexuslauncher",
-            "com.sec.android.app.launcher",
-        )
+        /**
+         * The launcher, the system UI and the call surfaces are exempt from every block rule, not only
+         * from fail-closed (issue #165). The list lives in [EssentialPackages] so the lock, the
+         * decision path and the overlay guard cannot drift apart.
+         */
+        fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
 
         /**
-         * Returns true if [packageId] is an essential system app exempt from fail-closed blocking.
+         * Pure core of [evaluate] (JVM-tested, issue #165), in order: consent, then the essential
+         * screens, then fail-closed for an empty cache, then [rulesDecision] for the real rules.
+         *
+         * The order is the fix. Before it, an empty cache failed closed with the essential list and
+         * the rules path never asked it, so a bedtime rule answered BLOCK for the home screen — the
+         * overlay covered the launcher and the child could not press Home, reach the dialer, or see
+         * what would still work. An essential screen is now ALLOW before any rule is consulted.
          */
-        fun isEssentialApp(packageId: String): Boolean {
-            if (packageId in ESSENTIAL_PACKAGES) return true
-            if (packageId.startsWith("com.familyshield.")) return true
-            if (packageId.endsWith(".dialer") || packageId.endsWith(".telecom")) return true
-            return false
+        internal fun decide(
+            packageId: String,
+            ruleSet: RuleSetDto?,
+            paired: Boolean,
+            consentPaused: Boolean,
+            rulesDecision: (RuleSetDto) -> Decision,
+        ): Decision {
+            // ADR-0008 §3: no enforcement while the parent has withdrawn consent.
+            if (consentPaused) return Decision.ALLOW
+            if (EssentialPackages.isEssential(packageId)) return Decision.ALLOW
+            if (ruleSet == null) {
+                // AND-03: Fail-closed when paired but no rules are cached yet — for apps only.
+                return if (paired) Decision.BLOCK else Decision.ALLOW
+            }
+            return rulesDecision(ruleSet)
         }
     }
 }
