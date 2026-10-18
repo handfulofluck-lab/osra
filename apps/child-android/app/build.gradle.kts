@@ -98,6 +98,21 @@ kapt {
     correctErrorTypes = true
 }
 
+/**
+ * ADR-0021's merged-manifest gate (`PlayMergedManifestTest`, `FullMergedManifestTest`) reads the
+ * manifest AGP produced after merging, `app/build/intermediates/merged_manifests/<flavor>Debug/…`.
+ * `process<Flavor>DebugManifest` is what writes it, and the unit-test task does not otherwise depend on
+ * it — so without the wiring below the gate would skip on a clean build (which is how the hole it closes
+ * stayed invisible). Both debug flavours are merged for either test task because each gate class reads
+ * its own artefact, and a missing artefact is then a real failure instead of a routine skip.
+ */
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    val variant = Regex("""^test(Play|Full)(Debug)UnitTest$""").matchEntire(name) ?: return@configureEach
+    for (flavor in listOf("Play", "Full")) {
+        dependsOn("process$flavor${variant.groupValues[2]}Manifest")
+    }
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
