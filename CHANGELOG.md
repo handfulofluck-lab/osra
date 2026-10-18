@@ -11,6 +11,40 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — a boot before location is granted no longer kills the agent (issue #128)
+- **`BootReceiver` no longer requests `LocationService` unless the app can hold a location FGS.**
+  The receiver called `ContextCompat.startForegroundService()` unconditionally; `LocationService`
+  then declined to call `startForeground()` because the permission was missing and stopped itself —
+  and the system still raised `android.app.ForegroundServiceDidNotStartInTimeException` in the
+  receiver, taking the process down on the Flip4 (Android 16, `main@7435592`). The new guard is
+  `BootReceiver.kt:53-65` calling a pure `BootStartPolicy` (`BootStartPolicy.kt:20-36`, the
+  `LockEnforcementPolicy` pattern): fine/coarse location is required, and on API 29+ — a boot is a
+  background context — so is `ACCESS_BACKGROUND_LOCATION`, the same definition of "Location (allow
+  all the time)" that `GrantChecks` shows onboarding. With location denied the receiver logs one
+  line and still schedules the workers, restores the web filter and re-raises a persisted lock.
+- **Every boot step is isolated (`BootReceiver.kt:25-44,70-72`).** Location, scheduled work, the
+  web filter and the lock re-raise each run in their own `runCatching`; a failure logs
+  `BootReceiver: boot step failed: <step>` and the remaining steps still run. Before, only the VPN
+  and lock steps were guarded — a throw from the workers or from `startForegroundService()` escaped
+  `onReceive` and killed the reboot protection.
+- **The manifest was already correct; a test now pins it.** `LocationService` declares
+  `foregroundServiceType="location"` with `FOREGROUND_SERVICE_LOCATION`, `FilterVpnService`
+  declares `specialUse` with `FOREGROUND_SERVICE_SPECIAL_USE`. `LocationService` reaches
+  `startForeground()` as the first statement of `onStartCommand` (`onCreate` only fetches the fused
+  client and creates the notification channel), so the OS deadline is not spent on setup.
+- **Tests:** `BootStartPolicyTest` (4 cases) plus one new `FlavorManifestTest` case. The
+  while-in-use-without-background case failed before the fix — fails-before run:
+  `4 tests completed, 1 failed` at `BootStartPolicyTest.kt:25` — and passes now. Gate:
+  `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assembleFullDebug assemblePlayDebug`
+  → `BUILD SUCCESSFUL in 5m 57s`, **251 tests / 0 failures in each flavour** (38 suites), both
+  debug APKs built.
+- **⚠️ Not verified on hardware in this PR:** the Flip4 was checked under the phone lease
+  (`phone-claim.ps1`, released `Clean`, no app installed): `dumpsys window` reports
+  `KeyguardServiceDelegate secure=true` and `dumpsys lock_settings` reports `CredentialType: PIN`,
+  so `BOOT_COMPLETED` is not delivered to the agent until a human unlocks it after `adb reboot`.
+  No reboot was run. The hardware row (issue #128 acceptance 1–2) stays open; the exact procedure
+  is in `docs/TESTING.md` §5.
+
 ### API — location/rules authorization: a JWT is not automatically a location writer, and a device reads only its own child
 - **`POST /v1/location/ping` now admits exactly three callers** (`services/api/src/routes/location.ts:57-98`):
   a parent JWT (`role: "parent"` **and** a `familyId`), a device JWT (`role: "device"` with `deviceId` and
