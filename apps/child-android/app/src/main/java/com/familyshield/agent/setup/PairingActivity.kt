@@ -623,6 +623,10 @@ class PairingActivity : ComponentActivity() {
         val hasCoarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (hasFine || hasCoarse) {
             try {
+                // NOTE: this is a *foreground* start — the activity is resumed when it runs — so the
+                // while-in-use grant is enough and ACCESS_BACKGROUND_LOCATION is not a precondition
+                // (issue #132). Background start sites (BootReceiver, AccessibilityMonitorService,
+                // CommandDispatcher) go through LocationStartPolicy; see LocationServiceStartSitesTest.
                 ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
             } catch (e: Exception) {
                 android.util.Log.e("PairingActivity", "Failed to start LocationService", e)

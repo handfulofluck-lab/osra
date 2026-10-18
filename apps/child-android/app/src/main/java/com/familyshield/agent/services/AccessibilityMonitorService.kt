@@ -1,10 +1,13 @@
 package com.familyshield.agent.services
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
@@ -38,6 +41,9 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+
+    /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
+    private var loggedStartDecision: LocationStartPolicy.Decision? = null
 
     private val packageFacts by lazy { AndroidPackageFacts(this) }
 
@@ -83,23 +89,47 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
     }
 
+    /**
+     * Issue #132: starts `LocationService` only when [LocationStartPolicy] says the app may hold a
+     * location foreground service. The accessibility service runs in the background even while the
+     * screen is on, so fine/coarse alone (a while-in-use grant) is not enough on Android 10+:
+     * requesting the FGS anyway is the #128 failure in a different call site. A refusal is logged
+     * with its reason and retried on the next 60 s tick — revocation or a re-grant changes the
+     * answer without a restart.
+     */
     private fun ensureLocationServiceRunning() {
         val now = System.currentTimeMillis()
         if (now - lastLocationCheckMs < 60_000L) return
         lastLocationCheckMs = now
 
-        if (!LocationService.isServiceRunning && settings.deviceTokenSync() != null) {
-            val hasFine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val hasCoarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (hasFine || hasCoarse) {
-                try {
-                    ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
-                } catch (e: Exception) {
-                    // Gracefully ignore if OS restricts background FGS start
-                }
+        val decision = locationStartDecision(
+            isServiceRunning = LocationService.isServiceRunning,
+            paired = settings.deviceTokenSync() != null,
+            hasFineLocation = granted(Manifest.permission.ACCESS_FINE_LOCATION),
+            hasCoarseLocation = granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+            hasBackgroundLocation = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+            apiLevel = Build.VERSION.SDK_INT,
+        ) ?: return
+        if (decision != LocationStartPolicy.Decision.START) {
+            if (loggedStartDecision != decision) {
+                loggedStartDecision = decision
+                Log.i(
+                    TAG,
+                    "not starting LocationService: ${decision.reason} — the app needs fine or coarse location " +
+                        "and, on Android 10+, \"Location (allow all the time)\" (#132)",
+                )
             }
+            return
         }
+        loggedStartDecision = null
+        runCatching {
+            ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
+        }.onFailure { Log.w(TAG, "the OS refused to start LocationService", it) }
     }
+
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
     /**
      * ADR-0010 §3: when the foreground window is the OS screen that would strip protection
      * (deactivate admin / uninstall / app-info for this package), step in front of it with the
@@ -167,4 +197,31 @@ class AccessibilityMonitorService : AccessibilityService() {
     }
 
     override fun onInterrupt() = Unit
+
+    companion object {
+        private const val TAG = "AccessibilityMonitor"
+
+        /**
+         * Issue #132: [ensureLocationServiceRunning]'s decision, pure so the JVM suite holds it in
+         * the `BootStartPolicyTest` style (an [AccessibilityService] cannot be instantiated in a
+         * plain JVM test). `null` means there is nothing to start: the service is already running,
+         * or the device is not paired and a foreground service would upload nothing.
+         */
+        internal fun locationStartDecision(
+            isServiceRunning: Boolean,
+            paired: Boolean,
+            hasFineLocation: Boolean,
+            hasCoarseLocation: Boolean,
+            hasBackgroundLocation: Boolean,
+            apiLevel: Int,
+        ): LocationStartPolicy.Decision? = when {
+            isServiceRunning || !paired -> null
+            else -> LocationStartPolicy.decide(
+                hasFineLocation = hasFineLocation,
+                hasCoarseLocation = hasCoarseLocation,
+                hasBackgroundLocation = hasBackgroundLocation,
+                apiLevel = apiLevel,
+            )
+        }
+    }
 }

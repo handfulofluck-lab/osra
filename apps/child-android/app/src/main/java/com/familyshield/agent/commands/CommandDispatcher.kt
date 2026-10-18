@@ -1,16 +1,23 @@
 package com.familyshield.agent.commands
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.network.ApiService
+import com.familyshield.agent.network.dto.CommandAckDto
 import com.familyshield.agent.services.LocationService
+import com.familyshield.agent.services.LocationStartPolicy
 import com.familyshield.agent.sos.SosActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -35,12 +42,19 @@ class CommandDispatcher @Inject constructor(
     private val devicePolicyManager: DevicePolicyManager,
     private val consent: ConsentState,
     private val deviceAdmin: com.familyshield.agent.security.DeviceAdminManager,
+    private val api: ApiService,
+    private val settings: AgentSettings,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var windDownJob: Job? = null
 
-    /** Executes the command [type] with its string [data] payload; unknown types are ignored. */
-    fun dispatch(type: String, data: Map<String, String>) {
+    /**
+     * Executes the command [type] with its string [data] payload; unknown types are ignored.
+     *
+     * [commandId] is the durable queue row (`DeviceCommand.id`) when the command came from a poll;
+     * `locate_now` uses it to report a refusal the parent can see in `/commands/history`.
+     */
+    fun dispatch(type: String, data: Map<String, String>, commandId: String? = null) {
         // ADR-0008 §3: consent lifecycle commands pause/resume the whole agent.
         if (consent.onCommand(type)) {
             if (consent.isPaused()) {
@@ -62,7 +76,7 @@ class CommandDispatcher @Inject constructor(
             "sos_clear" -> sosClear()
             "stop_ring" -> Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND)
             "rules_updated" -> scope.launch { rules.refresh() }
-            "locate_now" -> locateNow()
+            "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
             // keep the overlay up until resume_internet arrives.
             "pause_internet" -> pauseInternet()
@@ -212,8 +226,34 @@ class CommandDispatcher @Inject constructor(
         )
     }
 
-    /** Asks LocationService for an immediate ping + flush. */
-    private fun locateNow() {
+    /**
+     * Asks LocationService for an immediate ping + flush.
+     *
+     * Issue #132: a poll or FCM delivery is a background context, so the location foreground service
+     * needs the background grant — fine/coarse alone is while-in-use. Starting it anyway is the
+     * #128 failure in this call site: Android 14+ refuses `startForeground()`, and at best
+     * `locate_now` dies silently with the parent told nothing. The guard runs first and the refusal
+     * is reported as a `failed` command ack keyed by [LocationStartPolicy.Decision.reason], so
+     * `/v1/devices/:id/commands/history` says `failed` with `detail.reason` instead of the command
+     * looking merely undelivered.
+     */
+    private fun locateNow(commandId: String?) {
+        val decision = locateNowDecision(
+            hasFineLocation = granted(Manifest.permission.ACCESS_FINE_LOCATION),
+            hasCoarseLocation = granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+            hasBackgroundLocation = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+            apiLevel = Build.VERSION.SDK_INT,
+        )
+        if (decision != LocationStartPolicy.Decision.START) {
+            val reason = decision.reason ?: "location_unavailable"
+            Log.w(
+                TAG,
+                "locate_now refused: $reason — a location foreground service started from the background " +
+                    "needs fine or coarse location and, on Android 10+, \"Location (allow all the time)\"",
+            )
+            reportFailedCommand(commandId, reason)
+            return
+        }
         runCatching {
             // NOTE: must be startForegroundService — LocationService calls startForeground() in
             // onStartCommand, and a plain startService() from the background (FCM/worker context)
@@ -223,6 +263,34 @@ class CommandDispatcher @Inject constructor(
                 Intent(context, LocationService::class.java)
                     .setAction(LocationService.ACTION_PING_NOW),
             )
+        }.onFailure {
+            // The OS refused the start after the grants looked right (API 31+ background-start
+            // restriction, or permission revoked in between). Say so rather than swallow it.
+            Log.w(TAG, "locate_now: the OS refused to start LocationService", it)
+            reportFailedCommand(commandId, "foreground_service_start_failed")
+        }
+    }
+
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Issue #132: best-effort `failed` ack for a command the agent could not run. The command came
+     * from a poll, so [commandId] is the durable row the parent's command history reads; the ack is
+     * fire-and-forget because the poll loop already returned and a lost ack only leaves the row
+     * `delivered`, which is the pre-fix behaviour, not a worse one.
+     */
+    private fun reportFailedCommand(commandId: String?, reason: String) {
+        if (commandId.isNullOrBlank()) return
+        scope.launch {
+            runCatching {
+                val deviceId = settings.deviceId() ?: return@runCatching
+                api.ackCommand(
+                    deviceId = deviceId,
+                    commandId = commandId,
+                    body = CommandAckDto(status = "failed", detail = mapOf("reason" to reason)),
+                )
+            }.onFailure { Log.w(TAG, "could not report failed command $commandId ($reason)", it) }
         }
     }
 
@@ -233,6 +301,23 @@ class CommandDispatcher @Inject constructor(
         private const val WIND_DOWN_NOTIFICATION_ID = 42
         private const val MIN_MINUTES = 1
         private const val MAX_MINUTES = 240
+
+        /**
+         * Issue #132: the `locate_now` pre-start gate, pure so the JVM suite holds it. A refused
+         * command reports [LocationStartPolicy.Decision.reason] to the server instead of failing
+         * silently.
+         */
+        internal fun locateNowDecision(
+            hasFineLocation: Boolean,
+            hasCoarseLocation: Boolean,
+            hasBackgroundLocation: Boolean,
+            apiLevel: Int,
+        ): LocationStartPolicy.Decision = LocationStartPolicy.decide(
+            hasFineLocation = hasFineLocation,
+            hasCoarseLocation = hasCoarseLocation,
+            hasBackgroundLocation = hasBackgroundLocation,
+            apiLevel = apiLevel,
+        )
 
         /**
          * Pure minutes parser for command payloads: returns the clamped value in 1..240, or null

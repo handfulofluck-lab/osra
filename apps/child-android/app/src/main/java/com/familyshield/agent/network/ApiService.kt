@@ -2,6 +2,7 @@ package com.familyshield.agent.network
 
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.network.dto.BlocklistPackDto
+import com.familyshield.agent.network.dto.CommandAckDto
 import com.familyshield.agent.network.dto.DeviceCommandDto
 import com.familyshield.agent.network.dto.LocationPingBatchDto
 import com.familyshield.agent.network.dto.PushTokenDto
@@ -40,6 +41,18 @@ interface ApiService {
     /** Drains pending parent commands (FCM-free polling fallback, §14.2). */
     @GET("v1/devices/{id}/commands")
     suspend fun getCommands(@Path("id") deviceId: String): List<DeviceCommandDto>
+
+    /**
+     * Reports the outcome of one delivered command (Phase 2b). Issue #132: a `locate_now` the agent
+     * refuses for a missing grant must reach the parent's `/commands/history` as `failed`, not stay
+     * `delivered` forever or vanish.
+     */
+    @POST("v1/devices/{id}/commands/{commandId}/ack")
+    suspend fun ackCommand(
+        @Path("id") deviceId: String,
+        @Path("commandId") commandId: String,
+        @Body body: CommandAckDto,
+    )
 
     /** Fetches the default blocklist pack (device JWT or parent, Feature #1). */
     @GET("v1/blocklists")

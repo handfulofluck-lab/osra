@@ -1,5 +1,7 @@
 package com.familyshield.agent.receivers
 
+import com.familyshield.agent.services.LocationStartPolicy
+
 /**
  * Issue #128: what `BootReceiver` may start after `BOOT_COMPLETED`. Pure and JVM-tested — the same
  * pattern as [com.familyshield.agent.enforcement.LockEnforcementPolicy] — because the receiver
@@ -14,11 +16,12 @@ package com.familyshield.agent.receivers
  * while-in-use grant, and Android 14+ rejects a location FGS created from the background without
  * `ACCESS_BACKGROUND_LOCATION`. This matches [com.familyshield.agent.setup.GrantChecks], which is
  * what onboarding shows the parent as "Location (allow all the time)".
+ *
+ * Issue #132 moved the rule itself to [LocationStartPolicy] so the accessibility-monitor and
+ * `locate_now` start sites share it instead of growing a second copy. This name is kept for the
+ * boot row and its tests; the implementation is the shared one.
  */
 object BootStartPolicy {
-
-    /** First API level where `ACCESS_BACKGROUND_LOCATION` is a runtime permission (Android 10). */
-    private const val BACKGROUND_LOCATION_RUNTIME_FROM = 29
 
     /**
      * Whether the receiver may request [com.familyshield.agent.services.LocationService].
@@ -30,8 +33,10 @@ object BootStartPolicy {
         hasCoarseLocation: Boolean,
         hasBackgroundLocation: Boolean,
         apiLevel: Int,
-    ): Boolean {
-        if (!hasFineLocation && !hasCoarseLocation) return false
-        return apiLevel < BACKGROUND_LOCATION_RUNTIME_FROM || hasBackgroundLocation
-    }
+    ): Boolean = LocationStartPolicy.shouldStart(
+        hasFineLocation = hasFineLocation,
+        hasCoarseLocation = hasCoarseLocation,
+        hasBackgroundLocation = hasBackgroundLocation,
+        apiLevel = apiLevel,
+    )
 }
