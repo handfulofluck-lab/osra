@@ -50,7 +50,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug` — `BUILD SUCCESSFUL`, play
   **41 suites / 264 tests / 0 failures / 0 skipped** and full the same (264 was 251 at #131; the 13 new
   cases are 4 Play + 2 Full + 7 policy fixtures); `assemblePlayDebug` produced
-  `app/build/outputs/apk/debug/app-play-debug.apk`; `node scripts/check-merged-manifest-gate.mjs` → both
+  `app/build/outputs/apk/play/debug/app-play-debug.apk`; `node scripts/check-merged-manifest-gate.mjs` → both
   result sets, 4 + 2 assertions, 0 skipped. **Fail-before**, the same command with the injected AAR:
   `20 tests completed, 2 failed` — `play merged manifest declares exactly the reviewed permission
   allow-list` and `play merged manifest declares none of the Play-forbidden permissions` — while
@@ -59,10 +59,15 @@ environment where it was written — see `docs/QA/` for the verification state.
   `READ_PHONE_STATE`, `WRITE_EXTERNAL_STORAGE`, `READ_EXTERNAL_STORAGE` `IMPLIED … reason:
   com.example.readsmsfixture has a targetSdkVersion < 4` — four permissions from one dependency, none of
   them in any source manifest.
-- **Not verified here.** CI has not run this branch (the workflow change is only exercised after a push);
-  the gate is asserted on the **debug** merged manifests, which is the variant the unit-test tasks build —
-  a release-only dependency (`releaseImplementation`) would merge into the release manifest and is not
-  covered by a unit test, though no such dependency exists today.
+- **CI** (PR #157, `94ec897`): all seven checks pass; `child-android` **pass in 6m 21s** — the gradle step
+  `BUILD SUCCESSFUL in 6m 15s` (168 tasks, cold cache) and the new step printed
+  `merged-manifest gate: 2 result set(s) checked, all assertions ran and passed`. So the step is not only
+  configured but executed, with both merged artefacts present.
+- **Not verified here.** No independent re-run yet — every number above is the author's (`AGENTS.md`
+  §6.5(2)); the tester should repeat the two gate commands on this branch. The gate is asserted on the
+  **debug** merged manifests, which is the variant the unit-test tasks build — a release-only dependency
+  (`releaseImplementation`) would merge into the release manifest and is not covered by a unit test, though
+  no such dependency exists today.
 
 ### Parent app — pairing code rendered as a QR (`plan 3.2`, first half)
 - **What changed.** The child-detail device-card pair action (`Pair a device`, Overview tab) now
