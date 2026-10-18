@@ -118,8 +118,17 @@ asserts now.
 That is PASS or FAIL from Postgres, and it is the property the parent actually depends on. Backdating
 `lastSeen` in the database would measure the job, not the product, so the probe waits the real elapsed
 window; a 5-minute window is acceptable for this gate row, and a run records in the row's evidence which
-window it used. Two further rows #127's decision proposes are kept separate, so each can be argued on its
-own:
+window it used.
+
+**Amendment (#166, 2026-10-19) — the quote above stays as accepted; the floor it names moved.** A
+5-minute window equals the agent's stationary ping (`LocationService.kt:430`) and is shorter than one
+telemetry interval (`WorkScheduler.kt:48`), so a healthy phone could be flagged between reports. The
+server now clamps `DEVICE_SILENT_MINUTES` to the safe minimum 30 (two telemetry intervals) and warns at
+boot; the **test-only** `DEVICE_SILENT_ALLOW_TIGHT=1` keeps the old 5-minute floor for this row and logs a
+loud warning. The row's assertion — one alert, `Device.status = "offline"`, real elapsed window — is
+unchanged; `docs/TESTING.md` §5f carries the command.
+
+Two further rows #127's decision proposes are kept separate, so each can be argued on its own:
 - **row 3b** — force-stop *then* `adb reboot`: the agent must be running again within 60 s of boot. This
   one *is* a self-recovery requirement and it waits on #128's `BootStartPolicy` fix (landed; not yet
   measured on hardware).
