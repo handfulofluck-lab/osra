@@ -1,5 +1,6 @@
 package com.familyshield.agent.comms
 
+import com.familyshield.agent.BuildConfig
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -59,6 +60,9 @@ class CommsLogger @Inject constructor(
 
     /** Registers the content observers and starts the periodic flush loop (idempotent). */
     fun start() {
+        // ADR-0021: the Play artefact declares neither READ_CALL_LOG nor READ_SMS, so it must not
+        // register the observers either — nothing to read, and the registration is what a reviewer sees.
+        if (!BuildConfig.CAPTURE_CALL_SMS) return
         if (started) return
         started = true
         val resolver = context.contentResolver

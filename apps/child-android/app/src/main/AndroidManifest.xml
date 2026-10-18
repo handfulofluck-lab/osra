@@ -1,4 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      ADR-0021: package visibility is declared narrowly instead of QUERY_ALL_PACKAGES (which Play does
+      not list parental control for). The two dialer intents are load-bearing: AndroidPackageFacts resolves
+      the emergency/DIAL handlers to keep the lock off the dialer (#83, S1). Remove them and the safety
+      exemption silently weakens on the store build.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="com.android.phone.EmergencyDialer.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+    </queries>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
@@ -8,18 +26,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <!-- Needed on API 33+ for the foreground location notification to be shown. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <!-- Feature #6: call log + SMS read (dangerous → runtime prompt from the pairing checklist). -->
-    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
-    <uses-permission android:name="android.permission.READ_SMS"/>
 
     <application
         android:name=".FamilyShieldApp"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- ADR-0021 / Play "Monitoring apps": required declaration, value child_monitoring. -->
+        <meta-data android:name="isMonitoringTool" android:value="child_monitoring" />
         <service android:name=".services.AccessibilityMonitorService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">

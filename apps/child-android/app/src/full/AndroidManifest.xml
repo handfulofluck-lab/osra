@@ -8,6 +8,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+    <!--
+      ADR-0021: call-log and SMS reading are Full-only. Play's SMS/Call-Log policy has no exception for
+      parental control ("family or device locator" is explicitly listed as an invalid use), so the Play
+      artefact must not declare these at all.
+    -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_SMS" />
 
     <application>
         <service
