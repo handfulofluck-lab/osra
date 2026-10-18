@@ -11,6 +11,16 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — the F8 revocation check no longer races the clock (issue #110)
+- `qa-probe` F8 failed once and passed on re-run with identical code: the check waited a flat 1100 ms before
+  re-logging in, but `iat` has **one-second resolution**, so a login could still land in the revocation
+  epoch and be revoked on arrival. It now waits for the wall clock to **cross a second boundary**
+  (`waitForNextSecond`) and asserts the **cause** — the fresh token actually works against
+  `GET /v1/family/me` — instead of trusting the instant of the login. The evidence line gained
+  `freshTokenUsable=…`, so a future failure names which half broke.
+- Three consecutive probe runs after the change: F8 PASS each time, **109 passed · 0 failed**. The issue's
+  acceptance (twenty consecutive runs) is left to CI/Antigravity with the command in the issue.
+
 ### Parent app — the digest timezone is a setting, not a hidden default (ADR-0020, plan 2.2)
 - **Digest preferences now shows and sets the family's timezone** (a curated list of the markets OSRA ships
   to, UTC included), reads it from `GET /v1/family/me`, and saves a change with `PATCH /v1/family/me`.

@@ -12,6 +12,9 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+/** Resolve just after the wall clock crosses a second boundary (#110: `iat` is per-second). */
+const waitForNextSecond = () => new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 60));
+
 
 // Node 20 hides the global WebSocket behind a flag — re-exec ourselves with it (same shim as e2e.mjs).
 if (typeof globalThis.WebSocket === "undefined" && !process.env.FS_WS_FLAGGED) {
@@ -334,9 +337,16 @@ check("F4 refresh token dead after logout", logoutRes.status < 300 && refreshAft
 // registration token this probe has been using — exactly as a real theft should. Prove it, then log
 // in again for the rest of the run.
 const stolenEra = await call("GET", "/v1/family/me", { token: tokenA });
-await new Promise((r) => setTimeout(r, 1100)); // iat has 1-second resolution: a new login must post-date the revocation epoch
+// #110: `iat` has one-second resolution, so a flat 1100 ms wait could still land a login in the same
+// second as the revocation epoch (the fresh token is then revoked on arrival, and the row failed once
+// and passed on re-run with identical code). Wait for the clock to cross a boundary instead, and then
+// assert the CAUSE - the fresh token actually works - rather than trusting the instant of the login.
+await waitForNextSecond();
 const relogin = await call("POST", "/v1/auth/login", { body: { email: emailA, password: PASSWORD } });
-check("F8 theft response killed the owner's other live access token too (401); a fresh login works", stolenEra.status === 401 && stolenEra.data?.error === "session_revoked" && relogin.status === 200 && !!relogin.data?.token, `old=${stolenEra.status} relogin=${relogin.status}`);
+const freshTokenWorks = relogin.data?.token
+  ? (await call("GET", "/v1/family/me", { token: relogin.data.token })).status === 200
+  : false;
+check("F8 theft response killed the owner's other live access token too (401); a fresh login works", stolenEra.status === 401 && stolenEra.data?.error === "session_revoked" && relogin.status === 200 && !!relogin.data?.token && freshTokenWorks, `old=${stolenEra.status} relogin=${relogin.status} freshTokenUsable=${freshTokenWorks}`);
 if (relogin.data?.token) tokenA = relogin.data.token;
 
 // The per-device HMAC signing secret authenticates agent -> server alerts. No parent-facing
