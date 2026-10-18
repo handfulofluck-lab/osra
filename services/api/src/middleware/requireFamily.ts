@@ -63,7 +63,7 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     await reply.code(401).send({ error: "unauthorized" });
     return;
   }
-  const user = req.user as { sub?: string; role?: string; purpose?: string; iat?: number; jti?: string } | undefined;
+  const user = req.user as { sub?: string; role?: string; purpose?: string; iat?: number; jti?: string; sv?: number } | undefined;
   // #146: a purpose-scoped token (password reset) is not a bearer credential on any surface.
   if (!isBearerSession(user)) {
     await reply.code(401).send({ error: "unauthorized" });
@@ -89,7 +89,7 @@ export async function requireParent(req: FastifyRequest, reply: FastifyReply): P
     await reply.code(401).send({ error: "unauthorized" });
     return;
   }
-  const user = req.user as { sub?: string; role?: string; purpose?: string; iat?: number; jti?: string } | undefined;
+  const user = req.user as { sub?: string; role?: string; purpose?: string; iat?: number; jti?: string; sv?: number } | undefined;
   // #146: a reset-purpose token must not borrow the parent surface through a role claim.
   if (!isBearerSession(user)) {
     await reply.code(401).send({ error: "unauthorized" });

@@ -8,6 +8,10 @@
  *
  * What it will delete (owner row absent from the database):
  *   device:<deviceId>:<suffix>      - the legacy Redis command mirror and any device-scoped key
+ *   auth:session-version:<parentId> - the parent's revocation counter (ADR-0025). It has no TTL on
+ *                                     purpose, so a parent deleted by the test run leaves it behind;
+ *                                     the counter means nothing without the Parent row, and a
+ *                                     re-created parent gets a new id.
  *
  * What it will NEVER delete, and why:
  *   revoked:device:<deviceId>       - security state. Device JWTs are minted with a 10-year life
@@ -33,7 +37,10 @@ async function liveIds() {
     prisma.family.findMany({ select: { id: true } }),
     prisma.parent.findMany({ select: { id: true } }),
   ]);
-  return new Set([...devices, ...children, ...families, ...parents].map((r) => r.id));
+  return {
+    all: new Set([...devices, ...children, ...families, ...parents].map((r) => r.id)),
+    parents: new Set(parents.map((r) => r.id)),
+  };
 }
 
 const keys = await redis.keys("*");
@@ -42,20 +49,27 @@ const ttlOf = new Map();
 for (const key of keys) ttlOf.set(key, await redis.ttl(key));
 
 const expiring = [];
-const orphanedDeviceKeys = [];
+const orphanedKeys = [];
 const keptControls = [];
 const unclassified = [];
 
 for (const key of keys) {
   const ttl = ttlOf.get(key);
   const deviceMatch = key.match(/^device:([^:]+):(.+)$/);
+  const sessionVersionMatch = key.match(/^auth:session-version:(.+)$/);
   if (key.startsWith("revoked:device:")) {
     const id = key.slice("revoked:device:".length);
     // Never deleted, live device or not: see the header.
-    keptControls.push({ key, ttl, note: live.has(id) ? "live device" : "device row gone — still a control (#56)" });
+    keptControls.push({ key, ttl, note: live.all.has(id) ? "live device" : "device row gone — still a control (#56)" });
+  } else if (sessionVersionMatch) {
+    if (live.parents.has(sessionVersionMatch[1])) {
+      keptControls.push({ key, ttl, note: "live parent — persistent by design (ADR-0025)" });
+    } else {
+      orphanedKeys.push({ key, ttl });
+    }
   } else if (deviceMatch) {
-    if (live.has(deviceMatch[1])) expiring.push({ key, ttl });
-    else orphanedDeviceKeys.push({ key, ttl });
+    if (live.all.has(deviceMatch[1])) expiring.push({ key, ttl });
+    else orphanedKeys.push({ key, ttl });
   } else if (ttl === -1) {
     unclassified.push({ key, ttl });
   } else {
@@ -70,19 +84,19 @@ const section = (title, entries) => {
   if (entries.length > 25) console.log(`  … and ${entries.length - 25} more`);
 };
 
-console.log(`Redis ${process.env.REDIS_URL ?? "redis://127.0.0.1:6379"} — ${keys.length} keys, ${live.size} live entity ids in the database`);
-section("orphaned device keys — would be deleted", orphanedDeviceKeys);
+console.log(`Redis ${process.env.REDIS_URL ?? "redis://127.0.0.1:6379"} — ${keys.length} keys, ${live.all.size} live entity ids in the database`);
+section("orphaned keys — would be deleted", orphanedKeys);
 section("kept: revocation controls (never reaped)", keptControls);
 section("kept: keys with a TTL (expire on their own)", expiring);
 section("REVIEW: persistent keys with no known owner", unclassified);
 
 if (!apply) {
-  console.log("\nDRY RUN — nothing deleted. Re-run with --apply to remove the orphaned device keys.");
-} else if (orphanedDeviceKeys.length === 0) {
+  console.log("\nDRY RUN — nothing deleted. Re-run with --apply to remove the orphaned keys.");
+} else if (orphanedKeys.length === 0) {
   console.log("\nAPPLIED — nothing to delete.");
 } else {
-  const deleted = await redis.del(...orphanedDeviceKeys.map((entry) => entry.key));
-  console.log(`\nAPPLIED — deleted ${deleted} orphaned device key(s); ${keptControls.length} revocation control(s) untouched.`);
+  const deleted = await redis.del(...orphanedKeys.map((entry) => entry.key));
+  console.log(`\nAPPLIED — deleted ${deleted} orphaned key(s); ${keptControls.length} revocation control(s) untouched.`);
 }
 
 await prisma.$disconnect();
