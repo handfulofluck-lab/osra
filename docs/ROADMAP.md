@@ -2,28 +2,34 @@
 
 Source: **OSRA Readiness Assessment & Plan** (2026-10-16, branch `KCL`, raw audits under
 `docs/QA/KCL-2026-10-16/`). Six phases, five gates, 20 weeks. This file is the single status surface
-for that plan; the GitHub program board (issue #50) mirrors its phase table. Update it **in the PR
-that lands the change**, like `CHANGELOG.md` — a row may only move to ✅ with a tester's verification
-or a merge sha beside it.
+for that plan; the GitHub program board (issue #50) carries the phase-level view and was last synced on
+2026-10-17, so this file is ahead of it until #50 is refreshed. Update it **in the PR that lands the
+change**, like `CHANGELOG.md` — a row may only move to ✅ with a tester's verification or a merge sha
+beside it, and the row says which of the two it has.
+
+**Last updated: 2026-10-18** — status truth pass against `CHANGELOG.md`, `git log origin/main`, the
+merged PRs and `docs/QA/TEST-REQUESTS.md`; every row this pass corrected names its merge sha and, where
+it is still open, the `TR-*` row or issue that tracks the missing measurement.
 
 Maintainer decisions recorded 2026-10-16: two Android builds (Play + sideloaded "Full"); Phases 1 and 2
 in parallel; AI on a hosted LLM first (DeepSeek), own model once the evaluation set exists; iOS built on
 GitHub macOS runners and launched with the rest; Arabic RTL + Arabic AI pulled into early priorities;
 Windows runs as a signed service (code-signing spend approved).
 
-**Legend:** ✅ merged to `main` and tester-verified · 🟡 built, verified, waiting to merge · 🔵 in
-progress · ⬜ not started · 🟥 blocked on a decision or a resource outside the repo.
+**Legend:** ✅ merged to `main` (the row cites the merge sha or the merged PR) with, where one is
+recorded, a tester's verification · 🟡 built, verified, waiting to merge · 🔵 in progress · ⬜ not
+started · 🟥 blocked on a decision or a resource outside the repo.
 
 **A gate is a measured result on hardware or against a live stack**, in the style of the adversarial
 probe; a green unit suite does not open a gate.
 
-## Progress at a glance (2026-10-17)
+## Progress at a glance (2026-10-18)
 
 | Phase | Weeks | Gate | Items done | Status |
 |---|---|---|---|---|
 | 0 Stabilise | 1 | — | 4 / 5 | ✅ (branch pruning pending a go) |
-| 1 Android credibility | 2–8 | 10 bypasses fail on hardware | 8 / 9 built + measured (1.1–1.3 ✅ #76; 1.4, 1.6, 1.7, 1.8 🟡 #78; 1.9 probe on the Flip4 today); 1.5 needs `google-services.json` | 🔵 |
-| 2 Backend as a product | 4–10 | probe 0 targets, push lands | 6 / 6 merged (2.1–2.5 ✅, 2.6 both halves ✅); the open items are hardware rows (2.6's WhatsApp row) and the 3.x parent-app setting for 2.2 | 🟡 |
+| 1 Android credibility | 2–8 | 10 bypasses fail on hardware | 8 / 9 merged (1.1–1.3 #76 `7498103`; 1.4, 1.6–1.9 #78 `f0f586b`), but **the gate is not passed**: the 2026-10-17 table records `pm clear` (#81) and force-stop FAIL and #9/#10 as manual, never measurements (`docs/QA/QA-REPORT-2026-10-17.md:11-19`); the S1 re-run on `main` was NOT MEASURED (#92 A1). 1.5 needs `google-services.json` | 🔵 |
+| 2 Backend as a product | 4–10 | probe 0 targets, push lands | 6 / 6 merged (2.1–2.6); the probe half of the gate is met — **109/0 · 0 targets** on `main@2812cb5` (2026-10-18, #92 A3) — the "push lands on a closed app" half is unmeasured (1.5, 3.9) and 2.6's WhatsApp row is open (#92 A4) | 🔵 |
 | 3 Parent app to store grade | 6–14 | parent pairs in 5 min | 0 / 9 | ⬜ |
 | 4 AI that earns the word | 8–16 | recall ≥ 0.85 EN+AR | 0 / 5 | ⬜ |
 | 5 Store and iOS | 10–20 | 20 families install without help | 0 / 7 (entitlement 🟥) | ⬜ |
@@ -46,16 +52,16 @@ the lead's time until its gate passes.
 
 | # | Item | Acceptance | Status · evidence |
 |---|---|---|---|
-| 1.1 | Device Admin receiver + uninstall block + parent PIN to disable; Accessibility detects Settings/uninstall/force-stop screens and overlays them | `adb uninstall` and Settings › Uninstall both fail without PIN; alert within 60 s if admin revoked | 🟡 **#76** (ADR-0010): measured on the Flip4 — `adb uninstall` → `DELETE_FAILED_DEVICE_POLICY_MANAGER`; App info → PIN gate + alert; admin deactivated via Settings → alert in **3.3 s**. Waiting on a tester (TR-10) and the merge chain |
-| 1.2 | Remove the unauthenticated Re-pair; require parent PIN or server-issued unpair | no path from the child UI clears pairing | 🟡 **#76**: Re-pair and Remove-protection open the PIN gate; verified on the Flip4 (TR-10) |
-| 1.3 | Lock that holds: lock-task mode (or device-owner `lockNow`), state persisted, re-applied on boot, overlay permission in onboarding | lock survives Recents swipe and reboot | 🟡 **#76** (`709eeea`): `LockState` persisted, re-raised by the accessibility service, re-applied by `BootReceiver`, overlay permission row in onboarding; 179/0 unit tests. Measured on the Flip4 (TR-13): Home 2.1 s, Recents 1.2 s, Settings 2.1 s, Chrome 2.2 s; re-applied 6.9 s after boot-completed. **Safety rows measured 2026-10-17/18:** S1 PASS — the emergency dialer keeps the front at 2/6/11 s with the overlay up (#80, #83) — and S2 PASS — a `pause` with a secure keyguard no longer covers the bouncer (#87, #89). Both were gate defects before they were product fixes: see `docs/TESTING.md` §5f |
-| 1.4 | Local `VpnService` DNS/SNI sinkhole: pause-internet, category blocklist, SafeSearch via DNS CNAME, YouTube restricted via DNS | blocked domain fails in Chrome, Firefox and an in-app WebView; pause cuts all traffic | 🟡 **#78** (ADR-0015), measured on the Flip4 (TR-14): blocked domain → `0.0.0.0` in Chrome and the shell resolver, Google → `forcesafesearch`, YouTube → `restrict.youtube.com`, pause → `ping 8.8.8.8` 100 % loss, VPN disconnect → `content_filter_disconnected` alert in 0.3 s. Firefox / WebView not yet run (same resolver path). Waiting on a tester |
+| 1.1 | Device Admin receiver + uninstall block + parent PIN to disable; Accessibility detects Settings/uninstall/force-stop screens and overlays them | `adb uninstall` and Settings › Uninstall both fail without PIN; alert within 60 s if admin revoked | ✅ **#76** (`7498103`, ADR-0010): measured on the Flip4 — `adb uninstall` → `DELETE_FAILED_DEVICE_POLICY_MANAGER`; App info → PIN gate + alert; admin deactivated via Settings → alert in **3.3 s**. ⚠️ that hardware run is the author's; **TR-10 is still open** and no tester has repeated it |
+| 1.2 | Remove the unauthenticated Re-pair; require parent PIN or server-issued unpair | no path from the child UI clears pairing | ✅ **#76** (`7498103`): Re-pair and Remove-protection open the PIN gate; measured on the Flip4 in the same run. TR-10 open (author's run, no independent repeat) |
+| 1.3 | Lock that holds: lock-task mode (or device-owner `lockNow`), state persisted, re-applied on boot, overlay permission in onboarding | lock survives Recents swipe and reboot | ✅ **#76** (`709eeea`, `7498103`): `LockState` persisted, re-raised by the accessibility service, re-applied by `BootReceiver`, overlay permission row in onboarding. Measured on the Flip4 (TR-13, open — the author's run): Home 2.1 s, Recents 1.2 s, Settings 2.1 s, Chrome 2.2 s; re-applied 6.9 s after boot-completed. **Safety rows:** S1 PASS (2026-10-17, measured on the #83 branch before its merge `a10329a` — dialer holds the front at 2/6/11 s, #80), but the re-run on `main` on 2026-10-18 was **NOT MEASURED** (secure keyguard up; one human unlock closes it — #92 A1); S2 PASS on `main@868eb0c` (2026-10-18 — keyguard stays up, zero overlay records, #87/#89). Both are the lead's runs, not a tester's. Both defects were gate defects before they were product fixes: see `docs/TESTING.md` §5f |
+| 1.4 | Local `VpnService` DNS/SNI sinkhole: pause-internet, category blocklist, SafeSearch via DNS CNAME, YouTube restricted via DNS | blocked domain fails in Chrome, Firefox and an in-app WebView; pause cuts all traffic | ✅ **#78** (`f0f586b`, ADR-0015): TR-14 — software half verified by Antigravity (206/0); hardware PASS on the Flip4 (the lead's run: blocked domain → `0.0.0.0` in Chrome and the shell resolver, Google → `forcesafesearch`, YouTube → `restrict.youtube.com`, pause → `ping 8.8.8.8` 100 % loss, VPN disconnect → `content_filter_disconnected` alert in 0.3 s). **Acceptance not closed:** the Firefox and in-app WebView rows were never run (TR-14) |
 | 1.5 | Real FCM: `google-services.json`, gms plugin, data messages for commands; poll stays as fallback | lock lands in < 5 s with the app backgrounded | ⬜ (server side done in 2.1: `src/lib/push/notify.ts`) |
-| 1.6 | Guided, verified onboarding: Accessibility, Usage Access, Overlay, Battery exemption, Device Admin, Notification Listener, Background Location — each checked on return, OEM guidance (Samsung, Xiaomi) | pairing cannot complete with a required permission missing | 🟡 #78 (`OnboardingPolicy` + `GrantChecks`), measured on the Flip4 (TR-16): after pair/PIN/admin the status read "2 of 7 required grants done" naming the five missing; VPN consent from the checklist → 6 of 7; Private DNS provider → 5 of 7 naming it; Samsung hints shown. Waiting on a tester |
-| 1.7 | Ring forces alarm stream to max, wake lock, screen on, stop needs PIN; Locate takes a fresh high-accuracy fix with timeout | ring audible at volume 0; locate fix < 30 s old | 🟡 #78, measured on the Flip4 (TR-17): screen off → ring → screen on, alarm 2 → 15, Back/Vol− ignored, wrong PIN stays, right PIN stops and restores 2; `stop_ring` works; `locate_now` → fresh 19-m fix at the next poll. Waiting on a tester |
-| 1.x | **Found on hardware (TR-07):** the SOS quick-settings tile did nothing on Android 14+ (`startActivityAndCollapse(Intent)` removed on API 34); the child's only SOS entry was dead on every current phone | tile tap opens `SosActivity` on API 34+ | 🟡 #73 (one method, PendingIntent on 34+), verified on the Flip4 — the TR-07 201s are from that build |
-| 1.8 | Encrypted prefs for JWT/HMAC, release signing, `targetSdk 35`, minify, cleartext off outside debug | Play pre-launch report passes | 🟡 #78, measured on the Flip4 (TR-18): release APK 2.4 MB, `targetSdkVersion 35`, LocationService foreground under Android-15 rules with no FGS exception, cleartext refused by policy (HTTPS-only), JWT/HMAC in the encrypted store and gone from DataStore. Pre-launch report needs the Play internal track (maintainer: keystore + Play Console) |
-| 1.9 | Device-level adversarial probe: an `adb`-driven script that attempts the top ten bypasses, run on hardware before merge | script under `scripts/`, run recorded in the PR | 🟡 #78: `scripts/hardware/android-bypass-probe.ps1` (ten attempts, PASS/FAIL table, alert latencies from Postgres). First full run on the Flip4 pending — that run is the Phase 1 gate |
+| 1.6 | Guided, verified onboarding: Accessibility, Usage Access, Overlay, Battery exemption, Device Admin, Notification Listener, Background Location — each checked on return, OEM guidance (Samsung, Xiaomi) | pairing cannot complete with a required permission missing | ✅ #78 (`f0f586b`): `OnboardingPolicy` + `GrantChecks`, measured on the Flip4 (TR-16): after pair/PIN/admin the status read "2 of 7 required grants done" naming the five missing; VPN consent from the checklist → 6 of 7; Private DNS provider → 5 of 7 naming it; Samsung hints shown. TR-16 open — author's walk-through; the software half still needs a tester |
+| 1.7 | Ring forces alarm stream to max, wake lock, screen on, stop needs PIN; Locate takes a fresh high-accuracy fix with timeout | ring audible at volume 0; locate fix < 30 s old | ✅ #78 (`f0f586b`), measured on the Flip4 (TR-17, open — the author's run): screen off → ring → screen on, alarm 2 → 15, Back/Vol− ignored, wrong PIN stays, right PIN stops and restores 2; `stop_ring` works; `locate_now` → fresh 19-m fix at the next poll |
+| 1.x | **Found on hardware (TR-07):** the SOS quick-settings tile did nothing on Android 14+ (`startActivityAndCollapse(Intent)` removed on API 34); the child's only SOS entry was dead on every current phone | tile tap opens `SosActivity` on API 34+ | ✅ #73 (`19465e1`), verified on the Flip4 — the TR-07 201s are from that build |
+| 1.8 | Encrypted prefs for JWT/HMAC, release signing, `targetSdk 35`, minify, cleartext off outside debug | Play pre-launch report passes | ✅ #78 (`f0f586b`), measured on the Flip4 (TR-18, open — the lead's run): release APK 2.4 MB, `targetSdkVersion 35`, `LocationService` foreground under Android-15 rules with no FGS exception, cleartext refused by policy (HTTPS-only), JWT/HMAC in the encrypted store and gone from DataStore. **Two parts of the acceptance remain:** enforcement on the release build was not measured (the test host had no HTTPS endpoint) and the Play pre-launch report needs the internal track (maintainer: keystore + Play Console) |
+| 1.9 | Device-level adversarial probe: an `adb`-driven script that attempts the top ten bypasses, run on hardware before merge | script under `scripts/`, run recorded in the PR | ✅ **#78** (`f0f586b`): `scripts/hardware/android-bypass-probe.ps1` (ten bypasses plus the S1/S2 safety rows, PASS/FAIL table, alert latencies from Postgres) — merged, with a recorded run. **The gate it instruments is not passed:** the run that opened this row was 6/11 (`DEVICE-REGISTER.md:395`), and the end-of-day table records `pm clear` (#81) and force-stop FAIL with #9/#10 unmeasured as rows (`docs/QA/QA-REPORT-2026-10-17.md:11-19`). On `main` on 2026-10-18: S2 PASS, **S1 NOT MEASURED pending a human unlock** (#92 A1) |
 
 Two builds (decision 1): Play flavor (no calls/SMS, limited social, Accessibility declaration + video)
 and Full flavor (calls/SMS/WhatsApp; `isMonitoringTool=child_monitoring`; sideloaded, Play Protect
@@ -66,11 +72,11 @@ warning accepted). Both flavors land with 1.8.
 | # | Item | Acceptance | Status · evidence |
 |---|---|---|---|
 | 2.1 | Push to parents: FCM + APNs behind one interface; every alert type calls it; parent app registers tokens | alert on the child device reaches the parent phone with the app closed | ✅ #51 (ADR-0011), TR-02 verified by Kimi + Antigravity. ⚠️ end-to-end on a phone waits on the parent app registering a token (3.x) |
-| 2.2 | Email provider: password reset, invites, weekly digest cron | reset email delivered; digest at the **family's local hour** (ADR-0017), twice-impossible | ✅ email #51; **family-local digest #93** (`Family.timezone`, `DigestSend(familyId,kind,period)` unique claim, `lib/digestSchedule.ts`, migration 0014, 11 JVM cases + a real-Postgres claim run) and **the zone's source #101** (`timezoneSource`, one conditional login fill that never overwrites a parent's choice, `PATCH /v1/family/me`, 4 named tests). ✅ the parent-app setting now exists: Digest preferences loads the zone and PATCHes a change (a parent's choice sticks, `timezoneSource=parent`), with a widget test. The device-side fill still waits for a client release that sends `timezone` at login |
+| 2.2 | Email provider: password reset, invites, weekly digest cron | reset email delivered; digest at the **family's local hour** (ADR-0017), twice-impossible | ✅ email #51; **family-local digest #93** (`Family.timezone`, `DigestSend(familyId,kind,period)` unique claim, `lib/digestSchedule.ts`, migration 0014, 11 JVM cases + a real-Postgres claim run) and **the zone's source #101** (`timezoneSource`, one conditional login fill that never overwrites a parent's choice, `PATCH /v1/family/me`, 4 named tests; the guard corrected in #105). ✅ the parent-app setting now exists: **#107** loads the zone and PATCHes a change (a parent's choice sticks, `timezoneSource=parent`), with a widget test, and **#109** keeps a family's real zone in the dropdown (#108). The device-side fill still waits for a client release that sends `timezone` at login — the app does not send it yet |
 | 2.3 | Persistent command queue (id, status, ack, expiry); agents ack; parent UI shows delivered/pending/failed | Redis restart loses no command; UI never says "sent" for an unacked command | ✅ #52 (ADR-0012), TR-01 verified on non-UTC hosts; parent-UI half is 3.x |
 | 2.4 | Usage model: `AppUsageDaily` + `WebVisit`, nightly rollup, 90-day retention, erasure cascade | weekly report correct after a Redis flush; erasure leaves zero rows | ✅ #64 (ADR-0013), TR-06 verified by Kimi (0 rows in 13 tables, counted in Postgres); finding #66 fixed on #65 |
-| 2.5 | Close J2 (timestamp + nonce) and J6 (no global fallback), fix co-parent role, `jti` on access tokens, encrypt `mfaSecret` | probe 0 targets | 🟡 #65 (ADR-0014) verified both halves: Kimi (software, probe 109/0) and the KCL lead on the maintainer's Galaxy Z Flip4 / Android 16 (TR-07: SOS → 201 with v1 on and off, skew −1 s). **Probe half of the gate met**: #74 makes v1 opt-in → probe **0 targets by default** (the "push lands" half is 2.1's ⚠️ and waits on 3.x). Waiting to merge: #65 → #73 → #74 |
-| 2.6 | Durable on-device scan queue + notification-listener capture (WhatsApp items 1 and 2) | a message received with WhatsApp backgrounded produces a scan event | 🟡 both halves merged: queue #78 (`pending_scans`, `ScanFlushWorker`, `ScanQueuePolicy`), listener **#90** (`NotificationCaptureService` in `src/full`, Play/Full split, `FlavorManifestTest`, aapt2 proof of the permission split), then the Play-policy consequences: **#100** (no call-log/SMS/`QUERY_ALL_PACKAGES` on Play, dialer `<queries>` kept so S1 stays measurable, `isMonitoringTool`) and **#102** (the Play build says what it cannot capture). The one open item is the hardware row: a real WhatsApp message must produce exactly one scan (`#92` A4) |
+| 2.5 | Close J2 (timestamp + nonce) and J6 (no global fallback), fix co-parent role, `jti` on access tokens, encrypt `mfaSecret` | probe 0 targets | ✅ #65 (`87986df`, ADR-0014), merged 2026-10-17 with #73 (`19465e1`) and #74 (`b73839e`) stacked on it: v1 is refused by default, and **109/0 · 0 targets** was re-measured on `main@2812cb5` (2026-10-18, #92 A3), so this row's acceptance is met. Verified: Kimi (software, TR-07/TR-09) and the KCL lead on the maintainer's Galaxy Z Flip4 / Android 16 (SOS → 201 with v1 on and off, skew −1 s) — that hardware half is the author's and was never repeated by a tester |
+| 2.6 | Durable on-device scan queue + notification-listener capture (WhatsApp items 1 and 2) | a message received with WhatsApp backgrounded produces a scan event | ✅ merged: queue #78 (`f0f586b`; `pending_scans`, `ScanFlushWorker`, `ScanQueuePolicy`), listener **#90** (`4359105`; `NotificationCaptureService` in `src/full`, Play/Full split, `FlavorManifestTest`, aapt2 proof of the permission split), the Play-policy consequences **#100** (no call-log/SMS/`QUERY_ALL_PACKAGES` on Play, dialer `<queries>` kept so S1 stays measurable, `isMonitoringTool`) and **#102** (the Play build says what it cannot capture), and **#106** (`CommsLogger` moved to `full` behind `CommsCapture`). **Open: the acceptance itself** — a real WhatsApp message must produce exactly one scan (`#92` A4), and no independent verification of #90 was recorded (process finding, `docs/QA/TEST-REQUESTS.md:16`) |
 | 2.x | Added from review: WebSocket `ready` frame (TR-05), Redis hygiene #56/#57, probe-integrity CI gate | — | ✅ #63, #68, #69 |
 
 ## Phase 3 — Parent app to store grade (weeks 6–14) — gate: a non-engineer parent pairs in 5 minutes
@@ -82,7 +88,7 @@ warning accepted). Both flavors land with 1.8.
 | 3.3 | MFA enrolment, password reset, settings | — | ⬜ |
 | 3.4 | Installed-app list from the device for app rules | — | ⬜ |
 | 3.5 | Daily/weekly trend charts and browsing history (reads `/v1/reports/usage`, `/v1/reports/web`) | — | ⬜ (API done in 2.4) |
-| 3.6 | Command delivery status (delivered / pending / failed) | UI never says "sent" for an unacked command | ⬜ (API done in 2.3) |
+| 3.6 | Command delivery status (delivered / pending / failed) | UI never says "sent" for an unacked command | 🔵 #116 open (WO-03) — the parent app reads `GET /v1/devices/:id/commands/history` and shows each command's real queue state (`pending` / `delivered` / `acked` / `failed` / `expired`) with timestamps, per child device, on a live device-card line and the `Command delivery` screen (`/child/:id/commands`); pending/delivered rows never say "sent", and the command toasts were corrected to "queued". 7 new widget tests in `apps/parent-app/test/command_history_test.dart`, including the no-"sent" acceptance check; `flutter test` 112 passed and `flutter analyze` clean (author run; independent verification pending — move to ✅ only with a merge sha and the tester's WO-03 record) |
 | 3.7 | Consent revoke/status screen | — | ⬜ |
 | 3.8 | Dark theme and a real design system | `flutter analyze` clean | ⬜ |
 | 3.9 | iOS target with the same codebase; push-token registration (FCM/APNs) | app runs on both targets | ⬜ |
@@ -112,7 +118,20 @@ warning accepted). Both flavors land with 1.8.
 ## Needs the maintainer (open)
 
 - Phase 0.5: a go to delete the merged branches.
-- Merges: #70, #72, #75, then #65 → #73 → #74 → #76 (the lead's merge write on its own PRs is blocked; the maintainer merges).
+- **One unlock of the Flip4 with the keyguard down.** S1 on `main` (rows A1/A1b on #92) is NOT
+  MEASURED because `wm dismiss-keyguard` and a swipe both leave this handset's secure keyguard up, and
+  only the human can dismiss it.
+- Phase 1.5: `google-services.json` and a Firebase project for the child agent (FCM), plus the parent
+  app's push-token registration in 3.9 — together they are the Phase 2 gate's unmeasured "push lands on
+  a closed app" half.
+- Phase 1.8: the Play internal track (upload keystore + Play Console) for the pre-launch report.
 - Phase 4.1: `DEEPSEEK_API_KEY` as a repository Actions secret.
 - Phase 5.1: Apple Family Controls distribution entitlement request.
 - Phase 5.4: the code-signing certificate purchase (approved; needs the purchase).
+
+**Merge history, corrected 2026-10-18.** This section used to list a blocked merge chain (#70, #72, #75,
+then #65 → #73 → #74 → #76, with #78 held behind them). All of it landed on 2026-10-17 — #72, #75, #65,
+#70, #73 and #74 by 10:22Z, #76 at 10:42Z, then #83, #78, #88, #89 and #90 that evening — and the
+2026-10-18 PRs (#93–#109) followed. Nothing in this file is waiting on a merge any more; what is open is
+**measurement** — the Phase 1 gate rows and the `TR-*` rows on `docs/QA/TEST-REQUESTS.md` — and the
+maintainer actions above.

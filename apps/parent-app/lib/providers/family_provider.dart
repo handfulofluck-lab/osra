@@ -81,6 +81,20 @@ final locationProvider = FutureProvider.family<LocationPing?, String>((ref, chil
   return LocationPing.fromJson(Map<String, dynamic>.from(latest));
 });
 
+/// Recent durable commands for one device (`GET /v1/devices/:id/commands/history`,
+/// newest first). The parent-facing counterpart of the agent's drain endpoint:
+/// it never consumes anything, so polling it is safe.
+final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, String>((ref, deviceId) async {
+  final api = ref.watch(apiClientProvider);
+  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 20});
+  final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
+  final raw = data['items'];
+  return [
+    for (final item in (raw as List? ?? const []))
+      if (item is Map) DeviceCommand.fromJson(Map<String, dynamic>.from(item)),
+  ];
+});
+
 /// Geofences for one child (`GET /v1/location/geofences/:childId`).
 final geofencesProvider = FutureProvider.family<List<Geofence>, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);
