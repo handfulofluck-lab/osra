@@ -55,6 +55,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   `scripts/hardware/android-bypass-probe.ps1` or any application code; row 3 is not marked passed and
   TR-21 keeps its FAIL; the issue #127 asked for (our own App-info page as a protected screen) is still
   not opened. No hardware run and no live gate — a hardware run holds the only phone.
+- **Roadmap rows.** `docs/ROADMAP.md` gains Phase 0 row **0.6** for this debt, and row **1.9** now names
+  the row-3 proposal and says it is unaccepted, so the Phase 1 gate row no longer reads as if force-stop
+  self-recovery were still an open defect waiting for a fix.
 
 ### QA — `qa-probe` gates the three fixes #124 merged (audit findings 4–6)
 - **What was missing.** #124 merged three security fixes with unit tests only; the probe had no live
