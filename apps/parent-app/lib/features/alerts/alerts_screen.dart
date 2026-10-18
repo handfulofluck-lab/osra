@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
@@ -64,7 +65,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     } on DioException catch (e) {
       setState(() => _items.insert(index, alert));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Acknowledge failed: ${e.message}')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.acknowledgeFailed('${e.message}'))));
       }
     }
   }
@@ -76,54 +77,58 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final coachCard = coachCardFor(alert.category, _concernTypesOf(alert));
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity, dialogContext)),
-            const SizedBox(width: 8),
-            Expanded(child: Text(alert.title, style: Theme.of(dialogContext).textTheme.titleMedium)),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+      builder: (dialogContext) {
+        final l10n = dialogContext.l10n;
+        return AlertDialog(
+          title: Row(
             children: [
-              if (alert.body.isNotEmpty) Text(alert.body),
-              const SizedBox(height: 8),
-              Text('Category: ${alert.category} · Severity: ${alert.severity}'),
-              if (alert.createdAt != null)
-                Text('Time: ${DateFormat.yMMMd().add_Hms().format(alert.createdAt!.toLocal())}'),
-              if (alert.metadata.isNotEmpty) ...[
-                const Divider(),
-                for (final entry in alert.metadata.entries)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Text('${entry.key}: ${entry.value}', style: Theme.of(dialogContext).textTheme.bodySmall),
-                  ),
-              ],
-              const Divider(),
-              CoachCardSection(card: coachCard),
+              Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity, dialogContext)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(alert.title, style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
-        ),
-        actions: [
-          if (alert.category == 'install_request') ...[
-            OutlinedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Allowed')));
-              },
-              child: const Text('Allow'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (alert.body.isNotEmpty) Text(alert.body),
+                const SizedBox(height: 8),
+                Text('${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
+                    '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
+                if (alert.createdAt != null)
+                  Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName).add_Hms().format(alert.createdAt!.toLocal()))),
+                if (alert.metadata.isNotEmpty) ...[
+                  const Divider(),
+                  for (final entry in alert.metadata.entries)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text('${entry.key}: ${entry.value}', style: Theme.of(dialogContext).textTheme.bodySmall),
+                    ),
+                ],
+                const Divider(),
+                CoachCardSection(card: coachCard),
+              ],
             ),
-            FilledButton(
-              onPressed: () => _blockRequestedApp(dialogContext, alert),
-              child: const Text('Block this app'),
-            ),
+          ),
+          actions: [
+            if (alert.category == 'install_request') ...[
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.allowedSnack)));
+                },
+                child: Text(l10n.allowAction),
+              ),
+              FilledButton(
+                onPressed: () => _blockRequestedApp(dialogContext, alert),
+                child: Text(l10n.blockThisApp),
+              ),
+            ],
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(l10n.close)),
           ],
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -137,6 +142,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   /// Appends `{packageId, appName, action: 'block'}` to the child's appRules
   /// (preserving everything else the ruleset carries, incl. always-allowed).
   Future<void> _blockRequestedApp(BuildContext dialogContext, Alert alert) async {
+    final l10n = context.l10n;
     final api = ref.read(apiClientProvider).raw;
     try {
       final res = await api.get('/v1/rules/${alert.childId}');
@@ -154,16 +160,17 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       ref.invalidate(rulesProvider(alert.childId));
       if (!dialogContext.mounted) return;
       Navigator.of(dialogContext).pop();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('App blocked')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.appBlockedSnack)));
     } catch (e) {
       if (dialogContext.mounted) {
-        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Block failed: $e')));
+        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text(l10n.blockFailed('$e'))));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     // Group by local day, most recent first.
     final groups = <String, List<Alert>>{};
     final order = <String>[];
@@ -178,9 +185,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     order.sort((a, b) => b.compareTo(a));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Alerts')),
+      appBar: AppBar(title: Text(l10n.alertsTitle)),
       body: _error != null && _items.isEmpty
-          ? Center(child: Text('Failed to load alerts: $_error'))
+          ? Center(child: Text(l10n.alertsLoadFailed('$_error')))
           : RefreshIndicator(
               onRefresh: () async {
                 setState(() {
@@ -196,18 +203,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 children: [
                   // NOTE: explicit empty state — without it an empty feed was a blank screen.
                   if (_items.isEmpty && !_loading)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 200),
-                      child: Center(child: Text('No alerts yet')),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 200),
+                      child: Center(child: Text(l10n.noAlertsYet)),
                     ),
                   for (final day in order)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                          padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 4),
                           child: Text(
-                            _dayLabel(day),
+                            _dayLabel(context, day),
                             style: Theme.of(context).textTheme.titleSmall,
                           ),
                         ),
@@ -217,7 +224,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             final index = _items.indexOf(alert);
                             return Dismissible(
                               key: ValueKey(alert.id),
-                              background: Container(color: Colors.green, alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 24), child: const Icon(Icons.check, color: Colors.white)),
+                              background: Container(
+                                color: Colors.green,
+                                alignment: AlignmentDirectional.centerStart,
+                                padding: const EdgeInsetsDirectional.only(start: 24),
+                                child: const Icon(Icons.check, color: Colors.white),
+                              ),
                               onDismissed: (_) => _ack(alert, index),
                               child: AlertTile(alert: alert, onTap: () => _showDetail(alert)),
                             );
@@ -227,7 +239,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   if (_loading) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
                   if (!_loading && _hasMore)
                     Center(
-                      child: TextButton(onPressed: _loadMore, child: const Text('Load more')),
+                      child: TextButton(onPressed: _loadMore, child: Text(l10n.loadMore)),
                     ),
                 ],
               ),
@@ -235,10 +247,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     );
   }
 
-  String _dayLabel(String key) {
-    if (key == 'Unknown') return key;
+  String _dayLabel(BuildContext context, String key) {
+    if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return DateFormat('EEEE, MMM d, yyyy').format(d);
+    return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
   }
 }

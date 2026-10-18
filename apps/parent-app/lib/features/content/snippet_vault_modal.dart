@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../l10n/l10n.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 
@@ -63,8 +64,11 @@ class SnippetVaultModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final sevColor = snippetSeverityColor(severity);
-    final formattedTime = timestamp != null ? DateFormat.yMMMd().add_Hms().format(timestamp!.toLocal()) : null;
+    final formattedTime = timestamp != null
+        ? DateFormat.yMMMd(context.localeName).add_Hms().format(timestamp!.toLocal())
+        : null;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -73,7 +77,7 @@ class SnippetVaultModal extends StatelessWidget {
       expand: false,
       builder: (context, scrollController) => ListView(
         controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+        padding: const EdgeInsetsDirectional.fromSTEB(20, 0, 20, 32),
         children: [
           Row(
             children: [
@@ -81,7 +85,7 @@ class SnippetVaultModal extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  title.isEmpty ? 'Decrypted Vault Content' : title,
+                  title.isEmpty ? l10n.decryptedVaultContent : title,
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -109,7 +113,7 @@ class SnippetVaultModal extends StatelessWidget {
                   backgroundColor: sevColor.withValues(alpha: 0.15),
                   side: BorderSide(color: sevColor.withValues(alpha: 0.4)),
                   label: Text(
-                    severity.toUpperCase(),
+                    l10n.severityName(severity),
                     style: theme.textTheme.labelSmall?.copyWith(color: sevColor, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -131,12 +135,12 @@ class SnippetVaultModal extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Encrypted Family Vault',
+                          l10n.encryptedFamilyVault,
                           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Protected by AES-256-GCM encryption. Decrypted on-demand for authenticated guardians only.',
+                          l10n.vaultEncryptionDesc,
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
@@ -161,11 +165,11 @@ class SnippetVaultModal extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Decrypted content', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    Text(l10n.decryptedContent, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                     InkWell(
                       onTap: () {
                         Clipboard.setData(ClipboardData(text: snippet));
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content copied to clipboard')));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.contentCopied)));
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -174,7 +178,7 @@ class SnippetVaultModal extends StatelessWidget {
                           children: [
                             const Icon(Icons.copy, size: 14),
                             const SizedBox(width: 4),
-                            Text('Copy', style: theme.textTheme.labelSmall),
+                            Text(l10n.copy, style: theme.textTheme.labelSmall),
                           ],
                         ),
                       ),
@@ -183,7 +187,7 @@ class SnippetVaultModal extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 SelectableText(
-                  snippet.isEmpty ? 'No preview content available' : snippet,
+                  snippet.isEmpty ? l10n.noPreviewContent : snippet,
                   style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
                 ),
               ],
@@ -191,7 +195,7 @@ class SnippetVaultModal extends StatelessWidget {
           ),
           if (concernTypes.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Detected concern types', style: theme.textTheme.titleSmall),
+            Text(l10n.detectedConcernTypes, style: theme.textTheme.titleSmall),
             const SizedBox(height: 6),
             Wrap(
               spacing: 8,

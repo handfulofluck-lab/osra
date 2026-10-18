@@ -11,6 +11,7 @@ import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
+import 'test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +24,7 @@ void main() {
   Future<void> pumpApp(WidgetTester tester, Widget home, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
-      child: MaterialApp(home: home),
+      child: localizedTestApp(home),
     ));
     await tester.pumpAndSettle();
   }
@@ -96,7 +97,7 @@ void main() {
   group('CoachCardSection widget', () {
     testWidgets('shows EN body by default and switches to AR on toggle', (tester) async {
       final card = coachCardFor('self_harm');
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: CoachCardSection(card: card))));
+      await tester.pumpWidget(localizedTestApp(Scaffold(body: CoachCardSection(card: card))));
       await expandCoachSection(tester);
 
       expect(find.textContaining('Take every sign seriously'), findsOneWidget);

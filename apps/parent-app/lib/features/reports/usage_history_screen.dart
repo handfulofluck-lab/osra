@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 
@@ -32,9 +33,10 @@ class _UsageHistoryScreenState extends ConsumerState<UsageHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Screen time & web'),
+        title: Text(l10n.screenTimeWebTitle),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(
@@ -44,10 +46,10 @@ class _UsageHistoryScreenState extends ConsumerState<UsageHistoryScreen> {
             child: SegmentedButton<int>(
               key: const ValueKey('usageWindowSelector'),
               showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: 7, label: Text('7d')),
-                ButtonSegment(value: 14, label: Text('14d')),
-                ButtonSegment(value: 30, label: Text('30d')),
+              segments: [
+                ButtonSegment(value: 7, label: Text(l10n.daysShort(7))),
+                ButtonSegment(value: 14, label: Text(l10n.daysShort(14))),
+                ButtonSegment(value: 30, label: Text(l10n.daysShort(30))),
               ],
               selected: {_days},
               onSelectionChanged: (s) => setState(() => _days = s.first),
@@ -84,12 +86,13 @@ class _UsageSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final query = (childId: childId, days: days);
     final report = ref.watch(usageReportProvider(query));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Screen time', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.screenTime, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.sm),
         report.when(
           loading: () => const SizedBox(
@@ -97,7 +100,7 @@ class _UsageSection extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator(key: ValueKey('usageLoading'))),
           ),
           error: (e, _) => _ErrorBody(
-            message: 'Could not load screen time',
+            message: l10n.couldNotLoadScreenTime,
             detail: '$e',
             onRetry: () => ref.invalidate(usageReportProvider(query)),
           ),
@@ -113,36 +116,38 @@ class _UsageBody extends StatelessWidget {
   final int requestedDays;
   const _UsageBody({required this.report, required this.requestedDays});
 
-  static String _dayLabel(String day) {
+  static String _dayLabel(String day, String locale) {
     final date = DateTime.tryParse(day);
-    return date == null ? day : DateFormat('EEE, MMM d').format(date);
+    return date == null ? day : DateFormat('EEE, MMM d', locale).format(date);
   }
 
-  static String _shortDay(String day) {
+  static String _shortDay(String day, String locale) {
     final date = DateTime.tryParse(day);
-    return date == null ? day : DateFormat('MMM d').format(date);
+    return date == null ? day : DateFormat('MMM d', locale).format(date);
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final locale = context.localeName;
     final series = report.series;
     final total = report.seriesMinutes;
     if (series.isEmpty) {
-      return _EmptyBody(text: 'No screen time data in the last $requestedDays days');
+      return _EmptyBody(text: l10n.noScreenTimeData(requestedDays));
     }
     if (total == 0) {
-      return _EmptyBody(text: 'No screen time recorded in the last $requestedDays days');
+      return _EmptyBody(text: l10n.noScreenTimeRecorded(requestedDays));
     }
     final maxMinutes = series.fold<int>(0, (m, d) => d.minutes > m ? d.minutes : m);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Total $total min over ${series.length} days'),
+        Text(l10n.totalOverDays(total, series.length)),
         if (series.length < requestedDays)
           Padding(
             padding: const EdgeInsets.only(top: AppSpace.xs),
             child: Text(
-              'Only ${series.length} of the $requestedDays requested days were returned; showing those days as-is.',
+              l10n.fewerDaysReturned(series.length, requestedDays),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -158,7 +163,7 @@ class _UsageBody extends StatelessWidget {
               for (final day in series)
                 Expanded(
                   child: Tooltip(
-                    message: '${_dayLabel(day.day)}: ${day.minutes} min',
+                    message: l10n.dayTooltip(_dayLabel(day.day, locale), day.minutes),
                     child: Align(
                       alignment: Alignment.bottomCenter,
                       child: UsageBar(
@@ -176,10 +181,10 @@ class _UsageBody extends StatelessWidget {
         const SizedBox(height: AppSpace.xs),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [Text(_shortDay(series.first.day)), Text(_shortDay(series.last.day))],
+          children: [Text(_shortDay(series.first.day, locale)), Text(_shortDay(series.last.day, locale))],
         ),
         const Divider(height: AppSpace.xl),
-        Text('Day by day', style: Theme.of(context).textTheme.titleSmall),
+        Text(l10n.dayByDay, style: Theme.of(context).textTheme.titleSmall),
         // NOTE: every returned day is listed, including 0-minute days, so the
         // list stays honest when the chart is too small to read.
         for (final day in series.reversed)
@@ -187,8 +192,8 @@ class _UsageBody extends StatelessWidget {
             key: ValueKey('usageDay-${day.day}'),
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: Text(_dayLabel(day.day)),
-            trailing: Text('${day.minutes} min'),
+            title: Text(_dayLabel(day.day, locale)),
+            trailing: Text(l10n.minutesShort(day.minutes)),
           ),
       ],
     );
@@ -241,12 +246,13 @@ class _BrowsingSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final query = (childId: childId, days: days, blockedOnly: blockedOnly, limit: limit);
     final visits = ref.watch(webHistoryProvider(query));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Browsing history', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.browsingHistory, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
         // NOTE: Wrap, not Row — filter + limit control do not fit one line at
         // 320px and must wrap instead of overflowing.
@@ -257,11 +263,11 @@ class _BrowsingSection extends ConsumerWidget {
           children: [
             FilterChip(
               key: const ValueKey('blockedOnlyFilter'),
-              label: const Text('Blocked only'),
+              label: Text(l10n.blockedOnly),
               selected: blockedOnly,
               onSelected: onBlockedChanged,
             ),
-            const Text('Show'),
+            Text(l10n.showLabel),
             SegmentedButton<int>(
               key: const ValueKey('webLimitSelector'),
               showSelectedIcon: false,
@@ -282,7 +288,7 @@ class _BrowsingSection extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator(key: ValueKey('webLoading'))),
           ),
           error: (e, _) => _ErrorBody(
-            message: 'Could not load browsing history',
+            message: l10n.couldNotLoadBrowsing,
             detail: '$e',
             onRetry: () => ref.invalidate(webHistoryProvider(query)),
           ),
@@ -290,8 +296,8 @@ class _BrowsingSection extends ConsumerWidget {
             if (items.isEmpty) {
               return _EmptyBody(
                 text: blockedOnly
-                    ? 'No blocked sites in the last $days days'
-                    : 'No browsing history in the last $days days',
+                    ? l10n.noBlockedSites(days)
+                    : l10n.noBrowsingHistory(days),
               );
             }
             return Column(
@@ -301,7 +307,7 @@ class _BrowsingSection extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: AppSpace.xs),
                     child: Text(
-                      'Showing the latest $limit visits — raise the limit to see more.',
+                      l10n.showingLatestVisits(limit),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -322,7 +328,10 @@ class _WebVisitTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final when = visit.ts == null ? 'Time unknown' : DateFormat.MMMd().add_Hm().format(visit.ts!.toLocal());
+    final l10n = context.l10n;
+    final when = visit.ts == null
+        ? l10n.timeUnknown
+        : DateFormat.MMMd(context.localeName).add_Hm().format(visit.ts!.toLocal());
     return ListTile(
       key: ValueKey('webVisit-${visit.id}'),
       dense: true,
@@ -335,7 +344,7 @@ class _WebVisitTile extends StatelessWidget {
       title: Text(visit.domain, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(when),
       trailing: Text(
-        visit.blocked ? 'Blocked' : 'Allowed',
+        visit.blocked ? l10n.blocked : l10n.allowed,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: visit.blocked ? tokens.danger : tokens.onSurfaceVariant,
             ),
@@ -374,7 +383,7 @@ class _ErrorBody extends StatelessWidget {
         children: [
           Text('$message: $detail'),
           const SizedBox(height: AppSpace.xs),
-          TextButton(onPressed: onRetry, child: const Text('Try again')),
+          TextButton(onPressed: onRetry, child: Text(context.l10n.tryAgain)),
         ],
       ),
     );

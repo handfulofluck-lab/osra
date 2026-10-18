@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -46,7 +47,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Validates and persists the server URL; null → inline error, abort submit.
   Future<String?> _saveServer() async {
     final url = normalizeServerUrl(_server.text);
-    setState(() => _serverError = url == null ? 'Enter a valid server, e.g. http://192.168.1.5:3000' : null);
+    setState(() => _serverError = url == null ? context.l10n.invalidServer : null);
     if (url == null) return null;
     await ref.read(serverUrlProvider.notifier).setServerUrl(url);
     return url;
@@ -63,6 +64,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final serverUrl = ref.watch(serverUrlProvider);
+    final l10n = context.l10n;
     // Keep the field in sync with the persisted URL until the user edits it.
     if (!_serverTouched && _server.text != serverUrl) {
       _server.text = serverUrl;
@@ -80,13 +82,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 8),
                 Text('OSRA', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 4),
-                Text('أسرة — parental control for your family',
+                Text(l10n.appTagline,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 // The current server is shown only once one has been entered and
                 // saved — a fresh install shows no server name at all.
                 if (serverUrl.isNotEmpty) ...[
-                  Text('Server: $serverUrl',
+                  Text(l10n.serverShown(serverUrl),
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 24),
@@ -98,8 +100,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   autofillHints: const [AutofillHints.url],
                   onChanged: (_) => _serverTouched = true,
                   decoration: InputDecoration(
-                    labelText: 'Server',
-                    hintText: 'http://host:port',
+                    labelText: l10n.serverLabel,
+                    hintText: l10n.serverHint,
                     errorText: _serverError,
                     border: const OutlineInputBorder(),
                   ),
@@ -109,7 +111,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   autofillHints: const [AutofillHints.email],
-                  decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: l10n.emailLabel, border: const OutlineInputBorder()),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -117,7 +119,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   obscureText: _obscured,
                   autofillHints: const [AutofillHints.password],
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: l10n.passwordLabel,
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
@@ -130,9 +132,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _code,
                   keyboardType: TextInputType.number,
                   autofillHints: const [AutofillHints.oneTimeCode],
-                  decoration: const InputDecoration(
-                    labelText: 'Authentication code (if MFA is on)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.mfaCodeLabel,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 if (auth.error != null) ...[
@@ -148,31 +150,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, _code.text));
                         },
                   icon: auth.loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
-                  label: const Text('Sign in'),
+                  label: Text(l10n.signIn),
                 ),
                 const SizedBox(height: 8),
                 ExpansionTile(
-                  title: const Text('Create account'),
+                  title: Text(l10n.createAccount),
                   childrenPadding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
                     TextField(
                       controller: _familyName,
-                      decoration: const InputDecoration(labelText: 'Family name', border: OutlineInputBorder()),
+                      decoration: InputDecoration(labelText: l10n.familyNameLabel, border: const OutlineInputBorder()),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _displayName,
-                      decoration: const InputDecoration(labelText: 'Your name', border: OutlineInputBorder()),
+                      decoration: InputDecoration(labelText: l10n.yourNameLabel, border: const OutlineInputBorder()),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: _region,
-                      decoration: const InputDecoration(labelText: 'Region', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'US', child: Text('United States')),
-                        DropdownMenuItem(value: 'EU', child: Text('European Union')),
-                        DropdownMenuItem(value: 'UK', child: Text('United Kingdom')),
-                        DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                      decoration: InputDecoration(labelText: l10n.regionLabel, border: const OutlineInputBorder()),
+                      items: [
+                        DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
+                        DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
+                        DropdownMenuItem(value: 'UK', child: Text(l10n.regionUK)),
+                        DropdownMenuItem(value: 'OTHER', child: Text(l10n.regionOther)),
                       ],
                       onChanged: (v) => setState(() => _region = v ?? 'US'),
                     ),
@@ -190,7 +192,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     region: _region,
                                   ));
                             },
-                      child: const Text('Register'),
+                      child: Text(l10n.register),
                     ),
                     const SizedBox(height: 16),
                   ],

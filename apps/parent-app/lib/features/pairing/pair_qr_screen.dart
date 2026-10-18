@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'pair_qr_payload.dart';
@@ -32,7 +33,11 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   String? _code;
   String? _payload;
   DateTime? _expiresAt;
-  String? _error;
+
+  /// `format` when the response had no usable code, `network` otherwise.
+  /// Storing the kind (not a translated string) lets the copy follow a locale
+  /// change while the screen is open.
+  String? _errorKind;
   bool _loading = true;
   Timer? _timer;
 
@@ -53,7 +58,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   Future<void> _generate() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _errorKind = null;
     });
     try {
       final res = await ref.read(apiClientProvider).raw.post(
@@ -85,9 +90,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e is FormatException
-            ? 'The server did not return a usable pairing code. Try Regenerate.'
-            : 'Could not create a pairing code. Check the connection and try again.';
+        _errorKind = e is FormatException ? 'format' : 'network';
       });
     }
   }
@@ -118,25 +121,26 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     await Clipboard.setData(ClipboardData(text: code));
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Code copied')));
+          .showSnackBar(SnackBar(content: Text(context.l10n.codeCopied)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Pair a device')),
+      appBar: AppBar(title: Text(l10n.pairADevice)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(AppSpace.lg),
           children: [
             Text(
-              'Scan this QR code with the OSRA child app.',
+              l10n.scanQr,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: AppSpace.xs),
             Text(
-              'If the camera cannot scan it, type the 6-digit code below on the child device.',
+              l10n.typeSixDigit,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: AppSpace.lg),
@@ -145,9 +149,9 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
                 padding: EdgeInsets.all(AppSpace.xxl),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_error != null) ...[
+            else if (_errorKind != null) ...[
               Text(
-                _error!,
+                _errorKind == 'format' ? l10n.pairCodeError : l10n.pairCreateError,
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
@@ -155,7 +159,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
               ),
               const SizedBox(height: AppSpace.md),
               FilledButton.tonal(
-                  onPressed: _generate, child: const Text('Try again')),
+                  onPressed: _generate, child: Text(l10n.tryAgain)),
             ] else
               _buildCode(context),
           ],
@@ -165,6 +169,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   }
 
   Widget _buildCode(BuildContext context) {
+    final l10n = context.l10n;
     final code = _code!;
     final payload = _payload!;
     final remaining = _remaining;
@@ -182,12 +187,12 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
                   Icon(Icons.timer_off, size: 48, color: context.tokens.danger),
                   const SizedBox(height: AppSpace.sm),
                   Text(
-                    'Code expired',
+                    l10n.codeExpired,
                     key: const ValueKey('pairingExpired'),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: AppSpace.xs),
-                  const Text('Generate a new code to keep pairing.'),
+                  Text(l10n.generateNewCode),
                 ],
               ),
             ),
@@ -203,7 +208,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
                 child: PairingQr(
                   key: const ValueKey('pairingQr'),
                   data: payload,
-                  semanticsLabel: 'Pairing QR code for $code',
+                  semanticsLabel: l10n.pairingQrSemantics(code),
                 ),
               ),
             ),
@@ -221,7 +226,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         ],
         const SizedBox(height: AppSpace.md),
         Text(
-          'Expires in $mm:$ss',
+          l10n.expiresIn('$mm:$ss'),
           key: const ValueKey('pairingCountdown'),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
@@ -236,19 +241,19 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
               key: const ValueKey('pairingRegenerate'),
               onPressed: _loading ? null : _generate,
               icon: const Icon(Icons.refresh),
-              label: const Text('Regenerate'),
+              label: Text(l10n.regenerate),
             ),
             OutlinedButton.icon(
               key: const ValueKey('pairingCopy'),
               onPressed: _expired ? null : _copyCode,
               icon: const Icon(Icons.copy),
-              label: const Text('Copy code'),
+              label: Text(l10n.copyCode),
             ),
           ],
         ),
         const SizedBox(height: AppSpace.md),
         Text(
-          'The code works once and expires after ${kPairCodeTtl.inMinutes} minutes.',
+          l10n.codeWorksOnce(kPairCodeTtl.inMinutes),
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),

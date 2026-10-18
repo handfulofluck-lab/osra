@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/social_provider.dart';
@@ -31,7 +32,7 @@ class SocialScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-        appBar: AppBar(title: const Text('Social monitoring')),
+        appBar: AppBar(title: Text(context.l10n.socialMonitoringTitle)),
         body: SocialSectionsView(childId: childId),
       );
 }
@@ -82,20 +83,20 @@ IconData socialAppIcon(String appKey) => switch (appKey) {
       _ => Icons.apps,
     };
 
-String socialAppLabel(String appKey) {
+String socialAppLabel(String appKey, [AppLocalizations? l10n]) {
   for (final a in kSocialApps) {
     if (a.appKey == appKey) return a.label;
   }
-  return appKey.isEmpty ? 'Unknown app' : appKey[0].toUpperCase() + appKey.substring(1);
+  return appKey.isEmpty ? (l10n?.unknownApp ?? 'Unknown app') : appKey[0].toUpperCase() + appKey.substring(1);
 }
 
-String formatRelativeTime(DateTime? at) {
-  if (at == null) return 'unknown time';
+String formatRelativeTime(DateTime? at, [AppLocalizations? l10n]) {
+  if (at == null) return l10n?.timeUnknown ?? 'unknown time';
   final diff = DateTime.now().difference(at.toLocal());
-  if (diff.isNegative || diff.inMinutes < 1) return 'just now';
-  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-  if (diff.inDays < 1) return '${diff.inHours}h ago';
-  return '${diff.inDays}d ago';
+  if (diff.isNegative || diff.inMinutes < 1) return l10n?.relativeJustNow ?? 'just now';
+  if (diff.inHours < 1) return l10n?.relativeMinutesAgo(diff.inMinutes) ?? '${diff.inMinutes}m ago';
+  if (diff.inDays < 1) return l10n?.relativeHoursAgo(diff.inHours) ?? '${diff.inHours}h ago';
+  return l10n?.relativeDaysAgo(diff.inDays) ?? '${diff.inDays}d ago';
 }
 
 String formatDurationMmSs(int seconds) {
@@ -124,6 +125,7 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
   }
 
   Future<void> _save() async {
+    final l10n = context.l10n;
     final draft = _draft;
     if (draft == null) return;
     setState(() => _saving = true);
@@ -136,11 +138,11 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
       await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: body);
       ref.invalidate(rulesProvider(widget.childId));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Monitoring saved')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.monitoringSaved)));
       }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: ${e.message}')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.saveFailed('${e.message}'))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -149,15 +151,16 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Monitoring', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.monitoring, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         rules.when(
           loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text('Failed to load rules: $e'),
+          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final draft = _draft!;
@@ -172,10 +175,10 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
                     onChanged: (v) => setState(() => draft[a.appKey] = v),
                   ),
                 Align(
-                  alignment: Alignment.centerRight,
+                  alignment: AlignmentDirectional.centerEnd,
                   child: FilledButton(
                     onPressed: _saving ? null : _save,
-                    child: Text(_saving ? 'Saving…' : 'Save monitoring'),
+                    child: Text(_saving ? l10n.saving : l10n.saveMonitoring),
                   ),
                 ),
               ],
@@ -195,6 +198,7 @@ class ConcernsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final events = ref.watch(socialEventsProvider(childId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,22 +206,22 @@ class ConcernsSection extends ConsumerWidget {
         // Feature #24: vault trust copy — snippets leave the device encrypted.
         Card(
           color: Theme.of(context).colorScheme.primaryContainer,
-          child: const ListTile(
+          child: ListTile(
             dense: true,
-            leading: Icon(Icons.lock_outline),
-            title: Text('Snippets are encrypted with your family key before leaving the device and stored encrypted on your server.'),
+            leading: const Icon(Icons.lock_outline),
+            title: Text(l10n.vaultTrustCopy),
           ),
         ),
         const SizedBox(height: 8),
-        Text('Concerns', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.concerns, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         events.when(
           loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text('Failed to load concerns: $e'),
+          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (items) => items.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Center(child: Text('No concerns detected')),
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: Text(l10n.noConcernsDetected)),
                 )
               : Column(
                   children: [
@@ -226,11 +230,11 @@ class ConcernsSection extends ConsumerWidget {
                         color: socialSeverityColor(e.severity).withValues(alpha: 0.07),
                         child: ExpansionTile(
                           leading: Icon(socialAppIcon(e.app), color: socialSeverityColor(e.severity)),
-                          title: Text(e.contact.isEmpty ? 'Unknown contact' : e.contact),
+                          title: Text(e.contact.isEmpty ? l10n.unknownContact : e.contact),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('${socialAppLabel(e.app)} · ${formatRelativeTime(e.createdAt)}'),
+                              Text('${socialAppLabel(e.app, l10n)} · ${formatRelativeTime(e.createdAt, l10n)}'),
                               if (e.concernTypes.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
@@ -250,26 +254,26 @@ class ConcernsSection extends ConsumerWidget {
                           ),
                           children: [
                             Align(
-                              alignment: Alignment.centerLeft,
+                              alignment: AlignmentDirectional.centerStart,
                               child: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                                child: Text(e.preview.isEmpty ? 'No preview available' : e.preview),
+                                padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 8),
+                                child: Text(e.preview.isEmpty ? l10n.noPreviewAvailable : e.preview),
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                              padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 8),
                               child: Align(
-                                alignment: Alignment.centerRight,
+                                alignment: AlignmentDirectional.centerEnd,
                                 child: TextButton.icon(
                                   icon: const Icon(Icons.lock_open, size: 16),
-                                  label: const Text('View in Decryption Vault'),
+                                  label: Text(l10n.viewInDecryptionVault),
                                   onPressed: () => SnippetVaultModal.show(
                                     context,
-                                    title: e.contact.isEmpty ? 'Social message' : e.contact,
+                                    title: e.contact.isEmpty ? l10n.socialMessage : e.contact,
                                     snippet: e.preview,
                                     severity: e.severity,
                                     concernTypes: e.concernTypes,
-                                    sourceLabel: socialAppLabel(e.app),
+                                    sourceLabel: socialAppLabel(e.app, l10n),
                                     timestamp: e.createdAt,
                                   ),
                                 ),
@@ -296,23 +300,24 @@ class CallsSmsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final activity = ref.watch(activityProvider(childId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Calls & texts', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.callsAndTexts, style: Theme.of(context).textTheme.titleMedium),
         // NOTE: iOS agent cannot observe calls/texts (no public API) — keep
         // the section but tell parents why it may stay empty.
-        Text('iOS does not support call/text monitoring.', style: Theme.of(context).textTheme.bodySmall),
+        Text(l10n.iosNoCallMonitoring, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 4),
         activity.when(
           loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text('Failed to load activity: $e'),
+          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (items) {
             if (items.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(child: Text('No calls or texts yet')),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: Text(l10n.noCallsOrTexts)),
               );
             }
             // Group by local day, most recent first.
@@ -332,8 +337,8 @@ class CallsSmsSection extends ConsumerWidget {
               children: [
                 for (final day in order) ...[
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 2),
-                    child: Text(_dayLabel(day), style: Theme.of(context).textTheme.titleSmall),
+                    padding: const EdgeInsetsDirectional.fromSTEB(4, 12, 4, 2),
+                    child: Text(_dayLabel(context, day), style: Theme.of(context).textTheme.titleSmall),
                   ),
                   for (final e in groups[day]!)
                     Card(
@@ -342,7 +347,7 @@ class CallsSmsSection extends ConsumerWidget {
                         leading: Icon(e.type == 'call'
                             ? (e.direction == 'outgoing' ? Icons.call_made : Icons.call_received)
                             : Icons.sms_outlined),
-                        title: Text(e.number ?? 'Unknown number'),
+                        title: Text(e.number ?? l10n.unknownNumber),
                         subtitle: e.type == 'sms' ? Text(_truncateSms(e.bodyPreview)) : null,
                         trailing: e.type == 'call' ? Text(formatDurationMmSs(e.durationSec)) : null,
                       ),
@@ -356,11 +361,11 @@ class CallsSmsSection extends ConsumerWidget {
     );
   }
 
-  String _dayLabel(String key) {
-    if (key == 'Unknown') return key;
+  String _dayLabel(BuildContext context, String key) {
+    if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return DateFormat('EEEE, MMM d, yyyy').format(d);
+    return DateFormat('EEEE, MMM d, yyyy', context.localeName).format(d);
   }
 
   /// SMS previews are capped at 120 chars server-side; truncate defensively.
@@ -402,6 +407,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
   }
 
   Future<void> _save() async {
+    final l10n = context.l10n;
     final items = _items;
     if (items == null) return;
     setState(() => _saving = true);
@@ -412,11 +418,11 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
       await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: body);
       ref.invalidate(rulesProvider(widget.childId));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Allowlist saved')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.allowlistSaved)));
       }
     } on DioException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: ${e.message}')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.saveFailed('${e.message}'))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -431,17 +437,18 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Trusted contacts', style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.trustedContacts, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
-        Text('Numbers here never raise social concerns.', style: Theme.of(context).textTheme.bodySmall),
+        Text(l10n.trustedContactsDesc, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 8),
         rules.when(
           loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text('Failed to load rules: $e'),
+          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final items = _items!;
@@ -466,19 +473,19 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
                   controller: _input,
                   keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
-                    labelText: 'Phone number',
+                    labelText: l10n.phoneNumberLabel,
                     border: const OutlineInputBorder(),
                     isDense: true,
-                    suffixIcon: IconButton(icon: const Icon(Icons.add), tooltip: 'Add', onPressed: _add),
+                    suffixIcon: IconButton(icon: const Icon(Icons.add), tooltip: l10n.add, onPressed: _add),
                   ),
                   onSubmitted: (_) => _add(),
                 ),
                 const SizedBox(height: 8),
                 Align(
-                  alignment: Alignment.centerRight,
+                  alignment: AlignmentDirectional.centerEnd,
                   child: FilledButton(
                     onPressed: _saving ? null : _save,
-                    child: Text(_saving ? 'Saving…' : 'Save allowlist'),
+                    child: Text(_saving ? l10n.saving : l10n.saveAllowlist),
                   ),
                 ),
               ],
