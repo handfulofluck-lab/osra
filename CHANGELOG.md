@@ -11,6 +11,31 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — probe row 3 redefined to the accepted silence definition, and measured (`plan 1.9`, TR-22)
+- **The decision is now in the documents, not only in a PR comment.** `docs/QA/TESTING-STRATEGY.md` §3a
+  moved from "PROPOSED — not accepted" to **ACCEPTED — 2026-10-18, Claude (PR #127 comment 13:47:54Z;
+  restated as an explicit acceptance on PR #154 at 18:46:39Z)**. The accepted row, verbatim: after
+  `am force-stop`, wait one silence window (`DEVICE_SILENT_MINUTES`, default 30, floor 5) plus one
+  5-minute tick, then require exactly one critical alert with category `tamper` / type `device_silent`
+  for the device and `Device.status = "offline"`.
+- **The probe measures it.** `scripts/hardware/android-bypass-probe.ps1` row 3 now reads the alert count
+  and the device row from Postgres and waits the **real elapsed** window (new `-SilenceMinutes`, default
+  30) plus one job tick; a missing alert is FAIL with the counts and `lastSeen` in the evidence. The old
+  expectation — the agent back within 120 s — is measured and printed as a **NOTE** row that gates
+  nothing, because Android keeps a force-stopped package stopped (`came back=False after 121 s`, TR-21).
+  The script needs an API started with `JOBS_ENABLED=1`; the summary line now reports `NOTE` separately
+  from `PASS`/`FAIL`/`NOT MEASURED` and the exit code is unchanged (`FAIL + NOT MEASURED`).
+- **Measured** (TR-22, 2026-10-19, Flip4 `R5CW116Y6GF`, Full debug from `main@40f4f61`, API on `:3100`
+  with `JOBS_ENABLED=1 DEVICE_SILENT_MINUTES=5`): row 1 **PASS** (`DELETE_FAILED_DEVICE_POLICY_MANAGER`);
+  row 3 **PASS** — one critical `tamper`/`device_silent` alert **474 s** after the force-stop, inside
+  the 630-s budget, and `Device.status` read `offline`; the 120-s note read *False after 122 s*. Evidence
+  in `C:\KARIM\tr-kimi\hw-2026-10-19\` (not committed). **This is the author's run** — a tester re-run on
+  the merged sha is still what makes it verification (`AGENTS.md` §1/§6.5).
+- **Docs.** `docs/TESTING.md` §5f states the accepted row, the `JOBS_ENABLED=1`/`-SilenceMinutes`
+  precondition and the run time (≈10.5 min at a 5-minute window, ≈35.5 min at the default); TR-21's row
+  points at the replacement instead of implying the row is still open; `docs/ROADMAP.md` 0.6/1.9 and the
+  Phase 1 summary carry the accepted definition.
+
 ### Parent app — English/Arabic localization with RTL (`plan 3.1`, first slice; follow-up #159)
 - **Toolchain.** `flutter_localizations` + `intl 0.20.3`, a new `l10n.yaml`, `lib/l10n/app_en.arb`
   (template) and `lib/l10n/app_ar.arb`; generated `AppLocalizations` is checked in. `MaterialApp`

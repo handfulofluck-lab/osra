@@ -6,6 +6,13 @@
 #
 #   .\android-bypass-probe.ps1 -Serial R5CW116Y6GF -Port 3023 -StateFile C:\KARIM\KCL\tr07\tr10-state.json
 #
+# Row 3 (accepted 2026-10-18, QA/TESTING-STRATEGY.md 3a) waits one device-silence window plus one job
+# tick, so the API under test must run with JOBS_ENABLED=1 and the window it was started with must be
+# passed here as -SilenceMinutes (default 30, the product default; the job floors it at 5). A run with
+# -SilenceMinutes 5 against an API started with DEVICE_SILENT_MINUTES=5 waits at most 10.5 minutes for
+# the alert. The old expectation (the agent back within 120 s of the force-stop) is still measured and
+# logged, as a NOTE, because Android cannot meet it and it gates nothing.
+#
 # Every check is a measured outcome, not a unit assertion: what the OS did, how long the alert took, what
 # the status screen says. The table at the end is what goes into the PR (AGENTS.md section 6).
 param(
@@ -16,6 +23,7 @@ param(
     [string]$Pin = "4729",
     [string]$Psql = "psql",
     [string]$Db = "postgres://familyshield@127.0.0.1:5432/familyshield",
+    [int]$SilenceMinutes = 30,
     [string]$Out = (Join-Path (Get-Location) "bypass-probe")
 )
 $ErrorActionPreference = "Continue"
@@ -36,6 +44,11 @@ function FocusWindow { $w = (Sh "dumpsys window") -split "`n" | Select-String "m
 function KeyguardUp { ((Sh "dumpsys window") -match "isKeyguardShowing=true") }
 function Api($m, $path, $body, $token) { $h=@{}; if ($token) { $h["Authorization"]="Bearer $token" }; try { if ($body -ne $null) { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -ContentType "application/json" -Body ($body|ConvertTo-Json -Depth 8) -TimeoutSec 15 } else { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -TimeoutSec 15 } } catch { W "API $m $path -> $($_.Exception.Message)"; $null } }
 function AlertCount($type) { $sql = "select count(*) from ""Alert"" where ""deviceId""='$DEV' and metadata->>'type'='$type';"; $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); [int]((& $Psql -At -f $f $Db) -join "") }
+function SqlScalar($sql) { $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); (((& $Psql -At -f $f $Db) -join "`n").Trim()) }
+# Row 3's two facts, read from Postgres so the row is a measurement of the server, not of the app.
+function SilenceAlerts { [int](SqlScalar "select count(*) from ""Alert"" where ""deviceId""='$DEV' and severity='critical' and (metadata->>'type'='device_silent' or category='tamper');") }
+function DeviceStatus { SqlScalar "select status from ""Device"" where id='$DEV';" }
+function DeviceLastSeen { SqlScalar "select ""lastSeen"" from ""Device"" where id='$DEV';" }
 function WaitAlert($type, $maxSec) { $before = AlertCount $type; $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt $maxSec) { if ((AlertCount $type) -gt $before) { return [math]::Round($sw.Elapsed.TotalSeconds, 1) }; Start-Sleep 2 }; return -1 }
 function StatusText { Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 2; Sh "input keyevent 4" | Out-Null; Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 4; Texts (UiDump) }  # re-open (Back + start) so the status re-renders; never force-stop here, that kills the 60-s loop the rows measure
 function AgentAlive { ((Sh "pidof $PKG").Trim() -ne "") }
@@ -44,6 +57,9 @@ function Record($n, $name, $pass, $evidence) { [void]$results.Add([pscustomobjec
 # A row that could not be measured is neither a pass nor a fail: it must not read green, and it must not
 # accuse the product either. It is reported as NOT MEASURED and the run exits non-zero (see the end).
 function RecordNote($n, $name, $note) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOT MEASURED"; evidence=$note }); W ("#$n $name -> NOT MEASURED : " + $note) }
+# A note is a recorded observation that gates nothing. Row 3's old expectation is what this is for: it
+# stays visible in the table without turning the run red, because Android cannot meet it.
+function RecordInfo($n, $name, $note) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOTE"; evidence=$note }); W ("#$n $name -> NOTE : " + $note) }
 
 $st = Get-Content $StateFile | ConvertFrom-Json; $TOKEN = $st.token; $DEV = $st.deviceId  # NOTE: PowerShell variables are case-insensitive — never name the token `$T` next to `$t = WaitAlert …`
 if ((Sh "dumpsys window") -match "isKeyguardShowing=true") { W "ABORT: the phone is locked (keyguard showing) - the status screen and the OS screens cannot be read; unlock it and re-run"; exit 2 }
@@ -53,10 +69,31 @@ W ("probe start - device " + $DEV + " - " + (Sh "getprop ro.product.model").Trim
 $u = (& $Adb @S uninstall $PKG 2>&1) -join " "
 Record 1 "adb uninstall (device admin active)" ($u -match "DELETE_FAILED_DEVICE_POLICY_MANAGER") $u
 
-# 3. force-stop: the agent must come back on its own (boot receiver / WorkManager / accessibility restart)
+# 3. force-stop: the server must notice the silent device within one silence window (QA/TESTING-STRATEGY.md
+#    3a, accepted 2026-10-18). The row is asserted on the server's own record: a critical tamper /
+#    device_silent alert for this device and Device.status = "offline". Backdating lastSeen in Postgres
+#    would measure the job and not the product, so the row waits the real elapsed window: DEVICE_SILENT_MINUTES
+#    (passed as -SilenceMinutes; the job floors it at 5) plus one scheduler tick (src/jobs/deviceSilence.ts,
+#    TICK_MS = 5 min) plus 30 s of slack.
+#    The previous expectation - the agent back within 120 s - is measured too, and reported as a NOTE:
+#    Android keeps a force-stopped package in the stopped state, so no code change can meet it (TR-21).
+$silenceBefore = SilenceAlerts; $seenBefore = DeviceLastSeen
 Sh "am force-stop $PKG" | Out-Null; $sw = [Diagnostics.Stopwatch]::StartNew(); $back = $false
 while ($sw.Elapsed.TotalSeconds -lt 120) { if (AgentAlive) { $back = $true; break }; Start-Sleep 3 }
-Record 3 "force-stop the agent" $back ("process back after " + [int]$sw.Elapsed.TotalSeconds + " s (Android keeps a force-stopped app in the stopped state: no receiver, job or accessibility rebinding until it is launched again; the App-info route is PIN-gated, the adb route is answered by the server's device_silent alert)")
+$backSec = [int]$sw.Elapsed.TotalSeconds
+RecordInfo "3-note" "old row 3: agent self-recovers within 120 s of am force-stop" ("process back within 120 s = " + $back + " after " + $backSec + " s (Android stopped state: no broadcast, job or accessibility rebinding until the app is launched again; TR-21 measured came back=False after 121 s). Not a gate: it is the expectation this row replaced")
+$budget = ($SilenceMinutes + 5) * 60 + 30
+# The stopwatch is NOT reset: the budget is measured from the force-stop, so the 120-s note above is part
+# of the accepted "window plus one tick" and cannot extend it.
+$new = 0; $firstAt = -1
+while ($sw.Elapsed.TotalSeconds -lt $budget) {
+    $new = (SilenceAlerts) - $silenceBefore
+    if ($new -ge 1) { $firstAt = [math]::Round($sw.Elapsed.TotalSeconds, 1); break }
+    Start-Sleep 10
+}
+if ($firstAt -lt 0) { $new = (SilenceAlerts) - $silenceBefore }
+$statusAfter = DeviceStatus; $seenAfter = DeviceLastSeen
+Record 3 "force-stop the agent (server notices the silent device)" (($new -eq 1) -and ($statusAfter -eq "offline")) ("silence window " + $SilenceMinutes + " min + 1 tick = " + $budget + " s budget: new critical tamper/device_silent alerts = " + $new + " (first after " + $(if ($firstAt -ge 0) { $firstAt } else { "never" }) + " s); Device.status = " + $statusAfter + "; lastSeen " + $seenBefore + " -> " + $seenAfter + "; self-recovery within 120 s = " + $back + " (note, not gated)")
 # the rest of the probe needs a live agent: relaunch it the way the parent (or the next boot) would, and re-enable the
 # accessibility service, which the OS drops from the enabled list when the app is force-stopped
 Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 4; Sh "input keyevent 3" | Out-Null
@@ -180,7 +217,9 @@ $results | Format-Table -AutoSize | Out-String -Width 220
 $results | ConvertTo-Json | Set-Content (Join-Path $Out "bypass-probe.json") -Encoding utf8
 $fails = @($results | Where-Object { $_.result -eq "FAIL" }).Count
 $unmeasured = @($results | Where-Object { $_.result -eq "NOT MEASURED" }).Count
+$notes = @($results | Where-Object { $_.result -eq "NOTE" }).Count
 $passed = @($results | Where-Object { $_.result -like "PASS*" }).Count
-W ("probe done: " + $passed + "/" + $results.Count + " rows PASS, " + $fails + " FAIL, " + $unmeasured + " NOT MEASURED (ten bypasses + the emergency-dialer safety check); log " + $LOG)
+$gated = @($results | Where-Object { $_.result -ne "NOTE" }).Count
+W ("probe done: " + $passed + "/" + $gated + " gated rows PASS, " + $fails + " FAIL, " + $unmeasured + " NOT MEASURED, " + $notes + " NOTE (recorded, not gated) (ten bypasses + the emergency-dialer safety check); log " + $LOG)
 # An unmeasured row is not a green row: fail the run so CI and the operator both notice.
 exit ($fails + $unmeasured)

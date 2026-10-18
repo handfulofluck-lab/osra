@@ -355,7 +355,7 @@ or the `LocationPing` table) — not the last cached fix.
 
 `scripts/hardware/android-bypass-probe.ps1 -Serial <adb serial> -Port 3023 -StateFile <tr10-state.json>`
 runs, against a paired phone with the PIN set and the test API reachable through `adb reverse`:
-`adb uninstall` · `pm clear` · force-stop (the agent must come back by itself) · accessibility off ·
+`adb uninstall` · `pm clear` · force-stop (the server must notice the silent device) · accessibility off ·
 overlay revoked · Private DNS provider · escaping a lock (Home / Recents / Settings) · going offline
 to dodge or escape a lock · VPN disconnected in Settings · device admin deactivated from Settings.
 Each row is a measured outcome (what the OS answered, the alert's latency counted in Postgres, what the
@@ -364,12 +364,17 @@ safety check rather than a bypass: with the device locked, the emergency dialer 
 on top (no call is placed) — a lock that covered it would be the one bug worse than every bypass. Two rows need a human tap on
 One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
 
-**Row 3 is red on hardware and stays red until someone accepts an amendment.** The row demands the agent
-back within 120 s of `am force-stop`, and Android keeps a force-stopped package stopped — measured
-`came back=False after 121 s` on the Flip4 (TR-21, 2026-10-18,
-`scripts/hardware/android-bypass-probe.ps1:56-59`). The proposal to assert the *alert* instead is
-[`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) §3a; it is **not** accepted, so do not read this
-paragraph as permission to mark the row passed or to edit the probe.
+**Row 3 asserts the accepted definition (2026-10-18, `QA/TESTING-STRATEGY.md` §3a).** After
+`am force-stop`, the row waits one silence window (`DEVICE_SILENT_MINUTES`, floor 5 — pass the same value
+as `-SilenceMinutes`) plus one 5-minute job tick, then requires exactly **one** new critical
+`tamper` / `device_silent` alert for the device and `Device.status = "offline"`, both read from Postgres
+(`scripts/hardware/android-bypass-probe.ps1`, row 3). The API under test must run with `JOBS_ENABLED=1`
+for this row, and the row takes that long: 5 minutes + one tick is a ~10.5-minute budget, the default
+30-minute window is ~35.5 minutes. The **old** expectation — the agent back within 120 s — is still
+measured and printed as a **NOTE**, not a gate: Android keeps a force-stopped package in the stopped state
+(`came back=False after 121 s` on the Flip4, TR-21, 2026-10-18), so no code change can meet it. A missing
+alert is **FAIL** with the alert count, `Device.status` and `lastSeen` in the evidence; it is never a note.
+First measurement under this definition: TR-22 (2026-10-19, `main@40f4f61`, window 5 minutes).
 
 **S1 has a precondition the other rows do not: the OS keyguard must be down.** `lock` is a real
 `lockNow()` (ADR-0010), so on a phone with a secure lock the keyguard sits above `LockActivity` and above
