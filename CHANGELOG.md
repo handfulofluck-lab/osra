@@ -11,6 +11,34 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — password-reset tokens are no longer bearer credentials (issue #146)
+- **The hole.** `/reset/request` mints a 15-minute JWT with `purpose:"password_reset"` and no role, and
+  `requireJwt` (`services/api/src/routes/auth.ts:204-216`) accepted any signature it could verify. An
+  attacker with the mailbox could reset the password, mint a second reset token after the
+  sessions-invalid-before epoch moved, present it to `/mfa/enroll` **with the password it had just set**,
+  pass the #139 re-authentication branch, replace the TOTP secret, verify it, and log in with the
+  attacker's authenticator. #139 was real but not sufficient: the reset token was a general bearer.
+- **The fix.** `requireJwt` now accepts only a live **parent session** token: no `purpose` claim (or
+  explicitly `"session"`), `role:"parent"`, and `isParentSessionLive`. A reset token is therefore
+  refused (`401 unauthorized`) by `/mfa/enroll`, `/mfa/verify` and `/logout-all`; it remains valid only
+  on `/reset/confirm`, the endpoint designed to consume it. The same purpose check is applied in
+  `requireAuth`, `requireParent` and `requireFamily` (`services/api/src/middleware/requireFamily.ts`),
+  so a purpose token is not accepted through a different bearer helper either; `isBearerSession` lives
+  in `services/api/src/lib/sessions.ts`.
+- **Reset semantics unchanged.** `/reset/confirm` still sets only the password and revokes sessions. For
+  an MFA-enabled account the next login still needs the existing authenticator (`401 mfa_required`
+  otherwise), and a user without MFA logs in with the new password. `GET`/`POST` clients that present a
+  normal session token are unaffected; no shipped client uses a reset token as a bearer.
+- **Tests that failed before.** `services/api/test/auth.test.ts` replays the chain: after
+  `/reset/confirm`, a fresh reset-purpose token is `401` on `/mfa/enroll` both with and without the new
+  password, and on `/logout-all`; the original TOTP still logs in and the attacker's does not. Run
+  against `origin/main`'s code the two new tests failed `expected 200 to be 401`.
+- **Gates.** `pnpm --filter @familyshield/api test` **352 passed**; `qa-probe` **124 passed · 0 failed**
+  including new `G19`; `e2e` **68 passed · 0 failed**; `check-probe-integrity.mjs --base origin/main`
+  **1 added, 0 removed**. Probe/e2e ran on a spare `:3100` instance of this branch; the shared `:3000`
+  was not restarted. A live check also confirmed `/reset/confirm` still works for a user without MFA
+  and for an MFA-enabled user (existing TOTP `200`, no code `401 mfa_required`, attacker TOTP `401`).
+
 ### Docs — ADR-0023 proposes the MFA recovery path (issue #136)
 - **The gap.** Login requires a TOTP when MFA is on (`services/api/src/routes/auth.ts:174-180`), a
   password reset deliberately does not clear it (`:289-310`), and replacing the secret needs a session

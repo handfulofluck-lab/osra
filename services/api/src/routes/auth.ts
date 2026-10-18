@@ -8,7 +8,7 @@ import { passwordResetEmail } from "../lib/email/templates.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
-import { invalidateSessionsBefore, isParentSessionLive, signParentToken } from "../lib/sessions.js";
+import { invalidateSessionsBefore, isBearerSession, isParentSessionLive, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
 const RegisterSchema = z.object({
@@ -201,7 +201,15 @@ export async function authRoutes(app: FastifyInstance) {
     return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
   });
 
-  /** Require a valid parent JWT for the MFA endpoints. */
+  /**
+   * Require a live parent SESSION token for the MFA and logout-all endpoints.
+   *
+   * Issue #146: signature validity is not authorization. A password-reset link is signed with the
+   * same secret (`/reset/request`) but carries `purpose:"password_reset"` and no role; accepting it
+   * here let mailbox control reach `/mfa/enroll` and, with the password the reset had just set,
+   * replace the second factor. Only a token with no `purpose` (or `"session"`) and `role:"parent"`
+   * is a bearer credential; the reset token stays valid only on `/reset/confirm`.
+   */
   const requireJwt = async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       await req.jwtVerify();
@@ -209,8 +217,13 @@ export async function authRoutes(app: FastifyInstance) {
       await reply.code(401).send({ error: "unauthorized" });
       return;
     }
+    const user = req.user as { sub?: string; role?: string; purpose?: string; jti?: string; iat?: number };
+    if (!isBearerSession(user) || user.role !== "parent") {
+      await reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
     // ADR-0014: a revoked or pre-epoch token is dead here too, not only behind the global hook.
-    if (!(await isParentSessionLive(req.user as { sub?: string; jti?: string; iat?: number }))) {
+    if (!(await isParentSessionLive(user))) {
       await reply.code(401).send({ error: "session_revoked" });
     }
   };

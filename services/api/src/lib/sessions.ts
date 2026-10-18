@@ -39,6 +39,18 @@ export function signParentToken(
   return { token: app.jwt.sign(claims, { expiresIn: opts.expiresIn ?? PARENT_TOKEN_TTL }), jti };
 }
 
+/**
+ * Is this JWT a session bearer credential? Purpose-scoped tokens (today the 15-minute
+ * `password_reset` link) are valid only on the endpoint designed to consume them, never as a
+ * general `Authorization: Bearer` — #146: a reset token reached `/mfa/enroll` and, with the
+ * password the reset had just set, replaced the second factor.
+ *
+ * A session token has no `purpose`, or explicitly `purpose:"session"`.
+ */
+export function isBearerSession(claims: { purpose?: unknown } | null | undefined): boolean {
+  return claims?.purpose === undefined || claims.purpose === "session";
+}
+
 export const invalidBeforeKey = (parentId: string) => `auth:invalid-before:${parentId}`;
 
 /** Invalidate every access token issued before now for this parent (kept for the token lifetime). */
