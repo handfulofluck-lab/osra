@@ -4,6 +4,7 @@ import com.familyshield.agent.data.RuleEngine
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.RuleRepository.Decision
 import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.network.dto.RuleSetDto
 import com.familyshield.agent.network.dto.SchoolHoursDto
@@ -15,6 +16,7 @@ import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -142,9 +144,8 @@ class ForegroundEventBlockTest {
         // the resolved (not event) package so the two paths cannot drift.
         val facts = FakeFacts(system = setOf(launcher))
         assertEquals(launcher, EssentialPackages.foregroundPackage("android", launcher))
-        assertEquals(
-            true,
-            com.familyshield.agent.enforcement.LockEnforcementPolicy.shouldReraise(
+        assertTrue(
+            LockEnforcementPolicy.shouldReraise(
                 "locked",
                 EssentialPackages.foregroundPackage("android", launcher),
                 "com.familyshield.agent",
