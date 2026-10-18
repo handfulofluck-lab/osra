@@ -127,4 +127,33 @@ class FlavorManifestTest {
         assertTrue(manifest("app/src/play/java/com/familyshield/agent/di/CommsBindingModule.kt").contains("NoopCommsCapture"))
         assertTrue(manifest("app/src/full/java/com/familyshield/agent/di/CommsBindingModule.kt").contains("CommsLogger"))
     }
+
+    /**
+     * Issue #128: `BootReceiver` may start `LocationService`, and (when the tunnel is enabled)
+     * `FilterVpnService`. Both are foreground services on API 34+, so each needs a declared
+     * `foregroundServiceType` and the matching `FOREGROUND_SERVICE_*` permission — a missing pair is
+     * a `SecurityException` at `startForeground()`.
+     */
+    @Test
+    fun `services the boot receiver starts declare an FGS type and its permission`() {
+        val location = serviceTag(".services.LocationService")
+        assertTrue(location, location.contains("""android:foregroundServiceType="location""""))
+        assertTrue(
+            "a location FGS needs FOREGROUND_SERVICE_LOCATION",
+            mainManifest.contains("android.permission.FOREGROUND_SERVICE_LOCATION"),
+        )
+
+        val vpn = serviceTag(".vpn.FilterVpnService")
+        assertTrue(vpn, vpn.contains("""android:foregroundServiceType="specialUse""""))
+        assertTrue(
+            "a specialUse FGS needs FOREGROUND_SERVICE_SPECIAL_USE",
+            mainManifest.contains("android.permission.FOREGROUND_SERVICE_SPECIAL_USE"),
+        )
+    }
+
+    private fun serviceTag(name: String): String =
+        Regex(
+            "<service\\b[^>]*android:name=\"${Regex.escape(name)}\"[^>]*>",
+            RegexOption.DOT_MATCHES_ALL,
+        ).find(mainManifest)?.value ?: throw AssertionError("no <service> declaration for $name")
 }

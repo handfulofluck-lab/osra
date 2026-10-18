@@ -211,9 +211,12 @@ adb logcat -d | grep "location/ping"                            # <-- 201 Create
 psql -c 'SELECT count(*) FROM "LocationPing"'                   # a row means it really persisted
 ```
 
-Cover at minimum: **first run with no location permission** (must not crash), **grant → service starts
-without relaunch**, **relaunch of a paired app** (service resumes), **a ping that reaches the API**, and
-the specific claim the change makes. Paste the raw evidence into the issue.
+Cover at minimum: **first run with no location permission** (must not crash), **a reboot with location
+denied** (the boot receiver must skip `LocationService`, log `location not granted`, and stay alive —
+on a secure-keyguard phone this means after the first unlock), **a reboot with location granted**
+(`LocationService` foreground within 60 s), **grant → service starts without relaunch**, **relaunch of
+a paired app** (service resumes), **a ping that reaches the API**, and the specific claim the change
+makes. Paste the raw evidence into the issue.
 
 **Clean up afterwards — always** (`AGENTS.md` §7):
 
@@ -373,6 +376,7 @@ after its parent dies.
 | `check-probe-integrity.mjs` reports a probe assertion as **REMOVED** although the line is still there | The checker only reads a literal name that opens on the **same line** as `check(`; a wrapped call — `check(` then the name on the next line — is counted as *dynamic* and therefore looks deleted. Separately, `--head HEAD` compares the **committed** tree, not your working copy, so an uncommitted reformat is invisible and the removal persists | Keep the assertion name on the `check(` line (the probe's existing style), and run the checker with no `--head` for a working-tree comparison: `node scripts/check-probe-integrity.mjs --base origin/main`. Hit on #111: the name set matched 88/88 by hand while the gate stayed red |
 | The JVM `LockEnforcementPolicyTest` is green and the device still locks the wrong window | The test proves the **rule**, not the device's package names: on the Flip4 the emergency dialer is `com.samsung.android.emergency`, which no AOSP name contains (issue #80) | Treat probe row **S1** as the only proof that the lock leaves the dialer reachable; a green JVM suite is necessary, never sufficient |
 | Probe row S1 reads "LockActivity on top" on a phone with a secure lock | `lock` is a real `lockNow()` (ADR-0010): the OS keyguard sits above `LockActivity` **and** above anything `am start` launches, so the dialer can never reach the front whatever the policy does | Unlock the phone (swipe or PIN) with the lock overlay up before measuring. The probe now reports the row as **NOT MEASURED** and exits non-zero instead of FAIL (`scripts/hardware/android-bypass-probe.ps1`, 2026-10-17) |
+| `FATAL EXCEPTION: main … ForegroundServiceDidNotStartInTimeException` in a receiver, although the service saw the missing permission and called `stopSelf()` | `startForegroundService()` starts a clock that only `startForeground()` stops: returning `START_NOT_STICKY` and stopping **without** ever calling `startForeground()` still trips the deadline. "Check the permission inside the service and bail" is therefore not a safe pattern | Guard **before** `startForegroundService()` — `BootStartPolicy` (issue #128). A service that cannot legally start foreground must not be requested at all |
 | A work order says "run S1 with PIN 4729" and the run stops at the phone's lock screen | **4729 is the OSRA app's parent PIN, set during pairing** — it opens the in-app gates ("Remove protection", stop ring). It is not the device keyguard credential, and `adb shell locksettings verify --old 4729` answers "didn't match" on the Flip4 (2026-10-18, TR-21) | Never send `lock` on a phone whose keyguard PIN you do not hold: `lockNow()` raises a screen nobody in the room can dismiss. Ask the maintainer to unlock, or measure the `pause` overlay instead — it exercises the same `LockActivity` + policy + `<queries>` path and is honest only when labelled as a surrogate, never as S1 |
 | `dpm remove-active-admin` fails with `SecurityException: Attempt to remove non-test admin` during cleanup | The debug APK does not declare `android:testOnly`, so Android refuses the shell command — and a leftover admin blocks `adb uninstall` | Remove admin through the app's own PIN gate (4729 in the test family), or build the debug variant with `testOnly` if you need the shell route. Check `dumpsys device_policy` shows the agent gone **before** uninstalling, or the cleanup half-fails and the next run starts from a dirty phone |
 
