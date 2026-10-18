@@ -19,7 +19,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   login can move it again (#101, guard corrected in #105). Before this, a family could only be filled by
   whichever device logged in.
 - Test: a widget test asserts the zone loads, the explanatory line renders, and picking a new zone sends
-  exactly one `PATCH` with that value. Parent-app suite: **104 tests, all passing**.
+  exactly one `PATCH` with that value. Parent-app suite: **105 tests, all passing**.
+- **Fixed before it shipped to anyone (issue #108):** a family whose zone is outside the curated list
+  would have seen `UTC` in the dropdown while the server kept the real value. The control now always
+  includes the family's actual zone as an option (`_zoneOptions`), with a test using `Asia/Tokyo`.
 
 ### Architecture — ADR-0020 correction: the device fill is guarded by `timezoneSource = 'default'` (2026-10-18)
 - The first amendment's test wording (`<> 'parent'`) let every login re-fill the zone from the logging-in
