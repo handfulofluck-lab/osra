@@ -361,11 +361,14 @@ POST /v1/devices/pair/claim  (NO auth)
   lastSeen now. Family/child ids come from the Redis payload, never from the client.
 ```
 
-Device JWTs must work on existing agent endpoints: `GET /v1/rules/:childId`,
-`GET/POST /v1/devices/:id/commands`, `POST /v1/devices/:id/telemetry`,
-`POST /v1/devices/:id/push-token`, `POST /v1/location/ping` (any verified JWT). Verify each
-and NOTE any role tightening. Parent-only endpoints keep requiring the parent role
-(req.user.role !== "parent" → 403): enforce in requireAuth/requireFamily where missing.
+Device JWTs must work on existing agent endpoints: `GET /v1/rules/:childId` (its own child
+only), `GET/POST /v1/devices/:id/commands`, `POST /v1/devices/:id/telemetry`,
+`POST /v1/devices/:id/push-token`, `POST /v1/location/ping` (a parent JWT or a device JWT; a
+device JWT may ping only its own child, and a parent-supplied `deviceId` must be a row of the
+named child — 403 `device_mismatch` otherwise). A signature-valid JWT with any other role or
+purpose (e.g. the password-reset token) is **401**: `jwtVerify()` proves the signature, not the
+right to write location data (audit 2026-10-18). Parent-only endpoints keep requiring the parent
+role (req.user.role !== "parent" → 403): enforce in requireAuth/requireFamily where missing.
 
 Tests: extend services/api/test — pair → claim round-trip (201 + device row with correct
 family), wrong code 404, expired code 404, parent-JWT endpoints reject device tokens (403),

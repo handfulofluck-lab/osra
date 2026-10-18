@@ -51,24 +51,34 @@ const HistoryQuerySchema = z.object({
 type AuthedUser = { familyId: string; sub?: string; role?: string; deviceId?: string; childId?: string };
 
 /**
- * preHandler for POST /ping: accepts a parent JWT, or falls back to the
- * X-FamilyShield-Signature HMAC scheme used by device/agent internal calls.
+ * preHandler for POST /ping: accepts only a parent JWT (`role: "parent"` with its family), a device
+ * JWT (`role: "device"` with its device/child claims, revocation-checked), or a valid HMAC request.
+ * A verified signature alone proves who signed the token, not that the bearer may write location
+ * data: a password-reset token or a token with no role must be 401, not fall through to the ping
+ * handler (where a missing familyId used to skip the family check).
  */
 async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  let jwtVerified = false;
   try {
     await req.jwtVerify();
+    jwtVerified = true;
+  } catch {
+    /* fall through to HMAC */
+  }
+  if (jwtVerified) {
     const user = req.user as AuthedUser | undefined;
-    if (user?.role === "device" && user.deviceId) {
+    if (user?.role === "parent" && user.familyId) return;
+    if (user?.role === "device" && user.deviceId && user.childId && user.familyId) {
       const redis = getRedis();
       const revoked = await redis.get(`revoked:device:${user.deviceId}`).catch(() => null);
       if (revoked) {
         await reply.code(401).send({ error: "device_revoked" });
         return;
       }
+      return;
     }
+    await reply.code(401).send({ error: "unauthorized" });
     return;
-  } catch {
-    /* fall through to HMAC */
   }
   const rawBody = (req as { rawBody?: string }).rawBody;
   const auth = await authenticateInternalRequest(
@@ -182,9 +192,23 @@ export async function locationRoutes(app: FastifyInstance) {
     const child = await prisma.child.findUnique({ where: { id: effectiveChildId } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
 
-    // Verify family matching
-    if (user?.familyId && child.familyId !== user.familyId) {
+    // Verify family matching. pingAuth only lets a JWT reach here with a familyId, so for a JWT
+    // caller this check is unconditional — an HMAC request has no `user` and is covered by the
+    // device-identity checks below.
+    if (user && child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
+    }
+
+    // A parent may report on a device's behalf, but only for a device row of the named child.
+    // The body's deviceId is not free-form metadata: accepting a sibling's device id would file
+    // this child's location into another child's device timeline.
+    if (user?.role === "parent") {
+      const device = await prisma.device.findUnique({ where: { id: effectiveDeviceId } });
+      // A missing row keeps the route's existing convention (FK failure -> 401 device_revoked).
+      if (!device) return reply.code(401).send({ error: "device_revoked" });
+      if (device.childId !== effectiveChildId) {
+        return reply.code(403).send({ error: "device_mismatch" });
+      }
     }
 
     // Verify token identity claims vs body
@@ -247,7 +271,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Return the child's most recent location ping. */
-  app.get("/:childId/latest", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req, reply) => {
+  app.get("/:childId/latest", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     const latest = await prisma.locationPing.findFirst({
       where: { childId },
@@ -258,7 +282,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Return the child's ping history within an optional from/to window. */
-  app.get("/:childId/history", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req, reply) => {
+  app.get("/:childId/history", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     const parsed = HistoryQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -282,7 +306,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** List geofences for a child. */
-  app.get("/geofences/:childId", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req) => {
+  app.get("/geofences/:childId", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req) => {
     const { childId } = req.params as { childId: string };
     const geofences = await prisma.geofence.findMany({ where: { childId } });
     return { geofences };

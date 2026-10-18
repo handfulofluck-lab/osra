@@ -84,6 +84,7 @@ describe("haversineMeters", () => {
 describe("geofence transitions on POST /v1/location/ping", () => {
   beforeEach(() => {
     resetPrismaMock();
+    prismaMock.device.findUnique.mockResolvedValue({ id: DEVICE_ID, childId: CHILD_ID });
   });
 
   function setupApp() {
@@ -174,6 +175,7 @@ describe("school-geofence routine auto-apply (Feature #23)", () => {
   beforeEach(() => {
     resetPrismaMock();
     wireRedis();
+    prismaMock.device.findUnique.mockResolvedValue({ id: DEVICE_ID, childId: CHILD_ID });
   });
 
   it("entering a fence with routineId publishes the ruleset and queues rules_updated", async () => {
@@ -237,6 +239,7 @@ const sign = (raw: string) => createHmac("sha256", HMAC_SECRET).update(raw).dige
 describe("location ping validation & auth", () => {
   beforeEach(() => {
     resetPrismaMock();
+    prismaMock.device.findUnique.mockResolvedValue({ id: DEVICE_ID, childId: CHILD_ID });
     process.env.INTERNAL_HMAC_SECRET = HMAC_SECRET;
   });
 

@@ -142,7 +142,7 @@ function overlapError(data: z.infer<typeof RuleSetInputSchema>): string | null {
 
 export async function rulesRoutes(app: FastifyInstance) {
   /** Return the child's ruleset (nested API shape), or defaults when none exists. */
-  app.get("/:childId", { preHandler: requireFamily({ param: "childId", model: "child" }) }, async (req, reply) => {
+  app.get("/:childId", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     // ADR-0008 §2b: a device must not keep enforcing or collecting once consent is withdrawn;
     // parents may still read the (dormant) ruleset.
