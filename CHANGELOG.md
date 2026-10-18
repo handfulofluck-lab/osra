@@ -11,6 +11,26 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — `e2e` stops on a 429 burst instead of manufacturing failures, and a missing `/me` envelope no longer truncates the run (issue #126)
+- **`services/api/scripts/e2e.mjs` now speaks the same rate-limit contract as `qa-probe` (#112/#114).**
+  `call()` counts every 429, retries once only when `Retry-After` is ≤ 3 s, and above 5 429s prints
+  `ABORT: rate limited by the API (<n> x 429) - wait 60 s and re-run` and exits **2** — no `FAIL` row is
+  recorded from a throttled response. Exit 1 keeps its meaning: a real assertion failed. Before this,
+  the second gate of a sitting recorded the limiter as two product failures and the next call crashed.
+- **A missing `/v1/family/me` envelope is one recorded failure and a printed summary.** The old
+  `me.data.children.find(...)` dereference at `e2e.mjs:89` threw
+  `TypeError: Cannot read properties of undefined (reading 'find')`; the run ended with no summary and,
+  on Node 24/Windows, a libuv assertion (`exit 3221226505`). The envelope check records the failure and
+  `stop()` prints the response body plus `=== E2E: n passed, m failed ===`, exiting 1.
+- **Measured (2026-10-18, shared `:3000`, `main@7435592`):** `qa-probe` then `e2e` back-to-back → e2e
+  printed `PASS  seeded parent login` and then
+  `ABORT: rate limited by the API (1 x 429) - wait 60 s and re-run` (`Retry-After 11 s`), exit **2**,
+  zero `FAIL` lines. After 60 s: **69 passed / 0 failed**. Probe integrity unchanged
+  (`check=94 target=2 note=1`, 0 added, 0 removed/demoted).
+- Tests: `test/e2e-rate-limit.test.ts` runs the real harness against an all-429 stub (both Retry-After
+  branches), a stub that throttles each of the first six calls once (the > 5 counter), and a stub whose
+  `/me` has no `children`; all four fail on `origin/main` and pass here. Full API suite:
+  **339 passed / 0 failed**. Database restored with `cleanup-test-data.sql -v apply=1` after the runs.
 ### API — the WebSocket handshake is ticket-only; the legacy `?token=` bypass is gone (issue #120)
 - **`GET /v1/ws` no longer accepts a JWT in the query string.** On `main` the `?token=<jwt>` branch
   (`services/api/src/realtime/gateway.ts:56-58`) verified the signature with `app.jwt.verify()` but never
