@@ -17,7 +17,7 @@ class TelemetryWorker(
         return try {
             val entryPoint = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
             entryPoint.usageReporter().aggregateAndUpload()
-            entryPoint.commsLogger().flush() // Feature #6 backstop alongside the 5-min in-process loop
+            entryPoint.commsCapture().flush() // Feature #6 backstop alongside the 5-min in-process loop
             Result.success()
         } catch (e: Exception) {
             if (runAttemptCount < 3) Result.retry() else Result.failure()

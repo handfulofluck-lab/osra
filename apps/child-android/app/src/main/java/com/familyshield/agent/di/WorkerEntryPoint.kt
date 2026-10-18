@@ -6,7 +6,7 @@ import com.familyshield.agent.data.BlocklistStore
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.commands.CommandDispatcher
-import com.familyshield.agent.comms.CommsLogger
+import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.telemetry.UsageReporter
 import dagger.hilt.EntryPoint
@@ -45,7 +45,7 @@ interface WorkerEntryPoint {
     fun consentState(): ConsentState
 
     /** Call/SMS logger for the telemetry-worker flush backstop (Feature #6). */
-    fun commsLogger(): CommsLogger
+    fun commsCapture(): CommsCapture
 
     /** Device-admin façade (ADR-0010) for the tamper checks. */
     fun deviceAdminManager(): com.familyshield.agent.security.DeviceAdminManager
