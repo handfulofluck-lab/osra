@@ -89,6 +89,9 @@ model Device {
   platform   String
   model      String
   osVersion  String
+  /// online | offline | locked | sos (mirrors DeviceStatus in packages/shared-types). Writers set
+  /// `online` on pair/claim, telemetry and location ping; the silence job sets `offline`. Nothing
+  /// writes `active` — it was the job's stale assumption and is fixed in src/jobs/deviceSilence.ts.
   status     String         @default("offline")
   batteryPct Int            @default(0)
   lastSeen   DateTime       @default(now())
