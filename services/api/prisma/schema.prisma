@@ -11,9 +11,12 @@ model Family {
   id        String   @id @default(uuid())
   name      String
   region    String
-  /// ADR-0017: IANA zone that decides when the family's digest is "evening". Backfilled to UTC because
-  /// `region` is a market (US/EU/UK/OTHER), not a country - the 3.x app setting is the real source.
+  /// ADR-0017/ADR-0020: IANA zone that decides when the family's digest is "evening". Backfilled to UTC
+  /// because `region` is a market (US/EU/UK/OTHER), not a country.
   timezone  String   @default("UTC")
+  /// ADR-0020: where `timezone` came from - `default` (never set), `device` (filled from a parent's
+  /// device at registration/login) or `parent` (chosen explicitly and never overwritten).
+  timezoneSource String @default("default")
   createdAt DateTime @default(now())
   parents   Parent[]
   children  Child[]

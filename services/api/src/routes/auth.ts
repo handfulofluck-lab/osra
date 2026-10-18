@@ -7,6 +7,7 @@ import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
 import { passwordResetEmail } from "../lib/email/templates.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
+import { isValidTimeZone } from "../lib/digestSchedule.js";
 import { invalidateSessionsBefore, isParentSessionLive, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
@@ -16,11 +17,15 @@ const RegisterSchema = z.object({
   displayName: z.string().min(1),
   familyName: z.string().min(1),
   region: z.enum(["US", "EU", "UK", "OTHER"]),
+  // ADR-0020: optional, additive; existing clients send nothing and nothing changes.
+  timezone: z.string().max(64).optional(),
 });
 
 const LoginSchema = z.object({
   email: z.string().email().transform((e) => e.trim().toLowerCase()),
   password: z.string(),
+  // ADR-0020: the device zone, used only to fill a family that has never set one.
+  timezone: z.string().max(64).optional(),
 });
 
 /**
@@ -126,7 +131,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/register", { config: RL }, async (req, reply) => {
     const parsed = RegisterSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { email: rawEmail, password, displayName, familyName, region } = parsed.data;
+    const { email: rawEmail, password, displayName, familyName, region, timezone } = parsed.data;
     const email = rawEmail.trim().toLowerCase();
 
     const existing = await prisma.parent.findUnique({ where: { email } });
@@ -134,7 +139,10 @@ export async function authRoutes(app: FastifyInstance) {
 
     const passwordHash = await argon2.hash(password);
     const result = await prisma.$transaction(async (tx) => {
-      const family = await tx.family.create({ data: { name: familyName, region } });
+      const zone = timezone && isValidTimeZone(timezone) ? timezone : null;
+      const family = await tx.family.create({
+        data: { name: familyName, region, ...(zone ? { timezone: zone, timezoneSource: "device" } : {}) },
+      });
       const parent = await tx.parent.create({
         data: { familyId: family.id, email, passwordHash, displayName, role: "owner" },
       });
@@ -167,6 +175,15 @@ export async function authRoutes(app: FastifyInstance) {
       } catch (err) {
         req.log.warn({ err }, "mfa secret lazy encryption failed");
       }
+    }
+    // ADR-0020: fill from the device only while the family has never set a zone, in ONE statement, so
+    // there is no read-then-write race with a parent saving an explicit choice at the same moment.
+    const zone = parsed.data.timezone;
+    if (zone && isValidTimeZone(zone)) {
+      await prisma.family.updateMany({
+        where: { id: parent.familyId, timezoneSource: { not: "parent" } },
+        data: { timezone: zone, timezoneSource: "device" },
+      }).catch((err) => req.log.warn({ err }, "timezone fill failed"));
     }
     const { token, jti } = signParentToken(app, parent);
     return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
