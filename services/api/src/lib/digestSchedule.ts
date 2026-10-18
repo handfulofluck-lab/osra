@@ -103,7 +103,14 @@ export function digestsDueAt(now: Date, timeZone: string, digestHour: number): D
   return parts.weekday === 7 ? ["daily", "weekly"] : ["daily"];
 }
 
-/** The env hour, clamped: `DIGEST_HOUR` is a **local** hour (ADR-0017), default 18. */
+/**
+ * The env hour, clamped: `DIGEST_HOUR` is a **local** hour (ADR-0017), default 18.
+ *
+ * `DIGEST_HOUR_UTC` is the pre-ADR-0017 name and is still read as a fallback, but as a **local** hour
+ * too — nothing here converts it, because ADR-0017 made the hour local for every family and the name
+ * is now wrong (F3 of the #93 review). `startDigestScheduler` warns once at boot when it is the one
+ * set, so an operator still on the old name learns the meaning changed; rename it in a deployment.
+ */
 export function digestHour(env: NodeJS.ProcessEnv = process.env): number {
   const raw = Number(env.DIGEST_HOUR ?? env.DIGEST_HOUR_UTC ?? 18);
   return Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : 18;

@@ -17,7 +17,15 @@ export interface EmailMessage {
   idempotencyKey?: string;
 }
 
-export type EmailResult = { ok: true; id?: string } | { ok: false; reason: string };
+export type EmailResult =
+  | { ok: true; id?: string }
+  /**
+   * `retryable` is the sender's classification of the refusal, not a guess by the caller: a
+   * transport/rate-limit/server failure may succeed on the next attempt, a 4xx (an address the
+   * provider will never accept) may not. A `send` that *throws* is by definition unclassified and
+   * callers treat it as transient.
+   */
+  | { ok: false; reason: string; retryable: boolean };
 
 export interface EmailSender {
   readonly name: string;
@@ -55,7 +63,10 @@ export class ResendEmailSender implements EmailSender {
       return { ok: true, id: json.id };
     }
     const body = await res.text().catch(() => "");
-    return { ok: false, reason: `HTTP ${res.status} ${body.slice(0, 200)}` };
+    // 408 (timeout), 429 (rate limit) and 5xx are the provider's fault or the network's: retry.
+    // Every other 4xx is about this message or this recipient — a retry sends the same bad request.
+    const retryable = res.status === 408 || res.status === 429 || res.status >= 500;
+    return { ok: false, reason: `HTTP ${res.status} ${body.slice(0, 200)}`, retryable };
   }
 }
 

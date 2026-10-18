@@ -77,7 +77,21 @@ describe("senders", () => {
   it("Resend sender surfaces provider errors without throwing", async () => {
     const fetchMock = vi.fn(async () => new Response("rate limited", { status: 429 }));
     const sender = new ResendEmailSender("re_test", "a@b", fetchMock as never);
-    expect(await sender.send({ to: "p@x", subject: "S", html: "", text: "" })).toEqual({ ok: false, reason: "HTTP 429 rate limited" });
+    expect(await sender.send({ to: "p@x", subject: "S", html: "", text: "" })).toEqual({
+      ok: false,
+      reason: "HTTP 429 rate limited",
+      retryable: true,
+    });
+  });
+
+  it("Resend sender calls 5xx and rate limits retryable, other 4xx permanent (ADR-0024)", async () => {
+    const msg = { to: "p@x", subject: "S", html: "", text: "" };
+    const withStatus = (status: number) =>
+      new ResendEmailSender("re_test", "a@b", (async () => new Response("no", { status })) as never);
+    expect(await withStatus(503).send(msg)).toMatchObject({ ok: false, retryable: true });
+    expect(await withStatus(408).send(msg)).toMatchObject({ ok: false, retryable: true });
+    expect(await withStatus(422).send(msg)).toMatchObject({ ok: false, retryable: false });
+    expect(await withStatus(403).send(msg)).toMatchObject({ ok: false, retryable: false });
   });
 
   it("console sender never prints the body in production", async () => {
@@ -156,13 +170,47 @@ describe("routes use the email sender", () => {
 
 describe("digest scheduler", () => {
   const capture = new CaptureSender();
+  /**
+   * A faithful stand-in for the `DigestSend` unique key: a create for a period already claimed throws
+   * `P2002`, exactly like Postgres. Without it, "the next tick retries" cannot be tested — a mock that
+   * always accepts the create hides the bug F1 describes.
+   */
+  let claims: Map<string, { failedReason?: string }>;
+  const ck = (w: { familyId: string; kind: string; period: string }) => `${w.familyId}|${w.kind}|${w.period}`;
   beforeEach(() => {
     resetPrismaMock();
     capture.sent = [];
     setEmailSender(capture);
     delete process.env.DIGEST_HOUR_UTC;
+    claims = new Map();
+    prismaMock.digestSend.create.mockImplementation(async ({ data }: { data: { familyId: string; kind: string; period: string } }) => {
+      if (claims.has(ck(data))) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      claims.set(ck(data), {});
+      return { id: `send-${claims.size}`, ...data };
+    });
+    prismaMock.digestSend.delete.mockImplementation(async ({ where }: { where: { familyId_kind_period: { familyId: string; kind: string; period: string } } }) => {
+      claims.delete(ck(where.familyId_kind_period));
+      return {};
+    });
+    prismaMock.digestSend.update.mockImplementation(async ({ where, data }: { where: { familyId_kind_period: { familyId: string; kind: string; period: string } }; data: { failedReason?: string } }) => {
+      const key = ck(where.familyId_kind_period);
+      const row = claims.get(key);
+      if (!row) throw new Error("Record to update not found");
+      Object.assign(row, data);
+      return { id: "send-1", ...where.familyId_kind_period, ...data };
+    });
   });
   afterEach(() => setEmailSender(null));
+
+  /** One family, daily digest only, UTC — the 18:00Z tick of 2026-10-14 (a Wednesday) is due. */
+  function dueFamily(): void {
+    prismaMock.digestPrefs.findMany.mockResolvedValue([{ familyId: "fam-1", dailyEmail: true, weeklyEmail: false, emails: ["a@x"] }]);
+    prismaMock.family.findMany.mockResolvedValue([{ id: "fam-1", timezone: "UTC" }]);
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", name: "Demo" });
+    prismaMock.digestPrefs.findUnique.mockResolvedValue({ familyId: "fam-1", emails: ["a@x"] });
+    prismaMock.parent.findMany.mockResolvedValue([]);
+    prismaMock.child.findMany.mockResolvedValue([]);
+  }
 
   it("is due from the configured local hour; weekly only on the local Sunday (ADR-0017)", () => {
     expect(digestsDueAt(new Date("2026-10-14T17:30:00Z"), "UTC", 18)).toEqual([]);
@@ -209,6 +257,66 @@ describe("digest scheduler", () => {
     const dup = Object.assign(new Error("unique"), { code: "P2002" });
     prismaMock.digestSend.create.mockRejectedValueOnce(dup);
     expect(await runDigestsDue(new Date("2026-10-14T18:20:00Z"))).toEqual({ attempted: 0, sent: 0 });
+  });
+
+  it("a thrown send releases the claim and the next tick retries the same period (F1)", async () => {
+    dueFamily();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const boom: EmailSender = {
+      name: "boom",
+      send: async () => {
+        throw new Error("provider timeout");
+      },
+    };
+    setEmailSender(boom);
+
+    expect(await runDigestsDue(new Date("2026-10-14T18:00:00Z"))).toEqual({ attempted: 1, sent: 0 });
+    expect(prismaMock.digestSend.delete).toHaveBeenCalledWith({
+      where: { familyId_kind_period: { familyId: "fam-1", kind: "daily", period: "2026-10-14" } },
+    });
+    expect(claims.size).toBe(0);
+    expect(error.mock.calls.flat().join(" ")).toContain("will retry");
+
+    // The 18:15 tick finds no claim for the period and sends it.
+    setEmailSender(capture);
+    expect(await runDigestsDue(new Date("2026-10-14T18:15:00Z"))).toEqual({ attempted: 1, sent: 1 });
+    expect(capture.sent).toHaveLength(1);
+    expect(claims.size).toBe(1);
+    error.mockRestore();
+    warn.mockRestore();
+  });
+
+  it("a permanent provider refusal keeps the claim terminal and is not retried (F2)", async () => {
+    dueFamily();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const send = vi.fn(async () => ({ ok: false as const, reason: "HTTP 422 invalid to", retryable: false }));
+    setEmailSender({ name: "refuse", send });
+
+    expect(await runDigestsDue(new Date("2026-10-14T18:00:00Z"))).toEqual({ attempted: 1, sent: 0 });
+    expect(prismaMock.digestSend.delete).not.toHaveBeenCalled();
+    expect(claims.get("fam-1|daily|2026-10-14")).toEqual({ failedReason: "HTTP 422 invalid to" });
+
+    // Two later ticks in the same period: the unique key skips it, the provider is not called again.
+    expect(await runDigestsDue(new Date("2026-10-14T18:15:00Z"))).toEqual({ attempted: 0, sent: 0 });
+    expect(await runDigestsDue(new Date("2026-10-14T18:30:00Z"))).toEqual({ attempted: 0, sent: 0 });
+    expect(send).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("a transient provider refusal releases the claim so the next tick retries", async () => {
+    dueFamily();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const send = vi.fn(async () => ({ ok: false as const, reason: "HTTP 503 unavailable", retryable: true }));
+    setEmailSender({ name: "flaky", send });
+
+    expect(await runDigestsDue(new Date("2026-10-14T18:00:00Z"))).toEqual({ attempted: 1, sent: 0 });
+    expect(claims.size).toBe(0);
+
+    setEmailSender(capture);
+    expect(await runDigestsDue(new Date("2026-10-14T18:15:00Z"))).toEqual({ attempted: 1, sent: 1 });
+    expect(capture.sent).toHaveLength(1);
+    warn.mockRestore();
   });
 });
 

@@ -30,6 +30,10 @@ model DigestSend {
   kind     String
   period   String
   sentAt   DateTime @default(now())
+  // Terminal failure (ADR-0024): set when the provider refused permanently (e.g. an address it will
+  // never accept). The row stays so the unique key blocks retries for this period; null while the
+  // claim is live or was delivered.
+  failedReason String?
 
   @@unique([familyId, kind, period])
   @@index([familyId])
