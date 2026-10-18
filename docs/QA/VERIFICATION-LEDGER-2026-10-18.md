@@ -267,7 +267,7 @@ and an install with no PIN refuses to arm by design — a "lock did nothing" res
 ```
 
 Post the lease line on the board (`AGENTS.md` §9.2), and release with `-LeftState` after clearing every
-restriction (§9.4). The keyguard PIN is the human's (`AGENTS.md` §9.3); the app PIN is `4729` and is
+restriction (§9.4). The keyguard PIN is the human's (`AGENTS.md` §9.3); the app PIN is the app PIN and is
 never a keyguard credential — that confusion cost the 2026-10-18 hardware run its S1 row (TR-21, #127).
 
 ### 5.8 Cleanup — do this whether the run passed or failed (`AGENTS.md` §7)
