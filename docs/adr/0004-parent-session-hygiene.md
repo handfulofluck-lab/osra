@@ -1,6 +1,6 @@
 # ADR-0004 — Parent session hygiene: rotating refresh tokens, WS tickets, optional MFA
 
-- **Status:** accepted
+- **Status:** superseded in part by ADR-0022 (the WebSocket `?token=` clause; the rest stands)
 - **Date:** 2026-09-19
 - **Supersedes:** —
 

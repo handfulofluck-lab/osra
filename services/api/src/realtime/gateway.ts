@@ -43,41 +43,53 @@ export function registerRealtime(app: FastifyInstance) {
 
   // NOTE: @fastify/websocket v10 passes the ws.WebSocket directly (older versions
   // passed a connection object with a `.socket` property).
-  app.get("/v1/ws", { websocket: true }, async (socket, req) => {
-    try {
-      const query = req.query as { ticket?: string; token?: string };
-      let familyId: string;
-      if (query.ticket) {
+  app.get(
+    "/v1/ws",
+    {
+      websocket: true,
+      // Issue #120: a single-use ticket is the only way in. The legacy `?token=<jwt>` handshake put
+      // a bearer token in the URL (proxy/access logs, browser history) and bypassed parent-session
+      // revocation. A stale client gets a JSON 401 that names the reason — the websocket plugin's
+      // non-upgrade reply would be a 404 and look like a missing route.
+      preValidation: async (req, reply) => {
+        const query = (req.query ?? {}) as { ticket?: string; token?: string };
+        if (query.token !== undefined || !query.ticket) {
+          return reply.code(401).send({
+            error: "ticket_required",
+            message:
+              "WebSocket connections require a single-use ticket: POST /v1/ws-ticket, then connect with ?ticket=<ticket>.",
+          });
+        }
+      },
+    },
+    async (socket, req) => {
+      try {
+        const query = req.query as { ticket: string };
         // Single-use ticket: consumed on first presentment.
         const redis = getRedis();
-        familyId = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
+        const familyId = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
         if (!familyId) throw new Error("invalid ticket");
         await redis.del(`ws:ticket:${query.ticket}`).catch(() => {});
-      } else if (query.token) {
-        // Legacy path kept for older clients; NOTE: prefer tickets (no JWT in URLs/logs).
-        familyId = (app.jwt.verify(query.token) as { familyId: string }).familyId;
-      } else {
-        throw new Error("missing credentials");
+        const set = socketsByFamily.get(familyId) ?? new Set();
+        set.add(socket);
+        socketsByFamily.set(familyId, set);
+        socket.on("close", () => set.delete(socket));
+        // TR-05: tell the client its subscription is live. Until this frame arrives the client has
+        // no way to know whether a `family:*:events` message published after `open` reached it — the
+        // registration above happens only after the ticket's Redis GET+DEL, so `open` fires early.
+        // Contract: `ready` is the FIRST frame on every socket, it carries the familyId the socket is
+        // bound to, and no event frame is sent before it. Harnesses wait for it; the parent app can
+        // use it to end a reconnect spinner. Sent after the set add, so a message that races the
+        // send is delivered on this socket (the subscriber iterates the set it was just added to).
+        // `familyId` is deliberate (TR-05 review): the holder authenticated as that family's parent
+        // and already has the id; it lets a client assert which family the stream is bound to. Add
+        // NOTHING else — no child id, device id or ticket — this frame reaches devtools and proxy logs.
+        sendFrame(socket, { type: "ready", familyId, ts: new Date().toISOString() });
+      } catch {
+        socket.close(4001, "unauthorized");
       }
-      const set = socketsByFamily.get(familyId) ?? new Set();
-      set.add(socket);
-      socketsByFamily.set(familyId, set);
-      socket.on("close", () => set.delete(socket));
-      // TR-05: tell the client its subscription is live. Until this frame arrives the client has
-      // no way to know whether a `family:*:events` message published after `open` reached it — the
-      // registration above happens only after the ticket's Redis GET+DEL, so `open` fires early.
-      // Contract: `ready` is the FIRST frame on every socket, it carries the familyId the socket is
-      // bound to, and no event frame is sent before it. Harnesses wait for it; the parent app can
-      // use it to end a reconnect spinner. Sent after the set add, so a message that races the
-      // send is delivered on this socket (the subscriber iterates the set it was just added to).
-      // `familyId` is deliberate (TR-05 review): the holder authenticated as that family's parent
-      // and already has the id; it lets a client assert which family the stream is bound to. Add
-      // NOTHING else — no child id, device id or ticket — this frame reaches devtools and proxy logs.
-      sendFrame(socket, { type: "ready", familyId, ts: new Date().toISOString() });
-    } catch {
-      socket.close(4001, "unauthorized");
-    }
-  });
+    },
+  );
 
   subscriber.psubscribe("family:*:events");
   subscriber.on("pmessage", (_pattern, channel, message) => {
