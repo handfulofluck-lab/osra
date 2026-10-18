@@ -11,7 +11,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | API unit tests | `pnpm --filter @familyshield/api test` | Routes with mocked DB/Redis: auth, rules, devices, alerts, content, contracts | Logic/contract regressions |
 | **Adversarial probe** (merge gate) | `node scripts/qa-probe.mjs` | Tries to **break** documented invariants against a live stack | Any invariant is violable |
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
-| Flutter | `cd apps/parent-app && flutter test` (+ `flutter analyze`) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568 | UI/contract regressions |
+| Flutter | `cd apps/parent-app && flutter pub get && flutter analyze && flutter test` (needs `C:\KARIM\tools\flutter\bin` on `PATH` — §2) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568 | UI/contract regressions |
 | Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference | Agent logic regressions, a Play build that gained the notification permission |
 | Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
@@ -21,38 +21,70 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 A green unit suite is **not** evidence that an invariant holds — that is what the probe is for. A green
 probe is **not** evidence that a feature works on a phone — that is what hardware verification is for.
 
+**CI runs one step more than this table does** (`.github/workflows/ci.yml`, re-read against the gates on
+2026-10-18), so a row below is the floor, not the gate:
+
+| Suite | The step CI adds |
+|---|---|
+| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`ci.yml:28-33`) — CI's own step comment records that `pnpm install` did not create the client (`ci.yml:28`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time |
+| Flutter | the row's three commands are `ci.yml:47-49`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:68-79`) |
+| Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease` in one invocation (`:122`), then `aapt2 dump badging` for `targetSdkVersion:'35'` and both network-security configs (`:123-130`) |
+| Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`:150`) |
+| AI engine | `pip install -r requirements-dev.txt` first (`:166`) |
+
+A change is not done on the strength of a locally green suite whose build step was never exercised: the
+release-assembly step is where a release-only failure lives.
+
 ## 2. Prerequisites (dev machine)
 
 | Need | Where it lives here |
 |---|---|
-| Node 20 + pnpm 9 | `C:\KARIM\tools\node` |
-| PostgreSQL | Windows service `OSRA-Postgres` (auto-start) or `start-pg.bat` |
+| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/ci.yml:22`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
+| PostgreSQL | Windows service `OSRA-Postgres` (auto-start) or `C:\KARIM\start-pg.bat` |
 | Redis | `C:\KARIM\tools\redis\redis-server.exe --port 6379` |
 | JDK 17 + Android SDK | `C:\KARIM\tools\jdk-17`, `C:\KARIM\tools\android-sdk` (`ANDROID_HOME` **must** be set, or gradle fails with "SDK location not found") |
-| Flutter | `C:\KARIM\tools\flutter\bin` |
+| Flutter | `C:\KARIM\tools\flutter\bin` (3.47.1) — **not** on this host's `PATH`: `export PATH="/c/KARIM/tools/flutter/bin:$PATH"` before any `flutter` command |
 | .NET 8 SDK | `C:\KARIM\tools\dotnet` |
 | Python 3.11+ | system python; AI tests need `services/ai-engine/requirements-dev.txt` |
 
-Stack + secrets: `dist\start-backend.bat` starts Postgres/Redis/API and seeds the demo family. The
-secrets it sets (`JWT_SECRET`, `INTERNAL_HMAC_SECRET`, `VAULT_KEY`) are required by the probe and e2e;
-never commit them.
+Stack + secrets: the host launcher is `C:\KARIM\familyshield\dist\start-backend.bat` — **outside this
+repo** and under a gitignored `dist\`, so a fresh worktree does not contain it. It starts
+Postgres/Redis/API and seeds the demo family; the shipped template is
+`docs/test-guides/start-backend.example.bat` (fix its `API=` path before using it). The secrets it sets
+(`JWT_SECRET`, `INTERNAL_HMAC_SECRET`, `VAULT_KEY`) are required by the probe and e2e; never commit them,
+and note that `VAULT_KEY` is **not** the HMAC secret (§3).
 
 ```bash
-curl -s localhost:3000/health/deep     # {"ok":true,"db":"up","redis":"up"} — use this, not /health,
-                                       # when apps misbehave: /health does not touch dependencies
+curl -s http://127.0.0.1:3000/health/deep   # {"ok":true,"version":"0.1.0","db":"up","redis":"up"}
+                                            # use this, not /health, when apps misbehave: /health
+                                            # does not touch dependencies
 ```
+
+`127.0.0.1`, not `localhost`: on this host `localhost` resolves to `::1` first and a v4-only server then
+looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §3.
 
 ## 3. Running the gates
 
 ```bash
+# from the repo root, once per checkout — CI runs this before its type-check and suite (ci.yml:28-33)
+pnpm --filter @familyshield/api exec prisma generate
+
 cd services/api
-INTERNAL_HMAC_SECRET=<from dist/start-backend.bat> VAULT_KEY=<same> node scripts/e2e.mjs      # 50/50
-INTERNAL_HMAC_SECRET=<same> node scripts/qa-probe.mjs                                        # must be 0 failed
+export DATABASE_URL=<launcher> INTERNAL_HMAC_SECRET=<launcher> VAULT_KEY=<launcher>
+export API_BASE=http://127.0.0.1:3000                  # never localhost — see §6, the ::1 trap
+
+node scripts/e2e.mjs        # 69 passed / 0 failed at 2026-10-18 (#150) — the count grows, read the 0
+node scripts/qa-probe.mjs   # 130 passed / 0 failed at 2026-10-18 (#150) — any failure exits 1
 ```
 
-Also export `DATABASE_URL` in the shell that runs `e2e.mjs`: the erasure step then counts the child's
-rows in Postgres itself (must be 0 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the
-count was skipped. The probe does not need it.
+`VAULT_KEY` is **its own** value, not the HMAC secret: the launcher sets a 44-character base64 key that
+differs from the 64-character `INTERNAL_HMAC_SECRET` (measured on this host, 2026-10-18). The earlier
+wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and fails two e2e checks with
+`500 ERR_CRYPTO_INVALID_KEYLEN` — the harness trap described under the env table below.
+
+`DATABASE_URL` is what makes `e2e.mjs`'s erasure step count the child's rows in Postgres itself (must be 0
+in all 13 tables, ADR-0013) instead of printing a `NOTE` that the count was skipped — that skip is not a
+pass. The probe does not need it, and deliberately has no database connection (§6).
 
 ### Notification env (Phase 2a) — all optional
 
@@ -93,16 +125,18 @@ explicitly, in its own commit, with the reasoning in the PR.
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug`) · agent-desktop · ai-engine |
+| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended) |
 | `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
-| `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file |
+| `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
-Local equivalent of the workflow lint (also installed as a pre-push hook by
+Local equivalents of the two lint gates (the workflow lint is also installed as a pre-push hook by
 `scripts/install-git-hooks.sh`):
 
 ```bash
 node scripts/check-workflows.mjs --strict
+node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
+                                           # and the pre-push hook refuses a push that breaks one
 ```
 
 ## 5. Hardware verification (physical device)
@@ -330,6 +364,13 @@ safety check rather than a bypass: with the device locked, the emergency dialer 
 on top (no call is placed) — a lock that covered it would be the one bug worse than every bypass. Two rows need a human tap on
 One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
 
+**Row 3 is red on hardware and stays red until someone accepts an amendment.** The row demands the agent
+back within 120 s of `am force-stop`, and Android keeps a force-stopped package stopped — measured
+`came back=False after 121 s` on the Flip4 (TR-21, 2026-10-18,
+`scripts/hardware/android-bypass-probe.ps1:56-59`). The proposal to assert the *alert* instead is
+[`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) §3a; it is **not** accepted, so do not read this
+paragraph as permission to mark the row passed or to edit the probe.
+
 **S1 has a precondition the other rows do not: the OS keyguard must be down.** `lock` is a real
 `lockNow()` (ADR-0010), so on a phone with a secure lock the keyguard sits above `LockActivity` and above
 anything `am start` launches; the dialer can never reach the front and the row would accuse
@@ -393,6 +434,7 @@ Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 | `git push` hangs for minutes with no output, and `curl`/`gh api` against `repos/handfullofluck-lab/osra` return **404** — while `git ls-remote` and `gh pr list` still work | The `ghp_…` token copied into scripts/`GH_TOKEN` was rotated; the `gh` CLI and Git Credential Manager now hold a **fine-grained PAT** from the keyring. The stale token authenticates (so nothing says "bad credentials") but is not authorised for this repo, which GitHub reports as 404 | Do not override `GH_TOKEN` with the old token. Push with plain `git push` (keyring), use `gh` without overrides, and read the live token with `gh auth token` only when a script genuinely needs it. Verified 2026-10-17: the same push that stalled four times for 4+ minutes completed in 67 s on the keyring credential |
 | "Gates green" but nothing ran | Pipe masking: `cmd \| tail` hides the real exit code | Check `${PIPESTATUS[0]}`, or grep the output for the failure |
 | A workflow shows as failed with **0 jobs** | GitHub rejected the workflow file (schema), YAML parsers accept it | `node scripts/check-workflows.mjs --strict` |
+| A PR shows **"No checks reported"** — an empty checks area, no `pull_request` run queued — while every other PR is running CI normally | **The branch conflicts with its base.** GitHub runs `pull_request` workflows against the synthetic merge commit `refs/pull/<n>/merge`, and it creates no such ref for a PR whose `mergeable` is `CONFLICTING` — so the workflow is never triggered at all. "No checks" is not "pending": waiting for it never ends. Diagnosed on #96 (2026-10-18), where it read as "CI did not start" before the merge ref was suspected | Confirm the state (`gh pr view <n> --json mergeable,mergeStateStatus` → `CONFLICTING`/`DIRTY`), then **merge the base into the branch and push**: `git fetch origin && git merge origin/main`, resolve, `git push`. The merge ref appears and the run starts. Never report a PR as "CI pending" on an empty checks list, and never merge one: an unmergeable PR by definition has no merge commit to gate |
 | Connections fail for some apps after agent testing | WinINET proxy left on a dead `127.0.0.1:8877` (and the `Connections` blob survives `reset-proxy.bat`) | See issue `#32`; delete the `Connections` values after resetting. Set `FS_SET_SYSTEM_PROXY=0` for developer machine test isolation; `reset-proxy.bat` now flushes WinINET immediately |
 | Emulator: no location, ever | Emulator GPS injection does not reach agents | Verify location on the physical device only |
 | CI: `Process completed with exit code 126` | A committed script lacks the executable bit in git (Windows-authored repos strip it) | `git update-index --chmod=+x <file>`; check both `gradlew` wrappers, `.sh` scripts and `.githooks/*`. This bit `gradlew` (the Android job) and the pre-push hook itself — on a Linux/macOS clone the hook would not have run at all |
