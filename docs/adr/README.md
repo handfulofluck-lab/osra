@@ -28,6 +28,8 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0017](0017-family-local-digest-time.md) | The weekly digest is sent at the family's local hour (`Family.timezone`, hourly wake, one send per week) | accepted |
 | [0018](0018-shared-test-api-ownership.md) | The shared `:3000` test API is owned by the lead, serves `main@HEAD`, and runs outside agent task trees | accepted |
 | [0019](0019-safe-direction-commands.md) | A command is safe-direction only if it can never start, extend or escalate a restriction | accepted |
+| [0020](0020-family-timezone-setting.md) | The family timezone comes from the parent's device at signup/login and is a parent setting; `region` stays a market (B1) | accepted |
+| [0021](0021-play-policy-review-child-agent.md) | Play policy review: call-log/SMS and `QUERY_ALL_PACKAGES` leave the `play` build, `isMonitoringTool=child_monitoring` is declared, the listener stays Full-only | accepted |
 
 ## Writing a new ADR
 
