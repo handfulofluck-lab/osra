@@ -29,8 +29,18 @@ object OnboardingPolicy {
 
     data class Row(val grant: Grant, val granted: Boolean)
 
-    /** The rows in the order the parent should grant them (cheapest and most important first). */
-    fun rows(granted: (Grant) -> Boolean): List<Row> = Grant.values().map { Row(it, granted(it)) }
+    /**
+     * The rows in the order the parent should grant them (cheapest and most important first).
+     *
+     * [notificationCaptureAvailable] is the build's capability, not the OS grant: the Play artefact has no
+     * `NotificationListenerService`, so asking a Play parent for notification access would request a
+     * permission the build cannot use — and a store reviewer sees the request (ADR-0016 §4). Full passes
+     * `true`, Play `false`, from `BuildConfig.CAPTURE_NOTIFICATIONS`.
+     */
+    fun rows(notificationCaptureAvailable: Boolean = true, granted: (Grant) -> Boolean): List<Row> =
+        Grant.values()
+            .filter { it != Grant.NOTIFICATION_LISTENER || notificationCaptureAvailable }
+            .map { Row(it, granted(it)) }
 
     /** Grants still missing among the required ones; empty means pairing may be called complete. */
     fun missingRequired(rows: List<Row>): List<Grant> = rows.filter { it.grant.required && !it.granted }.map { it.grant }

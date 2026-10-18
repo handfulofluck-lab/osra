@@ -1,5 +1,6 @@
 package com.familyshield.agent.setup
 
+import com.familyshield.agent.BuildConfig
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -286,7 +287,7 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun showComplete() {
-        val rows = OnboardingPolicy.rows { grants.isGranted(it) }
+        val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
         if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = true); return }
         replaceWith {
             addView(label("Setup complete"))
@@ -496,7 +497,7 @@ class PairingActivity : ComponentActivity() {
                         setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 )
-                val rows = OnboardingPolicy.rows { grants.isGranted(it) }
+                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
                 val missing = OnboardingPolicy.missingRequired(rows)
                 addView(
                     label("\n" + OnboardingPolicy.progressLine(rows) + if (missing.isEmpty()) "" else "\nMissing: " + missing.joinToString { it.title }).apply {
@@ -506,7 +507,7 @@ class PairingActivity : ComponentActivity() {
                 addView(
                     Button(this@PairingActivity).apply {
                         text = if (missing.isEmpty()) "Protection checklist" else "Finish protection (${missing.size} to grant)"
-                        setOnClickListener { showChecklist(OnboardingPolicy.rows { grants.isGranted(it) }, firstRun = false) }
+                        setOnClickListener { showChecklist(OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }, firstRun = false) }
                     },
                 )
                 addWebFilterRow(this)
