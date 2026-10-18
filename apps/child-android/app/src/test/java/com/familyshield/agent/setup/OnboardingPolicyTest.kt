@@ -63,4 +63,21 @@ class OnboardingPolicyTest {
         assertFalse(OnboardingPolicy.privateDnsOk("hostname"))
         assertFalse(OnboardingPolicy.privateDnsOk(" HOSTNAME "))
     }
+
+    /**
+     * ADR-0016 §4: the Play artefact has no NotificationListenerService, so it must not ask for a
+     * permission it cannot use — a store reviewer sees the request even when the code no-ops.
+     */
+    @Test
+    fun `the notification row exists only in a build that can capture notifications`() {
+        val full = OnboardingPolicy.rows(notificationCaptureAvailable = true) { false }
+        val play = OnboardingPolicy.rows(notificationCaptureAvailable = false) { false }
+        assertTrue(full.any { it.grant == OnboardingPolicy.Grant.NOTIFICATION_LISTENER })
+        assertFalse(play.any { it.grant == OnboardingPolicy.Grant.NOTIFICATION_LISTENER })
+        // The row is recommended, not required: the progress line and the completion rule are identical.
+        assertEquals(OnboardingPolicy.progressLine(full), OnboardingPolicy.progressLine(play))
+        val playAllGranted = OnboardingPolicy.rows(notificationCaptureAvailable = false) { true }
+        assertTrue(OnboardingPolicy.canComplete(playAllGranted))
+        assertTrue(OnboardingPolicy.canComplete(OnboardingPolicy.rows(notificationCaptureAvailable = true) { true }))
+    }
 }
