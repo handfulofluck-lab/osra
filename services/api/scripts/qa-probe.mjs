@@ -564,6 +564,30 @@ console.log("\n── G2. location & rules authorization ──");
   });
   check("G17 parent ping for another family's child is still forbidden (403)", crossFamPing.status === 403, `got ${crossFamPing.status}`);
 
+  // #124 (audit finding 5): family scoping is not device identity. Device A could post telemetry for
+  // sibling B in the same family, refreshing B's lastSeen/battery and B's child's day totals, because
+  // `requireFamily` only proves the target shares the caller's familyId — every device in a family
+  // does. Agent-write routes therefore compose `requireOwnDevice` after it
+  // (`services/api/src/middleware/requireFamily.ts`); parents stay family-scoped (G15).
+  const sibTelemetry = await call("POST", `/v1/devices/${deviceIdA}/telemetry`, { token: d2.token, body: { batteryPct: 11 } });
+  check("G20 a device token cannot post telemetry for a sibling device in the same family (403 forbidden)", sibTelemetry.status === 403 && sibTelemetry.data?.error === "forbidden", `got ${sibTelemetry.status} ${JSON.stringify(sibTelemetry.data)}`);
+  const ownTelemetry = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, { token: d2.token, body: { batteryPct: 57 } });
+  check("G21 a device token CAN post telemetry for its own device (202 accepted)", ownTelemetry.status === 202 && ownTelemetry.data?.accepted === true, `got ${ownTelemetry.status} ${JSON.stringify(ownTelemetry.data)}`);
+
+  // #124 (audit finding 4): the device-silence watch matches `online`, so the writers must write
+  // `online`. The watch used to match `active` — a status no writer produces — and never fired. The
+  // alert-timing half (one critical tamper/device_silent alert per episode, flip to `offline`) needs a
+  // backdated row plus a job trigger that the probe cannot reach over HTTP and that a 5-minute tick
+  // makes unsuitable for a merge gate, so it stays a unit test (`test/device-silence.test.ts`). What
+  // the probe can pin live is the other half of the contract: the status a real write produces.
+  const reported = await call("GET", `/v1/devices/${d2.deviceId}`, { token: tokenA });
+  const reportedStatus = reported.data?.device?.status;
+  const reportedSeen = Date.parse(reported.data?.device?.lastSeen ?? "");
+  check("G22 telemetry writes the status the silence watch matches (`online`), never `active`", reported.status === 200 && reportedStatus === "online" && Number.isFinite(reportedSeen) && Date.now() - reportedSeen < 120_000, `get=${reported.status} device.status=${reportedStatus} lastSeen=${reported.data?.device?.lastSeen ?? "none"}`);
+  const familyDevices = await call("GET", "/v1/devices", { token: tokenA });
+  const writtenStatuses = (familyDevices.data?.devices ?? []).map((dev) => dev.status);
+  check("G23 every device status written in this run is in the shared vocabulary (no `active`)", familyDevices.status === 200 && writtenStatuses.length > 0 && writtenStatuses.every((s) => ["online", "offline", "locked", "sos"].includes(s)), `statuses=${JSON.stringify(writtenStatuses)}`);
+
   if (process.env.JWT_SECRET) {
     const parentId = JSON.parse(Buffer.from(tokenA.split(".")[1], "base64url").toString()).sub;
     const now = Math.floor(Date.now() / 1000);
@@ -902,6 +926,17 @@ console.log("\n── N. sessions & roles ──");
     check("N6b co-parent without 'devices' cannot register a device (403 permission_required)", coRegister.status === 403 && coRegister.data?.error === "permission_required" && coRegister.data?.permission === "devices", `got ${coRegister.status} ${JSON.stringify(coRegister.data)}`);
     const coPair = await call("POST", "/v1/devices/pair", { token: coTok, body: { childId: kidA } });
     check("N6c co-parent without 'devices' cannot mint a pairing code (403 permission_required)", coPair.status === 403 && coPair.data?.error === "permission_required" && coPair.data?.permission === "devices", `got ${coPair.status} ${JSON.stringify(coPair.data)}`);
+    // #124 (audit finding 6): push-token is a parent-side device mutation, so it names the same
+    // `devices` permission as command, unpair and enrollment. Without it, a co-parent admitted for
+    // `alerts` could repoint the child's notifications to a device they control.
+    const coPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: coTok, body: { pushToken: `co-probe-${stamp}` } });
+    check("N6d co-parent without 'devices' cannot set a device push token (403 permission_required)", coPush.status === 403 && coPush.data?.error === "permission_required" && coPush.data?.permission === "devices", `got ${coPush.status} ${JSON.stringify(coPush.data)}`);
+    // ...and the owner's success response is an allowlist, not the raw Prisma row: `internalSecret` is
+    // the device's signing key and `pushToken` is another user's FCM handle, so neither may leave the
+    // server (the pre-fix response carried both).
+    const ownerPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: tokenA3, body: { pushToken: `fcm-probe-${stamp}` } });
+    const ownerPushBody = JSON.stringify(ownerPush.data ?? {});
+    check("N6e owner push-token update (200) returns neither internalSecret nor pushToken", ownerPush.status === 200 && ownerPush.data?.device?.id === deviceIdA && !ownerPushBody.includes("internalSecret") && !ownerPushBody.includes("pushToken"), `got ${ownerPush.status} ${ownerPushBody.slice(0, 200)}`);
     // N7: the permission the invite DID grant works — ack an alert of family A.
     const alertsA = await call("GET", "/v1/alerts?limit=1", { token: coTok });
     const alertId = alertsA.data?.items?.[0]?.id ?? alertsA.data?.alerts?.[0]?.id;

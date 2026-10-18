@@ -11,6 +11,43 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — `qa-probe` gates the three fixes #124 merged (audit findings 4–6)
+- **What was missing.** #124 merged three security fixes with unit tests only; the probe had no live
+  assertion for any of them, and the 2026-10-18 ledger records that gap under #124 ("no probe check
+  added"). A unit test proves the handler's contract against mocks; it does not prove the deployed
+  preHandler chain still composes the way the route declares.
+- **Six new gating checks** in `services/api/scripts/qa-probe.mjs`, each with the assertion name on the
+  `check(` line so `check-probe-integrity.mjs` can compare it:
+  `G20` a device JWT posting telemetry for a **sibling device in the same family** is `403`
+  (`{"error":"forbidden"}` — what `requireOwnDevice` returns); `G21` the same token posting for **its own**
+  device is `202 {accepted:true}`; `G22` a real telemetry POST reads back as `status:"online"` with a fresh
+  `lastSeen` — the value the silence watch matches, never `active`; `G23` every device status written in
+  the run is inside the shared vocabulary (`online`/`offline`/`locked`/`sos`); `N6d` a co-parent admitted
+  with only `alerts` gets `403 permission_required` (with `permission:"devices"`) on
+  `POST /v1/devices/:id/push-token`; `N6e` the owner's `200` body contains neither `internalSecret` nor
+  `pushToken`.
+- **Why the silence *timing* is still a unit test.** The watch is an in-process 5-minute tick
+  (`src/jobs/deviceSilence.ts`) with no HTTP trigger, and the probe deliberately connects only over HTTP
+  (`API_BASE` + `INTERNAL_HMAC_SECRET`; it has no `DATABASE_URL`). Making a device silent in a gate would
+  mean backdating `Device.lastSeen` in Postgres and then either waiting up to 5 minutes or calling the job
+  in-process — which would also fire on unrelated rows of the shared stack. The probe therefore pins the
+  half it can reach live (the status a writer produces) and the alert-per-episode half stays in
+  `test/device-silence.test.ts`, which drives a real telemetry POST into `runDeviceSilenceCheck(now, env)`.
+  `docs/TESTING.md` §6 records this as a trap so the next reader does not "fix" it by adding a database
+  connection to the gate.
+- **`requireOwnDevice` says `forbidden`, not `own_device_required`.** The probe asserts the merged error
+  code rather than a nicer one; a distinct code would be a product change (and a probe rename) of its own.
+- **Gates** (2026-10-18, shared `:3000` running `main@f099aa9`, probe and e2e ≥60 s apart):
+  `pnpm --filter @familyshield/api test` **352 passed / 32 files**; `qa-probe` **130 passed · 0 failed**
+  (was 124 — the six new rows) with `rate limit: 0 x 429`; `e2e` **69 passed · 0 failed** including the
+  Postgres zero-rows count; `check-probe-integrity.mjs --base origin/main` **103 → 109 checks, 6 added,
+  0 removed/demoted**. Cleanup: `cleanup-test-data.sql -v apply=1` leaves **1 family / 1 parent / 1 child /
+  1 device** (demo only) and `cleanup-test-redis.mjs --apply` deleted **2 orphaned device keys**, 0 unknown
+  persistent keys.
+- **Not verified here:** no fail-before run of the *new probe rows* against the pre-#124 tree — that would
+  need a second API instance built from `4c41a07^`, and the shared `:3000` must not be restarted. The
+  fail-before evidence for the three fixes themselves is #124's own unit run (7 failed / 17 passed with
+  the source stashed, per the ledger).
 ### API — a failed digest send no longer costs the family its period, and `DIGEST_HOUR` is documented as local (#93 review F1/F2/F3)
 
 - **The two findings, verified on `main@f099aa9` before touching them.** F1:
@@ -442,6 +479,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   live-stack `qa-probe` row was added for these three findings — the probe file is held by a sibling
   lane, and the gate checks are deliberately deferred to the lead's follow-up PR (stated in the PR so
   the deferral is visible). No hardware row applies.
+- **Follow-up (this PR):** the deferred gate checks exist now — probe `G20`/`G21` (self-scoped device
+  writes), `G22`/`G23` (status vocabulary), `N6d`/`N6e` (push-token permission and sanitized response);
+  see the `QA — qa-probe gates the three fixes #124 merged` entry at the top of this file.
 ### Parent app — command delivery status is the queue's real state (plan 3.6, #116)
 - The child detail device card now shows the **latest command's queue state** and opens
   **Command delivery** (`/child/:id/commands`): a per-device list read from
