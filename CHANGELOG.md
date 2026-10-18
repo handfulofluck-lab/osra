@@ -11,6 +11,54 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — the block decision is made from the window in front, not the accessibility event's package (issue #165, reopened)
+- **The defect #169 did not cover.** On the Flip4 (Android 16, WM-Shell) the Home transition arrives
+  as a `TYPE_WINDOW_STATE_CHANGED` event whose `packageName` is **`android`** — the framework — not
+  `com.sec.android.app.launcher`. The essential set was right and its input was wrong:
+  `com.sec.android.app.launcher` is in `EssentialPackages.EXACT`, but the decision was asked about
+  `android`, answered BLOCK from bedtime, and `AppBlocker` raised the overlay over the launcher. The
+  overlay's subtitle was the diagnosis (`android`). Measured on hardware after the #169 merge; raw
+  output in `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-165.md`.
+- **The fix is about the input, not the set.** `EssentialPackages.foregroundPackage(eventPackage,
+  windowPackage)` takes the event's package as a *hint* and the active window's package as the
+  authority; `AccessibilityMonitorService` resolves it once per event (`rootInActiveWindow`, then the
+  event source, then the event package) and uses that one value for the protection guard, the lock
+  re-raise, the usage counter and the block decision. `android` alone resolves to `null` — no app can
+  be named, so no overlay is raised — and `android` is deliberately **not** added to
+  `EssentialPackages.EXACT`: the framework package fronts dialogs and shell surfaces, so exempting the
+  name would exempt far more than Home.
+- **A second instance of the same class, found on the test device.** The first build of this branch
+  resolved the window only for window-state changes; a **background** app's content-change event then
+  still decided from its own package — the overlay read `com.samsung.android.spay` while the launcher
+  held focus, and pressing Home from that overlay put it back within a second. Every event now resolves
+  the active window, so the overlay is raised only for the screen actually in front. (Cost: one
+  `rootInActiveWindow` binder call per event, at the service's 100 ms throttle — at most ~10/s.)
+- The decision gate stays pure and OS-aware through a predicate: `RuleRepository.decide` takes
+  `essential: (String) -> Boolean` (default: the static set, for the JVM) and `RuleRepository.evaluate`
+  passes `EssentialPackages.isEssential(it, packageFacts)`, so an OEM launcher the table has never seen
+  is exempt because the OS says it holds HOME. `AppBlocker`'s existing `PackageFacts` guard stays as
+  defence in depth, and the lock's exemption is unchanged — the lock still covers the launcher.
+- Tests: `ForegroundEventBlockTest` (6 tests) pins the measured cases with the real `RuleEngine` and
+  the real `decide` gate: a framework-package event whose window is the launcher is **ALLOW**; a
+  genuinely blocked app is **BLOCK**; a background app's event is decided from the window; an OEM
+  launcher resolved by the HOME role is ALLOW while the same name without the role is BLOCK; a
+  framework event with no window association resolves to `null` (no overlay). It fails against the
+  unfixed tree (`compilePlayDebugUnitTestKotlin`: `Unresolved reference: foregroundPackage`).
+  Gate `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug
+  --no-daemon`: **303 tests / 0 failures / 0 errors, 48 suites, in each flavour**, `BUILD SUCCESSFUL`;
+  `node scripts/check-merged-manifest-gate.mjs` → *2 result set(s) checked, all assertions ran and
+  passed*.
+- **Hardware verified on the Flip4** (`SM-F721B`, Android 16) with bedtime `21:00–07:00` active (device
+  local 02:31) and the rule cache re-fetched after a relaunch, APK sha256 `0dbb9431…`: Home leaves
+  `com.sec.android.app.launcher/…LauncherActivity` focused at **2 s and 6 s** (logcat:
+  `event package android, window in front com.sec.android.app.launcher`);
+  `am start -a android.intent.action.DIAL` leaves
+  `com.samsung.android.dialer/DialtactsActivity` at 2 s and 6 s; `com.android.chrome` still shows the
+  overlay at 2 s and 6 s with the subtitle `com.android.chrome`; Home from that overlay returns to the
+  launcher at 2 s, 6 s and 14 s. Run log: `C:\KARIM\tr-kimi\hw-2026-10-19b\RESULTS-165B.md`.
+  Lock-over-launcher was **not** re-measured on hardware (no `lock` was sent — the keyguard credential
+  is the maintainer's); its JVM assertions are kept and pass.
+
 ### Android — bedtime no longer covers the launcher, the system UI or the dialer (issue #165)
 - The app-block overlay (`BlockActivity`) now exempts the launcher, the system UI and the
   dialer/emergency surfaces for **every** rule, not just on the empty-cache path. Before this only the

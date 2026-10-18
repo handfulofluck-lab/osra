@@ -19,8 +19,22 @@ package com.familyshield.agent.enforcement
  * launcher or dialer costs one reachable screen, covering one costs the child the phone. It is *not*
  * the lock: `LockEnforcementPolicy` deliberately still re-raises the lock over the launcher, and its
  * tests pin that.
+ *
+ * **Reopened 2026-10-19: the set was right, its input was wrong.** On the Flip4 (Android 16, WM-Shell)
+ * the Home transition arrives as an accessibility event whose `packageName` is [FRAMEWORK_PACKAGE],
+ * not the launcher's, so the decision asked this set about `android` — a name it must not contain —
+ * and the overlay covered the launcher (`C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-165.md`). The package
+ * a decision is made from is now resolved from the window actually in front by [foregroundPackage],
+ * with the event's package only as a hint. Do **not** add [FRAMEWORK_PACKAGE] to [EXACT]: the framework
+ * package fronts dialogs and other shell surfaces, so that would exempt far more than Home.
  */
 object EssentialPackages {
+
+    /**
+     * The Android framework package. Accessibility events that belong to no app — the WM-Shell Home
+     * transition is one — are reported under it, so it names a *window kind*, never a blockable app.
+     */
+    const val FRAMEWORK_PACKAGE: String = "android"
 
     /**
      * Exact package names. A name here is exempt without asking the OS, because the JVM rule path has
@@ -75,5 +89,26 @@ object EssentialPackages {
         if (isEssential(packageId)) return true
         if (packageId in facts.homePackages()) return true
         return LockEnforcementPolicy.isExemptPackage(packageId, facts)
+    }
+
+    /**
+     * The package a block decision is about, given the accessibility event's package (a **hint**) and
+     * the package of the window actually in front (**the authority**).
+     *
+     * Issue #165, reopened on the Flip4: the Home transition is reported under [FRAMEWORK_PACKAGE], so
+     * deciding from the event package answered BLOCK for a screen that is not an app and the overlay
+     * covered the launcher. The window in front is resolved first; the event package is used only when
+     * the window is unknown, and it is never trusted when it is [FRAMEWORK_PACKAGE] itself.
+     *
+     * `null` means "no app can be named": the caller must **not** raise a block overlay for it. This is
+     * the deliberately narrow trade — the framework package fronts dialogs and shell surfaces too, so
+     * treating the name as an app would either exempt much more than Home (if added to the set) or
+     * cover things that are not apps (if not). Nothing is blocked on the strength of `android` alone;
+     * a real app's event still names that app.
+     */
+    fun foregroundPackage(eventPackage: String?, windowPackage: String?): String? {
+        if (!windowPackage.isNullOrBlank() && windowPackage != FRAMEWORK_PACKAGE) return windowPackage
+        if (!eventPackage.isNullOrBlank() && eventPackage != FRAMEWORK_PACKAGE) return eventPackage
+        return null
     }
 }

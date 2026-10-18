@@ -14,6 +14,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.enforcement.AppBlocker
+import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.PackageFacts
@@ -70,24 +71,66 @@ class AccessibilityMonitorService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val pkg = event?.packageName?.toString() ?: return
-        if (pkg == packageName) return
+        val eventPkg = event?.packageName?.toString() ?: return
+        if (eventPkg == packageName) return
+        // Issue #165 (reopened): the event's package is a hint, not "the app in front". On the Flip4,
+        // WM-Shell reports the Home transition under the framework package `android`; deciding from
+        // that name answered BLOCK for a screen that is not an app and the overlay covered the launcher.
+        val foreground = resolveForeground(event, eventPkg)
         ensureLocationServiceRunning()
         // ADR-0010 §3: the protection guard runs even while consent is paused — a paused agent is
         // still an installed one, and the parent must still hear about an uninstall attempt.
-        guardProtectionScreens(event, pkg)
-        enforceLockState(pkg)
+        guardProtectionScreens(event, foreground)
+        // The lock is the safe direction: when the window in front cannot be named, the event package
+        // is the only hint and the overlay must still come back (LockEnforcementPolicy decides).
+        enforceLockState(foreground ?: eventPkg)
         // ADR-0008 §3: consent withdrawn — the service keeps polling (to learn about a re-grant) but
         // records, captures and enforces nothing.
         if (consentState.isPaused()) return
-        usage.recordForeground(pkg, System.currentTimeMillis())
+        // No app to name (the framework package with no window association): no block overlay, and no
+        // usage credited — `android` is not an app and would otherwise count toward the screen-time
+        // limit of the home screen itself. Our own windows are not usage either.
+        val pkg = foreground ?: return
+        if (pkg == packageName) return
         // Feature #2/#17: social/chat text capture for monitored apps (no-op elsewhere).
         social.onAccessibilityEvent(event)
+        if (pkg != eventPkg) Log.i(TAG, "event package $eventPkg, window in front $pkg (#165)")
+        usage.recordForeground(pkg, System.currentTimeMillis())
         when (rules.evaluate(pkg)) {
             RuleRepository.Decision.BLOCK -> blocker.showBlockScreen(pkg)
             RuleRepository.Decision.TIME_LIMIT_REACHED -> blocker.showTimeLimitScreen(pkg)
             RuleRepository.Decision.ALLOW -> Unit
         }
+    }
+
+    /**
+     * Issue #165 (reopened): the package of the window actually in front, so a block decision is made
+     * about the screen the child is looking at rather than about whoever emitted the event.
+     *
+     * Every event is resolved, because the event package is wrong in more than the Home case: a
+     * content-change event from an app in the **background** names that app, and deciding from it
+     * raised the overlay over whatever was really in front. Measured on the Flip4 during the reopened
+     * run: the overlay's subtitle read `com.samsung.android.spay` while the dialer/launcher held focus,
+     * and pressing Home from that overlay put the overlay back within two seconds. The active window
+     * is the authority; the event's own source and then its package are only fallbacks, and none of
+     * them is trusted when it names [EssentialPackages.FRAMEWORK_PACKAGE].
+     *
+     * Cost: `rootInActiveWindow` is one binder call per event, and the service is configured for
+     * `typeWindowStateChanged|typeWindowContentChanged` at a 100 ms throttle, so this is at most ten
+     * calls a second — the same order as the read [SocialCapture] already does for a monitored app.
+     */
+    private fun resolveForeground(event: AccessibilityEvent, eventPkg: String): String? =
+        EssentialPackages.foregroundPackage(eventPkg, activeWindowPackage(event))
+
+    /** The package of the window in front, or null when the OS will not name it (issue #165). */
+    private fun activeWindowPackage(event: AccessibilityEvent): String? {
+        val fromRoot = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+        if (!fromRoot.isNullOrBlank() && fromRoot != EssentialPackages.FRAMEWORK_PACKAGE) return fromRoot
+        val source = runCatching { event.source }.getOrNull()
+        val fromSource = runCatching { source?.packageName?.toString() }.getOrNull()
+        runCatching { source?.recycle() }
+        if (!fromSource.isNullOrBlank() && fromSource != EssentialPackages.FRAMEWORK_PACKAGE) return fromSource
+        return null
     }
 
     /**
@@ -138,7 +181,7 @@ class AccessibilityMonitorService : AccessibilityService() {
      * system packages are inspected, texts are read once, and a 1.5-s debounce stops the gate from
      * being launched twice for the same screen.
      */
-    private fun guardProtectionScreens(event: AccessibilityEvent, pkg: String) {
+    private fun guardProtectionScreens(event: AccessibilityEvent, pkg: String?) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) return
