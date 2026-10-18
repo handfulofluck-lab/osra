@@ -26,8 +26,8 @@ environment where it was written — see `docs/QA/` for the verification state.
   starts with no PIN and says so. An identity supplied purely by env vars is not copied to disk by
   this migration — the env PIN stays effective for that process.
 - **No PIN means no restriction, not a guessable one.** `lock`, `pause` and `wind_down`
-  (`RuleSyncService.cs:228-292`, gate at `:328-347`) and bedtime/screen-time
-  (`ScreenTimeEnforcer.cs:68-146`) refuse to arm without a configured PIN and log an error with the
+  (`RuleSyncService.cs:228-292`, gate at `:328-345`) and bedtime/screen-time
+  (`ScreenTimeEnforcer.cs:68-141`) refuse to arm without a configured PIN and log an error with the
   reason; `unlock`/`resume` still work so a stale overlay can always be cleared.
   `LockOverlay.ShowIfPinned` additionally refuses to render the overlay for a blank/`0000` PIN, so
   an accidental caller cannot create an unlockable-by-anyone lock. Startup prints the same warning
