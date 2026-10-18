@@ -29,6 +29,40 @@ environment where it was written — see `docs/QA/` for the verification state.
 - Test: `test/qa-probe-rate-limit.test.ts` points the real probe at a stub that only answers 429 and
   asserts the abort contract (both cases fail on `main`, pass here). Probe integrity unchanged:
   `check=88 target=1 note=1`.
+### API — audit findings 4–6: the silence watch fires, device telemetry is self-scoped, push-token stops leaking the HMAC secret
+- **Finding 4 — the device-silence watch watched a value nothing writes.** `src/jobs/deviceSilence.ts`
+  selected and ruled on `status === "active"`, but every writer stores `online` (pair/claim
+  `routes/devices.ts:187`, telemetry `:331`, location ping `routes/location.ts:239`, seed
+  `scripts/seed.ts:60`); the schema default and the job itself write `offline`, and `DeviceStatus`
+  (`packages/shared-types/src/index.ts:10`) is `online`/`offline`/`locked`/`sos`. The watch therefore
+  matched no device, and the `pm clear` mitigation it was built for did not run. It now watches
+  `online`; the schema field documents the vocabulary. The regression test starts from a real
+  `POST /v1/devices/:id/telemetry`, captures the status the route persists, replays that row through
+  the job's `where` clause and asserts the critical `tamper` / `device_silent` alert and the flip to
+  `offline`; it also asserts one alert per episode (the second instance is suppressed by the claim) and
+  that a fresh telemetry report re-arms the watch for the next episode. The pure rule keeps an explicit
+  negative case for the stale `"active"` value.
+- **Finding 5 — a device JWT could write a sibling's telemetry/activity.** `POST /:id/telemetry` and
+  `POST /:id/activity` were family-scoped only (`requireFamily`), so device A could refresh sibling B's
+  `lastSeen`/`status`, battery and day totals, and insert activity rows under B. A shared
+  `requireOwnDevice` preHandler (`middleware/requireFamily.ts`) now composes after `requireFamily` on
+  both routes, so a future agent-write route can reuse it instead of repeating the omission. Device
+  tokens require `user.deviceId === id` (403 otherwise), matching `GET /:id` and the command routes;
+  parent tokens remain family-scoped. Tests: A→B 403 (no usage row and no `live_activity` frame when
+  the batch would otherwise publish one), A→A 202, parent→either 202, cross-family 403 for both routes.
+- **Finding 6 — `POST /:id/push-token` returned the whole Prisma row**, including `internalSecret` (the
+  per-device HMAC secret) and the push token. The update now reads an explicit allowlist (`select` —
+  a secret column added later is not returned by accident) and then passes it through
+  `sanitizeDevice`, the helper the list/single GET and `/family/me` already use. It also requires
+  `requirePermission("devices")`, the same gate as `command` and unpair, so a co-parent admitted
+  without that tag cannot repoint a child's notifications. Tests: the response has neither key and
+  the `select` names neither; a co-parent without `devices` gets `403 permission_required` and no
+  write, with the tag it succeeds.
+- **Verification** (author's run): `pnpm --filter @familyshield/api test` — 318 passed / 29 files;
+  `node scripts/check-probe-integrity.mjs --base origin/main` — 88/0. **Not verified here:** no
+  live-stack `qa-probe` row was added for these three findings — the probe file is held by a sibling
+  lane, and the gate checks are deliberately deferred to the lead's follow-up PR (stated in the PR so
+  the deferral is visible). No hardware row applies.
 ### Parent app — command delivery status is the queue's real state (plan 3.6, #116)
 - The child detail device card now shows the **latest command's queue state** and opens
   **Command delivery** (`/child/:id/commands`): a per-device list read from
@@ -210,7 +244,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   row, so a `NOT MEASURED` or a FAIL exits the run non-zero. `docs/TESTING.md` §5f carries the reasoning
   (focus from the window manager, not the activity stack).
 - **Not fixed here:** #81 (`pm clear` wipes the agent despite active admin) — separate, high, and
-  mitigated by `device_silent` plus parent-minted pairing.
+  mitigated by `device_silent` plus parent-minted pairing. **Correction 2026-10-18:** the
+  `device_silent` half did not fire as merged — the job matched a status no writer produces (audit
+  finding 4, fixed in the Unreleased entry above). Until that fix, `pm clear` was detected only by
+  the parent noticing the device had gone quiet.
 ### Process — the one physical test phone is leased, one agent at a time (`AGENTS.md` §9)
 - Why: on 2026-10-17 a parental `lock` was left applied on the Galaxy Z Flip4 (`R5CW116Y6GF`) while the
   agent that sent it went unreachable. The phone sat behind the overlay and the Phase 1 gate (`TR-15`,
@@ -258,10 +295,13 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ### API — device-silence watch (a plan-1.9 probe finding)
 - The probe's bypass #2 showed that `pm clear` wipes the agent's pairing with Device Admin active and
-  no client-side alert is possible afterwards. `src/jobs/deviceSilence.ts`: every 5 min, an `active`
+  no client-side alert is possible afterwards. `src/jobs/deviceSilence.ts`: every 5 min, an `online`
   device unseen for `DEVICE_SILENT_MINUTES` (default 30) gets one critical `tamper` /
   `device_silent` alert (Redis claim per episode, no duplicates across instances) and is set
-  `offline`; the next telemetry sets it back to `active`. Tests: `device-silence.test.ts`.
+  `offline`; the next telemetry sets it back to `online`. Tests: `device-silence.test.ts`.
+- **Corrected 2026-10-18 (audit finding 4):** the job as merged above matched `"active"`, which no
+  writer produces, so it never fired; the wording here described the intent, not the code. The watch
+  now matches `online` and has a route-to-job regression test — see the Unreleased entry.
 
 ### Android — adversarial bypass probe (plan 1.9, the Phase 1 gate)
 - `scripts/hardware/android-bypass-probe.ps1`: an `adb`-driven run of the ten bypasses a child tries
