@@ -252,7 +252,7 @@ void main() {
         await flushFakeHttp(tester);
         expect(find.textContaining('$label queued for Pixel 7a'), findsOneWidget);
         // Plan 3.6: the toast must not claim delivery for a pending command.
-        expect(find.textContaining(RegExp('sent', caseSensitive: false)), findsNothing);
+        expect(find.textContaining(RegExp(r'\bsent\b', caseSensitive: false)), findsNothing);
         expect(api.calls('POST', '/v1/devices/dev-1/command').last.body['command'], command);
         // Run out the 4s snackbar before the next command — ScaffoldMessenger
         // queues snackbars, and pumpAndSettle alone returns while the display

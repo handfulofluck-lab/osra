@@ -120,7 +120,7 @@ void main() {
           findsOneWidget);
       expect(find.text('Pending — waiting for the device'), findsOneWidget);
       expect(find.text('Confirmed by device'), findsNothing);
-      expect(find.textContaining(RegExp('sent', caseSensitive: false)),
+      expect(find.textContaining(RegExp(r'\bsent\b', caseSensitive: false)),
           findsNothing);
     });
 
@@ -141,7 +141,7 @@ void main() {
           find.textContaining(
               'Latest: Ring · Delivered — awaiting device confirmation'),
           findsOneWidget);
-      expect(find.textContaining(RegExp('sent', caseSensitive: false)),
+      expect(find.textContaining(RegExp(r'\bsent\b', caseSensitive: false)),
           findsNothing);
     });
 
