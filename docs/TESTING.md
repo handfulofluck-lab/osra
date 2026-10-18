@@ -26,7 +26,7 @@ probe is **not** evidence that a feature works on a phone — that is what hardw
 
 | Suite | The step CI adds |
 |---|---|
-| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`ci.yml:28-33`) — `pnpm install` alone does not create the client, and `postinstall` is not a guarantee in a filtered or `--frozen-lockfile` install. In a fresh worktree, generate first, every time |
+| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`ci.yml:28-33`) — CI's own step comment records that `pnpm install` did not create the client (`ci.yml:28`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time |
 | Flutter | the row's three commands are `ci.yml:47-49`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:68-79`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease` in one invocation (`:122`), then `aapt2 dump badging` for `targetSdkVersion:'35'` and both network-security configs (`:123-130`) |
 | Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`:150`) |
