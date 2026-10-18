@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
 import '../../providers/world_class_provider.dart';
+import '../../theme/app_tokens.dart';
 
 /// Feature #4: per-child activity report — app-usage bar chart, web stats
 /// (visits + top blocked domains, with the YouTube SafeSearch NOTE #7) and
@@ -39,7 +40,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: AppSpace.sm),
             child: SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 7, label: Text('7 days')),
@@ -57,12 +58,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         data: (data) => data.isEmpty
             ? Center(child: Text('No activity recorded in the last $_days days'))
             : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpace.lg),
                 children: [
                   _UsageSection(summary: data, days: _days),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpace.lg),
                   _WebSection(summary: data),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpace.lg),
                   _SocialSection(summary: data),
                 ],
               ),
@@ -84,15 +85,15 @@ class _UsageSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('App usage', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         Text('Total ${summary.totalAppMinutes} min · avg $avg min/day'),
         if (summary.topApps.isEmpty)
           const Padding(
-            padding: EdgeInsets.only(top: 12),
+            padding: EdgeInsets.only(top: AppSpace.md),
             child: Text('No app usage recorded'),
           )
         else ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.md),
           SizedBox(
             // NOTE: fixed height — BarChart throws inside an unbounded height.
             height: 200,
@@ -113,10 +114,10 @@ class _UsageSection extends StatelessWidget {
                         // NOTE: shortened label — long app names overflow narrow screens.
                         final name = summary.topApps[i].name;
                         return Padding(
-                          padding: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: AppSpace.xs),
                           child: Text(
                             name.length > 8 ? '${name.substring(0, 8)}…' : name,
-                            style: const TextStyle(fontSize: 10),
+                            style: AppType.chartTick,
                           ),
                         );
                       },
@@ -147,9 +148,9 @@ class _WebSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Web', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         Text('${summary.urlVisits} URL visits'),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         if (summary.topBlockedDomains.isEmpty)
           const Text('No blocked domains')
         else
@@ -161,9 +162,9 @@ class _WebSection extends StatelessWidget {
               title: Text(d.domain),
               trailing: Text('${d.count}× blocked'),
             ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         Card(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: context.tokens.surfaceVariant,
           child: const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('YouTube search is forced to SafeSearch'),
@@ -186,10 +187,10 @@ class _SocialSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Social & communication', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         Wrap(
-          spacing: 8,
-          runSpacing: 4,
+          spacing: AppSpace.sm,
+          runSpacing: AppSpace.xs,
           children: [
             Chip(
               visualDensity: VisualDensity.compact,
