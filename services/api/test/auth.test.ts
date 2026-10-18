@@ -440,6 +440,11 @@ describe("auth routes", () => {
     redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
     redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
     redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
+    redis.incrby.mockImplementation(async (k: string, n: number) => {
+      const next = Number(store.get(k) ?? 0) + n;
+      store.set(k, String(next));
+      return next;
+    });
 
     // /logout-all is guarded by requireJwt. A reset-purpose token used to revoke the account's
     // sessions; a token with an unknown role used to pass the same check.
@@ -458,11 +463,15 @@ describe("auth routes", () => {
     }
     expect(store.size).toBe(0);
 
-    // An explicitly session-purpose token and a plain session token still work.
-    for (const token of [
-      app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", purpose: "session" }),
-      app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent" }),
+    // An explicitly session-purpose token and a plain session token still work. Each is signed with
+    // the sessions version current at that moment: the first logout-all revokes it, so a token
+    // signed before the bump would rightly be dead (#117).
+    const sessionVersion = () => Number(store.get("auth:session-version:parent-1") ?? 0);
+    for (const claims of [
+      { sub: "parent-1", familyId: "fam-1", role: "parent", purpose: "session" },
+      { sub: "parent-1", familyId: "fam-1", role: "parent" },
     ]) {
+      const token = app.jwt.sign({ ...claims, sv: sessionVersion() });
       const res = await app.inject({
         method: "POST",
         url: "/v1/auth/logout-all",
@@ -485,6 +494,11 @@ describe("auth routes", () => {
     redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
     redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
     redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
+    redis.incrby.mockImplementation(async (k: string, n: number) => {
+      const next = Number(store.get(k) ?? 0) + n;
+      store.set(k, String(next));
+      return next;
+    });
     redis.sadd.mockImplementation(async () => 1);
     redis.srem.mockImplementation(async () => 1);
     redis.smembers.mockImplementation(async () => []);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authRoutes } from "../src/routes/auth.js";
 import { inviteRoutes } from "../src/routes/invites.js";
 import { rulesRoutes } from "../src/routes/rules.js";
@@ -29,16 +29,24 @@ function wireRedisStore() {
   redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
   redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
   redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
+  redis.incrby.mockImplementation(async (k: string, n: number) => {
+    const next = Number(store.get(k) ?? 0) + n;
+    store.set(k, String(next));
+    return next;
+  });
   redis.smembers.mockResolvedValue([]);
   return store;
 }
 
-describe("parent sessions — jti on every token, invalid-before epoch (ADR-0014)", () => {
+describe("parent sessions — jti, sessions version / legacy epoch (ADR-0014, ADR-0025)", () => {
   let store: Map<string, string>;
   beforeEach(() => {
     resetPrismaMock();
     store = wireRedisStore();
     prismaMock.parent.findUnique.mockResolvedValue(OWNER);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("login and register tokens carry a jti and familyRole", async () => {
@@ -68,14 +76,82 @@ describe("parent sessions — jti on every token, invalid-before epoch (ADR-0014
     await app.close();
   });
 
+  it("a token minted in the revocation second is dead (#117)", async () => {
+    // Freeze the clock so the login and the revocation fall in the same wall-clock second. Under
+    // the old `iat < epoch` comparison the token survived; this is the regression test.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-18T12:00:00.400Z"));
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    const token = login.json().token as string;
+
+    const kill = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(kill.statusCode).toBe(200);
+
+    // The security assertion: minted at T, revoked at T, refused. On `main` this returned 200.
+    const after = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(after.statusCode).toBe(401);
+    expect(after.json().error).toBe("session_revoked");
+
+    expect(store.get("auth:session-version:p1")).toBe("1");
+    const claims = app.jwt.decode(token) as { iat: number; sv: number };
+    expect(claims.iat).toBe(Math.floor(Date.now() / 1000));
+    expect(claims.sv).toBe(0);
+    await app.close();
+  });
+
+  it("a token minted one second before the revocation is refused while one minted after works (#117)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const T = Math.floor(Date.parse("2026-10-18T12:00:00.400Z") / 1000);
+    const app = await buildApp(authRoutes, "/v1/auth");
+
+    // One second before the revocation.
+    vi.setSystemTime(new Date((T - 1) * 1000 + 400));
+    const older = (await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } })).json().token as string;
+
+    // Revoke at T.
+    vi.setSystemTime(new Date(T * 1000 + 400));
+    expect((await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${older}` } })).statusCode).toBe(200);
+
+    // One second after it.
+    vi.setSystemTime(new Date((T + 1) * 1000 + 400));
+    const newer = (await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } })).json().token as string;
+
+    // The pre-revocation token is refused; the post-revocation one works.
+    expect((await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${older}` } })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${newer}` } })).statusCode).toBe(200);
+
+    expect((app.jwt.decode(older) as { iat: number; sv: number })).toMatchObject({ iat: T - 1, sv: 0 });
+    expect((app.jwt.decode(newer) as { iat: number; sv: number })).toMatchObject({ iat: T + 1, sv: 1 });
+    await app.close();
+  });
+
+  it("a pre-#117 token without `sv`, minted in the revocation second, is refused too (#117)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-18T12:00:00.400Z"));
+    const app = await buildApp(authRoutes, "/v1/auth");
+    // Exactly what `main` minted before this change: no sessions-version claim.
+    const legacy = app.jwt.sign(
+      { sub: "p1", familyId: "fam-1", role: "parent", jti: "cccccccccccccccccccccccccccccccc", iat: Math.floor(Date.now() / 1000) },
+      { expiresIn: "7d" },
+    );
+    expect((await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${legacy}` } })).statusCode).toBe(200);
+    const after = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${legacy}` } });
+    expect(after.statusCode).toBe(401);
+    expect(after.json().error).toBe("session_revoked");
+    await app.close();
+  });
+
   it("single logout with the refresh token also revokes the access token issued with it", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
     const { token, refreshToken } = login.json();
     const { jti } = app.jwt.decode(token) as { jti: string };
     expect((await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(200);
-    // (logout-all above also bumped invalid-before; use a second login to isolate the jti path)
+    // (logout-all above bumped the sessions version and the legacy epoch; clear both to isolate
+    // the jti path from the parent-wide revocation)
     store.delete("auth:invalid-before:p1");
+    store.delete("auth:session-version:p1");
     const out = await app.inject({ method: "POST", url: "/v1/auth/logout", payload: { refreshToken } });
     expect(out.statusCode).toBe(200);
     expect(store.get(`revoked:token:${jti}`)).toBe("1");
