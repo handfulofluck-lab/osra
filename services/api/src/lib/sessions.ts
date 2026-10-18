@@ -47,18 +47,25 @@ export function newJti(): string {
   return randomBytes(16).toString("hex");
 }
 
-/** Sign a parent access token. `expiresIn` defaults to the standard 7 days. */
+/**
+ * Sign a parent access token. `expiresIn` defaults to the standard 7 days.
+ *
+ * `opts.sv` lets the caller supply a version it read (and checked) earlier in the same operation.
+ * `/token/refresh` uses it so the version stamped into the token is the one that was compared with
+ * the refresh record, not a second, later read (#158). Without it the version is read here.
+ * The effective `sv` is returned so callers can stamp it into an accompanying refresh record.
+ */
 export async function signParentToken(
   app: FastifyInstance,
   parent: { id: string; familyId: string; role?: string | null },
-  opts: { expiresIn?: string; jti?: string } = {},
-): Promise<{ token: string; jti: string }> {
+  opts: { expiresIn?: string; jti?: string; sv?: number } = {},
+): Promise<{ token: string; jti: string; sv: number }> {
   const jti = opts.jti ?? newJti();
   // Read the version at mint time: a concurrent revocation either lands before this read (and the
   // token is born current) or after it (and the token is born stale), never in between (#117).
-  const sv = await currentSessionVersion(parent.id);
+  const sv = opts.sv ?? await currentSessionVersion(parent.id);
   const claims: ParentClaims = { sub: parent.id, familyId: parent.familyId, role: "parent", familyRole: parent.role ?? "owner", jti, sv };
-  return { token: app.jwt.sign(claims, { expiresIn: opts.expiresIn ?? PARENT_TOKEN_TTL }), jti };
+  return { token: app.jwt.sign(claims, { expiresIn: opts.expiresIn ?? PARENT_TOKEN_TTL }), jti, sv };
 }
 
 /**
@@ -96,10 +103,15 @@ export async function currentSessionVersion(parentId: string): Promise<number> {
  * The counter bump is the authoritative revocation: any token minted before it carries a lower
  * `sv` and is refused, whatever the second on the clock (#117). The epoch below is written only
  * for tokens minted before the counter existed, which have no `sv` to compare.
+ *
+ * The bump is **not** best-effort (#158). If Redis rejects it, every token stays live, so the
+ * caller must fail (5xx) and the client retry rather than report a revocation that did not happen
+ * (#135: security state fails closed). The legacy epoch is only a migration aid and stays
+ * best-effort — a failed write there cannot keep an `sv` token alive.
  */
 export async function invalidateSessionsBefore(parentId: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
   const redis = getRedis();
-  await redis.incrby(sessionVersionKey(parentId), 1).catch(() => {});
+  await redis.incrby(sessionVersionKey(parentId), 1);
   await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
 }
 

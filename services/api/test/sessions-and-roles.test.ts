@@ -5,6 +5,7 @@ import { rulesRoutes } from "../src/routes/rules.js";
 import { familyRoutes } from "../src/routes/family.js";
 import { alertsRoutes } from "../src/routes/alerts.js";
 import { getRedis } from "../src/redis.js";
+import { invalidateSessionsBefore, isParentSessionLive } from "../src/lib/sessions.js";
 import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -180,6 +181,70 @@ describe("parent sessions — jti, sessions version / legacy epoch (ADR-0014, AD
     // A live session token still reads the child.
     const allowed = await app.inject({ method: "GET", url: "/v1/rules/child-1", headers: authHeader(app, "fam-1", "p1") });
     expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("#158: a revocation that lands during /token/refresh leaves neither returned credential live", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    const { refreshToken } = login.json();
+
+    // Park the DB round trip that `/token/refresh` performs after it has accepted the refresh token
+    // and before it mints: the exact window a concurrent revocation used to slip through.
+    let releaseDb!: () => void;
+    const dbGate = new Promise<void>((resolve) => { releaseDb = resolve; });
+    let dbReached!: () => void;
+    const dbParked = new Promise<void>((resolve) => { dbReached = resolve; });
+    prismaMock.parent.findUnique.mockImplementationOnce(async () => {
+      dbReached();
+      await dbGate;
+      return OWNER;
+    });
+
+    const refreshing = app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken } });
+    await dbParked;
+    // Revoke every session while the refresh is in flight.
+    await invalidateSessionsBefore("p1");
+    releaseDb();
+    const rotated = await refreshing;
+    expect(rotated.statusCode).toBe(200);
+
+    const accessToken = rotated.json().token as string;
+    const nextRefresh = rotated.json().refreshToken as string;
+    expect(accessToken).toBeTruthy();
+    expect(nextRefresh).toBeTruthy();
+
+    // The access token carries the version read before the revocation, so it is born stale.
+    const claims = app.jwt.decode(accessToken) as { sub: string; jti: string; iat: number; sv: number };
+    expect(claims.sv).toBe(0);
+    expect(await isParentSessionLive(claims)).toBe(false);
+    const dead = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${accessToken}` } });
+    expect(dead.statusCode).toBe(401);
+    expect(dead.json().error).toBe("session_revoked");
+
+    // The refresh token issued alongside carries the same stale version: it cannot resurrect the
+    // session by minting a new, current access token later.
+    const reuse = await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken: nextRefresh } });
+    expect(reuse.statusCode).toBe(401);
+    expect(reuse.json().error).toBe("session_revoked");
+    await app.close();
+  });
+
+  it("#158: a Redis failure during revocation fails the request (5xx), it does not report success", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    const { token } = login.json();
+
+    const redis = getRedis() as unknown as MockRedis;
+    redis.incrby.mockRejectedValue(new Error("redis unavailable"));
+
+    // `invalidateSessionsBefore` no longer swallows the counter bump: the caller must see a failure
+    // so the client retries instead of believing every token was revoked.
+    await expect(invalidateSessionsBefore("p1")).rejects.toThrow("redis unavailable");
+    const killed = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(killed.statusCode).toBe(500);
     await app.close();
   });
 });
