@@ -47,7 +47,7 @@ function resourceChildId(resource: FamilyScopedResource, model: FamilyScopedMode
 }
 
 import { getRedis } from "../redis.js";
-import { isParentSessionLive } from "../lib/sessions.js";
+import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
 
 export function sanitizeDevice<T extends Record<string, any>>(device: T): Omit<T, "internalSecret" | "pushToken"> {
   if (!device) return device;
@@ -63,7 +63,12 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     await reply.code(401).send({ error: "unauthorized" });
     return;
   }
-  const user = req.user as { sub?: string; role?: string; iat?: number; jti?: string } | undefined;
+  const user = req.user as { sub?: string; role?: string; purpose?: string; iat?: number; jti?: string } | undefined;
+  // #146: a purpose-scoped token (password reset) is not a bearer credential on any surface.
+  if (!isBearerSession(user)) {
+    await reply.code(401).send({ error: "unauthorized" });
+    return;
+  }
   if (user?.jti) {
     const redis = getRedis();
     const revokedToken = await redis.get(`revoked:token:${user.jti}`).catch(() => null);
@@ -84,7 +89,12 @@ export async function requireParent(req: FastifyRequest, reply: FastifyReply): P
     await reply.code(401).send({ error: "unauthorized" });
     return;
   }
-  const user = req.user as { sub?: string; role?: string; iat?: number; jti?: string } | undefined;
+  const user = req.user as { sub?: string; role?: string; purpose?: string; iat?: number; jti?: string } | undefined;
+  // #146: a reset-purpose token must not borrow the parent surface through a role claim.
+  if (!isBearerSession(user)) {
+    await reply.code(401).send({ error: "unauthorized" });
+    return;
+  }
   if (user?.role !== "parent") {
     await reply.code(403).send({ error: "parent_role_required" });
     return;
@@ -153,15 +163,21 @@ export function requirePermission(permission: Permission) {
  */
 export function requireFamily({ param = "id", source = "params", model, deviceAccess = "family" }: RequireFamilyOptions) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    let user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; childId?: string } | undefined;
+    let user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; purpose?: string; childId?: string } | undefined;
     if (!user?.familyId) {
       try {
         await req.jwtVerify();
-        user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; childId?: string };
+        user = req.user as { sub?: string; jti?: string; iat?: number; familyId?: string; role?: string; purpose?: string; childId?: string };
       } catch {
         await reply.code(401).send({ error: "unauthorized" });
         return;
       }
+    }
+
+    // #146: purpose-scoped tokens are not bearer credentials, even with a family claim attached.
+    if (!isBearerSession(user)) {
+      await reply.code(401).send({ error: "unauthorized" });
+      return;
     }
 
     // The token's `familyId` claim is a snapshot from minting time. A parent whose family changed

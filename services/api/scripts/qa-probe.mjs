@@ -573,6 +573,32 @@ console.log("\n── G2. location & rules authorization ──");
       body: { childId: kidA, deviceId: deviceIdA, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
     });
     check("G18 password-reset purpose token cannot post a location ping (401)", resetPing.status === 401, `got ${resetPing.status}`);
+
+    // #146: the reset token was also a general bearer credential. Replay the exploit shape on a
+    // disposable account: reset the password, then present a freshly minted reset token to routes
+    // guarded by requireJwt. Before the fix /mfa/enroll returned 200 (no secret yet) and
+    // /logout-all revoked the account's sessions.
+    const resetEmail = `qa-reset-${stamp}@example.com`;
+    const resetReg = await call("POST", "/v1/auth/register", {
+      body: { email: resetEmail, password: PASSWORD, displayName: "QA Reset", familyName: "QA Reset Family", region: "US" },
+    });
+    const resetSub = resetReg.data?.token
+      ? JSON.parse(Buffer.from(resetReg.data.token.split(".")[1], "base64url").toString()).sub
+      : null;
+    const mintReset = () => {
+      const mintedAt = Math.floor(Date.now() / 1000);
+      return signHs256Jwt({ sub: resetSub, purpose: "password_reset", iat: mintedAt, exp: mintedAt + 900 }, process.env.JWT_SECRET);
+    };
+    const resetNewPassword = "QaProbeResetPassw0rd!";
+    const confirmReset = resetSub
+      ? await call("POST", "/v1/auth/reset/confirm", { body: { token: mintReset(), password: resetNewPassword } })
+      : { status: 0 };
+    // Minted AFTER reset/confirm moved the sessions-invalid-before epoch, so only the purpose check
+    // can stop it — exactly the token the takeover used.
+    const liveResetToken = mintReset();
+    const resetEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: liveResetToken, body: { password: resetNewPassword } });
+    const resetLogoutAll = await call("POST", "/v1/auth/logout-all", { token: liveResetToken });
+    check("G19 password-reset purpose token refused as a bearer credential (/mfa/enroll and /logout-all -> 401)", resetReg.status === 201 && confirmReset.status === 200 && resetEnroll.status === 401 && resetLogoutAll.status === 401, `register=${resetReg.status} confirm=${confirmReset.status} enroll=${resetEnroll.status} logoutAll=${resetLogoutAll.status}`);
   } else {
     target("G18 password-reset purpose token rejected on /location/ping", "JWT_SECRET not present in the probe environment, so a reset-purpose token cannot be minted here");
   }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import argon2 from "argon2";
 import { authRoutes } from "../src/routes/auth.js";
-import { decryptSecret } from "../src/lib/secretVault.js";
+import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -362,6 +362,114 @@ describe("auth routes", () => {
     const updateArg = prismaMock.parent.update.mock.calls[0][0] as { data: { passwordHash: string } };
     expect(updateArg.data.passwordHash).not.toContain("NewCorrectHorse12!");
     expect(await argon2.verify(updateArg.data.passwordHash, "NewCorrectHorse12!")).toBe(true);
+    await app.close();
+  });
+
+  // #146: the reset link is not a bearer credential. The exact chain from the issue: an attacker
+  // with the mailbox resets the password, mints a second reset token (live after the epoch moved),
+  // and used it on /mfa/enroll with the password it just set — then replaced the second factor.
+  it("#146: a password-reset token cannot re-key MFA after reset/confirm", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const NEW_PASSWORD = "NewCorrectHorseBattery!";
+    const oldSecret = "JBSWY3DPEHPK3PXP";
+    const attackerSecret = "KRSXG5CTMVRXEZLU";
+    let parent: Record<string, any> = {
+      id: "parent-1",
+      familyId: "fam-1",
+      email: registerBody.email,
+      role: "owner",
+      passwordHash: await argon2.hash(PASSWORD),
+      mfaSecret: encryptSecret(oldSecret),
+      mfaEnabled: true,
+    };
+    prismaMock.parent.findUnique.mockImplementation(async () => ({ ...parent }));
+    prismaMock.parent.update.mockImplementation(async ({ data }: { data: Record<string, any> }) => {
+      parent = { ...parent, ...data };
+      return { ...parent };
+    });
+
+    const login = (password: string, code: string) =>
+      app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password, code } });
+    const counter = Math.floor(Date.now() / 1000 / 30);
+    // The account's own authenticator works before the attack.
+    expect((await login(PASSWORD, totpAtCounter(oldSecret, counter))).statusCode).toBe(200);
+
+    // Attacker has email only: confirm a reset and choose a new password.
+    const firstReset = app.jwt.sign({ sub: parent.id, purpose: "password_reset" }, { expiresIn: "15m" });
+    const confirm = await app.inject({
+      method: "POST",
+      url: "/v1/auth/reset/confirm",
+      payload: { token: firstReset, password: NEW_PASSWORD },
+    });
+    expect(confirm.statusCode).toBe(200);
+    const updatesAfterReset = prismaMock.parent.update.mock.calls.length;
+
+    // A second reset token, minted after reset/confirm moved the session epoch, is signature-valid
+    // and session-live — the shape the bypass relied on.
+    const liveResetToken = app.jwt.sign({ sub: parent.id, purpose: "password_reset" }, { expiresIn: "15m" });
+    const bearer = { authorization: `Bearer ${liveResetToken}` };
+
+    // No password: previously 401 reauth_required (the token itself still reached the handler).
+    const noPassword = await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: bearer, payload: {} });
+    expect(noPassword.statusCode).toBe(401);
+
+    // With the password the reset just set: previously 200 and a replacement secret. This is the
+    // takeover step, and it must now stop at the bearer check, before any re-authentication.
+    const withPassword = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/enroll",
+      headers: bearer,
+      payload: { password: NEW_PASSWORD },
+    });
+    expect(withPassword.statusCode).toBe(401);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(updatesAfterReset);
+
+    // The original authenticator still gets in; the attacker's does not.
+    expect((await login(NEW_PASSWORD, totpAtCounter(oldSecret, counter))).statusCode).toBe(200);
+    expect((await login(NEW_PASSWORD, totpAtCounter(attackerSecret, counter))).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("#146: a purpose-scoped token is not a bearer credential on the other requireJwt routes", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { getRedis } = await import("../src/redis.js");
+    const { MockRedis: MR } = await import("./helpers.js");
+    const redis = getRedis() as unknown as InstanceType<typeof MR>;
+    const store = new Map<string, string>();
+    redis.smembers.mockImplementation(async () => [...store.keys()]);
+    redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
+    redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
+    redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
+
+    // /logout-all is guarded by requireJwt. A reset-purpose token used to revoke the account's
+    // sessions; a token with an unknown role used to pass the same check.
+    const resetToken = app.jwt.sign({ sub: "parent-1", purpose: "password_reset" }, { expiresIn: "15m" });
+    const withRole = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", purpose: "password_reset" });
+    const unknownRole = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "service" });
+
+    for (const token of [resetToken, withRole, unknownRole]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error).toBe("unauthorized");
+    }
+    expect(store.size).toBe(0);
+
+    // An explicitly session-purpose token and a plain session token still work.
+    for (const token of [
+      app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", purpose: "session" }),
+      app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent" }),
+    ]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+    }
     await app.close();
   });
 

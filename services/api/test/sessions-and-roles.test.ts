@@ -83,6 +83,29 @@ describe("parent sessions — jti on every token, invalid-before epoch (ADR-0014
     expect(dead.statusCode).toBe(401);
     await app.close();
   });
+
+  it("a purpose-scoped token is not a bearer credential on requireFamily routes either (#146)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ childId: "child-1", appRules: [], routines: [] });
+
+    // A reset token carrying a family and role claim must still stop at the shared guard, before
+    // the resource is loaded.
+    const purposeToken = app.jwt.sign({ sub: "p1", familyId: "fam-1", role: "parent", purpose: "password_reset" });
+    const refused = await app.inject({
+      method: "GET",
+      url: "/v1/rules/child-1",
+      headers: { authorization: `Bearer ${purposeToken}` },
+    });
+    expect(refused.statusCode).toBe(401);
+    expect(refused.json().error).toBe("unauthorized");
+    expect(prismaMock.child.findUnique).not.toHaveBeenCalled();
+
+    // A live session token still reads the child.
+    const allowed = await app.inject({ method: "GET", url: "/v1/rules/child-1", headers: authHeader(app, "fam-1", "p1") });
+    expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
 });
 
 describe("family roles — co-parent tokens work, permissions are enforced (ADR-0014)", () => {
