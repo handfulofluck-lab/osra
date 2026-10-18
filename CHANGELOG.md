@@ -27,6 +27,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   `docs/SPEC-ADDENDUM-WORLD-CLASS.md:93` — and now state the 401. `README.md:152-153` claimed "JWTs
   never appear in URLs"; that was false before this change and is now literal, so it is kept and made
   explicit about the refused legacy query.
+- **ADR:** `docs/adr/0022-websocket-ticket-only.md` records the decision, the rejected alternatives
+  (repaired `?token=` path, deprecation window, 404) and its costs; it supersedes the "legacy `?token=`
+  path is kept" clause of ADR-0004 (which is marked superseded in part).
 - **Tests:** three new cases in `services/api/test/realtime.test.ts` (parent JWT, device JWT, no
   credentials) fail on `origin/main` with `404 !== 401` and pass here; the existing ticket/ready and
   single-use cases still pass. Full suite: **338 passed / 0 failed**.
