@@ -206,6 +206,13 @@ void main() {
                 'emails': ['qa@familyshield.dev'],
               },
           'PUT /v1/digests/prefs': (_) => {'ok': true},
+          // ADR-0020 / #101: the screen loads the family zone and PATCHes a change.
+          'GET /v1/family/me': (_) => {
+                'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+              },
+          'PATCH /v1/family/me': (req) => {
+                'family': {'id': 'fam-1', 'timezone': req.body['timezone'], 'timezoneSource': 'parent'},
+              },
           'POST /v1/digests/send-now': (_) => {
                 'digests': [
                   {
@@ -216,6 +223,28 @@ void main() {
                 ],
               },
         });
+
+    testWidgets('timezone dropdown loads the family zone and PATCHes a change (ADR-0020)', (tester) async {
+      final api = digestApi();
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      // The zone is loaded from /v1/family/me and shown as the current value.
+      expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
+      expect(find.textContaining('sent at 18:00 your local time'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('digestTimezone')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Asia/Dubai').last);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final patches = api.calls('PATCH', '/v1/family/me');
+      expect(patches, hasLength(1));
+      expect(patches.single.body['timezone'], 'Asia/Dubai');
+      expect(find.textContaining('Digest timezone set to Asia/Dubai'), findsOneWidget);
+    });
 
     testWidgets('loads server prefs; saving PUTs the switches and emails', (tester) async {
       final api = digestApi();

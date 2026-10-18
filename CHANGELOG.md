@@ -11,6 +11,16 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — the digest timezone is a setting, not a hidden default (ADR-0020, plan 2.2)
+- **Digest preferences now shows and sets the family's timezone** (a curated list of the markets OSRA ships
+  to, UTC included), reads it from `GET /v1/family/me`, and saves a change with `PATCH /v1/family/me`.
+  The screen says what the setting means: "the digest is sent at 18:00 your local time".
+- Choosing a zone makes it the **parent's** choice server-side (`timezoneSource = parent`), so no device
+  login can move it again (#101, guard corrected in #105). Before this, a family could only be filled by
+  whichever device logged in.
+- Test: a widget test asserts the zone loads, the explanatory line renders, and picking a new zone sends
+  exactly one `PATCH` with that value. Parent-app suite: **104 tests, all passing**.
+
 ### Architecture — ADR-0020 correction: the device fill is guarded by `timezoneSource = 'default'` (2026-10-18)
 - The first amendment's test wording (`<> 'parent'`) let every login re-fill the zone from the logging-in
   device. Decision 4 always said "only while the source is `default`"; the wording now matches. The code
