@@ -8,7 +8,7 @@ import { passwordResetEmail } from "../lib/email/templates.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
-import { invalidateSessionsBefore, isBearerSession, isParentSessionLive, signParentToken } from "../lib/sessions.js";
+import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
 const RegisterSchema = z.object({
@@ -85,22 +85,25 @@ export async function authRoutes(app: FastifyInstance) {
   const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
   // --- Redis-backed refresh-token store (handoff items 1-3) ---
-  // Live key  refresh:{sha256(token)}            -> JSON {parentId, expiresAt} (30 d TTL)
+  // Live key  refresh:{sha256(token)}            -> JSON {parentId, expiresAt, jti, sv} (30 d TTL)
   // Marker    refresh:used:{sha256(token)}       -> "1" (rotation/reuse detection, same TTL)
   // Index     refresh:index:{parentId}           -> SET of live token hashes (for logout-all); TTL re-armed
   //                                                  to 30 d on every issue, members removed on
   //                                                  rotation / logout / expiry (#57)
+  // `sv` is the parent's sessions version at issue time (#158). `/token/refresh` refuses a record
+  // whose `sv` is below the current version, so a token issued before a revocation can never mint
+  // again, whatever the interleaving with the revocation.
   const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
   const liveKey = (hash: string) => `refresh:${hash}`;
   const usedKey = (hash: string) => `refresh:used:${hash}`;
   const indexKey = (parentId: string) => `refresh:index:${parentId}`;
 
   /** Issue a new opaque refresh token, storing only its sha256 hash in Redis. */
-  const issueRefreshToken = async (parentId: string, accessJti?: string): Promise<string> => {
+  const issueRefreshToken = async (parentId: string, sv: number, accessJti?: string): Promise<string> => {
     const token = randomBytes(48).toString("hex");
     const hash = hashToken(token);
     const redis = getRedis();
-    await redis.set(liveKey(hash), JSON.stringify({ parentId, expiresAt: Date.now() + REFRESH_TTL_MS, jti: accessJti ?? null }), "EX", Math.floor(REFRESH_TTL_MS / 1000));
+    await redis.set(liveKey(hash), JSON.stringify({ parentId, expiresAt: Date.now() + REFRESH_TTL_MS, jti: accessJti ?? null, sv }), "EX", Math.floor(REFRESH_TTL_MS / 1000));
     // The access token issued alongside: `/logout` with this refresh token revokes it too (ADR-0014).
     if (accessJti) await redis.set(`refresh:jwt:${hash}`, accessJti, "EX", Math.floor(REFRESH_TTL_MS / 1000));
     await redis.sadd(indexKey(parentId), hash);
@@ -160,8 +163,8 @@ export async function authRoutes(app: FastifyInstance) {
       return { family, parent };
     });
 
-    const { token, jti } = await signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" });
-    return reply.code(201).send({ token, refreshToken: await issueRefreshToken(result.parent.id, jti), parent: { id: result.parent.id, email, displayName } });
+    const { token, jti, sv } = await signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" });
+    return reply.code(201).send({ token, refreshToken: await issueRefreshToken(result.parent.id, sv, jti), parent: { id: result.parent.id, email, displayName } });
   });
 
   app.post("/login", { config: RL }, async (req, reply) => {
@@ -198,8 +201,8 @@ export async function authRoutes(app: FastifyInstance) {
         data: { timezone: zone, timezoneSource: "device" },
       }).catch((err) => req.log.warn({ err }, "timezone fill failed"));
     }
-    const { token, jti } = await signParentToken(app, parent);
-    return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
+    const { token, jti, sv } = await signParentToken(app, parent);
+    return { token, refreshToken: await issueRefreshToken(parent.id, sv, jti) };
   });
 
   /**
@@ -347,23 +350,37 @@ export async function authRoutes(app: FastifyInstance) {
       }
       return reply.code(401).send({ error: "invalid_refresh_token" });
     }
-    const stored = JSON.parse(raw) as { parentId: string; expiresAt: number };
+    const stored = JSON.parse(raw) as { parentId: string; expiresAt: number; sv?: number };
     if (stored.expiresAt < Date.now()) {
       // Expired-but-present (the key's TTL and the stored instant can disagree by a few seconds):
       // retire it fully so the hash leaves the index too (#57).
       await retireRefreshToken(hash, stored.parentId);
       return reply.code(401).send({ error: "invalid_refresh_token" });
     }
+    // #158: read the sessions version ONCE, before retiring the token and before the DB round trip,
+    // then use that same value for the checks below and for the tokens minted at the end. A
+    // revocation that lands after this read makes the new credentials stale (dead on use); a
+    // revocation that landed before it is visible here and refuses the refresh outright. Reading the
+    // version again at mint time was the TOCTOU: it let a refresh accepted before the revocation mint
+    // a token stamped with the post-revocation version.
+    const sv = await currentSessionVersion(stored.parentId);
+    // A record without `sv` was written before #158. Its issuance time cannot be established
+    // reliably (the legacy epoch is best-effort and expires after 8 days), and treating an unknown
+    // version as current is exactly the fail-open this change removes. Force a re-login instead:
+    // one authentication event per parent on deploy, once, against silent session resurrection.
+    if (typeof stored.sv !== "number" || stored.sv < sv) {
+      return reply.code(401).send({ error: "session_revoked" });
+    }
     // Rotation: mark the presented token consumed before issuing new credentials.
     await retireRefreshToken(hash, stored.parentId);
     await redis.set(`refresh:owner:${hash}`, stored.parentId, "EX", Math.floor(REFRESH_TTL_MS / 1000));
     const parent = await prisma.parent.findUnique({ where: { id: stored.parentId } });
     if (!parent) return reply.code(401).send({ error: "invalid_refresh_token" });
-    const { token, jti } = await signParentToken(app, parent);
+    const { token, jti } = await signParentToken(app, parent, { sv });
     // Theft response: if the token we just consumed is ever presented again, the SESSION IT ROTATED
     // INTO (this jti) is what must die — `refresh:jwt:<old hash>` is how the reuse path finds it.
     await redis.set(`refresh:jwt:${hash}`, jti, "EX", Math.floor(REFRESH_TTL_MS / 1000));
-    return { token, refreshToken: await issueRefreshToken(parent.id, jti) };
+    return { token, refreshToken: await issueRefreshToken(parent.id, sv, jti) };
   });
 
   /** Revoke a single refresh token (logout; always 200 — handoff item 2). */

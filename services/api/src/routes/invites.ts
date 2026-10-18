@@ -92,8 +92,9 @@ export async function inviteRoutes(app: FastifyInstance) {
     // family (which still carries the old `familyId` claim) must die now, exactly like logout-all /
     // password reset. The fresh token below is minted after the counter bump, so it carries the new
     // sessions version (#117).
-    // If Redis is unreachable `invalidateSessionsBefore` is best-effort; `requireFamily` separately
-    // compares against the current Parent row, so the old family claim still cannot read its data.
+    // Since #158 a failed counter bump throws (the accept returns 5xx and the client retries); it is
+    // no longer best-effort. `requireFamily` also compares against the current Parent row, so the
+    // old family claim cannot read its data even before the counter is repaired.
     await invalidateSessionsBefore(parent.id);
     await prisma.familyInvite.update({ where: { id }, data: { status: "accepted" } });
     const family = await prisma.family.findUnique({ where: { id: token.familyId } });

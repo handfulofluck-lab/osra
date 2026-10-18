@@ -11,6 +11,39 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security — `/token/refresh` cannot resurrect a session revoked mid-flight (#158)
+- **The race.** `/token/refresh` accepted a refresh token, retired it, did a `Parent` DB round trip,
+  and only then minted with `sv` read at that moment. A password reset / MFA enable / logout-all /
+  theft response completing inside that window produced an access token carrying the
+  **post-revocation** version (live) and a rotated refresh token in an index that had just been
+  cleared — the session survived the revocation.
+- **The fix (`services/api/src/routes/auth.ts:99,331-383`, `services/api/src/lib/sessions.ts:51`).**
+  The refresh record now stores the sessions version at issue time (`sv`). `/token/refresh` reads
+  `currentSessionVersion` **once, before retiring the token and before the DB round trip**, refuses
+  `stored.sv < current` with `401 session_revoked`, and passes that same value into
+  `signParentToken` (`opts.sv`) and the replacement record. A revocation that lands after the read
+  leaves both returned credentials stale, so neither is usable.
+- **Legacy records re-login.** A refresh record written before this change has no `sv`; it is refused
+  (`401 session_revoked`) rather than treated as current. The legacy epoch is best-effort and
+  8-day-lived, so it cannot establish the record's issuance reliably; one forced login per parent is
+  the deliberate cost (ADR-0025 amendment).
+- **Fail closed on revocation.** `invalidateSessionsBefore` no longer swallows a Redis error from the
+  version `INCRBY`: logout-all / password reset / MFA enable / the theft response return 5xx and the
+  client retries instead of reporting a revocation that never happened. The legacy epoch `SET` stays
+  best-effort.
+- **Tests.** `test/sessions-and-roles.test.ts` adds `#158: a revocation that lands during
+  /token/refresh leaves neither returned credential live` (parks `parent.findUnique`, revokes while
+  parked, then asserts the returned access token is refused by `isParentSessionLive` and
+  `/logout-all` → 401 `session_revoked`, and the returned refresh token → 401 `session_revoked`) and
+  `#158: a Redis failure during revocation fails the request (5xx)`. Both fail on `40f4f61` (the
+  access token carried `sv:1` and the refresh succeeded; `invalidateSessionsBefore` resolved).
+  `test/auth.test.ts`’s rotation test now also asserts that a detected theft kills the rotated
+  token, which the old code failed to do.
+- **Gates** (2026-10-19, author’s run in worktree `wt-158`): `pnpm --filter @familyshield/api test`
+  → **363 passed**; probe integrity → 0 removed/demoted. `qa-probe` and `e2e` results are recorded in
+  the PR body. ⚠️ These are the author’s runs (Kimi Code); no independent verification has been
+  recorded yet.
+
 ### Parent app — English/Arabic localization with RTL (`plan 3.1`, first slice; follow-up #159)
 - **Toolchain.** `flutter_localizations` + `intl 0.20.3`, a new `l10n.yaml`, `lib/l10n/app_en.arb`
   (template) and `lib/l10n/app_ar.arb`; generated `AppLocalizations` is checked in. `MaterialApp`
