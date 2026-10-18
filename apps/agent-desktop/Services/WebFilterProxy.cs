@@ -117,7 +117,7 @@ public sealed class WebFilterProxy : BackgroundService
         // Feature #3: TLS termination only when FS_HTTPS_INSPECT=1 AND the generated root CA
         // exists/is creatable. With decryptSsl off, HTTPS flows are tunnelled untouched and only
         // plain HTTP is filtered/logged (previous behavior).
-        var decryptSsl = HttpsInterception.TryConfigureDecryption(proxy);
+        var decryptSsl = HttpsInterception.TryConfigureDecryption(proxy, warn: message => _log.LogWarning("{Message}", message));
         proxy.AddEndPoint(new ExplicitProxyEndPoint(IPAddress.Loopback, Port, decryptSsl));
         proxy.Start();
         _proxy = proxy;

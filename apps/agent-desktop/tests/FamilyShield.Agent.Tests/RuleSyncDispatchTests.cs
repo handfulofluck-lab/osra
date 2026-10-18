@@ -15,6 +15,7 @@ public sealed class RuleSyncDispatchTests : IDisposable
     private readonly string _dbPath;
     private readonly string _statusPath;
     private readonly LocalRuleStore _store;
+    private readonly AgentConfig _config = new() { ParentPin = "4821" };
     private readonly RuleSyncService _sync;
 
     public RuleSyncDispatchTests()
@@ -24,7 +25,14 @@ public sealed class RuleSyncDispatchTests : IDisposable
         _statusPath = Path.Combine(dir, "status.json");
         _store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance, _dbPath, _statusPath);
         var api = new ApiClient(new HttpClient(), new AgentConfig());
-        _sync = new RuleSyncService(NullLogger<RuleSyncService>.Instance, _store, api, new AgentConfig());
+        _sync = new RuleSyncService(NullLogger<RuleSyncService>.Instance, _store, api, _config);
+    }
+
+    private RuleSyncService NewSyncWithPin(string? parentPin)
+    {
+        var api = new ApiClient(new HttpClient(), new AgentConfig());
+        return new RuleSyncService(
+            NullLogger<RuleSyncService>.Instance, _store, api, new AgentConfig { ParentPin = parentPin });
     }
 
     [Fact]
@@ -131,6 +139,71 @@ public sealed class RuleSyncDispatchTests : IDisposable
         _sync.Dispatch("wind_down", null);
         _sync.Dispatch("wind_down", MinutesPayload(0));
         Assert.Equal(0, delayCalls);
+    }
+
+    [Fact]
+    public void LockRefusesToArmWithoutAParentPin()
+    {
+        var shown = new List<string>();
+        var sync = NewSyncWithPin(null);
+        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+
+        sync.Dispatch("lock");
+
+        Assert.Empty(shown);
+        Assert.Equal("lock", sync.LastArmRefusal);
+    }
+
+    [Fact]
+    public void LockUsesExactlyTheConfiguredParentPin()
+    {
+        var shown = new List<string>();
+        var sync = NewSyncWithPin("7391");
+        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+
+        sync.Dispatch("lock");
+
+        Assert.Equal("7391", Assert.Single(shown));
+        Assert.Null(sync.LastArmRefusal);
+    }
+
+    [Fact]
+    public void LegacyDefaultPinDoesNotArmTheLock()
+    {
+        var shown = new List<string>();
+        var sync = NewSyncWithPin(ParentPinPolicy.LegacyDefault);
+        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+
+        sync.Dispatch("lock");
+
+        Assert.Empty(shown);
+        Assert.Equal("lock", sync.LastArmRefusal);
+    }
+
+    [Fact]
+    public void PauseRefusesToArmWithoutAParentPin()
+    {
+        var shown = new List<string>();
+        var sync = NewSyncWithPin(null);
+        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+
+        sync.Dispatch("pause");
+
+        Assert.Empty(shown);
+        Assert.Equal("pause", sync.LastArmRefusal);
+    }
+
+    [Fact]
+    public void WindDownIsNotScheduledWithoutAParentPin()
+    {
+        var delayCalls = 0;
+        var sync = NewSyncWithPin(null);
+        sync.Delay = (_, _) => { delayCalls++; return Task.CompletedTask; };
+
+        sync.Dispatch("wind_down", MinutesPayload(5));
+
+        Assert.Equal(0, delayCalls);
+        Assert.Equal("wind_down", sync.LastArmRefusal);
     }
 
     private static JsonElement? MinutesPayload(int minutes)

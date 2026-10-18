@@ -1,3 +1,4 @@
+using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Titanium.Web.Proxy;
@@ -18,11 +19,20 @@ namespace FamilyShield.Agent.Services;
 /// a one-time interactive "Security Warning" dialog (per root cert per user) that must be
 /// confirmed by the logged-in user; idempotent re-adds hit the thumbprint check and do not
 /// re-prompt.
+/// Upstream certificates are validated by default (see <see cref="ValidateUpstreamCertificate"/>);
+/// <c>FS_HTTPS_INSPECT_ALLOW_INSECURE=1</c> is the explicit, logged, test-machine opt-out.
 /// </remarks>
 public static class HttpsInterception
 {
     /// <summary>Env gate: only "1" enables HTTPS inspection (SPEC-ADDENDUM Feature #3).</summary>
     public const string EnvVar = "FS_HTTPS_INSPECT";
+
+    /// <summary>
+    /// Test-machine escape hatch: when exactly "1", upstream server certificates are accepted
+    /// without validation. Off by default; using it logs a loud warning. Never set it on a family
+    /// PC — it turns inspection into a machine-in-the-middle for every HTTPS site.
+    /// </summary>
+    public const string InsecureEnvVar = "FS_HTTPS_INSPECT_ALLOW_INSECURE";
 
     /// <summary>Subject simple name stamped on the generated root CA.</summary>
     public const string RootCertSubject = "FamilyShield Test Root";
@@ -40,25 +50,76 @@ public static class HttpsInterception
     public static bool IsActive => IsEnabled && File.Exists(PfxPath);
 
     /// <summary>
+    /// True only when <see cref="InsecureEnvVar"/> is exactly "1". Default false: upstream
+    /// certificates are validated against the Windows trust store.
+    /// </summary>
+    public static bool AllowInsecureUpstream =>
+        string.Equals(Environment.GetEnvironmentVariable(InsecureEnvVar), "1", StringComparison.Ordinal);
+
+    /// <summary>
     /// Wires a Titanium proxy for TLS termination: loads (or generates + exports + trust-installs)
-    /// the root CA, hands it to the proxy and accepts every upstream server certificate.
+    /// the root CA, hands it to the proxy and validates every upstream server certificate.
     /// Returns false when inspection is disabled or anything fails — the caller then keeps
     /// decryptSsl:false (plain-HTTP-only filtering).
     /// </summary>
-    public static bool TryConfigureDecryption(ProxyServer proxy, string? pfxPath = null)
+    /// <param name="proxy">Proxy to configure.</param>
+    /// <param name="pfxPath">Root-CA PFX path; defaults to <see cref="PfxPath"/>.</param>
+    /// <param name="warn">Receives the loud warning when the insecure opt-out is on; defaults to stderr.</param>
+    public static bool TryConfigureDecryption(ProxyServer proxy, string? pfxPath = null, Action<string>? warn = null)
     {
         if (!IsEnabled) return false;
         var root = EnsureRootCertificate(pfxPath);
         if (root is null) return false;
         proxy.CertificateManager.RootCertificate = root;
-        // NOTE: test-build trust model — upstream server certificates are NOT validated
-        // (any chain error is accepted). The production agent would pin/validate instead.
+
+        var allowInsecure = AllowInsecureUpstream;
+        if (allowInsecure)
+        {
+            (warn ?? Console.Error.WriteLine)(
+                $"OSRA SECURITY WARNING: {InsecureEnvVar}=1 — HTTPS inspection accepts ANY upstream " +
+                "certificate (no chain or host-name validation). Use only on a disposable test machine.");
+        }
+
         proxy.ServerCertificateValidationCallback += (_, e) =>
         {
-            e.IsValid = true;
+            e.IsValid = ValidateUpstreamCertificate(e.Certificate, e.SslPolicyErrors, allowInsecure);
             return Task.CompletedTask;
         };
         return true;
+    }
+
+    /// <summary>
+    /// Upstream certificate policy (audit finding 2). With the insecure opt-out on everything is
+    /// accepted; otherwise the certificate must be present, have no platform errors and build a
+    /// chain against the Windows trust store. Revocation is not fetched (offline test PCs would
+    /// otherwise reject every site); the chain, expiry and host name are still checked.
+    /// </summary>
+    public static bool ValidateUpstreamCertificate(
+        X509Certificate? certificate,
+        SslPolicyErrors errors,
+        bool allowInsecure)
+    {
+        if (allowInsecure) return true;
+        if (certificate is null || errors != SslPolicyErrors.None) return false;
+
+        try
+        {
+            var cert2 = certificate as X509Certificate2;
+            if (cert2 is null)
+            {
+                using var copy = new X509Certificate2(certificate);
+                cert2 = new X509Certificate2(copy.RawData);
+            }
+
+            using var chain = new X509Chain();
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            return chain.Build(cert2);
+        }
+        catch (Exception)
+        {
+            // A certificate that cannot be read or chained is not trusted.
+            return false;
+        }
     }
 
     /// <summary>

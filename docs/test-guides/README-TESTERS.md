@@ -65,13 +65,16 @@ This package contains tester-installable builds of the OSRA MVP.
 1. In the parent app, generate a pairing code for the child (same as step 3).
 2. Copy the `OSRA-Agent-Windows` folder to the child's PC and run
    `OSRA.Agent.exe`. On first run a pairing window asks for the **server
-   URL** and the **code**.
+   URL**, the **code**, and the **parent PIN** for this PC (4–8 digits; there is
+   no default and `0000` is refused).
 3. The agent then runs in the background (system tray/console): local web-filter
    proxy on `127.0.0.1:8877`, process blocking per rules, screen-time limits,
    bedtime lock. It auto-starts via the host (run it from shell:startup for
    persistence).
-4. Screen-time lock overlay unlock PIN defaults to `0000` (set env
-   `DESKTOP_PARENT_PIN` to change).
+4. The parent PIN is the one entered at pairing, stored as `parentPin` in
+   `agent.config.json`. Without it the agent logs an error and refuses to arm
+   lock/bedtime/screen-time. Existing installs that only set
+   `DESKTOP_PARENT_PIN` adopt it once; the old literal `0000` counts as unset.
 
 ## What works in this release
 

@@ -11,6 +11,45 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Windows agent — the `0000` lock PIN is gone, and HTTPS inspection validates its upstream (`fix/desktop-pin-and-tls`, desktop audit findings 1–2)
+- **No default parent PIN.** `RuleSyncService` and `ScreenTimeEnforcer` each had
+  `Environment.GetEnvironmentVariable("DESKTOP_PARENT_PIN") ?? "0000"`, so any install without the
+  env var locked with a PIN every child knows. Both defaults are removed. `ParentPinPolicy`
+  (`apps/agent-desktop/Services/ParentPinPolicy.cs`) is the single definition of a usable PIN:
+  4–8 ASCII digits, the legacy literal `0000` never counts, comparison is constant-time. The PIN is
+  chosen in the pairing window (typed twice; `PairingDialog.cs`) and persisted in
+  `agent.config.json` as `parentPin` — the same file and the same plaintext store that already holds
+  the device JWT/HMAC secret (no new crypto scheme; audit WIN-11 on that store stays open).
+- **Migration is one-shot.** `AgentConfig.Load` (`Services/AgentConfig.cs:76-98`) adopts
+  `DESKTOP_PARENT_PIN` once, persists it, and then the stored PIN wins; a literal `0000` in the env
+  var is treated as unset and is not written. An install that relied on the old default therefore
+  starts with no PIN and says so.
+- **No PIN means no restriction, not a guessable one.** `lock`, `pause` and `wind_down`
+  (`RuleSyncService.cs:228-292`, gate at `:328-347`) and bedtime/screen-time
+  (`ScreenTimeEnforcer.cs:68-146`) refuse to arm without a configured PIN and log an error with the
+  reason; `unlock`/`resume` still work so a stale overlay can always be cleared.
+  `LockOverlay.ShowIfPinned` additionally refuses to render the overlay for a blank/`0000` PIN, so
+  an accidental caller cannot create an unlockable-by-anyone lock. Startup prints the same warning
+  (`Program.cs:32-38`).
+- **HTTPS inspection now validates the upstream.** `HttpsInterception.TryConfigureDecryption`
+  previously installed `e.IsValid = true` for every upstream certificate (accept-anything MITM).
+  The default now requires no platform error and a chain built against the Windows trust store
+  (chain, expiry, host name; revocation not fetched), leaving a failed certificate undecrypted
+  rather than silently trusted. `FS_HTTPS_INSPECT_ALLOW_INSECURE=1` is the explicit, documented
+  opt-out for a disposable test machine and logs a loud warning through the agent logger.
+  `README.md` and `docs/test-guides/INSTALLATION-GUIDE.md` now state what inspection does and does
+  not protect (pinned apps, WinHTTP/VPN bypass, and the local root CA as the trust anchor).
+- **Tests:** +36 xunit cases (`ParentPinPolicyTests`, the PIN gate cases in
+  `RuleSyncDispatchTests` and `ScreenTimePinGateTests`, the TLS policy cases in
+  `HttpsInterceptionTests`, and six `AgentConfigTests` migration cases) — **224/224 pass**
+  (`dotnet test apps/agent-desktop/tests/FamilyShield.Agent.Tests`). Fail-before: with the two old
+  behaviours restored in place (accept-all upstream; no-PIN default `0000`) the new policy cases
+  fail (`SelfSignedUpstreamCertificateIsRejectedByDefault`, `BedtimeRefusesToArmWithoutAParentPin`,
+  `LockRefusesToArmWithoutAParentPin`, `LegacyDefaultPinDoesNotArmTheLock`); details in the PR.
+- **⚠️ Not verified here:** the pairing dialog was not driven on a real desktop session, and the
+  TLS cases exercise the validation policy the proxy callback delegates to, not a live TLS
+  handshake through the proxy. Both need a manual desktop row.
+
 ### Android — a boot before location is granted no longer kills the agent (issue #128)
 - **`BootReceiver` no longer requests `LocationService` unless the app can hold a location FGS.**
   The receiver called `ContextCompat.startForegroundService()` unconditionally; `LocationService`

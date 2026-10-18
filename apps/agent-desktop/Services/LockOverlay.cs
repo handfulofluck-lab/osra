@@ -12,8 +12,17 @@ internal static class LockOverlay
 {
     private static readonly OverlayController Instance = new();
 
-    /// <summary>Shows the overlay across all screens (re-asserts when already visible).</summary>
-    public static void Show(string pin, string title, string message) => Instance.Show(pin, title, message);
+    /// <summary>
+    /// Shows the overlay across all screens (re-asserts when already visible) only when a valid
+    /// parent PIN is configured. Returns false and shows nothing otherwise: a lock with no PIN
+    /// (or the legacy <c>0000</c>) would be dismissable by anyone, so it must not arm.
+    /// </summary>
+    public static bool ShowIfPinned(string pin, string title, string message)
+    {
+        if (ParentPinPolicy.Normalize(pin) is null) return false;
+        Instance.Show(pin, title, message);
+        return true;
+    }
 
     /// <summary>Hides the overlay when visible.</summary>
     public static void Hide() => Instance.Hide();
@@ -163,7 +172,7 @@ internal static class LockOverlay
                 var unlockButton = new Button { Text = "Unlock" };
                 unlockButton.Click += (_, __) =>
                 {
-                    if (pinBox.Text == pin)
+                    if (ParentPinPolicy.Matches(pin, pinBox.Text))
                     {
                         _controller.CloseAll();
                     }

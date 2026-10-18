@@ -5,11 +5,13 @@ namespace FamilyShield.Agent.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="AgentConfig"/>: Load/Save round-trip, missing/corrupt handling,
-/// env overrides, and the skip-unchanged write behavior.
+/// env overrides, the one-time parent-PIN adoption, and the skip-unchanged write behavior.
 /// </summary>
+[Collection("Environment variables")]
 public sealed class AgentConfigTests : IDisposable
 {
-    private static readonly string[] EnvKeys = ["API_BASE", "DEVICE_JWT", "DEVICE_ID", "CHILD_ID"];
+    private static readonly string[] EnvKeys =
+        ["API_BASE", "DEVICE_JWT", "DEVICE_ID", "CHILD_ID", ParentPinPolicy.EnvVar];
 
     private readonly string _dir;
     private readonly Dictionary<string, string?> _savedEnv = new();
@@ -100,5 +102,61 @@ public sealed class AgentConfigTests : IDisposable
         var config = Sample();
         Assert.True(config.Save(_dir));
         Assert.False(config.Save(_dir));
+    }
+
+    [Fact]
+    public void ParentPinRoundTripsThroughTheConfigFile()
+    {
+        var config = Sample();
+        config.ParentPin = "4821";
+        Assert.True(config.Save(_dir));
+
+        Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
+    }
+
+    [Fact]
+    public void EnvParentPinIsAdoptedOnceIntoTheConfigFile()
+    {
+        Sample().Save(_dir);
+        Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "4821");
+
+        var adopted = AgentConfig.Load(_dir);
+        Assert.Equal("4821", adopted!.ParentPin);
+
+        // Removing the env var must not disarm the install: the PIN is now in the file.
+        Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, null);
+        Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
+        Assert.Contains("\"parentPin\": \"4821\"", File.ReadAllText(Path.Combine(_dir, AgentConfig.FileName)));
+    }
+
+    [Fact]
+    public void LegacyDefaultEnvParentPinIsNotAdopted()
+    {
+        Sample().Save(_dir);
+        Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, ParentPinPolicy.LegacyDefault);
+
+        var loaded = AgentConfig.Load(_dir);
+        Assert.Null(loaded!.ParentPin);
+        Assert.DoesNotContain("0000", File.ReadAllText(Path.Combine(_dir, AgentConfig.FileName)));
+    }
+
+    [Fact]
+    public void MalformedEnvParentPinIsNotAdopted()
+    {
+        Sample().Save(_dir);
+        Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "12ab");
+
+        Assert.Null(AgentConfig.Load(_dir)!.ParentPin);
+    }
+
+    [Fact]
+    public void StoredParentPinWinsOverTheEnvVar()
+    {
+        var config = Sample();
+        config.ParentPin = "4821";
+        config.Save(_dir);
+        Environment.SetEnvironmentVariable(ParentPinPolicy.EnvVar, "9999");
+
+        Assert.Equal("4821", AgentConfig.Load(_dir)!.ParentPin);
     }
 }

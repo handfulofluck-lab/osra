@@ -5,6 +5,8 @@ namespace FamilyShield.Agent.Services;
 /// <summary>
 /// Persistent agent identity (§14.3): stored as JSON in <see cref="FileName"/> beside the exe.
 /// Values from the file are overridden by API_BASE / DEVICE_JWT / DEVICE_ID / CHILD_ID env vars.
+/// DESKTOP_PARENT_PIN is adopted once when no <see cref="ParentPin"/> is stored (see
+/// <see cref="ParentPinPolicy"/>).
 /// </summary>
 public sealed class AgentConfig
 {
@@ -28,6 +30,14 @@ public sealed class AgentConfig
 
     /// <summary>Shared HMAC secret returned by pair/claim; signs /internal calls (alerts). Env INTERNAL_HMAC_SECRET overrides.</summary>
     public string? HmacSecret { get; set; }
+
+    /// <summary>
+    /// Per-install parent PIN, established at pairing and stored in this file (same store and
+    /// permissions as <see cref="DeviceJwt"/>/<see cref="HmacSecret"/>). Lock, bedtime and
+    /// screen-time refuse to arm while this is null. <c>DESKTOP_PARENT_PIN</c> is adopted once
+    /// during migration by <see cref="Load"/>.
+    /// </summary>
+    public string? ParentPin { get; set; }
 
     /// <summary>
     /// When false, the desktop agent does not configure or enforce the system-wide WinINET proxy.
@@ -62,6 +72,30 @@ public sealed class AgentConfig
         config.DeviceId = Environment.GetEnvironmentVariable("DEVICE_ID") ?? config.DeviceId;
         config.ChildId = Environment.GetEnvironmentVariable("CHILD_ID") ?? config.ChildId;
         config.HmacSecret = Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET") ?? config.HmacSecret;
+
+        // Desktop audit finding 1: no default parent PIN. A stored PIN wins; an install that only
+        // has DESKTOP_PARENT_PIN adopts it once into this file (the legacy literal 0000 is not
+        // adopted). Adoption is persisted so removing the env var later cannot silently disarm
+        // the lock — and so "no PIN" is a visible state, not a fallback. Only a paired config is
+        // rewritten here; the unpaired first run still goes through the pairing dialog.
+        var resolvedPin = ParentPinPolicy.Resolve(
+            config.ParentPin, Environment.GetEnvironmentVariable(ParentPinPolicy.EnvVar));
+        if (!string.Equals(config.ParentPin, resolvedPin, StringComparison.Ordinal))
+        {
+            config.ParentPin = resolvedPin;
+            if (!string.IsNullOrWhiteSpace(config.DeviceJwt))
+            {
+                try
+                {
+                    config.Save(exeDir);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        $"OSRA: could not persist the parent PIN to {Path.Combine(exeDir, FileName)}: {ex.Message}");
+                }
+            }
+        }
 
         var setProxyEnv = Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY") ??
                           Environment.GetEnvironmentVariable("FS_SET_SYSTEM_PROXY", EnvironmentVariableTarget.User);

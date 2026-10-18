@@ -131,14 +131,37 @@ You should land on the dashboard showing the seeded child, device status and bat
 2. Copy the folder `OSRA-Agent-Windows` to the child's PC (or a USB stick).
    Double-click `OSRA.Agent.exe`.
    - *First run only*: a pairing window opens → enter **Server URL**
-     (`https://<your-tunnel-url>`) and the **code** → **Pair**. The config is stored
-     beside the exe in `agent.config.json`.
+     (`https://<your-tunnel-url>`), the **code**, and the **parent PIN** you want on this
+     PC (4–8 digits, typed twice; `0000` is refused) → **Pair**. The config, including the
+     PIN, is stored beside the exe in `agent.config.json`.
 3. The agent now runs in the background (console window — keep it open, or use
    `shell:startup` to auto-start at logon). It provides:
    - web filter proxy on `127.0.0.1:8877` (system proxy auto-set; SafeSearch on),
    - app/process blocking and screen-time limits from the child's rules,
-   - bedtime → workstation lock. Screen-time lock PIN defaults to `0000`
-     (set env `DESKTOP_PARENT_PIN` to change).
+   - bedtime → workstation lock. The parent PIN is the one chosen at pairing — there is no
+     default. Existing installs that only set `DESKTOP_PARENT_PIN` adopt it once; the old
+     literal `0000` counts as unset and the parent must set a real PIN. Without a PIN the
+     agent logs an error and **refuses to arm** lock, bedtime and screen-time.
+
+### What HTTPS inspection does and does not protect
+
+With `FS_HTTPS_INSPECT=1` the agent terminates TLS for traffic that uses the Windows system
+proxy and trusts its local root CA. The parent sees HTTPS versions of blocked domains and
+SafeSearch rewrites apply to HTTPS too.
+
+- **Validated by default.** Each upstream server certificate is checked against the Windows
+  trust store (chain, expiry and host name; revocation is not fetched, so an offline test PC
+  does not reject every site). A certificate that fails the check is **not** decrypted — the
+  browser shows a TLS error instead. `FS_HTTPS_INSPECT_ALLOW_INSECURE=1` is a documented,
+  loudly-logged opt-out for a disposable test machine only.
+- **Not covered.** Apps with their own proxy settings or certificate pinning (many banking
+  apps), WinHTTP/service traffic and VPN tunnels bypass the proxy; a child who removes the
+  local root CA or disables the proxy is reported by the tamper check but not prevented.
+- **The root CA is the trust anchor.** The private key sits in
+  `%LOCALAPPDATA%\FamilyShield\rootCert.pfx`, readable by the logged-in (child) user, and the
+  public key is trusted for that user until removed. Inspection therefore protects against
+  ordinary browsing, not against a child who can read that file or install another trusted
+  root. Do not treat it as tamper-proof.
 
 ## 7. Functional test checklist (what to verify)
 
@@ -147,7 +170,7 @@ You should land on the dashboard showing the seeded child, device status and bat
 | 1 | Dashboard after login | Child card, device online, battery | — |
 | 2 | Edit rules → block an app on the Android child → Save | App is blocked on the child phone (block screen) | ≤ ~60 s |
 | 3 | Edit rules → bedtime window covering now → Save | Child phone blocks apps; PC locks the workstation at bedtime | ≤ ~60 s |
-| 4 | Child's device → device card → **Ring** / **Lock** | Phone rings / block screen; PC shows a full-screen lock overlay that only a parent PIN (default `0000`) dismisses — **Unlock** works from the app | ≤ ~60 s |
+| 4 | Child's device → device card → **Ring** / **Lock** | Phone rings / block screen; PC shows a full-screen lock overlay that only the parent PIN chosen at pairing dismisses (there is no default) — **Unlock** works from the app | ≤ ~60 s |
 | 5 | Open a blocked site on the child PC | "Blocked by OSRA" page; SafeSearch forced on Google/Bing/YouTube | immediate |
 | 6 | Watch **Alerts** while testing | `app_blocked`, `geofence`, `screen_time_exceeded` alerts appear in real time (WebSocket) | realtime |
 | 7 | Map screen | Child location updates (phone); geofences Home/School drawn (map tiles need a Google Maps API key — without one the map is blank but locations/controls still work) | ~60 s batch |
@@ -163,7 +186,7 @@ You should land on the dashboard showing the seeded child, device status and bat
 | 17 | Dashboard → overflow menu → **Family members** → Invite | Invite created; share the shown token — the invited parent registers and accepts | — |
 | 18 | Child page → **Reports** / dashboard score ring / live chip | Usage bar chart + top blocked domains; wellbeing ring 0–100; "● app · Nm today" updates live | ~60 s |
 | 19 | Turn off the OSRA accessibility service on the child phone (then re-enable) | `tamper` critical alert appears within ~1 min | ~60 s |
-| 20 | PC: `setx FS_HTTPS_INSPECT 1` then restart the agent, accept the certificate prompt once | HTTPS versions of blocked domains now show the block page (opt-in; see SHIP-NOTES) | immediate |
+| 20 | PC: `setx FS_HTTPS_INSPECT 1` then restart the agent, accept the certificate prompt once | HTTPS versions of blocked domains now show the block page. Upstream certificates are validated against the Windows trust store (chain + host name; revocation is not fetched), so a site whose certificate fails validation is not decrypted and the browser shows a TLS error instead. (Opt-in; see SHIP-NOTES.) | immediate |
 | 21 | (Optional) Enable MFA on a parent account (API `POST /v1/auth/mfa/enroll` → confirm with `/mfa/verify`), then log out & back in | **MFA is OFF by default and optional.** When enabled, login with password alone returns 401 `mfa_required`; password + authenticator code succeeds. Leave the "Authentication code" field blank otherwise | — |
 | 22 | Unpair a device from the parent app, then try the agent's old token (or re-pair the same device) | Unpaired agent is rejected (device token revoked at unpair); a fresh pair works normally | ≤ ~60 s |
 
@@ -178,12 +201,12 @@ You should land on the dashboard showing the seeded child, device status and bat
 | Code rejected at pairing | Codes expire after 10 min and are single-use — generate a fresh one. |
 | Child phone not enforcing | Accessibility service not enabled (step 5.3), or the agent was force-stopped — reopen the agent app. Battery savers: exclude OSRA from battery optimization. |
 | Windows PC not filtering | Agent console must be running (it sets the system proxy). Plain HTTP is filtered out of the box; **HTTPS needs the opt-in** `FS_HTTPS_INSPECT=1` (see the dedicated row above). Demo blocking by adding a domain to the child's blocked list and opening its `http://` version (e.g. `http://neverssl.com`). **Firefox:** set Settings → General → Network Settings → *Use system proxy settings*. Blocked attempts raise `web_threat` alerts in the app. |
-| Unlock on PC doesn't respond | Lock is an agent overlay dismissed only by the parent PIN (default `0000`, change via `DESKTOP_PARENT_PIN`); pressing **Unlock** in the app dismisses it within ~60 s. The child cannot close it without the PIN. |
+| Unlock on PC doesn't respond | Lock is an agent overlay dismissed only by the parent PIN chosen at pairing (no default) — pressing **Unlock** in the app dismisses it within ~60 s. The PIN is stored as `parentPin` in `agent.config.json`; to change it, close the agent, edit that value (4–8 digits), and start it again. If the agent log says it refused to arm, no PIN is configured: delete `parentPin` and start once with `DESKTOP_PARENT_PIN` set, or re-pair. The child cannot close the overlay without the PIN. |
 | Location not updating on map | Phone location permission must be "Always", not "While using", and GPS must be on. **Testing on an emulator?** GPS injection doesn't reach the agent reliably — verify location on a physical phone. |
 | Alerts not appearing live | Parent app must be on the same Server URL; pull-to-refresh works regardless. |
 | Social concerns not appearing | WhatsApp monitoring must be ON (Social tab), the child's accessibility service must be enabled, and the test phrase must come from a monitored app. Checks run on the phone's ~60 s loop — allow a minute. |
 | "Paused" device can still open some apps | Those apps are in **Always allowed** (Rules → Apps) — remove them to block everything during pause. |
-| HTTPS filtering not working | It is opt-in: `setx FS_HTTPS_INSPECT 1` on the child PC, restart the agent, and confirm the one-time root-certificate dialog. Some pinned apps (banking) bypass it by design. |
+| HTTPS filtering not working | It is opt-in: `setx FS_HTTPS_INSPECT 1` on the child PC, restart the agent, and confirm the one-time root-certificate dialog. Some pinned apps (banking) bypass it by design. Upstream certificates are validated by default; a site with an invalid certificate cannot be decrypted and shows a TLS error. Only a disposable test machine may add `FS_HTTPS_INSPECT_ALLOW_INSECURE=1` (accepts any upstream certificate, logs a loud warning) — never on a real family PC. |
 | Calls/texts timeline empty | Grant "Call & SMS permissions" from the agent app's completion screen (optional, runtime prompt). iOS cannot monitor calls/texts (by design). |
 | Invite token rejected | Tokens expire after 7 days and are single-use; the invited parent's account email must match the invite email exactly. |
 
