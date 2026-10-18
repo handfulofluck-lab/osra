@@ -10,6 +10,10 @@ import javax.inject.Singleton
  * Shows the full-screen block overlay (BlockActivity) for a package, debounced to once per
  * 2 s per package, and never for the agent's own package or an [EssentialPackages] screen (prevents
  * overlay loops and an unusable phone, issue #165).
+ *
+ * The caller passes the package resolved from the window in front, not a raw event package
+ * (`EssentialPackages.foregroundPackage`): the overlay's subtitle names that screen, and on the Flip4
+ * the Home event's own package is the framework, which would both mislabel and mis-decide it.
  */
 @Singleton
 class AppBlocker @Inject constructor(

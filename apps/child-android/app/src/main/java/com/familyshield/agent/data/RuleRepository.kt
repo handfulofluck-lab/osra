@@ -2,6 +2,7 @@ package com.familyshield.agent.data
 
 import com.familyshield.agent.data.db.UsageEventDao
 import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.RuleSetDto
 import com.squareup.moshi.Moshi
@@ -37,6 +38,8 @@ class RuleRepository @Inject constructor(
     private val blocklist: BlocklistStore,
     private val usageDao: UsageEventDao? = null,
     private val consent: ConsentState,
+    /** The OS view of a package (issue #165): the essential gate consults the HOME role, not just names. */
+    private val packageFacts: PackageFacts,
 ) {
     /** Outcome of evaluating a package against the active rule set. */
     enum class Decision { ALLOW, BLOCK, TIME_LIMIT_REACHED }
@@ -75,6 +78,7 @@ class RuleRepository @Inject constructor(
             ruleSet = ruleSet,
             paired = settings.isPairedSync(),
             consentPaused = consent.isPaused(),
+            essential = { EssentialPackages.isEssential(it, packageFacts) },
         ) { rules ->
             engine.evaluate(
                 rules,
@@ -230,17 +234,22 @@ class RuleRepository @Inject constructor(
          * the rules path never asked it, so a bedtime rule answered BLOCK for the home screen — the
          * overlay covered the launcher and the child could not press Home, reach the dialer, or see
          * what would still work. An essential screen is now ALLOW before any rule is consulted.
+         *
+         * [essential] is the OS-aware form on the real device ([EssentialPackages.isEssential] with
+         * [PackageFacts]), so a launcher the name table does not know is still exempt when the OS says
+         * it holds HOME. It stays a predicate so this core has no Android dependency.
          */
         internal fun decide(
             packageId: String,
             ruleSet: RuleSetDto?,
             paired: Boolean,
             consentPaused: Boolean,
+            essential: (String) -> Boolean = { EssentialPackages.isEssential(it) },
             rulesDecision: (RuleSetDto) -> Decision,
         ): Decision {
             // ADR-0008 §3: no enforcement while the parent has withdrawn consent.
             if (consentPaused) return Decision.ALLOW
-            if (EssentialPackages.isEssential(packageId)) return Decision.ALLOW
+            if (essential(packageId)) return Decision.ALLOW
             if (ruleSet == null) {
                 // AND-03: Fail-closed when paired but no rules are cached yet — for apps only.
                 return if (paired) Decision.BLOCK else Decision.ALLOW
