@@ -11,6 +11,21 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Docs — ADR-0023 proposes the MFA recovery path (issue #136)
+- **The gap.** Login requires a TOTP when MFA is on (`services/api/src/routes/auth.ts:174-180`), a
+  password reset deliberately does not clear it (`:289-310`), and replacing the secret needs a session
+  plus the password or a current code (`:218-254`). A parent who loses the authenticator and holds no
+  live session has no supported way back in; and the reset-token path that reaches `/mfa/enroll` is
+  the email-compromise takeover the design forbids. **Proved live on a disposable account:** reset
+  with a chosen password → second reset token → `/mfa/enroll` with the new password → `/mfa/verify`
+  with the attacker's TOTP → login `200`, i.e. mailbox control alone replaced MFA. The account and
+  its Redis keys were removed afterwards (`OK: 1 family — demo family only`).
+- **Proposal, not a change.** `docs/adr/0023-mfa-recovery.md` compares recovery codes at enrolment, a
+  time-boxed support-assisted reset, and clearing MFA on email reset; it recommends one-time recovery
+  codes (hashed, 80-bit, cleared on use) plus a support break-glass for the existing cohort that has no
+  codes. Status **proposed** — the KCL lead ratifies; the support process is the maintainer's product
+  decision. No code is written and #136 stays open.
+
 ### Parent app — daily screen-time trends and browsing history from the durable usage model (roadmap 3.5, `feat/3.5-usage-web-trends`)
 - **One screen, both reads.** `UsageHistoryScreen` (`apps/parent-app/lib/features/reports/usage_history_screen.dart`)
   is reachable from the Reports app bar (`/child/:id/history`). Its 7/14/30-day selector drives both
