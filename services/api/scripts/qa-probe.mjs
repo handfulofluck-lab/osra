@@ -8,7 +8,8 @@
  * Usage:  node scripts/qa-probe.mjs          (see QA-KIMI docs; needs INTERNAL_HMAC_SECRET)
  * Env:    API_BASE, INTERNAL_HMAC_SECRET
  *
- * Exit code is non-zero when any probe fails, so CI / the collaborating developer can gate on it.
+ * Exit code is non-zero when any probe fails (1), or (2) when the API rate-limited the run — a 429
+ * burst is stopped before it can be recorded as product failures (issue #112).
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -82,9 +83,58 @@ const signHs256Jwt = (payload, secret) => {
   return `${head}.${body}.${sig}`;
 };
 
+/**
+ * Issue #112: a burst of 429s is the API's own rate limiter, not a product defect. One run of this
+ * probe makes ~109 calls, and the shared :3000 instance is also used by other agents, so an isolated
+ * 429 can be an unlucky overlap. More than five in one run is the measured burst shape (run 2 of the
+ * #112 report saw 66) — at that point the limiter is shaping the run and its results are not
+ * independent of the throttle. Stop instead of manufacturing failures.
+ */
+const RATE_LIMIT_ABORT_AFTER = 5;
+/** Honour Retry-After only when it is shorter than this; the API asks for up to 60 s. */
+const RATE_LIMIT_RETRY_CAP_MS = 3000;
+let rateLimited429 = 0;
+
+class RateLimitAbort extends Error {}
+/** Sockets opened in section L, so the abort path can close them and let the process exit. */
+const OPEN_SOCKETS = new Set();
+
+process.on("uncaughtException", (err) => {
+  if (err instanceof RateLimitAbort) {
+    for (const ws of OPEN_SOCKETS) { try { ws.close(); } catch { /* already closing */ } }
+    process.exitCode = 2;
+    return; // let the loop drain: process.exit() after several fetches trips a Node 24/Windows libuv assertion
+  }
+  console.error(err);
+  process.exit(1);
+});
+
+const abortRateLimited = (why) => {
+  console.log(`\nABORT: rate limited by the API (${rateLimited429} x 429) - wait 60 s and re-run`);
+  if (why) console.log(`       ${why}`);
+  console.log("       No 429-induced check was recorded as a failure; the run stopped first.");
+  process.exitCode = 2;
+  throw new RateLimitAbort("rate limited by the API");
+};
+
+/** Count one observed 429 and abort once the run is clearly being throttled. */
+const count429 = (where) => {
+  rateLimited429 += 1;
+  if (rateLimited429 > RATE_LIMIT_ABORT_AFTER) {
+    abortRateLimited(`${where} — more than ${RATE_LIMIT_ABORT_AFTER} x 429 in one run`);
+  }
+};
+
+/** Retry-After is seconds per RFC 9110; absent or unparseable = one short default wait. */
+const retryAfterMs = (res) => {
+  const header = res.headers.get("retry-after");
+  const seconds = header === null ? NaN : Number(header);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : 1000;
+};
+
 async function call(method, path, { token, body, hmac, secret, rawBody, headers } = {}) {
   const raw = rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body);
-  const res = await fetch(`${API}${path}`, {
+  const send = () => fetch(`${API}${path}`, {
     method,
     headers: {
       ...(raw !== undefined ? { "content-type": "application/json" } : {}),
@@ -94,6 +144,22 @@ async function call(method, path, { token, body, hmac, secret, rawBody, headers 
     },
     body: raw,
   });
+  let res = await send();
+  if (res.status === 429) {
+    count429(`${method} ${path}`);
+    const waitMs = retryAfterMs(res);
+    // A 60 s window would stretch this gate by a minute per hit; the issue allows a retry only when
+    // it does not extend the run meaningfully, so a long Retry-After means stop, not sleep.
+    if (waitMs > RATE_LIMIT_RETRY_CAP_MS) {
+      abortRateLimited(`Retry-After ${Math.round(waitMs / 1000)} s exceeds the ${RATE_LIMIT_RETRY_CAP_MS / 1000} s retry cap (${method} ${path})`);
+    }
+    await new Promise((r) => setTimeout(r, waitMs));
+    res = await send();
+    if (res.status === 429) {
+      count429(`${method} ${path} (retry)`);
+      abortRateLimited(`the single retry after ${waitMs} ms was also 429 (${method} ${path})`);
+    }
+  }
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
   return { status: res.status, data };
@@ -645,10 +711,11 @@ console.log("\n── L. realtime ──");
   // as a delivery failure, not a race. Checked end-to-end here: real ticket, real socket, real alert.
   const openSocket = async (ticket) => {
     const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    OPEN_SOCKETS.add(ws);
     const frames = [];
     let close = null;
     ws.addEventListener("message", (ev) => frames.push(JSON.parse(ev.data)));
-    ws.addEventListener("close", (ev) => { close = ev?.code ?? -1; });
+    ws.addEventListener("close", (ev) => { OPEN_SOCKETS.delete(ws); close = ev?.code ?? -1; });
     ws.addEventListener("error", () => {});
     const until = async (pred, ms) => {
       const deadline = Date.now() + ms;
@@ -786,7 +853,8 @@ const healthDeep = await call("GET", "/health/deep");
 check("H2 /health/deep reports db+redis", healthDeep.status === 200 && healthDeep.data?.db === "up" && healthDeep.data?.redis === "up", JSON.stringify(healthDeep.data));
 
 // ── summary ─────────────────────────────────────────────────────────────────
-console.log(`\n───────────  ${PASS.length} passed · ${FAIL.length} failed · ${TARGETS.length} targets · ${NOTE.length} notes  ───────────`);
+console.log(`\n───────────  ${PASS.length} passed · ${FAIL.length} failed · ${TARGETS.length} targets · ${NOTE.length} notes · rate limit: ${rateLimited429} x 429  ───────────`);
+if (rateLimited429) console.log(`RATE LIMIT: ${rateLimited429} x 429 observed; each was retried once and the retry succeeded, so no check above judged a throttled response.`);
 if (FAIL.length) console.log("FAILURES (must fix to make this gate green):\n- " + FAIL.join("\n- "));
 if (TARGETS.length) console.log("TARGETS (tracked, need a design decision, not gating):\n- " + TARGETS.join("\n- "));
 if (NOTE.length) console.log("NOTES:\n- " + NOTE.join("\n- "));
