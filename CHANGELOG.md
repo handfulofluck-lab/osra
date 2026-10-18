@@ -11,6 +11,31 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — location/rules authorization: a JWT is not automatically a location writer, and a device reads only its own child
+- **`POST /v1/location/ping` now admits exactly three callers** (`services/api/src/routes/location.ts:57-98`):
+  a parent JWT (`role: "parent"` **and** a `familyId`), a device JWT (`role: "device"` with `deviceId` and
+  `childId`, revocation check kept), or a valid HMAC request. Every other signature-valid JWT — the
+  password-reset token (`purpose: "password_reset"`, no role), an unknown role, a parent without a
+  `familyId` — is **401**. Previously `jwtVerify()` alone let those tokens through, and a token without a
+  `familyId` skipped the handler's family comparison entirely.
+- **The family check is unconditional for JWT callers** and a **parent-supplied `deviceId` must be a row
+  of the named child** (`location.ts:203-221`). A device id from another child in the same family is
+  **403 `device_mismatch`**; it used to write the ping onto that device's timeline after the FK check.
+- **Device tokens are confined to their own child on reads.** `requireFamily` has a new
+  `deviceAccess: "own-child"` mode (`services/api/src/middleware/requireFamily.ts:14-47,149-199`), used by
+  `GET /v1/rules/:childId`, `/v1/location/:childId/latest`, `/history` and `/geofences/:childId`. A sibling
+  child now answers **403 `cross_child_forbidden`**; parent tokens remain family-scoped (ADR-0002 §Decision,
+  ADR-0003 §Decision). A revoked device's reads are still rejected by the app-wide revocation hook.
+- **Tests:** new `test/location-auth.test.ts` (12 cases: reset/unknown-role/no-family tokens, cross-family
+  parent, own-family parent write, foreign device id, missing device row, device own-child vs sibling on
+  latest/history/geofences) and three device-scoping cases in `test/rules.test.ts`. All failed before the
+  change; the full suite is **328 passed / 0 failed**. Probe: six new gating checks **G13–G18**, `115 passed · 0 failed`
+  against a branch instance (`127.0.0.1:3100`, same Postgres/Redis); probe integrity reports **6 added, 0
+  removed/demoted**. `e2e.mjs`: **69 passed / 0 failed** with `DATABASE_URL` set (the Postgres row-count
+  check is no longer skipped).
+- **Not verified on `:3000`:** the shared instance runs an older `main`, so the gates ran on a spare-port
+  server started from this worktree. The database was returned to the seeded demo state afterwards
+  (`cleanup-test-data.sql -v apply=1`).
 ### QA — `qa-probe` stops on a 429 burst instead of recording it as product failures (issue #112)
 - **A rate-limited run now aborts instead of failing dozens of checks.** `services/api/scripts/qa-probe.mjs`
   counts 429s in `call()`; the first 429 it cannot retry prints

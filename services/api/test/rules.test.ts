@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rulesRoutes } from "../src/routes/rules.js";
-import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -447,6 +447,56 @@ describe("rules routes", () => {
       expect(getRes.statusCode).toBe(200);
       expect(getRes.json().webFilter.youtubeRestrictedMode).toBe(mode);
     }
+    await app.close();
+  });
+});
+
+describe("device-token child scoping on rules reads", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  it("lets a device read its own child's rules (200)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/rules/${CHILD_ID}`,
+      headers: deviceHeader(app),
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("forbids a device from reading a sibling child's rules (403 cross_child_forbidden)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-2", familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/rules/child-2",
+      headers: deviceHeader(app),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("cross_child_forbidden");
+    expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("keeps parent access family-scoped, not child-scoped (200 for a sibling child)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-2", familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/rules/child-2",
+      headers: authHeader(app, "fam-1"),
+    });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 });

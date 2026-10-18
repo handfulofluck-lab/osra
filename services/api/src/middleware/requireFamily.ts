@@ -4,6 +4,13 @@ import { prisma } from "../db.js";
 /** Models that can be family-scoped via requireFamily, with their familyId resolution. */
 type FamilyScopedModel = "child" | "device" | "geofence" | "alert";
 
+type FamilyScopedResource = {
+  id?: string;
+  childId?: string;
+  familyId?: string;
+  child?: { familyId: string } | null;
+};
+
 interface RequireFamilyOptions {
   /** Request param name holding the resource id (default "id"). */
   param?: string;
@@ -11,11 +18,18 @@ interface RequireFamilyOptions {
   source?: "params" | "body" | "query";
   /** Prisma model to load and scope-check. */
   model: FamilyScopedModel;
+  /**
+   * `"own-child"` (default `"family"`) additionally confines a **device** token to the child its
+   * Device row belongs to. Family isolation alone is not enough for a child-scoped read: every
+   * device in a family shares the familyId, so `requireFamily` alone lets a device read a sibling
+   * child (ADR-0002, ADR-0003). Parent tokens stay family-scoped.
+   */
+  deviceAccess?: "family" | "own-child";
 }
 
 const loaders: Record<
   FamilyScopedModel,
-  (id: string) => Promise<{ familyId?: string; child?: { familyId: string } | null } | null>
+  (id: string) => Promise<FamilyScopedResource | null>
 > = {
   child: async (id) => prisma.child.findUnique({ where: { id } }),
   device: async (id) => prisma.device.findUnique({ where: { id }, include: { child: true } }),
@@ -23,8 +37,13 @@ const loaders: Record<
   alert: async (id) => prisma.alert.findUnique({ where: { id }, include: { child: true } }),
 };
 
-function resourceFamilyId(resource: { familyId?: string; child?: { familyId: string } | null }): string | undefined {
+function resourceFamilyId(resource: FamilyScopedResource): string | undefined {
   return resource.familyId ?? resource.child?.familyId;
+}
+
+/** The child a resource belongs to; for a child row that is the row itself. */
+function resourceChildId(resource: FamilyScopedResource, model: FamilyScopedModel, id: string): string | undefined {
+  return model === "child" ? resource.id ?? id : resource.childId;
 }
 
 import { getRedis } from "../redis.js";
@@ -125,15 +144,16 @@ export function requirePermission(permission: Permission) {
 /**
  * preHandler factory: loads a family-scoped resource, verifies it belongs to the
  * authenticated parent's family (403 otherwise, 401 without a JWT), and attaches
- * the resource to the request as `req.<model>`.
+ * the resource to the request as `req.<model>`. With `deviceAccess: "own-child"` a device
+ * token is also confined to the child its Device row belongs to (403 `cross_child_forbidden`).
  */
-export function requireFamily({ param = "id", source = "params", model }: RequireFamilyOptions) {
+export function requireFamily({ param = "id", source = "params", model, deviceAccess = "family" }: RequireFamilyOptions) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    let user = req.user as { familyId?: string } | undefined;
+    let user = req.user as { familyId?: string; role?: string; childId?: string } | undefined;
     if (!user?.familyId) {
       try {
         await req.jwtVerify();
-        user = req.user as { familyId?: string };
+        user = req.user as { familyId?: string; role?: string; childId?: string };
       } catch {
         await reply.code(401).send({ error: "unauthorized" });
         return;
@@ -157,6 +177,14 @@ export function requireFamily({ param = "id", source = "params", model }: Requir
     if (resourceFamilyId(resource) !== user.familyId) {
       await reply.code(403).send({ error: "forbidden" });
       return;
+    }
+    if (deviceAccess === "own-child" && user.role === "device") {
+      const ownChildId = user.childId;
+      const targetChildId = resourceChildId(resource, model, id);
+      if (!ownChildId || targetChildId !== ownChildId) {
+        await reply.code(403).send({ error: "cross_child_forbidden" });
+        return;
+      }
     }
     (req as unknown as Record<string, unknown>)[model] = resource;
   };

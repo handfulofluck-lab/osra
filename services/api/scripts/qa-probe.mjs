@@ -70,6 +70,18 @@ const signV2 = (secret, body, { caller, nonce, ts } = {}) => {
 };
 const signV1 = (secret, body) => ({ "x-familyshield-signature": createHmac("sha256", secret).update(body).digest("hex") });
 const sign = (body) => signV2(HMAC_SECRET, body, { caller: "ai-engine" });
+/**
+ * Mint an HS256 JWT with the server's own secret. The probe runs with the stack's env, so it can
+ * produce a *signature-valid* token that is not an access token — the only way to test that
+ * `/location/ping` distinguishes "signed by us" from "may write location data" (a reset token).
+ */
+const signHs256Jwt = (payload, secret) => {
+  const enc = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const head = enc({ alg: "HS256", typ: "JWT" });
+  const body = enc(payload);
+  const sig = createHmac("sha256", secret).update(`${head}.${body}`).digest("base64url");
+  return `${head}.${body}.${sig}`;
+};
 
 /**
  * Issue #112: a burst of 429s is the API's own rate limiter, not a product defect. One run of this
@@ -512,6 +524,52 @@ if (d1.token) {
   check("G10 revoked device rejected on /v1/rules", after.rules === 401, `got ${after.rules}`);
   check("G11 revoked device rejected on /v1/location/ping", after.ping === 401, `got ${after.ping}`);
   check("G12 revoked device cannot mint a WS ticket", after.wsTicket === 401, `got ${after.wsTicket}`);
+}
+
+// ── G2. location & rules authorization (audit findings 1 and 2) ─────────────
+// A device token is family-scoped, so `requireFamily` alone lets it read a sibling child. And a
+// verified JWT used to be enough for `/location/ping`: a password-reset token (no role/family) or a
+// parent-supplied `deviceId` for another child reached the write. These checks pin both shut.
+console.log("\n── G2. location & rules authorization ──");
+{
+  const ownRules = await call("GET", `/v1/rules/${kidA2}`, { token: d2.token });
+  const ownLoc = await call("GET", `/v1/location/${kidA2}/history`, { token: d2.token });
+  check("G13 device JWT reads its own child's rules and location (200)", ownRules.status === 200 && ownLoc.status === 200, `rules=${ownRules.status} location=${ownLoc.status}`);
+
+  const sibRules = await call("GET", `/v1/rules/${kidA}`, { token: d2.token });
+  const sibLoc = await call("GET", `/v1/location/${kidA}/history`, { token: d2.token });
+  check("G14 device JWT cannot read a sibling child's rules or location (403 cross_child_forbidden)", sibRules.status === 403 && sibRules.data?.error === "cross_child_forbidden" && sibLoc.status === 403 && sibLoc.data?.error === "cross_child_forbidden", `rules=${sibRules.status}/${sibRules.data?.error} location=${sibLoc.status}/${sibLoc.data?.error}`);
+
+  const ownPing = await call("POST", "/v1/location/ping", {
+    token: tokenA,
+    body: { childId: kidA2, deviceId: d2.deviceId, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
+  });
+  check("G15 parent ping for its own child's device still succeeds (201)", ownPing.status === 201, `got ${ownPing.status}`);
+
+  const crossDevPing = await call("POST", "/v1/location/ping", {
+    token: tokenA,
+    body: { childId: kidA2, deviceId: deviceIdA, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
+  });
+  check("G16 parent-supplied deviceId belonging to another child is refused (403 device_mismatch)", crossDevPing.status === 403 && crossDevPing.data?.error === "device_mismatch", `got ${crossDevPing.status} ${JSON.stringify(crossDevPing.data)}`);
+
+  const crossFamPing = await call("POST", "/v1/location/ping", {
+    token: tokenB,
+    body: { childId: kidA, deviceId: deviceIdA, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
+  });
+  check("G17 parent ping for another family's child is still forbidden (403)", crossFamPing.status === 403, `got ${crossFamPing.status}`);
+
+  if (process.env.JWT_SECRET) {
+    const parentId = JSON.parse(Buffer.from(tokenA.split(".")[1], "base64url").toString()).sub;
+    const now = Math.floor(Date.now() / 1000);
+    const resetToken = signHs256Jwt({ sub: parentId, purpose: "password_reset", iat: now, exp: now + 900 }, process.env.JWT_SECRET);
+    const resetPing = await call("POST", "/v1/location/ping", {
+      token: resetToken,
+      body: { childId: kidA, deviceId: deviceIdA, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
+    });
+    check("G18 password-reset purpose token cannot post a location ping (401)", resetPing.status === 401, `got ${resetPing.status}`);
+  } else {
+    target("G18 password-reset purpose token rejected on /location/ping", "JWT_SECRET not present in the probe environment, so a reset-purpose token cannot be minted here");
+  }
 }
 
 // ── I. every alert category the clients actually send (AND-01) ──────────────
