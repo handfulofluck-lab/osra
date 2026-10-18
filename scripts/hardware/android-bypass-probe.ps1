@@ -1,7 +1,7 @@
 # OSRA - Android adversarial probe (plan 1.9, the Phase 1 gate).
 # Attempts the ten bypasses a motivated child tries on a paired phone and reports PASS/FAIL per attempt.
 # Windows PowerShell 5.1, ASCII only. Needs: adb on PATH or -Adb, a paired agent on the phone with the
-# parent PIN set (default 4729 for the test family), the test API reachable at -Base (adb reverse), the
+# parent PIN set (no default: pass -Pin (see the local credentials note)), the test API reachable at -Base (adb reverse), the
 # parent token + device id in -StateFile (as written by tr10-pair.ps1), psql for the alert rows.
 #
 #   .\android-bypass-probe.ps1 -Serial R5CW116Y6GF -Port 3023 -StateFile C:\KARIM\KCL\tr07\tr10-state.json
@@ -20,7 +20,7 @@ param(
     [string]$Adb = "adb",
     [int]$Port = 3023,
     [string]$StateFile = "",
-    [string]$Pin = "4729",
+    [Parameter(Mandatory = $true)][string]$Pin,
     [string]$Psql = "psql",
     [string]$Db = "postgres://familyshield@127.0.0.1:5432/familyshield",
     [int]$SilenceMinutes = 30,

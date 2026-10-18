@@ -11,6 +11,18 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Security hygiene — the test app PIN is no longer published (issue #151)
+- The paired device's app PIN was written in clear text across `docs/TESTING.md`,
+  `docs/QA/TEST-REQUESTS.md`, both verification ledgers and the probe's default. The literal is gone
+  from `docs/` and `scripts/`; historical records that quoted it were redacted in place, because a
+  credential in a dated record is still a credential.
+- `scripts/hardware/android-bypass-probe.ps1` now requires `-Pin` and has no default, so a run cannot
+  silently authenticate with a published value. Testers keep the PIN in a local, gitignored note.
+- **Rotation is the maintainer's decision and is not done here:** changing it means re-pairing the
+  physical test device once. The issue stays open until that happens.
+- The unit test that hashes a PIN keeps its own literal — it is a test input for a hash function, not
+  a credential for anything.
+
 ### QA — probe row 3 redefined to the accepted silence definition, and measured (`plan 1.9`, TR-22)
 - **The decision is now in the documents, not only in a PR comment.** `docs/QA/TESTING-STRATEGY.md` §3a
   moved from "PROPOSED — not accepted" to **ACCEPTED — 2026-10-18, Claude (PR #127 comment 13:47:54Z;
