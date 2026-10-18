@@ -14,6 +14,7 @@ import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../social/social_screen.dart' show SocialSectionsView;
+import 'command_history_screen.dart' show commandStatusLabel, commandTypeLabel, formatCommandTime;
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -144,13 +145,27 @@ class _OverviewTab extends ConsumerWidget {
                       child: Text('Last seen: ${formatLastSeen(d.lastSeen)}', style: Theme.of(context).textTheme.bodySmall),
                     ),
                   ),
+                  // Plan 3.6: the latest command's real state, straight from the
+                  // durable queue. An unacked command is never described as sent.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _DeviceDeliverySummary(deviceId: d.id),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                    // NOTE: Wrap instead of Row — the three command buttons
+                    // NOTE: Wrap instead of Row — the command buttons
                     // overflowed on 320px-wide screens.
                     child: Wrap(
                       spacing: 8,
                       children: [
+                        TextButton.icon(
+                          onPressed: () => context.push('/child/$childId/commands'),
+                          icon: const Icon(Icons.receipt_long, size: 18),
+                          label: const Text('Delivery status'),
+                        ),
                         TextButton.icon(
                           onPressed: () => _sendCommand(context, ref, d, 'ring'),
                           icon: const Icon(Icons.notifications_active, size: 18),
@@ -177,7 +192,7 @@ class _OverviewTab extends ConsumerWidget {
                           label: const Text('Resume'),
                         ),
                         TextButton.icon(
-                          onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d.model),
+                          onPressed: () => _toggleInternet(context, ref, childId, internetPaused, d),
                           icon: Icon(internetPaused ? Icons.wifi : Icons.wifi_off, size: 18),
                           label: Text(internetPaused ? 'Resume net' : 'Pause net'),
                         ),
@@ -200,6 +215,35 @@ class _OverviewTab extends ConsumerWidget {
     final last = d.lastSeen;
     final online = last != null && DateTime.now().difference(last) < const Duration(minutes: 3);
     return online ? 'online' : 'offline';
+  }
+}
+
+/// Compact latest-command line on a device card. It reports the durable
+/// queue's state; a pending or delivered-but-unacked command is never called
+/// "sent".
+class _DeviceDeliverySummary extends ConsumerWidget {
+  final String deviceId;
+  const _DeviceDeliverySummary({required this.deviceId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(deviceCommandHistoryProvider(deviceId));
+    final style = Theme.of(context).textTheme.bodySmall;
+    return history.when(
+      loading: () => Text('Checking command delivery…', style: style),
+      error: (e, _) => Text('Command delivery unavailable', style: style),
+      data: (commands) {
+        if (commands.isEmpty) return Text('No commands yet', style: style);
+        final latest = commands.first;
+        return Text(
+          'Latest: ${commandTypeLabel(latest.type)} · ${commandStatusLabel(latest.status)} · '
+          '${formatCommandTime(latest.createdAt)}',
+          style: style,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        );
+      },
+    );
   }
 }
 
@@ -330,13 +374,16 @@ class _WindDownCard extends ConsumerWidget {
   }
 }
 
-/// POSTs a lock/unlock/ring command for [device] and confirms with a snackbar.
+/// POSTs a lock/unlock/ring command for [device] and refreshes its delivery
+/// card. The snackbar says "queued", never "sent": the POST only creates a
+/// pending row (`POST /v1/devices/:id/command` → `{status: "pending"}`).
 Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
   try {
     await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
+    ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${command[0].toUpperCase()}${command.substring(1)} sent to ${device.model} — reaches the device within ~1 minute.')),
+        SnackBar(content: Text('${command[0].toUpperCase()}${command.substring(1)} queued for ${device.model} — the device has not confirmed it yet.')),
       );
     }
   } catch (e) {
@@ -347,17 +394,19 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
 }
 
 /// Pauses/resumes the internet for [childId]'s devices (Feature #11); the
-/// status flips optimistically and reverts when the POST fails.
-Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId, bool paused, String model) async {
+/// status flips optimistically and reverts when the POST fails. The snackbar
+/// reports a queued command, not a delivered one.
+Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId, bool paused, Device device) async {
   try {
     if (paused) {
       await resumeInternet(ref, childId);
     } else {
       await pauseInternet(ref, childId);
     }
+    ref.invalidate(deviceCommandHistoryProvider(device.id));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${paused ? 'Resume' : 'Pause'} sent to $model — reaches the device within ~1 minute.')),
+        SnackBar(content: Text('${paused ? 'Resume' : 'Pause'} queued for ${device.model} — the device has not confirmed it yet.')),
       );
     }
   } catch (e) {
