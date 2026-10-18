@@ -346,11 +346,7 @@ const relogin = await call("POST", "/v1/auth/login", { body: { email: emailA, pa
 const freshTokenWorks = relogin.data?.token
   ? (await call("GET", "/v1/family/me", { token: relogin.data.token })).status === 200
   : false;
-check(
-  "F8 theft response killed the owner's other live access token too (401); a fresh login works",
-  stolenEra.status === 401 && stolenEra.data?.error === "session_revoked" && relogin.status === 200 && !!relogin.data?.token && freshTokenWorks,
-  `old=${stolenEra.status} relogin=${relogin.status} freshTokenUsable=${freshTokenWorks}`,
-);
+check("F8 theft response killed the owner's other live access token too (401); a fresh login works", stolenEra.status === 401 && stolenEra.data?.error === "session_revoked" && relogin.status === 200 && !!relogin.data?.token && freshTokenWorks, `old=${stolenEra.status} relogin=${relogin.status} freshTokenUsable=${freshTokenWorks}`);
 if (relogin.data?.token) tokenA = relogin.data.token;
 
 // The per-device HMAC signing secret authenticates agent -> server alerts. No parent-facing
