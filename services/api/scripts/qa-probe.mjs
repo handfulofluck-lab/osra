@@ -195,10 +195,13 @@ check("setup: child A created with consent", childA.status === 201 && !!kidA, `g
 
 const devA = await call("POST", "/v1/devices/register", {
   token: tokenA,
-  body: { childId: kidA, platform: "windows", model: "QA-PC", osVersion: "10" },
+  body: { childId: kidA, platform: "windows", model: "QA-PC", osVersion: "10", pushToken: "probe-register-token" },
 });
 const deviceIdA = devA.data?.device?.id ?? devA.data?.deviceId ?? devA.data?.id;
 check("setup: device A registered", devA.status === 201 && !!deviceIdA, `got ${devA.status}`);
+// Issue #138: /register returned the raw Prisma row — the per-device HMAC field and the push token
+// must not appear in a parent-facing enrollment response (sanitizeDevice).
+check("setup: register response exposes no internalSecret or pushToken", devA.status === 201 && !("internalSecret" in (devA.data?.device ?? {})) && !("pushToken" in (devA.data?.device ?? {})), `keys=${Object.keys(devA.data?.device ?? {}).join(",")}`);
 
 const childB = await call("POST", "/v1/family/children", {
   token: tokenB,
@@ -867,6 +870,12 @@ console.log("\n── N. sessions & roles ──");
     const coErase = await call("DELETE", `/v1/family/children/${kidA}`, { token: coTok });
     const coRead = await call("GET", `/v1/rules/${kidA}`, { token: coTok });
     check("N6 co-parent without 'rules'/'devices' cannot write rules or command a device (403 permission_required); erasure is owner-only (403); reads work", coRules.status === 403 && coRules.data?.error === "permission_required" && coCmd.status === 403 && coErase.status === 403 && coErase.data?.error === "owner_role_required" && coRead.status === 200, `rules=${coRules.status} cmd=${coCmd.status} erase=${coErase.status} read=${coRead.status}`);
+    // Issue #138: enrollment issued credentials outside the `devices` surface. Both routes must now
+    // fail closed for a co-parent whose invite granted only `alerts` (ADR-0014 amendment).
+    const coRegister = await call("POST", "/v1/devices/register", { token: coTok, body: { childId: kidA, platform: "android", model: "co-probe", osVersion: "14" } });
+    check("N6b co-parent without 'devices' cannot register a device (403 permission_required)", coRegister.status === 403 && coRegister.data?.error === "permission_required" && coRegister.data?.permission === "devices", `got ${coRegister.status} ${JSON.stringify(coRegister.data)}`);
+    const coPair = await call("POST", "/v1/devices/pair", { token: coTok, body: { childId: kidA } });
+    check("N6c co-parent without 'devices' cannot mint a pairing code (403 permission_required)", coPair.status === 403 && coPair.data?.error === "permission_required" && coPair.data?.permission === "devices", `got ${coPair.status} ${JSON.stringify(coPair.data)}`);
     // N7: the permission the invite DID grant works — ack an alert of family A.
     const alertsA = await call("GET", "/v1/alerts?limit=1", { token: coTok });
     const alertId = alertsA.data?.items?.[0]?.id ?? alertsA.data?.alerts?.[0]?.id;

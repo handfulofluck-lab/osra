@@ -108,8 +108,14 @@ async function createPairingCode(payload: { childId: string; familyId: string })
 }
 
 export async function deviceRoutes(app: FastifyInstance) {
-  /** Enroll a new device for a child of the authenticated family. */
-  app.post("/register", { preHandler: requireParent }, async (req, reply) => {
+  /**
+   * Enroll a new device for a child of the authenticated family.
+   * Issue #138: enrollment issues device credentials, so it sits inside the `devices` permission
+   * surface (ADR-0014, amendment 2026-10-18) — the same gate as command, push-token and unpair.
+   * The response is sanitized: `internalSecret` (minted at pair/claim) and `pushToken` must never
+   * leave the API through the parent-facing enrollment route.
+   */
+  app.post("/register", { preHandler: [requireParent, requirePermission("devices")] }, async (req, reply) => {
     const parsed = RegisterSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
@@ -129,11 +135,15 @@ export async function deviceRoutes(app: FastifyInstance) {
     }
     const { childId, ...rest } = parsed.data;
     const device = await prisma.device.create({ data: { childId, ...rest } });
-    return reply.code(201).send({ device });
+    return reply.code(201).send({ device: sanitizeDevice(device) });
   });
 
-  /** Create a short-lived 6-digit pairing code binding a child to a future device claim (parent only). */
-  app.post("/pair", { preHandler: requireParent }, async (req, reply) => {
+  /**
+   * Create a short-lived 6-digit pairing code binding a child to a future device claim.
+   * Issue #138: a code is redeemed by the unauthenticated `/pair/claim` for a device JWT and a
+   * per-device HMAC secret, so minting one is a `devices`-permission action (ADR-0014 amendment).
+   */
+  app.post("/pair", { preHandler: [requireParent, requirePermission("devices")] }, async (req, reply) => {
     const parsed = PairSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
