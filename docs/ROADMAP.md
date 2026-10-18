@@ -88,7 +88,7 @@ warning accepted). Both flavors land with 1.8.
 | 3.3 | MFA enrolment, password reset, settings | — | ⬜ |
 | 3.4 | Installed-app list from the device for app rules | — | ⬜ |
 | 3.5 | Daily/weekly trend charts and browsing history (reads `/v1/reports/usage`, `/v1/reports/web`) | — | ⬜ (API done in 2.4) |
-| 3.6 | Command delivery status (delivered / pending / failed) | UI never says "sent" for an unacked command | ⬜ (API done in 2.3) |
+| 3.6 | Command delivery status (delivered / pending / failed) | UI never says "sent" for an unacked command | 🔵 PR open (WO-03) — the parent app reads `GET /v1/devices/:id/commands/history` and shows each command's real queue state (`pending` / `delivered` / `acked` / `failed` / `expired`) with timestamps, per child device, on a live device-card line and the `Command delivery` screen (`/child/:id/commands`); pending/delivered rows never say "sent", and the command toasts were corrected to "queued". 7 new widget tests in `apps/parent-app/test/command_history_test.dart`, including the no-"sent" acceptance check; `flutter test` 112 passed and `flutter analyze` clean (author run; independent verification pending — move to ✅ only with a merge sha and the tester's WO-03 record) |
 | 3.7 | Consent revoke/status screen | — | ⬜ |
 | 3.8 | Dark theme and a real design system | `flutter analyze` clean | ⬜ |
 | 3.9 | iOS target with the same codebase; push-token registration (FCM/APNs) | app runs on both targets | ⬜ |

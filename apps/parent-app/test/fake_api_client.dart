@@ -188,6 +188,32 @@ Map<String, dynamic> alertJson(String id, String severity, String category, Stri
       'acknowledged': false,
     };
 
+/// One durable device command JSON object (`GET /v1/devices/:id/commands/history`).
+/// [status] is pending / delivered / acked / failed / expired.
+Map<String, dynamic> commandJson(
+  String id,
+  String type,
+  String status,
+  DateTime createdAt, {
+  String deviceId = 'dev-1',
+  DateTime? deliveredAt,
+  DateTime? ackedAt,
+  int attempts = 1,
+}) =>
+    {
+      'id': id,
+      'deviceId': deviceId,
+      'type': type,
+      'payload': <String, dynamic>{},
+      'status': status,
+      'requestedBy': 'par-1',
+      'attempts': attempts,
+      'createdAt': createdAt.toUtc().toIso8601String(),
+      'expiresAt': createdAt.add(const Duration(hours: 1)).toUtc().toIso8601String(),
+      if (deliveredAt != null) 'deliveredAt': deliveredAt.toUtc().toIso8601String(),
+      if (ackedAt != null) 'ackedAt': ackedAt.toUtc().toIso8601String(),
+    };
+
 /// Default alert feed: one critical + one warning today, one info yesterday.
 /// Deltas chosen so the day split survives midnight runs (time-bomb fix).
 List<Map<String, dynamic>> defaultAlerts() {
@@ -233,6 +259,9 @@ Map<String, FakeRoute> standardRoutes({
     'POST /v1/alerts/a3/ack': (_) => {'ok': true},
     'POST /v1/devices/dev-1/command': (_) => {'ok': true},
     'POST /v1/devices/dev-2/command': (_) => {'ok': true},
+    // Plan 3.6: device cards read the durable queue; default to no commands.
+    'GET /v1/devices/dev-1/commands/history': (_) => {'items': <dynamic>[]},
+    'GET /v1/devices/dev-2/commands/history': (_) => {'items': <dynamic>[]},
     'POST /v1/devices/pair': (_) => {
           'code': '482916',
           'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String(),

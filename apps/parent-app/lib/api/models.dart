@@ -147,6 +147,52 @@ class Device {
       );
 }
 
+/// One durable device command from `GET /v1/devices/:id/commands/history`.
+///
+/// `status` is one of `pending`, `delivered`, `acked`, `failed`, `expired`
+/// (`services/api/src/lib/deviceCommands.ts`). Only `acked` means the child
+/// device confirmed it ran the command; `delivered` only means the agent
+/// collected the row.
+@immutable
+class DeviceCommand {
+  final String id;
+  final String deviceId;
+  final String type;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? expiresAt;
+  final DateTime? deliveredAt;
+  final DateTime? ackedAt;
+  final int attempts;
+
+  const DeviceCommand({
+    required this.id,
+    required this.deviceId,
+    required this.type,
+    required this.status,
+    this.createdAt,
+    this.expiresAt,
+    this.deliveredAt,
+    this.ackedAt,
+    this.attempts = 0,
+  });
+
+  factory DeviceCommand.fromJson(Map<String, dynamic> json) => DeviceCommand(
+        id: _str(json['id']),
+        deviceId: _str(json['deviceId']),
+        type: _str(json['type']),
+        status: _str(json['status'], 'pending'),
+        createdAt: DateTime.tryParse(_str(json['createdAt'])),
+        expiresAt: DateTime.tryParse(_str(json['expiresAt'])),
+        deliveredAt: DateTime.tryParse(_str(json['deliveredAt'])),
+        ackedAt: DateTime.tryParse(_str(json['ackedAt'])),
+        attempts: _int(json['attempts']),
+      );
+
+  /// The child device has confirmed it ran the command.
+  bool get isAcked => status == 'acked';
+}
+
 /// Daily screen-time windows. Times are "HH:mm" local strings; `days` is a
 /// list of ISO weekday numbers (1=Mon ... 7=Sun).
 @immutable

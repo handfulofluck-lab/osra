@@ -117,8 +117,11 @@ class ChildMapSheet extends ConsumerWidget {
   Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
     try {
       await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
+      ref.invalidate(deviceCommandHistoryProvider(device.id));
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$command sent to ${device.model}')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${command[0].toUpperCase()}${command.substring(1)} queued for ${device.model} — the device has not confirmed it yet.'),
+        ));
       }
     } on DioException catch (e) {
       if (context.mounted) {
