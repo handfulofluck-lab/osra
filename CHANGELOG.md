@@ -11,6 +11,12 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — ADR-0021 and ADR-0020 amended after review on #96 (2026-10-18)
+- ADR-0021: the `play` `<queries>` also declares the two dialer intents, so the #83 emergency-dialer
+  exemption still resolves handlers without `QUERY_ALL_PACKAGES`. The manifest test asserts them and
+  `isMonitoringTool` in both flavors, and S1 runs on the Play build too.
+- ADR-0020: the login fill's tests are named, and the device zone is recorded as a coarse signal only.
+
 ### API — the digest is due at the family's local hour (ADR-0017, plan 2.2)
 - **`Family.timezone`** (IANA, default `UTC`) and a `DigestSend(familyId, kind, period)` table with a unique
   key; migration `0014_family_timezone_digest_send`. The backfill is UTC **by construction**: `Family.region`

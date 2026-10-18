@@ -65,10 +65,16 @@ No manifest in the repository declares `isMonitoringTool`.
 4. **Persistent notification.** The agent's foreground service notification must be shown whenever any
    monitoring component runs, with OSRA's own icon. It must not be a silent or hidden channel. This becomes
    a test row (below), because the policy says "at all times when the app is running".
-5. **`QUERY_ALL_PACKAGES` is replaced in `play`** by a `<queries>` element with the launcher intent
-   (`MAIN` / `LAUNCHER`). That gives the user-visible apps, which is what app limits and the app list need.
-   `full` keeps the broad permission. If a feature turns out to need non-launcher packages on Play, it goes
-   on the declaration form with that feature named; the permission isn't declared by default.
+5. **`QUERY_ALL_PACKAGES` is replaced in `play`** by a `<queries>` element. `full` keeps the broad
+   permission. The element declares three intents:
+   - `MAIN` / `LAUNCHER`, for the user-visible apps that app limits and the app list need;
+   - `com.android.phone.EmergencyDialer.DIAL` and `android.intent.action.DIAL`. These keep the #83
+     emergency-dialer exemption measurable on Play: `AndroidPackageFacts.dialerRoleHolders()` resolves
+     those handlers with `queryIntentActivities`, which returns nothing without package visibility (see
+     the 2026-10-18 amendment).
+
+   If a feature turns out to need other packages on Play, it goes on the declaration form with that feature
+   named; the permission isn't declared by default.
 6. **Accessibility** stays in both builds, with the Play Console declaration, an in-app disclosure screen
    (separate from the general privacy screen, affirmative tap, explains why) and the required video. Its
    actions stay deterministic and rule-based (block screen, back-out of a blocked app), which the policy
@@ -86,14 +92,20 @@ No manifest in the repository declares `isMonitoringTool`.
 
 - Good: the Play build declares nothing that has no route to approval, so the first submission isn't spent
   learning that.
-- Cost: on Play, call and SMS logs are gone. The parent app has to show "available in the Full build" rather
-  than an empty list. This belongs to the plan 2.6 part 3 onboarding row.
+- Cost: on Play, call and SMS logs are gone. Play onboarding must say so, in the same place and voice as the
+  listener notice #95 added, and the parent app shows "available in the Full build" instead of an empty list.
+  This belongs to the plan 2.6 part 3 onboarding row.
 - Cost: #94 (`fix/91-commslogger-guard`) touches `CommsLogger`, which this ADR moves. #94 can land first,
   and the move follows as its own PR.
 - Tests that must exist before the next Play build:
-  - **Merged-manifest test (extends ADR-0016's):** the `play` merged manifest contains none of
-    `READ_CALL_LOG`, `READ_SMS`, `QUERY_ALL_PACKAGES` or `BIND_NOTIFICATION_LISTENER_SERVICE`, and both
-    flavors contain `isMonitoringTool=child_monitoring`. It fails on `main` today.
+  - **Merged-manifest test (extends ADR-0016's).** It fails on `main` today. It asserts that:
+    - the `play` merged manifest contains none of `READ_CALL_LOG`, `READ_SMS`, `QUERY_ALL_PACKAGES` or
+      `BIND_NOTIFICATION_LISTENER_SERVICE`;
+    - the `play` merged manifest's `<queries>` contains all three intents from decision 5;
+    - **both** flavors contain `<meta-data android:name="isMonitoringTool" android:value="child_monitoring">`
+      inside `<application>`, inherited from `src/main`.
+  - **S1 on the Play build:** the emergency-dialer row from #83 runs on `assemblePlayDebug` as well as Full,
+    because decision 5 is what keeps it passing there.
   - **Hardware row:** with the agent running, `adb shell dumpsys notification --noredact` lists OSRA's
     ongoing notification with its own small icon, and the notification is still there after the agent
     restarts.
@@ -103,3 +115,14 @@ No manifest in the repository declares `isMonitoringTool`.
 - The store listing text and the data safety form; they come with the Phase 5 release.
 - `ACCESS_BACKGROUND_LOCATION` has its own Play location policy and declaration. It's in scope for the
   Phase 5 release review, not this ADR.
+
+## Amendment 2026-10-18 (review by Kimi on #96)
+
+- **B1 (blocking, accepted):** removing `QUERY_ALL_PACKAGES` would have blinded `dialerRoleHolders()` on Play.
+  The role-holder API path and the OEM name table would probably still have covered S1, but the one control
+  we deliberately over-exempt can't rest on "probably". Decision 5 now names the two dialer intents, and the
+  manifest test and S1 on Play check them.
+- **B2:** `isMonitoringTool` is a `<meta-data>` in `<application>` in `src/main`. That was already decision 3;
+  the manifest test now asserts it in both flavors.
+- **B3:** the onboarding notice for the lost call/SMS capture is now a stated cost, next to #95's listener
+  notice.
