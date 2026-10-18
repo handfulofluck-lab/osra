@@ -90,8 +90,9 @@ Blocklist pack lives at `services/api/data/blocklists/pack.json` (versioned; age
   returns it once as `hmacSecret`, and `/internal` signatures are verified against the DEVICE
   secret when the body carries a `deviceId`; the global `INTERNAL_HMAC_SECRET` remains only
   for the ai-engine. Agents are unchanged (same header, same claim-response field).
-- **WS tickets**: `POST /v1/ws-ticket` (JWT) returns a 60-second single-use ticket; the WS
-  endpoint accepts `?ticket=` (the legacy `?token=` path remains for old clients, deprecated).
+- **WS tickets**: `POST /v1/ws-ticket` (JWT) returns a 60-second single-use ticket and the WS
+  endpoint accepts `?ticket=` only; a request carrying the legacy `?token=<jwt>` parameter is refused
+  with `401 { "error": "ticket_required" }` (issue #120).
 - TOTP replay protection fails closed (rejects the login) when Redis is unreachable in
   production; it logs loudly and warns in dev.
 - Auth routes (register/login/reset/mfa/refresh/logout) share a stricter 20 req/min bucket.

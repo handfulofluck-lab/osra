@@ -35,7 +35,7 @@ Full mapping: `dist/OSRA-REVIEW-RESPONSE-2026-09-18.md`. Highlights:
 - Wellbeing URL fixed (both sides); App Insights endpoint implemented (live, curated DB)
 - DEV_HMAC_SECRET fallback removed (fail-closed); secrets rotated; boot fails fast on missing prod secrets; **per-device HMAC secrets** (claim returns `internalSecret` once; global key = ai-engine fallback only)
 - Token hygiene: Redis refresh store with rotation + reuse detection (reuse = revoke all parent sessions); `/logout` + `/logout-all`; revocation on password-reset & MFA-enable; **device JWT revoked on unpair** (`revoked:device:{id}` → 401 `device_revoked`)
-- **WebSocket single-use tickets** (`POST /v1/ws-ticket` → `?ticket=`; legacy `?token=` still accepted)
+- **WebSocket single-use tickets** (`POST /v1/ws-ticket` → `?ticket=`; legacy `?token=` is refused with `401 ticket_required`)
 - Command drain atomic (Lua); geofence transitions device-scoped; push tokens stripped from me/export
 - CORS env allowlist; auth routes 20/min; email normalized; reset 404 path; insights contract tests
 - Flutter: WS reconnect, android label OSRA, cleartext LAN policy (test-only), firebase deps removed, URL regex hyphen fix, MFA field, scheme-less server URL accepted (matches Android)
