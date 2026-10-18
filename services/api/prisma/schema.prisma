@@ -11,9 +11,25 @@ model Family {
   id        String   @id @default(uuid())
   name      String
   region    String
+  /// ADR-0017: IANA zone that decides when the family's digest is "evening". Backfilled to UTC because
+  /// `region` is a market (US/EU/UK/OTHER), not a country - the 3.x app setting is the real source.
+  timezone  String   @default("UTC")
   createdAt DateTime @default(now())
   parents   Parent[]
   children  Child[]
+}
+
+/// ADR-0017: one row per (family, kind, period) that was sent, so a restart, a duplicate scheduler or
+/// a DST-repeated hour cannot send twice. `period` is the local date (daily) or ISO week (weekly).
+model DigestSend {
+  id       String   @id @default(uuid())
+  familyId String
+  kind     String
+  period   String
+  sentAt   DateTime @default(now())
+
+  @@unique([familyId, kind, period])
+  @@index([familyId])
 }
 
 model Parent {

@@ -15,7 +15,8 @@ vi.mock("../src/redis.js", async () => {
 
 import { ConsoleEmailSender, ResendEmailSender, setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
 import { digestEmail, inviteEmail, passwordResetEmail } from "../src/lib/email/templates.js";
-import { digestsDueAt, runDigestsDue, sendFamilyDigest } from "../src/jobs/digestScheduler.js";
+import { runDigestsDue, sendFamilyDigest } from "../src/jobs/digestScheduler.js";
+import { digestsDueAt } from "../src/lib/digestSchedule.js";
 import { authRoutes } from "../src/routes/auth.js";
 import { inviteRoutes } from "../src/routes/invites.js";
 import { meRoutes } from "../src/routes/me.js";
@@ -163,10 +164,12 @@ describe("digest scheduler", () => {
   });
   afterEach(() => setEmailSender(null));
 
-  it("is due only in the configured hour; weekly only on Sundays", () => {
-    expect(digestsDueAt(new Date("2026-10-14T17:30:00Z"), 18)).toEqual([]);
-    expect(digestsDueAt(new Date("2026-10-14T18:05:00Z"), 18)).toEqual(["daily"]); // Wednesday
-    expect(digestsDueAt(new Date("2026-10-18T18:05:00Z"), 18)).toEqual(["daily", "weekly"]); // Sunday
+  it("is due from the configured local hour; weekly only on the local Sunday (ADR-0017)", () => {
+    expect(digestsDueAt(new Date("2026-10-14T17:30:00Z"), "UTC", 18)).toEqual([]);
+    expect(digestsDueAt(new Date("2026-10-14T18:05:00Z"), "UTC", 18)).toEqual(["daily"]); // Wednesday
+    expect(digestsDueAt(new Date("2026-10-18T18:05:00Z"), "UTC", 18)).toEqual(["daily", "weekly"]); // Sunday
+    // The same instant in Dubai is 22:05 local: past the hour, still the same local Sunday.
+    expect(digestsDueAt(new Date("2026-10-18T18:05:00Z"), "Asia/Dubai", 18)).toEqual(["daily", "weekly"]);
   });
 
   it("sends to the prefs recipients, falling back to parent emails", async () => {
@@ -183,16 +186,28 @@ describe("digest scheduler", () => {
     expect(capture.sent[0].idempotencyKey).toMatch(/^digest:fam-1:weekly:\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("claims each family once per day via Redis NX and skips outside the send hour", async () => {
+  it("claims each (family, kind, period) in the database and skips outside the local send hour (ADR-0017)", async () => {
     prismaMock.digestPrefs.findMany.mockResolvedValue([{ familyId: "fam-1", dailyEmail: true, weeklyEmail: true, emails: ["a@x"] }]);
+    prismaMock.family.findMany.mockResolvedValue([{ id: "fam-1", timezone: "UTC" }]);
     prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", name: "Demo" });
     prismaMock.digestPrefs.findUnique.mockResolvedValue({ familyId: "fam-1", emails: ["a@x"] });
     prismaMock.parent.findMany.mockResolvedValue([]);
     prismaMock.child.findMany.mockResolvedValue([]);
+    prismaMock.digestSend.create.mockResolvedValue({ id: "send-1" });
+
+    // 09:00 UTC is before DIGEST_HOUR (18): nothing is claimed, nothing is sent.
     expect(await runDigestsDue(new Date("2026-10-14T09:00:00Z"))).toEqual({ attempted: 0, sent: 0 });
-    const redis = MockRedis.instances[0];
-    redis.set.mockResolvedValueOnce("OK").mockResolvedValueOnce(null);
+    expect(prismaMock.digestSend.create).not.toHaveBeenCalled();
+
+    // 18:00 UTC on a Wednesday: one daily send, claimed for the local date.
     expect(await runDigestsDue(new Date("2026-10-14T18:00:00Z"))).toEqual({ attempted: 1, sent: 1 });
+    expect(prismaMock.digestSend.create).toHaveBeenCalledWith({
+      data: { familyId: "fam-1", kind: "daily", period: "2026-10-14" },
+    });
+
+    // The unique key is the claim: a duplicate period is skipped, not sent again.
+    const dup = Object.assign(new Error("unique"), { code: "P2002" });
+    prismaMock.digestSend.create.mockRejectedValueOnce(dup);
     expect(await runDigestsDue(new Date("2026-10-14T18:20:00Z"))).toEqual({ attempted: 0, sent: 0 });
   });
 });

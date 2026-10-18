@@ -11,6 +11,24 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — the digest is due at the family's local hour (ADR-0017, plan 2.2)
+- **`Family.timezone`** (IANA, default `UTC`) and a `DigestSend(familyId, kind, period)` table with a unique
+  key; migration `0014_family_timezone_digest_send`. The backfill is UTC **by construction**: `Family.region`
+  is a market (`US/EU/UK/OTHER`), not a country, so there is nothing to map — recorded as Amendment B1 in
+  the ADR rather than pretended.
+- **`src/lib/digestSchedule.ts`** is the pure clock: local calendar fields and ISO week per family zone,
+  "at or past `DIGEST_HOUR`" selection (default 18 **local**), so a DST spring-forward that deletes the
+  configured hour sends at the next one instead of skipping the day, and a repeated fall-back hour resolves
+  to one period. `isoWeekKey` uses the family's local date, so a Sunday-evening send cannot land in the
+  next ISO week (Amendment B2).
+- **The claim is the database row**, not a Redis `SET NX`: `runDigestsDue` inserts `DigestSend` before the
+  email, skips on `P2002`, and deletes the row when the provider refuses so the next tick retries. A
+  restart, two API instances or a clock repeat can no longer double-send.
+- **Tests:** 11 cases in `test/digest-schedule.test.ts` (Dubai/UTC at 14:00Z and 18:00Z, Kiritimati/Pago
+  Pago weekdays, London DST both directions, year-boundary ISO week) plus the scheduler claim test in
+  `test/email.test.ts`. Full API suite: 28 files / 309 tests / 0 failures.
+- **Not done here:** the parent-app setting that chooses the zone (3.x, as the ADR says); until it ships,
+  every family is on UTC and the digest arrives at 18:00 UTC.
 ### Architecture — ADR-0020 family timezone source, ADR-0021 Play policy review of the child agent (2026-10-18)
 - Decisions only, no code (work orders C1 and C2 on #92). ADR-0020 answers B1: `region` stays a market and
   consent jurisdiction; `Family.timezone` is filled from the parent's device at signup/login (never over a

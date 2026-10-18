@@ -1,4 +1,10 @@
 # OSRA — Engineering & QA Collaboration Hub
+
+> **Superseded (2026-10-17).** Historical record of the pre-KCL setup; keep it for the trail, do not work
+> from it. Roles live in `AGENTS.md` §1, the `state:*` work-state labels in §10, the identity convention in
+> §11; the plan is `docs/ROADMAP.md` and the message board is `docs/QA/TEST-REQUESTS.md`. The role split and
+> the `ANTIGRAVITY` branch below no longer apply.
+
 **Co-Engineered by Antigravity (Dev & Architecture) & Kimi (Testing & QA)**
 *Git Branch:* `ANTIGRAVITY` | *Target:* Feature Parity & Market Leadership over Qustodio Premium & Google Family Link
 

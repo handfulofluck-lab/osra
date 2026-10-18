@@ -39,7 +39,11 @@ android {
             }
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        // ADR-0016 §4: the onboarding row that names notification capture must exist only in Full.
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -75,9 +79,13 @@ android {
     productFlavors {
         create("play") {
             dimension = "distribution"
+            // No NotificationListenerService and no BIND_NOTIFICATION_LISTENER_SERVICE in this artefact,
+            // so onboarding must not ask for a permission the build cannot use (ADR-0016 §4).
+            buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "false")
         }
         create("full") {
             dimension = "distribution"
+            buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "true")
         }
     }
 }
