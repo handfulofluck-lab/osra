@@ -294,18 +294,25 @@ class PairingActivity : ComponentActivity() {
             addView(label(OnboardingPolicy.progressLine(rows)).apply { setTextColor(0xFF2E7D32.toInt()) })
             addView(label("The agent is now monitoring this device."))
             for (row in rows.filter { !it.granted }) addGrantRow(this, row) // the recommended ones still open
-            addView(
-                label(
-                    "Optional: grant Call Log and SMS permissions so calls and messages are " +
-                        "logged for safety review (log-only; the agent never becomes the default dialer).",
-                ),
-            )
-            addView(
-                Button(this@PairingActivity).apply {
-                    text = "Grant call & SMS permissions"
-                    setOnClickListener { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
-                },
-            )
+            // ADR-0021 B3: the Play artefact has no call-log/SMS permissions, so the invite and the button
+            // exist only where the capability does; the notice below says what this build cannot capture.
+            if (BuildConfig.CAPTURE_CALL_SMS) {
+                addView(
+                    label(
+                        "Optional: grant Call Log and SMS permissions so calls and messages are " +
+                            "logged for safety review (log-only; the agent never becomes the default dialer).",
+                    ),
+                )
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = "Grant call & SMS permissions"
+                        setOnClickListener { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
+                    },
+                )
+            }
+            OnboardingPolicy.captureNotice(BuildConfig.CAPTURE_NOTIFICATIONS, BuildConfig.CAPTURE_CALL_SMS)?.let {
+                addView(label(it).apply { setTextColor(0xFF616161.toInt()) })
+            }
             addView(Button(this@PairingActivity).apply { text = "Open status"; setOnClickListener { lifecycleScope.launch { showStatus() } } })
         }
     }
@@ -504,6 +511,9 @@ class PairingActivity : ComponentActivity() {
                         setTextColor(if (missing.isEmpty()) 0xFF2E7D32.toInt() else 0xFFB00020.toInt())
                     },
                 )
+                OnboardingPolicy.captureNotice(BuildConfig.CAPTURE_NOTIFICATIONS, BuildConfig.CAPTURE_CALL_SMS)?.let {
+                    addView(label(it).apply { setTextColor(0xFF616161.toInt()) })
+                }
                 addView(
                     Button(this@PairingActivity).apply {
                         text = if (missing.isEmpty()) "Protection checklist" else "Finish protection (${missing.size} to grant)"
