@@ -42,6 +42,7 @@ function makePrismaMock() {
     "activityEvent",
     "socialEvent",
     "digestPrefs",
+    "digestSend",
     "familyInvite",
     "parentPushToken",
     "deviceCommand",
