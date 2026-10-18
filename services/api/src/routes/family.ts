@@ -10,6 +10,7 @@ import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { getRedis } from "../redis.js";
 import { eraseChildData, screenTimeTodayFromDb } from "../lib/usageModel.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
+import { isValidTimeZone } from "../lib/digestSchedule.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -96,6 +97,22 @@ export async function familyRoutes(app: FastifyInstance) {
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */
+  /**
+   * ADR-0020: the parent's explicit timezone choice, and the only path that may set
+   * `timezoneSource = "parent"` - after this, no device fill can overwrite it.
+   */
+  app.patch("/me", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
+    const parsed = z.object({ timezone: z.string().max(64) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_body" });
+    if (!isValidTimeZone(parsed.data.timezone)) return reply.code(400).send({ error: "invalid_timezone" });
+    const user = req.user as AuthedUser;
+    const family = await prisma.family.update({
+      where: { id: user.familyId },
+      data: { timezone: parsed.data.timezone, timezoneSource: "parent" },
+    });
+    return { family: { id: family.id, timezone: family.timezone, timezoneSource: family.timezoneSource } };
+  });
+
   app.post("/children", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const parsed = ChildCreateSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
