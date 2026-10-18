@@ -116,7 +116,7 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 | API vitest | routes, auth, token hygiene, blocklists, content | 205/205 |
 | Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568 | 94/94, analyze clean |
 | Android JVM tests | rule engine, counters, monitored apps, HMAC logic | 151/151 |
-| Desktop xunit | Windows agent services | 170/170 |
+| Desktop xunit | Windows agent services | 225/225 (2026-10-18) |
 | AI pytest | classifier + API smoke | 21 passed |
 | Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 50/50 |
 | Hardware (physical device) | first-run crash, FGS start, location upload, overlays | procedure in [`docs/TESTING.md`](docs/TESTING.md) §5 |
