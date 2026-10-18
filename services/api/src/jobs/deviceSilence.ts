@@ -5,10 +5,17 @@ import { raiseAlert } from "../lib/alerts.js";
 /**
  * Device-silence watch (found by the plan-1.9 bypass probe: `pm clear` wipes the agent's pairing with
  * no client-side alert possible — the only witness is the server noticing the device stopped
- * reporting). Every tick, each `active` device whose `lastSeen` is older than `DEVICE_SILENT_MINUTES`
+ * reporting). Every tick, each `online` device whose `lastSeen` is older than `DEVICE_SILENT_MINUTES`
  * gets one `device_silent` alert (critical) and its status set to `offline`, so the parent hears
  * "the phone has not reported for 30 minutes" instead of nothing. A device that reports again goes
- * back to `active` through the telemetry route, which is what re-arms the watch.
+ * back to `online` through the telemetry, ping and pair/claim writers, which is what re-arms the watch.
+ *
+ * Vocabulary (audit finding 4): the column is a free string, so the writers are the contract. Pair/claim
+ * (`routes/devices.ts:187`), telemetry (`:338`), location ping (`routes/location.ts:239`) and the seed
+ * (`scripts/seed.ts:60`) all write `online`; the schema default and this job write `offline`; the parent
+ * app and `DeviceStatus` in `packages/shared-types` speak `online`/`offline`/`locked`/`sos`. This job
+ * therefore watches `online`, not the `active` it was written against: nothing ever wrote `active`, so
+ * the watch matched no device and `pm clear` stayed silent.
  *
  * Same shape as the other jobs: a tick, a Redis `SET NX` claim per (device, silence window) so several
  * API instances do not double-alert, `JOBS_ENABLED=0` for deployments that call
@@ -22,9 +29,9 @@ export function silentAfterMinutes(env: NodeJS.ProcessEnv = process.env): number
   return Number.isInteger(m) && m >= 5 ? m : 30;
 }
 
-/** Pure rule: a device is silent when it is marked active but has not been seen for the window. */
+/** Pure rule: a device is silent when it is marked online but has not been seen for the window. */
 export function isSilent(status: string, lastSeen: Date, now: Date, minutes: number): boolean {
-  return status === "active" && now.getTime() - lastSeen.getTime() > minutes * 60_000;
+  return status === "online" && now.getTime() - lastSeen.getTime() > minutes * 60_000;
 }
 
 export interface SilenceRun {
@@ -36,7 +43,7 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
   const minutes = silentAfterMinutes(env);
   const cutoff = new Date(now.getTime() - minutes * 60_000);
   const devices = await prisma.device.findMany({
-    where: { status: "active", lastSeen: { lt: cutoff } },
+    where: { status: "online", lastSeen: { lt: cutoff } },
     select: { id: true, status: true, lastSeen: true, childId: true, model: true, child: { select: { familyId: true, displayName: true } } },
   });
   const alerted: string[] = [];
