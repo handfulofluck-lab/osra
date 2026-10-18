@@ -126,3 +126,15 @@ No manifest in the repository declares `isMonitoringTool`.
   the manifest test now asserts it in both flavors.
 - **B3:** the onboarding notice for the lost call/SMS capture is now a stated cost, next to #95's listener
   notice.
+
+## Amendment 2026-10-18 (the merged-manifest test landed)
+
+The test listed under "Tests that must exist before the next Play build" now exists:
+`apps/child-android/app/src/test/java/com/familyshield/agent/manifest/PlayMergedManifestTest.kt` and
+`FullMergedManifestTest.kt`. It reads the manifest **AGP merged**
+(`app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml`), not the source files,
+because the source-text assertions #100/#106 relied on cannot see a permission a dependency's manifest
+contributes — finding F2 in Claude's #101 review of #100 (`docs/QA/DISCUSSION-LOG.md` §3, #101).
+No decision above changes: the reviewed permission set in `PlayManifestPolicy.kt` is decisions 1, 2 and
+5 enforced as an allow list, alongside a deny list that names each forbidden permission and the decision
+that forbids it.

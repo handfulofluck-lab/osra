@@ -120,6 +120,13 @@ jobs:
         # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
         # comes from the secrets above when present and falls back to the debug key.
         run: ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease --console=plain
+      # ADR-0021's gate asserts the *merged* manifest (where a dependency's permissions arrive), so it
+      # only means something if the unit tests above actually ran it. The test skips with a loud message
+      # when the artefact is missing — that is what an IDE run needs and what CI must never accept — so
+      # this step fails the job on a skip, a failure, or a named assertion that disappeared.
+      - name: Merged-manifest gate ran and did not skip (ADR-0021)
+        working-directory: .
+        run: node scripts/check-merged-manifest-gate.mjs
       - name: Release manifest is HTTPS-only and targets 35
         run: |
           APK=app/build/outputs/apk/release/app-release.apk

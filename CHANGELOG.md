@@ -11,6 +11,63 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Child agent — the merged manifest is what the gate reads, not the source (`plan 2.6`, ADR-0021)
+- **The hole this closes.** `FlavorManifestTest` asserted `app/src/main/AndroidManifest.xml` and
+  `app/src/full/AndroidManifest.xml` **as text**, and CI's Android step only ran `aapt2 dump badging`,
+  which prints no permissions. Manifest merging happens after both, so a library that declares
+  `READ_SMS`, `READ_CALL_LOG`, `QUERY_ALL_PACKAGES`, `READ_PHONE_STATE` or a notification listener is
+  merged into the Play artefact with every gate still green — finding **F2** in Claude's #101 review of
+  #100 (`docs/QA/DISCUSSION-LOG.md` §3, #101; recorded there as still open at `f099aa9`).
+- **What changed.** `apps/child-android/app/src/test/java/com/familyshield/agent/manifest/`:
+  `MergedManifest` parses the manifest AGP produced, `PlayManifestPolicy` holds ADR-0021's allow and deny
+  lists as data, `PlayMergedManifestTest` and `FullMergedManifestTest` are the gate, and
+  `PlayManifestPolicyTest` pins the checker itself against fixture manifests. The Play assertion is an
+  **allow list** (the reviewed permission set — an unreviewed permission fails even when no deny rule
+  names it) **plus a deny list** (each entry carries the decision that forbids it), not a single string
+  match: the four Play methods are
+  `play merged manifest declares exactly the reviewed permission allow-list`,
+  `play merged manifest declares none of the Play-forbidden permissions`,
+  `play merged manifest registers no notification, call-log or SMS component`, and
+  `play merged manifest keeps isMonitoringTool and the three dialer queries`; the two Full methods are
+  `full merged manifest keeps the capture permissions and the listener service` and
+  `full merged manifest keeps isMonitoringTool and the dialer queries`.
+- **Why the merged-manifest file.** It is the exact tree `aapt2` packages — `READ_PHONE_STATE` and
+  `RECEIVE_SMS` are in the deny list for that reason — it is plain XML that a JVM unit test can parse
+  without the SDK, and `app/build.gradle.kts` now makes both debug unit-test tasks depend on
+  `process<Flavor>DebugManifest`, so a clean `./gradlew testPlayDebugUnitTest` produces it.
+  `aapt2 dump xmltree` on the built APK was the alternative: it needs `assemble` plus build-tools on the
+  test host and its dump format moves between build-tools versions, which is how a gate stops being run.
+- **Fail-before, measured.** An AAR declaring `android.permission.READ_SMS` was added temporarily under
+  `app/libs/` with `implementation(files("libs/inject-readsms.aar"))`: `testPlayDebugUnitTest` went red on
+  `play merged manifest declares none of the Play-forbidden permissions` while `FlavorManifestTest`
+  stayed green on the same tree — the hole, measured in one run. The AAR and the dependency line were
+  removed before the commit; `PlayManifestPolicyTest` keeps the same injection as a permanent fixture.
+- **CI.** `scripts/check-merged-manifest-gate.mjs` runs in the `child-android` job after the gradle step
+  and fails the job when the gate skipped (its artefact was missing), failed, or lost a named assertion.
+  The tests skip **only** when the merged manifest is absent — an IDE run — and say so loudly; CI never
+  accepts that skip.
+- **Gates** (2026-10-18, `apps/child-android`, JDK 17, `ANDROID_HOME=C:/KARIM/tools/android-sdk`):
+  `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug` — `BUILD SUCCESSFUL`, play
+  **41 suites / 264 tests / 0 failures / 0 skipped** and full the same (264 was 251 at #131; the 13 new
+  cases are 4 Play + 2 Full + 7 policy fixtures); `assemblePlayDebug` produced
+  `app/build/outputs/apk/play/debug/app-play-debug.apk`; `node scripts/check-merged-manifest-gate.mjs` → both
+  result sets, 4 + 2 assertions, 0 skipped. **Fail-before**, the same command with the injected AAR:
+  `20 tests completed, 2 failed` — `play merged manifest declares exactly the reviewed permission
+  allow-list` and `play merged manifest declares none of the Play-forbidden permissions` — while
+  `FlavorManifestTest` was **7 tests / 0 failures** on the same tree. The merger's own report names the
+  library (`manifest-merger-play-debug-report.txt`): `READ_SMS ADDED from [inject-readsms.aar]`, and
+  `READ_PHONE_STATE`, `WRITE_EXTERNAL_STORAGE`, `READ_EXTERNAL_STORAGE` `IMPLIED … reason:
+  com.example.readsmsfixture has a targetSdkVersion < 4` — four permissions from one dependency, none of
+  them in any source manifest.
+- **CI** (PR #157, `94ec897`): all seven checks pass; `child-android` **pass in 6m 21s** — the gradle step
+  `BUILD SUCCESSFUL in 6m 15s` (168 tasks, cold cache) and the new step printed
+  `merged-manifest gate: 2 result set(s) checked, all assertions ran and passed`. So the step is not only
+  configured but executed, with both merged artefacts present.
+- **Not verified here.** No independent re-run yet — every number above is the author's (`AGENTS.md`
+  §6.5(2)); the tester should repeat the two gate commands on this branch. The gate is asserted on the
+  **debug** merged manifests, which is the variant the unit-test tasks build — a release-only dependency
+  (`releaseImplementation`) would merge into the release manifest and is not covered by a unit test, though
+  no such dependency exists today.
 ### API — a token minted in the revocation second no longer survives the theft response (#117)
 - **What changed.** Parent session revocation is a monotonic counter, not a wall-clock comparison.
   `signParentToken` stamps every access token with `sv` — the value of
