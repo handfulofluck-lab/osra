@@ -10,6 +10,9 @@ beside it, and the row says which of the two it has.
 **Last updated: 2026-10-18** — status truth pass against `CHANGELOG.md`, `git log origin/main`, the
 merged PRs and `docs/QA/TEST-REQUESTS.md`; every row this pass corrected names its merge sha and, where
 it is still open, the `TR-*` row or issue that tracks the missing measurement.
+Later the same day, 3.6 moved 🔵 → ✅ on #116's merge (`530fa0a`): the PR had left its row at "open",
+which is the one thing AGENTS.md §12.1 asks a PR not to do. The independent verification it owes is
+still missing and the row says so.
 
 Maintainer decisions recorded 2026-10-16: two Android builds (Play + sideloaded "Full"); Phases 1 and 2
 in parallel; AI on a hosted LLM first (DeepSeek), own model once the evaluation set exists; iOS built on
@@ -30,7 +33,7 @@ probe; a green unit suite does not open a gate.
 | 0 Stabilise | 1 | — | 4 / 5 | ✅ (branch pruning pending a go) |
 | 1 Android credibility | 2–8 | 10 bypasses fail on hardware | 8 / 9 merged (1.1–1.3 #76 `7498103`; 1.4, 1.6–1.9 #78 `f0f586b`), but **the gate is not passed**: the 2026-10-17 table records `pm clear` (#81) and force-stop FAIL and #9/#10 as manual, never measurements (`docs/QA/QA-REPORT-2026-10-17.md:11-19`); the S1 re-run on `main` was NOT MEASURED (#92 A1). 1.5 needs `google-services.json` | 🔵 |
 | 2 Backend as a product | 4–10 | probe 0 targets, push lands | 6 / 6 merged (2.1–2.6); the probe half of the gate is met — **109/0 · 0 targets** on `main@2812cb5` (2026-10-18, #92 A3) — the "push lands on a closed app" half is unmeasured (1.5, 3.9) and 2.6's WhatsApp row is open (#92 A4) | 🔵 |
-| 3 Parent app to store grade | 6–14 | parent pairs in 5 min | 0 / 9 | ⬜ |
+| 3 Parent app to store grade | 6–14 | parent pairs in 5 min | 1 / 9 merged (3.6 #116 `530fa0a`, independent verification owed — WO-03) | 🔵 |
 | 4 AI that earns the word | 8–16 | recall ≥ 0.85 EN+AR | 0 / 5 | ⬜ |
 | 5 Store and iOS | 10–20 | 20 families install without help | 0 / 7 (entitlement 🟥) | ⬜ |
 
@@ -88,7 +91,7 @@ warning accepted). Both flavors land with 1.8.
 | 3.3 | MFA enrolment, password reset, settings | — | ⬜ |
 | 3.4 | Installed-app list from the device for app rules | — | ⬜ |
 | 3.5 | Daily/weekly trend charts and browsing history (reads `/v1/reports/usage`, `/v1/reports/web`) | — | ⬜ (API done in 2.4) |
-| 3.6 | Command delivery status (delivered / pending / failed) | UI never says "sent" for an unacked command | 🔵 #116 open (WO-03) — the parent app reads `GET /v1/devices/:id/commands/history` and shows each command's real queue state (`pending` / `delivered` / `acked` / `failed` / `expired`) with timestamps, per child device, on a live device-card line and the `Command delivery` screen (`/child/:id/commands`); pending/delivered rows never say "sent", and the command toasts were corrected to "queued". 7 new widget tests in `apps/parent-app/test/command_history_test.dart`, including the no-"sent" acceptance check; `flutter test` 112 passed and `flutter analyze` clean (author run; independent verification pending — move to ✅ only with a merge sha and the tester's WO-03 record) |
+| 3.6 | Command delivery status (delivered / pending / failed) | UI never says "sent" for an unacked command | ✅ **#116** (`530fa0a`, plan 3.6) — the parent app reads `GET /v1/devices/:id/commands/history` and shows each command's real queue state (`pending` / `delivered` / `acked` / `failed` / `expired`) with timestamps, per child device, on a live device-card line and the `Command delivery` screen (`/child/:id/commands`); pending/delivered rows never say "sent", and the command toasts were corrected to "queued". 7 new widget tests in `apps/parent-app/test/command_history_test.dart`, including the no-"sent" acceptance check; `flutter test` 112 passed and `flutter analyze` clean. ⚠️ that is the **author's** run (Kimi Code); **WO-03 still owes the independent record** (`docs/QA/TEST-REQUESTS.md:80`). Status corrected 2026-10-18: #116 left this row at 🔵 "open" when it merged |
 | 3.7 | Consent revoke/status screen | — | ⬜ |
 | 3.8 | Dark theme and a real design system | `flutter analyze` clean | ⬜ |
 | 3.9 | iOS target with the same codebase; push-token registration (FCM/APNs) | app runs on both targets | ⬜ |

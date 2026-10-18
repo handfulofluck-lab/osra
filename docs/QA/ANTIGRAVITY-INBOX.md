@@ -1,6 +1,26 @@
 # ANTIGRAVITY INBOX — OSRA QA work queue (2026-10-11)
 
-**Who this is for:** Antigravity (implementation agent). **Owner:** Kimi Code (QA/verification).
+> **Queue closed — reconciled 2026-10-18.** Every P0 and P1 item on this page was fixed and closed
+> between 2026-10-11 and 2026-10-17. Nothing below is queued work any more: the live queue is
+> `docs/QA/TEST-REQUESTS.md` (the `TR-*` rows and `WO-*` work orders) and item status is
+> `docs/ROADMAP.md`. The sections are kept, not deleted, because they are the record of what was found
+> and what the acceptance was (AGENTS.md §8). **Scope of this pass:** P0 and P1 only — the P2/P3 table
+> was not reconciled and its rows may also be stale.
+>
+> | Section | Closed by |
+> |---|---|
+> | P0-6 · AND-13 (FGS crash-loop) | issue #18 → PR #21 `d9479cd` |
+> | P0-7 · BUG-001 (location uploads) | issue #19 → PR #21 `d9479cd` |
+> | P0-1…P0-5 · API-02, IOS-01, AND-01, API-01, API-04 | PR #20 `8abb8fb`. Every probe check those rows name is live in `services/api/scripts/qa-probe.mjs` (`F5`–`F7`, `G3`, `G7`, `G10`–`G12`, `J4`, section `I`) and passes in the 109/0 run cited below |
+> | P1 AND-02…AND-05 | issues #6, #7, #8 → PR #23 `9d3c08e` |
+> | P1 WIN-01…WIN-06 | issues #9, #10, #11 → PR #24 `6279c97` |
+> | P1 FLT-01…FLT-06 | issues #12, #13 → PR #22 `0991a5a` |
+> | P1 IOS-01…IOS-05 | issue #14 (IOS-01 via PR #20) → PR #25 `2bd854c` |
+
+**Who this is for:** Antigravity. **Owner:** Kimi Code.
+*2026-10-11 wording was "Antigravity (implementation agent)" / "Kimi Code (QA/verification)"; the
+2026-10-17 re-cut in `AGENTS.md` §1 makes Antigravity testing-only and Kimi Code the development lead,
+so this page is history, not a lane.*
 **Working agreement:** `AGENTS.md` at the repo root — read it before starting.
 
 ## How to work an item
@@ -15,13 +35,18 @@
 
 > **Rule:** never weaken a check to make it pass. If a check is wrong, say so with evidence.
 
-## Current gate status (2026-10-11)
+## Gate status — 2026-10-11 snapshot, kept as the record of the starting point
+
+For current numbers read `docs/ROADMAP.md` (truth pass 2026-10-18) and the newest `TR-*` row in
+`docs/QA/TEST-REQUESTS.md`. The last runs recorded there are probe **109 passed · 0 failed · 0 targets ·
+0 notes** and e2e **69/69** (`main@2812cb5`, #92 A3, 2026-10-18), and vitest **298/298** with both
+Android flavors at **238/238** (`main@ed32bdb`, Antigravity's smoke on #50, 2026-10-17).
 
 | Gate | Result |
 |---|---|
 | `services/api` vitest | 192/193 — the one failure is `auth.test.ts` login timing out at 20 s **under heavy machine load**, not an assertion failure; passes on an idle run. Worth a `testTimeout` bump, not a product fix. |
 | `services/api` live e2e | **50/50** |
-| `services/api` qa-probe (adversarial) | **49 passed · 19 failed · 2 targets · 2 notes** ← the fix list below |
+| `services/api` qa-probe (adversarial) | **49 passed · 19 failed · 2 targets · 2 notes** ← the fix list below, now closed |
 | Flutter parent-app | 94/94 |
 | Android JVM | 151/151 |
 | Desktop xunit | 168/168 |
@@ -35,7 +60,7 @@ INTERNAL_HMAC_SECRET=<from dist/start-backend.bat> node scripts/qa-probe.mjs
 
 ---
 
-# P0 — safety-critical (do these first)
+# P0 — safety-critical — CLOSED (see the closure table at the top)
 
 ## P0-6 · AND-13 · critical · the Android agent crash-loops on real devices (FGS started without permission)
 
@@ -159,7 +184,7 @@ revoked requests fail before touching the database.
 
 ---
 
-# P1 — high
+# P1 — high — CLOSED (see the closure table at the top)
 
 | ID | Platform | Title | Evidence | Acceptance |
 |---|---|---|---|---|
