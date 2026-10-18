@@ -1,6 +1,18 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRedis } from "../src/redis.js";
-import { isSilent, runDeviceSilenceCheck, silentAfterMinutes } from "../src/jobs/deviceSilence.js";
+import {
+  SILENT_MIN_SAFE_MINUTES,
+  STATIONARY_PING_INTERVAL_MINUTES,
+  TELEMETRY_INTERVAL_MINUTES,
+  isSilent,
+  resolveSilenceConfig,
+  runDeviceSilenceCheck,
+  silenceConfigWarning,
+  silentAfterMinutes,
+  startDeviceSilenceScheduler,
+  stopDeviceSilenceScheduler,
+} from "../src/jobs/deviceSilence.js";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { MockRedis, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -28,7 +40,9 @@ describe("device-silence watch (plan 1.9 finding: a wiped agent cannot alert, th
     // Audit finding 4: `active` is not a value any writer produces. It used to be the rule's only
     // match, which is why the watch could never fire.
     expect(isSilent("active", new Date(NOW.getTime() - 3 * 3600_000), NOW, 30)).toBe(false);
-    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "15" } as NodeJS.ProcessEnv)).toBe(15);
+    // Since #166 a 15-minute window is one telemetry interval and therefore too tight: it is raised
+    // to the two-interval minimum. The full rule is pinned in the describe block below.
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "15" } as NodeJS.ProcessEnv)).toBe(30);
     expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "1" } as NodeJS.ProcessEnv)).toBe(30);
     expect(silentAfterMinutes({} as NodeJS.ProcessEnv)).toBe(30);
   });
@@ -146,5 +160,78 @@ describe("device-silence watch (plan 1.9 finding: a wiped agent cannot alert, th
     expect(claims.has(`jobs:device-silent:dev-1:${secondSilence.toISOString()}`)).toBe(true);
     expect(claims.size).toBe(2);
     await app.close();
+  });
+});
+
+// Issue #166: at the 5-minute floor the silence window equalled the app's stationary location ping
+// (LocationService.kt:430) and was shorter than one telemetry interval (WorkScheduler.kt:48), so a
+// healthy phone could be flagged between two reports. The window is now validated against the
+// cadence the server mirrors, and the hardware row uses an explicit test-only override.
+describe("silence window vs the agent's reporting cadence (issue #166)", () => {
+  const read = (relative: string) => readFileSync(new URL(relative, import.meta.url), "utf8");
+
+  it("pins the cadence the server mirrors from the app source", () => {
+    const workScheduler = read("../../../apps/child-android/app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt");
+    expect(workScheduler).toMatch(/PeriodicWorkRequestBuilder<TelemetryWorker>\(15, TimeUnit\.MINUTES\)/);
+    const locationService = read("../../../apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt");
+    expect(locationService).toMatch(/STATIONARY_INTERVAL_MS = 5L \* 60L \* 1000L/);
+
+    expect(TELEMETRY_INTERVAL_MINUTES).toBe(15);
+    expect(STATIONARY_PING_INTERVAL_MINUTES).toBe(5);
+    // The relationship the issue asks for: two telemetry intervals of headroom, and therefore also
+    // more than one stationary ping.
+    expect(SILENT_MIN_SAFE_MINUTES).toBe(2 * TELEMETRY_INTERVAL_MINUTES);
+    expect(SILENT_MIN_SAFE_MINUTES).toBeGreaterThan(STATIONARY_PING_INTERVAL_MINUTES);
+  });
+
+  it("accepts a window with two telemetry intervals of headroom and leaves the default alone", () => {
+    expect(resolveSilenceConfig({} as NodeJS.ProcessEnv)).toMatchObject({ minutes: 30, configured: 30, clamped: false, invalid: false });
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv)).toBe(30);
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "45" } as NodeJS.ProcessEnv)).toBe(45);
+    expect(silenceConfigWarning(resolveSilenceConfig({} as NodeJS.ProcessEnv))).toBeNull();
+    expect(silenceConfigWarning(resolveSilenceConfig({ DEVICE_SILENT_MINUTES: "45" } as NodeJS.ProcessEnv))).toBeNull();
+  });
+
+  it("clamps the tight 5-minute window instead of accepting it", () => {
+    const config = resolveSilenceConfig({ DEVICE_SILENT_MINUTES: "5" } as NodeJS.ProcessEnv);
+    expect(config).toMatchObject({ minutes: 30, configured: 5, clamped: true, tightOverride: false, invalid: false });
+    const warning = silenceConfigWarning(config) ?? "";
+    expect(warning).toContain("DEVICE_SILENT_MINUTES=5");
+    expect(warning).toContain("15-minute telemetry cadence");
+    expect(warning).toContain("clamped to 30");
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "5" } as NodeJS.ProcessEnv)).toBe(30);
+  });
+
+  it("falls back to the default for a value below the old floor or not a number", () => {
+    expect(resolveSilenceConfig({ DEVICE_SILENT_MINUTES: "1" } as NodeJS.ProcessEnv)).toMatchObject({ minutes: 30, invalid: true });
+    expect(resolveSilenceConfig({ DEVICE_SILENT_MINUTES: "five" } as NodeJS.ProcessEnv)).toMatchObject({ minutes: 30, invalid: true });
+    expect(silenceConfigWarning(resolveSilenceConfig({ DEVICE_SILENT_MINUTES: "1" } as NodeJS.ProcessEnv))).toContain("not an integer");
+  });
+
+  it("honours the test-only override with a loud warning", () => {
+    const config = resolveSilenceConfig({ DEVICE_SILENT_MINUTES: "5", DEVICE_SILENT_ALLOW_TIGHT: "1" } as NodeJS.ProcessEnv);
+    expect(config).toMatchObject({ minutes: 5, configured: 5, tightOverride: true, clamped: false });
+    const warning = silenceConfigWarning(config) ?? "";
+    expect(warning).toContain("TEST ONLY");
+    expect(warning).toContain("DEVICE_SILENT_MINUTES=5");
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "5", DEVICE_SILENT_ALLOW_TIGHT: "1" } as NodeJS.ProcessEnv)).toBe(5);
+    // The override cannot go below the historic floor, and does not change a safe value.
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "1", DEVICE_SILENT_ALLOW_TIGHT: "1" } as NodeJS.ProcessEnv)).toBe(30);
+    expect(silentAfterMinutes({ DEVICE_SILENT_MINUTES: "30", DEVICE_SILENT_ALLOW_TIGHT: "1" } as NodeJS.ProcessEnv)).toBe(30);
+  });
+
+  it("warns at startup and starts with the effective window, not the configured one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      startDeviceSilenceScheduler({ DEVICE_SILENT_MINUTES: "5" } as NodeJS.ProcessEnv);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("clamped to 30");
+      expect(String(log.mock.calls[0]?.[0])).toContain("after=30m");
+    } finally {
+      stopDeviceSilenceScheduler();
+      warn.mockRestore();
+      log.mockRestore();
+    }
   });
 });

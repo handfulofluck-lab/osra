@@ -97,7 +97,7 @@ pass. The probe does not need it, and deliberately has no database connection (�
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
 | `DIGEST_HOUR` (default 18, the family's **local** hour per `Family.timezone`), `JOBS_ENABLED` (`0` disables the in-process scheduler) | Digest delivery schedule (ADR-0017). `DIGEST_HOUR_UTC` is the pre-ADR-0017 name: still read as a **local** hour, deprecated, and logged at boot when it is the one set. The e2e/probe stacks should set `JOBS_ENABLED=0`. |
 | `ROLLUP_HOUR_UTC` (default 2), `RETENTION_DAYS` (default 90, floor 7), `ROLLUP_RETENTION_DAYS` (default 365) | Phase 2c nightly usage rollup + retention (ADR-0013); same `JOBS_ENABLED` switch. External cron: call `runUsageRollup()` from `src/jobs/usageRollup.ts`. |
-| `DEVICE_SILENT_MINUTES` (default 30, floor 5) | Device-silence watch (plan 1.9 finding): an `online` device unseen for longer raises one `tamper` / `device_silent` alert and is set `offline`; 5-min tick, Redis claim per episode; same `JOBS_ENABLED` switch. External cron: `runDeviceSilenceCheck()` from `src/jobs/deviceSilence.ts`. **Corrected 2026-10-18 (audit finding 4):** the job matched `active`, a status no writer produces, so it never fired; it matches `online` now and `test/device-silence.test.ts` drives a real telemetry POST into the job. |
+| `DEVICE_SILENT_MINUTES` (default 30, safe minimum 30 = 2 × the agent's 15-minute telemetry cadence), `DEVICE_SILENT_ALLOW_TIGHT` (test only) | Device-silence watch (plan 1.9 finding): an `online` device unseen for longer raises one `tamper` / `device_silent` alert and is set `offline`; 5-min tick, Redis claim per episode; same `JOBS_ENABLED` switch. External cron: `runDeviceSilenceCheck()` from `src/jobs/deviceSilence.ts`. **Corrected 2026-10-18 (audit finding 4):** the job matched `active`, a status no writer produces, so it never fired; it matches `online` now and `test/device-silence.test.ts` drives a real telemetry POST into the job. **Since #166 the window is validated against the cadence:** `WorkScheduler.kt:48` reports telemetry every 15 minutes and `LocationService.kt:430` pings every 5 while stationary, so a value below 30 (two telemetry intervals) is raised to 30 at boot with a warning naming the cadence; the 5-minute floor survives only under `DEVICE_SILENT_ALLOW_TIGHT=1`, which logs a `TEST ONLY` warning and exists for the TR-22 hardware row. A unit test reads both Kotlin constants, so changing either cadence fails the API suite. |
 | `INTERNAL_SIGNING_ALLOW_V1` (default **off** since 2026-10-17; `1` opts in), `INTERNAL_SERVICE_CALLERS` (default `ai-engine`) | ADR-0014 signing v2: legacy body-only signatures are refused (`401 legacy_signature_disabled`, probe check J7) unless the operator sets `1` for a rollout whose agents still sign v1 — the probe then reports target J7 so the state is visible; the global secret works only as a named service caller. Agents' clocks must be within 5 minutes of the server's or every signed call is `401 stale_timestamp`. |
 
 Running `e2e.mjs` and `qa-probe.mjs` back-to-back within one minute from one host trips the API's
@@ -369,16 +369,35 @@ on top (no call is placed) — a lock that covered it would be the one bug worse
 One UI (the VPN and device-admin screens never idle for `uiautomator`); the script says when.
 
 **Row 3 asserts the accepted definition (2026-10-18, `QA/TESTING-STRATEGY.md` §3a).** After
-`am force-stop`, the row waits one silence window (`DEVICE_SILENT_MINUTES`, floor 5 — pass the same value
-as `-SilenceMinutes`) plus one 5-minute job tick, then requires exactly **one** new critical
-`tamper` / `device_silent` alert for the device and `Device.status = "offline"`, both read from Postgres
-(`scripts/hardware/android-bypass-probe.ps1`, row 3). The API under test must run with `JOBS_ENABLED=1`
-for this row, and the row takes that long: 5 minutes + one tick is a ~10.5-minute budget, the default
-30-minute window is ~35.5 minutes. The **old** expectation — the agent back within 120 s — is still
+`am force-stop`, the row waits one silence window plus one 5-minute job tick, then requires exactly
+**one** new critical `tamper` / `device_silent` alert for the device and `Device.status = "offline"`,
+both read from Postgres (`scripts/hardware/android-bypass-probe.ps1`, row 3). The API under test must
+run with `JOBS_ENABLED=1` for this row, and the row takes that long: a 5-minute window + one tick is a
+~10.5-minute budget, the default 30-minute window is ~35.5 minutes.
+
+**The window must match the server's effective value (since #166).** `DEVICE_SILENT_MINUTES` below 30
+— the safe minimum, two 15-minute telemetry intervals — is clamped to 30 at boot, so a bare
+`DEVICE_SILENT_MINUTES=5` no longer gives a 5-minute window and the probe would wait a 630-s budget for
+an alert that arrives after ~35 minutes. For the short row, start the API with the test-only override
+and pass the same number to the probe:
+
+```bash
+JOBS_ENABLED=1 DEVICE_SILENT_MINUTES=5 DEVICE_SILENT_ALLOW_TIGHT=1 pnpm exec tsx src/server.ts
+# companion: -SilenceMinutes 5
+```
+
+The override logs `[device-silent] TEST ONLY …` at boot; it exists for this measurement and never for a
+deployment. Without it, pass `-SilenceMinutes 30` (or omit it) and budget ~35.5 minutes. The reason the
+safe minimum is two intervals, and not the 5-minute stationary ping, is that a missed telemetry tick
+must not read as silence — the unit test `device-silence.test.ts` reads `WorkScheduler.kt:48` and
+`LocationService.kt:430` and fails if either cadence moves.
+
+The **old** expectation — the agent back within 120 s — is still
 measured and printed as a **NOTE**, not a gate: Android keeps a force-stopped package in the stopped state
 (`came back=False after 121 s` on the Flip4, TR-21, 2026-10-18), so no code change can meet it. A missing
 alert is **FAIL** with the alert count, `Device.status` and `lastSeen` in the evidence; it is never a note.
-First measurement under this definition: TR-22 (2026-10-19, `main@40f4f61`, window 5 minutes).
+First measurement under this definition: TR-22 (2026-10-19, `main@40f4f61`, window 5 minutes); the
+re-run after #166 uses the override above.
 
 **S1 has a precondition the other rows do not: the OS keyguard must be down.** `lock` is a real
 `lockNow()` (ADR-0010), so on a phone with a secure lock the keyguard sits above `LockActivity` and above
