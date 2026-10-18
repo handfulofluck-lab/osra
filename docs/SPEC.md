@@ -345,7 +345,7 @@ on the owner's PC — LAN or tunnel).
 ## §14.1 Pairing contract (implemented in services/api)
 
 ```
-POST /v1/devices/pair        (parent JWT; requireFamily child, source body)
+POST /v1/devices/pair        (parent JWT + `devices` permission; requireFamily child, source body)
   body: { childId }
   → 201 { code: "<6 digits>", expiresAt: <ISO> }
   Storage: Redis key `pair:<code>` = JSON { childId, familyId }, TTL 600 s.

@@ -42,6 +42,40 @@ environment where it was written — see `docs/QA/` for the verification state.
   the fields this screen reads).
 - **Not done here:** no hardware/device run, no Arabic/RTL pass (roadmap 3.1), and no per-app split
   under each day even though the API returns `apps` — the list keeps to day totals for now.
+### API — device enrollment is inside the `devices` permission, and `/register` no longer returns the raw row (issue #138)
+- **Both credential-issuing routes now require `devices`.** `POST /v1/devices/register` and
+  `POST /v1/devices/pair` compose `[requireParent, requirePermission("devices")]`
+  (`services/api/src/routes/devices.ts:118,146`), matching `/:id/command`, `/:id/push-token` and
+  `DELETE /:id`. Before, an invite with the default `permissions: []` could create a Device row and
+  mint a pairing code that the unauthenticated `/pair/claim` exchanged for a device JWT **and a
+  per-device HMAC secret**, while the same co-parent got `403 permission_required` on `command` and
+  `unpair`. An owner passes implicitly; a co-parent or guardian needs `devices` in the invite. Reads
+  are unchanged (never gated by permissions).
+- **`/register` returns `sanitizeDevice(device)`** (`devices.ts:138`). The raw Prisma row carried the
+  `internalSecret` column (the per-device HMAC key; null at enrollment, minted at claim) and any
+  `pushToken` sent in the body. `/pair/claim` still returns the secret once — that is the credential
+  handoff to the new device.
+- **ADR:** `docs/adr/0014-signing-v2-sessions-and-family-roles.md` gains a dated amendment
+  superseding the "(command, unpair)" enumeration in decision 5; `docs/SPEC.md` §14.1 names the
+  permission on `/pair`.
+- **Callers:** `e2e.mjs` and `qa-probe.mjs` call both routes with owner tokens (created by
+  `/v1/auth/register`), so no change; the Android/iOS/Windows agents only call the unauthenticated
+  `/pair/claim`. The parent app's pairing dialog surfaces the server's `403` for a signed-in
+  co-parent/guardian without `devices`; owners and holders of `devices` are unaffected.
+- **Tests:** `services/api` `pnpm test` → **349 passed / 0 failed** (3 new cases), including new
+  cases in `test/devices.test.ts` and `test/pairing.test.ts` (co-parent with `devices` → 201 on both
+  routes; without it → `403 {"error":"permission_required","permission":"devices"}`; register
+  response has no `internalSecret`/`pushToken`). Fail-before on `origin/main`'s handlers (same tests,
+  old `devices.ts`): **3 failed** — register deny `201` instead of `403`, register response still had
+  `internalSecret`, pair deny `201` instead of `403`. Logs in the PR.
+- **Probe:** three new gating checks — the setup register-response secret check and `N6b`/`N6c`,
+  which prove both routes fail closed for an `alerts`-only co-parent. Probe integrity
+  `--base origin/main`: `check=99 target=2 note=1` → `check=102 target=2 note=1` (**3 added, 0
+  removed/demoted**). Live on a spare-port server (`:3100`, ≥60 s apart): probe **123 passed · 0
+  failed · 0 targets · 0 notes**, e2e **69 passed / 0 failed**; database restored with
+  `cleanup-test-data.sql -v apply=1` (1 family — demo only) and the Redis orphan sweep
+  (`cleanup-test-redis.mjs --apply`: 2 orphaned device keys deleted, 0 persistent keys without an
+  owner).
 
 ### Windows agent — the `0000` lock PIN is gone, and HTTPS inspection validates its upstream (`fix/desktop-pin-and-tls`, desktop audit findings 1–2)
 - **No default parent PIN.** `RuleSyncService` and `ScreenTimeEnforcer` each had

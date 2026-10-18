@@ -107,3 +107,38 @@ targets or findings since 2026-10-11:
 - Live (DB from zero, `Asia/Dubai`): e2e **68/68** (replay → 401 `replay`, bare global → 401, 10-min-old
   timestamp → 401), probe **108 passed · 0 failed · 1 target (J7) · 0 notes** — E4/J2, E4b, E4c, J5,
   J6, J6b, F8, N1–N7 all PASS.
+
+## Amendment — 2026-10-18: enrollment is inside the `devices` permission (issue #138)
+
+Decision 5 enumerated the `devices` surface as "(command, unpair)". That enumeration was incomplete,
+not a deliberate exclusion: `POST /v1/devices/register` creates a Device row and `POST /v1/devices/pair`
+mints a code that the unauthenticated `/pair/claim` exchanges for a device JWT and a per-device HMAC
+secret — both *issue signing credentials*, which is at least the authority of commanding an existing
+device. An invite defaults to `permissions: []` (`routes/invites.ts:15`,
+`prisma/schema.prisma:46,212`), so a guardian with no permissions could mint credentials while the same
+guardian got `403 permission_required` on `command` and `unpair`.
+
+**Decision (applied in #138), superseding the parenthetical in decision 5:**
+
+- `POST /v1/devices/register` and `POST /v1/devices/pair` compose
+  `[requireParent, requirePermission("devices")]`, exactly like `/:id/command`, `/:id/push-token` and
+  `DELETE /:id`. Owners pass implicitly; a co-parent or guardian needs `devices` in the invite.
+- Reads stay ungated (decision 5: reads are never gated by permissions).
+- `POST /v1/devices/register` returns `sanitizeDevice(device)`. The raw Prisma row exposed the
+  `internalSecret` field — the per-device HMAC key column, null at enrollment, minted at claim — and
+  any `pushToken` sent in the body. Enrollment has no reason to return either.
+- `/pair/claim` is unchanged: it is the credential exchange, it runs before any credentials exist, and
+  it must return the secret once to the new device. Its authority comes from the authenticated `/pair`.
+
+**Reasoning.** The permission boundary follows authority, not the HTTP verb. Issuing a credential is
+at least as sensitive as using it; leaving enrollment open made `permissions: []` mean "cannot command
+the device, but can create the signer that raises its alerts".
+
+**Alternative rejected:** keep enrollment open and document why. No product reason supports a guardian
+who may not command a device being able to mint its signing key, and an inviter reading an empty
+permission set would be misled about what the invitee can do.
+
+**Cost:** a co-parent or guardian who genuinely needs to add a device must be invited with `devices`
+(or invited again). Owners are unaffected. The parent app surfaces the server's `403` in the pairing
+dialog; `e2e.mjs` and `qa-probe.mjs` call both routes with owner tokens, and the Android/iOS/Windows
+agents only call the unauthenticated `/pair/claim`.
