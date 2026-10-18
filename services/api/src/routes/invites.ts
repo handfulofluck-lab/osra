@@ -5,7 +5,7 @@ import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/inde
 import { inviteEmail } from "../lib/email/templates.js";
 import { getJson, setJson } from "../redis.js";
 import { requireAuth, requireOwner, requireParent } from "../middleware/requireFamily.js";
-import { signParentToken } from "../lib/sessions.js";
+import { invalidateSessionsBefore, signParentToken } from "../lib/sessions.js";
 
 const INVITE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
@@ -88,6 +88,12 @@ export async function inviteRoutes(app: FastifyInstance) {
       where: { id: parent.id },
       data: { familyId: token.familyId, role: token.role, permissions: token.permissions },
     });
+    // The move happens here: every access token minted while this parent belonged to the previous
+    // family (which still carries the old `familyId` claim) must die now, exactly like logout-all /
+    // password reset. The fresh token below is issued after the bump, so its `iat` is not older.
+    // If Redis is unreachable `invalidateSessionsBefore` is best-effort; `requireFamily` separately
+    // compares against the current Parent row, so the old family claim still cannot read its data.
+    await invalidateSessionsBefore(parent.id);
     await prisma.familyInvite.update({ where: { id }, data: { status: "accepted" } });
     const family = await prisma.family.findUnique({ where: { id: token.familyId } });
     // Issue a fresh access token bound to the new family ID (BUG-006 / API-05)

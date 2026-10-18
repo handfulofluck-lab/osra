@@ -117,6 +117,37 @@ describe("family roles — co-parent tokens work, permissions are enforced (ADR-
     await app.close();
   });
 
+  it("requireFamily scopes by the CURRENT Parent.familyId, not the token claim (family move / revoked session)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    // p1 moved fam-1 -> fam-2, but holds an access token minted while still in fam-1.
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p1", familyId: "fam-2", role: "owner", permissions: [] });
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ childId: "child-1", appRules: [], routines: [] });
+    const oldScope = await app.inject({ method: "GET", url: "/v1/rules/child-1", headers: authHeader(app, "fam-1", "p1") });
+    expect(oldScope.statusCode).toBe(403);
+    expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+
+    // A token minted after the move reaches the new family's child.
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-2", familyId: "fam-2" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ childId: "child-2", appRules: [], routines: [] });
+    const current = await app.inject({ method: "GET", url: "/v1/rules/child-2", headers: authHeader(app, "fam-2", "p1") });
+    expect(current.statusCode).toBe(200);
+
+    // The sessions-invalid-before epoch is enforced on family-scoped routes too (this route has no
+    // requireParent in front of it): a token issued before the bump is dead here as well.
+    const store = wireRedisStore();
+    const now = Math.floor(Date.now() / 1000);
+    store.set("auth:invalid-before:p1", String(now));
+    const revokedToken = app.jwt.sign(
+      { sub: "p1", familyId: "fam-2", role: "parent", jti: "dddddddddddddddddddddddddddddddd", iat: now - 5 },
+      { expiresIn: "7d" },
+    );
+    const revoked = await app.inject({ method: "GET", url: "/v1/rules/child-2", headers: { authorization: `Bearer ${revokedToken}` } });
+    expect(revoked.statusCode).toBe(401);
+    expect(revoked.json().error).toBe("session_revoked");
+    await app.close();
+  });
+
   it("a guardian without the 'rules' permission cannot write rules (403 permission_required) but can read them", async () => {
     const app = await buildApp(rulesRoutes, "/v1/rules");
     prismaMock.parent.findUnique.mockResolvedValue({ id: "p-g", familyId: "fam-1", role: "guardian", permissions: ["alerts"] });
