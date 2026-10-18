@@ -189,3 +189,22 @@ export function requireFamily({ param = "id", source = "params", model, deviceAc
     (req as unknown as Record<string, unknown>)[model] = resource;
   };
 }
+
+/**
+ * preHandler (after `requireFamily`): a device JWT may act only on its own device id.
+ *
+ * `requireFamily` proves the target belongs to the caller's *family*; it does not prove the caller
+ * *is* that device. Family membership is not enough for a device write (audit finding 5: device A
+ * could write sibling B's telemetry/activity), so agent-write routes compose this after the family
+ * check. Parent tokens pass untouched — for them, family scoping is the whole rule.
+ */
+export function requireOwnDevice(param = "id") {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const user = req.user as { role?: string; deviceId?: string } | undefined;
+    if (user?.role !== "device") return;
+    const id = (req.params as Record<string, string>)[param];
+    if (user.deviceId !== id) {
+      await reply.code(403).send({ error: "forbidden" });
+    }
+  };
+}

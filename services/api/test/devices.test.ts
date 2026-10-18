@@ -241,10 +241,16 @@ describe("device enrollment & management", () => {
       payload: { pushToken: "fcm-new" },
     });
     expect(res.statusCode).toBe(200);
-    expect(prismaMock.device.update).toHaveBeenCalledWith({
+    expect(prismaMock.device.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "dev-1" },
       data: { pushToken: "fcm-new" },
-    });
+    }));
+    // Audit finding 6: the row is read through an allowlist, so a secret column added later is not
+    // returned by accident either.
+    const select = prismaMock.device.update.mock.calls[0][0].select as Record<string, boolean>;
+    expect(select).toBeDefined();
+    expect(select).not.toHaveProperty("internalSecret");
+    expect(select).not.toHaveProperty("pushToken");
     await app.close();
   });
 
@@ -268,6 +274,55 @@ describe("device enrollment & management", () => {
     });
     expect(empty.statusCode).toBe(400);
     expect(prismaMock.device.update).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Audit finding 6: the update returns the whole Prisma row, so the response used to carry the
+  // per-device HMAC `internalSecret` (and the push token) to any parent who set a token.
+  it("push-token response is sanitized: no internalSecret, no pushToken", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue({ ...DEVICE, pushToken: "fcm-new", internalSecret: "per-device-hmac-secret" });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: authHeader(app),
+      payload: { pushToken: "fcm-new" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().device).not.toHaveProperty("internalSecret");
+    expect(res.json().device).not.toHaveProperty("pushToken");
+    expect(res.json().device.id).toBe("dev-1");
+    await app.close();
+  });
+
+  // Audit finding 6: command and unpair require the `devices` permission; push-token now matches.
+  it("push-token requires the devices permission: a co-parent without it is rejected (403)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["location"] });
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: authHeader(app, "fam-1", "p-co"),
+      payload: { pushToken: "fcm-new" },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toEqual({ error: "permission_required", permission: "devices" });
+    expect(prismaMock.device.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["devices"] });
+    prismaMock.device.update.mockResolvedValue({ ...DEVICE, pushToken: "fcm-new" });
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: authHeader(app, "fam-1", "p-co"),
+      payload: { pushToken: "fcm-new" },
+    });
+    expect(allowed.statusCode).toBe(200);
     await app.close();
   });
 
@@ -308,6 +363,93 @@ describe("device enrollment & management", () => {
     });
     expect(res.statusCode).toBe(403);
     expect(prismaMock.device.update).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Audit finding 5: `requireFamily` proves the device belongs to the caller's family, not that the
+  // caller *is* it. Device A could refresh sibling B's lastSeen/status and write B's usage.
+  it("telemetry: a device token may post only for its own id (403 to a sibling), parents stay family-scoped", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "dev-1" ? DEVICE : { ...DEVICE, id: "dev-2" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const sibling = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }),
+      payload: { batteryPct: 10 },
+    });
+    expect(sibling.statusCode).toBe(403);
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+
+    const own = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { batteryPct: 10 },
+    });
+    expect(own.statusCode).toBe(202);
+
+    for (const url of ["/v1/devices/dev-1/telemetry", "/v1/devices/dev-2/telemetry"]) {
+      const parent = await app.inject({ method: "POST", url, headers: authHeader(app), payload: { batteryPct: 10 } });
+      expect(parent.statusCode).toBe(202);
+    }
+
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, child: { familyId: "fam-2" } });
+    const foreign = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }),
+      payload: { batteryPct: 10 },
+    });
+    expect(foreign.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("activity: a device token may post only for its own id (403 to a sibling), parents stay family-scoped", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "dev-1" ? DEVICE : { ...DEVICE, id: "dev-2" });
+    prismaMock.activityEvent.createMany.mockResolvedValue({ count: 1 });
+    // An app_usage event would publish a `live_activity` frame on success, so the 403 case can assert
+    // that the frame is suppressed as well as the row.
+    const batch = { events: [{ type: "app_usage", payload: { app: "YouTube", minutes: 5 } }] };
+    const redis = getRedis() as unknown as import("./helpers.js").MockRedis;
+    redis.publish.mockClear();
+
+    const sibling = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/activity",
+      headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }),
+      payload: batch,
+    });
+    expect(sibling.statusCode).toBe(403);
+    expect(prismaMock.activityEvent.createMany).not.toHaveBeenCalled();
+    expect(redis.publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.any(String));
+
+    const own = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/activity",
+      headers: deviceHeader(app),
+      payload: batch,
+    });
+    expect(own.statusCode).toBe(202);
+    expect(redis.publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"live_activity"'));
+
+    for (const url of ["/v1/devices/dev-1/activity", "/v1/devices/dev-2/activity"]) {
+      const parent = await app.inject({ method: "POST", url, headers: authHeader(app), payload: batch });
+      expect(parent.statusCode).toBe(202);
+    }
+
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, child: { familyId: "fam-2" } });
+    const foreign = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/activity",
+      headers: authHeader(app, "fam-1"),
+      payload: batch,
+    });
+    expect(foreign.statusCode).toBe(403);
     await app.close();
   });
 

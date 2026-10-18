@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
-import { requireAuth, requireFamily, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
@@ -286,22 +286,31 @@ export async function deviceRoutes(app: FastifyInstance) {
   /** Update the device push token (FCM/APNs registration). */
   // NOTE: tightened to parent-only per the §14.1 role tightening even though §14.1 also lists
   // this route among device-JWT endpoints; FCM-free test agents never register push tokens.
-  app.post("/:id/push-token", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req, reply) => {
+  // Audit finding 6: `requirePermission("devices")` matches the other parent-side device mutations
+  // (command, unpair) — a co-parent admitted without the `devices` tag may not repoint a child's
+  // notifications. The response is an explicit allowlist (`select`) and then `sanitizeDevice`, so the
+  // per-device HMAC secret and the push token cannot leave the server, and a future secret column is
+  // not returned just because it exists.
+  app.post("/:id/push-token", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {
     const parsed = PushTokenSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const device = await prisma.device.update({
       where: { id },
       data: { pushToken: parsed.data.pushToken },
+      select: { id: true, childId: true, platform: true, model: true, osVersion: true, status: true, batteryPct: true, lastSeen: true },
     });
-    return { device };
+    return { device: sanitizeDevice(device) };
   });
 
   /** Store the latest device telemetry payload in Redis (UsageReporter / TelemetryUploader). */
-  app.post("/:id/telemetry", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+  // Audit finding 5: `requireOwnDevice` closes the family-scoping gap — device A used to be able to
+  // post telemetry for sibling B (refreshing B's lastSeen, battery and day totals). Parent tokens
+  // stay family-scoped, and the shared preHandler means a future agent-write route composes it too.
+  app.post("/:id/telemetry", { preHandler: [requireFamily({ model: "device" }), requireOwnDevice()] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
     const parsed = TelemetrySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
@@ -336,10 +345,11 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Ingest a batch of activity events (urls, app usage, calls, SMS) from a device agent (#4). */
-  app.post("/:id/activity", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+  // Same `requireOwnDevice` rule as /telemetry: device tokens write only their own row.
+  app.post("/:id/activity", { preHandler: [requireFamily({ model: "device" }), requireOwnDevice()] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
     const parsed = ActivityBatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
