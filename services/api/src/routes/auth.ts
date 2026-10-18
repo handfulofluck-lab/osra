@@ -176,12 +176,14 @@ export async function authRoutes(app: FastifyInstance) {
         req.log.warn({ err }, "mfa secret lazy encryption failed");
       }
     }
-    // ADR-0020: fill from the device only while the family has never set a zone, in ONE statement, so
+    // ADR-0020 decision 4: the device fills a family ONCE. The guard is `timezoneSource = 'default'`,
+    // not `<> 'parent'` - with the latter every login re-filled the zone, so a parent travelling abroad
+    // moved the family's digest (caught in review of #101, see the ADR amendment). One statement, so
     // there is no read-then-write race with a parent saving an explicit choice at the same moment.
     const zone = parsed.data.timezone;
     if (zone && isValidTimeZone(zone)) {
       await prisma.family.updateMany({
-        where: { id: parent.familyId, timezoneSource: { not: "parent" } },
+        where: { id: parent.familyId, timezoneSource: "default" },
         data: { timezone: zone, timezoneSource: "device" },
       }).catch((err) => req.log.warn({ err }, "timezone fill failed"));
     }
