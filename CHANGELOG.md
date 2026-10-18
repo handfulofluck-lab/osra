@@ -11,6 +11,25 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — `qa-probe` stops on a 429 burst instead of recording it as product failures (issue #112)
+- **A rate-limited run now aborts instead of failing dozens of checks.** `services/api/scripts/qa-probe.mjs`
+  counts 429s in `call()`; the first 429 it cannot retry prints
+  `ABORT: rate limited by the API (<n> x 429) - wait 60 s and re-run` and exits **2**, without recording a
+  429-induced check as a failure. Exit 1 still means a real assertion failure.
+- The counter aborts when one run sees **more than 5** 429s. Five is the issue's suggestion and matches the
+  measured shape (66 throttled responses in the #112 report, 27 phantom failures); the probe makes ~109
+  calls, so a smaller number would turn one unlucky overlap with another agent's run into an abort.
+- One retry is honoured only when `Retry-After` is ≤ 3 s. The API's limiter answers with 57–60 s windows,
+  so in practice the probe stops rather than sleeping through the window; a retry that also 429s aborts.
+- The summary line now ends `· rate limit: N x 429`, so a reader of a green run can see the run was not
+  throttled; a completed run with N > 0 says the retries succeeded.
+- **Measured (2026-10-18, shared `:3000`):** three concurrent probes → all three exit 2 with
+  `(2 x 429)`; the API log holds 6 distinct 429 responses (`Rate limit exceeded`) and the probe counts sum
+  to 6 — no `FAIL` line in any run. A clean run afterwards: **109 passed · 0 failed · 0 targets · 0 notes**.
+- Test: `test/qa-probe-rate-limit.test.ts` points the real probe at a stub that only answers 429 and
+  asserts the abort contract (both cases fail on `main`, pass here). Probe integrity unchanged:
+  `check=88 target=1 note=1`.
+
 ### Parent app — the digest timezone is a setting, not a hidden default (ADR-0020, plan 2.2)
 - **Digest preferences now shows and sets the family's timezone** (a curated list of the markets OSRA ships
   to, UTC included), reads it from `GET /v1/family/me`, and saves a change with `PATCH /v1/family/me`.
