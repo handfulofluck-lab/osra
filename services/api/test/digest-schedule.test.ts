@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   digestHour,
   digestPeriod,
@@ -7,6 +7,7 @@ import {
   isValidTimeZone,
   localParts,
 } from "../src/lib/digestSchedule.js";
+import { startDigestScheduler, stopDigestScheduler } from "../src/jobs/digestScheduler.js";
 
 /**
  * ADR-0017 acceptance, expressed as local-clock cases. The scheduler's dangerous failures are silent:
@@ -101,5 +102,26 @@ describe("configuration", () => {
     expect(digestHour({} as NodeJS.ProcessEnv)).toBe(18);
     expect(digestHour({ DIGEST_HOUR: "7" } as NodeJS.ProcessEnv)).toBe(7);
     expect(digestHour({ DIGEST_HOUR: "99" } as NodeJS.ProcessEnv)).toBe(18);
+  });
+
+  it("DIGEST_HOUR is the family's LOCAL hour end to end, and the old UTC name resolves to it (F3)", () => {
+    const hour = digestHour({ DIGEST_HOUR: "7" } as NodeJS.ProcessEnv);
+    const at07InDubai = new Date("2026-10-18T03:00:00Z"); // Sunday 07:00 in Dubai, 03:00 UTC
+    expect(digestsDueAt(at07InDubai, "Asia/Dubai", hour)).toEqual(["daily", "weekly"]);
+    expect(digestsDueAt(at07InDubai, "UTC", hour)).toEqual([]); // 03:00 UTC is not 07:00
+
+    // The pre-ADR-0017 name is a deprecated alias, read as the same local hour; the new name wins.
+    expect(digestHour({ DIGEST_HOUR_UTC: "7" } as NodeJS.ProcessEnv)).toBe(7);
+    expect(digestHour({ DIGEST_HOUR: "9", DIGEST_HOUR_UTC: "7" } as NodeJS.ProcessEnv)).toBe(9);
+  });
+
+  it("warns at boot when only the deprecated DIGEST_HOUR_UTC is set", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    startDigestScheduler({ JOBS_ENABLED: "1", DIGEST_HOUR_UTC: "18" } as NodeJS.ProcessEnv);
+    expect(warn.mock.calls.flat().join(" ")).toContain("DIGEST_HOUR_UTC is deprecated");
+    stopDigestScheduler();
+    warn.mockRestore();
+    log.mockRestore();
   });
 });

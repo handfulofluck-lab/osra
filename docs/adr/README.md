@@ -32,6 +32,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0021](0021-play-policy-review-child-agent.md) | Play policy review: call-log/SMS and `QUERY_ALL_PACKAGES` leave the `play` build, `isMonitoringTool=child_monitoring` is declared, the listener stays Full-only | accepted |
 | [0022](0022-websocket-ticket-only.md) | WebSocket authentication is ticket-only; the legacy `?token=` handshake is removed (supersedes that clause of ADR-0004) | accepted |
 | [0023](0023-mfa-recovery.md) | MFA recovery: one-time recovery codes at enrolment, with a support break-glass for the cohort that has none (proposal for the KCL lead) | proposed |
+| [0024](0024-digest-claim-failure-lifecycle.md) | A digest send claim outlives a permanent refusal (`DigestSend.failedReason`), not a transient one; the sender classifies `retryable` | accepted |
 
 ## Writing a new ADR
 
