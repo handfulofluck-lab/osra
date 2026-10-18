@@ -76,3 +76,43 @@ Revocation is a monotonic per-parent counter in the shared Redis.
 - The legacy epoch branch and its key can be deleted 8 days after the last pre-#117 instance is
   retired; ADR-0014 §4's `iat < epoch` sentence is superseded by this ADR for the counter-bearing
   tokens.
+
+## Amendment 2026-10-19 — the refresh path orders the version read before the mint (#158)
+
+- **Context:** the “Race semantics” bullet above said an in-flight refresh could read the
+  post-revocation version and mint a token that lives, and called closing it out of scope. Review of
+  #156 showed that outcome is the one ADR-0014 exists to prevent: a refresh accepted before a
+  password reset / MFA enable / logout-all / theft response could mint a **live** access token with the
+  post-revocation `sv`, and the rotated refresh token re-created the session in an index that had just
+  been cleared. The window is a DB round trip; the attacker is whoever holds a stolen refresh token.
+- **Decision — ordering rule.** The refresh record stores `sv`, the sessions version at issue time
+  (`services/api/src/routes/auth.ts`, `issueRefreshToken`). `/token/refresh` reads
+  `currentSessionVersion(parentId)` **once**, before it retires the presented token and before the
+  `prisma.parent.findUnique` round trip, and:
+  1. refuses the request when `stored.sv < current` (both the access and refresh halves: a pre-revocation
+     refresh token can never mint again, whatever the interleaving);
+  2. passes that same value into `signParentToken` (`opts.sv`) and into the replacement refresh record.
+
+  A revocation that lands after the version read therefore makes the returned credentials **stale**,
+  not live: the access token carries the pre-revocation `sv` and `isParentSessionLive` refuses it; the
+  refresh record carries the same stale `sv` and its next use is refused. A revocation that landed
+  before the read is seen by the comparison. No atomic check-and-mint is needed; the ordering is what
+  closes the window.
+- **Legacy refresh records (no `sv`).** They are refused (`401 session_revoked`), forcing one
+  re-login per parent after the deploy. The alternative — checking their derived issue time against
+  the legacy epoch — was rejected: the epoch write is best-effort, expires after 8 days and has
+  second resolution, so an unknown version would have to be treated as current, which is the same
+  fail-open this amendment removes. One authentication event is the cheaper price.
+- **Fail closed on the bump.** `invalidateSessionsBefore` no longer swallows a Redis error from
+  `INCRBY auth:session-version:<parentId>`: the caller returns 5xx and the client retries. Reporting a
+  successful logout-all / password reset / theft response while every token stays live was the second
+  finding (#135’s rule). The legacy epoch `SET` stays best-effort because it cannot keep an `sv` token
+  alive.
+- **Cost.** The version read moves slightly earlier (it was already one `GET` per refresh mint), plus
+  one integer field per refresh record. If the revocation lands after the read, the response still
+  returns `200` with credentials that are dead on first use — safe, but the client sees a failed next
+  call rather than a failed refresh. Legacy records cost one forced login. A revoked-but-racing
+  refresh token remains in Redis until its TTL because the route refuses it without retiring it;
+  it can never mint, so this is storage, not security.
+- This amendment supersedes the “Race semantics” bullet’s second sentence and the “out of scope”
+  conclusion for the refresh path. Everything else in the accepted decision stands.

@@ -521,6 +521,14 @@ describe("auth routes", () => {
     expect(first.json().refreshToken).toBeTruthy();
     expect(first.json().refreshToken).not.toBe(refreshToken);
 
+    // Rotation works along the chain first: the rotated token is the valid one.
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/auth/token/refresh",
+      payload: { refreshToken: first.json().refreshToken },
+    });
+    expect(second.statusCode).toBe(200);
+
     // Rotation: the consumed token is invalidated and must fail on replay.
     const replay = await app.inject({
       method: "POST",
@@ -530,13 +538,15 @@ describe("auth routes", () => {
     expect(replay.statusCode).toBe(401);
     expect(replay.json().error).toBe("refresh_token_reused"); // handoff item 1: consumed-token replay is flagged as theft
 
-    // The rotated token is the only valid one now.
-    const second = await app.inject({
+    // ...and the theft response kills the whole chain, including the newest refresh token (#158:
+    // the record carries the sessions version it was issued at, so a token minted before the
+    // revocation cannot mint a live session afterwards). Before #158 this returned 200.
+    const afterTheft = await app.inject({
       method: "POST",
       url: "/v1/auth/token/refresh",
-      payload: { refreshToken: first.json().refreshToken },
+      payload: { refreshToken: second.json().refreshToken },
     });
-    expect(second.statusCode).toBe(200);
+    expect(afterTheft.statusCode).toBe(401);
     await app.close();
   });
 
