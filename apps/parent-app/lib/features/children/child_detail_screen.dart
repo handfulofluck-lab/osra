@@ -757,14 +757,8 @@ class AlertTile extends StatelessWidget {
   final VoidCallback? onAck;
   const AlertTile({super.key, required this.alert, this.onTap, this.onAck});
 
-  static Color severityColor(String severity, [BuildContext? context]) {
-    final tokens = context?.tokens ?? AppTokens.light;
-    return switch (severity) {
-      'warning' => tokens.severityWarning,
-      'critical' => tokens.severityCritical,
-      _ => tokens.severityInfo,
-    };
-  }
+  static Color severityColor(String severity, [BuildContext? context]) =>
+      (context?.tokens ?? AppTokens.light).severityDot(severity);
 
   @override
   Widget build(BuildContext context) {

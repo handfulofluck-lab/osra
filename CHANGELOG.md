@@ -11,6 +11,36 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Roadmap 3.8 — the design system reaches the last five screens and alert severity
+- **Why.** #145 shipped the token layer and dark theme but deliberately left five screens on their own
+  spacing and colours, and alert severity was still duplicated `Colors.red/amber/blue` switches. Dark
+  mode on those screens was untested, and one severity string could render three different ways.
+- **Screens.** `family_map_screen.dart`, `rules_editor_screen.dart`, `social_screen.dart`,
+  `search_safety_screen.dart` and `settings/digest_prefs_screen.dart` now take colours, gaps, radii and
+  text styles from `AppTokens` / `AppType` / `AppSpace` / `AppRadius`. No raw `Color(0x…)` or `Colors.*`
+  remains in them; copy, widget keys, API calls and the 320×568 guarantees are unchanged.
+- **Severity.** `AppTokens.severityDot` / `severityText` are the single lookup for
+  `critical` / `warning` / anything-else, shared by the alerts feed, `AlertTile`, the concerns vault,
+  search safety and the snippet-vault modal. The light dot values stay `Colors.red` / `Colors.amber` /
+  `Colors.blue` (same runtime type, so `widget_screens_test.dart` still pins them); dark mode maps to
+  `#FF8A80` / `#FFD54F` / `#82B1FF`. New `severityCriticalText` / `severityWarningText` /
+  `severityInfoText` roles give labels a readable foreground instead of using the amber dot as text
+  (light `#B3261E` / `#7A5900` / `#0B57D0`, dark `#FFB4AB` / `#FFD37A` / `#82B1FF`). `onOk` resolves
+  the swipe-to-acknowledge pair; its light fill moves from Material green `#4CAF50` (white icon,
+  2.78:1) to the tokens' `ok` `#1B5E20` (white icon, 7.87:1), dark `#7CDB9E` / `#00391B`.
+- **Layout.** The search-safety card header overflowed 320 px by ~84 px (two rows; pre-existing, the old
+  suite never rendered it at 320). The engine/time label is now `Expanded` with an ellipsis, so the new
+  dark 320 test passes without changing copy or keys.
+- **Tests.** `test/design_system_test.dart` grows from 8 to 19: dark rendering of all nine migrated
+  screens at 320×568, dark severity dots in the alerts feed, dark severity labels in search safety,
+  light-pin preservation, case-insensitive lookup, and computed contrast for every new text pair on both
+  surfaces and on the 7 %/15 % card tints. Worst measured: 4.70:1 (light critical label on its 15 %
+  tint); `onOk` on `ok` 7.87:1 light and 7.80:1 dark.
+- **Evidence.** `flutter test` **237 passed**; `flutter analyze` **No issues found**; ARB key/placeholder
+  parity unchanged and green. **Not verified here:** the physical phone is unavailable (stale Knox admin
+  row, #181) and the change is widget-level, so no hardware claim is made; no merge sha and no
+  independent verification yet.
+
 ### Roadmap 3.4 — the installed-app inventory and a Rules picker built from real apps
 - **Why.** An app rule used to require a typed package id and a typed label. A parent cannot read a
   package id from the launcher, so the typed path produced typos and rules for apps that were not

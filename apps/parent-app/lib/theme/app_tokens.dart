@@ -78,7 +78,10 @@ abstract final class AppType {
 /// and `severityInfo` are the legacy alert-dot roles. Their light values are
 /// the ones the existing alert widget test pins (`Colors.red`, `Colors.amber`,
 /// `Colors.blue`); dark mode re-maps them to lighter variants so the dots stay
-/// visible on a dark card.
+/// visible on a dark card. Those dot roles are graphics, not text: `amber` on
+/// white is 1.63:1 by design (the pin), so severity *labels* use the separate
+/// `severityCriticalText` / `severityWarningText` / `severityInfoText` roles,
+/// which are ≥ 4.5:1 on both surfaces and on their own 15% tint.
 @immutable
 class AppTokens extends ThemeExtension<AppTokens> {
   final Color surface;
@@ -95,9 +98,16 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final Color warn;
   final Color ok;
   final Color onDanger;
+  final Color onOk;
   final Color severityCritical;
   final Color severityWarning;
   final Color severityInfo;
+
+  /// Text-safe severity foregrounds for labels and chips. The dot roles above
+  /// stay pinned to the Material values; these are the accessible pair.
+  final Color severityCriticalText;
+  final Color severityWarningText;
+  final Color severityInfoText;
 
   /// Wellbeing ring thresholds (low < 50, mid < 75, high otherwise). The
   /// light values are the Material colours the existing ring test pins.
@@ -122,9 +132,13 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.warn,
     required this.ok,
     required this.onDanger,
+    required this.onOk,
     required this.severityCritical,
     required this.severityWarning,
     required this.severityInfo,
+    required this.severityCriticalText,
+    required this.severityWarningText,
+    required this.severityInfoText,
     required this.wellbeingLow,
     required this.wellbeingMid,
     required this.wellbeingHigh,
@@ -147,9 +161,13 @@ class AppTokens extends ThemeExtension<AppTokens> {
     warn: Color(0xFF7A5900),
     ok: Color(0xFF1B5E20),
     onDanger: Color(0xFFFFFFFF),
+    onOk: Color(0xFFFFFFFF),
     severityCritical: Colors.red, // pinned by the alert test (runtime type included)
     severityWarning: Colors.amber, // pinned by the alert test
     severityInfo: Colors.blue, // pinned by the alert test
+    severityCriticalText: Color(0xFFB3261E),
+    severityWarningText: Color(0xFF7A5900),
+    severityInfoText: Color(0xFF0B57D0),
     wellbeingLow: Colors.red, // pinned by the wellbeing ring test
     wellbeingMid: Colors.amber, // pinned by the wellbeing ring test
     wellbeingHigh: Colors.green, // pinned by the wellbeing ring test
@@ -170,9 +188,13 @@ class AppTokens extends ThemeExtension<AppTokens> {
     warn: Color(0xFFFFD37A),
     ok: Color(0xFF7CDB9E),
     onDanger: Color(0xFF690005),
+    onOk: Color(0xFF00391B),
     severityCritical: Color(0xFFFF8A80),
     severityWarning: Color(0xFFFFD54F),
     severityInfo: Color(0xFF82B1FF),
+    severityCriticalText: Color(0xFFFFB4AB),
+    severityWarningText: Color(0xFFFFD37A),
+    severityInfoText: Color(0xFF82B1FF),
     wellbeingLow: Color(0xFFFF8A80),
     wellbeingMid: Color(0xFFFFD54F),
     wellbeingHigh: Color(0xFF7CDB9E),
@@ -194,9 +216,13 @@ class AppTokens extends ThemeExtension<AppTokens> {
     Color? warn,
     Color? ok,
     Color? onDanger,
+    Color? onOk,
     Color? severityCritical,
     Color? severityWarning,
     Color? severityInfo,
+    Color? severityCriticalText,
+    Color? severityWarningText,
+    Color? severityInfoText,
     Color? wellbeingLow,
     Color? wellbeingMid,
     Color? wellbeingHigh,
@@ -218,9 +244,13 @@ class AppTokens extends ThemeExtension<AppTokens> {
       warn: warn ?? this.warn,
       ok: ok ?? this.ok,
       onDanger: onDanger ?? this.onDanger,
+      onOk: onOk ?? this.onOk,
       severityCritical: severityCritical ?? this.severityCritical,
       severityWarning: severityWarning ?? this.severityWarning,
       severityInfo: severityInfo ?? this.severityInfo,
+      severityCriticalText: severityCriticalText ?? this.severityCriticalText,
+      severityWarningText: severityWarningText ?? this.severityWarningText,
+      severityInfoText: severityInfoText ?? this.severityInfoText,
       wellbeingLow: wellbeingLow ?? this.wellbeingLow,
       wellbeingMid: wellbeingMid ?? this.wellbeingMid,
       wellbeingHigh: wellbeingHigh ?? this.wellbeingHigh,
@@ -249,9 +279,13 @@ class AppTokens extends ThemeExtension<AppTokens> {
       warn: fade(warn, other.warn),
       ok: fade(ok, other.ok),
       onDanger: fade(onDanger, other.onDanger),
+      onOk: fade(onOk, other.onOk),
       severityCritical: fade(severityCritical, other.severityCritical),
       severityWarning: fade(severityWarning, other.severityWarning),
       severityInfo: fade(severityInfo, other.severityInfo),
+      severityCriticalText: fade(severityCriticalText, other.severityCriticalText),
+      severityWarningText: fade(severityWarningText, other.severityWarningText),
+      severityInfoText: fade(severityInfoText, other.severityInfoText),
       wellbeingLow: fade(wellbeingLow, other.wellbeingLow),
       wellbeingMid: fade(wellbeingMid, other.wellbeingMid),
       wellbeingHigh: fade(wellbeingHigh, other.wellbeingHigh),
@@ -266,4 +300,22 @@ class AppTokens extends ThemeExtension<AppTokens> {
 /// `MaterialApp`) rendering the same roles without wiring the whole theme.
 extension AppTokensContext on BuildContext {
   AppTokens get tokens => Theme.of(this).extension<AppTokens>() ?? AppTokens.light;
+}
+
+/// One lookup for the severity rule shared by the alerts feed, the concerns
+/// vault, the search-safety list and the decryption modal. [severityDot] is
+/// the icon/dot palette that the alert test pins; [severityText] is its
+/// readable pair for labels.
+extension AppSeverityTokens on AppTokens {
+  Color severityDot(String severity) => switch (severity.toLowerCase()) {
+        'critical' => severityCritical,
+        'warning' => severityWarning,
+        _ => severityInfo,
+      };
+
+  Color severityText(String severity) => switch (severity.toLowerCase()) {
+        'critical' => severityCriticalText,
+        'warning' => severityWarningText,
+        _ => severityInfoText,
+      };
 }

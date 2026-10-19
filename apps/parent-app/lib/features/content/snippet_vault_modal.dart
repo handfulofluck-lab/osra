@@ -3,15 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../l10n/l10n.dart';
+import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 
-/// Severity indicator color for vault modal.
-Color snippetSeverityColor(String severity) => switch (severity.toLowerCase()) {
-      'warning' => Colors.amber,
-      'critical' => Colors.red,
-      _ => Colors.blue,
-    };
+/// Severity indicator colour for the vault modal: the pinned dot role for the
+/// icon and the readable role for the severity chip label.
+Color snippetSeverityColor(String severity, [BuildContext? context]) =>
+    (context?.tokens ?? AppTokens.light).severityDot(severity);
 
 /// Feature: Snippet Vault Decryption Viewer modal for parents.
 ///
@@ -65,7 +64,8 @@ class SnippetVaultModal extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = context.l10n;
-    final sevColor = snippetSeverityColor(severity);
+    final sevColor = snippetSeverityColor(severity, context);
+    final sevText = context.tokens.severityText(severity);
     final formattedTime = timestamp != null
         ? DateFormat.yMMMd(context.localeName).add_Hms().format(timestamp!.toLocal())
         : null;
@@ -114,7 +114,7 @@ class SnippetVaultModal extends StatelessWidget {
                   side: BorderSide(color: sevColor.withValues(alpha: 0.4)),
                   label: Text(
                     l10n.severityName(severity),
-                    style: theme.textTheme.labelSmall?.copyWith(color: sevColor, fontWeight: FontWeight.bold),
+                    style: theme.textTheme.labelSmall?.copyWith(color: sevText, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

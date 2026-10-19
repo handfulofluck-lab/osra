@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/world_class_provider.dart';
+import '../../theme/app_tokens.dart';
 
 /// Feature #5: digest notification preferences — daily/weekly email and push
 /// switches, a comma-separated recipient list, plus a dev 'send now' button
@@ -184,7 +185,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
             _initialized = true;
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpace.lg),
             children: [
               SwitchListTile(
                 title: const Text('Daily email digest'),
@@ -204,7 +205,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                 value: _push,
                 onChanged: (v) => setState(() => _push = v),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               TextField(
                 controller: _emails,
                 decoration: const InputDecoration(
@@ -212,18 +213,18 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
               // ADR-0020: the family's local hour. A parent who picks a zone here owns it: the API marks
               // the source as `parent`, and no device login can move it again (#101, #105).
               Text('Digest timezone (local send hour)', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               Text(
                 _timezone == null
                     ? 'Loading…'
                     : 'The digest is sent at 18:00 your local time${_timezoneSaving ? ' · saving…' : ''}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               DropdownButtonFormField<String>(
                 key: const ValueKey('digestTimezone'),
                 initialValue: _zoneOptions.contains(_timezone) ? _timezone : 'UTC',
@@ -233,13 +234,13 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                 ],
                 onChanged: _timezoneSaving ? null : (v) { if (v != null) _saveTimezone(v); },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
               FilledButton.icon(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save),
                 label: Text(_saving ? 'Saving…' : 'Save preferences'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               OutlinedButton.icon(
                 onPressed: _sending ? null : _sendNow,
                 icon: const Icon(Icons.send),

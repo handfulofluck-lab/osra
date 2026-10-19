@@ -7,6 +7,7 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
@@ -83,7 +84,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           title: Row(
             children: [
               Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity, dialogContext)),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpace.sm),
               Expanded(child: Text(alert.title, style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
@@ -93,7 +94,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (alert.body.isNotEmpty) Text(alert.body),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 Text('${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
                     '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
                 if (alert.createdAt != null)
@@ -102,7 +103,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   const Divider(),
                   for (final entry in alert.metadata.entries)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
                       child: Text('${entry.key}: ${entry.value}', style: Theme.of(dialogContext).textTheme.bodySmall),
                     ),
                 ],
@@ -199,9 +200,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               },
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.only(bottom: AppSpace.xl),
                 children: [
                   // NOTE: explicit empty state — without it an empty feed was a blank screen.
+                  // 200 is a deliberate vertical centring offset, not a gap on the scale.
                   if (_items.isEmpty && !_loading)
                     Padding(
                       padding: const EdgeInsets.only(top: 200),
@@ -212,7 +214,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 4),
+                          padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.lg, AppSpace.lg, AppSpace.xs),
                           child: Text(
                             _dayLabel(context, day),
                             style: Theme.of(context).textTheme.titleSmall,
@@ -225,10 +227,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             return Dismissible(
                               key: ValueKey(alert.id),
                               background: Container(
-                                color: Colors.green,
+                                color: context.tokens.ok,
                                 alignment: AlignmentDirectional.centerStart,
-                                padding: const EdgeInsetsDirectional.only(start: 24),
-                                child: const Icon(Icons.check, color: Colors.white),
+                                padding: const EdgeInsetsDirectional.only(start: AppSpace.xl),
+                                child: Icon(Icons.check, color: context.tokens.onOk),
                               ),
                               onDismissed: (_) => _ack(alert, index),
                               child: AlertTile(alert: alert, onTap: () => _showDetail(alert)),
@@ -236,7 +238,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           }),
                       ],
                     ),
-                  if (_loading) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+                  if (_loading) const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
                   if (!_loading && _hasMore)
                     Center(
                       child: TextButton(onPressed: _loadMore, child: Text(l10n.loadMore)),

@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../api/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../theme/app_tokens.dart';
 
 /// Marker hue per device status.
 double _statusHue(String status) => switch (status) {
@@ -78,22 +79,22 @@ class ChildMapSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpace.sm),
           Text('Last update: ${ping.timestamp == null ? 'unknown' : DateFormat.yMMMd().add_Hms().format(ping.timestamp!.toLocal())}'),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpace.xs),
           // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
           Text('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}'),
           if (device != null && device!.batteryPct > 0) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpace.xs),
             Text('Battery: ${device!.batteryPct}%'),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.lg),
           Row(
             children: [
               FilledButton.tonalIcon(
@@ -101,7 +102,7 @@ class ChildMapSheet extends ConsumerWidget {
                 label: const Text('Ring device'),
                 onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.md),
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.lock),
                 label: const Text('Lock device'),
@@ -162,6 +163,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
   Widget build(BuildContext context) {
     final markers = <Marker>{};
     final circles = <Circle>{};
+    final fenceColor = context.tokens.primary;
     LatLng? firstPing;
     final points = <LatLng>[];
 
@@ -184,8 +186,8 @@ class _MapBodyState extends ConsumerState<_MapBody> {
           circleId: CircleId(fence.id),
           center: LatLng(fence.lat, fence.lng),
           radius: fence.radiusM,
-          fillColor: Colors.indigo.withValues(alpha: 0.15),
-          strokeColor: Colors.indigo,
+          fillColor: fenceColor.withValues(alpha: 0.15),
+          strokeColor: fenceColor,
           strokeWidth: 1,
         ));
       }
@@ -213,7 +215,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
                   ),
         ),
         if (widget.overview.children.isEmpty)
-          const Center(child: Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No children to show')))),
+          const Center(child: Card(child: Padding(padding: EdgeInsets.all(AppSpace.lg), child: Text('No children to show')))),
       ],
     );
   }
@@ -335,7 +337,7 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
           children: [
             if (widget.children.length > 1)
               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: AppSpace.md),
                 child: DropdownButtonFormField<String>(
                   initialValue: _childId,
                   decoration: const InputDecoration(labelText: 'Child', border: OutlineInputBorder()),
@@ -347,7 +349,7 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
               controller: _label,
               decoration: const InputDecoration(labelText: 'Label (e.g. School)', border: OutlineInputBorder()),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
             Align(
               alignment: Alignment.centerLeft,
               child: Text('Radius: ${_radiusM.round()} m'),
@@ -367,8 +369,8 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
               onChanged: (v) => setState(() => _applySchoolRoutine = v),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: AppSpace.sm),
+              Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.tokens.danger)),
             ],
           ],
         ),
