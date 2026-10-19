@@ -162,8 +162,19 @@ class PairingActivity : ComponentActivity() {
         }
         setContentView(root)
         showLoading()
+        // Roadmap 3.2: a rotation must not lose a scanned review; the encoded payload is re-validated
+        // through the same state machine, so a tampered bundle cannot smuggle a different code in.
+        val restoredScan = savedInstanceState?.getString(KEY_SCANNED_QR)
+            ?.let { runCatching { PairQrPayload.decode(it) }.getOrNull() }
+        restoredScan?.let { scanFlow.scan(it.encode()) }
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
-        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm() }
+        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm(scanned = restoredScan) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val review = scanFlow.state as? PairingScanFlow.State.Review
+        if (review != null) outState.putString(KEY_SCANNED_QR, review.payload.encode())
     }
 
     override fun onResume() {
@@ -808,6 +819,9 @@ class PairingActivity : ComponentActivity() {
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        /** Roadmap 3.2: the reviewed payload survives an activity recreation. */
+        private const val KEY_SCANNED_QR = "scanned_pair_qr"
 
         /** Feature #6 runtime permissions (declared in the manifest; prompted, not required). */
         private val COMMS_PERMISSIONS = arrayOf(

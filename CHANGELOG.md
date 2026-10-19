@@ -23,6 +23,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   the QR is authoritative), shows `Server: …` and `Code: ••••16`, and pairs only when the parent taps
   **Confirm and pair**. A refused payload returns to the typed form with its reason; a denied camera
   returns with an explanation that says why. The typed path keeps its old behaviour and wording.
+- **The confirm step does not depend on the camera or on the activity staying alive.** It is plain state
+  in `PairingActivity`; `onSaveInstanceState` stores the encoded v1 payload and `onCreate` re-validates
+  it through the same parser, so a rotation keeps the review instead of silently dropping it.
 - **Permission and policy.** `CAMERA` is declared in `src/main`, so both flavours carry it;
   `uses-feature android.hardware.camera required="false"` keeps a camera-less device installable. The
   Play allow-list carries `CAMERA` with its reason (`PlayManifestPolicy.ALLOWED_PERMISSIONS`),
@@ -35,8 +38,8 @@ environment where it was written — see `docs/QA/` for the verification state.
   Play-services model download inside the five-minute flow. In the Play debug APK the ML Kit
   native/model payload is **21,103,960 bytes uncompressed** across four ABIs (the arm64
   `libbarhopper_v3.so` alone is 4,946,720 bytes; the three `.tflite` models total 880,888); an App
-  Bundle splits the native libraries per ABI at release. Play debug APK: **36,800,325 bytes**; Full
-  debug: **36,816,901 bytes**.
+  Bundle splits the native libraries per ABI at release. Play debug APK: **36,857,551 bytes**; Full
+  debug: **36,874,418 bytes**.
 - **Tests.** `PairQrPayloadTest` (13 cases: valid http/https, leading zero, trailing slash, wrong and
   missing version, short/long/non-numeric/missing code, missing/non-http/query/fragment/malformed host,
   bare code, wrong scheme/authority/path, extra parameters, masking, encode round-trip) mirrors the
