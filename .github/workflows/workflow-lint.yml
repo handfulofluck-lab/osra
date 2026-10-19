@@ -43,6 +43,13 @@ jobs:
           sys.exit(bad)
           PY
 
+      - name: Classifier self-test - a testOnly/debuggable build is not gate evidence (#178)
+        # The hardware probe refuses to run rows on a build that is not gate-eligible, and this is the
+        # pure decision it uses. The fixtures include real `dumpsys package` output from the Flip4; a
+        # regression here would silently turn the refusal back into a PASS on a debug APK.
+        shell: pwsh
+        run: ./scripts/hardware/classify-build.ps1 -SelfTest
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.
