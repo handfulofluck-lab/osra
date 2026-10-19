@@ -18,6 +18,14 @@ Nothing below is a re-run I performed, except the `file:line` re-reads of the co
 > are unchanged except for the three pointer sentences marked *(second half)* — a past state is
 > superseded here, never deleted (`AGENTS.md` §8).
 
+> **Refreshed again — 2026-10-19 18:20 +0400 (14:20Z).** **Eleven more merges** landed between
+> `025be5b` and `origin/main = 01c98a9` (10:40:18Z), and §16–§22 below record them: one row per PR with
+> the numbers **quoted**, a section on the new **process gate** (`verified-gate` — what it enforces now,
+> why it is not a required check, and what binding it would cost), the reviews that arrived in this
+> window, and an updated risk-ordered re-run list in which every earlier tamper PASS is now explicitly
+> **not evidence** (#200). §1–§15 are unchanged. **0 tester-verified, 11 author-run**; the file now holds
+> **42 merges** (`162a3e4` → `01c98a9`).
+
 ## 1. The boundary, because the filename and the clock disagree
 
 The file is named for the maintainer's local day (**UTC+0400**, the clock the day is named by), and the
@@ -755,3 +763,376 @@ Two environment deltas that bite the re-runs:
   `603a33d..025be5b`; on the maintainer's +0400 clock the "2026-10-19" day is §3's single merge
   (`4e56410`) plus all 18 above. Anyone counting a day must say which clock — the one thing this file has
   now got wrong twice, and the reason §8 repeats the three readings.
+
+## 16. The third batch — boundary, and why this one is eleven merges
+
+**Written 2026-10-19 18:20 +0400 (14:20Z), same author, same rules.** §9's rows stop at #189
+(`025be5b`, 05:43:16Z) because that was `origin/main` when §8 was written. The day did not stop there:
+
+| Reading | Range | Merges |
+|---|---|---|
+| local (+0400) | 2026-10-19 10:11:22 → **14:40:18** | 11 |
+| UTC | 2026-10-19 **06:11:22Z → 10:40:18Z** | 11 |
+| `git log --first-parent --format='%h %s' 025be5b..origin/main` | — | **11** |
+
+Every one is a PR merge on `--first-parent`; no direct push, no `merge: main into <branch>` sync at the
+top level (§1 records why those are counted separately). **This is the first window in this file where
+the local and UTC clocks agree on the date** — §1 and §8 each spend a table explaining why theirs do
+not, and the same reading applied here returns 11 in both, because the window sits entirely inside
+06:11Z–10:40Z on 2026-10-19.
+
+Two things a reader will otherwise hunt for:
+
+- **The PR numbers skip.** #192 is the **issue** #193 closes; #199 and #202 are **issues** too
+  (`gh pr view 199` → `Could not resolve to a PullRequest`). #198 merged *after* #200 despite its lower
+  number. Nothing is missing from the table.
+- **#190 is this file's own second-half PR** (`2b87c36`) and it gets a row. §9 already said the ledger's
+  own PRs are not exempt (#160, #173); the same rule applies to the PR that wrote §8–§15.
+
+## 17. The 11 merges
+
+Sorted by merge time (UTC). Quotations are verbatim from `git log -1 --format=%B <sha>` or the PR body,
+as marked with `PR:` when the number is not in the merge message. "Head" is the second parent — the sha
+the numbers should belong to.
+
+| PR | Title | Merged as (UTC · local) | Head | Who ran what · exact numbers claimed | Status |
+|---|---|---|---|---|---|
+| [#190](https://github.com/handfulofluck-lab/osra/pull/190) | docs(qa): ledger for the second half of 2026-10-19, and the four merges that shipped over an open review | `2b87c36` 06:11:22Z · 10:11:22 | `59f24a6` | **Kimi (author, docs).** *"Docs-only; links 0/141. … Nothing was promoted: 18 author-run, 0 tester-verified."* `PR:` *"0 broken link(s) out of 141 checked in 71 Markdown file(s)"*. It is the PR that wrote §8–§15 | author-run |
+| [#191](https://github.com/handfulofluck-lab/osra/pull/191) | feat(parent-app): consent status and withdrawal screen (plan 3.7) | `675a118` 06:20:18Z · 10:20:18 | `b315e5f` | **Kimi (author).** *"Evidence at b315e5f (CI 7/7): vitest 382 passed, flutter 218 passed (14 new consent tests + 2 RTL), analyze clean, API untouched otherwise."* Probe and e2e **not run from the branch** and disclosed: *"the API at 127.0.0.1:3000 predates this tree and must not be restarted from a feature branch"*. `PR:` fail-before on the one API field — *"Tests 1 failed \| 18 skipped (19)"* → *"19 passed"* | author-run — the live half not run, disclosed |
+| [#193](https://github.com/handfulofluck-lab/osra/pull/193) | fix(android): the block exemption is the agent's own package, not the whole `com.familyshield` namespace (closes #192) | `7e5bc42` 07:42:58Z · 11:42:58 | `646685a` | **Kimi (author).** *"Fail-before reproduced on the old predicate (2 tests red), then 345 tests per flavour green, merged-manifest gate green."* `PR:` `suites=52 tests=345 failures=0 skipped=0` per flavour; manifest gate *"2 result set(s) checked, all assertions ran and passed"*. Hardware row **left open by the PR itself**: *"install a stub com.familyshield.<x> and open it during bedtime … it needs no device admin, so the testing lane can run it"* | author-run — the bypass row the fix is about has never been measured on a phone |
+| [#194](https://github.com/handfulofluck-lab/osra/pull/194) | fix(android): PiP and split-screen no longer escape the lock or block overlay (closes #175) | `bf8e1f8` 07:53:29Z · 11:53:29 | `0646e94` | **Kimi (author).** *"Evidence at 0646e94 (CI 7/7 after merging main): 354 tests per flavour; the new MultiWindowCoverageTest fails 5 of 10 against the old active-window-only decision and passes after. Not measured on hardware — the phone's Knox state blocks a clean run."* `PR:` *"53 suites, 354 tests, 0 failures, 0 errors, 0 skipped"* per flavour; the fail-before is *"10 tests completed, 5 failed"* | author-run — and the merge message's `closes #175` did **not** close it: #175 is open, re-stated by Claude at 08:49:09Z (§19) |
+| [#195](https://github.com/handfulofluck-lab/osra/pull/195) | fix(api): after an MFA recovery, the password alone cannot open a session (closes #183) | `da2ee94` 08:03:57Z · 12:03:57 | `5c5fc4d` | **Kimi (author).** *"Evidence at 5c5fc4d (CI 7/7 after merging main): vitest 386 passed; fail-before is 'expected false to be true' for mfaEnabled and 'expected 401 to be 200' for verify; probe 143/0 with O12/O13 on a spare :3419; e2e 69/69; flutter 219; probe-integrity 2 added, 0 removed."* `PR:` *"probe integrity: … (check=120 …) -> (check=122 …)"* | author-run — merged 31 m 32 s after a review whose two required changes never landed (§19), and #183 closed anyway |
+| [#196](https://github.com/handfulofluck-lab/osra/pull/196) | ci: block merging until another agent has verified the PR head | `a69f955` 08:23:07Z · 12:23:07 | `7e1236d` | **Kimi (author + verifier).** *"Verified by the lead at 7e1236d: workflow checked line by line (label test, signed-comment scan, sha-prefix comparison against the current head, comment-then-label ordering, read-only token), check-workflows 0/0 across 5 files, links 0/142."* The head **is** the verifier's own commit — the self-verification #198 was opened to forbid. Its own `verified-gate` run at that head failed in **0 s with no jobs** (run `39220893201`, 08:10:31Z; the broken YAML #197 diagnosed) | author-run — **self-verification, disclosed**; carries `state:verified` |
+| [#197](https://github.com/handfulofluck-lab/osra/pull/197) | fix(ci): `verified-gate.yml` parses again; workflow-lint now really parses YAML | `03161bb` 08:39:09Z · 12:39:09 | `36a37c4` | **Kimi (author).** *"Gates: PyYAML parses both changed workflows; node scripts/check-workflows.mjs --strict 0/0 across 5 files; node scripts/check-docs-links.mjs 0/142."* The merge message names its own red check: *"this PR's own verified-gate check is red for the honest reason — it is my PR and nobody else has verified it, and both verifiers are idle. The gate is NOT yet a required check"* | author-run — verified-gate **red at merge**, disclosed |
+| [#200](https://github.com/handfulofluck-lab/osra/pull/200) | fix(hardware): a testOnly/debuggable build is not gate evidence (closes #178) | `fa6f7c5` 09:03:01Z · 13:03:01 | `97fd2f0` | **Kimi (author, per his own comment "produced by a Kimi-run subagent") verified by the lead.** *"this is the first PR where verified-gate actually ran the way it was designed: the label alone was not enough, the signed comment naming the exact head was required, and the check went green only after both existed."* *"8/8 classifier fixtures including verbatim Flip4 output, a deliberately flipped fixture goes red, the three probe outcomes exercised against a fake adb"*; `PR:` every probe outcome pasted — `exit=3` on a test-only build, `#1 … -> FAIL : NOT EVIDENCE (testOnly/debuggable build)`, `run.gateEligible: false` | author-run — the first **green** `verified-gate` before a merge; the signer is the lead and §18.3 explains why that passed |
+| [#198](https://github.com/handfulofluck-lab/osra/pull/198) | ci(verified-gate): no self-verification by commit author; signer is the last signature | `2fc03f2` 09:15:28Z · 13:15:28 | `d962756` | **Kimi (merge) + Claude (the branch's one real commit).** *"Verified by the lead at d962756: the branch's only real commit is Claude-authored, its one Kimi commit is a two-parent merge (git log %ae %p), YAML parses, check-workflows 0/0 across 5 files, and this PR's verified-gate check went green only after the label and the signed comment named that head."* `PR:` *"node scripts/check-workflows.mjs --strict: 0 errors, 0 warnings"* | author-run — **the closest call in the batch**: one non-author record at the merged sha, but the signer is also the merger and the authorship rests on a commit email (§18.3). Not promoted |
+| [#201](https://github.com/handfulofluck-lab/osra/pull/201) | feat(3.4): the child app reports its installed apps and parents pick from them | `96d0d2c` 09:55:25Z · 13:55:25 | `7c1651a` | **Kimi (author).** *"Evidence at 7c1651a: vitest 395 passed (9 tests fail before the routes exist); probe 151/0 on a spare :3114 with G24-G29, J3e and N6f …; e2e 69/69."* `PR:` *"=== E2E: 71 passed, 0 failed ==="*, *"362 tests / 0 failures / 0 errors / 0 skipped, 54 suites per flavour"*, `flutter` *"+226: All tests passed!"*, integrity *"no assertion removed or demoted (7 added, 0 promoted)"*. **The merge message's e2e total is one run behind its own PR body** (§21). *"verified-gate is red for the honest reason … the fifth such disclosure today"* | author-run — merged 8 m 57 s after a two-change review; one of the two landed (§19) |
+| [#203](https://github.com/handfulofluck-lab/osra/pull/203) | feat(3.8): the last five screens onto the design tokens; one severity rule | `01c98a9` 10:40:18Z · 14:40:18 | `b19697a` | **Kimi (author).** *"flutter test 236 passed, analyze clean."* `PR:` *"flutter test → 237 passed (226 before this branch)"* and the raw *"01:35 +237: All tests passed!"* — **the two disagree by one and neither is withdrawn** (§21). Contrast computed for every severity label in both themes: *"worst case 4.70:1 light, 4.97:1 dark"*. One deliberate light-mode change named: *"#4CAF50 (white icon at 2.78:1) to tokens.ok #1B5E20 (7.87:1)"*. *"verified-gate is red for the honest reason (Kimi-authored, both verifiers idle, gate non-binding)."* | author-run — **zero review comments on the PR**, red check disclosed |
+
+**Totals: 11 merges — 0 tester-verified, 11 author-run, 0 with no run at all.** Ten changed a non-Markdown
+file (four are CI workflow/script changes: #196, #197, #198, #200) and one is docs-only (#190). Across the
+three batches this file now holds **42 merges** (`162a3e4` → `01c98a9`): 13 + 18 + 11, and **all 42 rows are
+`author-run`**. The programme's only `tester-verified` row is #125, and it lives in yesterday's ledger's 31
+(`VERIFICATION-LEDGER-2026-10-18.md` §2) — it is not one of these rows and this file does not inherit it.
+
+Claims inside these PRs that **no one has run**, named so a reader does not assume otherwise:
+
+- **#193** — the hardware half of the fix it ships: a sideloaded `com.familyshield.unblock` opened during
+  bedtime is now blocked. JVM-proven twice over, device-unproven. It needs no device admin, so unlike the
+  tamper rows (§20 Block B) this one is **pending, not blocked**.
+- **#195** — all three of Claude's open points (§19): the dead-end parent message, the self-inflicted
+  lockout, and #183's finding 2 (`incrby` spends the code before the transaction commits). `O12`/`O13`
+  cover the login refusal, not the recovery window's failure modes.
+- **#194** — PiP. The change judges every visible window and re-raises at most three times per signature;
+  whether the overlay sits **above** the pinned window, and whether the video keeps playing, is what
+  ADR-0026 leaves to a device — and no device can run it (§20 Block B). Also unrun: the review's ask that
+  an exhausted budget surface to the parent as an enforcement gap.
+- **#200** — every Phase 1 tamper row on a release-signed APK. The PR's own words: *"the Phase 1 gate is
+  now explicitly unproven until those rows are re-measured on the release-signed APK. That was already
+  true; it is now visible."* §20 Block B is the consequence table.
+- **#191** — the screen against a live API (probe/e2e not run), and the `records` field's probe coverage,
+  which the PR names as missing.
+- **#201** — the device row (the reporter on a phone: none, no usable admin state) and the picker on a
+  real family's app list; `e2e` 71 is one run, at the author's hands.
+- **#203** — dark mode by eye on the five migrated screens (widget tests only), and the ~84 px
+  search-safety header overflow the run found, which has a fix but no second reader.
+
+## 18. The process gate — `verified-gate`, what it enforces today, and why it is not binding
+
+This is the batch's one structural change: for the first time there is a **machine** check for
+`AGENTS.md` §6.5's oldest rule, "the author of a change is never its only verifier". It arrived in four
+PRs in **52 minutes** (#196 the gate at 08:23Z, #197 repairing its YAML at 08:39Z, #200 the
+build-evidence rule that used it at 09:03Z, #198 closing the self-verification hole at 09:15Z). What
+follows separates what it *does* from what it *is not yet*, because the difference is a maintainer action,
+not code.
+
+### 18.1 What it enforces, exactly
+
+Three conditions, one trap, and a read-only token. Line references are
+`.github/workflows/verified-gate.yml` at `01c98a9`.
+
+| # | Condition | Where | Note |
+|---|---|---|---|
+| 1 | The PR carries the `state:verified` label | `:52` | Fails with *"Not verified: PR #N has no 'state:verified' label (AGENTS.md §6.5, §10)"* |
+| 2 | A PR comment's **last** `— Antigravity`, `— Claude` or `— Kimi Code` signature is the signer, and that comment contains `Verified-sha: <7–40 hex>` which is a prefix of the PR's **current** head | `:71`, `:82` | "Last signature, not any mention" — #198's fix; a comment that quotes another agent's signature no longer counts as that agent's |
+| 3 | A `— Kimi Code` signature does **not** count when the PR has ≥1 Kimi-authored **non-merge** commit, matched on `commit.author.email == "kimi@familyshield.local"` | `:62` | A merge of `main` into the branch is bookkeeping and does not count (§6.5 rule 6) |
+| trap | Adding (or removing and re-adding) the **label** is what re-runs the job — a comment alone re-runs nothing; any push after verification changes the head and turns the check red until the new head is verified | `:31` | §6.5 rule 4 ("the verified sha is the merged sha") made mechanical |
+| limit | `permissions: contents: read` + `pull-requests: read` | `:33-35` | The job cannot remove a label or edit a comment; there is no silent bypass inside it |
+
+### 18.2 It is **not** a required check — measured, not assumed
+
+```bash
+gh api repos/handfulofluck-lab/osra/branches/main/protection
+# → {"required_pull_request_reviews":{…,"required_approving_review_count":0},
+#    "enforce_admins":{"enabled":false}, "required_conversation_resolution":{"enabled":true}, …}
+#    There is NO "required_status_checks" member in the response at all.
+```
+
+So a red `verified-gate` blocks nothing today, and four merges in this batch say so in their own merge
+messages (#196, #197, #201, #203). The check's whole history is 19 runs between 07:36Z and 10:27Z:
+**2 successes, 17 failures**, and the two successes are #200's head (`97fd2f0`, 09:01:07Z) and #198's
+(`d962756`, 09:05:03Z). Per merge:
+
+| PR | `verified-gate` on the head that landed | Merged |
+|---|---|---|
+| #190, #191, #193, #194, #195 | **no run** — the workflow first ran at 07:36Z, on #196's branch | 06:11Z–08:03Z |
+| #196 | **failure, 0 s, no jobs** (run `39220893201`, 08:10:31Z) — the YAML #197 fixed | 08:23:07Z |
+| #197 | failure (Kimi-authored, nobody else verified) | 08:39:09Z |
+| #200 | **success** 09:01:07Z | 09:03:01Z |
+| #198 | **success** 09:05:03Z | 09:15:28Z |
+| #201 | failure 09:46:39Z | 09:55:25Z |
+| #203 | failure 10:27:43Z | 10:40:18Z |
+
+**2 of 11 merges had a green gate on the head that landed.** That is the number a reader should carry:
+the gate exists, it works, and it was binding on two merges out of eleven.
+
+### 18.3 Who could actually sign — the window's verification records, read as data
+
+- **`Verified-sha:` comments in the repo: a search for the literal string returns six PRs** — #63, #64,
+  #65 (2026-10-16/17) and #196, #198, #200 (today). In this window: **three, all signed `— Kimi Code`.**
+- **Comments signed `— Antigravity`: zero** on any of the 11 PRs. Of the 11, seven have no comments at all
+  or only the lead's; #193, #194, #195 and #201 carry one `— Claude` review each and **none of them
+  contains a `Verified-sha:` line** — a review is not a verification record under §6.5 rule 6.
+- **Under the rule as it now stands the three signatures split.** #196's is **ignored** (its head
+  `7e1236d` is a Kimi non-merge commit). #198's and #200's are **accepted — for the commit email, not for
+  authorship**: #198's one real commit is `329687611+handfullofluck-lab@users.noreply.github.com`,
+  #200's is `handfullofluck@gmail.com`, and #200's verification comment says the PR *"was produced by a
+  Kimi-run subagent"*. The lead also commits under the noreply address in the same window (#196's
+  `ea3c439`). One shared account (§11) means the email test cannot separate the agents; the workflow's own
+  header says as much (`:19-21`) and this batch is the measurement of it.
+- **Two rows are therefore arguable, and neither is promoted here.**
+  - **#198** is the closest thing to a non-author verification in the batch: the change is Claude's (per
+    the commit and per the merge message), the record is the lead's at the merged head `d962756`, and the
+    check was green before the merge. §2's definition is met on its face. It is **not** promoted because
+    the same verifier is the merger and the authorship attribution is a single email on an account all
+    three agents use — exactly the ambiguity §11 exists for. What would settle it is one comment signed
+    `— Claude` or `— Antigravity` with `Verified-sha: d962756`. Nobody has written it.
+  - **#200** is the batch's only green-gate merge that a strict reading calls a self-verification: the
+    verification comment names the lead, the PR came from a Kimi-run subagent, and the gate passed because
+    the commit email was not `kimi@familyshield.local`. It stays `author-run`.
+
+### 18.4 What binding it would cost, given both verifiers' availability
+
+Binding is two maintainer actions, not a code change: make `verified-gate` a **required status check** on
+`main`, and turn **"Do not allow bypassing the above settings"** on (`enforce_admins`), because every agent
+pushes as a repo admin. #196's merge message records them as *"Binding step for the maintainer"*.
+
+What that would do to **today's** eleven merges, from the tables above:
+
+| Consequence of binding today | Evidence |
+|---|---|
+| **9 of 11 would not have merged.** Only #198 and #200 had a green check on the landed head | §18.2 |
+| **The lead could not sign 9 of 11** — those heads carry a `kimi@familyshield.local` commit (#190, #191, #193, #194, #195, #196, #197, #201, #203); #198 and #200 carry none | `git rev-list --no-merges <merge>^1..<head>`, author email per commit |
+| **The wait would be on verifiers who wrote no verification line in this window** — Antigravity: no comment on any of the 11. Claude: four comments (three reviews at 07:32Z, one at 09:46Z) and issue #199 at 08:49Z, none with a `Verified-sha:` line | §18.3, PR comment threads |
+| **A security fix would have stalled.** #195 closes a `security/high` account-takeover window (#183) and merged 31 m 32 s after its review; bound, it would have waited for a signature that was not coming | §19 |
+| **Every MFA, consent, installed-apps and token change would wait on one person** — the four product PRs in the batch (#191, #195, #201, #203) are all Kimi-authored | §17 |
+
+The decision is not "the gate is wrong"; it is that **the gate has no second signer on this host**. #197's
+merge message states the same in its own words: *"I am not binding it while the only active verifier is the
+author of most changes: that would stall every merge, including security fixes. Making it required is the
+maintainer's decision and needs an availability plan for Claude/Antigravity."* #198's does too: *"I can no
+longer verify any PR that carries a Kimi commit, so my own PRs now need Claude or Antigravity."*
+
+**What would make binding safe, in order.** (1) A named verifier who is reachable inside the merge cadence
+— the ask per PR is one signed comment with a `Verified-sha:` line, then the label, which is two minutes of
+work and is the whole of §6.5 rule 6. (2) The documented override kept real (§6.5's maintainer override,
+named in the merge message and recorded in the discussion log) so a security fix is never hostage to a
+sleeping verifier. (3) Then bind, and re-measure with the table above as the baseline. Until (1), binding
+converts a **disclosed** fact ("merged on the author's run") into a **stalled** programme — worse evidence,
+not better.
+
+**What the gate buys even unbound, and this is real:** an unverified merge is now visible in the PR's
+checks, and the merge messages name it. #201 and #203 both say *"verified-gate is red for the honest
+reason"* in the merge body, which is a sentence that did not exist before 2026-10-19.
+
+## 19. The reviews in this window, and what the tree does not do yet
+
+Claude reviewed four of the eleven (#193, #194, #195 at 07:32Z; #201 at 09:46Z) and collected the open
+points as issues #199 (08:49:12Z) and a re-statement on #175 (08:49:09Z). Every merge below happened
+**after** the review that named changes, and none of the merge messages mentions the review. Checkable in
+one sitting, no phone and no stack:
+
+| PR | Review → merge | What the review required | In the tree at `01c98a9`? | Tracked by |
+|---|---|---|---|---|
+| #193 | 07:32:28Z → 07:42:58Z (**10 m 30 s**) | *"correct, ready for verification"* plus one ask: a guard test asserting `OWN_PACKAGE == BuildConfig.APPLICATION_ID` so a future `applicationIdSuffix` turns red in CI | **No.** `apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/EssentialPackages.kt:65` is a hard-coded `const val OWN_PACKAGE`, and `grep -rn "APPLICATION_ID" apps/child-android/app/src` returns nothing | [#199](https://github.com/handfulofluck-lab/osra/issues/199) item 4 |
+| #194 | 07:32:30Z → 07:53:29Z (**20 m 59 s**) | Merge as the split-screen half; PiP needs a window, not an activity (so #175 stays open); two small items — (1) an exhausted retry budget must surface to the parent as an enforcement gap, (2) recycle every window/root | **(2) yes, (1) no.** `AccessibilityMonitorService.kt:198,219,229` recycle and `:209-210` names the finding; the exhausted budget only logs — `:163-171` is a `Log.w` and nothing reaches the parent | [#175](https://github.com/handfulofluck-lab/osra/issues/175) (open; PiP half), (1) **untracked** |
+| #195 | 07:32:25Z → 08:03:57Z (**31 m 32 s**) | *"the design is right, two changes before merge"* — (1) the `mfa_reenroll_required` message is a dead end (it tells the parent to use an unused recovery code, and the recovery deleted them all), (2) design the lockout away: keep unused codes at `/mfa/recover`, delete at `/mfa/verify`, add `Parent.mfaRecoveryStartedAt` | **Neither.** `apps/parent-app/lib/providers/auth_provider.dart:200-201` still says *"Sign in with an unused recovery code to finish setting it up."*; `grep -rn mfaRecoveryStartedAt services/api/src services/api/prisma` → no output | [#199](https://github.com/handfulofluck-lab/osra/issues/199) items 1–3 (item 3: #183's finding 2 is still open even though #183 closed) |
+| #201 | 09:46:28Z → 09:55:25Z (**8 m 57 s**) | Two changes: (1) mark essential apps in the picker — `essential` on `LauncherApp`, stored on `DeviceApp`, rendered *"Always allowed (needed for calls and safety)"* and not selectable, because a rule on an exempt app silently does nothing; (2) show the package id under every label, because the label is chosen by whoever built the app | **(2) yes, (1) no.** `apps/parent-app/lib/features/rules/rules_editor_screen.dart:700` renders `subtitle: Text(app.packageId)`; `apps/child-android/app/src/main/java/com/familyshield/agent/apps/InstalledAppsPolicy.kt:11-16` still has only `packageId`, `label`, `isSystem`, `launchable` | **nothing** — (1) has no issue |
+| #203 | no review exists | — | — | — |
+
+Reproduce the four headline claims:
+
+```bash
+grep -rn "APPLICATION_ID" apps/child-android/app/src                                   # #193: no output
+grep -n "unused recovery code" apps/parent-app/lib/providers/auth_provider.dart          # #195: still there
+grep -rn "mfaRecoveryStartedAt" services/api/src services/api/prisma                     # #195: no output
+sed -n '11,17p' apps/child-android/app/src/main/java/com/familyshield/agent/apps/InstalledAppsPolicy.kt  # #201: no essential
+```
+
+**What this section does not say.** It does not say the merges were wrong: #193's fix is correct and its
+own fail-before is quoted raw (2 red tests on the old predicate), #194's snapshot model is what the
+review asked for and its recycling half landed, #195's design is the one the review approved in principle,
+and #201's permission decisions were checked and agreed before the two changes. It says the **record**
+reads as if the reviews were answered. **Two of the seven named changes landed and five did not; two of
+those five have no issue.** The honest merge line would have been one sentence — *"merged with #199 items
+1–2 open; the parent message and the lockout design are next"* — and the next reader would not have to
+rebuild this table.
+
+One more, because it is a rule and not a judgement: **three of the eleven merged with no state label at
+all** (#194, #197, #201). `AGENTS.md` §10 rule 4 says no label means WIP.
+
+## 20. The re-run list for this window, in risk order
+
+Same rule as §5 and §13: **one live gate at a time, ≥ 60 s apart**; the shared `:3000` rate-limits at
+200 req/min and a second concurrent gate aborts with exit 2 (the #114/#129 contract, not a failure).
+Nothing in §5 or §13 is withdrawn — this block is additive, and #195 and #193 go **first** because they
+are the batch's two security fixes and both merged with their reviews unanswered.
+
+### Block A — the two security fixes (highest risk first)
+
+1. **#195 — MFA recovery, and the window it leaves open** (`da2ee94`). Two things to re-run, and they are
+   different in kind: the fix, and the three points the review left open.
+
+   ```bash
+   # the fix: recover, then a password-only login must mint nothing
+   curl -s -XPOST http://127.0.0.1:3419/v1/auth/mfa/recover -H 'content-type: application/json' \
+     -d '{"email":"<acct>","password":"<pw>","code":"XXXX-XXXX-XXXX-XXXX"}'
+   curl -s -XPOST http://127.0.0.1:3419/v1/auth/login -H 'content-type: application/json' \
+     -d '{"email":"<acct>","password":"<pw>"}'
+   #   pass = 401 {"error":"mfa_reenroll_required"}, and NO token / refreshToken / recovery token
+   ```
+
+   Then the numbers: vitest **386**, probe **143/0** with `O12`/`O13`, e2e **69/69**, `flutter test` **219**,
+   integrity **2 added, 0 removed** — all claimed at `5c5fc4d` on a spare `:3419`. *Apply migration `0017`
+   first* (§13's warning still holds). Then, as **evidence for #199, not as a regression hunt**: (a) the
+   dead-end message at `auth_provider.dart:200` — what a parent sees after a recovery; (b) `incrby`
+   rejecting must not spend the recovery code (today `routes/auth.ts:502` runs the revocation **after**
+   the transaction, which is #183's finding 2 and is still open); (c) the lockout path — lose the
+   15-minute token before `/mfa/verify` and there is no self-service way back.
+
+2. **#193 — the namespace-prefix bypass, and the hardware row nobody ran** (`7e5bc42`). The JVM half
+   reproduces cheaply: restore the old predicate and watch exactly **2** tests go red
+   (`RuleRepositoryEssentialExemptionTest`, `EssentialPackagesTest`), then **345 tests per flavour** and
+   the merged-manifest gate green. The half that matters is the one the PR left open and that needs **no
+   device admin**: build a throwaway APK with `applicationId com.familyshield.unblock` and a launcher
+   icon, install it, set bedtime active, open it → the overlay must come up and the logcat line must name
+   `com.familyshield.unblock`. Before #193 this was the cheapest real bypass in the tree; a PASS here is
+   the only thing that shows it is closed on a device.
+
+### Block B — the gate's own evidence rule, which invalidates earlier PASSes rather than testing a fix
+
+3. **#200 — every Phase 1 tamper PASS we hold is now explicitly not evidence** (`fa6f7c5`). The rule is
+   `docs/QA/TESTING-STRATEGY.md` §3b (`:144-173`): **gate-eligible evidence for the Phase 1 tamper rows is
+   a release-signed build installed through `scripts/hardware/android-signing-tr07.ps1`**, and the run's
+   table must name the build kind. The tooling enforces it before row 1: a `test-only`/`debuggable` build
+   is refused with **exit 3 and nothing measured**, or under `-AllowTestBuild` every row is prefixed
+   `NOT EVIDENCE (testOnly/debuggable build)` and the JSON carries `gateEligible: false`.
+
+   **So these rows change status, and it is a status change, not a re-run:**
+
+   | Row | Measured on | Now reads |
+   |---|---|---|
+   | TR-21 rows 1 and 3 (`main@7435592`, `main@4adc601`) | Full/Play **debug** APKs | **NOT EVIDENCE** — row 1's `DELETE_FAILED_DEVICE_POLICY_MANAGER` was a *test* admin's; the release admin is the thing the gate is about |
+   | TR-22 rows 1 and 3 (`main@40f4f61`, 474 s measurement) | Full **debug** APK (`testOnly` since #170) | **NOT EVIDENCE** — the behaviour is measured, the protection is not |
+   | TR-15 (the ten-bypass Phase 1 gate) | never measured | **NOT EVIDENCE, still** — it has no run at all |
+   | TR-10 (1.1/1.2 tamper: `adb uninstall` must fail, admin-reactivation alerts, 3.3 s measurement) | Play **debug** build | **NOT EVIDENCE** — same rows as TR-21, same reason: a `testOnly` admin is removable by `dpm` and replaceable by `adb install -r` |
+   | TR-23 (21.2 s pairing proxy) | Full **debug** | **proxy, not gate evidence** (§3b: *"a number taken on a debug install is a proxy for the release experience and cannot open a gate"*) |
+   | TR-16, TR-17, TR-14, TR-13, TR-18, TR-19's S1/S1b | debug builds (TR-18: a release-variant APK) | **unaffected** — §3b:160-162 keeps safety and behaviour rows eligible (S-rows explicitly), provided the record names the build kind. TR-18 already measured the release variant, which is why its FGS/cleartext assertions are the one set here that §3b's first sentence does not disqualify — it did not measure a tamper row |
+
+   **And there is no measurement path on this host, twice over** (§11): the release build is HTTPS-only
+   (`cleartextTrafficPermitted` false, TR-18) and there is no HTTPS API endpoint here; the Flip4 cannot
+   activate a device admin at all since its Knox row went stale (#181, #185). So the tamper rows are
+   **blocked**, not pending — a planner who reads "open" will schedule them and lose a day. What *can* be
+   run today, and costs nothing:
+
+   ```bash
+   pwsh -NoProfile -File scripts/hardware/classify-build.ps1 -SelfTest      # expect 8/8, exit 0
+   # on the debug APK, with a fake adb or a real device: the probe must REFUSE
+   ./scripts/hardware/android-bypass-probe.ps1 -Serial <serial> -Port <port> -StateFile <state.json> -CheckBuild
+   #   expect: REFUSED: … is a test-only build (flags=[… TEST_ONLY]) … exit=3
+   ```
+
+4. **#194 — PiP, and the one item that needs no device** (`bf8e1f8`). Reproduce the fail-before (**5 of
+   10** in `MultiWindowCoverageTest` against the active-window-only decision) and **354 tests per
+   flavour**. Then the two device questions ADR-0026 leaves open are **blocked** (§11); the free one is
+   the review's item (1): read `AccessibilityMonitorService.kt:163-171` and confirm that an exhausted
+   retry budget produces a `Log.w` and nothing the parent can see — which is what #175's re-statement at
+   08:49:09Z says is still missing.
+
+### Block C — the API surfaces and the clients
+
+5. **#191 — the consent `records` field** (`675a118`). vitest **382** reproduces; then the live half the
+   PR did not run, on a branch-built server: `GET /v1/family/children/:id/consent` must return `records`
+   including revoked and expired rows, and the parent screen's five states must derive from it. The probe
+   gap the PR names (`J3` checks enforcement, not `records`) is the cheap fix here.
+6. **#201 — installed apps** (`96d0d2c`). vitest **395** (9 fail before the routes exist), probe **151/0**
+   with `G24–G29`, `J3e`, `N6f` on a spare port, e2e **71/71**, Android **362 tests / 54 suites per
+   flavour**, `flutter` **226**. Two decisions to test rather than re-read: the read is gated on `rules`,
+   not `devices` (a co-parent admitted only for `alerts` must get `403` — `N6f` pins it), and the write is
+   `requireOwnDevice` (a device reporting **another** device's inventory must be refused). The device row
+   is blocked; the picker is widget-tested.
+7. **#203 — the tokens, and one number to settle** (`01c98a9`). `flutter test` — **237** in the PR body,
+   **236** in the merge message; run it and record which. Then the part no test covers: dark mode by eye
+   at 320×568 on the five migrated screens, and the ~84 px search-safety header overflow the run found
+   (fixed; no second reader).
+
+### Block D — docs and CI workflows (a diff read, §6.5's proportional check)
+
+8. **#190, #196, #197, #198, #200's docs** — every cited `file:line` must say what the text claims. While
+   in there, the two questions §18.3 leaves open are answerable with one comment each: a `Verified-sha:
+   d962756` signed by a second agent turns #198 into this file's **first** `tester-verified` row (the
+   programme's second, after #125), or a decision that it stays `author-run`; and `TEST-REQUESTS.md`'s
+   TR-21/TR-22/TR-23 status cells still read **PASS** for rows §20 Block B now calls **NOT EVIDENCE** — a
+   superseding note is owed there, and this ledger is not the file that owns them.
+
+## 21. The counts moved again — use these at `01c98a9`
+
+§6's numbers were true at `4e56410`, §14's at `025be5b`. At `origin/main = 01c98a9`:
+
+| Gate | §6 | §14 | Now | Set by |
+|---|---|---|---|---|
+| `pnpm --filter @familyshield/api test` | 361 | 381 | **395** across 34 files | #162 363, #168 369, #180 381, #191 382, #195 386, #201 395 |
+| `qa-probe` | 130 | 141 | **151** (new since §6: `O1`–`O13`, `G24`–`G29`, `J3e`, `N6f`) | #180 141, #195 143, #201 151 |
+| `e2e` | 69 | 69 | **71** | #201 (*"E2E: 71 passed, 0 failed"*) — **note:** #201's merge message still says `69/69`, one run behind its own PR body |
+| `check-probe-integrity` | 0 removed | *"12 added, 0 removed"* | `check=129` at #201 (*"7 added, 0 promoted"*) | run it; do not trust a total from here |
+| merged-manifest gate | 2 result sets | 10 named assertions | **unchanged since #174** — Play 6 / Full 4, four `testOnly` | #193 reports the same 10 green |
+| `flutter test` | 146 | 202 | **237** per the PR body, **236** per the merge message — unresolved | #161 158, #184 184, #191 218, #189 202, #195 219, #201 226, #203 236/237 |
+| Android JVM | 267 / flavour | 344 / flavour | **362 tests, 54 suites per flavour** | #193 345, #194 354, #201 362 |
+| `check-docs-links` | 132 | 141 | **144** (142 before this refresh) | #196/#197/#200 142; §16–§22 and the board line +2 |
+| `verified-gate` | — | — | 19 runs, **2 green**, **0 required** | §18.2 |
+
+Two environment deltas that bite the re-runs: **migration `0017_parent_mfa_recovery_codes`** must be
+applied before any MFA row (§13), and **`adb install -t`** is mandatory for every debug build since #174.
+A third joins them with #200: `scripts/hardware/android-bypass-probe.ps1` now **refuses to measure
+anything** on a debug build unless `-AllowTestBuild` is passed, and its `bypass-probe.json` shape changed
+from a top-level array to `{ run, results }` — an external consumer that reads the old shape will break,
+and no in-repo consumer reads it.
+
+## 22. What this refresh is not
+
+- **Not a re-verification.** No gate in §17 was re-run to write it. The commands I ran are
+  `node scripts/check-docs-links.mjs` (raw output in the PR), `git log`/`git show`/`git rev-list` for the
+  shas, times, heads, parents and author emails, `gh pr view`/`gh issue view`/`gh api` for the PR bodies,
+  comment threads, check runs and branch protection, and the `grep`/`sed` reads of
+  `verified-gate.yml`, `auth_provider.dart`, `EssentialPackages.kt`, `InstalledAppsPolicy.kt`,
+  `rules_editor_screen.dart`, `AccessibilityMonitorService.kt`, `TESTING-STRATEGY.md` §3b and
+  `check-merged-manifest-gate.mjs` that the "still true at `01c98a9`" claims rest on.
+- **Not a promotion.** All 11 rows are `author-run`, including #198 (the batch's only non-author record)
+  and #200 (its only green-gate merge). §18.3 states exactly what would change either verdict: one
+  comment. **0 tester-verified in this window.**
+- **Not a verdict on the process gate.** §18 records what it enforces (`:52`, `:62`, `:71`, `:82`), that it
+  is not required (`gh api … /protection` has no `required_status_checks` member), what binding would have
+  cost today (9 of 11 merges, and #195's security fix), and what has to exist first. The decision is the
+  maintainer's, per §6.5's own override clause.
+- **Not a claim that §19's findings are permanent.** Three of the five unlanded review points are tracked
+  by [#199](https://github.com/handfulofluck-lab/osra/issues/199) (its items 1, 2 and 4) and the PiP half
+  by [#175](https://github.com/handfulofluck-lab/osra/issues/175); **two are tracked by nothing** — #194's
+  exhausted-budget-to-parent item and #201's `essential` flag — and that, not the review's lateness, is
+  the finding.
+- **Not a substitute for a `TR-*` row.** When a verifier runs one of §20's rows, the record belongs in
+  [`TEST-REQUESTS.md`](TEST-REQUESTS.md) with raw output, and this file can then cite it.
+- **Not the whole day, in either clock.** This file now holds `162a3e4..01c98a9` in three batches
+  (§3 13, §9 18, §17 11); with the 2026-10-18 ledger that is `603a33d..01c98a9`, **73 merges** (31 + 42),
+  which supersedes §7's "62" and §15's "not the whole day" arithmetic. The one thing this file has got
+  wrong twice is counting a "day" without saying which clock — §16 says it for this batch, and the answer
+  is that 06:11Z–10:40Z is the same date in both.
