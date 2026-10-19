@@ -34,6 +34,17 @@ environment where it was written — see `docs/QA/` for the verification state.
   sheet over the launcher (dismiss it before launching), and the One UI admin sheet's click target is the
   Activate row, not the button. Evidence:
   `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-PAIRING-TIME.md`.
+- **Diagnosed (#181, 2026-10-19).** The sheet is not inert and the app is not at fault: the tap runs
+  `SecDeviceAdminAdd.addAndFinish()`, and Samsung's Knox registry throws
+  `IllegalArgumentException: Admin is already added` because it still lists the component although
+  `dumpsys device_policy` shows no active admin. The Knox row is created by an activation **through the
+  sheet** and is not cleared by AOSP `dpm remove-active-admin` — the cleanup this repo documents for
+  debug builds — so one shell cleanup after a UI activation poisons every later UI activation on that
+  phone. A fresh component activates through the same sheet; a build without `testOnly` fails
+  identically. Safe cleanup on Samsung is Settings → Device admin apps → Deactivate; `docs/TESTING.md`
+  §5, §5h, §6 and §7 now carry the trap. The Flip4 used for this diagnosis still has a stale Knox row
+  for `…FamilyShieldDeviceAdmin` that needs a maintainer decision (factory reset or equivalent); the
+  app, its admin, the reverse and the pairing rows were cleaned up.
 ### API — one-time MFA recovery codes (ADR-0023 Option A, roadmap 3.3, `feat/23-mfa-recovery-codes`)
 - **What a parent can now do.** With MFA on, the account has ten single-use recovery codes as well as
   the authenticator. `POST /v1/auth/mfa/verify` returns them (formatted `XXXX-XXXX-XXXX-XXXX`) in the
