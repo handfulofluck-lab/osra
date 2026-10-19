@@ -1,0 +1,79 @@
+name: verified-gate
+
+# AGENTS.md §6.5 / §10: a PR merges only after someone other than the author has verified it.
+#
+# Decided by the maintainer on 2026-10-19 ("Enforce with CI") after seven PRs merged in one night on
+# the author's own run, before or without the reviewer's points being addressed (#164, #168, #169,
+# #171, #174, #180, #187). Until then §6.5 was a written rule only; this is its server-side half.
+#
+# The check passes only when BOTH hold:
+#   1. the PR carries the `state:verified` label, and
+#   2. a PR comment signed by a verifier ("— Antigravity", "— Claude", or "— Kimi Code" for a PR Kimi
+did not author) contains a line
+#      `Verified-sha: <sha>` whose sha is a prefix (7+ characters) of the PR's CURRENT head.
+# (2) is what makes rule 4 of §6.5 ("the verified sha is the merged sha") mechanical: any push after
+# verification — a fix, a rebase, a merge of main — changes the head, and the gate goes red again
+# until the new head is verified. No label removal is needed for that, so this job needs no write
+# permission.
+#
+# HONEST LIMIT: all agents share one GitHub account, so CI cannot prove WHO wrote the comment or set
+# the label. A forged verification is still a signed, permanent record on the PR. The gate turns
+# "merged without verification" from an oversight into a deliberate act.
+#
+# ORDER for verifiers: post the signed comment first, then add the label. Adding (or removing and
+# re-adding) the label is what re-runs this check; a comment alone does not.
+#
+# To bind, this check must be "required" in main's branch protection, with "Do not allow bypassing"
+# (enforce_admins) on — every agent pushes as a repo admin. See AGENTS.md §6.4.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verified-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require state:verified and a signed verification of the head sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          echo "PR #$PR head $HEAD_SHA"
+
+          labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
+          if ! printf '%s\n' "$labels" | grep -qx 'state:verified'; then
+            echo "::error::Not verified: PR #$PR has no 'state:verified' label (AGENTS.md §6.5, §10)."
+            echo "Antigravity, Claude or (for a PR Kimi did not author) Kimi Code verifies, posts a signed comment with 'Verified-sha: <head sha>', then adds the label."
+            exit 1
+          fi
+
+          # One line per comment body (newlines flattened). Signed by a verifier AND naming a sha.
+          verified=""
+          while IFS= read -r body; do
+            [ -n "$body" ] || continue
+            case "$body" in
+              *"— Antigravity"*|*"— Claude"*|*"— Kimi Code"*) ;;
+              *) continue ;;
+            esac
+            for sha in $(printf '%s' "$body" | grep -oiE 'Verified-sha:[[:space:]]*`?[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$'); do
+              sha=$(printf '%s' "$sha" | tr 'A-F' 'a-f')
+              case "$HEAD_SHA" in
+                "$sha"*) verified="$sha" ;;
+              esac
+            done
+          done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[].body | gsub("[[:cntrl:]]"; " ")')
+
+          if [ -z "$verified" ]; then
+            echo "::error::'state:verified' is set, but no comment signed by Antigravity, Claude or Kimi Code verifies the current head $HEAD_SHA."
+            echo "A push after verification (fix, rebase, merge of main) needs a fresh verification of the new head (AGENTS.md §6.5 rule 4)."
+            exit 1
+          fi
+          echo "OK — head $HEAD_SHA verified (Verified-sha: $verified)."

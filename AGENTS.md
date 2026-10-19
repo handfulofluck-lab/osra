@@ -163,6 +163,7 @@ correct and silently do nothing.**
 | `scripts/install-git-hooks.sh` → copies `.githooks/*` into `.git/hooks/` | Refuses a push whose destination is `refs/heads/main` | Per clone; must be run once. Verified working (see below) |
 | `.githooks/pre-push` + `git config core.hooksPath <ABSOLUTE path>` | Same, driven from the versioned file | The path **must be absolute** — a relative `core.hooksPath` silently resolves to nothing on Git for Windows. Also, the file only exists in checkouts that contain it (i.e. not on `main` before this PR merges) |
 | `.github/workflows/main-guard.yml` | Server-side: on every push to `main`, asserts an associated PR exists; fails the run and files a `needs-human` issue otherwise | Detection, not prevention; only active once merged to `main` |
+| `.github/workflows/verified-gate.yml` (maintainer decision, 2026-10-19) | On every PR to `main`: fails unless the PR has `state:verified` **and** a comment signed `— Antigravity` or `— Claude` with `Verified-sha: <sha>` matching the current head (§6.5 rule 6) | Binds only once `verified-gate` is a required status check with bypass disabled (`enforce_admins`), because every agent pushes as a repo admin. One shared account: CI cannot prove who wrote the comment |
 | This file + PR review | The real control | Relies on both agents honouring it |
 
 **Install (recommended, works regardless of which branch is checked out):**
@@ -178,8 +179,9 @@ and exits 1; a branch push exits 0. Two earlier attempts *looked* installed but 
 relative `core.hooksPath`, and the file being absent from the checked-out ref. Both are documented
 above so nobody repeats them.
 
-**For hard enforcement** the maintainer picks one: make the repository public (free protection), or
-upgrade to GitHub Pro. That is the human's call.
+**Update 2026-10-19:** the repository is public, so branch protection is available and is on for `main`
+(PRs required, conversations resolved). The maintainer chose to enforce §6.5 with CI: `verified-gate`
+is made a required status check on `main` with "Do not allow bypassing the above settings" turned on.
 
 Maintainer override (deliberate, rare): `OSRA_ALLOW_MAIN_PUSH=1 git push <remote> main`.
 
@@ -206,6 +208,12 @@ A PR may merge only when all of the following hold:
    lands. This is the stacked-PR rule 6 in `docs/QA/TESTING-STRATEGY.md` §3, applied at the merge.
 5. **Cleanup is done and evidenced** (§7): device, database and cache returned to their found state, with
    the command output in the run log.
+6. **The `verified-gate` check is green** (maintainer decision, 2026-10-19). The verifier (Antigravity, or
+   Claude for a review-only or docs change, or Kimi Code for a PR Kimi did not author) posts a signed comment containing a line
+   `Verified-sha: <head sha>` (7+ characters), **then** adds `state:verified`; adding the label is what
+   re-runs the check. Any push after that (fix, rebase, merge of `main`) changes the head and turns the
+   check red until the new head is verified, which is rule 4 made mechanical. Nobody sets `state:verified`
+   on their own PR, and the author never writes a `Verified-sha:` line.
 
 **Docs-only changes are no exception**, but the check is proportional: the verifier reads the diff line by
 line and confirms that every cited `file:line` says what the text claims. The merge message says who did
@@ -362,7 +370,7 @@ One label, one meaning, set by the **author** and read from a single API call (`
 | `state:wip` | In progress. The default for a draft PR, labelled or not | Nothing. No test, no review, and no comment asking for work |
 | `state:ready-for-verification` | Finished: tests written, the author's own gates run | The testing lane may start. Set `state:verifying` when you do |
 | `state:verifying` | A tester holds it | Author: no force-push, no rebase. Others: stay off it |
-| `state:verified` | Gates re-run by someone other than the author, numbers on the PR | The development lead merges on it |
+| `state:verified` | Gates re-run by someone other than the author, numbers and a signed `Verified-sha:` line on the PR (§6.5 rule 6) | The development lead merges on it once `verified-gate` is green |
 | `state:changes-requested` | Verification failed, or the restatement was wrong | Author fixes and returns it to `ready-for-verification` |
 | `state:needs-arch` | Waiting on an architecture decision (KCL lead) | Everyone else waits; the decision is recorded in an ADR or the log |
 | `state:blocked` | Needs something outside the repo — a key, a phone, a merge, an entitlement | Say what, and who has it, in the PR and on the board |
