@@ -107,8 +107,49 @@ class PairingActivity : ComponentActivity() {
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
     }
 
+    /**
+     * Roadmap 3.2: the QR scanner returns the raw string only. Parsing, the review card and the
+     * explicit confirm stay in this activity, so a scan can never post a pairing request by itself.
+     */
+    private val scanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val prefillServer = formServer?.text?.toString().orEmpty()
+        val prefillCode = formCode?.text?.toString().orEmpty()
+        val prefillName = formName?.text?.toString().orEmpty()
+        val raw = result.data?.getStringExtra(PairQrScanActivity.EXTRA_RAW)
+        if (result.resultCode == RESULT_OK && raw != null) {
+            when (val state = scanFlow.scan(raw)) {
+                is PairingScanFlow.State.Review -> showForm(prefillName = prefillName, scanned = state.payload)
+                is PairingScanFlow.State.Rejected -> showForm(
+                    prefillServer,
+                    prefillCode,
+                    prefillName,
+                    scanError = "That QR code is not a valid OSRA pairing code — ${state.reason}. " +
+                        "Enter the details manually or scan again.",
+                )
+                PairingScanFlow.State.Idle -> showForm(prefillServer, prefillCode, prefillName)
+            }
+            return@registerForActivityResult
+        }
+        scanFlow.cancel()
+        val message = result.data?.getStringExtra(PairQrScanActivity.EXTRA_ERROR)
+            ?: if (result.resultCode == RESULT_OK) {
+                "The scanner did not return a code. Enter the details manually or scan again."
+            } else {
+                null
+            }
+        showForm(prefillServer, prefillCode, prefillName, scanError = message)
+    }
+
     /** Plan 1.6: live grant state, asked of the OS on every render. */
     private val grants: GrantChecks by lazy { GrantChecks(this, deviceAdmin) }
+
+    /** Roadmap 3.2: scan → review → confirm, with no pairing request until [PairingScanFlow.confirm]. */
+    private val scanFlow = PairingScanFlow()
+
+    /** The live form fields, so a scanner cancel restores exactly what the parent had typed. */
+    private var formServer: EditText? = null
+    private var formCode: EditText? = null
+    private var formName: EditText? = null
 
     private lateinit var root: LinearLayout
 
@@ -121,8 +162,19 @@ class PairingActivity : ComponentActivity() {
         }
         setContentView(root)
         showLoading()
+        // Roadmap 3.2: a rotation must not lose a scanned review; the encoded payload is re-validated
+        // through the same state machine, so a tampered bundle cannot smuggle a different code in.
+        val restoredScan = savedInstanceState?.getString(KEY_SCANNED_QR)
+            ?.let { runCatching { PairQrPayload.decode(it) }.getOrNull() }
+        restoredScan?.let { scanFlow.scan(it.encode()) }
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
-        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm() }
+        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm(scanned = restoredScan) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val review = scanFlow.state as? PairingScanFlow.State.Review
+        if (review != null) outState.putString(KEY_SCANNED_QR, review.payload.encode())
     }
 
     override fun onResume() {
@@ -144,56 +196,81 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
-    private fun showForm() {
+    /**
+     * The typed form, unchanged for a manual entry. The optional [scanned] payload fills the server
+     * and code fields, disables them (the QR is authoritative) and adds the review card whose
+     * "Confirm and pair" is the only action that posts. [scanError] explains a refused scan or a
+     * denied camera; the form underneath stays usable either way.
+     */
+    private fun showForm(
+        prefillServer: String = "",
+        prefillCode: String = "",
+        prefillName: String = "",
+        scanned: PairQrPayload? = null,
+        scanError: String? = null,
+    ) {
         replaceWith {
             addView(label("OSRA Child Agent"))
             addView(label("Pair this device with your OSRA server."))
 
-            val server = editText("", InputType.TYPE_TEXT_VARIATION_URI).apply {
-                hint = "https://your-server or 192.168.1.5:3000"
+            if (scanError != null) {
+                addView(
+                    label(scanError).apply {
+                        setTextColor(0xFFB00020.toInt())
+                        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+                    },
+                )
             }
-            val code = editText("", InputType.TYPE_CLASS_NUMBER).apply {
+            if (scanned != null) {
+                addView(label("Scanned pairing details").apply { setTextColor(0xFF2E7D32.toInt()) })
+                addView(label("Server: ${scanned.apiBaseUrl}"))
+                addView(label("Code: ${scanned.maskedCode()}"))
+                addView(
+                    label(
+                        "Check these match the parent's screen. Nothing is paired until you confirm.",
+                    ),
+                )
+            }
+
+            val server = editText(scanned?.apiBaseUrl ?: prefillServer, InputType.TYPE_TEXT_VARIATION_URI).apply {
+                hint = "https://your-server or 192.168.1.5:3000"
+                isEnabled = scanned == null
+            }
+            val code = editText(scanned?.code ?: prefillCode, InputType.TYPE_CLASS_NUMBER).apply {
                 filters = arrayOf(InputFilter.LengthFilter(6))
                 hint = "6-digit pairing code"
+                isEnabled = scanned == null
             }
-            val name = editText("", InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { hint = "Device name (optional)" }
+            val name = editText(prefillName, InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { hint = "Device name (optional)" }
+            formServer = server
+            formCode = code
+            formName = name
             val error = label("").apply {
                 setTextColor(0xFFB00020.toInt())
                 visibility = View.GONE
             }
-            val pairButton = Button(this@PairingActivity).apply { text = "Pair this device" }
+            val pairButton = Button(this@PairingActivity).apply {
+                text = if (scanned == null) "Pair this device" else "Confirm and pair"
+            }
             val progress = ProgressBar(this@PairingActivity).apply { visibility = View.GONE }
+            val scanButton = Button(this@PairingActivity).apply {
+                text = "Scan QR code"
+                contentDescription = "Scan the pairing QR code from the parent app"
+            }
+            scanButton.setOnClickListener { startScan() }
 
             pairButton.setOnClickListener {
-                val enteredServer = server.text.toString().trim()
-                if (enteredServer.isBlank()) {
-                    error.text = "Enter the server URL from your parent."
-                    error.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                val enteredCode = code.text.toString().trim()
-                if (!enteredCode.matches(Regex("\\d{6}"))) {
-                    error.text = "Enter the 6-digit pairing code."
-                    error.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                pairButton.isEnabled = false
-                progress.visibility = View.VISIBLE
-                error.visibility = View.GONE
-                val deviceName = name.text.toString().trim()
-                lifecycleScope.launch {
-                    val result = runCatching { claim(enteredServer, enteredCode, deviceName) }
-                    pairButton.isEnabled = true
-                    progress.visibility = View.GONE
-                    result.onSuccess { pairing ->
-                        settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)
-                        startAgent()
-                        // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
-                        // that gates every protection-removal action from here on.
-                        if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
-                    }.onFailure { e ->
-                        error.text = userMessage(e)
+                if (scanned == null) {
+                    startPair(server.text.toString(), code.text.toString(), name.text.toString(), pairButton, progress, error)
+                } else {
+                    // Roadmap 3.2: a QR must not pair silently. confirm() is the review state's only
+                    // exit to a request, and it returns null if the screen no longer holds a scan.
+                    val request = scanFlow.confirm(name.text.toString())
+                    if (request == null) {
+                        error.text = "Scan the QR code again before confirming."
                         error.visibility = View.VISIBLE
+                    } else {
+                        startPair(request.serverUrl, request.code, request.deviceName, pairButton, progress, error)
                     }
                 }
             }
@@ -203,7 +280,74 @@ class PairingActivity : ComponentActivity() {
             addView(labeled("Device name", name))
             addView(pairButton)
             addView(progress)
+            addView(scanButton)
+            if (scanned != null) {
+                addView(
+                    Button(this@PairingActivity).apply {
+                        text = "Cancel"
+                        setOnClickListener {
+                            scanFlow.cancel()
+                            showForm()
+                        }
+                    },
+                )
+            }
             addView(error)
+        }
+    }
+
+    private fun startScan() {
+        scanFlow.cancel()
+        runCatching { scanLauncher.launch(Intent(this, PairQrScanActivity::class.java)) }
+            .onFailure {
+                showForm(
+                    formServer?.text?.toString().orEmpty(),
+                    formCode?.text?.toString().orEmpty(),
+                    formName?.text?.toString().orEmpty(),
+                    scanError = "The camera is not available on this device. Enter the server URL and code manually.",
+                )
+            }
+    }
+
+    /** The one pairing path: typed code and scanned code both end here, with the same validation. */
+    private fun startPair(
+        enteredServer: String,
+        enteredCode: String,
+        deviceName: String,
+        pairButton: Button,
+        progress: ProgressBar,
+        error: TextView,
+    ) {
+        val serverUrl = enteredServer.trim()
+        if (serverUrl.isBlank()) {
+            error.text = "Enter the server URL from your parent."
+            error.visibility = View.VISIBLE
+            return
+        }
+        val code = enteredCode.trim()
+        if (!code.matches(Regex("\\d{6}"))) {
+            error.text = "Enter the 6-digit pairing code."
+            error.visibility = View.VISIBLE
+            return
+        }
+        pairButton.isEnabled = false
+        progress.visibility = View.VISIBLE
+        error.visibility = View.GONE
+        val name = deviceName.trim()
+        lifecycleScope.launch {
+            val result = runCatching { claim(serverUrl, code, name) }
+            pairButton.isEnabled = true
+            progress.visibility = View.GONE
+            result.onSuccess { pairing ->
+                settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)
+                startAgent()
+                // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
+                // that gates every protection-removal action from here on.
+                if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
+            }.onFailure { e ->
+                error.text = userMessage(e)
+                error.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -675,6 +819,9 @@ class PairingActivity : ComponentActivity() {
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        /** Roadmap 3.2: the reviewed payload survives an activity recreation. */
+        private const val KEY_SCANNED_QR = "scanned_pair_qr"
 
         /** Feature #6 runtime permissions (declared in the manifest; prompted, not required). */
         private val COMMS_PERMISSIONS = arrayOf(

@@ -425,8 +425,13 @@ agent endpoints accept device tokens.
   ```
   `host` is the parent app's runtime API base (`api.raw.options.baseUrl`), so the scanner
   learns the server as well as the code. Decoders must reject unknown `v` and non-http(s)
-  hosts. The child agent has **no scanner yet** (`PairingActivity.kt` is typed-code only), so
-  reading this payload is the second half of roadmap item 3.2.
+  hosts. The child agent consumes the same payload: `PairQrScanActivity`
+  (`apps/child-android/.../setup/`) reads the QR with CameraX and the bundled ML Kit model,
+  returns the raw string, and pure-Kotlin `PairQrPayload` applies the same rules (v1 only,
+  six digits, absolute http(s) host with no query or fragment). A scan fills the server and
+  code fields, shows the host and a masked code, and pairs only after an explicit
+  **Confirm and pair**; a denied camera or a refused code returns to the typed form with the
+  reason. The typed-code path is unchanged.
 - Build artifact: `flutter build apk --release` (debug-signed, installable) → copy
   build\app\outputs\flutter-apk\app-release.apk to
   C:\KARIM\familyshield\dist\FamilyShield-Parent.apk

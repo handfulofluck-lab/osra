@@ -35,6 +35,7 @@ object PlayManifestPolicy {
         "android.permission.PACKAGE_USAGE_STATS" to "src/main — usage/app-limit statistics (user-granted; ADR-0021 keeps it)",
         "android.permission.SYSTEM_ALERT_WINDOW" to "src/main — block/tamper overlays (ADR-0010)",
         "android.permission.POST_NOTIFICATIONS" to "src/main — API 33+ foreground notification",
+        "android.permission.CAMERA" to "src/main — roadmap 3.2 QR scanner (PairQrScanActivity); user-facing in both flavours, preview only, nothing stored",
         "android.permission.ACCESS_NETWORK_STATE" to "firebase-messaging 24.0.0 — IID token creation",
         "com.google.android.c2dm.permission.RECEIVE" to "firebase-messaging 24.0.0 — FCM delivery",
         "com.familyshield.agent.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" to "androidx.core — context-registered receivers; declared signature permission of this app",

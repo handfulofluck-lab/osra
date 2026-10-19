@@ -38,6 +38,14 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <!-- Needed on API 33+ for the foreground location notification to be shown. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!--
+      Roadmap 3.2: the child scans the parent's pairing QR code. Camera is a user-facing feature of
+      both distribution flavours (ADR-0021's allow-list carries it with this reason); it is used only
+      while PairQrScanActivity is in front and the image is never stored. `required=false` keeps the
+      app installable on a device without a camera — the typed pairing form is the fallback.
+    -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application
         android:name=".FamilyShieldApp"
@@ -144,6 +152,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- Roadmap 3.2: camera-only QR reader. Not exported, and it returns text, not a pairing. -->
+        <activity android:name=".setup.PairQrScanActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
 
         <!-- Issue #87: no showWhenLocked - a block screen must not cover the keyguard's PIN pad. -->
         <activity android:name=".enforcement.BlockActivity"

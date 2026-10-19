@@ -97,4 +97,14 @@ class FullMergedManifestTest {
             releaseMerged.applicationTestOnly,
         )
     }
+
+    /** Roadmap 3.2: CAMERA is a user-facing feature of the sideloaded flavour too. */
+    @Test
+    fun `full merged manifest keeps the camera permission the QR scanner needs`() {
+        assertTrue(
+            "android.permission.CAMERA is missing from the Full merged manifest, so the sideloaded " +
+                "build cannot scan the parent's pairing QR code (roadmap 3.2).",
+            "android.permission.CAMERA" in merged.includedPermissions,
+        )
+    }
 }

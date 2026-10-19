@@ -11,6 +11,62 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — the child app scans the parent's pairing QR (roadmap 3.2, second half, PR #179)
+- **What a parent does.** `PairingActivity` now has a **Scan QR code** action next to the typed form.
+  `PairQrScanActivity` (`apps/child-android/app/src/main/java/com/familyshield/agent/setup/`) reads the
+  parent's `osra://pair` QR with CameraX and the **bundled** ML Kit barcode model and returns the raw
+  text; `PairQrPayload` (pure Kotlin, same process) applies the parent's Dart rules — version 1 only,
+  exactly six digits, absolute `http(s)` host with no query or fragment — and refuses everything else
+  with a stated reason. `PairingScanFlow` is the scan → review → confirm state machine, and
+  `confirm()` is the **only** method that builds a `PairingRequest`.
+- **A QR never pairs silently.** A successful scan fills the server and code fields (disabled, because
+  the QR is authoritative), shows `Server: …` and `Code: ••••16`, and pairs only when the parent taps
+  **Confirm and pair**. A refused payload returns to the typed form with its reason; a denied camera
+  returns with an explanation that says why. The typed path keeps its old behaviour and wording.
+- **The confirm step does not depend on the camera or on the activity staying alive.** It is plain state
+  in `PairingActivity`; `onSaveInstanceState` stores the encoded v1 payload and `onCreate` re-validates
+  it through the same parser, so a rotation keeps the review instead of silently dropping it.
+- **Permission and policy.** `CAMERA` is declared in `src/main`, so both flavours carry it;
+  `uses-feature android.hardware.camera required="false"` keeps a camera-less device installable. The
+  Play allow-list carries `CAMERA` with its reason (`PlayManifestPolicy.ALLOWED_PERMISSIONS`),
+  `PlayManifestPolicyTest` pins that entry, and `PlayMergedManifestTest` / `FullMergedManifestTest`
+  assert it in the merged artefacts. The Play merge gained exactly one permission, `CAMERA`; CameraX
+  and ML Kit brought none.
+- **Dependencies, licences and size.** CameraX 1.3.4 (Apache-2.0; four AARs totalling **1,362,799
+  bytes**) and `com.google.mlkit:barcode-scanning:17.3.0` (Google ML Kit Terms — **not** Apache-2.0;
+  AAR **9,898,786 bytes**). The bundled model is deliberate: the first scan works offline, with no
+  Play-services model download inside the five-minute flow. In the Play debug APK the ML Kit
+  native/model payload is **21,103,960 bytes uncompressed** across four ABIs (the arm64
+  `libbarhopper_v3.so` alone is 4,946,720 bytes; the three `.tflite` models total 880,888); an App
+  Bundle splits the native libraries per ABI at release. Play debug APK: **36,857,551 bytes**; Full
+  debug: **36,874,418 bytes**.
+- **Tests.** `PairQrPayloadTest` (13 cases: valid http/https, leading zero, trailing slash, wrong and
+  missing version, short/long/non-numeric/missing code, missing/non-http/query/fragment/malformed host,
+  bare code, wrong scheme/authority/path, extra parameters, masking, encode round-trip) mirrors the
+  Dart suite; `PairingScanFlowTest` (7) proves a scan alone builds no request, confirm builds it from
+  the scanned values, a rejected scan cannot be confirmed, and cancel clears the review. Three manifest
+  assertions were added (Play camera, Full camera, policy entry). **No Espresso test:** there is no
+  `androidTest` source set, and `PairingActivity` is Hilt-injected, so an instrumentation test would
+  need a Hilt test runner and new test dependencies; the confirm UI was therefore not exercised by an
+  instrumentation test (the denial path was exercised on hardware).
+- **Gate.** `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug
+  --no-daemon` → **BUILD SUCCESSFUL**, **330 tests / 0 failures / 0 errors / 0 skipped, 50 suites** in
+  **each** flavour; `node scripts/check-merged-manifest-gate.mjs` → *2 result set(s) checked, all
+  assertions ran and passed*, exit 0. Fail-before: pointing the Play gate at a copy of the merged
+  manifest with `CAMERA` removed turned both `play merged manifest declares exactly the reviewed
+  permission allow-list` and the new camera assertion red (`7 tests completed, 2 failed`, messages
+  naming `missing=[android.permission.CAMERA]`).
+- **Hardware (Flip4, `R5CW116Y6GF`, Full debug, lease held and released `Clean`).** Verified: the new
+  **Scan QR code** button, the in-app rationale before the OS prompt, the OS camera prompt, the
+  camera-ready status (`Camera ready. Point the phone …`), accessibility content descriptions on the
+  preview, status and cancel action, and the **denial fallback** — "Don't allow" returned to the typed
+  form with *"Camera permission was denied, so the QR scanner cannot start…"*. The typed path then
+  paired end-to-end against the live API (`POST /v1/devices/pair/claim` reached the set-PIN screen);
+  that test device was unpaired through the API and the app uninstalled. **Not verified here:** the
+  rear camera was covered in the test position, so the scan → review → confirm steps were not aimed at
+  a QR on the phone. That half remains open on the 3.2 row, together with the five-minute first-run
+  test.
+
 ### Android — a debug build can be cleaned up without the app PIN, and only a debug build can (issue #170)
 - **The defect.** `dpm remove-active-admin` answered `SecurityException: Attempt to remove non-test
   admin`, and with the admin still active `adb uninstall` answered
