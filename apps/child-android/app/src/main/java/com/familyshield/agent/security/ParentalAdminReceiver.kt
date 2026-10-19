@@ -13,8 +13,14 @@ import android.util.Log
  * PIN gate lives in the Settings flow we launch, not here (the OS cannot host a PIN prompt in this
  * callback). `onDisabled` fires after admin is actually removed — we record it so the next agent
  * poll raises a tamper alert to the parent.
+ *
+ * The class name is itself operationally significant (issue #202): Samsung Knox keys its admin registry
+ * by **component + user**, and a stale row for a previous component name refuses every new activation
+ * through the system sheet with `Admin is already added`. A new component name is not in that registry,
+ * so renaming the receiver is the recovery path — and the reason [COMPONENT_CLASS], the manifest entry
+ * and `res/xml/device_admin.xml`'s consumer must move together. `AdminReceiverContractTest` pins that.
  */
-class FamilyShieldDeviceAdmin : DeviceAdminReceiver() {
+class ParentalAdminReceiver : DeviceAdminReceiver() {
 
     override fun onEnabled(context: Context, intent: Intent) {
         Log.i(TAG, "device admin enabled")
@@ -39,7 +45,15 @@ class FamilyShieldDeviceAdmin : DeviceAdminReceiver() {
             .onFailure { Log.w(TAG, "could not enqueue tamper alert", it) }
     }
 
-    private companion object {
-        const val TAG = "FSDeviceAdmin"
+    companion object {
+        /**
+         * The device-admin component's fully qualified class name — the one code-side place that spells
+         * it. The manifest and the hardware scripts still name the component; the JVM contract test
+         * resolves their relative names against the manifest namespace and fails if either drifts
+         * (issue #202).
+         */
+        val COMPONENT_CLASS: String = ParentalAdminReceiver::class.java.name
+
+        private const val TAG = "FSDeviceAdmin"
     }
 }

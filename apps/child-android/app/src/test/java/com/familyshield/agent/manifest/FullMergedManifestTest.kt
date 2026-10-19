@@ -1,5 +1,6 @@
 package com.familyshield.agent.manifest
 
+import com.familyshield.agent.security.ParentalAdminReceiver
 import java.io.File
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -105,6 +106,23 @@ class FullMergedManifestTest {
             "android.permission.CAMERA is missing from the Full merged manifest, so the sideloaded " +
                 "build cannot scan the parent's pairing QR code (roadmap 3.2).",
             "android.permission.CAMERA" in merged.includedPermissions,
+        )
+    }
+
+    /**
+     * Issue #202: the Full APK is the artefact the hardware rows install, and the installed component
+     * name is what Samsung's Knox registry matches. The rename must survive this flavour's merge too.
+     */
+    @Test
+    fun `full merged manifest declares the renamed device-admin receiver`() {
+        val violations = PlayManifestPolicy.adminReceiverViolations(
+            merged,
+            ParentalAdminReceiver.COMPONENT_CLASS,
+        )
+        assertTrue(
+            "the Full artifact's device-admin receiver changed (issue #202):\n" +
+                violations.joinToString("\n"),
+            violations.isEmpty(),
         )
     }
 }

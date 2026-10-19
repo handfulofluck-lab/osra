@@ -11,6 +11,34 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — the device-admin receiver is renamed so a poisoned Knox row needs no factory reset (#202)
+- **Why.** Samsung's Knox admin registry matches **component + user**, not uid. The Flip4's stale row
+  for `com.familyshield.agent/.security.FamilyShieldDeviceAdmin` made every activation through the
+  system sheet fail with `Admin is already added`, and it survived uninstall/reinstall with a new uid
+  (#181, #185). A component name Knox has never seen is not in that list, so a rename is the recovery.
+- **Rename.** `security.FamilyShieldDeviceAdmin` → `security.ParentalAdminReceiver`. The manifest entry,
+  `DeviceAdminManager`, `ParentalAdminReceiver.COMPONENT_CLASS`, the receiver's KDoc cross-references
+  and `scripts/hardware/android-pairing-time.ps1` move together. Policies are unchanged (`force-lock`,
+  `watch-login`, ADR-0010); there is no installed customer base, so nothing is migrated.
+- **Pins.** New `AdminReceiverContractTest` (JVM) asserts the constant equals the class, the manifest
+  receiver resolves to that class, the admin contract (permission, meta-data, intent action) is intact,
+  and `res/xml/device_admin.xml` declares exactly the reviewed policy set. `PlayMergedManifestTest` /
+  `FullMergedManifestTest` assert the renamed component in both merged manifests, and
+  `scripts/check-merged-manifest-gate.mjs` now requires those assertions.
+- **Docs.** `docs/TESTING.md` §5 says never to run `dpm remove-active-admin` on an admin activated
+  through the sheet, and §6 records the component rename as the recovery path for a stale Knox row.
+- **Evidence.** `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug
+  --no-daemon` → **BUILD SUCCESSFUL**, 367 tests / 0 skipped / 0 failures in each flavour;
+  `node scripts/check-merged-manifest-gate.mjs` → **2 result set(s) checked, all assertions ran and
+  passed** (Play 8, Full 6 in both). Hardware (Full debug, test-only — **not gate evidence**, #178):
+  on the Flip4 the system sheet returned `device_policy after Activate: True` and
+  `dumpsys device_policy` shows `com.familyshield.agent/.security.ParentalAdminReceiver` with
+  `policies: watch-login, force-lock`; remove protection → `alert-only` / 0 admins → re-activate
+  through the sheet → `✓ Protection: device admin` again (#187 AC1's second half). The in-app
+  removal logged `protection removed via AOSP` (the Knox `setActiveAdmin(false)` call returned false,
+  so #186's fallback ran); re-enrolment still succeeded. This is the author's run — a tester re-run
+  is what makes it verification. Evidence: `C:\KARIM\.tmp-202\hw202\pairing-time.log`.
+
 ### Roadmap 3.8 — the design system reaches the last five screens and alert severity
 - **Why.** #145 shipped the token layer and dark theme but deliberately left five screens on their own
   spacing and colours, and alert severity was still duplicated `Colors.red/amber/blue` switches. Dark

@@ -38,7 +38,9 @@ app blocking); the OS offers no hook to put a PIN prompt *inside* its deactivate
    PIN grants a two-minute grace window in which the guard stands down so the parent can finish; a
    wrong PIN five times, or Back, returns to the launcher. Each trigger also sends the parent a
    `tamper` alert (`protection_screen_opened`).
-4. **Admin removal always reaches the parent within seconds.** `FamilyShieldDeviceAdmin.onDisabled`
+4. **Admin removal always reaches the parent within seconds.** `ParentalAdminReceiver.onDisabled`
+   (renamed from `FamilyShieldDeviceAdmin` in #202 — the component name is a recovery lever, not a
+   product decision; see `docs/TESTING.md` §6)
    sets a persisted flag and enqueues an expedited `TamperAlertWorker` (`device_admin_removed`); the
    60-second loop in `LocationService` drains the flag and also alerts on any observed tier drop to
    `NONE`, so a process kill between the two cannot lose it. A removal the parent performed through
