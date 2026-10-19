@@ -11,6 +11,18 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### CI — the verified-gate workflow parses again, and workflow-lint now uses a real YAML parser
+- My own edit to `verified-gate.yml` (accepting Kimi Code as a verifier) broke a comment line: the
+  continuation lost its `#`, YAML parsed it as a key, and GitHub rejected the whole file. The run
+  failed in 0 s with **no jobs** — the same signature as the incident that created `workflow-lint`
+  (issue #37) — while `node scripts/check-workflows.mjs --strict` reported 0 errors, because that
+  script matches text and never parses YAML.
+- Fixed the comment. `workflow-lint` gains a real `yaml.safe_load` pass over every workflow file, so
+  this class fails in a step that names the file and the line instead of in a jobless run.
+- Consequence recorded: `verified-gate` was **not** made a required check while it was broken. It is
+  fixed here; binding it is still the maintainer's step, and doing so will stall merges whenever both
+  verifiers are idle (the gate's own documented risk).
+
 ### Process — a PR cannot merge until someone other than the author has verified its head (AGENTS.md §6.5)
 - **Why.** On 2026-10-18/19 seven PRs merged on the author's own run, before or without the reviewer's
   points being addressed (#164, #168, #169, #171, #174, #180, #187); #169 then failed on hardware. §6.5

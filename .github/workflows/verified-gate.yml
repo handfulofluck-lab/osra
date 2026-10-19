@@ -9,7 +9,7 @@ name: verified-gate
 # The check passes only when BOTH hold:
 #   1. the PR carries the `state:verified` label, and
 #   2. a PR comment signed by a verifier ("— Antigravity", "— Claude", or "— Kimi Code" for a PR Kimi
-did not author) contains a line
+#      did not author) contains a line
 #      `Verified-sha: <sha>` whose sha is a prefix (7+ characters) of the PR's CURRENT head.
 # (2) is what makes rule 4 of §6.5 ("the verified sha is the merged sha") mechanical: any push after
 # verification — a fix, a rebase, a merge of main — changes the head, and the gate goes red again
