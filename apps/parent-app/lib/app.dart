@@ -13,6 +13,7 @@ import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
+import 'features/settings/mfa_settings_screen.dart';
 import 'features/social/social_screen.dart';
 import 'features/content/search_safety_screen.dart';
 import 'l10n/l10n.dart';
@@ -42,6 +43,7 @@ final router = GoRouter(
     GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
     GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
+    GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
     GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
     GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
     GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),

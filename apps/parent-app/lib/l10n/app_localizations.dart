@@ -2137,6 +2137,354 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Confirmed {time}'**
   String confirmedEvent(String time);
+
+  /// No description provided for @mfaMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification'**
+  String get mfaMenu;
+
+  /// No description provided for @mfaSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification'**
+  String get mfaSettingsTitle;
+
+  /// No description provided for @mfaStatusOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get mfaStatusOn;
+
+  /// No description provided for @mfaStatusOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get mfaStatusOff;
+
+  /// No description provided for @mfaSettingsStatusOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is on.'**
+  String get mfaSettingsStatusOn;
+
+  /// No description provided for @mfaSettingsStatusOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off.'**
+  String get mfaSettingsStatusOff;
+
+  /// No description provided for @mfaSettingsExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'When it is on, signing in needs a code from your authenticator app as well as your password.'**
+  String get mfaSettingsExplanation;
+
+  /// No description provided for @mfaSetupAuthenticator.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up authenticator'**
+  String get mfaSetupAuthenticator;
+
+  /// No description provided for @mfaReplaceAuthenticator.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace authenticator'**
+  String get mfaReplaceAuthenticator;
+
+  /// No description provided for @mfaRecoveryCodesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery codes'**
+  String get mfaRecoveryCodesTitle;
+
+  /// No description provided for @mfaRecoveryCodesExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Ten single-use codes. Each one lets you sign in once if you lose your authenticator.'**
+  String get mfaRecoveryCodesExplanation;
+
+  /// No description provided for @mfaRegenerateCodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate new recovery codes'**
+  String get mfaRegenerateCodes;
+
+  /// No description provided for @mfaRegenerateWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating new codes replaces the old ones. The old codes stop working immediately.'**
+  String get mfaRegenerateWarning;
+
+  /// No description provided for @mfaSessionNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your session ended when two-step verification was turned on. Sign in again with your new authenticator.'**
+  String get mfaSessionNotice;
+
+  /// No description provided for @mfaReauthTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm it is you'**
+  String get mfaReauthTitle;
+
+  /// No description provided for @mfaReauthExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your password or a current authenticator code.'**
+  String get mfaReauthExplanation;
+
+  /// No description provided for @mfaReauthCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator code'**
+  String get mfaReauthCode;
+
+  /// No description provided for @mfaReauthRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your password or a current authenticator code.'**
+  String get mfaReauthRequired;
+
+  /// No description provided for @mfaReauthFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That password or code was not accepted.'**
+  String get mfaReauthFailed;
+
+  /// No description provided for @mfaEnrollTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up two-step verification'**
+  String get mfaEnrollTitle;
+
+  /// No description provided for @mfaEnrollIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this code with an authenticator app, then enter the six-digit code it shows.'**
+  String get mfaEnrollIntro;
+
+  /// No description provided for @mfaEnrollManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot scan? Enter this key in the app:'**
+  String get mfaEnrollManual;
+
+  /// No description provided for @mfaSecretCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Key copied'**
+  String get mfaSecretCopied;
+
+  /// No description provided for @mfaSecretSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator setup key'**
+  String get mfaSecretSemantics;
+
+  /// No description provided for @mfaEnrollAfterRecovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up a new authenticator for this account. Until you verify it, two-step verification stays off.'**
+  String get mfaEnrollAfterRecovery;
+
+  /// No description provided for @mfaCodeFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Six-digit code'**
+  String get mfaCodeFieldLabel;
+
+  /// No description provided for @mfaVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on two-step verification'**
+  String get mfaVerify;
+
+  /// No description provided for @mfaVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get mfaVerifying;
+
+  /// No description provided for @mfaInvalidCode.
+  ///
+  /// In en, this message translates to:
+  /// **'That code was not accepted. Check the clock on your phone and try the next code.'**
+  String get mfaInvalidCode;
+
+  /// No description provided for @mfaNotEnrolled.
+  ///
+  /// In en, this message translates to:
+  /// **'Start the setup again — no authenticator is enrolled yet.'**
+  String get mfaNotEnrolled;
+
+  /// No description provided for @mfaSessionError.
+  ///
+  /// In en, this message translates to:
+  /// **'Your session ended. Sign in again and retry.'**
+  String get mfaSessionError;
+
+  /// No description provided for @mfaRecoveryExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This recovery session has ended. Start recovery again.'**
+  String get mfaRecoveryExpired;
+
+  /// No description provided for @mfaTooManyAttempts.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Wait a minute and try again.'**
+  String get mfaTooManyAttempts;
+
+  /// No description provided for @mfaNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server. Check your connection and try again.'**
+  String get mfaNetworkError;
+
+  /// No description provided for @mfaRequestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That did not work. Try again.'**
+  String get mfaRequestFailed;
+
+  /// No description provided for @mfaEnrollError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create an authenticator key. Try again.'**
+  String get mfaEnrollError;
+
+  /// No description provided for @mfaNoRecoveryCodes.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not return recovery codes. Try again before leaving this screen.'**
+  String get mfaNoRecoveryCodes;
+
+  /// No description provided for @mfaCodesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your recovery codes'**
+  String get mfaCodesTitle;
+
+  /// No description provided for @mfaCodesIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'These ten codes will not be shown again. Write them down or copy them somewhere safe.'**
+  String get mfaCodesIntro;
+
+  /// No description provided for @mfaCopyAllCodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy all codes'**
+  String get mfaCopyAllCodes;
+
+  /// No description provided for @mfaCodesCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery codes copied'**
+  String get mfaCodesCopied;
+
+  /// No description provided for @mfaCodesSavedCheckbox.
+  ///
+  /// In en, this message translates to:
+  /// **'I have saved these codes'**
+  String get mfaCodesSavedCheckbox;
+
+  /// No description provided for @mfaCodesConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I have saved these codes'**
+  String get mfaCodesConfirm;
+
+  /// No description provided for @mfaCodesLeaveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave without saving?'**
+  String get mfaCodesLeaveTitle;
+
+  /// No description provided for @mfaCodesLeaveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'These codes cannot be shown again. If you leave now, you will have to generate a new batch from settings.'**
+  String get mfaCodesLeaveBody;
+
+  /// No description provided for @mfaCodesStay.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay'**
+  String get mfaCodesStay;
+
+  /// No description provided for @mfaCodesLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave anyway'**
+  String get mfaCodesLeave;
+
+  /// No description provided for @mfaCodesIssuedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {date}'**
+  String mfaCodesIssuedAt(String date);
+
+  /// No description provided for @mfaRecoveryCodeSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery code {index}'**
+  String mfaRecoveryCodeSemantics(int index);
+
+  /// No description provided for @mfaRecoveryLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Lost your authenticator?'**
+  String get mfaRecoveryLink;
+
+  /// No description provided for @mfaRecoveryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recover your account'**
+  String get mfaRecoveryTitle;
+
+  /// No description provided for @mfaRecoveryIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the email, password and one unused recovery code for this account. This turns off two-step verification so you can set it up again.'**
+  String get mfaRecoveryIntro;
+
+  /// No description provided for @mfaRecoveryCodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery code'**
+  String get mfaRecoveryCodeLabel;
+
+  /// No description provided for @mfaRecoveryCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'XXXX-XXXX-XXXX-XXXX'**
+  String get mfaRecoveryCodeHint;
+
+  /// No description provided for @mfaRecoverySubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Recover account'**
+  String get mfaRecoverySubmit;
+
+  /// No description provided for @mfaRecoveryInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The email, password or recovery code is incorrect.'**
+  String get mfaRecoveryInvalid;
+
+  /// No description provided for @mfaRecoveryNoToken.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not return a recovery session. Try again.'**
+  String get mfaRecoveryNoToken;
+
+  /// No description provided for @mfaFieldsRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill in email, password and recovery code.'**
+  String get mfaFieldsRequired;
 }
 
 class _AppLocalizationsDelegate

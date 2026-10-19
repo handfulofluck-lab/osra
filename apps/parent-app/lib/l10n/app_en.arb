@@ -670,5 +670,73 @@
     "placeholders": {
       "time": { "type": "String" }
     }
-  }
+  },
+  "mfaMenu": "Two-step verification",
+  "mfaSettingsTitle": "Two-step verification",
+  "mfaStatusOn": "On",
+  "mfaStatusOff": "Off",
+  "mfaSettingsStatusOn": "Two-step verification is on.",
+  "mfaSettingsStatusOff": "Two-step verification is off.",
+  "mfaSettingsExplanation": "When it is on, signing in needs a code from your authenticator app as well as your password.",
+  "mfaSetupAuthenticator": "Set up authenticator",
+  "mfaReplaceAuthenticator": "Replace authenticator",
+  "mfaRecoveryCodesTitle": "Recovery codes",
+  "mfaRecoveryCodesExplanation": "Ten single-use codes. Each one lets you sign in once if you lose your authenticator.",
+  "mfaRegenerateCodes": "Generate new recovery codes",
+  "mfaRegenerateWarning": "Generating new codes replaces the old ones. The old codes stop working immediately.",
+  "mfaSessionNotice": "Your session ended when two-step verification was turned on. Sign in again with your new authenticator.",
+  "mfaReauthTitle": "Confirm it is you",
+  "mfaReauthExplanation": "Enter your password or a current authenticator code.",
+  "mfaReauthCode": "Authenticator code",
+  "mfaReauthRequired": "Enter your password or a current authenticator code.",
+  "mfaReauthFailed": "That password or code was not accepted.",
+  "mfaEnrollTitle": "Set up two-step verification",
+  "mfaEnrollIntro": "Scan this code with an authenticator app, then enter the six-digit code it shows.",
+  "mfaEnrollManual": "Cannot scan? Enter this key in the app:",
+  "mfaSecretCopied": "Key copied",
+  "mfaSecretSemantics": "Authenticator setup key",
+  "mfaEnrollAfterRecovery": "Set up a new authenticator for this account. Until you verify it, two-step verification stays off.",
+  "mfaCodeFieldLabel": "Six-digit code",
+  "mfaVerify": "Turn on two-step verification",
+  "mfaVerifying": "Checking…",
+  "mfaInvalidCode": "That code was not accepted. Check the clock on your phone and try the next code.",
+  "mfaNotEnrolled": "Start the setup again — no authenticator is enrolled yet.",
+  "mfaSessionError": "Your session ended. Sign in again and retry.",
+  "mfaRecoveryExpired": "This recovery session has ended. Start recovery again.",
+  "mfaTooManyAttempts": "Too many attempts. Wait a minute and try again.",
+  "mfaNetworkError": "Could not reach the server. Check your connection and try again.",
+  "mfaRequestFailed": "That did not work. Try again.",
+  "mfaEnrollError": "Could not create an authenticator key. Try again.",
+  "mfaNoRecoveryCodes": "The server did not return recovery codes. Try again before leaving this screen.",
+  "mfaCodesTitle": "Save your recovery codes",
+  "mfaCodesIntro": "These ten codes will not be shown again. Write them down or copy them somewhere safe.",
+  "mfaCopyAllCodes": "Copy all codes",
+  "mfaCodesCopied": "Recovery codes copied",
+  "mfaCodesSavedCheckbox": "I have saved these codes",
+  "mfaCodesConfirm": "I have saved these codes",
+  "mfaCodesLeaveTitle": "Leave without saving?",
+  "mfaCodesLeaveBody": "These codes cannot be shown again. If you leave now, you will have to generate a new batch from settings.",
+  "mfaCodesStay": "Stay",
+  "mfaCodesLeave": "Leave anyway",
+  "mfaCodesIssuedAt": "Created {date}",
+  "@mfaCodesIssuedAt": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "mfaRecoveryCodeSemantics": "Recovery code {index}",
+  "@mfaRecoveryCodeSemantics": {
+    "placeholders": {
+      "index": { "type": "int" }
+    }
+  },
+  "mfaRecoveryLink": "Lost your authenticator?",
+  "mfaRecoveryTitle": "Recover your account",
+  "mfaRecoveryIntro": "Enter the email, password and one unused recovery code for this account. This turns off two-step verification so you can set it up again.",
+  "mfaRecoveryCodeLabel": "Recovery code",
+  "mfaRecoveryCodeHint": "XXXX-XXXX-XXXX-XXXX",
+  "mfaRecoverySubmit": "Recover account",
+  "mfaRecoveryInvalid": "The email, password or recovery code is incorrect.",
+  "mfaRecoveryNoToken": "The server did not return a recovery session. Try again.",
+  "mfaFieldsRequired": "Fill in email, password and recovery code."
 }

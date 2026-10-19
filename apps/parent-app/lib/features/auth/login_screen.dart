@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/mfa_provider.dart';
 import '../../providers/server_provider.dart';
+import 'mfa_recovery_screen.dart';
 
 /// Sign-in screen with an expandable registration form. Navigation after a
 /// successful login/register is handled by the router's auth redirect.
@@ -56,6 +58,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit(Future<void> Function() action) async {
     await action();
     if (mounted && ref.read(authProvider).isAuthenticated) {
+      ref.read(loginNoticeProvider.notifier).state = null;
       context.go('/');
     }
   }
@@ -64,6 +67,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final serverUrl = ref.watch(serverUrlProvider);
+    final showMfaNotice = ref.watch(loginNoticeProvider) == kLoginNoticeMfaSessionEnded;
     final l10n = context.l10n;
     // Keep the field in sync with the persisted URL until the user edits it.
     if (!_serverTouched && _server.text != serverUrl) {
@@ -107,6 +111,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (showMfaNotice) ...[
+                  Text(
+                    l10n.mfaSessionNotice,
+                    key: const ValueKey('loginMfaNotice'),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
@@ -151,6 +167,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                   icon: auth.loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
                   label: Text(l10n.signIn),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  key: const ValueKey('lostAuthenticator'),
+                  onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                    builder: (_) => const MfaRecoveryScreen(),
+                  )),
+                  child: Text(l10n.mfaRecoveryLink),
                 ),
                 const SizedBox(height: 8),
                 ExpansionTile(

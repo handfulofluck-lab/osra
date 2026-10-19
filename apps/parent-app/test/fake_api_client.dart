@@ -8,9 +8,16 @@ class RecordedRequest {
   final String path;
   final dynamic data;
   final Map<String, dynamic> query;
+  final Map<String, dynamic> headers;
 
-  RecordedRequest({required this.method, required this.path, this.data, Map<String, dynamic>? query})
-      : query = query ?? const {};
+  RecordedRequest({
+    required this.method,
+    required this.path,
+    this.data,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  })  : query = query ?? const {},
+        headers = headers ?? const {};
 
   /// Request body as a map (empty map for non-map bodies).
   Map<String, dynamic> get body => data is Map ? Map<String, dynamic>.from(data as Map) : const {};
@@ -44,6 +51,7 @@ class FakeApiClient extends ApiClient {
         path: options.path,
         data: options.data,
         query: Map<String, dynamic>.from(options.queryParameters),
+        headers: Map<String, dynamic>.from(options.headers),
       );
       requests.add(record);
       final route = _routes['${options.method} ${options.path}'];

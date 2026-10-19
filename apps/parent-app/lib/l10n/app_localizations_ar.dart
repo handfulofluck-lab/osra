@@ -1328,4 +1328,202 @@ class AppLocalizationsAr extends AppLocalizations {
   String confirmedEvent(String time) {
     return 'أُكّد $time';
   }
+
+  @override
+  String get mfaMenu => 'التحقق بخطوتين';
+
+  @override
+  String get mfaSettingsTitle => 'التحقق بخطوتين';
+
+  @override
+  String get mfaStatusOn => 'مفعّل';
+
+  @override
+  String get mfaStatusOff => 'غير مفعّل';
+
+  @override
+  String get mfaSettingsStatusOn => 'التحقق بخطوتين مفعّل.';
+
+  @override
+  String get mfaSettingsStatusOff => 'التحقق بخطوتين غير مفعّل.';
+
+  @override
+  String get mfaSettingsExplanation =>
+      'عند تفعيله، يتطلب تسجيل الدخول رمزًا من تطبيق المصادقة بالإضافة إلى كلمة المرور.';
+
+  @override
+  String get mfaSetupAuthenticator => 'إعداد تطبيق المصادقة';
+
+  @override
+  String get mfaReplaceAuthenticator => 'استبدال تطبيق المصادقة';
+
+  @override
+  String get mfaRecoveryCodesTitle => 'رموز الاسترداد';
+
+  @override
+  String get mfaRecoveryCodesExplanation =>
+      'عشرة رموز للاستخدام مرة واحدة. كل رمز يتيح لك تسجيل الدخول مرة واحدة إذا فقدت تطبيق المصادقة.';
+
+  @override
+  String get mfaRegenerateCodes => 'إنشاء رموز استرداد جديدة';
+
+  @override
+  String get mfaRegenerateWarning =>
+      'إنشاء رموز جديدة يستبدل الرموز القديمة، وتتوقف القديمة عن العمل فورًا.';
+
+  @override
+  String get mfaSessionNotice =>
+      'انتهت جلستك عند تفعيل التحقق بخطوتين. سجّل الدخول مجددًا باستخدام تطبيق المصادقة الجديد.';
+
+  @override
+  String get mfaReauthTitle => 'أكّد هويتك';
+
+  @override
+  String get mfaReauthExplanation =>
+      'أدخل كلمة المرور أو رمزًا حاليًا من تطبيق المصادقة.';
+
+  @override
+  String get mfaReauthCode => 'رمز تطبيق المصادقة';
+
+  @override
+  String get mfaReauthRequired =>
+      'أدخل كلمة المرور أو رمزًا حاليًا من تطبيق المصادقة.';
+
+  @override
+  String get mfaReauthFailed => 'لم يتم قبول كلمة المرور أو الرمز.';
+
+  @override
+  String get mfaEnrollTitle => 'إعداد التحقق بخطوتين';
+
+  @override
+  String get mfaEnrollIntro =>
+      'امسح هذا الرمز بتطبيق المصادقة، ثم أدخل الرمز المكوّن من ستة أرقام الذي يعرضه.';
+
+  @override
+  String get mfaEnrollManual => 'تعذّر المسح؟ أدخل هذا المفتاح في التطبيق:';
+
+  @override
+  String get mfaSecretCopied => 'تم نسخ المفتاح';
+
+  @override
+  String get mfaSecretSemantics => 'مفتاح إعداد تطبيق المصادقة';
+
+  @override
+  String get mfaEnrollAfterRecovery =>
+      'أعد إعداد تطبيق مصادقة جديد لهذا الحساب. إلى أن تتحقق منه، يبقى التحقق بخطوتين غير مفعّل.';
+
+  @override
+  String get mfaCodeFieldLabel => 'رمز من ستة أرقام';
+
+  @override
+  String get mfaVerify => 'تفعيل التحقق بخطوتين';
+
+  @override
+  String get mfaVerifying => 'جارٍ التحقق…';
+
+  @override
+  String get mfaInvalidCode =>
+      'لم يتم قبول هذا الرمز. تحقّق من ساعة هاتفك وجرّب الرمز التالي.';
+
+  @override
+  String get mfaNotEnrolled =>
+      'ابدأ الإعداد من جديد — لا يوجد تطبيق مصادقة مسجّل بعد.';
+
+  @override
+  String get mfaSessionError =>
+      'انتهت جلستك. سجّل الدخول مجددًا ثم أعد المحاولة.';
+
+  @override
+  String get mfaRecoveryExpired =>
+      'انتهت جلسة الاسترداد. ابدأ الاسترداد من جديد.';
+
+  @override
+  String get mfaTooManyAttempts =>
+      'محاولات كثيرة جدًا. انتظر دقيقة ثم حاول مجددًا.';
+
+  @override
+  String get mfaNetworkError =>
+      'تعذّر الوصول إلى الخادم. تحقّق من اتصالك ثم حاول مجددًا.';
+
+  @override
+  String get mfaRequestFailed => 'لم ينجح ذلك. حاول مجددًا.';
+
+  @override
+  String get mfaEnrollError => 'تعذّر إنشاء مفتاح المصادقة. حاول مجددًا.';
+
+  @override
+  String get mfaNoRecoveryCodes =>
+      'لم يُرجع الخادم رموز الاسترداد. حاول مجددًا قبل مغادرة هذه الشاشة.';
+
+  @override
+  String get mfaCodesTitle => 'احفظ رموز الاسترداد';
+
+  @override
+  String get mfaCodesIntro =>
+      'لن تُعرض هذه الرموز العشرة مرة أخرى. اكتبها أو انسخها إلى مكان آمن.';
+
+  @override
+  String get mfaCopyAllCodes => 'نسخ كل الرموز';
+
+  @override
+  String get mfaCodesCopied => 'تم نسخ رموز الاسترداد';
+
+  @override
+  String get mfaCodesSavedCheckbox => 'لقد حفظت هذه الرموز';
+
+  @override
+  String get mfaCodesConfirm => 'لقد حفظت هذه الرموز';
+
+  @override
+  String get mfaCodesLeaveTitle => 'المغادرة دون حفظ؟';
+
+  @override
+  String get mfaCodesLeaveBody =>
+      'لا يمكن عرض هذه الرموز مرة أخرى. إذا غادرت الآن، فستحتاج إلى إنشاء مجموعة جديدة من الإعدادات.';
+
+  @override
+  String get mfaCodesStay => 'البقاء';
+
+  @override
+  String get mfaCodesLeave => 'المغادرة على أي حال';
+
+  @override
+  String mfaCodesIssuedAt(String date) {
+    return 'أُنشئت في $date';
+  }
+
+  @override
+  String mfaRecoveryCodeSemantics(int index) {
+    return 'رمز الاسترداد $index';
+  }
+
+  @override
+  String get mfaRecoveryLink => 'هل فقدت تطبيق المصادقة؟';
+
+  @override
+  String get mfaRecoveryTitle => 'استرداد حسابك';
+
+  @override
+  String get mfaRecoveryIntro =>
+      'أدخل البريد الإلكتروني وكلمة المرور وأحد رموز الاسترداد غير المستخدمة لهذا الحساب. سيؤدي هذا إلى إيقاف التحقق بخطوتين كي تتمكن من إعداده من جديد.';
+
+  @override
+  String get mfaRecoveryCodeLabel => 'رمز الاسترداد';
+
+  @override
+  String get mfaRecoveryCodeHint => 'XXXX-XXXX-XXXX-XXXX';
+
+  @override
+  String get mfaRecoverySubmit => 'استرداد الحساب';
+
+  @override
+  String get mfaRecoveryInvalid =>
+      'البريد الإلكتروني أو كلمة المرور أو رمز الاسترداد غير صحيح.';
+
+  @override
+  String get mfaRecoveryNoToken => 'لم يُرجع الخادم جلسة استرداد. حاول مجددًا.';
+
+  @override
+  String get mfaFieldsRequired =>
+      'املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد.';
 }

@@ -34,8 +34,16 @@ class ApiClient {
   ApiClient() {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (opts, handler) async {
-        final token = await _storage.read(key: 'jwt');
-        if (token != null) opts.headers['Authorization'] = 'Bearer $token';
+        // A purpose-scoped token (the 15-minute `mfa_recovery` credential) is
+        // passed per request and must win over the stored session: it is not a
+        // session, and it must never be written to the 'jwt' key.
+        final scoped = opts.extra['authToken'];
+        final token = scoped is String && scoped.isNotEmpty
+            ? scoped
+            : await _storage.read(key: 'jwt');
+        if (token != null && token.isNotEmpty) {
+          opts.headers['Authorization'] = 'Bearer $token';
+        }
         handler.next(opts);
       },
       onError: (e, handler) async {
