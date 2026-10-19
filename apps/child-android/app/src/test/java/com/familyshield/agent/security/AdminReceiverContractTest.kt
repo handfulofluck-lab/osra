@@ -15,13 +15,13 @@ import org.w3c.dom.Element
  * between "activates through the sheet" and a stale Knox row that says `Admin is already added`.
  *
  * This is the JVM half of the pin: the manifest's receiver must resolve to
- * [ParentalAdminReceiver.COMPONENT_CLASS], and `res/xml/device_admin.xml` must still grant exactly the
+ * [GuardianAdminReceiver.COMPONENT_CLASS], and `res/xml/device_admin.xml` must still grant exactly the
  * policies the code was reviewed with (ADR-0010). It reads the **source** manifest; the merged
  * manifests are asserted separately in `PlayMergedManifestTest` / `FullMergedManifestTest`.
  */
 class AdminReceiverContractTest {
 
-    private val receiverClass = ParentalAdminReceiver::class.java
+    private val receiverClass = GuardianAdminReceiver::class.java
 
     private val manifest by lazy { parse(source("app/src/main/AndroidManifest.xml")) }
     private val deviceAdmin by lazy { parse(source("app/src/main/res/xml/device_admin.xml")) }
@@ -36,9 +36,9 @@ class AdminReceiverContractTest {
     @Test
     fun `the manifest receiver is the class the code constant names`() {
         assertEquals(
-            "ParentalAdminReceiver.COMPONENT_CLASS and the class must not drift",
+            "GuardianAdminReceiver.COMPONENT_CLASS and the class must not drift",
             receiverClass.name,
-            ParentalAdminReceiver.COMPONENT_CLASS,
+            GuardianAdminReceiver.COMPONENT_CLASS,
         )
 
         val declared = adminReceiver().attr("android:name")

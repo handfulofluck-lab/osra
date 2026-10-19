@@ -217,9 +217,11 @@ or accessibility rebinding until it is launched again (measured by probe row 3, 
 did it; the next owner relaunches and re-grants.
 
 **Release** is the last step of every run: clear `unlock` / `stop_ring` / `resume_internet` and verify,
-then follow §7 (deactivate device admin first if it is active, or `adb uninstall` fails — §5a). On a
-debug (testOnly) build that is `dpm remove-active-admin`, no PIN needed (#170); a release build keeps
-the PIN gate. Then release the claim with the state you are handing over:
+then follow §7 (remove protection first if the admin is active, or `adb uninstall` fails — §5a). The
+sanctioned removal is the app's **REMOVE PROTECTION (PARENT PIN)** action on the status screen — the
+route a parent uses, and Knox-aware on Samsung since #186. `dpm remove-active-admin` is a last resort
+only (§5): on a Samsung it strands the admin record. Then release the claim with the state you are
+handing over:
 
 ```powershell
 .\scripts\hardware\phone-claim.ps1 -Action Release -Owner "<agent>" -LeftState Clean -Note "app uninstalled, reverse removed"
@@ -258,18 +260,12 @@ makes. Paste the raw evidence into the issue.
 **Clean up afterwards — always** (`AGENTS.md` §7):
 
 ```bash
-# Debug builds only (testOnly since #170): remove the test admin without the app PIN, then uninstall.
-# A RELEASE build refuses this (`SecurityException: Attempt to remove non-test admin`); use the app's
-# PIN gate instead (status screen → Remove protection), then uninstall. Since #186 that gate is
-# Knox-aware on Samsung, so it is the safe cleanup there as well; the shell command stays AOSP-only.
-# SAMSUNG FIRST (#181): if the admin was activated through the system sheet, deactivate it in
-# Settings → Security and privacy → Device admin apps → OSRA parental controls → Deactivate
-# BEFORE running the shell command below. NEVER run `dpm remove-active-admin` on an admin that was
-# activated through the sheet: it clears AOSP's admin but not Knox's registry row, and the next
-# activation through the sheet then fails with "Admin is already added". The recovery is to rename
-# the receiver component (#202, §6) — not a factory reset: Knox matches component + user, so a new
-# class name is not in its stale list.
-adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.ParentalAdminReceiver
+# CLEANUP ORDER (issues #202/#217). Remove protection through the app, never with dpm first:
+# status screen → "Remove protection (parent PIN)". The removal is Knox-aware on Samsung since #186
+# and is the route the app itself uses. The tester set this PIN at pairing; it is not the device
+# keyguard PIN.
+# THEN confirm no OSRA admin is left, and uninstall, and clear the reverse mapping:
+adb shell dumpsys device_policy | grep -i familyshield    # no output = the admin is gone
 adb uninstall com.familyshield.agent && adb reverse --remove-all
 psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql
 psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # expect 1 / 1
@@ -277,9 +273,23 @@ node services/api/scripts/cleanup-test-redis.mjs            # dry run: lists orp
 node services/api/scripts/cleanup-test-redis.mjs --apply    # deletes only keys whose owner row is gone
 ```
 
-If `dpm remove-active-admin` answers `SecurityException: Attempt to remove non-test admin`, the APK was
-not the debug variant (or was built before #170). Do not try the app PIN by guessing it: stop, say the
-build is wrong, and report it — a release APK on the test phone is a finding, not a cleanup problem.
+`dpm remove-active-admin` is a **last resort**, not the debug-build procedure. On an AOSP phone it is
+safe; on a **Samsung**, removing an admin that was activated through the system sheet with this command
+leaves Knox's own admin record behind, and the next activation through the sheet then fails with
+`Admin is already added` — measured again on the Flip4 in 2026-10-19 (#217, after #202 had renamed the
+component). Use it only when the app itself cannot run, and record that you did:
+
+```bash
+# LAST RESORT ONLY — never on a Samsung whose admin came from the system sheet.
+adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.GuardianAdminReceiver
+```
+
+On a debug (`testOnly`) build this command still exits 0 without the app PIN (#170), but that
+permission is not a reason to use it: `testOnly` is about replacing the package, and the trap above is
+the same. TR-41 proves `testOnlyAdmin=true` from `dumpsys device_policy`; its cleanup no longer needs
+the dpm command. If the command answers `SecurityException: Attempt to remove non-test admin`, the APK
+was not the debug variant (or was built before #170): stop, say the build is wrong, and report it — a
+release APK on the test phone is a finding, not a cleanup problem.
 
 **Redis is part of the environment too** — `AGENTS.md` §7 says persistent (`TTL -1`) keys must be
 removed or explained, and the SQL script cannot see them. `cleanup-test-redis.mjs` reaps only keys
@@ -290,7 +300,7 @@ still exists, because that key is the control that makes an unpaired device's 10
 ## 5a. Tamper protection on hardware (ADR-0010, plan 1.1/1.2)
 
 With the agent paired and a parent PIN set (the pairing flow asks for it), activate Device Admin from the
-status screen (or, for a test, `adb shell dpm set-active-admin com.familyshield.agent/.security.ParentalAdminReceiver`).
+status screen (or, for a test, `adb shell dpm set-active-admin com.familyshield.agent/.security.GuardianAdminReceiver`).
 Then prove each line of the acceptance:
 
 ```bash
@@ -305,19 +315,26 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:c
 #      the status screen shows "alert-only" and `adb uninstall` works again
 ```
 
-**Debug builds take the shell route (issue #170).** The paragraph above describes a **release** build,
-which keeps the hard admin. An `assemblePlayDebug` / `assembleFullDebug` APK declares
-`android:testOnly="true"` in `app/src/debug/AndroidManifest.xml`, and Android then allows the test
-runner to revoke the admin without holding the app PIN:
+**Debug builds keep `testOnly`, but cleanup is still the app's PIN gate (issues #170, #217).** An
+`assemblePlayDebug` / `assembleFullDebug` APK declares `android:testOnly="true"` in
+`app/src/debug/AndroidManifest.xml`, which is what lets a test runner **replace** the package without a
+signature match. It also lets `dpm remove-active-admin` remove a test admin without the app PIN — but
+that is a last resort, not the procedure: on Samsung the shell call leaves Knox's registry row behind
+and the next activation through the system sheet fails with `Admin is already added` (#202, #217).
+Clean up the way a parent would:
 
-```bash
-adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.ParentalAdminReceiver
-adb uninstall com.familyshield.agent          # then succeeds
+```
+status screen → Remove protection (parent PIN) → adb uninstall com.familyshield.agent
 ```
 
-That exception is deliberately **debug-only**: `testOnly` makes an APK replaceable without the parent's
-consent, so the release manifests must not carry it. `PlayMergedManifestTest` / `FullMergedManifestTest`
-assert both halves against the merged manifests (#170).
+The PIN-gated path is Knox-aware since #186 and is the route the product itself uses. If the app
+cannot be driven,
+`adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.GuardianAdminReceiver` is
+allowed **only** off Samsung or for an admin set with `dpm set-active-admin`, and must be recorded.
+
+`testOnly` is deliberately **debug-only**: it makes an APK replaceable without the parent's consent, so
+the release manifests must not carry it. `PlayMergedManifestTest` / `FullMergedManifestTest` assert both
+halves against the merged manifests (#170).
 
 **Lock that holds (plan 1.3):** with the agent paired and "display over other apps" allowed, send a `lock`
 (parent app, or `POST /v1/devices/:id/command {"command":"lock"}`); the overlay appears. Then
@@ -392,12 +409,13 @@ runs, against a paired phone with the PIN set and the test API reachable through
 device, so it lives in your local, gitignored credentials note, never in this repository. Set it when
 you pair, keep it out of commits, and rotate it if it has ever been pasted into a public place.
 
-**Cleanup on a debug build does not need that PIN (issue #170).** The probe is run against a debug APK,
-which is `android:testOnly`; end the run with `adb shell dpm remove-active-admin --user 0
-com.familyshield.agent/.security.ParentalAdminReceiver` and then `adb uninstall
-com.familyshield.agent` (§5). The `-Pin` above is still needed for the probe's in-app steps (the lock and
-ring gates) — only the admin-revocation cleanup changed. A **release** build has no `testOnly` and keeps
-the PIN-gated removal; that is the intended difference, not a bug.
+**Cleanup on a debug build is the app's PIN-gated removal too (issue #217).** The probe is run against a
+debug APK, which is `android:testOnly`; that does **not** make `dpm remove-active-admin` the procedure.
+End the run with the status screen's **REMOVE PROTECTION (PARENT PIN)** and then `adb uninstall
+com.familyshield.agent` (§5). On Samsung the shell command strands Knox's admin record and blocks the
+next sheet activation, so it is a last resort there, not a shortcut. The `-Pin` above is still needed
+for the probe's in-app steps (the lock and ring gates). A **release** build has no `testOnly` and keeps
+the same PIN-gated removal; that is the intended difference, not a bug.
 
 **A testOnly/debuggable build cannot produce gate evidence (issue #178, `QA/TESTING-STRATEGY.md` §3b).**
 Before the first row the probe reads `adb shell dumpsys package com.familyshield.agent` and inspects
@@ -486,8 +504,9 @@ source is the parent app's `PairingQrScreen`; a generated PNG is a surrogate and
    to the form with the stated reason and must not pair.
 6. Accessibility: `uiautomator dump` must show `content-desc` on the preview ("Camera preview"), the
    live-region status line and the "Cancel scanning…" button.
-7. Cleanup: unpair through the API/parent app, `dpm remove-active-admin` (debug/testOnly),
-   `adb uninstall`, `adb reverse --remove-all`, release the lease `Clean`.
+7. Cleanup: unpair through the API/parent app, remove protection with the app's parent PIN (§5; not
+   `dpm remove-active-admin` on a Samsung), `adb uninstall`, `adb reverse --remove-all`, release the
+   lease `Clean`.
 
 **Hardware note (2026-10-19).** The Flip4's rear camera was covered in the test position, so the scan
 itself could not be aimed at the monitor; the run verified install, the rationale, the OS prompt, the
@@ -629,9 +648,9 @@ after its parent dies.
 | `FATAL EXCEPTION: main … ForegroundServiceDidNotStartInTimeException` in a receiver, although the service saw the missing permission and called `stopSelf()` | `startForegroundService()` starts a clock that only `startForeground()` stops: returning `START_NOT_STICKY` and stopping **without** ever calling `startForeground()` still trips the deadline. "Check the permission inside the service and bail" is therefore not a safe pattern | Guard **before** `startForegroundService()` — `BootStartPolicy` (issue #128). A service that cannot legally start foreground must not be requested at all |
 | A new `ContextCompat.startForegroundService(… LocationService::class.java)` call site is added with a fine/coarse check only | #128 fixed boot, but `AccessibilityMonitorService` and `locate_now` kept starting the location FGS on a while-in-use grant alone; Android 14+ refuses a location FGS created from the background without `ACCESS_BACKGROUND_LOCATION` (issue #132). A JVM test of the policy proves the rule, not that the new call site asks it | Route background starts through `LocationStartPolicy` (fine **or** coarse plus the background grant on API 29+). Foreground-activity starts go in `LocationServiceStartSitesTest.FOREGROUND_START_SITES` with the reason; the test fails for any unlisted site without a policy reference. A refused `locate_now` must ack `failed` with `detail.reason = background_location_missing` so `/commands/history` shows it |
 | A work order says "run S1 with the app PIN" and the run stops at the phone's lock screen | **the app PIN (set during pairing, held outside this repo) is the OSRA parent PIN** — it opens the in-app gates ("Remove protection", stop ring). It is not the device keyguard credential, and `adb shell locksettings verify --old <app PIN>` answers "didn't match" on the Flip4 (2026-10-18, TR-21) | Never send `lock` on a phone whose keyguard PIN you do not hold: `lockNow()` raises a screen nobody in the room can dismiss. Ask the maintainer to unlock, or measure the `pause` overlay instead — it exercises the same `LockActivity` + policy + `<queries>` path and is honest only when labelled as a surrogate, never as S1 |
-| `dpm remove-active-admin` fails with `SecurityException: Attempt to remove non-test admin` during cleanup | The APK on the phone does **not** declare `android:testOnly` — either it is a **release** build (correct: it keeps the hard admin and wants the app PIN), or it is a debug build from before #170 — and a leftover admin blocks `adb uninstall` | Since #170 every debug build is `testOnly` (`app/src/debug/AndroidManifest.xml`), installed with `adb install -t`; cleanup on it is `dpm remove-active-admin` and needs no PIN (§5). A **release** build must not have `testOnly` (the merged-manifest tests assert its absence), so on release the PIN gate is the only route. Check `dumpsys device_policy` shows the agent gone **before** uninstalling, or the cleanup half-fails and the next run starts from a dirty phone |
+| `dpm remove-active-admin` fails with `SecurityException: Attempt to remove non-test admin` during cleanup | The APK on the phone does **not** declare `android:testOnly` — either it is a **release** build (correct: it keeps the hard admin and wants the app PIN), or it is a debug build from before #170 — and a leftover admin blocks `adb uninstall` | Do not reach for this command as cleanup: since #217 the documented route for **every** build is the app's **REMOVE PROTECTION (PARENT PIN)** (§5), which is Knox-aware on Samsung. `dpm remove-active-admin` is a last resort for an AOSP phone, or for an admin set with `dpm set-active-admin`; on a Samsung whose admin came from the system sheet it strands Knox's registry row and the next activation fails with `Admin is already added` (#202). A **release** build must not have `testOnly` (the merged-manifest tests assert its absence), so on release the PIN gate is the only route. Check `dumpsys device_policy` shows the agent gone **before** uninstalling, or the cleanup half-fails and the next run starts from a dirty phone |
 | A hardware table says **PASS** but the run measured the debug APK | Since #170 every debug build is `testOnly` and `debuggable`; its admin is a test admin, `adb install -r` replaces it without a signature match and `dpm` removes the admin. The tamper rows (1, 2, 10, force-stop) were measured that way for weeks, and a PASS on them says nothing about the release artefact (issue #178) | The probe now classifies the installed package from `dumpsys package` (`flags=[ … TEST_ONLY … DEBUGGABLE … ]`) plus `run-as`, and **refuses with exit 3** unless `-AllowTestBuild`; under that switch evidence is prefixed `NOT EVIDENCE (testOnly/debuggable build)` and `bypass-probe.json` has `gateEligible: false`. Gate-eligible Phase 1 rows need the release-signed APK; see `QA/TESTING-STRATEGY.md` §3b and §5f. Run `classify-build.ps1 -SelfTest` after touching the decision |
-| **Samsung: the system device-admin sheet's Activate closes without activating; logcat says `IllegalArgumentException: Admin is already added`** | On the Flip4 (One UI 16, Android 16, `SecDeviceAdminAdd`) the tap is **not** inert: `I SecDeviceAdminAdd: onClick : Activate the app` runs `addAndFinish()`, then Samsung's Knox layer throws `W SecDeviceAdminAdd: Exception trying to activate admin ComponentInfo{com.familyshield.agent/…FamilyShieldDeviceAdmin}` / `java.lang.IllegalArgumentException: Admin is already added`; `addAndFinish` catches and still calls `finish()`, so the sheet closes and the app says `⚠️ Protection: alert-only`. `dumpsys device_policy` has **no** active OSRA admin, but `D EnterpriseDeviceManagerService: Admin found on user 0: …` appears before the throw because Knox keeps its own admin registry (`mAdminList`/`mAdminMap`, persisted by `EdmStorageProvider.addorUpdateAdmin`) and `EnterpriseDeviceManagerServiceImpl.activateAdmin` rejects a component it already lists. The row is created by an activation **through the sheet** and is **not** removed by AOSP `DevicePolicyManager.removeActiveAdmin`: measured 2026-10-19 by activating a fresh debug-only receiver via the same sheet (success, `Adding admin … to lists`), running `adb shell dpm remove-active-admin` (Success, **no** Knox log), then re-opening the sheet → `Admin found on user 0` → Activate → `Admin is already added`. It survived `pm uninstall` + reinstall with a **new uid**, because `getActiveAdminLocked` matches the **component + user**, not the uid. Ruled out: the click target (`clickable=false` is AOSP's `device_admin_add.xml`; the clickable `restricted_action` parent handles the tap), `testOnly` (a build with `src/debug/AndroidManifest.xml` removed fails identically), the intent (the sheet shows the right component/description/policies and `dpm set-active-admin` works), and a scroll/second confirm (the first tap reaches `addAndFinish`). Issue #181 | Do not chase `clickable=false` or reinstall the app. Grep the **tap moment** for `SecDeviceAdminAdd` and `EnterpriseDeviceManagerService`; `Admin found on user 0` + `Admin is already added` is this trap. On a Samsung test phone, deactivate an active admin through **Settings → Security and privacy → Device admin apps → OSRA parental controls → Deactivate** (the Knox path clears its row) **before** uninstalling; use `dpm remove-active-admin` only for an admin that was set with `dpm set-active-admin` (AOSP, never registered with Knox). A phone already poisoned for the component cannot be fixed by reinstall: the row survives uninstall and a new uid. **The recovery is a component rename, not a factory reset (issue #202):** because Knox matches component + user, moving the receiver to a class name Knox has never seen (this row measured on `…FamilyShieldDeviceAdmin`; the agent now ships `…ParentalAdminReceiver`) puts it outside the stale list and the same sheet activates it. The class, the manifest entry, the `device_admin.xml` consumer and the code constant must move together — `AdminReceiverContractTest` fails a half-landed rename, and the merged-manifest gate asserts the installed component in both flavours. Measured 2026-10-19 on the Flip4 with the Full debug build (test-only, #178): the sheet's Activate returned `device_policy after Activate: True`; `dumpsys device_policy` read back `com.familyshield.agent/.security.ParentalAdminReceiver` with `policies: watch-login, force-lock`. In-app Remove protection (parent PIN) then returned the phone to `alert-only` with 0 OSRA admins, and re-activation through the same sheet succeeded again (#187 AC1's second half). Root/system access to the EDM database also clears the row, and a factory reset is the last resort, not the procedure. Related product finding (#186, fixed here): the app's own `DeviceAdminManager.removeAdmin()` used the same AOSP removal, so removing protection and later re-enabling it through the sheet was expected to hit the same trap. Since #186 the in-app removal is **Knox-aware**: `AdminRemovalPolicy` probes `com.samsung.android.knox.EnterpriseDeviceManager` by reflection and, when the admin API is present, deactivates through `setActiveAdmin(component, false)` before falling back to AOSP; on every other OEM and after any reflection failure it behaves exactly as before. This does **not** change the hardware-cleanup rule above: `adb shell dpm remove-active-admin` is an AOSP-only shell call that bypasses the app, so on Samsung deactivate from Settings (or use the app's PIN-gated Remove protection) **before** uninstalling. Enrolment now names the dead end when the sheet returns with zero AOSP admins on a device that has Knox, and offers Settings → Device admin apps; it does not self-heal another layer's registry. Acceptance 1 of #186 (remove → reinstall → activate through the sheet on the Flip4) is hardware-blocked by the phone's existing stale row |
+| **Samsung: the system device-admin sheet's Activate closes without activating; logcat says `IllegalArgumentException: Admin is already added`** | On the Flip4 (One UI 16, Android 16, `SecDeviceAdminAdd`) the tap is **not** inert: `I SecDeviceAdminAdd: onClick : Activate the app` runs `addAndFinish()`, then Samsung's Knox layer throws `W SecDeviceAdminAdd: Exception trying to activate admin ComponentInfo{com.familyshield.agent/…FamilyShieldDeviceAdmin}` / `java.lang.IllegalArgumentException: Admin is already added`; `addAndFinish` catches and still calls `finish()`, so the sheet closes and the app says `⚠️ Protection: alert-only`. `dumpsys device_policy` has **no** active OSRA admin, but `D EnterpriseDeviceManagerService: Admin found on user 0: …` appears before the throw because Knox keeps its own admin registry (`mAdminList`/`mAdminMap`, persisted by `EdmStorageProvider.addorUpdateAdmin`) and `EnterpriseDeviceManagerServiceImpl.activateAdmin` rejects a component it already lists. The row is created by an activation **through the sheet** and is **not** removed by AOSP `DevicePolicyManager.removeActiveAdmin`: measured 2026-10-19 by activating a fresh debug-only receiver via the same sheet (success, `Adding admin … to lists`), running `adb shell dpm remove-active-admin` (Success, **no** Knox log), then re-opening the sheet → `Admin found on user 0` → Activate → `Admin is already added`. It survived `pm uninstall` + reinstall with a **new uid**, because `getActiveAdminLocked` matches the **component + user**, not the uid. Ruled out: the click target (`clickable=false` is AOSP's `device_admin_add.xml`; the clickable `restricted_action` parent handles the tap), `testOnly` (a build with `src/debug/AndroidManifest.xml` removed fails identically), the intent (the sheet shows the right component/description/policies and `dpm set-active-admin` works), and a scroll/second confirm (the first tap reaches `addAndFinish`). Issue #181 | Do not chase `clickable=false` or reinstall the app. Grep the **tap moment** for `SecDeviceAdminAdd` and `EnterpriseDeviceManagerService`; `Admin found on user 0` + `Admin is already added` is this trap. On a Samsung test phone, deactivate an active admin through **Settings → Security and privacy → Device admin apps → OSRA parental controls → Deactivate** (the Knox path clears its row) **before** uninstalling; use `dpm remove-active-admin` only for an admin that was set with `dpm set-active-admin` (AOSP, never registered with Knox). A phone already poisoned for the component cannot be fixed by reinstall: the row survives uninstall and a new uid. **The recovery is a component rename, not a factory reset (issues #202, #217):** because Knox matches component + user, moving the receiver to a class name Knox has never seen puts it outside the stale list and the same sheet activates it. This has now happened **twice**: #209 moved `…FamilyShieldDeviceAdmin` → `…ParentalAdminReceiver`, and #217 moved `…ParentalAdminReceiver` → `…GuardianAdminReceiver` after the cleanup command above stranded a row for the second name on the Flip4. The root cause is `dpm remove-active-admin` on a sheet-activated admin, not the class name — §5 no longer prescribes that command. The class, the manifest entry, the `device_admin.xml` consumer and the code constant must move together — `AdminReceiverContractTest` fails a half-landed rename, and the merged-manifest gate asserts the installed component in both flavours. Measured 2026-10-19 on the Flip4 with the Full debug build (test-only, #178): the sheet's Activate returned `device_policy after Activate: True`; `dumpsys device_policy` read back `com.familyshield.agent/.security.ParentalAdminReceiver` (the name shipped at the time) with `policies: watch-login, force-lock`. In-app Remove protection (parent PIN) then returned the phone to `alert-only` with 0 OSRA admins, and re-activation through the same sheet succeeded again (#187 AC1's second half). Root/system access to the EDM database also clears the row, and a factory reset is the last resort, not the procedure. Related product finding (#186, fixed here): the app's own `DeviceAdminManager.removeAdmin()` used the same AOSP removal, so removing protection and later re-enabling it through the sheet was expected to hit the same trap. Since #186 the in-app removal is **Knox-aware**: `AdminRemovalPolicy` probes `com.samsung.android.knox.EnterpriseDeviceManager` by reflection and, when the admin API is present, deactivates through `setActiveAdmin(component, false)` before falling back to AOSP; on every other OEM and after any reflection failure it behaves exactly as before. This does **not** change the hardware-cleanup rule above: `adb shell dpm remove-active-admin` is an AOSP-only shell call that bypasses the app, so on Samsung deactivate from Settings (or use the app's PIN-gated Remove protection) **before** uninstalling. Enrolment now names the dead end when the sheet returns with zero AOSP admins on a device that has Knox, and offers Settings → Device admin apps; it does not self-heal another layer's registry. Acceptance 1 of #186 (remove → reinstall → activate through the sheet on the Flip4) is hardware-blocked by the phone's existing stale row |
 
 Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
@@ -676,20 +695,17 @@ is green **including the new checks for the behaviour you changed**, e2e is gree
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
 
-**Hardware cleanup is part of done (issue #170).** A run that leaves the device admin standing is not
-finished (§7 of `AGENTS.md`). On a **debug** build (`assemblePlayDebug` / `assembleFullDebug`, installed
-with `adb install -t`) the admin is declared `testOnly`, so
-`adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.ParentalAdminReceiver`
-exits 0 without the app PIN and `adb uninstall` follows. That is the documented cleanup (§5). **On a
-Samsung phone, if the admin was activated through the system sheet, deactivate it from Settings first**
-(the Knox path); the shell command removes the AOSP admin but leaves Knox's registry row, and the next
-UI activation fails with "Admin is already added" until the phone is reset — see §6 and issue #181. On
-Samsung the app's own PIN-gated **Remove protection** is Knox-aware since #186 and clears the registry
-row too, so it is the safe in-product cleanup; the shell command remains AOSP-only. A **release**
-build deliberately does not carry `testOnly` — it would make the APK replaceable without the parent's
-consent — so its admin comes off only through the app's PIN gate. Never add `testOnly` to
-a release manifest to make a cleanup easier: `PlayMergedManifestTest` / `FullMergedManifestTest` assert
-its absence in both release merges.
+**Hardware cleanup is part of done (issues #170, #217).** A run that leaves the device admin standing
+is not finished (§7 of `AGENTS.md`). The documented route for **every** build is the app's
+**REMOVE PROTECTION (PARENT PIN)**, then `adb uninstall` (§5); that removal is Knox-aware on Samsung
+since #186 and is the route the product itself uses. **`dpm remove-active-admin` is a last resort, not
+the debug cleanup**: it removes AOSP's admin but on a Samsung whose admin came from the system sheet it
+leaves Knox's registry row, and the next UI activation fails with "Admin is already added" until the
+component is renamed (#202, #217). It may be used off Samsung, or for an admin set with
+`dpm set-active-admin`, and the run log must say so. A **release** build deliberately does not carry `testOnly` — it would make
+the APK replaceable without the parent's consent — and is cleaned up exactly the same way, through the
+app's PIN gate. Never add `testOnly` to a release manifest to make a cleanup easier:
+`PlayMergedManifestTest` / `FullMergedManifestTest` assert its absence in both release merges.
 
 ### A PR that touches the probe must not narrow it — and that is now machine-checked
 

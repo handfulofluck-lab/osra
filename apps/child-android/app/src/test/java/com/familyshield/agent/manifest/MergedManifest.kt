@@ -24,10 +24,19 @@ class MergedManifest private constructor(
     val components: List<Component>,
     /**
      * `<application android:testOnly="…">`, verbatim, or `null` when the build type did not declare it.
-     * Issue #170: the debug overlay sets `"true"` so `dpm remove-active-admin` accepts the test admin;
-     * a release build must leave the attribute absent, because `testOnly` makes an APK replaceable.
+     * Issue #170: the debug overlay sets `"true"` so a test runner may replace the package (and the OS
+     * treats the admin as a test admin); a release build must leave the attribute absent, because
+     * `testOnly` makes an APK replaceable.
      */
     val applicationTestOnly: String?,
+    /**
+     * `<application android:label="…">`. Issue #217: absent, Android names the app by its Application
+     * class (`com.familyshield.agent.FamilyShieldApp`) in every system sheet — the camera permission
+     * prompt and the device-admin sheet among them.
+     */
+    val applicationLabel: String?,
+    /** `<application android:icon="…">`, the image the system sheets show beside that label. */
+    val applicationIcon: String?,
 ) {
     data class QueryIntent(val actions: Set<String>, val categories: Set<String>)
 
@@ -36,6 +45,8 @@ class MergedManifest private constructor(
         val name: String,
         val permission: String?,
         val intentActions: Set<String>,
+        /** `<service android:label="…">`; null when the component has none. */
+        val label: String? = null,
     )
 
     /** Every action any component's `<intent-filter>` declares. */
@@ -74,6 +85,7 @@ class MergedManifest private constructor(
                                 .flatMap { filter -> filter.kids("action") }
                                 .mapNotNull { action -> action.attr("android:name") }
                                 .toSet(),
+                            label = element.attr("android:label"),
                         )
                     }
                 }
@@ -101,6 +113,8 @@ class MergedManifest private constructor(
                 },
                 components = components,
                 applicationTestOnly = application?.attr("android:testOnly"),
+                applicationLabel = application?.attr("android:label"),
+                applicationIcon = application?.attr("android:icon"),
             )
         }
     }

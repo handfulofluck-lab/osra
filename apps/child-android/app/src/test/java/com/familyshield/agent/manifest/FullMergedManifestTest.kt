@@ -1,6 +1,7 @@
 package com.familyshield.agent.manifest
 
-import com.familyshield.agent.security.ParentalAdminReceiver
+import com.familyshield.agent.security.GuardianAdminReceiver
+import com.familyshield.agent.services.AccessibilityMonitorService
 import java.io.File
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -72,15 +73,15 @@ class FullMergedManifestTest {
     }
 
     /**
-     * Issue #170: the hardware cleanup path is `dpm remove-active-admin`, which Android refuses for a
-     * non-test admin. A Full debug build is the artefact the test runner installs, so it must be testOnly.
+     * Issue #170: a test runner must be able to **replace** the package without the parent PIN, which
+     * Android only permits for a `testOnly` package. A Full debug build is the artefact the test runner
+     * installs, so it must be testOnly. Admin removal is the app's PIN gate (#217), not a dpm command.
      */
     @Test
-    fun `full debug merged manifest is testOnly so the test admin is removable`() {
+    fun `full debug merged manifest is testOnly so a test runner may replace the package`() {
         assertTrue(
-            "android:testOnly is absent from the Full debug merge. The test runner cannot run " +
-                "`dpm remove-active-admin` without it (issue #170), so cleanup again needs the app PIN. " +
-                "Declare it in app/src/debug/AndroidManifest.xml.",
+            "android:testOnly is absent from the Full debug merge. A test runner can then not replace " +
+                "the package without the parent PIN (issue #170). Declare it in app/src/debug/AndroidManifest.xml.",
             merged.applicationTestOnly == "true",
         )
     }
@@ -110,6 +111,23 @@ class FullMergedManifestTest {
     }
 
     /**
+     * Issue #217: the Full APK is the artefact the hardware rows install, so the label the system sheets
+     * show must survive this flavour's merge as well.
+     */
+    @Test
+    fun `full merged manifest labels the application and the accessibility service`() {
+        val violations = PlayManifestPolicy.labellingViolations(
+            merged,
+            accessibilityServiceClass = AccessibilityMonitorService::class.java.name,
+        )
+        assertTrue(
+            "the Full artefact would name the app after its Application class in system sheets " +
+                "(issue #217):\n" + violations.joinToString("\n"),
+            violations.isEmpty(),
+        )
+    }
+
+    /**
      * Issue #202: the Full APK is the artefact the hardware rows install, and the installed component
      * name is what Samsung's Knox registry matches. The rename must survive this flavour's merge too.
      */
@@ -117,7 +135,7 @@ class FullMergedManifestTest {
     fun `full merged manifest declares the renamed device-admin receiver`() {
         val violations = PlayManifestPolicy.adminReceiverViolations(
             merged,
-            ParentalAdminReceiver.COMPONENT_CLASS,
+            GuardianAdminReceiver.COMPONENT_CLASS,
         )
         assertTrue(
             "the Full artifact's device-admin receiver changed (issue #202):\n" +

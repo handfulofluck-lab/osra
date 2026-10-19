@@ -33,9 +33,10 @@ The failure is not self-healing, which is why a reminder is not enough:
   does not drop it (`docs/adr/0012-durable-device-command-queue.md:11-17`);
 - a reboot does not clear it: after the first unlock the boot receiver re-applies the overlay
   (`docs/TESTING.md` §5a, lines 251-261);
-- the shell cannot strip the protection either: `dpm remove-active-admin` refuses non-test admins on
-  Android 14+ (`docs/TESTING.md` §5a, lines 244-248), and `adb uninstall` fails while Device Admin is
-  active (`DELETE_FAILED_DEVICE_POLICY_MANAGER`; `docs/TESTING.md:240`).
+- the shell is not the way out: `dpm remove-active-admin` works only on a `testOnly` debug build, and
+  on a Samsung whose admin was activated through the system sheet it leaves Knox's registry row behind
+  (#217), so the app's parent-PIN removal is the documented route (`docs/TESTING.md` §5); `adb uninstall`
+  fails while Device Admin is active (`DELETE_FAILED_DEVICE_POLICY_MANAGER`; `docs/TESTING.md` §5a).
 
 A locked phone is therefore not a five-minute delay. It is the next tester's slot, plus a PIN-gated
 admin removal and a re-pair if the parent token is gone. The lease's expiry is what stops one agent's
