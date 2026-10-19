@@ -33,8 +33,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   checker's expected-name list grew by the four new assertions. CI now builds `assembleFullRelease` as
   well as `assemblePlayRelease`.
 - **Install note.** `adb install` refuses a `testOnly` APK without `-t`; a hardware run installs a debug
-  build with `adb install -t -r …`. The release APK is unchanged and keeps the hard admin behind the app
-  PIN.
+  build with `adb install -t -r …`. `scripts/hardware/android-signing-tr07.ps1` was updated accordingly,
+  and `docs/TESTING.md` §5 shows the command. The release APK is unchanged and keeps the hard admin
+  behind the app PIN.
 - **Cleanup procedure** (`docs/TESTING.md` §5, §5a, §5f, §7; `AGENTS.md` §7): on a debug build,
   `adb shell dpm remove-active-admin --user 0
   com.familyshield.agent/.security.FamilyShieldDeviceAdmin` then `adb uninstall com.familyshield.agent`.
