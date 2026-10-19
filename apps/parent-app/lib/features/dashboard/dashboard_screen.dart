@@ -9,6 +9,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 
@@ -65,9 +66,9 @@ class DashboardScreen extends ConsumerWidget {
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(l10n.familyLoadFailed('$e'))),
-        data: (overview) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(familyProvider),
-          child: overview.children.isEmpty
+        data: (overview) {
+          final banner = _finishSetupBanner(context, ref, overview);
+          final content = overview.children.isEmpty
               ? ListView(
                   children: [
                     const SizedBox(height: 200),
@@ -82,8 +83,19 @@ class DashboardScreen extends ConsumerWidget {
                   mainAxisSpacing: AppSpace.md,
                   crossAxisSpacing: AppSpace.md,
                   children: [for (final child in overview.children) ChildCard(child: child)],
-                ),
-        ),
+                );
+          return RefreshIndicator(
+            onRefresh: () async => ref.invalidate(familyProvider),
+            child: banner == null
+                ? content
+                : Column(
+                    children: [
+                      banner,
+                      Expanded(child: content),
+                    ],
+                  ),
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(context: context, builder: (_) => const AddChildDialog()),
@@ -91,6 +103,62 @@ class DashboardScreen extends ConsumerWidget {
         label: Text(l10n.addChild),
       ),
     );
+  }
+
+  /// Persistent "finish setting up" affordance after the wizard was completed
+  /// with pairing skipped. It disappears once the server reports a device.
+  Widget? _finishSetupBanner(BuildContext context, WidgetRef ref, FamilyOverview overview) {
+    final onboarding = ref.watch(onboardingProvider);
+    final childId = onboarding.childId;
+    if (!onboarding.pairingPending || childId == null) return null;
+    Child? child;
+    for (final candidate in overview.children) {
+      if (candidate.id == childId) child = candidate;
+    }
+    if (child == null) return null;
+    if (overview.devicesFor(child.id).isNotEmpty) return null;
+
+    final l10n = context.l10n;
+    final tokens = context.tokens;
+    return Card(
+      key: const ValueKey('finishSetupBanner'),
+      margin: const EdgeInsetsDirectional.fromSTEB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
+      color: tokens.surfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.onboardingFinishSetupTitle, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: AppSpace.xs),
+            Text(l10n.onboardingFinishSetupBody(child.displayName), style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: AppSpace.sm),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: FilledButton.tonal(
+                key: const ValueKey('finishSetupPairNow'),
+                onPressed: () => _openPairing(context, ref, child!),
+                child: Text(l10n.onboardingPairNow),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPairing(BuildContext context, WidgetRef ref, Child child) async {
+    await context.push('/child/${child.id}/pair');
+    if (!context.mounted) return;
+    ref.invalidate(familyProvider);
+    try {
+      final overview = await ref.read(familyProvider.future);
+      if (overview.devicesFor(child.id).isNotEmpty) {
+        await ref.read(onboardingProvider.notifier).clearPairingPending();
+      }
+    } catch (_) {
+      // The banner stays; the dashboard's retry path is the refresh gesture.
+    }
   }
 }
 

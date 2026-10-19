@@ -13,6 +13,7 @@ import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/onboarding_provider.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
@@ -22,7 +23,7 @@ void main() {
 
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
   });
 
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api) async {

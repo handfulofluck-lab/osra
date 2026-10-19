@@ -574,6 +574,7 @@
   },
   "pairCodeError": "The server did not return a usable pairing code. Try Regenerate.",
   "pairCreateError": "Could not create a pairing code. Check the connection and try again.",
+  "pairConsentError": "The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.",
   "appearanceTitle": "Appearance",
   "themeLabel": "Theme",
   "appearanceDesc": "System follows this device. Light or Dark overrides it for OSRA only.",
@@ -738,5 +739,61 @@
   "mfaRecoverySubmit": "Recover account",
   "mfaRecoveryInvalid": "The email, password or recovery code is incorrect.",
   "mfaRecoveryNoToken": "The server did not return a recovery session. Try again.",
-  "mfaFieldsRequired": "Fill in email, password and recovery code."
+  "mfaFieldsRequired": "Fill in email, password and recovery code.",
+  "onboardingWelcomeTitle": "Welcome to OSRA",
+  "onboardingWelcomeBody": "Set up protection for your child in three short steps. It takes about five minutes.",
+  "onboardingGetStarted": "Get started",
+  "onboardingSignInTitle": "Sign in or create an account",
+  "onboardingSignInBody": "This account controls your child's protection. Sign in, or create your family account below.",
+  "onboardingWrongPassword": "The email or password is incorrect. Check it and try again.",
+  "onboardingInvalidMfaCode": "That authentication code was not accepted. Check the code and try again.",
+  "onboardingNoNetwork": "Cannot reach the server. Check the server address and your internet connection, then try again.",
+  "onboardingChildTitle": "Add your child",
+  "onboardingChildIntro": "Enter your child's name and birth year. Choose how you gave parental consent — the server requires consent before a child can be added.",
+  "onboardingChildNameRequired": "Enter your child's name.",
+  "onboardingBirthYearInvalid": "Enter a birth year between 1900 and this year.",
+  "onboardingAddChildContinue": "Add child and continue",
+  "onboardingChildPrivacy": "Your child's name and birth year are stored on your family's server. They are used only for protection and reports.",
+  "onboardingExistingChildren": "Your account already has children. Continue to pair a device.",
+  "onboardingConsentRequired": "The server needs parental consent for this child. Check the consent details and try again.",
+  "onboardingOwnerOnly": "Only the family owner can add a child. Sign in with the owner account or ask the owner to add this child.",
+  "onboardingChildInvalid": "The server could not add this child. Check the name and birth year, then try again.",
+  "onboardingChildFailed": "Could not add your child. Check your connection and try again.",
+  "onboardingLeaveTitle": "Go back to sign in?",
+  "onboardingLeaveBody": "You will be signed out. Anything you have already added stays on your account.",
+  "onboardingLeaveStay": "Stay",
+  "onboardingLeaveConfirm": "Sign out",
+  "onboardingPairTitle": "Pair their device",
+  "onboardingPairIntro": "Open OSRA on {childName}'s phone and choose Pair with a code.",
+  "@onboardingPairIntro": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "onboardingPairSteps": "Scan this QR code, or type the six digits below if the camera cannot scan it. You do not need to give your password to the person holding the phone.",
+  "onboardingPairConfirm": "My child has finished pairing",
+  "onboardingPairWaiting": "Not paired yet. Ask your child to finish on their phone, then tap again.",
+  "onboardingPairCheckFailed": "Could not check the pairing yet. Check your connection and tap again.",
+  "onboardingPairLater": "Set up later",
+  "onboardingPairLaterNote": "You can pair from the dashboard whenever the phone is ready. Protection starts after pairing.",
+  "pairingCodeSemantics": "Pairing code {code}",
+  "@pairingCodeSemantics": {
+    "placeholders": {
+      "code": { "type": "String" }
+    }
+  },
+  "onboardingDoneStepTitle": "Setup",
+  "onboardingDoneTitle": "You're all set",
+  "onboardingDoneBody": "Your child is added and their device is paired. Open the dashboard to see their status.",
+  "onboardingDonePendingTitle": "One step left",
+  "onboardingDonePendingBody": "Your child is added, but their phone is not paired yet. You can pair it any time from the dashboard.",
+  "onboardingGoToDashboard": "Go to dashboard",
+  "onboardingFinishSetupTitle": "Finish setting up",
+  "onboardingFinishSetupBody": "Pair {childName}'s phone to start protection.",
+  "@onboardingFinishSetupBody": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "onboardingPairNow": "Pair now"
 }

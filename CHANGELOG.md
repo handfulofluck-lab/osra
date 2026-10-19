@@ -11,6 +11,43 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — first-run wizard makes the parent half of 3.2 one guided path
+- **Why.** Sign-in, family creation, adding a child and the pairing QR existed as separate screens
+  reachable from different places. A non-engineer had no single path, and the 3.2 acceptance is
+  "a non-engineer parent pairs in 5 minutes".
+- **What.** `apps/parent-app/lib/features/onboarding/` adds Welcome → Sign in / Create account →
+  Add your child → Pair their device → Done. `PairingQrScreen`
+  (`lib/features/pairing/pair_qr_screen.dart`) gains a wizard mode with a short child-phone
+  explanation and one primary action that checks `/v1/family/me` for a device **before** advancing;
+  a click that finds no device says "Not paired yet" instead of moving on. The existing 600 s
+  countdown and expiry copy are reused.
+- **Resumable.** `lib/providers/onboarding_provider.dart` persists `onboarding_complete`,
+  `onboarding_step`, `onboarding_child_id` and `pairing_pending` in `shared_preferences`, the same
+  way `theme_mode`/`app_locale` are persisted. `lib/app.dart` steers every route back to the saved
+  step; a session that expired mid-flow returns to sign-in, which cannot be skipped.
+- **Skipping pairing is allowed but not silent.** "Set up later" completes the wizard and writes
+  `pairing_pending`; the dashboard then shows a persistent **Finish setting up · Pair now** card
+  (`dashboard_screen.dart`) that opens the normal pairing screen and clears itself once a device is
+  reported. The Done step says "One step left" while pairing is pending — it never shows success for
+  a partial setup.
+- **Honest failures.** Wrong password and unreachable server are named in the wizard's sign-in step;
+  child creation maps 428 (consent), 403 (owner only), 400/422 (invalid details) and transport
+  failures to actionable copy; pair-code creation names a consent refusal instead of blaming the
+  connection.
+- **Localization.** All new copy is in `app_en.arb` and `app_ar.arb` with matching keys and
+  placeholders; every step is rendered in Arabic RTL at 320×568.
+- **Tests.** `apps/parent-app/test/onboarding_test.dart`, 18 widget tests: fresh install shows the
+  wizard and a completed setup does not; direct setup routes cannot bypass sign-in; resume lands on
+  the saved step; skip-pairing leaves the dashboard affordance; the full happy path advances only
+  after a device; wrong password, unreachable server, consent refusal and QR expiry; Arabic + RTL at
+  320×568 for each step; ARB key parity for the new strings. The existing suite's app-router tests
+  now seed `onboarding_complete`, because their subject is the normal login/dashboard path.
+- **Gates (author's run, this branch).** `flutter test` → **202 passed** (184 before this change);
+  `flutter analyze` → **No issues found**. The API was not changed.
+- **⚠️ Not verified here.** The acceptance itself — a timed five-minute first-run run by a
+  non-engineer — was **not** run; TR-23's 21.2 s proxy measures the child typed path only. No merge
+  sha and no independent verification yet.
+
 ### Android — protection removal is Knox-aware and the stale-admin dead end is named (issue #186)
 - **Why.** Samsung activates device admin through Knox, and Knox keeps a persistent admin registry of
   its own. The in-app **Remove protection** path called AOSP `DevicePolicyManager.removeActiveAdmin`

@@ -291,6 +291,7 @@
   "codeWorksOnce": "{minutes, plural, =1{يعمل الرمز مرة واحدة وتنتهي صلاحيته بعد دقيقة واحدة.} =2{يعمل الرمز مرة واحدة وتنتهي صلاحيته بعد دقيقتين.} few{يعمل الرمز مرة واحدة وتنتهي صلاحيته بعد {minutes} دقائق.} many{يعمل الرمز مرة واحدة وتنتهي صلاحيته بعد {minutes} دقيقة.} other{يعمل الرمز مرة واحدة وتنتهي صلاحيته بعد {minutes} دقيقة.}}",
   "pairCodeError": "لم يُرجع الخادم رمز إقران صالحًا. جرّب إعادة الإنشاء.",
   "pairCreateError": "تعذّر إنشاء رمز الإقران. تحقق من الاتصال وحاول مرة أخرى.",
+  "pairConsentError": "يحتاج الخادم إلى موافقة الوالدين لهذا الطفل قبل إنشاء رمز الإقران. ارجع وأضف الطفل مرة أخرى ثم حاول مجددًا.",
   "appearanceTitle": "المظهر",
   "themeLabel": "نمط العرض",
   "appearanceDesc": "النظام يتبع هذا الجهاز. يُطبَّق الفاتح أو الداكن على OSRA فقط.",
@@ -410,5 +411,61 @@
   "mfaRecoverySubmit": "استرداد الحساب",
   "mfaRecoveryInvalid": "البريد الإلكتروني أو كلمة المرور أو رمز الاسترداد غير صحيح.",
   "mfaRecoveryNoToken": "لم يُرجع الخادم جلسة استرداد. حاول مجددًا.",
-  "mfaFieldsRequired": "املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد."
+  "mfaFieldsRequired": "املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد.",
+  "onboardingWelcomeTitle": "مرحبًا بك في OSRA",
+  "onboardingWelcomeBody": "أعدّ الحماية لطفلك في ثلاث خطوات قصيرة. يستغرق الأمر نحو خمس دقائق.",
+  "onboardingGetStarted": "ابدأ",
+  "onboardingSignInTitle": "سجّل الدخول أو أنشئ حسابًا",
+  "onboardingSignInBody": "هذا الحساب يتحكم في حماية طفلك. سجّل الدخول، أو أنشئ حساب عائلتك أدناه.",
+  "onboardingWrongPassword": "البريد الإلكتروني أو كلمة المرور غير صحيحة. تحقق منها وحاول مجددًا.",
+  "onboardingInvalidMfaCode": "لم يُقبل رمز التحقق. تحقق من الرمز وحاول مجددًا.",
+  "onboardingNoNetwork": "تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.",
+  "onboardingChildTitle": "أضف طفلك",
+  "onboardingChildIntro": "أدخل اسم طفلك وسنة ميلاده. اختر طريقة موافقة الوالدين — يحتاج الخادم إلى الموافقة قبل إضافة الطفل.",
+  "onboardingChildNameRequired": "أدخل اسم طفلك.",
+  "onboardingBirthYearInvalid": "أدخل سنة ميلاد بين 1900 وهذا العام.",
+  "onboardingAddChildContinue": "أضف الطفل وتابع",
+  "onboardingChildPrivacy": "يُخزَّن اسم طفلك وسنة ميلاده على خادم عائلتك. يُستخدمان فقط للحماية والتقارير.",
+  "onboardingExistingChildren": "لدى حسابك أطفال بالفعل. تابع لإقران جهاز.",
+  "onboardingConsentRequired": "يحتاج الخادم إلى موافقة الوالدين لهذا الطفل. تحقق من بيانات الموافقة وحاول مجددًا.",
+  "onboardingOwnerOnly": "مالك العائلة وحده يمكنه إضافة طفل. سجّل الدخول بحساب المالك أو اطلب من المالك إضافة هذا الطفل.",
+  "onboardingChildInvalid": "تعذّر على الخادم إضافة هذا الطفل. تحقق من الاسم وسنة الميلاد ثم حاول مجددًا.",
+  "onboardingChildFailed": "تعذّرت إضافة طفلك. تحقق من اتصالك وحاول مجددًا.",
+  "onboardingLeaveTitle": "العودة إلى تسجيل الدخول؟",
+  "onboardingLeaveBody": "سيتم تسجيل خروجك. أي شيء أضفته بالفعل يبقى على حسابك.",
+  "onboardingLeaveStay": "ابقَ",
+  "onboardingLeaveConfirm": "تسجيل الخروج",
+  "onboardingPairTitle": "إقران جهازه",
+  "onboardingPairIntro": "افتح OSRA على هاتف {childName} واختر الإقران برمز.",
+  "@onboardingPairIntro": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "onboardingPairSteps": "امسح رمز QR هذا، أو اكتب الأرقام الستة أدناه إذا تعذّر على الكاميرا مسحه. لا حاجة إلى إعطاء كلمة المرور لمن يحمل الهاتف.",
+  "onboardingPairConfirm": "انتهى طفلي من الإقران",
+  "onboardingPairWaiting": "لم يتم الإقران بعد. اطلب من طفلك إكمال الخطوة على هاتفه ثم اضغط مجددًا.",
+  "onboardingPairCheckFailed": "تعذّر التحقق من الإقران بعد. تحقق من اتصالك واضغط مجددًا.",
+  "onboardingPairLater": "الإعداد لاحقًا",
+  "onboardingPairLaterNote": "يمكنك الإقران من لوحة التحكم متى كان الهاتف جاهزًا. تبدأ الحماية بعد الإقران.",
+  "pairingCodeSemantics": "رمز الإقران {code}",
+  "@pairingCodeSemantics": {
+    "placeholders": {
+      "code": { "type": "String" }
+    }
+  },
+  "onboardingDoneStepTitle": "الإعداد",
+  "onboardingDoneTitle": "كل شيء جاهز",
+  "onboardingDoneBody": "تمت إضافة طفلك وإقران جهازه. افتح لوحة التحكم لعرض حالته.",
+  "onboardingDonePendingTitle": "بقيت خطوة واحدة",
+  "onboardingDonePendingBody": "تمت إضافة طفلك، لكن هاتفه غير مقرون بعد. يمكنك إقرانه في أي وقت من لوحة التحكم.",
+  "onboardingGoToDashboard": "الانتقال إلى لوحة التحكم",
+  "onboardingFinishSetupTitle": "أكمل الإعداد",
+  "onboardingFinishSetupBody": "أقرن هاتف {childName} لتبدأ الحماية.",
+  "@onboardingFinishSetupBody": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "onboardingPairNow": "أقرن الآن"
 }
