@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — the auto-close trap, folded into the row that already existed
+- A PR body that negated a closing keyword still closed the issue: the parser reads the keyword, not the sentence. The trap row in `docs/TESTING.md` §6 now adds the two things the first version missed: commit messages that land on `main` count as well (a merge commit closed it a second time), and the recovery is to reopen the issue and say why on it.
+
 ### Android — the system sheets name the app, the block screen follows the app in front, and cleanup stops stranding Samsung admins (#217)
 - **Why.** Claude's 2026-10-19 Flip4 re-tests (#217) measured three defects and one procedure trap:
   the camera and device-admin sheets called the app `com.familyshield.agent.FamilyShieldApp`; a second
