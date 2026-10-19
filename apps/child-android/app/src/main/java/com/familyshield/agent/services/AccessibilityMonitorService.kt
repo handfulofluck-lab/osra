@@ -9,6 +9,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
@@ -17,7 +19,12 @@ import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
+import com.familyshield.agent.enforcement.OverlayRetryBudget
 import com.familyshield.agent.enforcement.PackageFacts
+import com.familyshield.agent.enforcement.RetryDecision
+import com.familyshield.agent.enforcement.VisibleWindow
+import com.familyshield.agent.enforcement.WindowLayout
+import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
@@ -26,7 +33,6 @@ import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
 import com.familyshield.agent.telemetry.UsageReporter
-import android.view.accessibility.AccessibilityNodeInfo
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -45,6 +51,14 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+
+    /**
+     * Issue #175: bounded re-raises for a PiP / split screen state the platform may refuse to change.
+     * One budget for the lock overlay, one for the block overlay; each resets when the visible window
+     * state changes (see [WindowSnapshot.signature]).
+     */
+    private val lockRetryBudget = OverlayRetryBudget()
+    private val blockRetryBudget = OverlayRetryBudget()
 
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
     private var loggedStartDecision: LocationStartPolicy.Decision? = null
@@ -73,34 +87,88 @@ class AccessibilityMonitorService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val eventPkg = event?.packageName?.toString() ?: return
         if (eventPkg == packageName) return
+        // Issue #175: read every visible application window once per event. The active window alone
+        // cannot name a PiP video or the blocked app in the other split pane, and #171's active-only
+        // decision therefore never judged them.
+        val snapshot = windowSnapshot()
         // Issue #165 (reopened): the event's package is a hint, not "the app in front". On the Flip4,
         // WM-Shell reports the Home transition under the framework package `android`; deciding from
         // that name answered BLOCK for a screen that is not an app and the overlay covered the launcher.
-        val foreground = resolveForeground(event, eventPkg)
+        val foreground = resolveForeground(event, eventPkg, snapshot)
         ensureLocationServiceRunning()
         // ADR-0010 §3: the protection guard runs even while consent is paused — a paused agent is
         // still an installed one, and the parent must still hear about an uninstall attempt.
         guardProtectionScreens(event, foreground)
         // The lock is the safe direction: when the window in front cannot be named, the event package
         // is the only hint and the overlay must still come back (LockEnforcementPolicy decides).
-        enforceLockState(foreground ?: eventPkg)
+        enforceLockState(snapshot, foreground ?: eventPkg)
         // ADR-0008 §3: consent withdrawn — the service keeps polling (to learn about a re-grant) but
         // records, captures and enforces nothing.
         if (consentState.isPaused()) return
-        // No app to name (the framework package with no window association): no block overlay, and no
-        // usage credited — `android` is not an app and would otherwise count toward the screen-time
-        // limit of the home screen itself. Our own windows are not usage either.
-        val pkg = foreground ?: return
-        if (pkg == packageName) return
-        // Feature #2/#17: social/chat text capture for monitored apps (no-op elsewhere).
-        social.onAccessibilityEvent(event)
-        if (pkg != eventPkg) Log.i(TAG, "event package $eventPkg, window in front $pkg (#165)")
-        usage.recordForeground(pkg, System.currentTimeMillis())
-        when (rules.evaluate(pkg)) {
-            RuleRepository.Decision.BLOCK -> blocker.showBlockScreen(pkg)
-            RuleRepository.Decision.TIME_LIMIT_REACHED -> blocker.showTimeLimitScreen(pkg)
-            RuleRepository.Decision.ALLOW -> Unit
+        // Usage and social capture belong to the app actually in front; our own overlay and the
+        // unresolved framework package are neither.
+        if (foreground != null && foreground != packageName) {
+            // Feature #2/#17: social/chat text capture for monitored apps (no-op elsewhere).
+            social.onAccessibilityEvent(event)
+            if (foreground != eventPkg) Log.i(TAG, "event package $eventPkg, window in front $foreground (#165)")
+            usage.recordForeground(foreground, System.currentTimeMillis())
         }
+        // Issue #175: judge every visible application window, including one in the other split pane
+        // or a PiP window over Home. This runs even when our own overlay is the active window, which
+        // is exactly the split-screen case the child uses to keep the blocked app beside the lock.
+        enforceVisibleBlocks(snapshot, foreground)
+    }
+
+    /**
+     * Issue #175: run the same [RuleRepository.evaluate] over every visible application package —
+     * [EssentialPackages.blockCandidates] returns the active app first and then the rest. The first
+     * non-ALLOW answer gets the overlay; [blockRetryBudget] stops a fixed PiP/split state from
+     * starting an activity on every accessibility event.
+     */
+    private fun enforceVisibleBlocks(snapshot: WindowSnapshot, active: String?) {
+        val candidates = EssentialPackages.blockCandidates(active, snapshot.windows)
+        if (candidates.isEmpty()) return
+        for (pkg in candidates) {
+            when (rules.evaluate(pkg)) {
+                RuleRepository.Decision.BLOCK -> {
+                    if (allowOverlay(blockRetryBudget, snapshot.signature, snapshot.layout, "block $pkg")) {
+                        blocker.showBlockScreen(pkg)
+                    }
+                    return
+                }
+                RuleRepository.Decision.TIME_LIMIT_REACHED -> {
+                    if (allowOverlay(blockRetryBudget, snapshot.signature, snapshot.layout, "time-limit $pkg")) {
+                        blocker.showTimeLimitScreen(pkg)
+                    }
+                    return
+                }
+                RuleRepository.Decision.ALLOW -> Unit
+            }
+        }
+    }
+
+    /**
+     * Issue #175: the budget is per screen state ([WindowSnapshot.signature]), not per package. A
+     * child who closes PiP or leaves split produces a new signature and gets a fresh attempt; a state
+     * the platform refuses to change is logged once and then left alone instead of looping.
+     */
+    private fun allowOverlay(
+        budget: OverlayRetryBudget,
+        signature: String,
+        layout: WindowLayout,
+        what: String,
+    ): Boolean = when (budget.attempt(signature)) {
+        RetryDecision.ATTEMPT -> true
+        RetryDecision.EXHAUSTED_ONCE -> {
+            Log.w(
+                TAG,
+                "$what overlay: retry budget exhausted in ${layout.name.lowercase()} " +
+                    "[$signature] — the window state (picture-in-picture / split screen) did not " +
+                    "change; not starting another overlay",
+            )
+            false
+        }
+        RetryDecision.EXHAUSTED -> false
     }
 
     /**
@@ -115,22 +183,64 @@ class AccessibilityMonitorService : AccessibilityService() {
      * is the authority; the event's own source and then its package are only fallbacks, and none of
      * them is trusted when it names [EssentialPackages.FRAMEWORK_PACKAGE].
      *
-     * Cost: `rootInActiveWindow` is one binder call per event, and the service is configured for
-     * `typeWindowStateChanged|typeWindowContentChanged` at a 100 ms throttle, so this is at most ten
-     * calls a second — the same order as the read [SocialCapture] already does for a monitored app.
+     * Cost: reading the active window's root and the window list costs one binder call each per event,
+     * and the service is configured for `typeWindowStateChanged|typeWindowContentChanged` at a 100 ms
+     * throttle, so this is at most ten walks a second — the same order as the read [SocialCapture]
+     * already does for a monitored app.
      */
-    private fun resolveForeground(event: AccessibilityEvent, eventPkg: String): String? =
-        EssentialPackages.foregroundPackage(eventPkg, activeWindowPackage(event))
-
-    /** The package of the window in front, or null when the OS will not name it (issue #165). */
-    private fun activeWindowPackage(event: AccessibilityEvent): String? {
-        val fromRoot = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
-        if (!fromRoot.isNullOrBlank() && fromRoot != EssentialPackages.FRAMEWORK_PACKAGE) return fromRoot
+    private fun resolveForeground(event: AccessibilityEvent, eventPkg: String, snapshot: WindowSnapshot): String? {
+        val fromSnapshot = EssentialPackages.foregroundPackage(eventPkg, snapshot.activePackage)
+        if (fromSnapshot != null) return fromSnapshot
+        // The window list may not be available (some OEMs), but `event.source` can still name the
+        // window the event came from. It is a fallback, never the authority.
         val source = runCatching { event.source }.getOrNull()
         val fromSource = runCatching { source?.packageName?.toString() }.getOrNull()
         runCatching { source?.recycle() }
-        if (!fromSource.isNullOrBlank() && fromSource != EssentialPackages.FRAMEWORK_PACKAGE) return fromSource
-        return null
+        return EssentialPackages.foregroundPackage(eventPkg, fromSource)
+    }
+
+    /**
+     * Issue #175: one snapshot of the windows the OS reports, taken once per event.
+     *
+     * `windows` is populated because the accessibility config requests `flagRetrieveInteractiveWindows`.
+     * Only [AccessibilityWindowInfo.TYPE_APPLICATION] windows are application content; the IME,
+     * system bars and the split divider are not block candidates.
+     *
+     * Every node and window obtained here is recycled — #175's second finding: `rootInActiveWindow`
+     * was never recycled, and on API 26–32 every unrecycled [AccessibilityNodeInfo] is a native leak
+     * in a service that can run this path ten times a second.
+     */
+    private fun windowSnapshot(): WindowSnapshot {
+        var active: String? = null
+        val activeRoot = runCatching { rootInActiveWindow }.getOrNull()
+        if (activeRoot != null) {
+            active = runCatching { activeRoot.packageName?.toString() }.getOrNull()
+                ?.takeIf { it.isNotBlank() && it != EssentialPackages.FRAMEWORK_PACKAGE }
+            runCatching { activeRoot.recycle() }
+        }
+        val visible = ArrayList<VisibleWindow>(4)
+        // The `windows` read itself can fail if the service lost the flag; treat that as "no list"
+        // and let the event-package fallback in resolveForeground do its job.
+        for (window in runCatching { windows }.getOrNull().orEmpty()) {
+            try {
+                if (window.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val root = runCatching { window.root }.getOrNull()
+                    val pkg = runCatching { root?.packageName?.toString() }.getOrNull()
+                    runCatching { root?.recycle() }
+                    if (!pkg.isNullOrBlank()) {
+                        visible.add(
+                            VisibleWindow(
+                                packageName = pkg,
+                                inPictureInPicture = runCatching { window.isInPictureInPictureMode }.getOrDefault(false),
+                            ),
+                        )
+                    }
+                }
+            } finally {
+                runCatching { window.recycle() }
+            }
+        }
+        return WindowSnapshot(active, visible)
     }
 
     /**
@@ -190,7 +300,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (now - lastGuardMs < 1_500L) return
         val root = rootInActiveWindow ?: return
         val texts = ArrayList<CharSequence?>(64)
-        collectTexts(root, texts, 0)
+        try {
+            collectTexts(root, texts, 0)
+        } finally {
+            // Issue #175: the node is a native allocation on API 26–32; recycle it whether or not the
+            // classification below throws.
+            runCatching { root.recycle() }
+        }
         val screen = TamperScreenPolicy.classify(
             packageName = pkg,
             texts = texts,
@@ -216,12 +332,26 @@ class AccessibilityMonitorService : AccessibilityService() {
      * Plan 1.3: a parent's lock/pause survives a swipe from Recents, a Home press and a reboot because
      * the overlay is re-raised the moment any other window is in front while [LockState] is active
      * (phone calls and the system UI excepted, see [LockEnforcementPolicy]).
+     *
+     * Issue #175: "in front" now includes a blocked app that is **visible but not active** — the
+     * other half of a split screen, or a PiP video over the launcher. The retry budget bounds the
+     * case where the platform keeps that window above the overlay; the overlay activities are
+     * declared `resizeableActivity="false"` so the system launches them full-screen and leaves split.
      */
-    private fun enforceLockState(pkg: String) {
+    private fun enforceLockState(snapshot: WindowSnapshot, fallbackPackage: String?) {
         val mode = LockState.mode(this)
-        if (!LockEnforcementPolicy.shouldReraise(mode, pkg, packageName, packageFacts)) return
+        if (!LockEnforcementPolicy.isLockingMode(mode)) return
+        var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts)
+        // No window list from the OS (some OEMs): keep the #165 behaviour and decide from the
+        // package resolved for the event, which is a hint but better than no re-raise at all.
+        if (!shouldRaise && snapshot.windows.isEmpty() && snapshot.activePackage.isNullOrBlank()) {
+            shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts)
+        }
+        if (!shouldRaise) return
         val now = System.currentTimeMillis()
         if (now - lastReraiseMs < LockEnforcementPolicy.RERAISE_DEBOUNCE_MS) return
+        val signature = snapshot.signature.ifEmpty { "fallback:${fallbackPackage.orEmpty()}" }
+        if (!allowOverlay(lockRetryBudget, signature, snapshot.layout, "lock")) return
         lastReraiseMs = now
         startActivity(
             Intent(this, com.familyshield.agent.commands.LockActivity::class.java)
@@ -236,7 +366,11 @@ class AccessibilityMonitorService : AccessibilityService() {
         node.contentDescription?.let { out.add(it) }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            collectTexts(child, out, depth + 1)
+            try {
+                collectTexts(child, out, depth + 1)
+            } finally {
+                runCatching { child.recycle() }
+            }
         }
     }
 

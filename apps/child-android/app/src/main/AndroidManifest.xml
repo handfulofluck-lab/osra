@@ -158,18 +158,27 @@
             android:exported="false"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
 
-        <!-- Issue #87: no showWhenLocked - a block screen must not cover the keyguard's PIN pad. -->
+        <!-- Issue #87: no showWhenLocked - a block screen must not cover the keyguard's PIN pad.
+             Issue #175: the overlay must not share the screen with the app it covers. `resizeableActivity
+             =false` makes the system launch it full-screen (leaving split screen) rather than into the
+             other pane; `supportsPictureInPicture=false` means it never becomes a floating PiP window. -->
         <activity android:name=".enforcement.BlockActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:resizeableActivity="false"
+            android:supportsPictureInPicture="false"
             android:turnScreenOn="true"/>
 
         <!-- Issue #87: no showWhenLocked here. Drawing over the keyguard hid the bouncer and locked the
              owner out of their own PIN; the activity defers to the keyguard instead (KeyguardPolicy).
-             The ring screen above keeps showWhenLocked on purpose: it must be visible while locked. -->
+             The ring screen above keeps showWhenLocked on purpose: it must be visible while locked.
+             Issue #175: same multi-window flags as BlockActivity - the lock is a full-screen gate and
+             must not sit in one pane of a split screen or as a PiP window. -->
         <activity android:name=".commands.LockActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:resizeableActivity="false"
+            android:supportsPictureInPicture="false"
             android:turnScreenOn="true"/>
         <!-- Plan 1.7: the ring screen — over the lock screen, screen on, PIN to stop. -->
         <activity android:name=".commands.RingActivity"
