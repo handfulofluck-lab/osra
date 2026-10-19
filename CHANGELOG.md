@@ -11,6 +11,10 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### CI — a PR may only change what its title says it changes (stale-base guard)
+- `scripts/check-pr-diff-scope.mjs` reads the declared kind from the PR title (`docs(`, `ci(`, `feat(`, `fix(` …) and the reality from `git diff --name-status`, and fails when a docs-titled PR touches code, when a ci-titled PR touches app code, or when a docs PR deletes files. Wired into `workflow-lint` for every PR, with a self-test that includes the negative control.
+- Why: on 2026-10-19 a squash built from a `origin/main` that predated #218 produced a 24-file, +125/−503 diff that would have reverted the application label, `BlockSession`, the receiver rename and the cleanup-procedure change — and **every test stayed green**, because the tests proved the old tree worked. A suite proves code; it cannot prove the diff is the change intended.
+
 ### Process — the auto-close trap, folded into the row that already existed
 - A PR body that negated a closing keyword still closed the issue: the parser reads the keyword, not the sentence. The trap row in `docs/TESTING.md` §6 now adds the two things the first version missed: commit messages that land on `main` count as well (a merge commit closed it a second time), and the recovery is to reopen the issue and say why on it.
 
