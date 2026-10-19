@@ -636,7 +636,7 @@ thing to re-run in the **first** half.
    *Apply migration `0017_parent_mfa_recovery_codes` before any of this* — a server built from a
    checkout without it answers 500 on `/mfa/recover`, which is not a finding.
 
-2. **#162 — the refresh record is bound to the counter** (`e9339f0`). Every refresh record carries `sv`
+2. **#162 — the refresh record is bound to the session counter** (`e9339f0`). Every refresh record carries `sv`
    now (`routes/auth.ts:133-137`), `/token/refresh` refuses one below the current version and refuses a
    record with no `sv` at all (`:580-610`), and the revocation bump is no longer best-effort
    (`lib/sessions.ts:114-129`, which is what makes #183's ordering bug a 5xx). Test: log in, keep the
@@ -644,7 +644,7 @@ thing to re-run in the **first** half.
    (no `sv`) → `401`, forced re-login, **not** verified against the legacy epoch. This closes the
    "rolling-deploy window" question §5 Block A item 1 raises.
 
-3. **#156's same-second case with no sleep** — carried unchanged from §5 (Block A item 1). Still nobody's
+3. **#156's session counter, same-second case with no sleep** — carried unchanged from §5 (Block A item 1). Still nobody's
    run but the author's.
 
 4. **#139's residual** (a co-parent token on a sibling family → `403`) — carried unchanged from §5.
