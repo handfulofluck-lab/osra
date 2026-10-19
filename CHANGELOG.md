@@ -11,6 +11,30 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Testing — harnesses for the two #206 hardware rows (TR-48, TR-51/52/53)
+- **Why.** Claude's #206 ruling left five acceptance lines with `no current check`; two of them are
+  scriptable and this PR builds those harnesses. Neither changes product code.
+- **TR-48 (#201).** `scripts/hardware/app-list-cadence.ps1` compares the launchable third-party
+  packages the device reports (`pm list packages -3` plus the launcher query) with the inventory the
+  API stored (`GET /v1/devices/:id/apps`), in both directions, with the documented 60 s clock-skew
+  tolerance for apps installed after the last sync. It then requires two consecutive
+  `appsReportedAt` values 14–16 minutes apart and prints PASS/FAIL; an unobserved second value is
+  WAITING and exit 4, never an invented timestamp. `-SelfTest` covers extra/missing/tolerance and
+  the 14/15/16-minute window without a phone, and runs in `workflow-lint`.
+- **TR-51/52/53 (#189, #179, #153).** `android-pairing-time.ps1 -Human` timestamps only: no adb, no
+  input events, no UI dumps. The observer presses Enter (or drops `-MarkerFile`) at welcome, signed
+  in, child added, QR shown, child scanned and "Protection: on"; it writes
+  `RESULTS-PAIRING-HUMAN.md`/`.json` and prints the total against 300 s as information, never as a
+  pass or fail. The existing machine-driven mode remains TR-23's proxy. `-Human -SelfTest` checks
+  the arithmetic, the informational verdict and both files, and runs in `workflow-lint`.
+- **Docs.** `docs/TESTING.md` §5i describes both; TR-48 and TR-51/52/53 now name the commands in
+  `docs/QA/TEST-REQUESTS.md` (their status is unchanged).
+- **⚠️ Not verified here.** The live TR-48 path was exercised read-only against the Flip4 with a
+  local fixture API (93 launchable user apps; PASS/FAIL and WAITING/exit-4 paths both observed), but
+  the real API cadence was **not** observed: the phone is clean and has no paired agent. No human
+  five-minute run was performed. Those remain for Antigravity/the maintainer, and the rows stay open
+  until they happen.
+
 ### Process — verified-gate carries a signature across a merge of main (#207)
 - **Why.** `main` requires branches to be up to date (`strict`), so each merge forced every queued PR to
   merge `main` in and be signed again with nothing of its own changed; #205 was the first case.
