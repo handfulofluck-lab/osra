@@ -194,6 +194,49 @@ Map<String, dynamic> ruleSetPayload(
       if (alwaysAllowedApps != null) 'alwaysAllowedApps': alwaysAllowedApps,
     };
 
+/// One ConsentRecord JSON object (`GET /v1/family/children/:id/consent`).
+/// [grantedAt] defaults to a fixed instant so date assertions do not drift
+/// with the clock; tests that care about expiry pass their own values.
+Map<String, dynamic> consentRecordJson({
+  String id = 'consent-1',
+  String childId = 'child-1',
+  String method = 'sms_plus',
+  String jurisdiction = 'US',
+  DateTime? grantedAt,
+  DateTime? expiresAt,
+  DateTime? revokedAt,
+  bool thirdPartySharing = false,
+}) =>
+    {
+      'id': id,
+      'childId': childId,
+      'parentId': 'par-1',
+      'method': method,
+      'jurisdiction': jurisdiction,
+      'grantedAt': (grantedAt ?? DateTime.utc(2026, 9, 1)).toIso8601String(),
+      'expiresAt': expiresAt?.toUtc().toIso8601String(),
+      'revokedAt': revokedAt?.toUtc().toIso8601String(),
+      'thirdPartySharing': thirdPartySharing,
+    };
+
+/// `GET /v1/family/children/:id/consent` body: [active] plus the raw history.
+/// An active status echoes the newest record in `consent`, exactly as the API
+/// does; a revoked one leaves `consent` absent and only `records` carries the
+/// truth.
+Map<String, dynamic> consentStatusPayload({
+  bool active = true,
+  String? reason,
+  String jurisdiction = 'US',
+  List<Map<String, dynamic>> records = const [],
+}) =>
+    {
+      'active': active,
+      if (reason != null) 'reason': reason,
+      'jurisdiction': jurisdiction,
+      if (active && records.isNotEmpty) 'consent': records.first,
+      'records': records,
+    };
+
 /// One alert JSON object.
 Map<String, dynamic> alertJson(String id, String severity, String category, String title, DateTime at) => {
       'id': id,
@@ -282,6 +325,25 @@ Map<String, FakeRoute> standardRoutes({
     // Plan 3.6: device cards read the durable queue; default to no commands.
     'GET /v1/devices/dev-1/commands/history': (_) => {'items': <dynamic>[]},
     'GET /v1/devices/dev-2/commands/history': (_) => {'items': <dynamic>[]},
+    // Plan 3.7: an active consent record for both fixture children.
+    'GET /v1/family/children/child-1/consent': (_) =>
+        consentStatusPayload(records: [consentRecordJson()]),
+    'GET /v1/family/children/child-2/consent': (_) =>
+        consentStatusPayload(records: [consentRecordJson(id: 'consent-2', childId: 'child-2')]),
+    'POST /v1/family/children/child-1/consent/revoke': (_) => {
+          'revoked': true,
+          'childId': 'child-1',
+          'count': 1,
+          'devicesNotified': 1,
+          'revokedAt': DateTime.now().toUtc().toIso8601String(),
+        },
+    'POST /v1/family/children/child-2/consent/revoke': (_) => {
+          'revoked': true,
+          'childId': 'child-2',
+          'count': 1,
+          'devicesNotified': 0,
+          'revokedAt': DateTime.now().toUtc().toIso8601String(),
+        },
     'POST /v1/devices/pair': (_) => {
           'code': '482916',
           'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String(),

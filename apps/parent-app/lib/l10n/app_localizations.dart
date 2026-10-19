@@ -2737,6 +2737,348 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pair now'**
   String get onboardingPairNow;
+
+  /// No description provided for @consentRecordSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Method, dates and withdrawal'**
+  String get consentRecordSummary;
+
+  /// No description provided for @consentStatusSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What the server has on record for {childName}.'**
+  String consentStatusSubtitle(String childName);
+
+  /// No description provided for @consentStateActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get consentStateActive;
+
+  /// No description provided for @consentStateExpiring.
+  ///
+  /// In en, this message translates to:
+  /// **'Expiring soon'**
+  String get consentStateExpiring;
+
+  /// No description provided for @consentStateExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get consentStateExpired;
+
+  /// No description provided for @consentStateRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdrawn'**
+  String get consentStateRevoked;
+
+  /// No description provided for @consentStateMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong region'**
+  String get consentStateMismatch;
+
+  /// No description provided for @consentStateNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No consent record'**
+  String get consentStateNone;
+
+  /// No description provided for @consentStateActiveDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Monitoring and data collection are allowed under this record.'**
+  String get consentStateActiveDetail;
+
+  /// No description provided for @consentStateExpiringDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This record expires on {date}. Collection and alerts stop after that date unless consent is granted again.'**
+  String consentStateExpiringDetail(String date);
+
+  /// No description provided for @consentStateExpiredDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This record expired on {date}. Monitoring and data collection are stopped until consent is granted again.'**
+  String consentStateExpiredDetail(String date);
+
+  /// No description provided for @consentStateRevokedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent was withdrawn on {date}. Monitoring and data collection are stopped until consent is granted again.'**
+  String consentStateRevokedDetail(String date);
+
+  /// No description provided for @consentStateMismatchDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'The record\'s jurisdiction ({record}) does not match your family region ({family}), so it cannot authorise monitoring.'**
+  String consentStateMismatchDetail(String record, String family);
+
+  /// No description provided for @consentStateNoneDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'No parental consent is on record for this child. Monitoring and data collection require an active record.'**
+  String get consentStateNoneDetail;
+
+  /// No description provided for @consentJurisdictionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Jurisdiction'**
+  String get consentJurisdictionLabel;
+
+  /// No description provided for @consentGrantedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Granted'**
+  String get consentGrantedLabel;
+
+  /// No description provided for @consentExpiryLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires'**
+  String get consentExpiryLabel;
+
+  /// No description provided for @consentNoExpiry.
+  ///
+  /// In en, this message translates to:
+  /// **'No expiry'**
+  String get consentNoExpiry;
+
+  /// No description provided for @consentThirdPartyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Third-party sharing'**
+  String get consentThirdPartyLabel;
+
+  /// No description provided for @consentSharingOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get consentSharingOn;
+
+  /// No description provided for @consentSharingOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get consentSharingOff;
+
+  /// No description provided for @consentRevokedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdrawn'**
+  String get consentRevokedLabel;
+
+  /// No description provided for @consentNotRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Not withdrawn'**
+  String get consentNotRevoked;
+
+  /// No description provided for @consentCurrentRecord.
+  ///
+  /// In en, this message translates to:
+  /// **'Current record'**
+  String get consentCurrentRecord;
+
+  /// No description provided for @consentHistorySection.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier records'**
+  String get consentHistorySection;
+
+  /// No description provided for @consentHistoryGranted.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} · granted {date}'**
+  String consentHistoryGranted(String method, String date);
+
+  /// No description provided for @consentHistoryRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'withdrawn {date}'**
+  String consentHistoryRevoked(String date);
+
+  /// No description provided for @consentHistoryExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'expired {date}'**
+  String consentHistoryExpired(String date);
+
+  /// No description provided for @consentHistoryActive.
+  ///
+  /// In en, this message translates to:
+  /// **'active'**
+  String get consentHistoryActive;
+
+  /// No description provided for @consentLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the consent record. Check your connection and try again.'**
+  String get consentLoadFailed;
+
+  /// No description provided for @consentWithdrawAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw consent'**
+  String get consentWithdrawAction;
+
+  /// No description provided for @consentWithdrawOnlyOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the family owner can withdraw consent.'**
+  String get consentWithdrawOnlyOwner;
+
+  /// No description provided for @consentWithdrawUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no active consent record to withdraw.'**
+  String get consentWithdrawUnavailable;
+
+  /// No description provided for @consentWithdrawNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdrawing consent stops monitoring. It does not delete data that was already collected.'**
+  String get consentWithdrawNote;
+
+  /// No description provided for @consentRevokeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw consent?'**
+  String get consentRevokeTitle;
+
+  /// No description provided for @consentRevokeWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This stops monitoring for {childName}. The device stays paired, and consent can be granted again later.'**
+  String consentRevokeWarning(String childName);
+
+  /// No description provided for @consentRevokeStopsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What stops immediately'**
+  String get consentRevokeStopsTitle;
+
+  /// No description provided for @consentRevokeStopsCollection.
+  ///
+  /// In en, this message translates to:
+  /// **'New data collection stops: location, app and web activity, and chat scans.'**
+  String get consentRevokeStopsCollection;
+
+  /// No description provided for @consentRevokeStopsAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety alerts stop, including SOS, screen-time and blocked-site alerts.'**
+  String get consentRevokeStopsAlerts;
+
+  /// No description provided for @consentRevokeStopsRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Monitoring pauses on every device. Saved rules stay, but are not enforced until consent is granted again.'**
+  String get consentRevokeStopsRules;
+
+  /// No description provided for @consentRevokeKeepsSafe.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocking and resuming your child\'s device still work while consent is withdrawn.'**
+  String get consentRevokeKeepsSafe;
+
+  /// No description provided for @consentRevokeDataTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What happens to data already collected'**
+  String get consentRevokeDataTitle;
+
+  /// No description provided for @consentRevokeDataRetained.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is deleted or anonymised now. Reports, alerts and location history already collected stay in your family account.'**
+  String get consentRevokeDataRetained;
+
+  /// No description provided for @consentRevokeDataRetention.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw location, app, web and chat data is deleted by the retention job after 90 days by default. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.'**
+  String get consentRevokeDataRetention;
+
+  /// No description provided for @consentRevokeDataErase.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleting your child\'s profile is a separate action that removes all their data immediately. It is not part of withdrawing consent.'**
+  String get consentRevokeDataErase;
+
+  /// No description provided for @consentRevokeTypePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Type {childName} to confirm'**
+  String consentRevokeTypePrompt(String childName);
+
+  /// No description provided for @consentRevokeTypeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The name must match.'**
+  String get consentRevokeTypeHint;
+
+  /// No description provided for @consentRevokeMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'This does not match {childName}.'**
+  String consentRevokeMismatch(String childName);
+
+  /// No description provided for @consentRevokeSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw consent now'**
+  String get consentRevokeSubmit;
+
+  /// No description provided for @consentRevokeCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep consent'**
+  String get consentRevokeCancel;
+
+  /// No description provided for @consentRevokeBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdrawing…'**
+  String get consentRevokeBusy;
+
+  /// No description provided for @consentRevokeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not withdraw consent. Nothing was changed. Check your connection and try again.'**
+  String get consentRevokeFailed;
+
+  /// No description provided for @consentRevokeForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the family owner can withdraw consent. Nothing was changed.'**
+  String get consentRevokeForbidden;
+
+  /// No description provided for @consentRevokeDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent withdrawn. Monitoring is paused.'**
+  String get consentRevokeDone;
+
+  /// No description provided for @consentRevokeNoActive.
+  ///
+  /// In en, this message translates to:
+  /// **'There was no active consent record. Nothing changed.'**
+  String get consentRevokeNoActive;
+
+  /// No description provided for @consentRevokeDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No device was connected.} =1{Pause signal queued for 1 device.} other{Pause signal queued for {count} devices.}}'**
+  String consentRevokeDevices(int count);
+
+  /// No description provided for @consentChildNameMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your child\'s name. Go back and try again.'**
+  String get consentChildNameMissing;
 }
 
 class _AppLocalizationsDelegate

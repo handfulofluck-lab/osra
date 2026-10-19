@@ -467,5 +467,124 @@
       "childName": { "type": "String" }
     }
   },
-  "onboardingPairNow": "أقرن الآن"
+  "onboardingPairNow": "أقرن الآن",
+  "consentRecordSummary": "الطريقة والتواريخ وسحب الموافقة",
+  "consentStatusSubtitle": "ما هو مسجّل حاليًا لدى الخادم عن {childName}.",
+  "@consentStatusSubtitle": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentStateActive": "سارية",
+  "consentStateExpiring": "تنتهي قريبًا",
+  "consentStateExpired": "منتهية",
+  "consentStateRevoked": "مسحوبة",
+  "consentStateMismatch": "منطقة غير مطابقة",
+  "consentStateNone": "لا يوجد سجل موافقة",
+  "consentStateActiveDetail": "المراقبة وجمع البيانات مسموحان بموجب هذا السجل.",
+  "consentStateExpiringDetail": "ينتهي هذا السجل في {date}. يتوقف الجمع والتنبيهات بعد ذلك التاريخ ما لم تُمنح الموافقة مجددًا.",
+  "@consentStateExpiringDetail": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentStateExpiredDetail": "انتهى هذا السجل في {date}. المراقبة وجمع البيانات متوقفان حتى تُمنح الموافقة مجددًا.",
+  "@consentStateExpiredDetail": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentStateRevokedDetail": "سُحبت الموافقة في {date}. المراقبة وجمع البيانات متوقفان حتى تُمنح الموافقة مجددًا.",
+  "@consentStateRevokedDetail": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentStateMismatchDetail": "اختصاص السجل ({record}) لا يطابق منطقة عائلتك ({family})، لذلك لا يمكنه السماح بالمراقبة.",
+  "@consentStateMismatchDetail": {
+    "placeholders": {
+      "record": { "type": "String" },
+      "family": { "type": "String" }
+    }
+  },
+  "consentStateNoneDetail": "لا توجد موافقة والدين مسجّلة لهذا الطفل. المراقبة وجمع البيانات تتطلبان سجلًا ساريًا.",
+  "consentJurisdictionLabel": "الاختصاص القضائي",
+  "consentGrantedLabel": "تاريخ المنح",
+  "consentExpiryLabel": "تاريخ الانتهاء",
+  "consentNoExpiry": "بلا تاريخ انتهاء",
+  "consentThirdPartyLabel": "المشاركة مع أطراف ثالثة",
+  "consentSharingOn": "مفعّلة",
+  "consentSharingOff": "معطّلة",
+  "consentRevokedLabel": "تاريخ السحب",
+  "consentNotRevoked": "غير مسحوبة",
+  "consentCurrentRecord": "السجل الحالي",
+  "consentHistorySection": "سجلات سابقة",
+  "consentHistoryGranted": "{method} · مُنحت في {date}",
+  "@consentHistoryGranted": {
+    "placeholders": {
+      "method": { "type": "String" },
+      "date": { "type": "String" }
+    }
+  },
+  "consentHistoryRevoked": "مسحوبة في {date}",
+  "@consentHistoryRevoked": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentHistoryExpired": "منتهية في {date}",
+  "@consentHistoryExpired": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentHistoryActive": "سارية",
+  "consentLoadFailed": "تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.",
+  "consentWithdrawAction": "سحب الموافقة",
+  "consentWithdrawOnlyOwner": "مالك العائلة فقط يمكنه سحب الموافقة.",
+  "consentWithdrawUnavailable": "لا يوجد سجل موافقة سارٍ لسحبه.",
+  "consentWithdrawNote": "سحب الموافقة يوقف المراقبة. لا يحذف البيانات التي جُمعت بالفعل.",
+  "consentRevokeTitle": "سحب الموافقة؟",
+  "consentRevokeWarning": "سيؤدي هذا إلى إيقاف المراقبة لـ {childName}. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.",
+  "@consentRevokeWarning": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentRevokeStopsTitle": "ما الذي يتوقف فورًا",
+  "consentRevokeStopsCollection": "يتوقف جمع البيانات الجديد: الموقع والنشاط في التطبيقات والويب وفحص المحادثات.",
+  "consentRevokeStopsAlerts": "تتوقف تنبيهات السلامة، بما فيها SOS ووقت الشاشة والمواقع المحظورة.",
+  "consentRevokeStopsRules": "تتوقف المراقبة على كل الأجهزة. تبقى القواعد المحفوظة لكنها لا تُطبّق حتى تُمنح الموافقة مجددًا.",
+  "consentRevokeKeepsSafe": "يبقى فتح قفل جهاز طفلك واستئناف استخدامه متاحين أثناء سحب الموافقة.",
+  "consentRevokeDataTitle": "ماذا يحدث للبيانات المجمّعة بالفعل",
+  "consentRevokeDataRetained": "لا يُحذف أي شيء أو يُخفى الآن. تبقى التقارير والتنبيهات وسجل المواقع المجمّعة في حساب عائلتك.",
+  "consentRevokeDataRetention": "تُحذف بيانات الموقع والتطبيقات والويب والمحادثات الخام بواسطة مهمة الاحتفاظ بعد 90 يومًا افتراضيًا. تُحفظ ملخصات الاستخدام لمدة 365 يومًا. تبقى التنبيهات حتى تُحذف بيانات الطفل.",
+  "consentRevokeDataErase": "حذف ملف طفلك إجراء منفصل يزيل كل بياناته فورًا. وهو ليس جزءًا من سحب الموافقة.",
+  "consentRevokeTypePrompt": "اكتب {childName} للتأكيد",
+  "@consentRevokeTypePrompt": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentRevokeTypeHint": "يجب أن يطابق الاسم.",
+  "consentRevokeMismatch": "هذا لا يطابق {childName}.",
+  "@consentRevokeMismatch": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentRevokeSubmit": "سحب الموافقة الآن",
+  "consentRevokeCancel": "الاحتفاظ بالموافقة",
+  "consentRevokeBusy": "جارٍ السحب…",
+  "consentRevokeFailed": "تعذّر سحب الموافقة. لم يتغيّر شيء. تحقّق من اتصالك وحاول مجددًا.",
+  "consentRevokeForbidden": "مالك العائلة فقط يمكنه سحب الموافقة. لم يتغيّر شيء.",
+  "consentRevokeDone": "تم سحب الموافقة. أُوقفت المراقبة.",
+  "consentRevokeNoActive": "لم يكن هناك سجل موافقة سارٍ. لم يتغيّر شيء.",
+  "consentRevokeDevices": "{count, plural, =0{لم يكن أي جهاز متصلًا.} =1{أُضيفت إشارة الإيقاف لجهاز واحد.} other{أُضيفت إشارة الإيقاف لـ {count} أجهزة.}}",
+  "@consentRevokeDevices": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "consentChildNameMissing": "تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا."
 }

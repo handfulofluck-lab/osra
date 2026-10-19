@@ -74,6 +74,19 @@ access and expects 403.
 Creating a `Child` record must fail with HTTP 428 unless an active `ConsentRecord` exists
 whose jurisdiction matches the family's region.
 
+**Status and withdrawal (ADR-0008).** `GET /v1/family/children/:id/consent` returns
+`{ active, reason?, jurisdiction?, consent?, records }`. `consent` is the active record when one
+exists; `records` is up to 20 rows ordered by `grantedAt` descending **including revoked and
+expired ones**, so a client can show the real method, dates and `revokedAt` after withdrawal
+instead of inferring "no record". `POST /v1/family/children/:id/consent/revoke` sets
+`revokedAt = now()` on every non-revoked row for the child, queues `consent_revoked` to each of its
+devices and publishes the family event; from then on parent configuration writes and device
+ingestion/reads answer 428, while safe-direction actions stay available. Withdrawal itself deletes
+nothing: existing rows stay until the retention job (`RETENTION_DAYS`, default 90 for raw events;
+`ROLLUP_RETENTION_DAYS`, default 365 for usage summaries; alerts and device commands are kept until
+erasure) or until `DELETE /v1/family/children/:id` erases the child. A client must not claim that
+withdrawal deletes or anonymises data.
+
 ## AI alerts pipeline (§12.6)
 
 `POST /v1/alerts/internal` (HMAC-signed by ai-engine) → persist Alert →
@@ -127,7 +140,9 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     GET /me; POST /children (428 without active consent); GET/PATCH/DELETE /children/:id
     (DELETE = GDPR erasure cascade — ADR-0013: every child-scoped table in one transaction,
     response carries `deletedDevices` + per-table `rows`, each device token revoked as on unpair);
-    POST /children/:id/consent; GET /export (GDPR export; simplest: JSON download is acceptable
+    POST /children/:id/consent; GET /children/:id/consent (active status + `records` history,
+    revoked/expired included); POST /children/:id/consent/revoke (ADR-0008); GET /export
+    (GDPR export; simplest: JSON download is acceptable
     — leave NOTE).
 - src/routes/reports.ts — GET /activity, GET /summary, GET /wellbeing/:childId; Phase 2c (ADR-0013):
     GET /usage?childId&days=1..366 (per-UTC-day series from `AppUsageDaily`, per-app split, zeros for

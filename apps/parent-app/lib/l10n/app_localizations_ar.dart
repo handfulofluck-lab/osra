@@ -1679,4 +1679,221 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingPairNow => 'أقرن الآن';
+
+  @override
+  String get consentRecordSummary => 'الطريقة والتواريخ وسحب الموافقة';
+
+  @override
+  String consentStatusSubtitle(String childName) {
+    return 'ما هو مسجّل حاليًا لدى الخادم عن $childName.';
+  }
+
+  @override
+  String get consentStateActive => 'سارية';
+
+  @override
+  String get consentStateExpiring => 'تنتهي قريبًا';
+
+  @override
+  String get consentStateExpired => 'منتهية';
+
+  @override
+  String get consentStateRevoked => 'مسحوبة';
+
+  @override
+  String get consentStateMismatch => 'منطقة غير مطابقة';
+
+  @override
+  String get consentStateNone => 'لا يوجد سجل موافقة';
+
+  @override
+  String get consentStateActiveDetail =>
+      'المراقبة وجمع البيانات مسموحان بموجب هذا السجل.';
+
+  @override
+  String consentStateExpiringDetail(String date) {
+    return 'ينتهي هذا السجل في $date. يتوقف الجمع والتنبيهات بعد ذلك التاريخ ما لم تُمنح الموافقة مجددًا.';
+  }
+
+  @override
+  String consentStateExpiredDetail(String date) {
+    return 'انتهى هذا السجل في $date. المراقبة وجمع البيانات متوقفان حتى تُمنح الموافقة مجددًا.';
+  }
+
+  @override
+  String consentStateRevokedDetail(String date) {
+    return 'سُحبت الموافقة في $date. المراقبة وجمع البيانات متوقفان حتى تُمنح الموافقة مجددًا.';
+  }
+
+  @override
+  String consentStateMismatchDetail(String record, String family) {
+    return 'اختصاص السجل ($record) لا يطابق منطقة عائلتك ($family)، لذلك لا يمكنه السماح بالمراقبة.';
+  }
+
+  @override
+  String get consentStateNoneDetail =>
+      'لا توجد موافقة والدين مسجّلة لهذا الطفل. المراقبة وجمع البيانات تتطلبان سجلًا ساريًا.';
+
+  @override
+  String get consentJurisdictionLabel => 'الاختصاص القضائي';
+
+  @override
+  String get consentGrantedLabel => 'تاريخ المنح';
+
+  @override
+  String get consentExpiryLabel => 'تاريخ الانتهاء';
+
+  @override
+  String get consentNoExpiry => 'بلا تاريخ انتهاء';
+
+  @override
+  String get consentThirdPartyLabel => 'المشاركة مع أطراف ثالثة';
+
+  @override
+  String get consentSharingOn => 'مفعّلة';
+
+  @override
+  String get consentSharingOff => 'معطّلة';
+
+  @override
+  String get consentRevokedLabel => 'تاريخ السحب';
+
+  @override
+  String get consentNotRevoked => 'غير مسحوبة';
+
+  @override
+  String get consentCurrentRecord => 'السجل الحالي';
+
+  @override
+  String get consentHistorySection => 'سجلات سابقة';
+
+  @override
+  String consentHistoryGranted(String method, String date) {
+    return '$method · مُنحت في $date';
+  }
+
+  @override
+  String consentHistoryRevoked(String date) {
+    return 'مسحوبة في $date';
+  }
+
+  @override
+  String consentHistoryExpired(String date) {
+    return 'منتهية في $date';
+  }
+
+  @override
+  String get consentHistoryActive => 'سارية';
+
+  @override
+  String get consentLoadFailed =>
+      'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+
+  @override
+  String get consentWithdrawAction => 'سحب الموافقة';
+
+  @override
+  String get consentWithdrawOnlyOwner => 'مالك العائلة فقط يمكنه سحب الموافقة.';
+
+  @override
+  String get consentWithdrawUnavailable => 'لا يوجد سجل موافقة سارٍ لسحبه.';
+
+  @override
+  String get consentWithdrawNote =>
+      'سحب الموافقة يوقف المراقبة. لا يحذف البيانات التي جُمعت بالفعل.';
+
+  @override
+  String get consentRevokeTitle => 'سحب الموافقة؟';
+
+  @override
+  String consentRevokeWarning(String childName) {
+    return 'سيؤدي هذا إلى إيقاف المراقبة لـ $childName. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.';
+  }
+
+  @override
+  String get consentRevokeStopsTitle => 'ما الذي يتوقف فورًا';
+
+  @override
+  String get consentRevokeStopsCollection =>
+      'يتوقف جمع البيانات الجديد: الموقع والنشاط في التطبيقات والويب وفحص المحادثات.';
+
+  @override
+  String get consentRevokeStopsAlerts =>
+      'تتوقف تنبيهات السلامة، بما فيها SOS ووقت الشاشة والمواقع المحظورة.';
+
+  @override
+  String get consentRevokeStopsRules =>
+      'تتوقف المراقبة على كل الأجهزة. تبقى القواعد المحفوظة لكنها لا تُطبّق حتى تُمنح الموافقة مجددًا.';
+
+  @override
+  String get consentRevokeKeepsSafe =>
+      'يبقى فتح قفل جهاز طفلك واستئناف استخدامه متاحين أثناء سحب الموافقة.';
+
+  @override
+  String get consentRevokeDataTitle => 'ماذا يحدث للبيانات المجمّعة بالفعل';
+
+  @override
+  String get consentRevokeDataRetained =>
+      'لا يُحذف أي شيء أو يُخفى الآن. تبقى التقارير والتنبيهات وسجل المواقع المجمّعة في حساب عائلتك.';
+
+  @override
+  String get consentRevokeDataRetention =>
+      'تُحذف بيانات الموقع والتطبيقات والويب والمحادثات الخام بواسطة مهمة الاحتفاظ بعد 90 يومًا افتراضيًا. تُحفظ ملخصات الاستخدام لمدة 365 يومًا. تبقى التنبيهات حتى تُحذف بيانات الطفل.';
+
+  @override
+  String get consentRevokeDataErase =>
+      'حذف ملف طفلك إجراء منفصل يزيل كل بياناته فورًا. وهو ليس جزءًا من سحب الموافقة.';
+
+  @override
+  String consentRevokeTypePrompt(String childName) {
+    return 'اكتب $childName للتأكيد';
+  }
+
+  @override
+  String get consentRevokeTypeHint => 'يجب أن يطابق الاسم.';
+
+  @override
+  String consentRevokeMismatch(String childName) {
+    return 'هذا لا يطابق $childName.';
+  }
+
+  @override
+  String get consentRevokeSubmit => 'سحب الموافقة الآن';
+
+  @override
+  String get consentRevokeCancel => 'الاحتفاظ بالموافقة';
+
+  @override
+  String get consentRevokeBusy => 'جارٍ السحب…';
+
+  @override
+  String get consentRevokeFailed =>
+      'تعذّر سحب الموافقة. لم يتغيّر شيء. تحقّق من اتصالك وحاول مجددًا.';
+
+  @override
+  String get consentRevokeForbidden =>
+      'مالك العائلة فقط يمكنه سحب الموافقة. لم يتغيّر شيء.';
+
+  @override
+  String get consentRevokeDone => 'تم سحب الموافقة. أُوقفت المراقبة.';
+
+  @override
+  String get consentRevokeNoActive =>
+      'لم يكن هناك سجل موافقة سارٍ. لم يتغيّر شيء.';
+
+  @override
+  String consentRevokeDevices(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'أُضيفت إشارة الإيقاف لـ $count أجهزة.',
+      one: 'أُضيفت إشارة الإيقاف لجهاز واحد.',
+      zero: 'لم يكن أي جهاز متصلًا.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get consentChildNameMissing =>
+      'تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا.';
 }

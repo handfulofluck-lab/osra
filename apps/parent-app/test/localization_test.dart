@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/features/children/consent_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
@@ -145,6 +146,22 @@ void main() {
     testWidgets('child detail', (tester) async {
       await pumpArabic(tester, const ChildDetailScreen(childId: 'child-1'), arabicApi());
       expect(find.text('نظرة عامة'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
+
+    testWidgets('consent status', (tester) async {
+      await pumpArabic(tester, const ConsentScreen(childId: 'child-1'), arabicApi());
+      expect(find.text('موافقة الوالدين'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
+
+    testWidgets('consent withdrawal', (tester) async {
+      await pumpArabic(
+        tester,
+        const ConsentRevokeScreen(childId: 'child-1', childName: 'أليكس'),
+        arabicApi(),
+      );
+      expect(find.text('سحب الموافقة؟'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 

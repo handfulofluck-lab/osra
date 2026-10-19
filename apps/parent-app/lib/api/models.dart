@@ -693,15 +693,94 @@ class ConsentRecord {
   final String childId;
   final String method;
   final String jurisdiction;
+  final DateTime? grantedAt;
+  final DateTime? expiresAt;
+  final DateTime? revokedAt;
+  final bool thirdPartySharing;
 
-  const ConsentRecord({required this.id, required this.childId, required this.method, required this.jurisdiction});
+  const ConsentRecord({
+    required this.id,
+    required this.childId,
+    required this.method,
+    required this.jurisdiction,
+    this.grantedAt,
+    this.expiresAt,
+    this.revokedAt,
+    this.thirdPartySharing = false,
+  });
 
   factory ConsentRecord.fromJson(Map<String, dynamic> json) => ConsentRecord(
         id: _str(json['id']),
         childId: _str(json['childId']),
         method: _str(json['method']),
         jurisdiction: _str(json['jurisdiction']),
+        grantedAt: DateTime.tryParse(_str(json['grantedAt'])),
+        expiresAt: DateTime.tryParse(_str(json['expiresAt'])),
+        revokedAt: DateTime.tryParse(_str(json['revokedAt'])),
+        thirdPartySharing: _bool(json['thirdPartySharing']),
       );
+}
+
+/// What the consent screen shows for one child. Derived from the server's
+/// active/inactive answer plus the raw `records` history, so a withdrawn or
+/// expired record is reported as such instead of as "no record".
+enum ConsentState { active, expiring, expired, revoked, jurisdictionMismatch, none }
+
+/// `GET /v1/family/children/:id/consent` (ADR-0008). `records` is newest
+/// first and includes revoked/expired rows.
+@immutable
+class ConsentStatus {
+  static const expiringWindow = Duration(days: 14);
+
+  final bool active;
+  final String? reason;
+  final String jurisdiction;
+  final ConsentRecord? consent;
+  final List<ConsentRecord> records;
+
+  const ConsentStatus({
+    required this.active,
+    this.reason,
+    this.jurisdiction = '',
+    this.consent,
+    this.records = const [],
+  });
+
+  factory ConsentStatus.fromJson(Map<String, dynamic> json) {
+    final consent = json['consent'] is Map
+        ? ConsentRecord.fromJson(Map<String, dynamic>.from(json['consent'] as Map))
+        : null;
+    return ConsentStatus(
+      active: _bool(json['active']),
+      reason: _strOrNull(json['reason']),
+      jurisdiction: _str(json['jurisdiction']),
+      consent: consent,
+      records: [for (final r in _mapList(json['records'])) ConsentRecord.fromJson(r)],
+    );
+  }
+
+  /// The record the screen describes: the server's active one, else the
+  /// newest row in the history.
+  ConsentRecord? get current => consent ?? (records.isEmpty ? null : records.first);
+
+  /// The state at [now]; kept as a function so expiry is testable.
+  ConsentState stateAt(DateTime now) {
+    final record = current;
+    if (active) {
+      final expiresAt = record?.expiresAt;
+      if (expiresAt != null && !expiresAt.isBefore(now) && expiresAt.difference(now) <= expiringWindow) {
+        return ConsentState.expiring;
+      }
+      return ConsentState.active;
+    }
+    if (record != null && record.revokedAt != null) return ConsentState.revoked;
+    final expiresAt = record?.expiresAt;
+    if (expiresAt != null && !expiresAt.isAfter(now)) return ConsentState.expired;
+    if (reason == 'consent_jurisdiction_mismatch') return ConsentState.jurisdictionMismatch;
+    return ConsentState.none;
+  }
+
+  ConsentState get state => stateAt(DateTime.now());
 }
 
 /// One entry of `ReportSummary.topApps` (feature #4).
