@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../theme/app_tokens.dart';
 
 /// The four grantable permission scopes for an invited member (#13).
 const kInvitePermissions = ['rules', 'location', 'alerts', 'social'];
@@ -32,10 +33,10 @@ class FamilyScreen extends ConsumerWidget {
               ? [overview.parent]
               : overview.parents;
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpace.lg),
             children: [
               Text('Parents', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               if (parents.isEmpty)
                 const Card(child: ListTile(leading: Icon(Icons.person_outline), title: Text('No parents found')))
               else
@@ -48,26 +49,29 @@ class FamilyScreen extends ConsumerWidget {
                       trailing: Chip(visualDensity: VisualDensity.compact, label: Text(p.role)),
                     ),
                   ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
               Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: FilledButton.tonalIcon(
                   icon: const Icon(Icons.person_add_alt),
                   label: const Text('Invite member'),
                   onPressed: () => _inviteMember(context, ref),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpace.xl),
               Text('Pending invites', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               invites.when(
-                loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(AppSpace.lg),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
                 error: (e, _) => Text('Failed to load invites: $e'),
                 data: (items) {
                   final pending = items.where((i) => i.status == 'pending').toList();
                   if (pending.isEmpty) {
                     return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
+                      padding: EdgeInsets.symmetric(vertical: AppSpace.lg),
                       child: Center(child: Text('No pending invites')),
                     );
                   }
@@ -194,6 +198,7 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     final token = _acceptToken;
     return AlertDialog(
       title: Text(token == null ? 'Invite member' : 'Invite sent'),
@@ -205,21 +210,28 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
                   TextField(
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpace.md),
                   DropdownButtonFormField<String>(
                     initialValue: _role,
-                    decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder()),
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Role',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    ),
                     items: const [
                       DropdownMenuItem(value: 'co-parent', child: Text('Co-parent')),
                       DropdownMenuItem(value: 'guardian', child: Text('Guardian')),
                     ],
                     onChanged: (v) => setState(() => _role = v ?? 'co-parent'),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpace.sm),
                   Align(
-                    alignment: Alignment.centerLeft,
+                    alignment: AlignmentDirectional.centerStart,
                     child: Text('Permissions', style: Theme.of(context).textTheme.titleSmall),
                   ),
                   for (final p in kInvitePermissions)
@@ -230,8 +242,9 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
                       onChanged: (v) => setState(() => _permissions[p] = v ?? false),
                     ),
                   if (_error != null) ...[
-                    const SizedBox(height: 8),
-                    Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    const SizedBox(height: AppSpace.sm),
+                    Text(_error!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
                   ],
                 ],
               )
@@ -240,12 +253,15 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Invite sent to $_invitedEmail.'),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpace.md),
                   SelectableText(
                     token,
+                    // Deliberate: the accept token keeps its literal monospace
+                    // style; AppType.recoveryCode is 16 px with 0.4 tracking
+                    // and would change this dialog's 320 px layout.
                     style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpace.sm),
                   const Text('(test build: share this token — the invited parent registers, then POSTs accept with it)'),
                 ],
               ),

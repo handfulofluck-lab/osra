@@ -7,9 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/app.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/auth/login_screen.dart';
+import 'package:familyshield_parent/features/auth/mfa_recovery_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
+import 'package:familyshield_parent/features/family/family_screen.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/reports/usage_history_screen.dart';
@@ -116,6 +118,27 @@ void main() {
             'pushEnabled': true,
             'emails': ['qa@familyshield.dev'],
           },
+      // Family screen: one pending invite with every permission, so the
+      // longest subtitle it can render is on screen at 320 px.
+      'GET /v1/family/invites': (_) => {
+            'items': [
+              {
+                'id': 'inv-1',
+                'email': 'grandma@familyshield.dev',
+                'role': 'guardian',
+                'status': 'pending',
+                'permissions': ['rules', 'location', 'alerts', 'social'],
+                'createdAt': DateTime.now().toUtc().toIso8601String(),
+              },
+              {
+                'id': 'inv-2',
+                'email': 'accepted@familyshield.dev',
+                'role': 'co-parent',
+                'status': 'accepted',
+                'permissions': ['rules'],
+              },
+            ],
+          },
       'GET /v1/location/geofences/child-1': (_) => {'items': <dynamic>[]},
       'GET /v1/location/geofences/child-2': (_) => {'items': <dynamic>[]},
     });
@@ -174,6 +197,26 @@ void main() {
               reason: '${entry.key}/${role.key} on ${surface.key} is ${ratio.toStringAsFixed(2)}:1',
             );
           }
+        }
+      }
+    });
+
+    test('auth and family error text keeps 4.5:1 where it is drawn', () {
+      // Login renders its error on the Scaffold surface; the invite dialog
+      // renders its error on surfaceContainer (the dialog background).
+      for (final entry in {'light': AppTokens.light, 'dark': AppTokens.dark}.entries) {
+        final tokens = entry.value;
+        final pairs = {
+          'login error on surface': (tokens.danger, tokens.surface),
+          'invite dialog error on surfaceContainer': (tokens.danger, tokens.surfaceContainer),
+        };
+        for (final pair in pairs.entries) {
+          final ratio = contrastRatio(pair.value.$1, pair.value.$2);
+          expect(
+            ratio,
+            greaterThanOrEqualTo(4.5),
+            reason: '${entry.key}/${pair.key} is ${ratio.toStringAsFixed(2)}:1',
+          );
         }
       }
     });
@@ -315,6 +358,9 @@ void main() {
 
   group('dark layout at 320x568', () {
     for (final (name, screen) in <(String, Widget)>[
+      ('login', const LoginScreen()),
+      ('mfa recovery', const MfaRecoveryScreen()),
+      ('family members', const FamilyScreen()),
       ('dashboard', const DashboardScreen()),
       ('reports', const ReportsScreen(childId: 'child-1')),
       ('usage history', const UsageHistoryScreen(childId: 'child-1')),
@@ -343,5 +389,71 @@ void main() {
         expect(exceptions, isEmpty, reason: exceptions.join('\n'));
       });
     }
+  });
+
+  group('auth and family at 320x568', () {
+    testWidgets('login, its register form and the recovery entry render in dark', (tester) async {
+      SharedPreferences.setMockInitialValues({kThemeModeKey: 'dark'});
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(themedApp(const LoginScreen(), designApi()));
+      await tester.pumpAndSettle();
+      expect(Theme.of(tester.element(find.byType(LoginScreen))).brightness, Brightness.dark);
+
+      final scrollable = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text('Create account'), 100, scrollable: scrollable);
+      await tester.tap(find.text('Create account'));
+      await tester.pumpAndSettle();
+      expect(find.text('Family name'), findsOneWidget);
+      expect(find.text('Register'), findsOneWidget);
+      final registerExceptions = drainExceptions(tester);
+      expect(
+        registerExceptions,
+        isEmpty,
+        reason: registerExceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
+      );
+
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('lostAuthenticator')),
+        -100,
+        scrollable: scrollable,
+      );
+      await tester.tap(find.byKey(const ValueKey('lostAuthenticator')));
+      await tester.pumpAndSettle();
+      expect(find.byType(MfaRecoveryScreen), findsOneWidget);
+      final exceptions = drainExceptions(tester);
+      expect(exceptions, isEmpty, reason: exceptions.join('\n'));
+    });
+
+    testWidgets('family members and the invite dialog render in dark', (tester) async {
+      SharedPreferences.setMockInitialValues({kThemeModeKey: 'dark'});
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(themedApp(const FamilyScreen(), designApi()));
+      await tester.pumpAndSettle();
+      expect(find.text('Parents'), findsOneWidget);
+      expect(find.text('grandma@familyshield.dev'), findsOneWidget);
+
+      await tester.tap(find.text('Invite member'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Permissions'), findsOneWidget);
+      final exceptions = drainExceptions(tester);
+      expect(
+        exceptions,
+        isEmpty,
+        reason: exceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
+      );
+    });
   });
 }

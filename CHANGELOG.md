@@ -41,6 +41,33 @@ environment where it was written — see `docs/QA/` for the verification state.
   row, #181) and the change is widget-level, so no hardware claim is made; no merge sha and no
   independent verification yet.
 
+### Roadmap 3.8 — auth and family join the design system (follow-up to #203)
+- **Why.** #203 finished the five screens named in the original 3.8 scope but left the auth entry
+  (`login` / `register`) and family management on their own spacing, so dark mode on those two screens
+  had never been rendered at 320×568 and their form radii ignored `AppRadius`.
+- **Screens.** `auth/login_screen.dart`, `auth/mfa_recovery_screen.dart` and `family/family_screen.dart`
+  now take every gap from `AppSpace`, every input/control radius from `AppRadius.sm`, and their error
+  foreground from `AppTokens.danger`; body/secondary text stays on `ThemeData.textTheme`. No raw
+  `Color(0x…)` or `Colors.*` remains in the two feature folders. Copy, widget keys, API calls and the
+  320×568 guarantees are unchanged.
+- **Layout.** Two pre-existing 320 px overflows surfaced when these screens were first rendered at that
+  width (the old suite only used the 800×600 default): the region dropdown in the expanded register form
+  overflowed by 42 px, and the role dropdown in the invite dialog by 9.4 px. Both now set
+  `isExpanded: true`, matching the flex/ellipsis treatment #203 used; no copy or key changed.
+- **Tests.** `test/design_system_test.dart` grows from 19 to 25: dark rendering at 320×568 for login,
+  MFA recovery and family members, the expanded register form and the recovery entry at 320×568, the
+  invite dialog at 320×568, and a computed contrast check for the pairs these screens actually use —
+  `danger` on `surface` (login error) 6.54:1 light / 10.95:1 dark, and `danger` on `surfaceContainer`
+  (invite-dialog error) 6.04:1 light / 10.06:1 dark, all ≥ 4.5:1. ARB key/placeholder parity unchanged.
+- **Deliberate exceptions.** The 18×18 in-button progress spinners, the 72 px shield icon, the 420 px
+  form reading width and the invite accept token's literal `monospace`/bold style stay literal: they
+  are control sizes or a style with no token role (`AppType.recoveryCode` is 16 px with 0.4 tracking
+  and would change the dialog's 320 px layout). Family copy remains untranslated as before; no new
+  user-visible string was added.
+- **Evidence.** `flutter test` **243 passed**; `flutter analyze` **No issues found**. **Not verified
+  here:** the physical phone is unavailable (stale Knox admin row, #181) and the change is widget-level,
+  so no hardware claim is made; no merge sha and no independent verification yet.
+
 ### Roadmap 3.4 — the installed-app inventory and a Rules picker built from real apps
 - **Why.** An app rule used to require a typed package id and a typed label. A parent cannot read a
   package id from the launcher, so the typed path produced typos and rules for apps that were not
