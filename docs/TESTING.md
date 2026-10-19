@@ -475,6 +475,40 @@ camera-ready state and the denial fallback, and the typed path was paired end-to
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
 
+## 5h. First-run pairing time (roadmap 3.2, proxy)
+
+`scripts/hardware/android-pairing-time.ps1 -Pin <app PIN> [-Runs 3] [-Base http://127.0.0.1:3000]
+[-Apk <full debug apk>]` measures **wall clock from first launch to the screen that says
+`This device is paired`**, three times from a clean install each time, driving the real UI with
+`uiautomator dump` bounds and `adb shell input tap|text`. It is a measurement: it does not change the
+app, and it never sends `lock`. The parent PIN is a run-time parameter and is never logged.
+
+What it does per run: uninstall → `adb install -t -r` → `pm clear` → dismiss the Play Protect
+"send for a security check" sheet (*Don't send*; a sideload raises it, a store install does not) →
+a fresh code from `POST /v1/devices/pair` → launch → type the API base and the code → **PAIR THIS
+DEVICE** → type the PIN twice → **SAVE PIN** → **ACTIVATE DEVICE ADMIN** → **Activate** on the system
+sheet → the status screen. Then it unpairs the device row through the API and uninstalls.
+
+How to read the output. The script logs an absolute mark per transition and writes
+`pairing-time-runs.json` with the per-step durations, a `overhead` block (cumulative `uiautomator`
+dump time, fixed pauses, per-field `input text` time) and the median. **The total is the app plus the
+measurement's own eyes and hands**: each screen transition is detected with a dump (~1.1 s on this
+host), each tap is followed by a 250–400 ms settle pause, and typing is whole-string injection
+(~0.2 s per field) rather than a person's. Subtract `dumpMs + sleepMs` before calling anything the
+app's cost, and never present the total as a human's five minutes — it models no reading, no
+comprehension and no parent-app step. §5g's QR half and the seven-grant `Setup complete` state are
+different acceptance surfaces and are not measured here.
+
+Two traps this script had to absorb: a **sideloaded APK raises the Play Protect sheet over the
+launcher** (it blocks every later `uiautomator dump`; dismiss it before launching), and **One UI
+reports the system admin sheet's Activate control as `clickable=false` while the click target is its
+parent row** — the tap dismisses the sheet and no admin is set. The script logs
+`device_policy after Activate: <bool>` for exactly this reason; on the Flip4 it was `False` in all
+three runs (TR-23), which is a finding, not a script bug.
+
+Result of the reference run: `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-PAIRING-TIME.md` (21.4 / 21.1 /
+21.2 s, median 21.2 s).
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a
