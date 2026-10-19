@@ -26,7 +26,8 @@ environment where it was written — see `docs/QA/` for the verification state.
   `#FF8A80` / `#FFD54F` / `#82B1FF`. New `severityCriticalText` / `severityWarningText` /
   `severityInfoText` roles give labels a readable foreground instead of using the amber dot as text
   (light `#B3261E` / `#7A5900` / `#0B57D0`, dark `#FFB4AB` / `#FFD37A` / `#82B1FF`). `onOk` resolves
-  the swipe-to-acknowledge green/white pair (`#1B5E20` / `#FFFFFF` light, `#7CDB9E` / `#00391B` dark).
+  the swipe-to-acknowledge pair; its light fill moves from Material green `#4CAF50` (white icon,
+  2.78:1) to the tokens' `ok` `#1B5E20` (white icon, 7.87:1), dark `#7CDB9E` / `#00391B`.
 - **Layout.** The search-safety card header overflowed 320 px by ~84 px (two rows; pre-existing, the old
   suite never rendered it at 320). The engine/time label is now `Expanded` with an ellipsis, so the new
   dark 320 test passes without changing copy or keys.
