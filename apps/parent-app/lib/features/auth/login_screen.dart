@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/server_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../onboarding/onboarding_messages.dart';
 import 'mfa_recovery_screen.dart';
 
@@ -78,6 +79,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     final auth = ref.watch(authProvider);
     final serverUrl = ref.watch(serverUrlProvider);
     final showMfaNotice = ref.watch(loginNoticeProvider) == kLoginNoticeMfaSessionEnded;
@@ -108,21 +110,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           : null,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpace.xl),
           child: ConstrainedBox(
+            // 420 px is the form's reading width, not a gap on the scale.
             constraints: const BoxConstraints(maxWidth: 420),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Icon(Icons.shield_outlined, size: 72),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 Text('OSRA', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpace.xs),
                 Text(l10n.appTagline,
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)),
                 if (widget.onboarding) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpace.sm),
                   Text(
                     l10n.onboardingSignInBody,
                     key: const ValueKey('onboardingSignInBody'),
@@ -135,10 +138,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 if (serverUrl.isNotEmpty) ...[
                   Text(l10n.serverShown(serverUrl),
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: 24),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant)),
+                  const SizedBox(height: AppSpace.xl),
                 ] else
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpace.xl),
                 TextField(
                   controller: _server,
                   keyboardType: TextInputType.url,
@@ -148,10 +151,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     labelText: l10n.serverLabel,
                     hintText: l10n.serverHint,
                     errorText: _serverError,
-                    border: const OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpace.md),
                 if (showMfaNotice) ...[
                   Text(
                     l10n.mfaSessionNotice,
@@ -160,45 +163,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ?.copyWith(color: tokens.onSurfaceVariant),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpace.md),
                 ],
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   autofillHints: const [AutofillHints.email],
-                  decoration: InputDecoration(labelText: l10n.emailLabel, border: const OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    labelText: l10n.emailLabel,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpace.md),
                 TextField(
                   controller: _password,
                   obscureText: _obscured,
                   autofillHints: const [AutofillHints.password],
                   decoration: InputDecoration(
                     labelText: l10n.passwordLabel,
-                    border: const OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     suffixIcon: IconButton(
                       icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
                       onPressed: () => setState(() => _obscured = !_obscured),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpace.md),
                 TextField(
                   controller: _code,
                   keyboardType: TextInputType.number,
                   autofillHints: const [AutofillHints.oneTimeCode],
                   decoration: InputDecoration(
                     labelText: l10n.mfaCodeLabel,
-                    border: const OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
                 if (errorText != null) ...[
-                  const SizedBox(height: 12),
-                  Text(errorText, key: const ValueKey('loginError'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  const SizedBox(height: AppSpace.md),
+                  Text(errorText,
+                      key: const ValueKey('loginError'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpace.lg),
                 FilledButton.icon(
                   onPressed: auth.loading
                       ? null
@@ -209,7 +217,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   icon: auth.loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
                   label: Text(l10n.signIn),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpace.xs),
                 TextButton(
                   key: const ValueKey('lostAuthenticator'),
                   onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
@@ -217,24 +225,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   )),
                   child: Text(l10n.mfaRecoveryLink),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 ExpansionTile(
                   title: Text(l10n.createAccount),
-                  childrenPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  childrenPadding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
                   children: [
                     TextField(
                       controller: _familyName,
-                      decoration: InputDecoration(labelText: l10n.familyNameLabel, border: const OutlineInputBorder()),
+                      decoration: InputDecoration(
+                        labelText: l10n.familyNameLabel,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.md),
                     TextField(
                       controller: _displayName,
-                      decoration: InputDecoration(labelText: l10n.yourNameLabel, border: const OutlineInputBorder()),
+                      decoration: InputDecoration(
+                        labelText: l10n.yourNameLabel,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.md),
                     DropdownButtonFormField<String>(
                       initialValue: _region,
-                      decoration: InputDecoration(labelText: l10n.regionLabel, border: const OutlineInputBorder()),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.regionLabel,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      ),
                       items: [
                         DropdownMenuItem(value: 'US', child: Text(l10n.regionUS)),
                         DropdownMenuItem(value: 'EU', child: Text(l10n.regionEU)),
@@ -243,7 +261,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ],
                       onChanged: (v) => setState(() => _region = v ?? 'US'),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.md),
                     OutlinedButton(
                       onPressed: auth.loading
                           ? null
@@ -259,7 +277,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             },
                       child: Text(l10n.register),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpace.lg),
                   ],
                 ),
               ],

@@ -89,7 +89,7 @@ class _MfaRecoveryScreenState extends ConsumerState<MfaRecoveryScreen> {
               autofillHints: const [AutofillHints.email],
               decoration: InputDecoration(
                 labelText: l10n.emailLabel,
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
               ),
             ),
             const SizedBox(height: AppSpace.md),
@@ -100,7 +100,7 @@ class _MfaRecoveryScreenState extends ConsumerState<MfaRecoveryScreen> {
               autofillHints: const [AutofillHints.password],
               decoration: InputDecoration(
                 labelText: l10n.passwordLabel,
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                 suffixIcon: IconButton(
                   icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
                   onPressed: () => setState(() => _obscured = !_obscured),
@@ -116,7 +116,7 @@ class _MfaRecoveryScreenState extends ConsumerState<MfaRecoveryScreen> {
               decoration: InputDecoration(
                 labelText: l10n.mfaRecoveryCodeLabel,
                 hintText: l10n.mfaRecoveryCodeHint,
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
               ),
               onSubmitted: (_) {
                 if (!_submitting) _submit();
