@@ -11,6 +11,15 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — verified-gate carries a signature across a merge of main (#207)
+- **Why.** `main` requires branches to be up to date (`strict`), so each merge forced every queued PR to
+  merge `main` in and be signed again with nothing of its own changed; #205 was the first case.
+- **What.** `verified-gate.yml` now checks out the PR with full history. A signature at sha S still counts
+  for head H when only merge commits (not on `main`) were added after S and the PR's own diff from its
+  merge-base has the same `git patch-id --stable` at S and H. `strict` stays on: what merges is still a
+  tree whose own change someone verified. AGENTS.md §6.5 rule 6 updated.
+- **Checked.** On #205: signature `6778f39`, head `fd169d4` → 0 non-merge commits outside `main`, patch-id
+  equal at both (carried). Against `6778f39^` → 1 non-merge commit (refused).
 ### Android — the device-admin receiver is renamed so a poisoned Knox row needs no factory reset (#202)
 - **Why.** Samsung's Knox admin registry matches **component + user**, not uid. The Flip4's stale row
   for `com.familyshield.agent/.security.FamilyShieldDeviceAdmin` made every activation through the
