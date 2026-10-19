@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +53,19 @@ class BlockActivity : ComponentActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Issue #217: `launchMode="singleTask"` reuses this instance, so the package cannot be read once in
+    // onCreate. These are Compose state, replaced by onNewIntent through [session]; the screen, the
+    // label and both actions then follow the block that is actually in front.
+    private var request by mutableStateOf(BlockRequest())
+    private var appLabel by mutableStateOf("")
+    private val session = BlockSession(
+        labelOf = { pkg -> applicationLabel(pkg) },
+        onChanged = { newRequest, newLabel ->
+            request = newRequest
+            appLabel = newLabel
+        },
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
@@ -73,26 +87,47 @@ class BlockActivity : ComponentActivity() {
             }
         })
 
-        val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
-        val reason = intent.getStringExtra(EXTRA_REASON) ?: REASON_BLOCKED
+        applyIntent(intent)
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
-                    BlockScreen(
-                        appLabel = pkg,
-                        timeLimit = reason == REASON_TIME_LIMIT,
-                        onRequestAccess = { requestAccess(pkg, reason) },
-                        onExit = { goHome() },
-                    )
+                    // Keyed on the package so the "Request sent" state belongs to one app, not to the
+                    // instance: a second block starts with a fresh button.
+                    key(request.packageId) {
+                        BlockScreen(
+                            appLabel = appLabel,
+                            timeLimit = request.timeLimit,
+                            onRequestAccess = { requestAccess(session.requestAccessPackage(), request.reason) },
+                            onExit = { goHome() },
+                        )
+                    }
                 }
             }
         }
     }
 
+    /**
+     * Issue #217: a second block reuses this `singleTask` instance. Without this override the screen kept
+     * the first app's package, so "Request access" asked the parent to unblock the wrong app.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyIntent(intent)
+    }
+
+    private fun applyIntent(intent: Intent) {
+        session.apply(intent.getStringExtra(EXTRA_PACKAGE), intent.getStringExtra(EXTRA_REASON))
+    }
+
+    /** The app's user-facing name, or null when the OS cannot resolve it (the package id is then shown). */
+    private fun applicationLabel(pkg: String): String? = runCatching {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrNull()
+
     private fun goHome() {
-        val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
-        if (pkg.isNotBlank()) {
+        session.clearDebouncePackage()?.let { pkg ->
             runCatching { appBlocker.clearDebounce(pkg) }
         }
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {

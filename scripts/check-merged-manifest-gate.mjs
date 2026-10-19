@@ -17,9 +17,11 @@
  *     which is the sentence of justification the rule asks for.
  *
  * Issue #170 added the second artefact and the second half of this gate: the debug merged manifest must
- * declare `android:testOnly="true"` (so `dpm remove-active-admin` works for a runner without the app
- * PIN) and the **release** merged manifest must not declare it at all (`testOnly` makes an APK
- * replaceable). `build.gradle.kts` makes the unit-test tasks depend on
+ * declare `android:testOnly="true"` (a test runner may then replace the package without the parent PIN,
+ * and Android permits `dpm` to treat the admin as a test admin) and the **release** merged manifest must
+ * not declare it at all (`testOnly` makes an APK replaceable). Cleanup itself is the app's REMOVE
+ * PROTECTION (PARENT PIN) since #217 — `dpm remove-active-admin` strands Knox's admin row on Samsung.
+ * `build.gradle.kts` makes the unit-test tasks depend on
  * `process<Flavor>{Debug,Release}Manifest`, so the release artefact exists on a Gradle run; if it is
  * nonetheless missing, the test skips and this script fails on that skip rather than passing silently.
  *
@@ -44,15 +46,17 @@ const EXPECTED = {
     "play merged manifest declares none of the Play-forbidden permissions",
     "play merged manifest registers no notification, call-log or SMS component",
     "play merged manifest keeps isMonitoringTool and the required queries",
+    "play merged manifest labels the application and the accessibility service",
     "play merged manifest declares the renamed device-admin receiver",
-    "play debug merged manifest is testOnly so the test admin is removable",
+    "play debug merged manifest is testOnly so a test runner may replace the package",
     "play release merged manifest is not testOnly",
   ],
   "com.familyshield.agent.manifest.FullMergedManifestTest": [
     "full merged manifest keeps the capture permissions and the listener service",
     "full merged manifest keeps isMonitoringTool and the required queries",
+    "full merged manifest labels the application and the accessibility service",
     "full merged manifest declares the renamed device-admin receiver",
-    "full debug merged manifest is testOnly so the test admin is removable",
+    "full debug merged manifest is testOnly so a test runner may replace the package",
     "full release merged manifest is not testOnly",
   ],
 };

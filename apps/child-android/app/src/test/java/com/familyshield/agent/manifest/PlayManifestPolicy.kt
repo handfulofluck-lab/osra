@@ -85,6 +85,48 @@ object PlayManifestPolicy {
     const val MONITORING_FLAG = "isMonitoringTool"
     const val MONITORING_VALUE = "child_monitoring"
 
+    /**
+     * Issue #217: the label and icon the system sheets show. `<application>` without `android:label`
+     * makes Android fall back to the Application class name, so the camera prompt read
+     * *"Allow com.familyshield.agent.FamilyShieldApp to take pictures…"* — at the most trust-sensitive
+     * moment of setup. The accessibility service is named by its class for the same reason.
+     */
+    const val APPLICATION_LABEL = "@string/app_name"
+    const val APPLICATION_ICON = "@drawable/ic_app"
+    const val ACCESSIBILITY_SERVICE_LABEL = "@string/accessibility_service_label"
+
+    /** Issue #217: the merged artefact must carry a user-facing application label/icon in both flavours. */
+    fun labellingViolations(manifest: MergedManifest, accessibilityServiceClass: String): List<String> {
+        val violations = mutableListOf<String>()
+
+        if (manifest.applicationLabel == null) {
+            violations += "MISSING <application android:label> — Android falls back to the Application " +
+                "class name in every system sheet (issue #217)"
+        } else if (manifest.applicationLabel != APPLICATION_LABEL) {
+            violations += "<application android:label> is ${manifest.applicationLabel}, expected " +
+                APPLICATION_LABEL
+        }
+        if (manifest.applicationIcon == null) {
+            violations += "MISSING <application android:icon> — the permission and admin sheets show no icon"
+        } else if (manifest.applicationIcon != APPLICATION_ICON) {
+            violations += "<application android:icon> is ${manifest.applicationIcon}, expected $APPLICATION_ICON"
+        }
+
+        val accessibility = manifest.components.firstOrNull {
+            it.tag == "service" && it.name == accessibilityServiceClass
+        }
+        if (accessibility == null) {
+            violations += "MISSING accessibility service $accessibilityServiceClass"
+        } else if (accessibility.label == null) {
+            violations += "$accessibilityServiceClass has no android:label, so Settings lists it by " +
+                "class name (issue #217)"
+        } else if (accessibility.label != ACCESSIBILITY_SERVICE_LABEL) {
+            violations += "$accessibilityServiceClass android:label is ${accessibility.label}, " +
+                "expected $ACCESSIBILITY_SERVICE_LABEL"
+        }
+        return violations
+    }
+
     /** Forbidden, and not-on-the-allow-list, permissions. Empty means the set was reviewed. */
     fun permissionViolations(manifest: MergedManifest): List<String> {
         val violations = mutableListOf<String>()

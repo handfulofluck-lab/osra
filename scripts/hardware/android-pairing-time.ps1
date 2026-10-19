@@ -251,7 +251,7 @@ if ($Human) {
 $adb = "C:\KARIM\tools\android-sdk\platform-tools\adb.exe"
 $S = "R5CW116Y6GF"
 $PKG = "com.familyshield.agent"
-$ADMIN = "com.familyshield.agent/.security.ParentalAdminReceiver"
+$ADMIN = "com.familyshield.agent/.security.GuardianAdminReceiver"
 . (Join-Path $PSScriptRoot "classify-build.ps1")   # the build kind is recorded with every run (issue #178)
 $BASE = $Base
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
@@ -431,11 +431,49 @@ if (-not $child) {
 $state = @{ childId = $childId; baseUrl = $BASE; apk = $Apk; apkSha256 = (Get-FileHash -Algorithm SHA256 $Apk).Hash.ToLower() }
 $state | ConvertTo-Json | Set-Content (Join-Path $Out "pairing-time-state.json") -Encoding utf8
 
+function RemoveProtectionThroughApp {
+  # Issue #217: the documented cleanup is the status screen's REMOVE PROTECTION (PARENT PIN), which is
+  # Knox-aware on Samsung (#186). This harness never runs `dpm remove-active-admin`: on the Flip4 that
+  # leaves Knox's own admin record behind and the next activation through the system sheet fails with
+  # "Admin is already added" (#202, measured again in #217).
+  Sh ("am start -n " + $PKG + "/.setup.PairingActivity") | Out-Null
+  $button = $null
+  for ($i = 0; $i -lt 10; $i++) {
+    Start-Sleep -Milliseconds 400
+    $ui = UiDump
+    $button = FindButton $ui "Remove protection"
+    if ($button) { break }
+  }
+  if (-not $button) { W "WARN: Remove protection not found; remove it through the app's parent PIN by hand (#217)"; return $false }
+  $xy = Bounds $button
+  if (-not $xy) { W "WARN: Remove protection button has no bounds (#217)"; return $false }
+  Tap $xy
+  Start-Sleep -Milliseconds 600
+  $gate = UiDump
+  if (-not $gate) { W "WARN: parent-PIN gate did not open (#217)"; return $false }
+  $field = @($gate.SelectNodes("//node[@class='android.widget.EditText']")) | Select-Object -First 1
+  if (-not $field) { W "WARN: parent-PIN gate did not open (#217)"; return $false }
+  Tap (Bounds $field)
+  Sh ("input text " + $Pin) | Out-Null
+  Start-Sleep -Milliseconds 200
+  $continue = FindButton $gate "Continue"
+  if (-not $continue) { W "WARN: Continue not found on the parent-PIN gate (#217)"; return $false }
+  Tap (Bounds $continue)
+  Start-Sleep -Milliseconds 1200
+  return $true
+}
+
 function RemoveApp {
   $dpm = Sh "dumpsys device_policy"
-  if ($dpm -match [regex]::Escape("com.familyshield.agent/.security.ParentalAdminReceiver")) {
-    $r = Sh "dpm remove-active-admin --user 0 $ADMIN"
-    W ("dpm remove-active-admin -> " + (($r -split "`n") -join " | "))
+  if ($dpm -match [regex]::Escape($ADMIN)) {
+    if (RemoveProtectionThroughApp) {
+      $after = Sh "dumpsys device_policy"
+      if ($after -match [regex]::Escape($ADMIN)) {
+        W "WARN: $ADMIN is still listed after the in-app removal"
+      } else {
+        W "protection removed through the app's parent PIN (#217)"
+      }
+    }
   }
   $u = Sh "pm uninstall $PKG"
   W ("pm uninstall -> " + (($u -split "`n") -join " | "))
@@ -586,14 +624,14 @@ for ($run = 1; $run -le $Runs; $run++) {
     Tap (Bounds $activate)
     Pause 500
     $dpmAfter = Sh "dumpsys device_policy"
-    W ("device_policy after Activate: " + (($dpmAfter -match [regex]::Escape("com.familyshield.agent/.security.ParentalAdminReceiver"))))
+    W ("device_policy after Activate: " + (($dpmAfter -match [regex]::Escape($ADMIN))))
 
     $w = WaitText "This device is paired" 60
     Stamp "t12_paired"
     if (-not $w.ok) { W ("ABORT: paired status did not appear: " + (Texts $w.ui)); Shot ("run" + $run + "-fail-paired"); break }
     $statusText = Texts $w.ui
     W ("status: " + $statusText)
-    $dpmNow = Sh "dumpsys device_policy | grep -E 'ParentalAdminReceiver|Enabled admin'"
+    $dpmNow = Sh "dumpsys device_policy | grep -E 'GuardianAdminReceiver|Enabled admin'"
     W ("device_policy read-back: " + (($dpmNow -split "`n") -join " | "))
     Shot ("run" + $run + "-06-paired")
   } else {

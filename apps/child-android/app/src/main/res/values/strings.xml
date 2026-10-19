@@ -3,6 +3,7 @@
     <string name="app_name">OSRA</string>
     <string name="app_name_ar">أسرة</string>
     <string name="sos_tile_label">OSRA SOS</string>
+    <string name="accessibility_service_label">OSRA accessibility</string>
     <string name="accessibility_description">OSRA monitors app usage to enforce your parent\'s screen-time rules.</string>
     <string name="device_admin_label">OSRA parental controls</string>
     <string name="device_admin_description">Lets OSRA lock the device and prevents the app being removed without the parent PIN.</string>

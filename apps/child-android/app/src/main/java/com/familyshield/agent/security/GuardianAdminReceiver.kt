@@ -14,13 +14,19 @@ import android.util.Log
  * callback). `onDisabled` fires after admin is actually removed — we record it so the next agent
  * poll raises a tamper alert to the parent.
  *
- * The class name is itself operationally significant (issue #202): Samsung Knox keys its admin registry
- * by **component + user**, and a stale row for a previous component name refuses every new activation
- * through the system sheet with `Admin is already added`. A new component name is not in that registry,
- * so renaming the receiver is the recovery path — and the reason [COMPONENT_CLASS], the manifest entry
- * and `res/xml/device_admin.xml`'s consumer must move together. `AdminReceiverContractTest` pins that.
+ * The class name is itself operationally significant (issues #202 and #217): Samsung Knox keys its
+ * admin registry by **component + user**, and a stale row for a previous component name refuses every
+ * new activation through the system sheet with `Admin is already added`. A new component name is not in
+ * that registry, so renaming the receiver is the recovery path — and the reason [COMPONENT_CLASS], the
+ * manifest entry and `res/xml/device_admin.xml`'s consumer must move together.
+ * `AdminReceiverContractTest` pins that.
+ *
+ * Renamed twice for the same reason: #209 moved `FamilyShieldDeviceAdmin` → `ParentalAdminReceiver`,
+ * and #217 moved `ParentalAdminReceiver` → `GuardianAdminReceiver` after `dpm remove-active-admin`
+ * stranded a Knox row on the Flip4. The root cause is the cleanup command, not the name — see
+ * `docs/TESTING.md` §5, which no longer prescribes that command on a Samsung.
  */
-class ParentalAdminReceiver : DeviceAdminReceiver() {
+class GuardianAdminReceiver : DeviceAdminReceiver() {
 
     override fun onEnabled(context: Context, intent: Intent) {
         Log.i(TAG, "device admin enabled")
@@ -52,7 +58,7 @@ class ParentalAdminReceiver : DeviceAdminReceiver() {
          * resolves their relative names against the manifest namespace and fails if either drifts
          * (issue #202).
          */
-        val COMPONENT_CLASS: String = ParentalAdminReceiver::class.java.name
+        val COMPONENT_CLASS: String = GuardianAdminReceiver::class.java.name
 
         private const val TAG = "FSDeviceAdmin"
     }

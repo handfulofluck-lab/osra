@@ -1,6 +1,7 @@
 package com.familyshield.agent.manifest
 
-import com.familyshield.agent.security.ParentalAdminReceiver
+import com.familyshield.agent.security.GuardianAdminReceiver
+import com.familyshield.agent.services.AccessibilityMonitorService
 import java.io.File
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -83,16 +84,16 @@ class PlayMergedManifestTest {
     }
 
     /**
-     * Issue #170: a test runner must be able to remove the device admin without the app PIN, which
+     * Issue #170: a test runner must be able to **replace** the package without the parent PIN, which
      * Android only permits for a `testOnly` package. The debug overlay declares it; neither source set
-     * shared with release does.
+     * shared with release does. It is not the cleanup route: since #217 admin removal is the app's
+     * REMOVE PROTECTION (PARENT PIN).
      */
     @Test
-    fun `play debug merged manifest is testOnly so the test admin is removable`() {
+    fun `play debug merged manifest is testOnly so a test runner may replace the package`() {
         assertTrue(
-            "android:testOnly is absent from the Play debug merge. The test runner cannot run " +
-                "`dpm remove-active-admin` without it (issue #170), so cleanup again needs the app PIN. " +
-                "Declare it in app/src/debug/AndroidManifest.xml.",
+            "android:testOnly is absent from the Play debug merge. A test runner can then not replace " +
+                "the package without the parent PIN (issue #170). Declare it in app/src/debug/AndroidManifest.xml.",
             merged.applicationTestOnly == "true",
         )
     }
@@ -129,6 +130,25 @@ class PlayMergedManifestTest {
     }
 
     /**
+     * Issue #217: the system sheets name the app from `<application android:label>`. Without it Android
+     * fell back to the Application class (`com.familyshield.agent.FamilyShieldApp`) in the camera prompt
+     * and the device-admin sheet; the accessibility service was listed by class name too. Asserted on the
+     * merged artefact because that is what the phone installs.
+     */
+    @Test
+    fun `play merged manifest labels the application and the accessibility service`() {
+        val violations = PlayManifestPolicy.labellingViolations(
+            merged,
+            accessibilityServiceClass = AccessibilityMonitorService::class.java.name,
+        )
+        assertTrue(
+            "the Play artefact would name the app after its Application class in system sheets " +
+                "(issue #217):\n" + violations.joinToString("\n"),
+            violations.isEmpty(),
+        )
+    }
+
+    /**
      * Issue #202: the installed component name is what Samsung's Knox registry matches. The rename is
      * only real if the merged Play manifest carries it with the admin contract intact.
      */
@@ -136,7 +156,7 @@ class PlayMergedManifestTest {
     fun `play merged manifest declares the renamed device-admin receiver`() {
         val violations = PlayManifestPolicy.adminReceiverViolations(
             merged,
-            ParentalAdminReceiver.COMPONENT_CLASS,
+            GuardianAdminReceiver.COMPONENT_CLASS,
         )
         assertTrue(
             "the Play artifact's device-admin receiver changed (issue #202):\n" +

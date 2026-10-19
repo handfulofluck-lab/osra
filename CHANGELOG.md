@@ -11,6 +11,47 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — the system sheets name the app, the block screen follows the app in front, and cleanup stops stranding Samsung admins (#217)
+- **Why.** Claude's 2026-10-19 Flip4 re-tests (#217) measured three defects and one procedure trap:
+  the camera and device-admin sheets called the app `com.familyshield.agent.FamilyShieldApp`; a second
+  block screen kept the first app's name and would have asked the parent to unblock the **wrong** app;
+  and TR-41's documented cleanup (`dpm remove-active-admin`) stranded a Knox admin record, so the app
+  could no longer activate device admin through the system sheet.
+- **Labelling (finding 2).** `<application>` in `app/src/main/AndroidManifest.xml` now declares
+  `android:label="@string/app_name"` and `android:icon="@drawable/ic_app"`, and the accessibility
+  service declares `android:label="@string/accessibility_service_label"`. `PlayMergedManifestTest` /
+  `FullMergedManifestTest` assert the merged application label/icon and the service label in both
+  flavours; `scripts/check-merged-manifest-gate.mjs` requires the new assertions.
+- **Block screen (finding 3).** `BlockActivity` is `singleTask`; it now overrides `onNewIntent` →
+  `setIntent`, and a new `BlockSession` holds the request in Compose state instead of reading the
+  intent once. Both "Request access" and "Exit to Home screen" use the package currently on screen,
+  the screen shows `PackageManager.getApplicationLabel` (package id as fallback), and the composable is
+  keyed on the package so "Request sent" does not leak to the next app. `BlockSessionTest` drives two
+  intents with different packages and asserts both the label and the action targets change.
+- **Cleanup procedure (finding 1).** `docs/TESTING.md` §5/§5a/§5f/§5g/§7, TR-41's row and
+  `scripts/hardware/android-pairing-time.ps1` now end debug runs with the app's **REMOVE PROTECTION
+  (PARENT PIN)** (Knox-aware since #186) followed by `adb uninstall`. `dpm remove-active-admin` survives
+  only as a last resort, with the Samsung warning; TR-41 still proves `testOnlyAdmin=true` from
+  `dumpsys` and no longer needs the shell removal.
+- **Second component rename.** `security.ParentalAdminReceiver` → `security.GuardianAdminReceiver`,
+  with `DeviceAdminManager`, the manifest, the tests, the hardware harness and the docs moved together.
+  `ParentalAdminReceiver` had already replaced `FamilyShieldDeviceAdmin` in #209; the second rename was
+  needed because the **cleanup command**, not the class name, created the stale Knox row. The app's own
+  removal path was measured not to clear that row (Claude's #217 sequence), so a rename is the recovery.
+- **Evidence (author's run, no hardware).** `./gradlew testPlayDebugUnitTest testFullDebugUnitTest
+  assemblePlayDebug --no-daemon` → **BUILD SUCCESSFUL in 3m 22s**, **373 tests / 0 skipped / 0 failed**
+  in each flavour (56 suites; +6 over 367: four `BlockSessionTest` cases plus one merged-manifest
+  assertion per flavour). Fail-before for finding 3: with `BlockSession.apply` mutated back to read-once,
+  `testPlayDebugUnitTest --tests "*BlockSessionTest"` failed **3 of 4** (the second-intent, the
+  render-notification and the blank-package cases). `node scripts/check-merged-manifest-gate.mjs` →
+  **2 result set(s) checked, all assertions ran and passed** (Play 9, Full 7 in both); `node
+  scripts/check-docs-links.mjs` → **0 broken out of 146**; `aapt2 dump badging app-play-debug.apk` →
+  `application-label:'OSRA'`, `application-icon-160:'res/drawable/ic_app.xml'`. All four merged
+  manifests carry `android:label="@string/app_name"` and `android:icon="@drawable/ic_app"`.
+- **⚠️ Not verified here.** The phone was not touched. The camera prompt and a second block screen on
+  the Flip4 remain for the tester; and no one has yet activated `GuardianAdminReceiver` through the
+  sheet on the handset, so the #217 recovery is unproven on that phone. This is the author's software
+  run, not verification.
 ### QA — #206 Group 3 re-verification results and doc fixes (Claude, 2026-10-19)
 - **Why.** Karim's #206 mandate: every merge since 2026-10-18 re-tested on current `main` by a non-author.
 - **What.** `docs/QA/TEST-REQUESTS.md` status column for TR-67…TR-94 (TR-93 is Claude's own and left for Kimi):
