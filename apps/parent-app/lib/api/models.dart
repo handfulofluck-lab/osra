@@ -992,3 +992,37 @@ class FamilyOverview {
   /// Devices belonging to one child.
   List<Device> devicesFor(String childId) => devices.where((d) => d.childId == childId).toList();
 }
+
+/// `POST /v1/auth/mfa/enroll` — a new TOTP secret and the `otpauth://` URL the
+/// enrolment screen renders as a QR. The secret is not persisted by the app:
+/// the server stores it (encrypted) on the next `/mfa/verify`.
+@immutable
+class MfaEnrollment {
+  final String secret;
+  final String otpauthUrl;
+
+  const MfaEnrollment({required this.secret, required this.otpauthUrl});
+
+  factory MfaEnrollment.fromJson(Map<String, dynamic> json) => MfaEnrollment(
+        secret: _str(json['secret']),
+        otpauthUrl: _str(json['otpauthUrl']),
+      );
+}
+
+/// One batch of one-time recovery codes, as returned by `/mfa/verify` and
+/// `/mfa/recovery-codes`. This is the only moment the plaintext exists — the
+/// API stores hashes and has no route that returns a batch again.
+@immutable
+class RecoveryCodeBatch {
+  final List<String> codes;
+  final DateTime? issuedAt;
+
+  const RecoveryCodeBatch({this.codes = const [], this.issuedAt});
+
+  factory RecoveryCodeBatch.fromJson(Map<String, dynamic> json) => RecoveryCodeBatch(
+        codes: _strList(json['recoveryCodes']),
+        issuedAt: DateTime.tryParse(_str(json['recoveryCodesIssuedAt'])),
+      );
+
+  bool get isEmpty => codes.isEmpty;
+}

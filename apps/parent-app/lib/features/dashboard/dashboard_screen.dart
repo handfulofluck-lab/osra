@@ -42,12 +42,14 @@ class DashboardScreen extends ConsumerWidget {
             onSelected: (v) => context.push(switch (v) {
               'family' => '/family',
               'appearance' => '/settings/appearance',
+              'mfa' => '/settings/mfa',
               _ => '/settings/digests',
             }),
             itemBuilder: (_) => [
               PopupMenuItem(value: 'family', child: Text(l10n.familyMembersMenu)),
               PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
               PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
+              PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
             ],
           ),
           IconButton(

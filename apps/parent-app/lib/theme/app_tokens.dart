@@ -57,6 +57,16 @@ abstract final class AppType {
   /// Tick labels on the fl_chart bar chart: smaller than [labelSmall] because
   /// every app name on the x-axis competes for a 320 px width.
   static const TextStyle chartTick = TextStyle(fontSize: 10, height: 1.2, fontWeight: FontWeight.w400);
+
+  /// One one-time recovery code (`XXXX-XXXX-XXXX-XXXX`). A fixed-width face
+  /// keeps the hyphen groups aligned when the parent reads them back.
+  static const TextStyle recoveryCode = TextStyle(
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w500,
+    fontFamily: 'monospace',
+    letterSpacing: 0.4,
+  );
 }
 
 /// Semantic colour roles for one brightness. A screen asks for a role

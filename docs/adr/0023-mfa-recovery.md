@@ -4,8 +4,10 @@
 - **Implementation note (2026-10-19):** the technical half landed on `feat/23-mfa-recovery-codes`. The
   issuing route is `POST /v1/auth/mfa/recovery-codes` — generation and regeneration are the same
   operation, because a batch exists only as hashes and there is nothing to re-read; the table is
-  `0017_parent_mfa_recovery_codes` (`0016` was taken by ADR-0024). The parent-app screens and Option B
-  remain open, as this ADR records.
+  `0017_parent_mfa_recovery_codes` (`0016` was taken by ADR-0024). The parent-app screens landed on
+  `feat/mfa-recovery-ui` (PR #184): settings enrolment, the show-once code list, regeneration behind
+  the #139 proof, and the login recovery entry. Option B (support-assisted reset) remains open, as
+  this ADR records.
 - **Date:** 2026-10-18
 - **Deciders:** Claude (KCL lead); proposed by Kimi Code (development lead), from the recovery gap left
   open by #139 in issue #136

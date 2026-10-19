@@ -1260,4 +1260,202 @@ class AppLocalizationsEn extends AppLocalizations {
   String confirmedEvent(String time) {
     return 'Confirmed $time';
   }
+
+  @override
+  String get mfaMenu => 'Two-step verification';
+
+  @override
+  String get mfaSettingsTitle => 'Two-step verification';
+
+  @override
+  String get mfaStatusOn => 'On';
+
+  @override
+  String get mfaStatusOff => 'Off';
+
+  @override
+  String get mfaSettingsStatusOn => 'Two-step verification is on.';
+
+  @override
+  String get mfaSettingsStatusOff => 'Two-step verification is off.';
+
+  @override
+  String get mfaSettingsExplanation =>
+      'When it is on, signing in needs a code from your authenticator app as well as your password.';
+
+  @override
+  String get mfaSetupAuthenticator => 'Set up authenticator';
+
+  @override
+  String get mfaReplaceAuthenticator => 'Replace authenticator';
+
+  @override
+  String get mfaRecoveryCodesTitle => 'Recovery codes';
+
+  @override
+  String get mfaRecoveryCodesExplanation =>
+      'Ten single-use codes. Each one lets you sign in once if you lose your authenticator.';
+
+  @override
+  String get mfaRegenerateCodes => 'Generate new recovery codes';
+
+  @override
+  String get mfaRegenerateWarning =>
+      'Generating new codes replaces the old ones. The old codes stop working immediately.';
+
+  @override
+  String get mfaSessionNotice =>
+      'Your session ended when two-step verification was turned on. Sign in again with your new authenticator.';
+
+  @override
+  String get mfaReauthTitle => 'Confirm it is you';
+
+  @override
+  String get mfaReauthExplanation =>
+      'Enter your password or a current authenticator code.';
+
+  @override
+  String get mfaReauthCode => 'Authenticator code';
+
+  @override
+  String get mfaReauthRequired =>
+      'Enter your password or a current authenticator code.';
+
+  @override
+  String get mfaReauthFailed => 'That password or code was not accepted.';
+
+  @override
+  String get mfaEnrollTitle => 'Set up two-step verification';
+
+  @override
+  String get mfaEnrollIntro =>
+      'Scan this code with an authenticator app, then enter the six-digit code it shows.';
+
+  @override
+  String get mfaEnrollManual => 'Cannot scan? Enter this key in the app:';
+
+  @override
+  String get mfaSecretCopied => 'Key copied';
+
+  @override
+  String get mfaSecretSemantics => 'Authenticator setup key';
+
+  @override
+  String get mfaEnrollAfterRecovery =>
+      'Set up a new authenticator for this account. Until you verify it, two-step verification stays off.';
+
+  @override
+  String get mfaCodeFieldLabel => 'Six-digit code';
+
+  @override
+  String get mfaVerify => 'Turn on two-step verification';
+
+  @override
+  String get mfaVerifying => 'Checking…';
+
+  @override
+  String get mfaInvalidCode =>
+      'That code was not accepted. Check the clock on your phone and try the next code.';
+
+  @override
+  String get mfaNotEnrolled =>
+      'Start the setup again — no authenticator is enrolled yet.';
+
+  @override
+  String get mfaSessionError => 'Your session ended. Sign in again and retry.';
+
+  @override
+  String get mfaRecoveryExpired =>
+      'This recovery session has ended. Start recovery again.';
+
+  @override
+  String get mfaTooManyAttempts =>
+      'Too many attempts. Wait a minute and try again.';
+
+  @override
+  String get mfaNetworkError =>
+      'Could not reach the server. Check your connection and try again.';
+
+  @override
+  String get mfaRequestFailed => 'That did not work. Try again.';
+
+  @override
+  String get mfaEnrollError =>
+      'Could not create an authenticator key. Try again.';
+
+  @override
+  String get mfaNoRecoveryCodes =>
+      'The server did not return recovery codes. Try again before leaving this screen.';
+
+  @override
+  String get mfaCodesTitle => 'Save your recovery codes';
+
+  @override
+  String get mfaCodesIntro =>
+      'These ten codes will not be shown again. Write them down or copy them somewhere safe.';
+
+  @override
+  String get mfaCopyAllCodes => 'Copy all codes';
+
+  @override
+  String get mfaCodesCopied => 'Recovery codes copied';
+
+  @override
+  String get mfaCodesSavedCheckbox => 'I have saved these codes';
+
+  @override
+  String get mfaCodesConfirm => 'I have saved these codes';
+
+  @override
+  String get mfaCodesLeaveTitle => 'Leave without saving?';
+
+  @override
+  String get mfaCodesLeaveBody =>
+      'These codes cannot be shown again. If you leave now, you will have to generate a new batch from settings.';
+
+  @override
+  String get mfaCodesStay => 'Stay';
+
+  @override
+  String get mfaCodesLeave => 'Leave anyway';
+
+  @override
+  String mfaCodesIssuedAt(String date) {
+    return 'Created $date';
+  }
+
+  @override
+  String mfaRecoveryCodeSemantics(int index) {
+    return 'Recovery code $index';
+  }
+
+  @override
+  String get mfaRecoveryLink => 'Lost your authenticator?';
+
+  @override
+  String get mfaRecoveryTitle => 'Recover your account';
+
+  @override
+  String get mfaRecoveryIntro =>
+      'Enter the email, password and one unused recovery code for this account. This turns off two-step verification so you can set it up again.';
+
+  @override
+  String get mfaRecoveryCodeLabel => 'Recovery code';
+
+  @override
+  String get mfaRecoveryCodeHint => 'XXXX-XXXX-XXXX-XXXX';
+
+  @override
+  String get mfaRecoverySubmit => 'Recover account';
+
+  @override
+  String get mfaRecoveryInvalid =>
+      'The email, password or recovery code is incorrect.';
+
+  @override
+  String get mfaRecoveryNoToken =>
+      'The server did not return a recovery session. Try again.';
+
+  @override
+  String get mfaFieldsRequired => 'Fill in email, password and recovery code.';
 }

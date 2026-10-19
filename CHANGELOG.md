@@ -11,6 +11,41 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — MFA screens make the #180 recovery codes reachable (ADR-0023, roadmap 3.3)
+- **Settings › Two-step verification.** A new screen shows whether MFA is on, offers set-up or
+  replacement of the authenticator, and is the only place a recovery-code batch can be requested.
+  Enrolment calls `POST /v1/auth/mfa/enroll`, renders the returned `otpauthUrl` as a QR plus the
+  secret for manual entry, and verifies the six-digit code with `POST /v1/auth/mfa/verify`. When the
+  API answers `401 reauth_required` (a secret already exists) the screen asks for the password or a
+  current authenticator code once and retries with that proof — the #139 rule is enforced by the
+  server, not assumed by the client.
+- **The codes are shown once, and the back action says so.** The verification response's ten codes
+  are displayed on a dedicated screen with Copy-all and a mandatory "I have saved these codes"
+  checkbox; leaving by the AppBar arrow or the system back gesture opens a warning that the batch
+  cannot be shown again and that leaving means generating a new one. Regeneration asks for the #139
+  proof before calling `POST /v1/auth/mfa/recovery-codes`, because the new batch invalidates the old.
+- **Recovery entry on login.** "Lost your authenticator?" opens a form taking email + password + one
+  unused code and calls `POST /v1/auth/mfa/recover`. On success the returned 15-minute
+  `purpose:"mfa_recovery"` token is passed **only** to `/mfa/enroll` and `/mfa/verify` (a per-request
+  Authorization override; it is never written to the `jwt` slot) and the app routes straight to
+  re-enrolment. All failures show the single generic sentence the API's deliberate
+  `401 invalid_recovery` supports — the screen does not claim to know which field was wrong.
+- **Session honesty.** `/mfa/verify` revokes every session, so confirming the codes signs out locally
+  and the login screen explains why rather than leaving a dead token in place.
+- **Localization.** Every new string is in `app_en.arb` and `app_ar.arb`; the four new screens have
+  Arabic + RTL widget tests at 320×568 and an MFA-prefixed ARB parity test (present, non-empty,
+  placeholder-identical).
+- **Evidence (author's).** `apps/parent-app`: `flutter test` **184 passed** (24 new in
+  `test/mfa_screens_test.dart`), `flutter analyze` **No issues found**. The API was not modified.
+  Independent verification and the merge sha are still owed.
+- **Live-stack limitation (stated, not hidden).** A read-only contract check was attempted against the
+  shared API at `http://127.0.0.1:3000`: it answers `404` on `/v1/auth/mfa/recovery-codes` and returns
+  no `recoveryCodes` from `/v1/auth/mfa/verify`, so the running process predates #180. It was not
+  restarted (standing instruction), and the field shapes the client parses are the ones the merged API
+  tests and ADR-0023 assert. The disposable QA account created by the check was deleted with
+  `cleanup-test-data.sql -v apply=1` (assertion `OK: 1 family — demo family only`), and no Redis keys
+  for it remained.
+
 ### Docs + hardware — first-run pairing time measured as a proxy for 3.2's five-minute acceptance (TR-23, issue #181)
 - **What was measured.** Three clean installs of the Full debug build from `main@df7c89e` on the Flip4
   reached the app's **"This device is paired"** screen in **21.4 / 21.1 / 21.2 s** wall clock from first
