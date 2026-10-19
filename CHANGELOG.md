@@ -34,6 +34,56 @@ environment where it was written — see `docs/QA/` for the verification state.
   sheet over the launcher (dismiss it before launching), and the One UI admin sheet's click target is the
   Activate row, not the button. Evidence:
   `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-PAIRING-TIME.md`.
+### API — one-time MFA recovery codes (ADR-0023 Option A, roadmap 3.3, `feat/23-mfa-recovery-codes`)
+- **What a parent can now do.** With MFA on, the account has ten single-use recovery codes as well as
+  the authenticator. `POST /v1/auth/mfa/verify` returns them (formatted `XXXX-XXXX-XXXX-XXXX`) in the
+  same response that enables MFA; `POST /v1/auth/mfa/recovery-codes` issues a fresh batch, replacing
+  the old one, and takes the same proof #139 requires to replace a secret (account password or a
+  current TOTP). Lost the authenticator? `POST /v1/auth/mfa/recover` with `{email, password, code}`
+  clears the second factor, spends the code, deletes the rest of the batch, revokes every session,
+  emails a notice, and returns a 15-minute `purpose:"mfa_recovery"` token that re-enrols and
+  re-verifies — and does nothing else.
+- **Format and storage.** 16 Crockford base32 characters (80 bits, no `I`/`L`/`O`/`U`), normalised
+  (uppercase, separators stripped, `I`/`L`→`1`, `O`→`0`) and stored only as SHA-256 in the new
+  `ParentMfaRecoveryCode` table (`prisma/migrations/0017_parent_mfa_recovery_codes`, FK
+  `onDelete: Cascade`, index `(parentId, usedAt)`). The plaintext exists in the issuing response and
+  nowhere else: no route reads it back, and `sanitizeParent` strips the relation so `/family/me` and
+  `/family/export` cannot carry a `codeHash` even if a future `include` adds one.
+- **One-time use is transactionally enforced.** `updateMany({where:{id, usedAt:null}})` must return
+  `count === 1`, so of two concurrent requests with the same code exactly one wins; the used row is
+  kept as the record, its siblings are deleted. A wrong code writes nothing — the batch is intact
+  afterwards. Failures are deliberately indistinguishable (`401 {"error":"invalid_recovery"}` for an
+  unknown address, a wrong password, a wrong or spent code, and MFA-not-enabled), and the unknown-email
+  path verifies a dummy argon2 hash so timing does not leak either.
+- **The token is not a session and the #147 rule is untouched.** `requireJwt` still refuses every
+  `purpose` token and still requires `role:"parent"`; the two enrolment routes use a separate
+  `requireParentOrMfaRecovery` that accepts a recovery token only while `mfaEnabled === false` and only
+  while Redis still holds `mfa:recovery:<jti>` → parentId (deleted on a successful verify; the store
+  check fails closed). `/family/me`, `/logout-all` and `/mfa/recovery-codes` answer `401` to it.
+- **Tests.** `services/api/test/mfa-recovery.test.ts` — 12 tests over a stateful code table: ten
+  hashes and no plaintext in the rows; a valid code recovers once and clears the factor; replay and
+  sibling codes refused; two concurrent claims → exactly one `200`; a wrong code does not consume the
+  batch; the four no-oracle failures; the token's enrol/verify-only surface and its death once MFA is
+  on; expired/unknown-jti/wrong-subject/wrong-purpose tokens refused; the #139 re-auth rule on
+  `/mfa/recovery-codes`; nothing readable a second time; and login still needs the new authenticator
+  (Option C stays rejected). `pnpm --filter @familyshield/api test` → **33 files, 381 passed**.
+- **Probe.** `qa-probe.mjs` gained section O, **O1–O11** (`check()` count 109 → 120;
+  `node scripts/check-probe-integrity.mjs --base origin/main` → *12 added, 0 removed, 0 demoted*). A
+  live run against a spare-port instance of this branch (`API_BASE=http://127.0.0.1:3123`):
+  **141 passed · 0 failed · 0 targets · 0 notes**, exit 0. The probe now waits out one 30-second TOTP
+  window in section O — the replay guard refuses a second use of a counter, so a strictly newer code
+  needs a newer window.
+- **Migration.** Additive DDL only (`ParentMfaRecoveryCode`); an older API binary never selects it, so
+  no backfill and no coordinated restart. **No backfill is possible for accounts that enabled MFA
+  before this ships** — codes cannot be derived from the TOTP secret, so those parents get their first
+  batch the next time they regenerate or re-verify while logged in. A parent already locked out is not
+  helped by this change at all.
+- **Not done here (deliberate).** The parent app has no MFA enrolment, code-display or recovery screen,
+  so a normal user cannot reach any of this yet; the Flutter work (enrol, show codes once, "I saved
+  them", recovery entry on login, forced re-enrolment) is a follow-up PR. The support-assisted path for
+  the already-locked-out cohort (ADR-0023 Option B) stays a maintainer decision and was not built.
+  ADR-0023's status is now `accepted (technical half, 2026-10-19; support path still open)`.
+- **Verification state.** Author's own gates only. No independent record (`TR-*`) yet, no merge sha.
 
 ### Android — the child app scans the parent's pairing QR (roadmap 3.2, second half, PR #179)
 - **What a parent does.** `PairingActivity` now has a **Scan QR code** action next to the typed form.

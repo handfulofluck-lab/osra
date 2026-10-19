@@ -96,7 +96,15 @@ describe("family routes", () => {
       name: "Demo",
       region: "US",
       createdAt: new Date().toISOString(),
-      parents: [{ id: "parent-1", email: "demo@familyshield.dev", passwordHash: "argon2$secret", mfaSecret: "mfa" }],
+      parents: [{
+        id: "parent-1",
+        email: "demo@familyshield.dev",
+        passwordHash: "argon2$secret",
+        mfaSecret: "mfa",
+        // ADR-0023: a joined batch must never reach a response, even though the relation is not
+        // selected today (defence in depth against a future `include`).
+        mfaRecoveryCodes: [{ id: "rc-1", codeHash: "a".repeat(64), usedAt: null }],
+      }],
       children: [
         { id: CHILD_ID, displayName: "Alex", devices: [{ id: "dev-1" }], ruleSet: { id: "rs-1" }, consents: [], geofences: [] },
       ],
@@ -111,6 +119,8 @@ describe("family routes", () => {
     expect(body.children).toHaveLength(1);
     expect(body.devices).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain("passwordHash");
+    expect(JSON.stringify(body)).not.toContain("codeHash");
+    expect(JSON.stringify(body)).not.toContain("mfaRecoveryCodes");
     await app.close();
   });
 
@@ -389,6 +399,8 @@ describe("family routes", () => {
           passwordHash: "argon2$secret",
           mfaSecret: "JBSWY3DPEHPK3PXP",
           mfaEnabled: true,
+          // ADR-0023: recovery-code hashes are credential material too — never in the archive.
+          mfaRecoveryCodes: [{ id: "rc-1", codeHash: "b".repeat(64), usedAt: null }],
         },
       ],
       children: [
@@ -411,6 +423,8 @@ describe("family routes", () => {
     expect(raw).not.toContain("mfaSecret");
     expect(raw).not.toContain("argon2$secret");
     expect(raw).not.toContain("JBSWY3DPEHPK3PXP");
+    expect(raw).not.toContain("codeHash");
+    expect(raw).not.toContain("mfaRecoveryCodes");
     await app.close();
   });
 

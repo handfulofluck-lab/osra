@@ -36,8 +36,12 @@ const ChildPatchSchema = z.object({
 
 type AuthedUser = { sub: string; familyId: string };
 
-/** Strip credential material from a parent row before it leaves the API. */
-const sanitizeParent = ({ passwordHash: _ph, mfaSecret: _ms, ...rest }: Record<string, unknown>) => rest;
+/**
+ * Strip credential material from a parent row before it leaves the API. `mfaRecoveryCodes` is not
+ * joined today (ADR-0023), and it must stay that way: listing the relation here would ship the
+ * hashes, so the strip is defence in depth against a future `include`.
+ */
+const sanitizeParent = ({ passwordHash: _ph, mfaSecret: _ms, mfaRecoveryCodes: _mrc, ...rest }: Record<string, unknown>) => rest;
 
 export async function familyRoutes(app: FastifyInstance) {
   /** Return the authenticated parent's family envelope: family, parents, children (with devices) and a flat device list. */
