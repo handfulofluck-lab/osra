@@ -1,6 +1,7 @@
 package com.familyshield.agent.setup
 
 import com.familyshield.agent.BuildConfig
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -21,7 +22,9 @@ import androidx.lifecycle.lifecycleScope
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.network.ServerUrls
+import com.familyshield.agent.security.AdminEnrolmentMessages
 import com.familyshield.agent.security.DeviceAdminManager
+import com.familyshield.agent.security.EnrolmentOutcome
 import com.familyshield.agent.security.ParentPin
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.ProtectionTier
@@ -52,9 +55,17 @@ class PairingActivity : ComponentActivity() {
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
 
-    /** ADR-0010: the OS "activate device admin" screen; whatever the answer, continue to the status screen. */
+    /**
+     * ADR-0010: the OS "activate device admin" screen. A returned sheet with no active admin on a
+     * Samsung device is the stale-Knox state (#186): name it and offer the Settings route instead of
+     * falling through to the generic "alert-only" screen. Every other answer keeps the old behaviour.
+     */
     private val deviceAdminLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         deviceAdmin.applyUninstallProtection()
+        if (deviceAdmin.enrolmentOutcome(sheetReturned = true) == EnrolmentOutcome.STALE_KNOX_ADMIN) {
+            showStaleKnoxAdmin()
+            return@registerForActivityResult
+        }
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
     }
 
@@ -423,6 +434,51 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The specific dead end from #181/#186: Samsung's Knox registry still lists us although AOSP says
+     * no admin, so the sheet's Activate is refused and closes. The app cannot clear another layer's
+     * registry entry; it can only name the state and open the screen that goes through Knox.
+     */
+    private fun showStaleKnoxAdmin() {
+        val message = AdminEnrolmentMessages.forOutcome(EnrolmentOutcome.STALE_KNOX_ADMIN) ?: return
+        replaceWith {
+            addView(label("${message.title} · أسرة").apply { setTextColor(0xFFB00020.toInt()) })
+            addView(label(message.body))
+            addView(label(message.recovery))
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = message.action
+                    setOnClickListener { openDeviceAdminSettings() }
+                },
+            )
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = "Try Activate again"
+                    setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+                },
+            )
+            addView(
+                Button(this@PairingActivity).apply {
+                    text = "Continue without protection"
+                    setOnClickListener {
+                        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+                    }
+                },
+            )
+        }
+    }
+
+    private fun openDeviceAdminSettings() {
+        // The direct action is not in the public SDK constant list (it is a Settings intent string);
+        // fall back to Security, from which Device admin apps is one tap away.
+        try {
+            startActivity(Intent("android.settings.DEVICE_ADMIN_SETTINGS"))
+        } catch (e: ActivityNotFoundException) {
+            runCatching { startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS)) }
+                .onFailure { android.util.Log.w("PairingActivity", "no device-admin settings screen", it) }
+        }
+    }
+
     /** Runs [action] only after the parent PIN is verified on the guard screen; no PIN yet → runs at once. */
     private fun requirePin(reason: String, action: () -> Unit) {
         if (!pinStore.isConfigured()) { action(); return }
@@ -594,6 +650,19 @@ class PairingActivity : ComponentActivity() {
                             setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
                         },
                     )
+                    // A Samsung device can stay in this generic state forever if Knox holds a stale
+                    // row (#186). Offer the Knox-aware recovery route before the parent hits it.
+                    if (deviceAdmin.hasKnoxAdminApi) {
+                        AdminEnrolmentMessages.forOutcome(EnrolmentOutcome.STALE_KNOX_ADMIN)?.let { message ->
+                            addView(label("\n" + message.recovery).apply { setTextColor(0xFF616161.toInt()) })
+                            addView(
+                                Button(this@PairingActivity).apply {
+                                    text = message.action
+                                    setOnClickListener { openDeviceAdminSettings() }
+                                },
+                            )
+                        }
+                    }
                 }
                 if (!pinStore.isConfigured()) {
                     addView(

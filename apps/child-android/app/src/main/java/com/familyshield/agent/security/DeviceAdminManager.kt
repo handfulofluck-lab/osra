@@ -20,14 +20,29 @@ class DeviceAdminManager @Inject constructor(
     private val dpm: DevicePolicyManager
         get() = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
+    /** Reflection-only: null on every non-Samsung device and after any Knox failure (issue #186). */
+    private val knoxCapability: KnoxAdminApi? by lazy { KnoxAdminCapability.probe(context, adminComponent) }
+    private val removalPolicy = AdminRemovalPolicy { knoxCapability }
+
     val adminComponent: ComponentName
         get() = ComponentName(context, FamilyShieldDeviceAdmin::class.java)
+
+    /** True when Samsung's Knox admin API is usable, so removal must not rely on AOSP alone. */
+    val hasKnoxAdminApi: Boolean
+        get() = knoxCapability != null
 
     fun isAdminActive(): Boolean = dpm.isAdminActive(adminComponent)
 
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
 
     fun tier(): ProtectionTier = TamperPolicy.tierOf(isAdminActive(), isDeviceOwner())
+
+    /**
+     * Classifies an activation attempt after the system sheet returned. Call with `false` while the
+     * sheet is still open. The stale-Knox case is a suspicion with a recovery route, not a self-heal.
+     */
+    fun enrolmentOutcome(sheetReturned: Boolean): EnrolmentOutcome =
+        AdminEnrolmentPolicy.classify(sheetReturned, isAdminActive(), isDeviceOwner(), hasKnoxAdminApi)
 
     /** Intent that opens the OS "activate device admin" screen. Launched from the onboarding wizard. */
     fun requestAdminIntent(): Intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
@@ -66,12 +81,24 @@ class DeviceAdminManager @Inject constructor(
      * Clears admin after the parent PIN was verified (the only sanctioned way off the device). The OS
      * removal screen is the child-facing path and is gated by [FamilyShieldDeviceAdmin.onDisableRequested]'s
      * warning; this method is for the in-app "remove protection" flow behind the PIN.
+     *
+     * On Samsung, activation goes through Knox and Knox keeps its own admin registry; AOSP
+     * `removeActiveAdmin` alone leaves a row that makes the next sheet activation fail with
+     * `Admin is already added` (issue #186). [AdminRemovalPolicy] uses Knox when it is present and
+     * keeps AOSP for every other device, so behaviour is unchanged off Samsung.
      */
-    fun removeAdmin() {
+    fun removeAdmin(): AdminRemovalRoute {
         TamperState.markSanctionedRemoval(context, System.currentTimeMillis() + 60_000L)
         TamperState.setLastTier(context, ProtectionTier.NONE.name)
-        runCatching { if (isAdminActive()) dpm.removeActiveAdmin(adminComponent) }
-            .onFailure { Log.w(TAG, "removeActiveAdmin failed", it) }
+        val route = removalPolicy.remove(
+            adminStillActive = { isAdminActive() },
+            aospRemove = {
+                runCatching { if (isAdminActive()) dpm.removeActiveAdmin(adminComponent) }
+                    .onFailure { Log.w(TAG, "removeActiveAdmin failed", it) }
+            },
+        )
+        Log.i(TAG, "protection removed via $route")
+        return route
     }
 
     /** True when the admin was disabled out-of-band and the parent has not yet been alerted. */

@@ -11,6 +11,45 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — protection removal is Knox-aware and the stale-admin dead end is named (issue #186)
+- **Why.** Samsung activates device admin through Knox, and Knox keeps a persistent admin registry of
+  its own. The in-app **Remove protection** path called AOSP `DevicePolicyManager.removeActiveAdmin`
+  only (`apps/child-android/app/src/main/java/com/familyshield/agent/security/DeviceAdminManager.kt:90`
+  before this change), which clears the AOSP view but not the Knox row. The next activation through
+  the system sheet then failed with `IllegalArgumentException: Admin is already added` while
+  `dumpsys device_policy` showed zero admins — the product became unusable for that component on
+  Samsung (diagnosis in #181, measured on the Flip4).
+- **Removal now follows the activation path.** `AdminRemovalPolicy` (pure, injected capability probe)
+  tries Samsung's Knox admin API first when it exists and otherwise keeps AOSP
+  `removeActiveAdmin`. `KnoxAdminCapability` reaches `com.samsung.android.knox.EnterpriseDeviceManager`
+  by reflection only: it returns `null` on every non-Samsung device and on any lookup or invocation
+  failure, so the class is not a build dependency and non-Samsung behaviour is byte-for-byte the old
+  behaviour. If Knox claims success but AOSP still lists the admin, the policy falls back to AOSP.
+  `DeviceAdminManager.removeAdmin()` logs the route it used.
+- **The stale state is detected at enrolment.** After the system sheet returns with no active AOSP
+  admin on a device that exposes Knox, the setup screen shows a specific explanation (`"Admin is
+  already added"`, the Knox registry), the recovery step (Settings → Security and privacy → Device
+  admin apps → deactivate OSRA), and a button that opens the device-admin settings screen. The same
+  recovery hint appears on the status screen while protection is alert-only on a Knox device. The app
+  does **not** try to clear another layer's registry entry itself.
+- **Tests (author's).** 14 new JVM tests in
+  `AdminRemovalPolicyTest` (Knox present → Knox; absent → AOSP; probe throws → AOSP; Knox throws,
+  refuses, or leaves AOSP active → AOSP) and `AdminEnrolmentPolicyTest` (stale on sheet-returned +
+  zero admins + Knox; not stale for active admin, device owner, pre-return, or non-Knox; the message
+  names the cause, the Settings route and the factory-reset limit). Before the new classes the tests
+  could not compile, so the behaviour had no passing test to preserve.
+- **Gates (author's run, this branch).** `./gradlew testPlayDebugUnitTest testFullDebugUnitTest
+  assemblePlayDebug --no-daemon` → `BUILD SUCCESSFUL`; **344 tests / 0 failures / 0 errors / 0 skipped**
+  in each of `testPlayDebugUnitTest` and `testFullDebugUnitTest` (52 suites each).
+  `node scripts/check-merged-manifest-gate.mjs` → `merged-manifest gate: 2 result set(s) checked, all
+  assertions ran and passed`.
+- **⚠️ Not verified on hardware.** Acceptance 1 of #186 — remove protection through the app, reinstall,
+  activate through the sheet on the Flip4 — was **not** run: the phone still carries the unclearable
+  stale Knox row from #181 and cannot activate this component through the UI. A read-only check on
+  2026-10-19 confirmed the app is uninstalled and `dumpsys device_policy` lists no OSRA admin, so the
+  phone was not disturbed. Acceptance 2 is covered by the JVM tests; acceptance 3 is covered only up
+  to the pure classifier/message and needs a hardware pass once the row is cleared.
+
 ### Parent app — MFA screens make the #180 recovery codes reachable (ADR-0023, roadmap 3.3)
 - **Settings › Two-step verification.** A new screen shows whether MFA is on, offers set-up or
   replacement of the authenticator, and is the only place a recovery-code batch can be requested.
