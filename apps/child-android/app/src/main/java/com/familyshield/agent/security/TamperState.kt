@@ -3,7 +3,7 @@ package com.familyshield.agent.security
 import android.content.Context
 
 /**
- * Tiny persisted flag set by [FamilyShieldDeviceAdmin.onDisabled] and read by the tamper check, so a
+ * Tiny persisted flag set by [ParentalAdminReceiver.onDisabled] and read by the tamper check, so a
  * device-admin removal survives the process death that often follows it and still reaches the parent
  * as an alert on the next poll. Not a secret (a boolean), so plain SharedPreferences is fine.
  */

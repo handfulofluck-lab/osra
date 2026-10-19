@@ -85,7 +85,7 @@
 
         <!-- ADR-0010: Device Admin — enables remote lock and uninstall protection (behind the parent PIN). -->
         <receiver
-            android:name=".security.FamilyShieldDeviceAdmin"
+            android:name=".security.ParentalAdminReceiver"
             android:label="@string/device_admin_label"
             android:description="@string/device_admin_description"
             android:permission="android.permission.BIND_DEVICE_ADMIN"

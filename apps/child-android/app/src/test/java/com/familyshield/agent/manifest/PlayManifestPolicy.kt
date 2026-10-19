@@ -140,4 +140,28 @@ object PlayManifestPolicy {
                 "should be \"$MONITORING_VALUE\", found ${declared ?: "nothing"} — ADR-0021 decision 3",
         )
     }
+
+    /**
+     * Issue #202: the device-admin receiver is the component Samsung Knox keys its registry on, and the
+     * merged manifest is what the phone installs. Asserting the **merged** name is what catches a rename
+     * that landed in the source class but was overwritten or merged away under a flavour overlay.
+     */
+    fun adminReceiverViolations(manifest: MergedManifest, expectedClass: String): List<String> {
+        val receiver = manifest.components.firstOrNull {
+            it.tag == "receiver" && it.name == expectedClass
+        } ?: return listOf(
+            "MISSING device-admin receiver $expectedClass — the installed component would not be the " +
+                "class DeviceAdminManager talks to (issue #202)",
+        )
+
+        val problems = mutableListOf<String>()
+        if (receiver.permission != "android.permission.BIND_DEVICE_ADMIN") {
+            problems += "$expectedClass must require android.permission.BIND_DEVICE_ADMIN, " +
+                "found ${receiver.permission ?: "no android:permission"}"
+        }
+        if ("android.app.action.DEVICE_ADMIN_ENABLED" !in receiver.intentActions) {
+            problems += "$expectedClass has no android.app.action.DEVICE_ADMIN_ENABLED intent filter"
+        }
+        return problems
+    }
 }

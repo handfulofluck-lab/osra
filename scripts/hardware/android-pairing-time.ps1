@@ -27,7 +27,7 @@ $ErrorActionPreference = "Continue"
 $adb = "C:\KARIM\tools\android-sdk\platform-tools\adb.exe"
 $S = "R5CW116Y6GF"
 $PKG = "com.familyshield.agent"
-$ADMIN = "com.familyshield.agent/.security.FamilyShieldDeviceAdmin"
+$ADMIN = "com.familyshield.agent/.security.ParentalAdminReceiver"
 . (Join-Path $PSScriptRoot "classify-build.ps1")   # the build kind is recorded with every run (issue #178)
 $BASE = $Base
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
@@ -209,7 +209,7 @@ $state | ConvertTo-Json | Set-Content (Join-Path $Out "pairing-time-state.json")
 
 function RemoveApp {
   $dpm = Sh "dumpsys device_policy"
-  if ($dpm -match [regex]::Escape("com.familyshield.agent/.security.FamilyShieldDeviceAdmin")) {
+  if ($dpm -match [regex]::Escape("com.familyshield.agent/.security.ParentalAdminReceiver")) {
     $r = Sh "dpm remove-active-admin --user 0 $ADMIN"
     W ("dpm remove-active-admin -> " + (($r -split "`n") -join " | "))
   }
@@ -362,14 +362,14 @@ for ($run = 1; $run -le $Runs; $run++) {
     Tap (Bounds $activate)
     Pause 500
     $dpmAfter = Sh "dumpsys device_policy"
-    W ("device_policy after Activate: " + (($dpmAfter -match [regex]::Escape("com.familyshield.agent/.security.FamilyShieldDeviceAdmin"))))
+    W ("device_policy after Activate: " + (($dpmAfter -match [regex]::Escape("com.familyshield.agent/.security.ParentalAdminReceiver"))))
 
     $w = WaitText "This device is paired" 60
     Stamp "t12_paired"
     if (-not $w.ok) { W ("ABORT: paired status did not appear: " + (Texts $w.ui)); Shot ("run" + $run + "-fail-paired"); break }
     $statusText = Texts $w.ui
     W ("status: " + $statusText)
-    $dpmNow = Sh "dumpsys device_policy | grep -E 'FamilyShieldDeviceAdmin|Enabled admin'"
+    $dpmNow = Sh "dumpsys device_policy | grep -E 'ParentalAdminReceiver|Enabled admin'"
     W ("device_policy read-back: " + (($dpmNow -split "`n") -join " | "))
     Shot ("run" + $run + "-06-paired")
   } else {

@@ -15,7 +15,7 @@ import dagger.hilt.android.EntryPointAccessors
 
 /**
  * Posts one `tamper` alert to the parent (ADR-0010 §4). Enqueued as expedited work by
- * [FamilyShieldDeviceAdmin.onDisabled] (admin removed) and by the accessibility guard (a protection
+ * [ParentalAdminReceiver.onDisabled] (admin removed) and by the accessibility guard (a protection
  * screen was opened without the PIN), so the parent hears within seconds while the device is online
  * and WorkManager retries when it is not. Idempotent per type: the 60-s loop in LocationService also
  * drains the admin-disabled flag, and the server throttles duplicates per device.
