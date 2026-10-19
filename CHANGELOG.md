@@ -11,6 +11,14 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — #206 Group 2 re-verification results (Claude, 2026-10-19)
+- **Why.** Karim's #206 mandate: every merge since 2026-10-18 re-tested on current `main` by a non-author.
+  Under the 2026-10-19 role re-cut Claude runs the remaining re-tests.
+- **What.** `docs/QA/TEST-REQUESTS.md` status column for TR-48…TR-66: 14 verified; TR-48, TR-51, TR-52,
+  TR-53, TR-54 software half verified with the manual half named and owned. Board message added.
+- **Evidence.** `main@2f940cf`: vitest 395/395, probe 151/0, e2e 71/71, Android JVM 734/734, Flutter 243/243,
+  analyze clean. Roadmap: Phase 0 quality gate (#206).
+
 ### Process — roles re-cut: Claude does architecture and all testing; Antigravity inactive (maintainer, 2026-10-19)
 - **Why.** The maintainer re-cut the team at 17:22Z: once Antigravity files the rows already in flight
   (Group 1 hardware re-runs, TR-52), Claude does architecture and testing, Kimi stays lead developer, and
