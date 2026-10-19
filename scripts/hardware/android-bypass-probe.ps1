@@ -4,7 +4,17 @@
 # parent PIN set (no default: pass -Pin (see the local credentials note)), the test API reachable at -Base (adb reverse), the
 # parent token + device id in -StateFile (as written by tr10-pair.ps1), psql for the alert rows.
 #
-#   .\android-bypass-probe.ps1 -Serial R5CW116Y6GF -Port 3023 -StateFile C:\KARIM\KCL\tr07\tr10-state.json
+#   .\android-bypass-probe.ps1 -Serial R5CW116Y6GF -Port 3023 -StateFile C:\KARIM\KCL\tr07\tr10-state.json [-AllowTestBuild]
+#
+# Build kind is part of the evidence (issue #178). Before any row the probe reads the installed
+# package's flags (`dumpsys package`) and, as a second signal, `run-as <pkg> true`. On a testOnly or
+# debuggable build it REFUSES to run (exit 3) unless -AllowTestBuild is passed: such an APK can be
+# replaced with `adb install -r` without a signature match, its device admin can be removed with
+# `dpm`, and its process is debuggable, so a PASS on it says nothing about the release artefact.
+# Under -AllowTestBuild every row's evidence is prefixed `NOT EVIDENCE (testOnly/debuggable build)`
+# and the summary says the run cannot open a gate. The decision is classify-build.ps1, which has
+# fixtures from the Flip4 and a `-SelfTest` CI runs (workflow-lint). With -CheckBuild the probe reads
+# the kind, prints the decision and exits (0 release, 3 blocked) without running any row.
 #
 # Row 3 (accepted 2026-10-18, QA/TESTING-STRATEGY.md 3a) waits one device-silence window plus one job
 # tick, so the API under test must run with JOBS_ENABLED=1 and the window it was started with must be
@@ -22,15 +32,21 @@ param(
     [string]$StateFile = "",
     [Parameter(Mandatory = $true)][string]$Pin,
     [string]$Psql = "psql",
-    [string]$Db = "postgres://familyshield@127.0.0.1:5432/familyshield",
+    [string]$DbUrl = "postgres://familyshield@127.0.0.1:5432/familyshield",
     [int]$SilenceMinutes = 30,
-    [string]$Out = (Join-Path (Get-Location) "bypass-probe")
+    [string]$Out = (Join-Path (Get-Location) "bypass-probe"),
+    [switch]$AllowTestBuild,
+    [switch]$CheckBuild
 )
 $ErrorActionPreference = "Continue"
 $PKG = "com.familyshield.agent"; $BASE = "http://127.0.0.1:$Port"
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
 $LOG = Join-Path $Out "bypass-probe.log"; if (Test-Path $LOG) { Remove-Item $LOG }
 $S = @(); if ($Serial) { $S = @("-s", $Serial) }
+. (Join-Path $PSScriptRoot "classify-build.ps1")
+# Empty until the build check sets it. When it is set, every recorded row carries it, so a row copied
+# out of the log or the JSON cannot pass for gate evidence by accident.
+$script:EvidencePrefix = ""
 function W($m) { $line = (Get-Date -Format "HH:mm:ss.fff") + " " + $m; $line | Add-Content $LOG -Encoding utf8; $line }
 function Sh([string]$cmd) { (& $Adb @S shell $cmd 2>&1) -join "`n" }
 function UiDump { Sh "rm -f /sdcard/uip.xml; uiautomator dump /sdcard/uip.xml" | Out-Null; $raw = (& $Adb @S exec-out cat /sdcard/uip.xml 2>$null) -join ""; if ($raw -match "^<") { [xml]$raw } else { $null } }
@@ -43,8 +59,8 @@ function Focus { $w = (Sh "dumpsys activity activities") -split "`n" | Select-St
 function FocusWindow { $w = (Sh "dumpsys window") -split "`n" | Select-String "mCurrentFocus=" | Select-Object -First 1; if ($w) { ($w.ToString() -replace '.*mCurrentFocus=', '').Trim() } else { "?" } }
 function KeyguardUp { ((Sh "dumpsys window") -match "isKeyguardShowing=true") }
 function Api($m, $path, $body, $token) { $h=@{}; if ($token) { $h["Authorization"]="Bearer $token" }; try { if ($body -ne $null) { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -ContentType "application/json" -Body ($body|ConvertTo-Json -Depth 8) -TimeoutSec 15 } else { Invoke-RestMethod -Method $m -Uri ($BASE+$path) -Headers $h -TimeoutSec 15 } } catch { W "API $m $path -> $($_.Exception.Message)"; $null } }
-function AlertCount($type) { $sql = "select count(*) from ""Alert"" where ""deviceId""='$DEV' and metadata->>'type'='$type';"; $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); [int]((& $Psql -At -f $f $Db) -join "") }
-function SqlScalar($sql) { $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); (((& $Psql -At -f $f $Db) -join "`n").Trim()) }
+function AlertCount($type) { $sql = "select count(*) from ""Alert"" where ""deviceId""='$DEV' and metadata->>'type'='$type';"; $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); [int]((& $Psql -At -f $f $DbUrl) -join "") }
+function SqlScalar($sql) { $f = Join-Path $Out "q.sql"; [IO.File]::WriteAllText($f, $sql); (((& $Psql -At -f $f $DbUrl) -join "`n").Trim()) }
 # Row 3's two facts, read from Postgres so the row is a measurement of the server, not of the app.
 function SilenceAlerts { [int](SqlScalar "select count(*) from ""Alert"" where ""deviceId""='$DEV' and severity='critical' and (metadata->>'type'='device_silent' or category='tamper');") }
 function DeviceStatus { SqlScalar "select status from ""Device"" where id='$DEV';" }
@@ -53,16 +69,68 @@ function WaitAlert($type, $maxSec) { $before = AlertCount $type; $sw = [Diagnost
 function StatusText { Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 2; Sh "input keyevent 4" | Out-Null; Sh "am start -n $PKG/.setup.PairingActivity" | Out-Null; Start-Sleep 4; Texts (UiDump) }  # re-open (Back + start) so the status re-renders; never force-stop here, that kills the 60-s loop the rows measure
 function AgentAlive { ((Sh "pidof $PKG").Trim() -ne "") }
 $results = New-Object System.Collections.ArrayList
-function Record($n, $name, $pass, $evidence) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result=$(if ($pass) { "PASS (blocked/alerted)" } else { "FAIL" }); evidence=$evidence }); W ("#$n $name -> " + $(if ($pass) { "PASS" } else { "FAIL" }) + " : " + $evidence) }
+function Evidence([string]$text) { if ($script:EvidencePrefix) { return ($script:EvidencePrefix + $text) }; return $text }
+function Record($n, $name, $pass, $evidence) { $ev = Evidence $evidence; [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result=$(if ($pass) { "PASS (blocked/alerted)" } else { "FAIL" }); evidence=$ev }); W ("#$n $name -> " + $(if ($pass) { "PASS" } else { "FAIL" }) + " : " + $ev) }
 # A row that could not be measured is neither a pass nor a fail: it must not read green, and it must not
 # accuse the product either. It is reported as NOT MEASURED and the run exits non-zero (see the end).
-function RecordNote($n, $name, $note) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOT MEASURED"; evidence=$note }); W ("#$n $name -> NOT MEASURED : " + $note) }
+function RecordNote($n, $name, $note) { $ev = Evidence $note; [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOT MEASURED"; evidence=$ev }); W ("#$n $name -> NOT MEASURED : " + $ev) }
 # A note is a recorded observation that gates nothing. Row 3's old expectation is what this is for: it
 # stays visible in the table without turning the run red, because Android cannot meet it.
-function RecordInfo($n, $name, $note) { [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOTE"; evidence=$note }); W ("#$n $name -> NOTE : " + $note) }
+function RecordInfo($n, $name, $note) { $ev = Evidence $note; [void]$results.Add([pscustomobject]@{ n=$n; bypass=$name; result="NOTE"; evidence=$ev }); W ("#$n $name -> NOTE : " + $ev) }
 
 $st = Get-Content $StateFile | ConvertFrom-Json; $TOKEN = $st.token; $DEV = $st.deviceId  # NOTE: PowerShell variables are case-insensitive — never name the token `$T` next to `$t = WaitAlert …`
 if ((Sh "dumpsys window") -match "isKeyguardShowing=true") { W "ABORT: the phone is locked (keyguard showing) - the status screen and the OS screens cannot be read; unlock it and re-run"; exit 2 }
+
+# ---- build kind, before any row (issue #178) ---------------------------------------------------------
+# #170 makes every debug APK testOnly and debuggable. The rows below measure the protections that
+# testOnly relaxes, so their verdict belongs to the artefact that was measured. Read it, name it, and
+# refuse to pretend a debug PASS is gate evidence.
+$build = Get-BuildKind -DumpsysText (Sh "dumpsys package $PKG") -Package $PKG
+if ($build.Kind -eq "not-installed") {
+    W ("ABORT: " + $PKG + " is not installed on the device (" + $build.Detail + ") - install the build under test and re-run; nothing was measured")
+    exit 2
+}
+if ($build.Kind -eq "unknown") {
+    W ("ABORT: could not read the installed package flags (" + $build.Detail + ") - run 'adb shell dumpsys package " + $PKG + "' by hand and re-run; nothing was measured")
+    exit 2
+}
+# Second signal: `run-as` exits 0 only for a debuggable package, otherwise it prints
+# "run-as: package not debuggable: <pkg>" and exits 1 (measured on the Flip4, Android 16).
+$runAsOk = $false
+(& $Adb @S shell "run-as $PKG true" 2>&1) | Out-Null
+if ($LASTEXITCODE -eq 0) { $runAsOk = $true }
+$buildKind = $build.Kind
+if ($runAsOk -and $buildKind -eq "release") {
+    $buildKind = "debuggable"
+    $build.Detail = $build.Detail + "; run-as $PKG true exited 0"
+}
+$gateBlocked = ($buildKind -eq "test-only" -or $buildKind -eq "debuggable")
+if ($gateBlocked -and -not $AllowTestBuild) {
+    W ("REFUSED: " + $PKG + " on this device is a " + $buildKind + " build (" + $build.Detail + ").")
+    W "Gate rows measured on a testOnly/debuggable build are NOT evidence: the APK can be replaced with 'adb install -r' without a signature match, its device admin can be removed with 'dpm', and its process is debuggable - so a PASS says nothing about the release artefact."
+    W "Install the release-signed APK (scripts/hardware/android-signing-tr07.ps1) and re-run. For a development run that cannot open a gate, re-run with -AllowTestBuild."
+    exit 3
+}
+if ($gateBlocked) {
+    $script:EvidencePrefix = "NOT EVIDENCE (testOnly/debuggable build) - "
+    W ("debug/testOnly build: tamper rows are not gate evidence - build kind " + $buildKind + " (" + $build.Detail + "); continuing under -AllowTestBuild, this run cannot open a gate")
+} else {
+    W ("build under test: release (" + $build.Detail + ") - gate-eligible")
+}
+# One summary string for both the end of a run and -CheckBuild, so the sentence an operator reads is
+# exercised without a 35-minute probe run.
+$script:GateBlocked = $gateBlocked
+$script:GateBuildKind = $buildKind
+$script:GateBuildDetail = $build.Detail
+function GateSummary {
+    if ($script:GateBlocked) { return ("GATE: this run cannot open a gate - it measured a " + $script:GateBuildKind + " build (" + $script:GateBuildDetail + "). Every row is NOT EVIDENCE for the release artefact; install the release-signed APK and re-run without -AllowTestBuild.") }
+    return ("GATE: build kind release (" + $script:GateBuildDetail + ") - gate-eligible")
+}
+if ($CheckBuild) {
+    W (GateSummary)
+    if ($gateBlocked) { exit 3 }
+    exit 0
+}
 W ("probe start - device " + $DEV + " - " + (Sh "getprop ro.product.model").Trim() + " / Android " + (Sh "getprop ro.build.version.release").Trim())
 
 # 1. adb uninstall while admin is active
@@ -214,12 +282,28 @@ Record 2 "pm clear (wipe data) with admin active" (($c -match "Failed") -or $sti
 W "---- RESULTS ----"
 $results | Format-Table -AutoSize | Out-String -Width 220 | ForEach-Object { $_ } | Add-Content $LOG -Encoding utf8
 $results | Format-Table -AutoSize | Out-String -Width 220
-$results | ConvertTo-Json | Set-Content (Join-Path $Out "bypass-probe.json") -Encoding utf8
+# The build is a field of the result, not something the reader has to infer from the evidence prefix:
+# a consumer that ignores `gateEligible` can still see what kind of artefact produced the rows.
+$report = [ordered]@{
+    run = [ordered]@{
+        package      = $PKG
+        device       = $DEV
+        buildKind    = $buildKind
+        buildFlags   = @($build.Flags)
+        testOnly     = ($buildKind -eq "test-only")
+        debuggable   = ($buildKind -eq "debuggable")
+        gateEligible = (-not $gateBlocked)
+        allowTestBuild = [bool]$AllowTestBuild
+    }
+    results = $results
+}
+$report | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $Out "bypass-probe.json") -Encoding utf8
 $fails = @($results | Where-Object { $_.result -eq "FAIL" }).Count
 $unmeasured = @($results | Where-Object { $_.result -eq "NOT MEASURED" }).Count
 $notes = @($results | Where-Object { $_.result -eq "NOTE" }).Count
 $passed = @($results | Where-Object { $_.result -like "PASS*" }).Count
 $gated = @($results | Where-Object { $_.result -ne "NOTE" }).Count
 W ("probe done: " + $passed + "/" + $gated + " gated rows PASS, " + $fails + " FAIL, " + $unmeasured + " NOT MEASURED, " + $notes + " NOTE (recorded, not gated) (ten bypasses + the emergency-dialer safety check); log " + $LOG)
+W (GateSummary)
 # An unmeasured row is not a green row: fail the run so CI and the operator both notice.
 exit ($fails + $unmeasured)

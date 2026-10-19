@@ -22,6 +22,42 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **Tested.** `check-workflows.mjs --strict` 0/0; PyYAML parses the file; the step run locally: #196
   (Kimi verification + Kimi commit) now fails, #195 without label fails, a Claude-signed stub that
   mentions Kimi earlier passes.
+### Hardware tooling — a testOnly/debuggable build is not gate evidence (issue #178)
+- **Why.** Since #170 every debug APK declares `android:testOnly="true"` and is `debuggable`. Such a
+  build can be replaced with `adb install -r` without a signature match, its device admin can be
+  removed with `dpm`, and its process is debuggable — so the Phase 1 tamper rows (probe rows 1, 2, 10
+  and the force-stop guard) measured on it say nothing about the release artefact. They had been
+  measured on debug builds for weeks, and nothing in the probe or the gate said so.
+- **What.** New pure decision `scripts/hardware/classify-build.ps1` (`Get-BuildKind`) classifies
+  `adb shell dumpsys package <pkg>` as `release`, `test-only`, `debuggable`, `not-installed` or
+  `unknown` (precedence `test-only` > `debuggable` > `release`; another package's flags in the same
+  dump are ignored). `scripts/hardware/android-bypass-probe.ps1` calls it before the first row, with
+  `adb shell run-as <pkg> true` as a second signal, and:
+  - refuses a `test-only`/`debuggable` build with **exit 3** and a message naming the flags — nothing
+    is measured;
+  - under `-AllowTestBuild`, prefixes every row's evidence with
+    `NOT EVIDENCE (testOnly/debuggable build)`, sets `gateEligible: false` (plus `buildKind`,
+    `buildFlags`, `testOnly`, `debuggable`) in `bypass-probe.json`, and prints that the run cannot
+    open a gate;
+  - aborts with exit 2 when the package is not installed or its flags cannot be read, instead of
+    guessing `release`;
+  - `-CheckBuild` prints the decision and exits (0 release, 3 blocked) without running a row.
+  `scripts/hardware/android-pairing-time.ps1` records the build kind per run and notes that numbers
+  from a non-release build are a proxy.
+- **Drive-by fix found while testing it.** The probe could not be invoked at all on Windows
+  PowerShell 5.1: `[string]$Db` collides with the common parameter `-Debug`'s `db` alias
+  (`The parameter 'Db' cannot be specified because it conflicts with the parameter alias of the same
+  name for parameter 'Debug'`). Renamed to `$DbUrl`. No caller passed `-Db`.
+- **Tests / evidence.** `pwsh -NoProfile -File scripts/hardware/classify-build.ps1 -SelfTest` →
+  **8/8 fixtures passed**, including real Flip4 `dumpsys package` output (a release install) and the
+  real `Unable to find package: …` line; a deliberately flipped fixture turns it red (exit 1). The
+  probe's three outcomes were exercised against a fake `adb`: test-only → exit 3 with the refusal,
+  release → exit 0 under `-CheckBuild`, not installed → exit 2; and `run-as` exiting 0 on a
+  release-flagged dump is classified `debuggable`. CI: `workflow-lint` runs the self-test on every PR.
+- **Not verified here.** No hardware run, and none is claimed: a testOnly build cannot be gate
+  evidence by definition, and the phone's Knox admin state blocks admin rows (#181). Measuring the
+  Phase 1 tamper rows on the release-signed APK is the run this change makes honest — it remains owed.
+  Docs: `docs/QA/TESTING-STRATEGY.md` §3b and §5, `docs/TESTING.md` §5/§5f/§6, `AGENTS.md` §3.
 
 ### CI — the verified-gate workflow parses again, and workflow-lint now uses a real YAML parser
 - My own edit to `verified-gate.yml` (accepting Kimi Code as a verifier) broke a comment line: the

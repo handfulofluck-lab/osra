@@ -59,6 +59,9 @@ as such and the row goes to the human or stays open; it does not quietly become 
 - [ ] **Documentation is updated in the same PR** (§8): a `CHANGELOG.md` entry for anything
       user-visible, an ADR for an architectural decision, and `docs/TESTING.md` when the procedure,
       a suite or a gate changes.
+- [ ] **Hardware evidence names the build kind.** A `testOnly`/`debuggable` build cannot open the
+      Phase 1 tamper gate: the probe refuses it, and `-AllowTestBuild` records every row as
+      `NOT EVIDENCE` (`docs/QA/TESTING-STRATEGY.md` §3b, issue #178).
 
 ## 4. Hard rules
 

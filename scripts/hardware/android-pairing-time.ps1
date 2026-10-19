@@ -28,6 +28,7 @@ $adb = "C:\KARIM\tools\android-sdk\platform-tools\adb.exe"
 $S = "R5CW116Y6GF"
 $PKG = "com.familyshield.agent"
 $ADMIN = "com.familyshield.agent/.security.FamilyShieldDeviceAdmin"
+. (Join-Path $PSScriptRoot "classify-build.ps1")   # the build kind is recorded with every run (issue #178)
 $BASE = $Base
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
 $LOG = Join-Path $Out "pairing-time.log"
@@ -233,6 +234,13 @@ for ($run = 1; $run -le $Runs; $run++) {
   $lp = Sh "pm list packages $PKG"
   W ("installed -> " + (($lp -split "`n") -join " | "))
   if ($lp -notmatch "package:") { W "ABORT: install did not land"; break }
+  # A pairing time is a proxy measurement, and these numbers still belong to a build: a debug/testOnly
+  # install is slower and is not the artefact that ships (issue #178).
+  $build = Get-BuildKind -DumpsysText (Sh "dumpsys package $PKG") -Package $PKG
+  W ("build under test: " + $build.Kind + " (" + $build.Detail + ")")
+  if ($build.Kind -ne "release") {
+    W ("NOTE: pairing numbers on a " + $build.Kind + " build are a proxy and cannot open a gate (issue #178)")
+  }
   DismissPlayProtect 20 | Out-Null
   Sh "logcat -c" | Out-Null
 
@@ -388,6 +396,7 @@ for ($run = 1; $run -le $Runs; $run++) {
     codePrefix  = $code.Substring(0, 2) + "****"   # never the whole code
     totalS      = $totalS
     protection  = $protection
+    build       = $build.Kind
     statusText  = $statusText
     deviceId    = $devId
     overhead    = @{ dumpMs = [math]::Round($script:DumpMs, 0); sleepMs = [math]::Round($script:SleepMs, 0); inputMs = $script:InputMs }
