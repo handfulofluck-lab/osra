@@ -11,6 +11,18 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — verified-gate: Kimi cannot verify a PR with Kimi commits, and the signer is the last signature
+- **Why.** #196 was merged on a `— Kimi Code` verification at a head that contained Kimi's own commit to
+  the gate (7e1236d), and that comment also quoted `— Claude`, which the substring match counted as a
+  Claude signature. Either hole alone let an author verify their own change.
+- **What.** `verified-gate.yml` counts Kimi-authored non-merge commits on the PR (commit email
+  `kimi@familyshield.local`) and ignores a `— Kimi Code` verification when there are any; the signer is
+  the **last** `— Antigravity|Claude|Kimi Code` in a comment, not any mention. AGENTS.md §6.5 rule 6
+  says so.
+- **Tested.** `check-workflows.mjs --strict` 0/0; PyYAML parses the file; the step run locally: #196
+  (Kimi verification + Kimi commit) now fails, #195 without label fails, a Claude-signed stub that
+  mentions Kimi earlier passes.
+
 ### CI — the verified-gate workflow parses again, and workflow-lint now uses a real YAML parser
 - My own edit to `verified-gate.yml` (accepting Kimi Code as a verifier) broke a comment line: the
   continuation lost its `#`, YAML parsed it as a key, and GitHub rejected the whole file. The run

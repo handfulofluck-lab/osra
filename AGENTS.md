@@ -209,7 +209,8 @@ A PR may merge only when all of the following hold:
 5. **Cleanup is done and evidenced** (§7): device, database and cache returned to their found state, with
    the command output in the run log.
 6. **The `verified-gate` check is green** (maintainer decision, 2026-10-19). The verifier (Antigravity, or
-   Claude for a review-only or docs change, or Kimi Code for a PR Kimi did not author) posts a signed comment containing a line
+   Claude for a review-only or docs change, or Kimi Code for a PR with no Kimi-authored commit, which CI
+   checks by commit email) posts a signed comment containing a line
    `Verified-sha: <head sha>` (7+ characters), **then** adds `state:verified`; adding the label is what
    re-runs the check. Any push after that (fix, rebase, merge of `main`) changes the head and turns the
    check red until the new head is verified, which is rule 4 made mechanical. Nobody sets `state:verified`
