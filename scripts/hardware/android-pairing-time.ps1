@@ -4,16 +4,30 @@
 # screen that says the device is paired with device-admin protection on, and records wall-clock
 # timestamps for every step. It does not change the app, and it does not send `lock`.
 #
+# -Human (TR-51/52/53, the acceptance itself): timestamps only. A person does the pairing through
+# the QR path; the observer presses Enter at each step boundary (or drops a marker file when the
+# app first shows "Protection: on"). This mode sends no input events, dumps no UI and does not
+# touch adb. It writes RESULTS-PAIRING-HUMAN.md and RESULTS-PAIRING-HUMAN.json and reports the
+# total against 300 s as INFORMATION ONLY - a human run is never passed or failed here. The
+# machine-driven mode below is TR-23's proxy and is NOT the five-minute acceptance.
+#
 # The parent PIN is NOT in this file: it arrives as -Pin at run time (the lead supplies it) and is
-# only typed into the two password fields. Nothing here echoes or logs it.
+# only typed into the two password fields. Nothing here echoes or logs it. In -Human mode the PIN
+# is not needed and not accepted; the parameter set requires it only for the machine run.
 #
 # Windows PowerShell 5.1, ASCII only.  Usage:
 #   .\android-pairing-time.ps1 -Pin <pin> [-Runs 3] [-Base http://127.0.0.1:3000] [-Apk <path>] [-DryRun]
+#   .\android-pairing-time.ps1 -Human [-Observer "<name>"] [-MarkerFile <path>] [-Out <dir>]
+#   .\android-pairing-time.ps1 -Human -SelfTest
 #
 # Every wait the script introduces is counted and reported (see the JSON `overhead` block), so the
 # note that cites these numbers can say what is mechanical and what is the app's own latency.
+[CmdletBinding(DefaultParameterSetName = "Machine")]
 param(
-  [Parameter(Mandatory = $true)][string]$Pin,
+  [Parameter(Mandatory = $true, ParameterSetName = "Machine")][string]$Pin,
+  [Parameter(Mandatory = $true, ParameterSetName = "Human")][switch]$Human,
+  [Parameter(ParameterSetName = "Human")][string]$Observer = "",
+  [Parameter(ParameterSetName = "Human")][string]$MarkerFile = "",
   [int]$Runs = 3,
   [string]$Base = "http://127.0.0.1:3000",
   [string]$Apk = "C:\KARIM\wt-pt\apps\child-android\app\build\outputs\apk\full\debug\app-full-debug.apk",
@@ -21,9 +35,219 @@ param(
   [string]$ChildName = "TR-23-PairingTime",
   [switch]$DryRun,
   [switch]$KeepChild,
+  [switch]$SelfTest,
   [switch]$StopAtAdmin
 )
 $ErrorActionPreference = "Continue"
+
+# ---------------------------------------------------------------------------------------------------
+# Human mode (TR-51/52/53). Defined before any adb/API code so this branch can exit without touching
+# the device. Every number below is the observer's mark, not a machine-detected transition.
+# ---------------------------------------------------------------------------------------------------
+function Write-HumanBanner {
+  Write-Host ""
+  Write-Host "======================================================================"
+  Write-Host " HUMAN MEASUREMENT - TR-51 / TR-52 / TR-53 (roadmap 3.2)"
+  Write-Host " A non-engineer pairs the child phone through the QR path, target 5 min."
+  Write-Host " This mode timestamps only: no adb, no input events, no UI dumps."
+  Write-Host " The machine-driven mode of this script is TR-23's proxy, NOT this run."
+  Write-Host " The number is informational; the checklist row decides, not this script."
+  Write-Host "======================================================================"
+}
+
+function Get-HumanStepRows {
+  param([DateTimeOffset]$Start, [object[]]$Marks = @())
+  $last = $Start
+  $rows = @()
+  foreach ($m in $Marks) {
+    $elapsed = ($m.at - $last).TotalSeconds
+    $cumulative = ($m.at - $Start).TotalSeconds
+    $rows += [pscustomobject]@{
+      key               = [string]$m.key
+      label             = [string]$m.label
+      at                = $m.at.ToString("o")
+      elapsedSeconds    = [math]::Round($elapsed, 1)
+      cumulativeSeconds = [math]::Round($cumulative, 1)
+    }
+    $last = $m.at
+  }
+  return $rows
+}
+
+function Get-HumanVerdictLine {
+  param([double]$TotalSeconds, [int]$ThresholdSeconds = 300)
+  $where = "within"
+  if ($TotalSeconds -gt $ThresholdSeconds) { $where = "over" }
+  return ("Human total: {0:N1} s against {1} s - {2} the target. INFORMATIONAL ONLY; this run does not pass or fail TR-51/52/53." -f $TotalSeconds, $ThresholdSeconds, $where)
+}
+
+# Writes both result files and returns the row set. The markdown is the readable record; the JSON is
+# what Antigravity pastes into the TR row without re-deriving anything.
+function Write-HumanResults {
+  param(
+    [string]$OutDir,
+    [DateTimeOffset]$Start,
+    [DateTimeOffset]$End,
+    [object[]]$Rows = @(),
+    [string]$ObserverName = "",
+    [string]$MarkerPath = "",
+    [int]$ThresholdSeconds = 300
+  )
+  if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force $OutDir | Out-Null }
+  $total = [math]::Round(($End - $Start).TotalSeconds, 1)
+  $verdict = Get-HumanVerdictLine -TotalSeconds $total -ThresholdSeconds $ThresholdSeconds
+  $md = @()
+  $md += "# RESULTS - human pairing time (TR-51 / TR-52 / TR-53)"
+  $md += ""
+  $md += "Roadmap 3.2: a non-engineer pairs the child phone through the QR path in five minutes."
+  $md += ""
+  $md += "**This is a human measurement.** The machine-driven mode of ``android-pairing-time.ps1`` is"
+  $md += "TR-23's proxy and is not this acceptance. This mode sent no input events and no UI dumps;"
+  $md += "every boundary below is the observer's mark."
+  $md += ""
+  $md += "- Started: " + $Start.ToString("yyyy-MM-dd HH:mm:ss zzz")
+  $md += "- Protection on: " + $End.ToString("yyyy-MM-dd HH:mm:ss zzz")
+  $md += "- Observer: " + $(if ($ObserverName) { $ObserverName } else { "(not recorded)" })
+  if ($MarkerPath) { $md += "- Marker file: ``" + $MarkerPath + "``" }
+  $md += "- Total: **" + $total + " s**"
+  $md += ""
+  $md += "| Step | Observer mark | Elapsed (s) | Cumulative (s) |"
+  $md += "|---|---|---:|---:|"
+  foreach ($r in $Rows) {
+    $md += "| " + $r.label + " | " + $r.at + " | " + $r.elapsedSeconds + " | " + $r.cumulativeSeconds + " |"
+  }
+  $md += ""
+  $md += "## Verdict"
+  $md += ""
+  $md += $verdict
+  $md += ""
+  $md += "A total over " + $ThresholdSeconds + " s means the acceptance is not met and the row stays open."
+  $md += "A total under " + $ThresholdSeconds + " s is not a pass by itself: the checklist reviewer records"
+  $md += "the run, and the machine proxy in TR-23 is a separate measurement."
+  $md += ""
+  Set-Content -Path (Join-Path $OutDir "RESULTS-PAIRING-HUMAN.md") -Value $md -Encoding utf8
+
+  $report = [ordered]@{
+    mode              = "human"
+    measurement       = "TR-51/TR-52/TR-53 five-minute first-run pairing"
+    informationalOnly = $true
+    thresholdSeconds  = $ThresholdSeconds
+    startedAt         = $Start.ToString("o")
+    endedAt           = $End.ToString("o")
+    totalSeconds      = $total
+    observer          = $ObserverName
+    markerFile        = $MarkerPath
+    steps             = @($Rows)
+    machineProxy      = "The machine-driven mode of android-pairing-time.ps1 is TR-23's proxy, not this measurement."
+    note              = "No pass/fail is assigned to a human run; the checklist row decides."
+  }
+  $report | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutDir "RESULTS-PAIRING-HUMAN.json") -Encoding utf8
+  return $total
+}
+
+function Invoke-HumanPairingTimer {
+  param(
+    [string]$OutDir,
+    [string]$ObserverName = "",
+    [string]$MarkerPath = ""
+  )
+  Write-HumanBanner
+  Read-Host "Press Enter to start the clock, then launch the app on the child phone" | Out-Null
+  $start = [DateTimeOffset]::Now
+  Write-Host ("Clock started: " + $start.ToString("yyyy-MM-dd HH:mm:ss zzz"))
+  $steps = @(
+    @{ key = "welcome";       label = "App first shows the welcome screen" },
+    @{ key = "signed_in";     label = "Signed in to the parent account" },
+    @{ key = "child_added";   label = "Child added" },
+    @{ key = "qr_shown";      label = "Pairing QR code shown" },
+    @{ key = "child_scanned"; label = "Child phone scanned the QR" },
+    @{ key = "protection_on"; label = "App first shows Protection: on" }
+  )
+  $marks = @()
+  foreach ($step in $steps) {
+    $prompt = "Press Enter when: " + $step.label
+    if ($step.key -eq "protection_on" -and $MarkerPath) {
+      Write-Host ("Waiting for the marker file: " + $MarkerPath)
+      Write-Host "Create that file when the app first shows Protection: on."
+      while (-not (Test-Path $MarkerPath)) { Start-Sleep -Milliseconds 500 }
+      Write-Host "Marker seen."
+    } else {
+      Read-Host $prompt | Out-Null
+    }
+    $at = [DateTimeOffset]::Now
+    $marks += [pscustomobject]@{ key = $step.key; label = $step.label; at = $at }
+    $rows = Get-HumanStepRows -Start $start -Marks $marks
+    $here = $rows[$rows.Count - 1]
+    Write-Host ("  {0,-46} +{1,7:N1} s   total {2,7:N1} s" -f $step.label, $here.elapsedSeconds, $here.cumulativeSeconds)
+  }
+  $end = $marks[$marks.Count - 1].at
+  $rows = Get-HumanStepRows -Start $start -Marks $marks
+  $total = Write-HumanResults -OutDir $OutDir -Start $start -End $end -Rows $rows -ObserverName $ObserverName -MarkerPath $MarkerPath
+  Write-Host ""
+  Write-Host (Get-HumanVerdictLine -TotalSeconds $total)
+  Write-Host ("Wrote " + (Join-Path $OutDir "RESULTS-PAIRING-HUMAN.md") + " and RESULTS-PAIRING-HUMAN.json")
+}
+
+function Invoke-HumanSelfTest {
+  $script:humanFailed = 0
+  $script:humanTotal = 0
+  function HCheck([string]$name, [bool]$ok, [string]$got) {
+    $script:humanTotal++
+    if ($ok) { Write-Host ("PASS  " + $name + " -> " + $got) }
+    else { $script:humanFailed++; Write-Host ("FAIL  " + $name + " -> " + $got) }
+  }
+  $start = [DateTimeOffset]::Parse("2026-10-19T12:00:00.000+00:00")
+  $offsets = @(4, 38, 70, 95, 120, 240)
+  $keys = @("welcome", "signed_in", "child_added", "qr_shown", "child_scanned", "protection_on")
+  $labels = @("App first shows the welcome screen", "Signed in to the parent account", "Child added", "Pairing QR code shown", "Child phone scanned the QR", "App first shows Protection: on")
+  $marks = @()
+  for ($i = 0; $i -lt $keys.Count; $i++) {
+    $marks += [pscustomobject]@{ key = $keys[$i]; label = $labels[$i]; at = $start.AddSeconds($offsets[$i]) }
+  }
+  $rows = Get-HumanStepRows -Start $start -Marks $marks
+  HCheck "six step boundaries" ($rows.Count -eq 6) ("count " + $rows.Count)
+  HCheck "per-step elapsed" ($rows[0].elapsedSeconds -eq 4 -and $rows[1].elapsedSeconds -eq 34 -and $rows[5].elapsedSeconds -eq 120) ("first " + $rows[0].elapsedSeconds + ", second " + $rows[1].elapsedSeconds + ", last " + $rows[5].elapsedSeconds)
+  HCheck "total is the last cumulative mark" ($rows[5].cumulativeSeconds -eq 240) ("total " + $rows[5].cumulativeSeconds)
+
+  $line = Get-HumanVerdictLine -TotalSeconds 240
+  HCheck "verdict is informational, under target" (($line -match "INFORMATIONAL ONLY") -and ($line -match "within") -and ($line -notmatch "^\s*(PASS|FAIL)\b")) $line
+  $line = Get-HumanVerdictLine -TotalSeconds 420
+  HCheck "verdict is informational, over target" (($line -match "INFORMATIONAL ONLY") -and ($line -match "over") -and ($line -notmatch "^\s*(PASS|FAIL)\b")) $line
+
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("osra-human-selftest-" + [guid]::NewGuid().ToString("N"))
+  $total = Write-HumanResults -OutDir $tmp -Start $start -End $start.AddSeconds(240) -Rows $rows -ObserverName "fixture observer" -MarkerPath "" -ThresholdSeconds 300
+  HCheck "writer returns the total" ($total -eq 240) ($total.ToString())
+  $mdPath = Join-Path $tmp "RESULTS-PAIRING-HUMAN.md"
+  $jsonPath = Join-Path $tmp "RESULTS-PAIRING-HUMAN.json"
+  HCheck "markdown written" (Test-Path $mdPath) $mdPath
+  HCheck "json written" (Test-Path $jsonPath) $jsonPath
+  if (Test-Path $mdPath) {
+    $md = Get-Content $mdPath -Raw
+    HCheck "markdown names the row and the threshold" (($md -match "TR-51 / TR-52 / TR-53") -and ($md -match "300")) "markdown"
+    HCheck "markdown carries the informational verdict" ($md -match "INFORMATIONAL ONLY") "markdown"
+  }
+  if (Test-Path $jsonPath) {
+    $j = Get-Content $jsonPath -Raw | ConvertFrom-Json
+    HCheck "json total and informational flag" (($j.totalSeconds -eq 240) -and ($j.informationalOnly -eq $true) -and ($j.steps.Count -eq 6)) ("total " + $j.totalSeconds + ", steps " + $j.steps.Count)
+  }
+  Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+
+  Write-Host ("android-pairing-time human self-test: " + ($script:humanTotal - $script:humanFailed) + "/" + $script:humanTotal + " fixtures passed")
+  if ($script:humanFailed -gt 0) {
+    Write-Host ("SELFTEST FAILED: " + $script:humanFailed + " of " + $script:humanTotal + " fixtures")
+    exit 1
+  }
+  exit 0
+}
+
+if ($Human) {
+  $humanOut = $Out
+  if (-not $PSBoundParameters.ContainsKey("Out")) { $humanOut = Join-Path (Get-Location) "pairing-human" }
+  if ($SelfTest) { Invoke-HumanSelfTest }
+  Invoke-HumanPairingTimer -OutDir $humanOut -ObserverName $Observer -MarkerPath $MarkerFile
+  exit 0
+}
+
 $adb = "C:\KARIM\tools\android-sdk\platform-tools\adb.exe"
 $S = "R5CW116Y6GF"
 $PKG = "com.familyshield.agent"
@@ -421,7 +645,7 @@ for ($run = 1; $run -le $Runs; $run++) {
 W "================ SUMMARY ================"
 foreach ($r in $results) { W ("run " + $r.run + " total " + $r.totalS + " s protection=" + $r.protection + " overhead(dump=" + $r.overhead.dumpMs + "ms sleep=" + $r.overhead.sleepMs + "ms)") }
 $ok = @($results | Where-Object { $_.protection }) | Select-Object -First $Runs
-# The total is the measurement; the protection flag is an outcome, not a gate — on the Flip4 the
+# The total is the measurement; the protection flag is an outcome, not a gate - on the Flip4 the
 # system admin sheet's Activate control is inert, so this reports it instead of failing the run.
 $sorted = @($results | ForEach-Object { $_.totalS } | Sort-Object)
 if ($sorted.Count -ge 1) {
