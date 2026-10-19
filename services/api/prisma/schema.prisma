@@ -54,6 +54,21 @@ model Parent {
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
   pushTokens   ParentPushToken[]
+  mfaRecoveryCodes ParentMfaRecoveryCode[]
+}
+
+/// ADR-0023 Option A: one-time MFA recovery codes. Only the SHA-256 hash of the normalised code is
+/// stored; the plaintext exists in the issuing response and nowhere else. A row with `usedAt` set is
+/// kept as the record that the batch was spent; recovery deletes the sibling rows.
+model ParentMfaRecoveryCode {
+  id        String    @id @default(uuid())
+  parentId  String
+  codeHash  String
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+  parent    Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId, usedAt])
 }
 
 /// A parent device registered for push delivery of alerts (Phase 2a). One row per app install;

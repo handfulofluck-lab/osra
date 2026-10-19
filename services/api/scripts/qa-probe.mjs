@@ -942,7 +942,126 @@ console.log("\n── N. sessions & roles ──");
   }
 }
 
-// ── H. misc surface ─────────────────────────────────────────────────────────
+// ── O. one-time MFA recovery codes (ADR-0023 Option A) ──────────────────────
+// The unit suite proves the state machine against a mock; these checks prove the *live* contract on
+// a disposable account: ten codes shown once, a code works exactly once, the batch dies with it, the
+// recovery token is not a session, and it cannot outlive the recovery it served.
+console.log("\n── O. MFA recovery codes (ADR-0023) ──");
+
+/** RFC 6238 TOTP (SHA-1, 30 s, 6 digits) — the probe must compute a real code from the secret. */
+const totpCode = (secretB32, at = Date.now()) => {
+  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const key = [];
+  let bits = 0;
+  let value = 0;
+  for (const ch of secretB32.toUpperCase()) {
+    const idx = ALPHABET.indexOf(ch);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      key.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+      value &= (1 << bits) - 1;
+    }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(at / 1000 / 30)));
+  const digest = createHmac("sha1", Buffer.from(key)).update(counter).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const bin = ((digest[offset] & 0x7f) << 24) | (digest[offset + 1] << 16) | (digest[offset + 2] << 8) | digest[offset + 3];
+  return String(bin % 1_000_000).padStart(6, "0");
+};
+/** The next window's code: replay protection refused a second use of an earlier step's counter. */
+const nextTotp = (secret) => totpCode(secret, Date.now() + 30_000);
+/** Sleep past the current 30-second window so a code for the following one is unambiguously newer. */
+const waitForNextTotpWindow = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 30_000 - (Date.now() % 30_000) + 1_000));
+};
+
+const RECOVERY_CODE_FORMAT = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/;
+const recEmail = `qa-recovery-${stamp}@example.com`;
+const recReg = await call("POST", "/v1/auth/register", {
+  body: { email: recEmail, password: PASSWORD, displayName: "QA Recovery", familyName: "QA Recovery Family", region: "US" },
+});
+let recToken = recReg.data?.token;
+const recEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: recToken, body: {} });
+const recSecret = recEnroll.data?.secret ?? "";
+const recVerify = await call("POST", "/v1/auth/mfa/verify", {
+  token: recToken,
+  // One window back: three TOTP-consuming steps follow (login, re-verify, second login), and the
+  // replay guard only accepts a counter above the last one it saw.
+  body: { code: recSecret ? totpCode(recSecret, Date.now() - 30_000) : "000000" },
+});
+let recCodes = Array.isArray(recVerify.data?.recoveryCodes) ? recVerify.data.recoveryCodes : [];
+check("O1 MFA verification returns ten distinct one-time codes in XXXX-XXXX-XXXX-XXXX form", recReg.status === 201 && recEnroll.status === 200 && recVerify.status === 200 && recVerify.data?.mfaEnabled === true && recCodes.length === 10 && new Set(recCodes).size === 10 && recCodes.every((c) => RECOVERY_CODE_FORMAT.test(c)), `register=${recReg.status} enroll=${recEnroll.status} verify=${recVerify.status} codes=${recCodes.length} distinct=${new Set(recCodes).size}`);
+
+// Enrolment verification revoked every session, so a fresh login needs the next TOTP window.
+const recLogin = await call("POST", "/v1/auth/login", {
+  body: { email: recEmail, password: PASSWORD, code: recSecret ? totpCode(recSecret) : "000000" },
+});
+let recSession = recLogin.data?.token;
+const genNoAuth = await call("POST", "/v1/auth/mfa/recovery-codes", { token: recSession, body: {} });
+const genWrongPw = await call("POST", "/v1/auth/mfa/recovery-codes", { token: recSession, body: { password: "WrongPassw0rd!" } });
+check("O2 generating recovery codes needs the password or a current TOTP, never the session alone (401 reauth_required)", recLogin.status === 200 && genNoAuth.status === 401 && genNoAuth.data?.error === "reauth_required" && genWrongPw.status === 401 && genWrongPw.data?.error === "reauth_required", `login=${recLogin.status} noBody=${genNoAuth.status}/${genNoAuth.data?.error} wrongPw=${genWrongPw.status}/${genWrongPw.data?.error}`);
+
+const recWrongCode = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: "0000-0000-0000-0000" } });
+const recWrongPassword = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: "WrongPassw0rd!", code: recCodes[0] } });
+const recUnknownEmail = await call("POST", "/v1/auth/mfa/recover", { body: { email: `nobody-recovery-${stamp}@example.com`, password: PASSWORD, code: recCodes[0] } });
+check("O3 a wrong code, a wrong password and an unknown address answer the same 401 invalid_recovery (no oracle, batch untouched)", [recWrongCode, recWrongPassword, recUnknownEmail].every((r) => r.status === 401 && r.data?.error === "invalid_recovery"), `wrongCode=${recWrongCode.status}/${recWrongCode.data?.error} wrongPw=${recWrongPassword.status}/${recWrongPassword.data?.error} unknown=${recUnknownEmail.status}/${recUnknownEmail.data?.error}`);
+
+const recovered = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: recCodes[0] } });
+const recoveryToken = recovered.data?.recoveryToken;
+const recoveryClaims = recoveryToken ? JSON.parse(Buffer.from(recoveryToken.split(".")[1], "base64url").toString()) : {};
+check("O4 a valid code recovers the account and returns only a purpose-scoped token (no role, no familyId)", recovered.status === 200 && typeof recoveryToken === "string" && Object.keys(recovered.data ?? {}).length === 1 && recoveryClaims.purpose === "mfa_recovery" && recoveryClaims.role === undefined && recoveryClaims.familyId === undefined, `status=${recovered.status} keys=${Object.keys(recovered.data ?? {}).join(",")} claims=${JSON.stringify({ purpose: recoveryClaims.purpose, role: recoveryClaims.role, familyId: recoveryClaims.familyId })}`);
+
+const replayCode = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: recCodes[0] } });
+check("O5 the same recovery code is refused once spent (401 invalid_recovery)", replayCode.status === 401 && replayCode.data?.error === "invalid_recovery", `got ${replayCode.status}/${replayCode.data?.error}`);
+
+const siblingCode = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: recCodes[1] } });
+check("O6 another code from the same batch is dead after the first use (delete-all-on-use)", siblingCode.status === 401 && siblingCode.data?.error === "invalid_recovery", `got ${siblingCode.status}/${siblingCode.data?.error} tested=${recCodes[1] ? "batch-code-2" : "none"}`);
+
+const recMe = await call("GET", "/v1/family/me", { token: recoveryToken });
+const recLogoutAll = await call("POST", "/v1/auth/logout-all", { token: recoveryToken });
+const recGen = await call("POST", "/v1/auth/mfa/recovery-codes", { token: recoveryToken, body: {} });
+check("O7 the recovery token is not a session: /family/me, /logout-all and code generation refuse it (401)", recMe.status === 401 && recLogoutAll.status === 401 && recGen.status === 401, `me=${recMe.status} logoutAll=${recLogoutAll.status} recoveryCodes=${recGen.status}`);
+
+if (process.env.JWT_SECRET) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const recSub = recoveryClaims.sub;
+  const forgedUnknown = signHs256Jwt({ sub: recSub, purpose: "mfa_recovery", jti: "0000000000000000", iat: nowSec, exp: nowSec + 900 }, process.env.JWT_SECRET);
+  const forgedExpired = recoveryToken
+    ? signHs256Jwt({ ...recoveryClaims, exp: nowSec - 60 }, process.env.JWT_SECRET)
+    : "x.y.z";
+  const forgedOther = signHs256Jwt({ ...recoveryClaims, sub: "00000000-0000-0000-0000-000000000000" }, process.env.JWT_SECRET);
+  const unknownJti = await call("POST", "/v1/auth/mfa/enroll", { token: forgedUnknown, body: {} });
+  const expired = await call("POST", "/v1/auth/mfa/enroll", { token: forgedExpired, body: {} });
+  const otherSub = await call("POST", "/v1/auth/mfa/enroll", { token: forgedOther, body: {} });
+  check("O8 an expired, unknown-jti or wrong-subject recovery token is refused by /mfa/enroll (401)", unknownJti.status === 401 && expired.status === 401 && otherSub.status === 401, `unknownJti=${unknownJti.status} expired=${expired.status} otherSub=${otherSub.status}`);
+} else {
+  target("O8 an expired, unknown-jti or wrong-subject recovery token is refused by /mfa/enroll", "JWT_SECRET not present in the probe environment, so a forged recovery token cannot be minted here");
+}
+
+const reEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: recoveryToken, body: {} });
+const newSecret = reEnroll.data?.secret ?? "";
+const reVerify = await call("POST", "/v1/auth/mfa/verify", { token: recoveryToken, body: { code: newSecret ? nextTotp(newSecret) : "000000" } });
+const newCodes = Array.isArray(reVerify.data?.recoveryCodes) ? reVerify.data.recoveryCodes : [];
+const reuseAfterEnable = await call("POST", "/v1/auth/mfa/enroll", { token: recoveryToken, body: {} });
+check("O9 the recovery token re-enrols MFA, gets a fresh batch, and is refused once MFA is on again", reEnroll.status === 200 && reVerify.status === 200 && newCodes.length === 10 && newCodes.every((c) => RECOVERY_CODE_FORMAT.test(c)) && reuseAfterEnable.status === 401, `enroll=${reEnroll.status} verify=${reVerify.status} codes=${newCodes.length} reuse=${reuseAfterEnable.status}`);
+check("O10 the re-enrolled account still needs the new authenticator at login (no password-only window left)", (await call("POST", "/v1/auth/login", { body: { email: recEmail, password: PASSWORD } })).status === 401, "password-only login must be 401 mfa_required");
+
+// A window has to pass before the next TOTP is strictly above the one re-verification consumed.
+await waitForNextTotpWindow();
+const recLogin2 = await call("POST", "/v1/auth/login", {
+  body: { email: recEmail, password: PASSWORD, code: newSecret ? nextTotp(newSecret) : "000000" },
+});
+recSession = recLogin2.data?.token;
+const regen = await call("POST", "/v1/auth/mfa/recovery-codes", { token: recSession, body: { password: PASSWORD } });
+const regenCodes = Array.isArray(regen.data?.recoveryCodes) ? regen.data.recoveryCodes : [];
+const oldAfterRegen = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: newCodes[0] } });
+check("O11 regenerating with the password replaces the batch: the old set is refused, ten new codes are issued", recLogin2.status === 200 && regen.status === 200 && regenCodes.length === 10 && newCodes.every((c) => !regenCodes.includes(c)) && oldAfterRegen.status === 401, `login=${recLogin2.status} regen=${regen.status} new=${regenCodes.length} oldCode=${oldAfterRegen.status}`);
+
+
 console.log("\n── H. surface ──");
 const unknownRoute = await call("GET", `/v1/does-not-exist-${stamp}`);
 check("H1 unknown route -> 404 JSON", unknownRoute.status === 404, `got ${unknownRoute.status}`);

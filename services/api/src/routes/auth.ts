@@ -4,10 +4,19 @@ import argon2 from "argon2";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
-import { passwordResetEmail } from "../lib/email/templates.js";
+import { mfaRecoveredEmail, passwordResetEmail } from "../lib/email/templates.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
+import {
+  RECOVERY_CODE_COUNT,
+  RECOVERY_CODE_LENGTH,
+  RECOVERY_CODE_TTL_MINUTES,
+  formatRecoveryCode,
+  generateRecoveryCodeBatch,
+  hashRecoveryCode,
+  normaliseRecoveryCode,
+} from "../lib/mfaRecovery.js";
 import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
@@ -37,6 +46,28 @@ const MfaEnrollSchema = z.object({
   password: z.string().min(1).optional(),
   code: z.string().regex(/^\d{6}$/).optional(),
 });
+
+/**
+ * ADR-0023: the same proof of parentage that replaces a TOTP secret also guards replacing the codes
+ * that survive it — a stolen session alone must not hand itself a fresh batch.
+ */
+const MfaRecoveryCodeRequestSchema = MfaEnrollSchema;
+
+/** ADR-0023: recovery takes the account password and one unused code, nothing else. */
+const MfaRecoverSchema = z.object({
+  email: z.string().email().transform((e) => e.trim().toLowerCase()),
+  password: z.string().min(1).max(256),
+  code: z.string().min(1).max(64),
+});
+
+/**
+ * A password hash to verify against when the email is unknown (ADR-0023): without it, an unknown
+ * address answers in microseconds while a known one spends argon2's ~100 ms, which is an
+ * enumeration oracle even though the body is identical. Computed once, lazily, with random input.
+ */
+let dummyPasswordHash: Promise<string> | null = null;
+const unknownParentPasswordHash = (): Promise<string> =>
+  (dummyPasswordHash ??= argon2.hash(randomBytes(16).toString("hex")));
 
 /**
  * Verify a login TOTP code with replay protection (review 3.1): the accepted
@@ -233,6 +264,80 @@ export async function authRoutes(app: FastifyInstance) {
     }
   };
 
+  // --- ADR-0023: one-time MFA recovery codes ---------------------------------------------------
+  // The recovery token is NOT a session. It is minted only by `/mfa/recover`, lives 15 minutes in
+  // Redis under `mfa:recovery:<jti>`, carries no `familyId` and no `role`, and is accepted only by
+  // `/mfa/enroll` and `/mfa/verify` while the account's MFA is off. Every other route goes through
+  // `requireJwt`, whose #146/#147 rule (`isBearerSession` + `role:"parent"`) rejects the purpose
+  // claim untouched.
+  const RECOVERY_TTL_SECONDS = RECOVERY_CODE_TTL_MINUTES * 60;
+  const recoveryKey = (jti: string) => `mfa:recovery:${jti}`;
+
+  /** Ten fresh codes plus the rows that store their hashes — the plaintext exists only in `codes`. */
+  const newRecoveryCodeRows = (parentId: string, issuedAt: Date) => {
+    const codes = generateRecoveryCodeBatch(RECOVERY_CODE_COUNT);
+    return {
+      codes,
+      rows: codes.map((code) => ({ parentId, codeHash: hashRecoveryCode(code), createdAt: issuedAt })),
+    };
+  };
+
+  /**
+   * #139's rule, shared by the two routes that can replace a second factor or the codes guarding it:
+   * the account password (preferred) or a code from the current authenticator. Only meaningful when
+   * a secret exists — a first enrolment is onboarding, not a replacement.
+   */
+  const provesParent = async (
+    req: FastifyRequest,
+    parent: { id: string; passwordHash: string; mfaSecret: string | null },
+    data: { password?: string; code?: string },
+  ): Promise<boolean> => {
+    if (data.password) {
+      try {
+        if (await argon2.verify(parent.passwordHash, data.password)) return true;
+      } catch (err) {
+        req.log.warn({ err }, "MFA re-authentication password check failed");
+      }
+    }
+    if (data.code && parent.mfaSecret) return verifyTotpFresh(parent.id, parent.mfaSecret, data.code);
+    return false;
+  };
+
+  /**
+   * A live parent session OR a live `mfa_recovery` token, for the two enrolment routes only.
+   *
+   * The session half is #146/#147 unchanged. The recovery half is deliberately narrow: signature,
+   * `purpose === "mfa_recovery"`, and a `jti` the store still knows and still attributes to this
+   * parent. The store check fails closed even outside production (`/mfa/enroll` and `/mfa/verify`
+   * are 15-minute high-value surfaces, not a session read), and the handlers additionally refuse
+   * the token once `mfaEnabled` is true again.
+   */
+  const requireParentOrMfaRecovery = async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      await reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+    const user = req.user as { sub?: string; role?: string; purpose?: string; jti?: string; iat?: number; sv?: number };
+    if (isBearerSession(user) && user.role === "parent") {
+      if (!(await isParentSessionLive(user))) {
+        await reply.code(401).send({ error: "session_revoked" });
+      }
+      return;
+    }
+    if (user.purpose === "mfa_recovery" && user.sub && user.jti) {
+      let owner: string | null = null;
+      try {
+        owner = await getRedis().get(recoveryKey(user.jti));
+      } catch (err) {
+        req.log.error({ err }, "[security] MFA recovery store unreachable — rejecting recovery token");
+      }
+      if (owner === user.sub) return;
+    }
+    await reply.code(401).send({ error: "unauthorized" });
+  };
+
   /**
    * Generate a TOTP secret for the authenticated parent and return an otpauth URL.
    *
@@ -240,26 +345,26 @@ export async function authRoutes(app: FastifyInstance) {
    * re-authentication with the account password or a current TOTP code — otherwise a bearer token
    * alone would let whoever holds it rebind the second factor and lock the parent out.
    */
-  app.post("/mfa/enroll", { preHandler: requireJwt, config: RL }, async (req, reply) => {
-    const user = req.user as { sub: string };
+  app.post("/mfa/enroll", { preHandler: requireParentOrMfaRecovery, config: RL }, async (req, reply) => {
+    const user = req.user as { sub: string; purpose?: string };
     const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
     if (!parent) return reply.code(404).send({ error: "parent_not_found" });
 
-    if (parent.mfaSecret) {
+    // ADR-0023 decision 3: a recovery token may replace the (now cleared) secret, but its job ends
+    // the moment MFA is on again — otherwise a 15-minute token would outlive the recovery it served.
+    if (user.purpose === "mfa_recovery" && parent.mfaEnabled) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+
+    if (parent.mfaSecret && user.purpose !== "mfa_recovery") {
+      // A recovery token has already proved password + a one-time code at `/mfa/recover`, and it is
+      // accepted here only while MFA is off — so replacing an *unverified* secret with it is not the
+      // replacement #139 guards against.
       const parsed = MfaEnrollSchema.safeParse(req.body ?? {});
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-      let reauthenticated = false;
-      if (parsed.data.password) {
-        try {
-          reauthenticated = await argon2.verify(parent.passwordHash, parsed.data.password);
-        } catch (err) {
-          req.log.warn({ err }, "MFA enrol re-authentication password check failed");
-        }
+      if (!(await provesParent(req, parent, parsed.data))) {
+        return reply.code(401).send({ error: "reauth_required" });
       }
-      if (!reauthenticated && parsed.data.code) {
-        reauthenticated = await verifyTotpFresh(parent.id, parent.mfaSecret, parsed.data.code);
-      }
-      if (!reauthenticated) return reply.code(401).send({ error: "reauth_required" });
     }
 
     const secret = generateTotpSecret();
@@ -271,20 +376,142 @@ export async function authRoutes(app: FastifyInstance) {
     return { secret, otpauthUrl };
   });
 
-  /** Verify a 6-digit TOTP code against the enrolled secret and enable MFA. */
-  app.post("/mfa/verify", { preHandler: requireJwt, config: RL }, async (req, reply) => {
+  /**
+   * Verify a 6-digit TOTP code against the enrolled secret, enable MFA, and issue the account's
+   * one-time recovery codes (ADR-0023). This response is the **only** time the plaintext codes
+   * exist: the rows hold SHA-256 hashes, no route reads them back, and a replacement batch is a
+   * destructive overwrite.
+   */
+  app.post("/mfa/verify", { preHandler: requireParentOrMfaRecovery, config: RL }, async (req, reply) => {
     const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const user = req.user as { sub: string };
+    const user = req.user as { sub: string; purpose?: string; jti?: string };
     const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
     if (!parent?.mfaSecret) return reply.code(400).send({ error: "mfa_not_enrolled" });
+    if (user.purpose === "mfa_recovery" && parent.mfaEnabled) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
     if (!(await verifyTotpFresh(parent.id, parent.mfaSecret, parsed.data.code))) {
       return reply.code(401).send({ error: "invalid_code" });
     }
-    await prisma.parent.update({ where: { id: parent.id }, data: { mfaEnabled: true } });
+    const issuedAt = new Date();
+    const { codes, rows } = newRecoveryCodeRows(parent.id, issuedAt);
+    await prisma.$transaction(async (tx) => {
+      await tx.parent.update({ where: { id: parent.id }, data: { mfaEnabled: true } });
+      // The previous batch belonged to the previous secret: it goes, even on a re-enrolment.
+      await tx.parentMfaRecoveryCode.deleteMany({ where: { parentId: parent.id } });
+      await tx.parentMfaRecoveryCode.createMany({ data: rows });
+    });
+    // The recovery token has done its job. The DB check above already refuses it while MFA is on,
+    // so a failed delete only shortens the window in one direction.
+    if (user.purpose === "mfa_recovery" && user.jti) {
+      await getRedis().del(recoveryKey(user.jti)).catch(() => undefined);
+    }
     // Handoff item 3: enabling MFA revokes all existing sessions.
     await revokeAllRefreshTokens(parent.id);
-    return { ok: true, mfaEnabled: true };
+    return {
+      ok: true,
+      mfaEnabled: true,
+      recoveryCodes: codes.map(formatRecoveryCode),
+      recoveryCodesIssuedAt: issuedAt.toISOString(),
+    };
+  });
+
+  /**
+   * Issue a fresh batch of one-time recovery codes (ADR-0023).
+   *
+   * Generation and regeneration are the same operation: a batch exists only as hashes, so "show me
+   * the codes again" is not possible by design — the only way to get codes is to replace them. When
+   * a secret exists this requires the #139 proof of parentage, because it invalidates the parent's
+   * saved list; a first batch for an account with no secret needs only the session, exactly as a
+   * first enrolment does.
+   */
+  app.post("/mfa/recovery-codes", { preHandler: requireJwt, config: RL }, async (req, reply) => {
+    const user = req.user as { sub: string };
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!parent) return reply.code(404).send({ error: "parent_not_found" });
+    if (parent.mfaSecret) {
+      const parsed = MfaRecoveryCodeRequestSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+      if (!(await provesParent(req, parent, parsed.data))) {
+        return reply.code(401).send({ error: "reauth_required" });
+      }
+    }
+    const issuedAt = new Date();
+    const { codes, rows } = newRecoveryCodeRows(parent.id, issuedAt);
+    await prisma.$transaction(async (tx) => {
+      await tx.parentMfaRecoveryCode.deleteMany({ where: { parentId: parent.id } });
+      await tx.parentMfaRecoveryCode.createMany({ data: rows });
+    });
+    return { recoveryCodes: codes.map(formatRecoveryCode), recoveryCodesIssuedAt: issuedAt.toISOString() };
+  });
+
+  /**
+   * Recover the account after losing the authenticator (ADR-0023 decision 2).
+   *
+   * Password + one unused code, and the result is a 15-minute purpose-scoped token — **not** a
+   * session. MFA is cleared because the old secret is presumed gone, the used code is spent, the
+   * rest of the batch is deleted (a stolen list is bounded to one use), every session is revoked,
+   * and the account owner is notified. Enrolment and verification must happen before the parent can
+   * read family data again.
+   *
+   * Every failure is the same `401 invalid_recovery` — unknown address, wrong password, wrong or
+   * spent code, MFA not enabled — so the endpoint is not an account or MFA state oracle.
+   */
+  app.post("/mfa/recover", { config: RL }, async (req, reply) => {
+    const parsed = MfaRecoverSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
+    // Verify a hash even when the address is unknown, so the work done (and the time taken) does
+    // not distinguish "no such account" from "wrong password".
+    const passwordHash = parent?.passwordHash ?? (await unknownParentPasswordHash());
+    const passwordOk = await argon2.verify(passwordHash, parsed.data.password).catch(() => false);
+    if (!parent || !passwordOk || !parent.mfaEnabled) {
+      return reply.code(401).send({ error: "invalid_recovery" });
+    }
+
+    const normalised = normaliseRecoveryCode(parsed.data.code);
+    if (normalised.length !== RECOVERY_CODE_LENGTH) {
+      return reply.code(401).send({ error: "invalid_recovery" });
+    }
+    const candidate = await prisma.parentMfaRecoveryCode.findFirst({
+      where: { parentId: parent.id, codeHash: hashRecoveryCode(normalised) },
+    });
+    if (!candidate) return reply.code(401).send({ error: "invalid_recovery" });
+
+    const usedAt = new Date();
+    const consumed = await prisma.$transaction(async (tx) => {
+      // One-time use is this count: of two concurrent requests with the same code, exactly one can
+      // flip `usedAt` from null, so the loser never reaches the half that clears MFA.
+      const claimed = await tx.parentMfaRecoveryCode.updateMany({
+        where: { id: candidate.id, usedAt: null },
+        data: { usedAt },
+      });
+      if (claimed.count !== 1) return false;
+      // The used row is the record that the batch was spent; its siblings are dead credentials.
+      await tx.parentMfaRecoveryCode.deleteMany({
+        where: { parentId: parent.id, id: { not: candidate.id } },
+      });
+      await tx.parent.update({ where: { id: parent.id }, data: { mfaEnabled: false, mfaSecret: null } });
+      return true;
+    });
+    if (!consumed) return reply.code(401).send({ error: "invalid_recovery" });
+
+    // A lost device must not keep a live session: revoking also bumps the sessions version, so
+    // access tokens die with the refresh tokens (ADR-0025).
+    await revokeAllRefreshTokens(parent.id);
+
+    const jti = randomBytes(16).toString("hex");
+    const recoveryToken = app.jwt.sign(
+      { sub: parent.id, purpose: "mfa_recovery", jti },
+      { expiresIn: `${RECOVERY_CODE_TTL_MINUTES}m` },
+    );
+    await getRedis().set(recoveryKey(jti), parent.id, "EX", RECOVERY_TTL_SECONDS);
+
+    const notice = await getEmailSender().send(mfaRecoveredEmail(parent.email));
+    if (!notice.ok) req.log.error({ reason: notice.reason }, "MFA recovery notice email failed");
+
+    return { recoveryToken };
   });
 
   /** Issue a 15-minute password-reset token (logged to console as the email stub). */
