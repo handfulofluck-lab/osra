@@ -67,6 +67,36 @@ class EssentialPackagesTest {
     }
 
     @Test
+    fun `only the agent's own package is exempt from our namespace`() {
+        // Issue #192: package names are global only by convention, and the Full build is sideloaded.
+        // The old `startsWith("com.familyshield.")` test exempted every sibling name from every rule,
+        // including the prefix-equal string itself.
+        assertTrue(
+            "the agent's own package must stay exempt",
+            EssentialPackages.isEssential(EssentialPackages.OWN_PACKAGE),
+        )
+        assertTrue(
+            "the overlay's PackageFacts path must exempt the agent too",
+            EssentialPackages.isEssential(EssentialPackages.OWN_PACKAGE, FakeFacts()),
+        )
+        val impostors = listOf(
+            "com.familyshield.notanapp",
+            "com.familyshield.agent.notanapp",
+            "com.familyshield.agent.test",
+            "com.familyshield.",
+            "com.familyshield",
+            "com.familyshieldx",
+        )
+        for (pkg in impostors) {
+            assertFalse("$pkg must stay blockable", EssentialPackages.isEssential(pkg))
+            assertFalse(
+                "$pkg must stay blockable through PackageFacts",
+                EssentialPackages.isEssential(pkg, FakeFacts()),
+            )
+        }
+    }
+
+    @Test
     fun `whatever currently holds HOME is the launcher, even a name no table knows`() {
         val facts = FakeFacts(homes = setOf("com.oneplus.launcher"))
         assertTrue(EssentialPackages.isEssential("com.oneplus.launcher", facts))
