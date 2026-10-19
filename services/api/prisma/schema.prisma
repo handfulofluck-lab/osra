@@ -48,6 +48,9 @@ model Parent {
   role         String          @default("owner")
   // Free-text permission tags granted via FamilyInvite accept (Feature #13, e.g. "location", "controls").
   permissions  String[]        @default([])
+  // ADR-0023 / #183: `mfaEnabled` is the account's second-factor policy; `mfaSecret` is the bound
+  // factor. A recovery clears only the secret, so `mfaEnabled && mfaSecret == null` means "MFA
+  // required, no authenticator bound": `/login` refuses it with 401 mfa_reenroll_required.
   mfaEnabled   Boolean         @default(false)
   mfaSecret    String?
   createdAt    DateTime        @default(now())

@@ -343,3 +343,63 @@ specified in a separate ADR because the identity policy is the decision, not the
   specification for the implementing PR.
 - This ADR does not mark #136 resolved. #136's code half is #139; the question it left open — what a
   parent does after losing the authenticator — is what this ADR answers.
+
+## Amendment 2026-10-19 — #183: a recovery clears the factor, not the policy
+
+- **Context.** Issue #183 (Claude's review of #180, "the first defeats the design") found the recovered
+  state self-defeating: `/mfa/recover` wrote `mfaEnabled: false, mfaSecret: null`
+  (`services/api/src/routes/auth.ts:495` at `675a118`), and `/login` asks for a TOTP only
+  `if (parent.mfaEnabled)` (`:210`). The next `POST /login` with the password alone therefore returned
+  a full parent session and the purpose-scoped recovery token restricted nothing — the account stayed
+  password-only afterwards, which may be forever. Decision 2 above says recovery "clears
+  `mfaSecret`/`mfaEnabled`", and decision 3 calls the result "the password-only window between
+  recovery and re-enrolment": on the code that landed, that window has no end.
+- **Decision (amends decision 2's write list and decision 3's mechanism; everything else stands).**
+  The two columns mean two different things: `mfaEnabled` is the account's **policy** ("a second
+  factor is required"), `mfaSecret` is the **bound factor** ("there is an authenticator to ask").
+  A recovery removes the second and keeps the first.
+  1. `/mfa/recover` writes `mfaSecret: null` and leaves `mfaEnabled: true`. The used code is still
+     spent, the sibling rows are still deleted, every session is still revoked, the notification
+     email is still sent.
+  2. `/login` with the correct password on an account where `mfaEnabled && !mfaSecret` answers
+     `401 {"error":"mfa_reenroll_required"}` — no session, no refresh token, and **no recovery
+     token**. Issue #183 item 1 proposed minting one there; that was rejected. A stolen password
+     would then reach `/mfa/enroll` + `/mfa/verify` and bind its own authenticator, i.e. the same
+     takeover in two more calls, and the acceptance line ("a stolen password alone cannot produce a
+     session") would be false. The distinguishing credential must be the recovery code.
+  3. The 15-minute token from `/mfa/recover` (password + one unused code) stays the only way
+     through: `/mfa/enroll` + `/mfa/verify` accept it while it is live, and it is refused the moment
+     the account holds a live batch again.
+  4. "The token dies once MFA is on again" can no longer be read off `mfaEnabled`, which is true
+     throughout. It is read off the durable completion state instead: the two enrolment routes refuse
+     a recovery token when the account already has unused recovery-code rows — a batch that only
+     `/mfa/verify` (completed enrolment) or `/mfa/recovery-codes` (explicit regeneration) writes, and
+     that `/mfa/recover` deletes. The Redis `jti` delete in `/mfa/verify`
+     remains the primary boundary; the row count is the second one, so a store failure cannot keep a
+     spent token alive.
+- **Why this rather than option (b) — same recovery writes, login blocked some other way.** Keeping
+  `mfaEnabled: false` and blocking login needs a third state ("required but unbound") that no column
+  expresses, so it means a new `mfaReenrollRequired` column, a migration, and a second flag to keep
+  consistent with the two that already exist. The pair (`mfaEnabled`, `mfaSecret`) already says both
+  things, `if (parent.mfaEnabled)` then fails closed on its own (`verifyTotpFresh` with a null secret
+  is false), and no migration is needed. It also stops the flag lying about the account.
+- **Costs (named).**
+  - `mfaEnabled` is now true for an account with no authenticator. Any future code that reads it as
+    "a factor exists" is wrong; the routes that care check `mfaSecret` (login, enrolment). The Prisma
+    field comment says so.
+  - **The 15-minute window is now the only self-service path.** If the parent loses the
+    `/mfa/recover` response before `/mfa/verify` finishes (app killed, network lost), the batch is
+    spent and nothing self-service remains: the account is locked until Option B (support-assisted
+    reset), which this ADR left to the maintainer and which still does not exist. That is the same
+    class as "lost authenticator and lost codes", but it is reachable in one interrupted flow, and
+    closing it needs a product decision (a cooling-off, notified self-service re-enrolment), not a
+    code change. It is recorded here so the next reader does not discover it in production.
+  - A locked-out parent now sees `mfa_reenroll_required` instead of "wrong password"; the parent app
+    maps it to its own message (`apps/parent-app/lib/providers/auth_provider.dart`), because the
+    generic MFA branch would have called it an invalid code.
+- **Falsifiable claims (the tests that must fail before this amendment and pass after it).**
+  After a recovery: password-only `/login` → `401 mfa_reenroll_required`, no `token`, no
+  `refreshToken`, no `mfa:recovery:*` written; the recovery token still enrols and verifies, and the
+  new authenticator then signs in; a normal MFA account and an account without MFA behave exactly as
+  before. Unit: `services/api/test/mfa-recovery.test.ts` (the `#183:` cases). Live: probe `O12`
+  (password-only login in the recovered state) and `O13` (the token still completes the flow).

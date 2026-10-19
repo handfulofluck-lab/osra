@@ -57,6 +57,13 @@ class FakeApiClient extends ApiClient {
             response: Response(requestOptions: options, statusCode: 401, data: {'error': 'mfa_required'}),
             type: DioExceptionType.badResponse,
           ));
+        } else if (password == 'reenroll-password') {
+          // #183: a recovered account whose new authenticator was never verified.
+          handler.reject(DioException(
+            requestOptions: options,
+            response: Response(requestOptions: options, statusCode: 401, data: {'error': 'mfa_reenroll_required'}),
+            type: DioExceptionType.badResponse,
+          ));
         } else {
           handler.reject(DioException(
             requestOptions: options,
@@ -146,6 +153,14 @@ void main() {
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, 'Invalid authentication code');
+  });
+
+  test('#183: mfa_reenroll_required is reported as a missing authenticator, not a wrong code', () async {
+    await container.read(authProvider.notifier).login('demo@familyshield.dev', 'reenroll-password');
+    final state = container.read(authProvider);
+    expect(state.isAuthenticated, isFalse);
+    expect(state.error, isNot('Invalid authentication code'));
+    expect(state.error, contains('no authenticator is set up'));
   });
 
   test('logout returns to the logged-out state', () async {

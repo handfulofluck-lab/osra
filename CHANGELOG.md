@@ -11,6 +11,54 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — a recovery clears the authenticator, not the MFA policy (#183, security)
+- **Why.** #180 merged with MFA recovery that defeated its own purpose. `/mfa/recover` wrote
+  `mfaEnabled: false, mfaSecret: null` (`services/api/src/routes/auth.ts:495` at `675a118`), and
+  `/login` asks for a TOTP only `if (parent.mfaEnabled)` (`:210`). So the first `POST /login` after
+  a recovery, with the password alone, returned a **full session**; the purpose-scoped recovery
+  token restricted nothing, and the account stayed password-only until someone chose to re-enrol.
+  Claude's review called it "the first defeats the design" (issue #183, from the #180 review).
+- **What.** The two flags now mean what they say: `mfaEnabled` is the account's second-factor
+  **policy**, `mfaSecret` is the **bound factor**. `services/api/src/routes/auth.ts`:
+  - `/mfa/recover` (`:524`) clears `mfaSecret` and **leaves `mfaEnabled` true** — the used code is
+    still spent, the siblings are still deleted, every session is still revoked, the notice email is
+    still sent.
+  - `/login` (`:218`) with the correct password on `mfaEnabled && !mfaSecret` answers
+    `401 {"error":"mfa_reenroll_required"}`: no access token, no refresh token, and deliberately
+    **no recovery token** — minting one there (the shape issue #183 item 1 proposed) would let a
+    stolen password bind a new authenticator two calls later. The 15-minute token from
+    `/mfa/recover` (password + an unused code) is the only way back in.
+  - `/mfa/enroll` and `/mfa/verify` accept that token while it is live and refuse it once the
+    account holds a live batch again (`holdsLiveRecoveryBatch`) — `mfaEnabled` can no longer be
+    read as "MFA is back", so the durable completion state is used, with the Redis `jti` delete as
+    the primary boundary.
+  - The parent app maps `mfa_reenroll_required` to its own message instead of "Invalid
+    authentication code" (`apps/parent-app/lib/providers/auth_provider.dart`).
+  - `docs/adr/0023-mfa-recovery.md` carries a dated amendment (decision 2's write list, decision
+    3's guard); the accepted decision is not rewritten. `docs/SPEC.md` §3 and the `Parent` field
+    comment in `prisma/schema.prisma` describe the two meanings.
+- **Tests.** `services/api/test/mfa-recovery.test.ts` — five `#183:` cases plus the tightened
+  post-recovery case: recovery then password-only login is refused with no session and no token;
+  recovery token → enrol → verify → the new authenticator signs in; a normal MFA account still
+  answers `401 mfa_required` then signs in; an account without MFA is unaffected; a recovery token
+  is refused once a batch exists even if its Redis marker survived. The first three fail on
+  `675a118` (`mfaEnabled` false after recovery; password-only login 200). Probe `O12`/`O13` assert
+  the same against a live stack. `apps/parent-app/test/auth_provider_test.dart` covers the new
+  message. **Author's runs, 2026-10-19:** `pnpm --filter @familyshield/api test` **33 files / 386
+  tests passed** (exit 0; an earlier identical run on the same tree was killed by host memory
+  pressure — `Exit status 3221225477` at 1.6 GB free — not by a test), `node scripts/qa-probe.mjs`
+  against a spare-port instance **143 passed / 0 failed** (`O1`–`O13`), `node scripts/e2e.mjs`
+  **69 passed / 0 failed**, `flutter test` **219 passed / 0 failed** and `flutter analyze`
+  **No issues found**, probe
+  integrity `+2 added, 0 removed`. The API at `127.0.0.1:3000` was not touched; the probe and e2e
+  ran against `127.0.0.1:3419` from this branch. Database and Redis were restored afterwards
+  (`cleanup-test-data.sql` → `OK: 1 family — demo family only`; 19 orphaned keys deleted, 3
+  orphaned `mfa:lastcounter` keys removed). **⚠️ not verified here** by another agent.
+- **Known cost (named, not hidden).** The 15-minute recovery token is now the only self-service
+  path: a parent who loses the `/mfa/recover` response before `/mfa/verify` finishes is locked out
+  until the support path (ADR-0023 Option B, still the maintainer's open decision). That is the
+  price of "a stolen password alone cannot produce a session"; closing the usability half needs a
+  product decision (a cooling-off, notified self-service re-enrolment), not this fix.
 ### Child agent — a blocked app can no longer hide in picture-in-picture or split screen (issue #175)
 - **Why.** #171 made every block decision from `rootInActiveWindow` alone. A blocked app that is
   **visible but not the active window** was never judged: during bedtime a YouTube video in

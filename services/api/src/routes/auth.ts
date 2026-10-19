@@ -207,7 +207,15 @@ export async function authRoutes(app: FastifyInstance) {
     const ok = await argon2.verify(parent.passwordHash, parsed.data.password);
     if (!ok) return reply.code(401).send({ error: "invalid_credentials" });
     // Review 3.1: MFA is enforced here — a TOTP code is required when enabled.
+    //
+    // #183: `mfaEnabled` is the account's policy and survives a recovery; `mfaSecret` is the bound
+    // factor and does not. Between the two, a correct password reaches an account with nothing to
+    // ask a code from — and it gets no session: not a token, not a refresh record, and deliberately
+    // **not** a recovery token either. Minting one here would hand a stolen password the
+    // re-enrolment credential it needs, which is the same takeover this check removes, two calls
+    // later. The 15-minute token from `/mfa/recover` (password + an unused code) is the only way in.
     if (parent.mfaEnabled) {
+      if (!parent.mfaSecret) return reply.code(401).send({ error: "mfa_reenroll_required" });
       const code = (req.body as { code?: unknown })?.code;
       if (typeof code !== "string" || !(await verifyTotpFresh(parent.id, parent.mfaSecret, code))) {
         return reply.code(401).send({ error: "mfa_required" });
@@ -267,11 +275,23 @@ export async function authRoutes(app: FastifyInstance) {
   // --- ADR-0023: one-time MFA recovery codes ---------------------------------------------------
   // The recovery token is NOT a session. It is minted only by `/mfa/recover`, lives 15 minutes in
   // Redis under `mfa:recovery:<jti>`, carries no `familyId` and no `role`, and is accepted only by
-  // `/mfa/enroll` and `/mfa/verify` while the account's MFA is off. Every other route goes through
-  // `requireJwt`, whose #146/#147 rule (`isBearerSession` + `role:"parent"`) rejects the purpose
-  // claim untouched.
+  // `/mfa/enroll` and `/mfa/verify` while the account is still short of a complete second factor
+  // (#183: `mfaEnabled` stays true through a recovery, so completion is a live batch, not the flag).
+  // Every other route goes through `requireJwt`, whose #146/#147 rule (`isBearerSession` +
+  // `role:"parent"`) rejects the purpose claim untouched.
   const RECOVERY_TTL_SECONDS = RECOVERY_CODE_TTL_MINUTES * 60;
   const recoveryKey = (jti: string) => `mfa:recovery:${jti}`;
+
+  /**
+   * Has this account finished the recovery and bound a new factor? The routes that write a batch of
+   * unused codes are `/mfa/verify` (a completed enrolment) and `/mfa/recovery-codes` (an explicit
+   * regeneration), and `/mfa/recover` deletes the old batch — so a recovery token can only exist
+   * while this is false, and "a live batch exists" is the durable completion state. It is the
+   * database half of the token boundary; the Redis `jti` delete in `/mfa/verify` is the first half,
+   * so a store failure cannot keep a spent token alive.
+   */
+  const holdsLiveRecoveryBatch = async (parentId: string): Promise<boolean> =>
+    (await prisma.parentMfaRecoveryCode.count({ where: { parentId, usedAt: null } })) > 0;
 
   /** Ten fresh codes plus the rows that store their hashes — the plaintext exists only in `codes`. */
   const newRecoveryCodeRows = (parentId: string, issuedAt: Date) => {
@@ -310,7 +330,7 @@ export async function authRoutes(app: FastifyInstance) {
    * `purpose === "mfa_recovery"`, and a `jti` the store still knows and still attributes to this
    * parent. The store check fails closed even outside production (`/mfa/enroll` and `/mfa/verify`
    * are 15-minute high-value surfaces, not a session read), and the handlers additionally refuse
-   * the token once `mfaEnabled` is true again.
+   * the token once the account holds a live batch again (#183 — `mfaEnabled` no longer says that).
    */
   const requireParentOrMfaRecovery = async (req: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -350,16 +370,18 @@ export async function authRoutes(app: FastifyInstance) {
     const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
     if (!parent) return reply.code(404).send({ error: "parent_not_found" });
 
-    // ADR-0023 decision 3: a recovery token may replace the (now cleared) secret, but its job ends
-    // the moment MFA is on again — otherwise a 15-minute token would outlive the recovery it served.
-    if (user.purpose === "mfa_recovery" && parent.mfaEnabled) {
+    // ADR-0023 decision 3, as amended by #183: a recovery token may bind the missing factor, but its
+    // job ends when the account holds a live batch again — otherwise a 15-minute token would outlive
+    // the recovery it served. `mfaEnabled` cannot stand in for that any more (it stays true through
+    // a recovery), so this asks for the durable completion state instead.
+    if (user.purpose === "mfa_recovery" && (await holdsLiveRecoveryBatch(parent.id))) {
       return reply.code(401).send({ error: "unauthorized" });
     }
 
     if (parent.mfaSecret && user.purpose !== "mfa_recovery") {
       // A recovery token has already proved password + a one-time code at `/mfa/recover`, and it is
-      // accepted here only while MFA is off — so replacing an *unverified* secret with it is not the
-      // replacement #139 guards against.
+      // accepted here only before a new batch exists — so replacing an *unverified* secret with it
+      // (a retry after a bad scan, #183) is not the replacement #139 guards against.
       const parsed = MfaEnrollSchema.safeParse(req.body ?? {});
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
       if (!(await provesParent(req, parent, parsed.data))) {
@@ -388,7 +410,8 @@ export async function authRoutes(app: FastifyInstance) {
     const user = req.user as { sub: string; purpose?: string; jti?: string };
     const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
     if (!parent?.mfaSecret) return reply.code(400).send({ error: "mfa_not_enrolled" });
-    if (user.purpose === "mfa_recovery" && parent.mfaEnabled) {
+    // #183: the token's authority ends with the recovery, and a completed recovery is a live batch.
+    if (user.purpose === "mfa_recovery" && (await holdsLiveRecoveryBatch(parent.id))) {
       return reply.code(401).send({ error: "unauthorized" });
     }
     if (!(await verifyTotpFresh(parent.id, parent.mfaSecret, parsed.data.code))) {
@@ -402,8 +425,8 @@ export async function authRoutes(app: FastifyInstance) {
       await tx.parentMfaRecoveryCode.deleteMany({ where: { parentId: parent.id } });
       await tx.parentMfaRecoveryCode.createMany({ data: rows });
     });
-    // The recovery token has done its job. The DB check above already refuses it while MFA is on,
-    // so a failed delete only shortens the window in one direction.
+    // The recovery token has done its job. The batch check above already refuses it once a new batch
+    // exists, so the token is dead twice over and a failed delete only shortens the window.
     if (user.purpose === "mfa_recovery" && user.jti) {
       await getRedis().del(recoveryKey(user.jti)).catch(() => undefined);
     }
@@ -447,13 +470,16 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Recover the account after losing the authenticator (ADR-0023 decision 2).
+   * Recover the account after losing the authenticator (ADR-0023 decision 2, as amended by #183).
    *
    * Password + one unused code, and the result is a 15-minute purpose-scoped token — **not** a
-   * session. MFA is cleared because the old secret is presumed gone, the used code is spent, the
-   * rest of the batch is deleted (a stolen list is bounded to one use), every session is revoked,
-   * and the account owner is notified. Enrolment and verification must happen before the parent can
-   * read family data again.
+   * session. The authenticator is cleared because the old one is presumed gone, the used code is
+   * spent, the rest of the batch is deleted (a stolen list is bounded to one use), every session is
+   * revoked, and the account owner is notified. Enrolment and verification must happen before the
+   * parent can read family data again — and before then `POST /login` answers
+   * `401 mfa_reenroll_required` to the password alone, because the policy stays on (`mfaEnabled`)
+   * while the factor does not (`mfaSecret`). That is the difference between this route and a
+   * password reset: it removes a broken factor, it does not downgrade the account.
    *
    * Every failure is the same `401 invalid_recovery` — unknown address, wrong password, wrong or
    * spent code, MFA not enabled — so the endpoint is not an account or MFA state oracle.
@@ -492,7 +518,10 @@ export async function authRoutes(app: FastifyInstance) {
       await tx.parentMfaRecoveryCode.deleteMany({
         where: { parentId: parent.id, id: { not: candidate.id } },
       });
-      await tx.parent.update({ where: { id: parent.id }, data: { mfaEnabled: false, mfaSecret: null } });
+      // #183: only the factor goes. `mfaEnabled` is the account's second-factor policy and a recovery
+      // does not turn it off — clearing it here is what let a stolen password produce a full session
+      // on the next `/login` and made the purpose-scoped token below restrict nothing.
+      await tx.parent.update({ where: { id: parent.id }, data: { mfaSecret: null } });
       return true;
     });
     if (!consumed) return reply.code(401).send({ error: "invalid_recovery" });
