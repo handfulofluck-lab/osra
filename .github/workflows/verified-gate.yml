@@ -55,12 +55,28 @@ jobs:
             exit 1
           fi
 
+          # "Kimi did not author" is checkable: Kimi commits as kimi@familyshield.local. Count Kimi-authored
+          # NON-merge commits on the PR (a merge of main into the branch is bookkeeping, not authorship).
+          # If there are any, a "— Kimi Code" signature does not count as verification. Added 2026-10-19
+          # after #196 was verified by Kimi at a head that contained a Kimi-authored change to this file.
+          kimi_commits=$(gh api --paginate "repos/$REPO/pulls/$PR/commits" --jq '[.[] | select((.parents | length) == 1) | select(.commit.author.email == "kimi@familyshield.local")] | length' | awk '{s += $1} END {print s + 0}')
+          echo "Kimi-authored non-merge commits on this PR: $kimi_commits"
+
           # One line per comment body (newlines flattened). Signed by a verifier AND naming a sha.
           verified=""
           while IFS= read -r body; do
             [ -n "$body" ] || continue
-            case "$body" in
-              *"— Antigravity"*|*"— Claude"*|*"— Kimi Code"*) ;;
+            # The signer is the LAST "— <name>" in the body: a comment that merely mentions another
+            # agent's signature (as #196's verification did) must not count as signed by that agent.
+            signer=$(printf '%s' "$body" | awk '{ while (match($0, /— (Antigravity|Claude|Kimi Code)/)) { last = substr($0, RSTART, RLENGTH); $0 = substr($0, RSTART + RLENGTH) } } END { print last }')
+            case "$signer" in
+              "— Antigravity"|"— Claude") ;;
+              "— Kimi Code")
+                if [ "$kimi_commits" -gt 0 ]; then
+                  echo "ignoring a Kimi Code verification: Kimi authored $kimi_commits commit(s) on this PR"
+                  continue
+                fi
+                ;;
               *) continue ;;
             esac
             for sha in $(printf '%s' "$body" | grep -oiE 'Verified-sha:[[:space:]]*`?[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$'); do
