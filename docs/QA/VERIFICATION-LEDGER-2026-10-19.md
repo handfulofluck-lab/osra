@@ -11,6 +11,13 @@ Nothing below is a re-run I performed, except the `file:line` re-reads of the co
 `node scripts/check-docs-links.mjs`, whose raw output is in this change's pull request. It is a ledger of
 **what is on record**, not a new verification.
 
+> **Refreshed later the same day — 2026-10-19 10:10 +0400 (06:10Z).** The day did not stop at `4e56410`.
+> **Eighteen more merges** landed between that sha and `origin/main = 025be5b` (05:43:16Z), and §8–§15
+> below record them the same way: one row per PR, the numbers **quoted** from the merge message, no
+> promotion, and a new section (§11) on what is now **blocked** rather than pending on hardware. §1–§7
+> are unchanged except for the three pointer sentences marked *(second half)* — a past state is
+> superseded here, never deleted (`AGENTS.md` §8).
+
 ## 1. The boundary, because the filename and the clock disagree
 
 The file is named for the maintainer's local day (**UTC+0400**, the clock the day is named by), and the
@@ -74,7 +81,9 @@ Sorted by merge time (UTC). Quotations are verbatim from the merge message (`git
 code or tests** (#145, #147, #149, #150, #153, #155, #156, #157) and **5 are docs/QA-only** (#143, #144,
 #148, #152, #154). Two non-author records exist in the whole batch (#143's conditional diff read at the
 merged head; #154's acceptance of the hardware evidence, nine minutes late); **neither is a pass, and
-neither is upgraded here.**
+neither is upgraded here.** *(second half)* The 18 merges after `4e56410` are in §9: **0
+tester-verified, 18 author-run, 0 with no run**, and for the first time in this record a non-author
+review arrived **before** a merge and named changes — which the merge then shipped without (§12).
 
 Named claims inside these PRs that **no one has run**:
 
@@ -163,7 +172,10 @@ Ordered by the cost of being wrong. The first block is the API authorization and
 second the Android manifest and location work, the third the remaining API correctness and the gates'
 own integrity, the fourth UI, and docs last. **One live gate at a time, ≥ 60 s apart** — the shared API
 rate-limits at 200 req/min and the later gate aborts with exit 2 (that is the #114/#129 contract, not a
-failure).
+failure). *(second half)* This list covers the 13 merges in §3 only. The 18 later merges — the MFA
+recovery surface, the refresh/counter binding, the `testOnly` manifest gate, the block-decision input and
+the QR scanner — have their own risk-ordered list in **§13**, which reuses these blocks and adds to them;
+nothing below is withdrawn.
 
 ### Block A — API authorization and session state
 
@@ -420,4 +432,323 @@ its parent still exists before deleting it.
   [`TEST-REQUESTS.md`](TEST-REQUESTS.md) as its own request with raw output, and this file can then cite
   it — that is the file working, not this one going stale.
 - **Not the last word on the 2026-10-18 UTC day.** Yesterday's ledger holds merges 1–31 and this one
-  holds 32–44; the pair is the day, and neither alone is.
+  holds 32–44; the pair is the day, and neither alone is. *(second half)* That statement is about the
+  2026-10-18 UTC day only: the file as a whole now holds **62 merges** (`603a33d` → `025be5b`, 31 + 13 +
+  18), because the 2026-10-19 local day runs to `05:43:16Z` — see §8 and §15's last bullet.
+
+## 8. The second half — what this refresh covers, and why it is 18 merges
+
+**Written 2026-10-19 10:10 +0400 (06:10Z), same author, same rules.** §3's rows stop at #155
+(`4e56410`, 2026-10-18 20:00:18Z) because that was `origin/main` when this file was written. The day did
+not stop there:
+
+| Reading | Range | Merges |
+|---|---|---|
+| local (+0400) | 2026-10-19 00:43:19 → **09:43:16** | 18 |
+| UTC | 2026-10-18 **20:43:19Z → 2026-10-19 05:43:16Z** | 18 |
+| `git log --first-parent --format='%h %s' 4e56410..origin/main` | — | **18** |
+
+`--first-parent` returns exactly 18 and every one is a PR merge; the `merge: main into <branch>` syncs
+(#169's, #171's and others) live inside their PR branches and have no row, as in §1. This half is
+honestly the *tail of the UTC day plus the local morning*, not a second calendar day — the same
+boundary trap §1 records, one layer along.
+
+Two of the eighteen were already **named** in this file without a row: #164 (`e202c9e`) and #171
+(`1733d83`), cited by §4.4's dated amendments. They get rows below because a citation is not a row: a
+reader asking "who ran what on #171" found only *"Read at `1733d83`"* inside a paragraph about #143.
+#160 (`14cf3c3`) is this file's own merge and #173 (`f777104`) is the PR that wrote §4.3/§4.4 into it;
+both are listed, because the ledger's own PRs are not exempt from the ledger.
+
+Checked and not duplicated: **#145** (design tokens, 3.8) is already §3's row and Block D item 9 and no
+later merge touched it; **#161** (localization, 3.1) is new here.
+
+## 9. The 18 merges
+
+Sorted by merge time (UTC). Quotations are verbatim from `git log -1 --format=%B <sha>`, trimmed with
+`…` where marked. "Head" is the second parent — the sha the numbers should belong to.
+
+| PR | Title | Merged as (UTC · local) | Head | Who ran what · exact numbers claimed | Status |
+|---|---|---|---|---|---|
+| [#160](https://github.com/handfulofluck-lab/osra/pull/160) | docs(qa): verification ledger 2026-10-19 and the close-out of yesterday's debts | `14cf3c3` 20:43:19Z · 00:43:19 | `430711b` | **Kimi (author, docs).** *"Docs-only; links 0/137."* | author-run |
+| [#161](https://github.com/handfulofluck-lab/osra/pull/161) | feat(parent-app): localization — English and Arabic with real RTL (3.1, first slice) | `40f4f61` 20:43:26Z · 00:43:26 | `ef96b54` | **Kimi (author).** *"Evidence at ef96b54 (CI 7/7): flutter test 158 passed (146 before + 12), analyze clean."* Nine Arabic screens at 320×568 assert no layout exception; the audit found a 12 px overflow in the child-detail app bar and fixed it. Gaps stated: no native-speaker review (that is 3.1's acceptance, issue #159), consent notice left English, four screens untranslated | author-run |
+| [#162](https://github.com/handfulofluck-lab/osra/pull/162) | fix(api): `/token/refresh` cannot outrun a revocation; a failed revocation no longer reports success (#158) | `e9339f0` 21:01:33Z · 01:01:33 | `3920307` | **Kimi (author).** *"Evidence at 3920307 (CI 7/7): vitest 363 passed; fail-before on origin/main is exactly the two shapes he predicted (expected 1 to be 0 for the parked-revocation case, and a promise that resolved instead of rejecting for the fail-open); probe 130/0 and e2e 69/69 on a spare :3110 (another lane held :3100), DB restored; probe-integrity unchanged."* Both findings are Claude's, from his review of #156 | author-run |
+| [#163](https://github.com/handfulofluck-lab/osra/pull/163) | docs(qa): row 3 asserts the accepted silence definition; TR-22 measures it PASS | `4017b89` 21:35:59Z · 01:35:59 | `bb2489e` | **Kimi (author, hardware on the Flip4).** *"Measured on the Flip4 with DEVICE_SILENT_MINUTES=5 and JOBS_ENABLED=1 on a spare instance: after am force-stop, the old expectation still reads False after 122 s (NOT gated), and the accepted assertion produced exactly one critical tamper/device_silent alert with Device.status offline. PASS, recorded as TR-22."* No unit or probe count in the merge message. `TESTING-STRATEGY.md` §3a stops saying PROPOSED | author-run (hardware) |
+| [#164](https://github.com/handfulofluck-lab/osra/pull/164) | fix(scripts,docs): the test app PIN is no longer published; the probe requires `-Pin` (#151, redaction half) | `e202c9e` 21:47:24Z · 01:47:24 | `3b14e8f` | **Kimi (author, docs + one script parameter).** *"Docs-only plus one script parameter; links 0/137, CI 7/7."* Claude's review arrived **1 m 47 s after** the merge and asked for three changes; the `Mandatory` one is still unapplied (§12). Rotation deliberately not done — #151 open | author-run — reviewed after the merge, conditions unlanded |
+| [#168](https://github.com/handfulofluck-lab/osra/pull/168) | fix(api): the silence window is validated against the agent's telemetry cadence (#166) | `e3fbe9b` 22:25:52Z · 02:25:52 | `e507f1c` | **Kimi (author).** *"Evidence at e507f1c (CI 7/7): vitest 369 passed (six new cases, including a parity test that reads both Kotlin cadence constants so the server cannot drift from the agent), probe 130/0 and e2e 69/69 on a spare :3416, DB restored, docs links 0/137."* Default 30 unchanged; a tighter override is clamped with a startup warning; `DEVICE_SILENT_ALLOW_TIGHT=1` keeps TR-22's 5-minute run possible | author-run — Claude's post-merge read **accepted** the design choice, and said the re-run is "for a tester" |
+| [#169](https://github.com/handfulofluck-lab/osra/pull/169) | fix(android): launcher, system UI and dialer are exempt from every block policy (#165) | `434f67b` 22:33:51Z · 02:33:51 | `9127b4d` | **Kimi (author).** *"Evidence at 9127b4d (CI 7/7 after merging main): 297 tests per flavour, 0 failures; fail-before reproduced (8 of 12 new tests fail on the pre-fix gate)."* Hardware **not** run and said so: the cleanup needed the app PIN, which #164 had just removed from the repo | author-run — post-merge review accepted the design with two open items (§12) |
+| [#171](https://github.com/handfulofluck-lab/osra/pull/171) | fix(android): the block decision uses the window in front, not the event's package (#165) | `1733d83` 23:49:33Z · 03:49:33 | `69767d8` | **Kimi (author, hardware on the Flip4).** *"Gates: 303 tests per flavour, 0 failures; merged-manifest gate passes; red before the change (the new test does not compile on 434f67b, which is the honest fail-before for an API that did not exist)."* Hardware: *"Home leaves com.sec.android.app.launcher focused at 2 s and 6 s; ACTION_DIAL reaches Samsung's dialtacts at 2 s and 6 s"*, Chrome still blocked, Home from the overlay at 2/6/14 s | author-run — **merged 2 m 36 s after a review that required two changes** (§12) |
+| [#173](https://github.com/handfulofluck-lab/osra/pull/173) | docs(qa): Claude's three conditions on #143, closed as dated amendments | `f777104` 01:19:37Z · 05:19:37 | `3b255d8` | **Kimi (author, docs).** *"Docs-only, links 0/139."* Append-only (this file's §4.3 item 1, §4.4, Block B item 5) | author-run |
+| [#174](https://github.com/handfulofluck-lab/osra/pull/174) | fix(android): debug builds clean up without the app PIN; release keeps the hard admin (#170) | `0313e01` 01:19:43Z · 05:19:43 | `186e2b0` | **Kimi (author, hardware on the Flip4).** *"Evidence at 186e2b0 (CI 7/7 after merging main): 307 tests per flavour, merged-manifest gate passes, fail-before reproduced by moving the overlay to src/release (2 failures) and by deleting the release merged manifests (checker exit 1)."* Hardware with no PIN held: *"dumpsys device_policy shows testOnlyAdmin=true, dpm remove-active-admin exits 0, adb uninstall succeeds"* | author-run — **merged 33 min after a review that required two changes** (§12) |
+| [#177](https://github.com/handfulofluck-lab/osra/pull/177) | test(parent-app): the social timeline test stops depending on the wall clock (#176) | `efc8e35` 01:09:02Z · 05:09:02 | `0d563d1` | **Kimi (author, test-only).** *"Reproduced at 00:55Z and fixed at 00:58Z, with CI's parent-app job green at 01:08Z - inside the window, which is the only evidence that matters."* No suite count. Honest note: the 23:59 boundary case passes on the old fixture too, so it is an edge guard, not a second fail-before | author-run |
+| [#179](https://github.com/handfulofluck-lab/osra/pull/179) | feat(3.2): the child app scans the parent's pairing QR | `df7c89e` 02:08:16Z · 06:08:16 | `7a39b3c` | **Kimi (author, hardware + JVM).** *"Evidence at 7a39b3c (CI 7/7): 330 tests per flavour, 0 failures; 13 parser cases and 7 state-machine cases; merged-manifest gate passes and fails when CAMERA is removed from a doctored merged manifest (2 assertions)."* Hardware: install, rationale, OS prompt, camera-ready status, accessibility labels and the denial fallback verified; typed pairing then completed end-to-end. **Scan → review → confirm not exercised** (camera covered); 5-minute test untouched (§11) | author-run — the claim half the PR is about is hardware-blocked |
+| [#180](https://github.com/handfulofluck-lab/osra/pull/180) | feat(api): one-time MFA recovery codes (ADR-0023 Option A, technical half) | `37ad743` 03:15:47Z · 07:15:47 | `7f857df` | **Kimi (author).** *"Evidence at 7f857df (CI 7/7): vitest 381 passed across 33 files; probe 141/0 including O1-O11 on a spare :3123; e2e 69/69; probe-integrity 12 added, 0 removed; migration 0017 is additive and applied."* Optional B untouched; no UI in this PR | author-run — **merged 29 min after a review whose first item "defeats the design"** (§12, issue #183) |
+| [#182](https://github.com/handfulofluck-lab/osra/pull/182) | docs(qa): pairing time measured on hardware (21 s proxy, not the 5-minute acceptance) | `44d8712` 03:26:21Z · 07:26:21 | `4ac057d` | **Kimi (author, hardware).** *"The number is 21.2 s median over three clean installs, of which ~14.6 s is the harness's own uiautomator polling and ~0.65 s is machine typing"*; `pair/claim` 5.7–9.7 ms; *"links 0/139; CI 7/7."* The run found #181 (the sheet) rather than a number worth passing | author-run (hardware, proxy) |
+| [#185](https://github.com/handfulofluck-lab/osra/pull/185) | docs: #181 diagnosed — Samsung Knox keeps a stale admin row, and our own cleanup created it | `157f477` 04:09:20Z · 08:09:20 | `72eed2d` | **Kimi (author, hardware).** *"Evidence: logcat with the Knox stack, dumpsys before/after, decompiled Knox excerpts, and the three hypotheses ruled out with measurements (tap target, testOnly build, intent). No product code changed because there is no app-side bug to fix."* The measurement is reproducible from `docs/TESTING.md:555` | author-run — a diagnosis, not a gate; **it blocks other rows** (§11) |
+| [#184](https://github.com/handfulofluck-lab/osra/pull/184) | feat(parent-app): MFA enrolment, show-once recovery codes, lost-authenticator recovery | `64679ad` 04:09:27Z · 08:09:27 | `a26d657` | **Kimi (author).** *"Evidence at a26d657 (CI 7/7): flutter test 184 passed (24 new), analyze clean; all ~59 new strings exist in both en and ar, and the ARB parity test stays green."* Declared gap: *"the shared :3000 predates #180, so the client shapes are those asserted by the merged API tests, not a live observation"* | author-run — the live half was **not run** and the PR says so |
+| [#187](https://github.com/handfulofluck-lab/osra/pull/187) | feat(android): removal tries Knox first on Samsung, falls back to AOSP; enrolment names the stale state | `8f61d4e` 04:37:30Z · 08:37:30 | `c4601d9` | **Kimi (author).** *"Evidence at c4601d9 (CI 7/7): 344 tests per flavour, merged-manifest gate green."* 14 unit tests: Knox only when the probe finds a callable API, fallback on missing class/method/reflection/SecurityException **and** on "Knox says success but the admin is still active". AC1 explicitly **not** met and hardware-blocked | author-run — AC1 blocked (§11); a post-merge review found a new defect, #188 |
+| [#189](https://github.com/handfulofluck-lab/osra/pull/189) | feat(parent-app): a guided first run — sign in, add child, pair, done (3.2) | `025be5b` 05:43:16Z · 09:43:16 | `a4080c8` | **Kimi (author).** *"Evidence at a4080c8 (CI 7/7): flutter test 202 passed (184 before + 18 new), analyze clean. The API was not touched and no endpoint was missing."* Wizard with resume, no skippable sign-in, "Finish setting up · Pair now" card; every step has an Arabic RTL test at 320×568. *"Not claimed: the timed five-minute human test and the child-side scan -> confirm on hardware"* | author-run |
+
+**Totals for this half: 18 merges — 0 tester-verified, 18 author-run, 0 with no run at all.** Fifteen
+touched a non-Markdown file (code, tests, a hardware script or a probe); three are docs-only: #160,
+#173 and #185 — and #185 is a diagnosis with no product change behind it.
+
+Claims inside these PRs that **no one has run**, named so a reader does not assume otherwise:
+
+- **#180** — the window between `/mfa/recover` and re-enrolment. `O1`–`O11` cover replay, sibling codes,
+  concurrent claims, the token's scope and *post*-re-enrolment login; **none of them logs in with only
+  the password after a recovery**, which is where the account is password-only (issue #183).
+- **#171** — a blocked app that is **visible but not active**: picture-in-picture and split screen
+  (issue #175). No test, JVM or hardware.
+- **#174** — that a `testOnly` debug admin does not stand in for the release build in the tamper rows
+  (issue #178). The hardware probe does not even read `testOnlyAdmin` today.
+- **#169/#171** — the `com.familyshield.` prefix exemption in `EssentialPackages.isEssential`
+  (`EssentialPackages.kt:65-77`): a sideloaded `com.familyshield.unblock` is exempt from every block.
+  Raised in the post-merge review of #169; **no issue tracks it**.
+- **#187** — AC1 (remove → reinstall → activate through the sheet) on a phone whose Knox registry is
+  clean: blocked (§11). AC3's user-facing half is JVM-proven only.
+- **#179**, **#182**, **#189** — the scan → review → confirm path on a phone, and roadmap 3.2's timed
+  five-minute non-engineer first run. TR-23 is a 21.2 s proxy and says so.
+- **#184** — every MFA screen against a **live** API. The client shapes came from the merged API tests;
+  the server reachable during the PR predated #180.
+- **#161** — Arabic by a native speaker (3.1's acceptance, issue #159), and the four untranslated screens.
+
+## 10. What this half does to §4's debts
+
+| §4 item | Verdict after this half |
+|---|---|
+| **4.1 #5 — "no merge message names a verifier, a `TR-*` row or a verification sha"** | **Unchanged, and now with a worse variant.** Still no verifier line in any of the 18. What is new is that a non-author review sometimes *did* arrive first — and the merge went ahead with its required changes open (#171, #174, #180) or arrived 1–2 minutes after the merge (#164). §12 is that table |
+| **4.1 #7 — "the UI-only PRs rest on widget tests"** | **grew by three**: #161 (158), #184 (184), #189 (202). #184 additionally declares that no live API was reachable; #189's acceptance is a human test nobody has run |
+| **4.2 — "a decision that exists only as a comment"** | **paid.** #163 made `TESTING-STRATEGY.md` §3a read ACCEPTED and the probe measure the accepted definition; the 120-s measurement survives as a non-gating NOTE |
+| **4.2 — #146's MFA takeover, `G19` has only the author's run** | still open, and the surface around it grew: #180 adds `/mfa/recover`, `/mfa/recovery-codes` and a 15-minute purpose token, all on the same `requireJwt` purpose rule. `G19` is still one run, the author's |
+| **4.2 — "the app PIN published in a repo doc"** | redaction **paid** (#164); rotation still open (#151). The review's `Mandatory = $true` item did not land (§12), so a run that forgets `-Pin` still **hangs** instead of failing |
+| **4.3 #4 — "#144's standard gate was never green where it was written"** | unchanged; no later PR re-tested the default vitest pool in a fresh worktree |
+| **4.3 #5 — "#150's checks have never been shown to fail"** | unchanged; still nobody's experiment |
+
+## 11. What is now **blocked** on hardware, not pending
+
+The distinction matters, because a reader who sees "open" on these rows will schedule them and lose a
+day. Each of these needs something the programme does not currently have; none of them is waiting for
+work to be done.
+
+### 11.1 The Flip4 (`R5CW116Y6GF`) carries a stale Knox admin row — so nothing needing device admin runs on it
+
+#185 measured it: Samsung keeps its own admin registry (`EnterpriseDeviceManagerService`,
+`mAdminList`/`mAdminMap`) that AOSP's `removeActiveAdmin` does not clear, and this repo's documented
+cleanup for debug builds (`adb shell dpm remove-active-admin`, the #170 route) is itself what creates
+the row. The row survives `pm uninstall` and reinstall with a **new uid**, because the match is
+component + user. `Activate` on the system sheet then throws
+`IllegalArgumentException: Admin is already added`, the sheet closes, and the app lands on
+`⚠️ Protection: alert-only`. Clearing it needs the Knox removal path *while the component is active*
+(blocked by the very defect), root, or a factory reset — a maintainer decision. Full detail, with the
+logcat to grep for, is `docs/TESTING.md:555`.
+
+Consequences, stated as the labels the rows should carry:
+
+| Row | What it needs | Why it cannot run now |
+|---|---|---|
+| #187 **AC1** (remove → reinstall → activate through the sheet) | a Samsung phone whose Knox registry is clean for `com.familyshield.agent/.security.FamilyShieldDeviceAdmin` | the Flip4's registry is permanently stale for that component until root/factory reset (#185). **Blocked — hardware** |
+| Phase 1 tamper rows — probe rows 1, 2, 10 (`adb uninstall`, `pm clear`, deactivate admin) and the Settings force-stop guard | a live Device Admin from the real UI | no admin can be activated on the Flip4 at all since the sheet started failing. TR-22's row 1 PASS (2026-10-18 21:06Z) predates the stale row and is not repeatable there. **Blocked — hardware** |
+| #186's and #188's enrolment states | a Samsung phone where the sheet can complete and where it can be cancelled | the stale row prevents the first; #188 is about the second and is JVM-only. **Blocked — hardware** |
+| #179 **scan → review → confirm** | an unobstructed rear camera | the phone's camera is covered in its test position (#179's own PR says so). The parser and state machine are JVM-tested (13 + 7); the acceptance step is not reachable. **Blocked — physical** |
+| Roadmap **3.2** — the timed **five-minute non-engineer first run** | a human who has not seen the flow, a working camera, **and** a successful device-admin activation | blocked twice: the camera (§11.1 row above) and the admin row. TR-23 (`#182`) is a 21.2 s proxy that models no reading, no typing and no parent-app step, and reached device admin in **0 of 3** runs. **Blocked — human + hardware** |
+
+Two compounding facts a planner should read together:
+
+- **#178 (open, from #174's review):** since #174 every debug build is `testOnly`, so its admin is a
+  *test* admin and the tamper rows measured on it are **not gate evidence** for the release build. The
+  only builds that can be cleaned up without the app PIN are exactly the ones whose tamper results do
+  not count.
+- **The release build cannot substitute on this host**: it is HTTPS-only (`cleartextTrafficPermitted`
+  false, TR-18), and there is no HTTPS API endpoint here.
+
+So the Phase 1 tamper gate has **no reachable measurement path on this hardware**: the debug build is
+not evidence, the release build cannot talk to this host, and neither can activate an admin on the
+Flip4. That is a hardware/decision problem for the maintainer, not a backlog item for a tester.
+
+### 11.2 What is still **pending** (and therefore a fair ask)
+
+- #155's `locate_now` failure ack and the while-in-use-only case (Block B item 5 in §5) — needs pairing,
+  which works; no admin required.
+- TR-22 row 3's re-run with `DEVICE_SILENT_ALLOW_TIGHT=1` (#168) — software + a 10-minute wait.
+- Every API and JVM row in §13 — no hardware at all.
+- #179's scan path becomes pending again the moment the phone is off the mount.
+
+## 12. The reviews that arrived — and what the tree still does not do
+
+This is the half's most uncomfortable finding, and it is checkable in four greps. Claude reviewed five
+of these PRs. Three reviews arrived **before** the merge and named required changes; every one of those
+merges shipped without them, and the merge messages do not mention the review at all. The changes were
+then filed as issues — which is the right place for them — but a reader of `git log` sees a clean merge.
+
+| PR | Review vs merge | What the review required | In the tree at `025be5b`? | Tracked by |
+|---|---|---|---|---|
+| #164 | review 21:49:11Z, merge **21:47:24Z** — review 1 m 47 s **after** | `-Pin` must not be `Mandatory` (a forgotten flag hangs a non-interactive run); default `$Pin = $env:OSRA_TEST_APP_PIN`, and fix two doc commands that omit it | **No.** `scripts/hardware/android-bypass-probe.ps1:23` and `android-pairing-time.ps1:16` still read `[Parameter(Mandatory = $true)][string]$Pin` | **nothing** |
+| #171 | review 23:46:57Z, merge 23:49:33Z — **2 m 36 s later** | (1) judge every **visible** window, not only the active one — the PiP/split-screen bypass — via a pure `blockCandidates(...)` + cases; (2) recycle `rootInActiveWindow` | **No.** `AccessibilityMonitorService.kt:76-96` decides from `resolveForeground`/`rootInActiveWindow` alone, and `:127` reads it without recycling (so does the tamper guard at `:191`) | [#175](https://github.com/handfulofluck-lab/osra/issues/175) (PiP, open); recycling half **untracked** |
+| #174 | review 00:46:23Z, merge 01:19:43Z — 33 min later | (1) the hardware probe must label tamper rows `PASS (debug/testOnly — not gate evidence)` and TESTING-STRATEGY must say the tamper gate counts only on a release-signed build; (2) a release-APK `testOnly` guard in the release checklist | **No.** `grep -n testOnly scripts/hardware/android-bypass-probe.ps1 docs/QA/TESTING-STRATEGY.md docs/RELEASING.md` → nothing. `docs/TESTING.md:31,600-610` describes the mechanism, not the evidence limit | [#178](https://github.com/handfulofluck-lab/osra/issues/178) (open) |
+| #180 | review 02:46:11Z, merge 03:15:47Z — 29.5 min later | (1) *"the first defeats the design"*: after recovery a password-only `/login` must not return a session — model `mfa_reenroll_required`; (2) bump the sessions version **before** the transaction so a failed revocation does not spend the code | **No.** `services/api/src/routes/auth.ts:210` asks for a TOTP only `if (parent.mfaEnabled)`, and `:495` sets `mfaEnabled: false`; `:502` calls `revokeAllRefreshTokens` **after** the commit, and it throws since #162 (`services/api/src/lib/sessions.ts:114`). ADR-0023:82 calls the result "the password-only window" and bounds it, which is the disagreement, not a fix | [#183](https://github.com/handfulofluck-lab/osra/issues/183) (open, `security/high`) |
+| #187 | merge 04:37:30Z, review **after** | post-merge: `AdminEnrolmentPolicy.classify` returns `STALE_KNOX_ADMIN` whenever the sheet returned, AOSP reports no admin **and** a Knox API is present — which on Samsung is always, so every **cancelled** activation shows the stale-state screen | The finding is about the merged code and is true of it | [#188](https://github.com/handfulofluck-lab/osra/issues/188) (open) |
+| #169 | merge 22:33:51Z, post-merge review | `EssentialPackages.isEssential` exempts any `com.familyshield.` prefix — the same name-spoof class #169 removed for `.dialer`/`.telecom` | **Yes, still there:** `apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/EssentialPackages.kt:65-77` | **nothing** |
+
+Reproduce the four headline claims in one sitting, no phone and no stack:
+
+```bash
+grep -n "Mandatory = \$true" scripts/hardware/android-bypass-probe.ps1 scripts/hardware/android-pairing-time.ps1
+grep -n "rootInActiveWindow" apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt
+grep -n "if (parent.mfaEnabled)" services/api/src/routes/auth.ts          # :210 - no re-enrol state exists
+grep -n "OWN_PREFIX" apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/EssentialPackages.kt
+```
+
+**What this section does not say.** It does not say the merges were wrong to land: #171's diagnosis was
+right and fixed a real defect, #180 is reachable-by-API-only and #184 makes it usable, and each finding
+has an issue with a repro. It says the **evidence trail** reads as if the reviews agreed, and §6.5(3)
+asks a merge message to name what verified it. Here the honest line would have been *"merged with
+#183 open; the recovery half is API-only and the UI half ships in #184"* — one sentence, and the next
+reader would not have to reconstruct this table.
+
+## 13. The re-run list for this half, in risk order
+
+Same rule as §5: **one live gate at a time, ≥ 60 s apart**; the shared `:3000` rate-limits at 200 req/min
+and a second concurrent gate aborts with exit 2 (the #114/#129 contract, not a failure). Nothing in §5 is
+withdrawn — this block is additive, and the session-counter row of §5 Block A item 1 is still the first
+thing to re-run in the **first** half.
+
+### Block A — the API surfaces this half adds (highest risk first)
+
+1. **#180 — MFA recovery** (`37ad743`). The riskiest change in the batch: two endpoints a caller reaches
+   with email + password + a one-time code, a purpose-scoped token, and a state change that removes the
+   second factor. Reproduce the author's `141/0` (O1–O11) on a branch-built server, then test the two
+   things the review says are wrong — **as evidence for #183, not as a regression hunt**:
+
+   ```bash
+   # 1. recover, then log in with the password alone - today this returns a full session
+   curl -s -XPOST http://127.0.0.1:3100/v1/auth/mfa/recover -H 'content-type: application/json' \
+     -d '{"email":"<acct>","password":"<pw>","code":"XXXX-XXXX-XXXX-XXXX"}'
+   curl -s -XPOST http://127.0.0.1:3100/v1/auth/login -H 'content-type: application/json' \
+     -d '{"email":"<acct>","password":"<pw>"}' | jq 'has("token")'     # #183 says: expect no session
+   ```
+
+   Pass for a **fix** is `401 {"error":"mfa_reenroll_required"}` and a recovery token, and `token`
+   absent. What the tree does today is a full parent session: `routes/auth.ts:210` + `:495`.
+   Second: make `incrby` reject and confirm a retry with the same code still works (today the code is
+   spent and the caller gets a 5xx — `routes/auth.ts:502` after the transaction). Then the invariant
+   that must not move: the recovery token still gets `401` on `/family/me`, `/logout-all` and
+   `/mfa/recovery-codes` (probe `O7`).
+   *Apply migration `0017_parent_mfa_recovery_codes` before any of this* — a server built from a
+   checkout without it answers 500 on `/mfa/recover`, which is not a finding.
+
+2. **#162 — the refresh record is bound to the counter** (`e9339f0`). Every refresh record carries `sv`
+   now (`routes/auth.ts:133-137`), `/token/refresh` refuses one below the current version and refuses a
+   record with no `sv` at all (`:580-610`), and the revocation bump is no longer best-effort
+   (`lib/sessions.ts:114-129`, which is what makes #183's ordering bug a 5xx). Test: log in, keep the
+   refresh token, `POST /v1/auth/logout-all`, then refresh → `401`; and a record written before #158
+   (no `sv`) → `401`, forced re-login, **not** verified against the legacy epoch. This closes the
+   "rolling-deploy window" question §5 Block A item 1 raises.
+
+3. **#156's same-second case with no sleep** — carried unchanged from §5 (Block A item 1). Still nobody's
+   run but the author's.
+
+4. **#139's residual** (a co-parent token on a sibling family → `403`) — carried unchanged from §5.
+
+### Block B — the Android gate, and the block decision
+
+5. **#174 — the `testOnly` half of the merged-manifest gate** (`0313e01`). The gate now expects **10
+   named assertions across two classes** — Play 6, Full 4 — of which four are `testOnly`
+   (`scripts/check-merged-manifest-gate.mjs:40-55`). Verify it can **fail**, in the shape #157 taught:
+   put `android:testOnly="true"` in a release source manifest and watch
+   `play/full release merged manifest is not testOnly` go red; delete a release merged manifest and
+   confirm `MergedManifestLocator.require` fails rather than skipping
+   (`apps/child-android/app/src/test/java/com/familyshield/agent/manifest/MergedManifestLocator.kt:50`).
+   Then decide Claude's unlanded item (#178): the hardware probe still cannot say *"not gate evidence"*.
+
+6. **#171 / #169 — what the block decision evaluates** (`1733d83`, `434f67b`). Two rows, one JVM and one
+   hardware, both about a claim the code does not make today:
+   - **PiP / split screen** (#175): bedtime active, start a video, press Home. Does the overlay come up
+     for `com.google.android.youtube`? Does the PiP keep playing on top? Record both — the review asked
+     for the second measurement too, and "keeps playing" is a decision for the maintainer, not a failure
+     of the run.
+   - **`com.familyshield.` prefix** (`EssentialPackages.kt:65-77`): sideload a package named
+     `com.familyshield.unblock` with a launcher icon and confirm it is **blocked** during bedtime.
+     Today it is exempt. This is the cheapest real bypass in the tree.
+
+7. **#179 — the scanner** (`df7c89e`): reproduce 330 tests per flavour and the 13 + 7 cases, and run
+   scan → review → confirm on a phone off the mount. Blocked on hardware today (§11); the JVM half is not.
+
+8. **#187 / #188 — the Knox removal policy** (`8f61d4e`): 344 tests per flavour reproduce; AC1 is
+   blocked (§11). The cheap independent read is the **fallback** claim, which needs no phone: "Knox
+   claims success but `DevicePolicyManager` still reports the admin active" must land on AOSP removal —
+   that is a unit test, and a reviewer can read it at
+   `apps/child-android/app/src/main/java/com/familyshield/agent/security/AdminRemovalPolicy.kt:46`.
+
+### Block C — the rest of the API and the jobs
+
+9. **#168 — the silence floor** (`e3fbe9b`): re-run TR-22 row 3 with the flag the merge added —
+   `DEVICE_SILENT_ALLOW_TIGHT=1 DEVICE_SILENT_MINUTES=5` — on a server built from `main` after #168. The
+   clamp-and-warn path is unit-tested; the 5-minute measurement has only the author's run, and #168's
+   review asked for exactly this re-run at the merged sha.
+
+10. **#150's mutation experiment** — still owed from §5 Block C item 7, unchanged by this half.
+
+### Block D — UI, cheapest to run, lowest blast radius
+
+11. **#189** (`025be5b`) — `flutter test` 202 expected; **#184** (`64679ad`) — 184 expected, and the live
+    gap it declared is now closable (a server built from `main@025be5b` **has** #180; at the time of the
+    PR the process on `:3000` did not). Walk enrol → show-once → recover against that server.
+12. **#161** (`ef96b54`) — 158 expected. 3.1's acceptance is a **native-speaker review of the Arabic
+    screenshots** (issue #159); a tester cannot sign it off, only the maintainer or a native speaker can.
+
+### Block E — docs-only, a diff read
+
+13. **#160, #173, #182, #185, #164** — the §6.5 check is a diff read: every cited `file:line` must say
+    what the text claims. While in there, fix the staleness the §8 boundary exposes:
+    `docs/ROADMAP.md:90` still says 3.1 is *"unmerged as of 2026-10-19"* (merged `40f4f61`), `:91` still
+    says the wizard is *"unmerged"* with *"no merge sha yet"* (merged `025be5b`), and `:92` still says
+    #180's *"independent verification and merge sha still owed"* (merged `37ad743`). A citation that no
+    longer resolves is a documentation bug (`AGENTS.md` §8) — and row 3.2's "in progress" is correct
+    while 3.1's "unmerged" is not.
+
+## 14. The counts moved — use these, not §6's
+
+§6's numbers were true at `4e56410`. At `origin/main = 025be5b`:
+
+| Gate | §6 says | Now | Set by |
+|---|---|---|---|
+| `pnpm --filter @familyshield/api test` | 361 | **381** across 33 files | #162 363, #168 369, #180 381 |
+| `qa-probe` | 130 | **141**, incl. **O1–O11** | #180 (*"probe 141/0 … on a spare :3123"*) |
+| `e2e` | 69 | 69 | unchanged |
+| `check-probe-integrity` | 0 removed or demoted | *"12 added, 0 removed"* at #180 | run it; do not trust a total from here |
+| merged-manifest gate | 2 result sets, the #157 assertions | **10 named assertions**, 2 classes (Play 6 / Full 4), four of them `testOnly` | #157, #169 (CAMERA + queries), #174 |
+| `flutter test` | 146 | **202** | #161 158, #184 184, #189 202 |
+| Android JVM | 267 per flavour | **344 per flavour** | #169 297, #171 303, #174 307, #179 330, #187 344 |
+| `check-docs-links` | 132 | **141** checked (139 between #173 and this refresh) | #160 137, #173/#182 139, §8–§15 +2 |
+
+Two environment deltas that bite the re-runs:
+
+- **Migration `0017_parent_mfa_recovery_codes`** is new since §6 was written. A branch-built server on a
+  database that stopped at 0016 will 500 on `/mfa/recover`; apply it first
+  (`services/api/prisma/migrations/0017_parent_mfa_recovery_codes/migration.sql`).
+- **`adb install -t`** is now mandatory for every debug build (#174): without `-t`, adb refuses a
+  `testOnly` APK. The hardware scripts were updated (`scripts/hardware/android-signing-tr07.ps1`), which
+  is why a stale command from an older log fails at the install step.
+
+## 15. What this refresh is not
+
+- **Not a re-verification.** No gate in §9 was re-run to write it. The commands I ran are
+  `node scripts/check-docs-links.mjs` (raw output in the PR), `git log`/`git log --first-parent`/`git
+  show` for the shas, times, heads and merge text, `gh pr view`/`gh issue view`/`gh search issues` for
+  the review and issue records quoted in §12, and the `grep`/`sed` reads of `routes/auth.ts`,
+  `lib/sessions.ts`, `AccessibilityMonitorService.kt`, `EssentialPackages.kt`,
+  `check-merged-manifest-gate.mjs`, `MergedManifestLocator.kt`, `PlayMergedManifestTest.kt`,
+  `docs/TESTING.md` and `docs/ROADMAP.md` that the "still true at `025be5b`" claims rest on. The shas
+  those reads were taken at are `025be5b` (= `origin/main` when this was written).
+- **Not a promotion.** All 18 rows are `author-run`, including the three hardware runs (#163, #174,
+  #179/#182) and the diagnosis (#185). A review that reads a diff is not a run; a post-merge acceptance
+  (#168) is not a run; an issue that tracks a finding is not a fix. **0 tester-verified.**
+- **Not a claim that the §12 findings are unfixed forever.** They have issues with repros (#175, #178,
+  #183, #188). They are recorded here because the code at `025be5b` still behaves as the reviews said,
+  and because the merge messages do not mention either the review or the issue.
+- **Not a substitute for a `TR-*` row.** When a verifier runs one of §13's rows, the record belongs in
+  [`TEST-REQUESTS.md`](TEST-REQUESTS.md) with raw output, and this file can then cite it.
+- **Not the whole day, in either clock.** In UTC this file plus the 2026-10-18 ledger hold
+  `603a33d..025be5b`; on the maintainer's +0400 clock the "2026-10-19" day is §3's single merge
+  (`4e56410`) plus all 18 above. Anyone counting a day must say which clock — the one thing this file has
+  now got wrong twice, and the reason §8 repeats the three readings.
