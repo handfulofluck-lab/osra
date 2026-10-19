@@ -531,6 +531,68 @@ see §6); the script logs `device_policy after Activate: <bool>` to expose it. O
 Result of the reference run: `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-PAIRING-TIME.md` (21.4 / 21.1 /
 21.2 s, median 21.2 s).
 
+## 5i. Verification harnesses for #206 (TR-48, TR-51/52/53)
+
+Two harnesses exist so the two rows no command could prove are runnable. Neither changes product
+code; both are measurements, and neither decides the row.
+
+### TR-48 — on-device app list and its sync cadence (`app-list-cadence.ps1`)
+
+```powershell
+# parent token + device id from a tr10-state.json (the file tr10-pair.ps1 writes)
+.\scripts\hardware\app-list-cadence.ps1 -StateFile C:\KARIM\KCL\tr07\tr10-state.json `
+  -Base http://127.0.0.1:3000 [-Serial R5CW116Y6GF] [-Out <dir>]
+
+# or pass them explicitly; -SelfTest runs the fixtures with no phone and no API
+.\scripts\hardware\app-list-cadence.ps1 -DeviceId <id> -Token <parent JWT>
+.\scripts\hardware\app-list-cadence.ps1 -SelfTest
+```
+
+It reads the launchable third-party packages the **device** reports (`pm list packages -3`
+intersected with `cmd package query-activities` for `MAIN`/`LAUNCHER`), reads the list the **API
+stored** (`GET /v1/devices/:id/apps`, parent token with the `rules` permission), and compares them
+as sets. `com.familyshield.agent` is excluded from the device set because the collector skips
+itself. The two gated directions are: a launchable user app on the device but not stored, and a
+stored package the device no longer has. The documented tolerance is `-ToleranceSeconds` (default
+60 s of clock skew): an app whose `firstInstallTime` is at or after `reportedAt` minus that margin
+is reported as TOLERATED, because it was installed after the last sync. The reverse direction has
+no tolerance: a package uninstalled after the last sync stays stored until the next upload and is
+reported STALE, so run the comparison after a sync or expect that row to say so.
+
+The cadence half needs two consecutive `appsReportedAt` values 14–16 minutes apart, using the same
+rule as the acceptance (inclusive at 840 and 960 s). **The agent uploads only when the list changes
+(or when the server copy is 24 h old), so a stationary phone does not move `appsReportedAt` every
+15 minutes.** If the current value is at most 16 minutes old it is used as the first endpoint and
+one observed change is enough; if it is older, two observed changes are required. If the deadline
+(`-CadenceWaitMinutes`, default 35) arrives with fewer marks, the harness prints WAITING and exits
+**4** — it does not invent a timestamp, and the row stays open. To exercise the upload path, change
+the launcher-visible list on the phone (install/uninstall a harmless app) once per telemetry tick.
+Exit codes: 0 PASS, 1 FAIL, 2 setup/usage, 3 device could not be read, 4 WAITING. The PASS/FAIL
+table and `app-list-cadence.json` are the evidence for the row.
+
+### TR-51/52/53 — the human five-minute run (`android-pairing-time.ps1 -Human`)
+
+```powershell
+.\scripts\hardware\android-pairing-time.ps1 -Human [-Observer "<name>"] `
+  [-MarkerFile <path>] [-Out <dir>]
+.\scripts\hardware\android-pairing-time.ps1 -Human -SelfTest
+```
+
+The five-minute acceptance is a **non-engineer using the QR path**, so a machine-driven run cannot
+measure it. `-Human` therefore sends no input events, runs no `uiautomator` dump and does not touch
+`adb` at all. It asks for Enter at the script start (person about to launch the app) and at each
+boundary the observer reports: welcome, signed in, child added, QR shown, child scanned, and
+"Protection: on". With `-MarkerFile` the last mark is the file appearing instead of Enter. It writes
+`RESULTS-PAIRING-HUMAN.md` and `RESULTS-PAIRING-HUMAN.json` with the elapsed time per step and the
+total, then prints **one** line comparing the total with 300 s.
+
+That line is **informational only**. The script does not pass or fail a human run: a total over
+300 s means the row stays open, and a total under 300 s is not a pass by itself — the reviewer
+records the run and the checklist decides. The machine-driven mode of the same script is TR-23's
+21.2 s proxy and is **not** TR-51/52/53; its banner says so.
+
+Both self-tests run in `workflow-lint` beside `classify-build.ps1 -SelfTest`.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a

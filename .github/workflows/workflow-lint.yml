@@ -50,6 +50,19 @@ jobs:
         shell: pwsh
         run: ./scripts/hardware/classify-build.ps1 -SelfTest
 
+      - name: App-list cadence self-test - set comparison and the 14-16 minute window (TR-48, #201)
+        # The live harness is a phone + API measurement; this step exercises the two pure decisions
+        # it makes (what is missing/stale/tolerated, and whether a gap is inside 14-16 minutes).
+        # A regression here would either invent a PASS or fail an app installed after the last sync.
+        shell: pwsh
+        run: ./scripts/hardware/app-list-cadence.ps1 -SelfTest
+
+      - name: Human pairing timer self-test - step marks, totals and result files (TR-51/52/53)
+        # -Human never touches adb and never assigns PASS/FAIL to a person's run. This step proves
+        # that the duration arithmetic, the informational verdict and both output files stay intact.
+        shell: pwsh
+        run: ./scripts/hardware/android-pairing-time.ps1 -Human -SelfTest
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.
