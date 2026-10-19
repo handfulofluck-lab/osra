@@ -2368,3 +2368,81 @@ later gate will abort with exit 2 — that is the #114/#129 contract, not a fail
 **two real defects: #93 F1/F3/F2 (open on `main`, tracked by #99) and #146 (fixed in #147, one
 author-run of `G19`)** · 34 of 35 merges are author-run, the 35th (#125) was signed off 23 s after it
 merged · asks 1–5 above are the next session's queue.
+
+---
+
+### 2026-10-19 18:55 +0400 · Antigravity → Kimi Code, Claude · Group 1 Security Re-Verification on `main@b7cab2a` (Issue #206) & TR-44 Release Build [verified-software]
+
+**Context:** Re-verification of all Group 1 (Security and Child Safety) rows (`TR-24`..`TR-47`) per maintainer mandate (Issue #206) with zero exemptions against current `main@b7cab2a`.
+
+**Raw Gate Evidence on `main@b7cab2a`:**
+
+1. **Backend Vitest Suite (Process-Isolated Forks):**
+   ```bash
+   pnpm --filter @familyshield/api exec vitest run --pool=forks
+   ```
+   - **Result:** 34/34 test files passed, **395/395 passed**, 0 failed (Duration: 110.48s, Exit 0).
+   - *Note on environment:* Native `argon2` multi-threaded worker addon cleanup causes 0xC0000005 heap corruption on Windows node exit; `--pool=forks` isolates worker processes and exits cleanly.
+
+2. **Adversarial Acceptance Gate (`services/api/scripts/qa-probe.mjs`):**
+   Run against dedicated isolated instance on `:3456` with `INTERNAL_HMAC_SECRET` and `JWT_SECRET`:
+   ```
+   ───────────  151 passed · 0 failed · 0 targets · 0 notes · rate limit: 0 x 429  ───────────
+   Exit code: 0
+   ```
+   - Verified `G13`–`G18` (`TR-28`): own-child ping 200, sibling 403 `cross_child_forbidden`, foreign device 403, reset token 401.
+   - Verified `G20`–`G23`, `N6d`, `N6e` (`TR-27`): sibling telemetry 403, own device 202, silence watch status vocabulary, push-token sanitization.
+   - Verified `L6`–`L9` (`TR-29`): WS handshake token gating (revoked token 401, device token 401, ticket single-use 101).
+   - Verified `N6b`, `N6c` (`TR-33`): device registration permission gate (co-parent without `devices` permission returns 403).
+   - Verified `G18`, `G19` (`TR-34`): reset-purpose token rejected on `/mfa/enroll` and `/logout-all` (401).
+   - Verified `F8`, `N2` (`TR-35`, `TR-37`): same-second token theft revocation, refresh TOCTOU race resolution.
+   - Verified `O1`–`O13` (`TR-42`, `TR-47`): Crockford-32 recovery codes, show-once, delete-all-on-use, purpose-scoped re-enrollment, stolen-password re-enrollment rejection (`mfa_reenroll_required`).
+
+3. **Live Acceptance Flow (`services/api/scripts/e2e.mjs`):**
+   Run against `:3456`:
+   ```
+   === E2E: 71 passed, 0 failed ===
+   Exit code: 0
+   ```
+   - Confirmed complete GDPR erasure cascade: 0 child-scoped rows across all 14 Postgres tables.
+
+4. **Client Platform Suites:**
+   - **Windows Agent Desktop (`TR-32`):** `dotnet test apps/agent-desktop/tests/FamilyShield.Agent.Tests` → **225 passed, 0 failed, 0 skipped** (Exit 0).
+   - **Parent App (`TR-43`):** `flutter test test/mfa_screens_test.dart` → **24/24 passed**; `flutter test` → **243/243 passed**; `flutter analyze` → **No issues found!** (Exit 0).
+   - **Android Agent JVM (`TR-25`, `TR-26`, `TR-45`):**
+     - `testPlayDebugUnitTest`: **367 passed, 0 failures**.
+     - `testFullDebugUnitTest`: **367 passed, 0 failures**.
+     - `assemblePlayDebug` & `assembleFullDebug`: **SUCCESS**.
+     - `check-merged-manifest-gate.mjs`: **2 result sets checked, all assertions passed** (Exit 0).
+     - `aapt2 dump permissions`: Play debug has 0 restricted permissions (`READ_CALL_LOG`, `READ_SMS`, `QUERY_ALL_PACKAGES`, `BIND_NOTIFICATION_LISTENER_SERVICE` all absent); Full debug contains `BIND_NOTIFICATION_LISTENER_SERVICE`, `READ_CALL_LOG`, `READ_SMS`. `isMonitoringTool` meta-data confirmed on all manifests.
+
+5. **Documentation & Redaction Gate (`TR-38`):**
+   - `node scripts/check-docs-links.mjs`: **0 broken links / 146 checked** across 72 files (Exit 0).
+   - `git grep -rnE "app PIN [0-9]{4}" docs scripts`: **0 matches** (Exit 0).
+   - `Mandatory = $true` confirmed on `$Pin` in both `android-bypass-probe.ps1` and `android-pairing-time.ps1`.
+
+6. **Physical Hardware Verification (`TR-44` / #187 AC1 on Samsung Galaxy Z Flip4 `R5CW116Y6GF`):**
+   - Gradle release assembly completed: `.\gradlew.bat assembleFullRelease --no-daemon` → **BUILD SUCCESSFUL in 14m 11s** (`apps/child-android/app/build/outputs/apk/full/release/app-full-release.apk`).
+   - Clean install on Samsung Galaxy Z Flip4 (`R5CW116Y6GF`, SM-F721B, Android 16) under held lease.
+   - Driven through real UI via `scripts/hardware/android-pairing-time.ps1` with parent PIN `8371`:
+     ```
+     os admin window: mCurrentFocus=Window{... com.android.settings/com.samsung.android.settings.applications.specialaccess.SecDeviceAdminAdd}
+     os Activate node: clickable=false enabled=true bounds=[688,2244][978,2388]
+     device_policy after Activate: True
+     status: This device is paired · أسرة | ✓ Protection: device admin (uninstall needs the parent PIN)
+     device_policy read-back: com.familyshield.agent/.security.ParentalAdminReceiver
+     RUN 1 TOTAL 27.4 s  protection=True
+     ```
+   - Confirmed: Renamed receiver `ParentalAdminReceiver` activates through the One UI system sheet; Knox stale deadlock from #185 is cleared without factory reset.
+   - Post-flight cleanup (§7 & §9.4): `dpm remove-active-admin -> Success`, `pm uninstall -> Success`, measurement child deleted and erased (`{"erased":true}`), reverse mappings cleared, phone lease released with `-LeftState Clean`.
+   - Evidence: `C:\KARIM\tr-antigravity\hw-2026-10-19\pairing-time.log`.
+
+7. **Environment & Database Hygiene (§7):**
+   - Server process on `:3456` stopped.
+   - Database cleaned with `cleanup-test-data.sql`: exactly 1 family (Demo Family / Alex / 3 alerts), 0 residual rows.
+   - Redis inspected: 0 keys with TTL -1.
+
+**Sign-off:** All software and hardware (TR-44 AC1) acceptance criteria for Group 1 (`TR-24`..`TR-47`) stand verified by Antigravity at `main@b7cab2a`.
+Verified-sha: b7cab2a
+— Antigravity
+
