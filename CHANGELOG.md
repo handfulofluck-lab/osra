@@ -59,6 +59,24 @@ environment where it was written — see `docs/QA/` for the verification state.
   com.familyshield.agent` → `Success`, **exit 0**; `pm list packages | grep -i familyshield` empty. No
   app PIN was held or used. The release build was not installed on the phone; its half is asserted by
   the merged-manifest tests and the absence of `testOnly` in `assembleFullRelease` / `assemblePlayRelease`.
+### Test infrastructure — the `parent-app` social test no longer depends on the wall clock (issue #176)
+- **The defect.** `apps/parent-app/test/social_screen_test.dart` seeded its timeline from
+  `DateTime.now()`. Between 00:00 and 00:40 local, the `now - 40 min` call crossed midnight, so the
+  asserted *today* header did not exist (`Found 0 widgets with text "Monday, Oct 19, 2026"`); between
+  00:00 and 02:00 local the `now - 26 h` call landed two days back, so `reveal(<yesterday>)` threw
+  `Bad state: No element` at `:265`. The `parent-app` CI job was therefore red for two hours every day
+  and took every open PR with it. Reproduced at **00:55Z on 2026-10-19**:
+  `TZ=UTC flutter test test/social_screen_test.dart` → 7 passed, 1 failed with exactly that stack.
+- **The fix (tests only, no product change).** The fixture pins
+  `testNow = DateTime(2026, 10, 19, 12, 0)`; every default and timeline timestamp is derived from it,
+  and the timeline is seeded from calendar fields (`today`, `yesterday`) rather than
+  `base ± Duration`. The screen already groups by each event's local date, so it needed no clock seam.
+  Two regression cases pin the fixture base at **00:00** and **23:59 local** and assert the same rows,
+  mm:ss durations, 120-char preview cap and two day headers. On the old fixture the 00:00 case fails
+  (`Monday, Oct 19, 2026` not found); the 23:59 case was green before and after and guards the other
+  edge. The trap is recorded in `docs/TESTING.md` §6.
+- **Gate:** `TZ=UTC flutter test` (inside the failing window) → all tests passed;
+  `flutter analyze` → No issues found!.
 
 ### Android — the block decision is made from the window in front, not the accessibility event's package (issue #165, reopened)
 - **The defect #169 did not cover.** On the Flip4 (Android 16, WM-Shell) the Home transition arrives
