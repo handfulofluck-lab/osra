@@ -27,6 +27,121 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **Tested.** `node scripts/check-workflows.mjs --strict`: 0 errors, 0 warnings. The step script was
   run locally against #195 and #191: no label → fail; label but no matching signed sha → fail; a
   signed `Verified-sha:` matching the head → pass.
+### API — a recovery clears the authenticator, not the MFA policy (#183, security)
+- **Why.** #180 merged with MFA recovery that defeated its own purpose. `/mfa/recover` wrote
+  `mfaEnabled: false, mfaSecret: null` (`services/api/src/routes/auth.ts:495` at `675a118`), and
+  `/login` asks for a TOTP only `if (parent.mfaEnabled)` (`:210`). So the first `POST /login` after
+  a recovery, with the password alone, returned a **full session**; the purpose-scoped recovery
+  token restricted nothing, and the account stayed password-only until someone chose to re-enrol.
+  Claude's review called it "the first defeats the design" (issue #183, from the #180 review).
+- **What.** The two flags now mean what they say: `mfaEnabled` is the account's second-factor
+  **policy**, `mfaSecret` is the **bound factor**. `services/api/src/routes/auth.ts`:
+  - `/mfa/recover` (`:524`) clears `mfaSecret` and **leaves `mfaEnabled` true** — the used code is
+    still spent, the siblings are still deleted, every session is still revoked, the notice email is
+    still sent.
+  - `/login` (`:218`) with the correct password on `mfaEnabled && !mfaSecret` answers
+    `401 {"error":"mfa_reenroll_required"}`: no access token, no refresh token, and deliberately
+    **no recovery token** — minting one there (the shape issue #183 item 1 proposed) would let a
+    stolen password bind a new authenticator two calls later. The 15-minute token from
+    `/mfa/recover` (password + an unused code) is the only way back in.
+  - `/mfa/enroll` and `/mfa/verify` accept that token while it is live and refuse it once the
+    account holds a live batch again (`holdsLiveRecoveryBatch`) — `mfaEnabled` can no longer be
+    read as "MFA is back", so the durable completion state is used, with the Redis `jti` delete as
+    the primary boundary.
+  - The parent app maps `mfa_reenroll_required` to its own message instead of "Invalid
+    authentication code" (`apps/parent-app/lib/providers/auth_provider.dart`).
+  - `docs/adr/0023-mfa-recovery.md` carries a dated amendment (decision 2's write list, decision
+    3's guard); the accepted decision is not rewritten. `docs/SPEC.md` §3 and the `Parent` field
+    comment in `prisma/schema.prisma` describe the two meanings.
+- **Tests.** `services/api/test/mfa-recovery.test.ts` — five `#183:` cases plus the tightened
+  post-recovery case: recovery then password-only login is refused with no session and no token;
+  recovery token → enrol → verify → the new authenticator signs in; a normal MFA account still
+  answers `401 mfa_required` then signs in; an account without MFA is unaffected; a recovery token
+  is refused once a batch exists even if its Redis marker survived. The first three fail on
+  `675a118` (`mfaEnabled` false after recovery; password-only login 200). Probe `O12`/`O13` assert
+  the same against a live stack. `apps/parent-app/test/auth_provider_test.dart` covers the new
+  message. **Author's runs, 2026-10-19:** `pnpm --filter @familyshield/api test` **33 files / 386
+  tests passed** (exit 0; an earlier identical run on the same tree was killed by host memory
+  pressure — `Exit status 3221225477` at 1.6 GB free — not by a test), `node scripts/qa-probe.mjs`
+  against a spare-port instance **143 passed / 0 failed** (`O1`–`O13`), `node scripts/e2e.mjs`
+  **69 passed / 0 failed**, `flutter test` **219 passed / 0 failed** and `flutter analyze`
+  **No issues found**, probe
+  integrity `+2 added, 0 removed`. The API at `127.0.0.1:3000` was not touched; the probe and e2e
+  ran against `127.0.0.1:3419` from this branch. Database and Redis were restored afterwards
+  (`cleanup-test-data.sql` → `OK: 1 family — demo family only`; 19 orphaned keys deleted, 3
+  orphaned `mfa:lastcounter` keys removed). **⚠️ not verified here** by another agent.
+- **Known cost (named, not hidden).** The 15-minute recovery token is now the only self-service
+  path: a parent who loses the `/mfa/recover` response before `/mfa/verify` finishes is locked out
+  until the support path (ADR-0023 Option B, still the maintainer's open decision). That is the
+  price of "a stolen password alone cannot produce a session"; closing the usability half needs a
+  product decision (a cooling-off, notified self-service re-enrolment), not this fix.
+### Child agent — a blocked app can no longer hide in picture-in-picture or split screen (issue #175)
+- **Why.** #171 made every block decision from `rootInActiveWindow` alone. A blocked app that is
+  **visible but not the active window** was never judged: during bedtime a YouTube video in
+  picture-in-picture over Home left the launcher (essential → ALLOW) as the only decision, and the
+  video kept floating; the same trick worked in split screen beside the launcher or the dialer. This
+  is a regression of the Phase 1 gate introduced by #171, not a new feature gap.
+- **What.** `AccessibilityMonitorService` now takes one `WindowSnapshot` per event — the active
+  package plus every `TYPE_APPLICATION` `AccessibilityWindowInfo`, including
+  `isInPictureInPictureMode` — and runs the same `RuleRepository.evaluate` on
+  `EssentialPackages.blockCandidates(active, visible)`. The lock's re-raise trigger
+  (`LockEnforcementPolicy`) answers from the same snapshot, so a split sibling or a PiP window brings
+  the overlay back. Both overlay activities declare `android:resizeableActivity="false"` and
+  `android:supportsPictureInPicture="false"`: the system launches a non-resizable activity
+  full-screen, which leaves split screen and keeps the overlay itself out of PiP.
+- **Mechanism chosen, and why.** There is no public way for an accessibility service to close
+  **another app's** PiP window (`Activity.setPictureInPictureParams` is the target's method, and
+  `ActivityOptions.setLaunchWindowingMode` is hidden). The fallback from the issue is what was
+  built: detect the multi-window state, re-raise and expand the overlay, bounded by
+  `OverlayRetryBudget` — three raises per window-state signature, then one warning and no further
+  activity starts until the state changes. A media pause through `AudioManager` focus is **not**
+  added on a guess; ADR-0026 records that the hardware measurement decides it.
+- **Leak fixed (same issue).** `rootInActiveWindow` and every window/root node obtained on this path
+  are recycled; on API 26–32 an unrecycled `AccessibilityNodeInfo` leaked at up to ten walks a second.
+- **Tests.** `MultiWindowCoverageTest` (10 JVM cases): launcher active with a blocked app in split →
+  BLOCK; launcher active with a blocked app in PiP → BLOCK; a normal foreground app → BLOCK; a
+  background app with no visible window → no overlay (the #171 `spay` case); our own overlay and the
+  framework package are never candidates; the lock re-raises over split/PiP, does not when the
+  overlay is the only window, and treats its own window in PiP as replaceable; the call surface stays
+  reachable; the retry budget is bounded and resets on a state change. On the pre-fix tree the split,
+  PiP, own-candidate, launcher-covered and own-PiP assertions fail (5 of 10); after the change all 10
+  pass and both flavours' JVM suites stay green (raw output in the PR).
+- **Hardware: not measured — blocked.** The Flip4 `R5CW116Y6GF` carries the stale Knox admin row
+  from #181, so a run that needs a clean device-admin state cannot be trusted; the #175 row (YouTube
+  in PiP over Home during bedtime, then YouTube in split beside the dialer, recording whether the
+  overlay comes up **and** whether the PiP video keeps playing over it) is open on a clean phone.
+  This entry does not claim the visual PiP result; if the PiP window stays above the overlay, the
+  next step is decided from that measurement. See ADR-0026.
+### Child Android — the block-rule exemption for the agent is an explicit package, not a namespace prefix (issue #192)
+- **Why.** `enforcement/EssentialPackages.kt` exempted any package whose name started with
+  `com.familyshield.`. Package names are global only by convention and the Full build is explicitly the
+  sideloaded artefact, so a child could install `com.familyshield.notanapp` (or even name a package
+  exactly `com.familyshield.`) and escape bedtime, routines, pause, blocklists, screen time and the
+  block overlay. The prefix was meant as "our own components", which is a finite, enumerable set.
+- **What.** `EssentialPackages` now exposes `OWN_PACKAGE = "com.familyshield.agent"` (the
+  `applicationId` shared by the `play` and `full` flavours) as an explicit entry in `EXACT`, and
+  `isEssential(name)` is exactly `name in EXACT` — no `startsWith` on our namespace. The KDoc
+  enumerates the components that package legitimately fronts (`BlockActivity`, `LockActivity`,
+  `RingActivity`, `SosActivity`, `TamperGuardActivity`, `PairingActivity`, `PairQrScanActivity`, the
+  accessibility/location/VPN services and the OS-started receivers); Android has no per-component
+  package, so one exact name is the complete allow-list. The dynamic rules are untouched: the current
+  HOME handler and the OS-assigned dialer role remain genuine system-surface tests.
+- **Tests.** `EssentialPackagesTest` gains a case pinning that `com.familyshield.notanapp`,
+  `com.familyshield.agent.notanapp`, `com.familyshield.agent.test`, `com.familyshield.`,
+  `com.familyshield` and `com.familyshieldx` are **not** essential through both `isEssential`
+  overloads, while `OWN_PACKAGE` is; `RuleRepositoryEssentialExemptionTest` adds the decision-path
+  assertions (bedtime/empty-cache answer BLOCK for `com.familyshield.notanapp`, ALLOW for the agent).
+  The new assertions fail on the old predicate and pass after the change. The existing launcher,
+  system-UI, dialer and OEM cases are unchanged and stay green.
+- **Verification.** Author's run only (Kimi Code), on `origin/main@675a118`:
+  `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug --no-daemon` →
+  **BUILD SUCCESSFUL in 17m 26s** (101 tasks); XML sums **Play 52 suites / 345 tests, 0 failures,
+  0 errors, 0 skipped** and **Full 52 suites / 345 tests, 0 failures, 0 errors, 0 skipped**.
+  `node scripts/check-merged-manifest-gate.mjs` → `2 result set(s) checked, all assertions ran and
+  passed`, exit 0. Fail-before: the two new test methods were run against the old predicate and
+  failed (`18 tests completed, 2 failed`) before the fix. **⚠️ not verified here:** the hardware row
+  (install a stub package named `com.familyshield.<x>` and open it during bedtime) was **not run** —
+  no device lease was taken in this lane; it stays open for the testing lane.
 
 ### Parent app — consent status per child, and a withdrawal flow that says what it really does (plan 3.7)
 - **Why.** The API could withdraw consent (`POST /v1/family/children/:id/consent/revoke`,

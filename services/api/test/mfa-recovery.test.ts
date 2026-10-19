@@ -100,6 +100,11 @@ async function setup(opts: { secret?: string | null; mfaEnabled?: boolean } = {}
     for (const row of data) codeRows.push({ id: `code-${++seq}`, usedAt: null, ...row });
     return { count: data.length };
   });
+  // #183: the enrolment routes ask whether a complete batch already exists before they let a
+  // recovery token through.
+  prismaMock.parentMfaRecoveryCode.count.mockImplementation(async ({ where }: { where: { parentId: string; usedAt?: null } }) =>
+    codeRows.filter((r) => r.parentId === where.parentId && (where.usedAt === undefined || r.usedAt === null)).length,
+  );
 
   const { getRedis } = await import("../src/redis.js");
   const redis = getRedis() as unknown as {
@@ -178,7 +183,7 @@ describe("MFA recovery codes (ADR-0023)", () => {
     await app.close();
   });
 
-  it("a valid code recovers once: MFA is cleared, one row is spent, the rest deleted, sessions revoked", async () => {
+  it("a valid code recovers once: the factor is cleared, one row is spent, the rest deleted, sessions revoked", async () => {
     const { app } = await setup();
     const { verify } = await enrolAndVerify(app);
     const codes: string[] = verify.json().recoveryCodes;
@@ -198,8 +203,10 @@ describe("MFA recovery codes (ADR-0023)", () => {
     expect(claims.familyId).toBeUndefined();
     expect(typeof claims.jti).toBe("string");
 
-    // Second factor cleared, the batch bounded to a single use.
-    expect(parents[0].mfaEnabled).toBe(false);
+    // The factor is cleared; only the used row is left, so the batch is bounded to a single use.
+    // `mfaEnabled` stays true (#183): the policy did not go away with the authenticator, and a
+    // password-only session must not exist until a new factor is verified.
+    expect(parents[0].mfaEnabled).toBe(true);
     expect(parents[0].mfaSecret).toBeNull();
     expect(codeRows).toHaveLength(1);
     expect(codeRows[0].usedAt).toBeInstanceOf(Date);
@@ -469,20 +476,141 @@ describe("MFA recovery codes (ADR-0023)", () => {
     await app.close();
   });
 
-  it("login after recovery still demands the new authenticator (Option C stays rejected)", async () => {
+  it("#183: after a recovery the password alone opens no session — MFA stays on with no factor bound", async () => {
     const { app } = await setup();
     const first = await enrolAndVerify(app);
     const codes: string[] = first.verify.json().recoveryCodes;
 
+    // Before the recovery a normal MFA account is asked for a code, as always.
     const noCode = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: EMAIL, password: PASSWORD } });
     expect(noCode.statusCode).toBe(401);
     expect(noCode.json().error).toBe("mfa_required");
 
-    await recover(app, { email: EMAIL, password: PASSWORD, code: codes[5] });
-    // MFA is off, so the password alone opens a normal session — but only until the parent re-enrols.
+    expect((await recover(app, { email: EMAIL, password: PASSWORD, code: codes[5] })).statusCode).toBe(200);
+    // The policy survives the recovery; only the authenticator is gone.
+    expect(parents[0].mfaEnabled).toBe(true);
+    expect(parents[0].mfaSecret).toBeNull();
+
+    // The password alone is refused with no session, no refresh token and no re-enrolment token:
+    // minting one here would hand a stolen password the factor it needs, two calls later.
     const after = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: EMAIL, password: PASSWORD } });
-    expect(after.statusCode).toBe(200);
-    expect(after.json().token).toBeTruthy();
+    expect(after.statusCode).toBe(401);
+    expect(after.json()).toEqual({ error: "mfa_reenroll_required" });
+    // No session was minted: neither an access token nor a refresh record exists.
+    expect(Object.keys(after.json())).toEqual(["error"]);
+    expect([...store.keys()].some((k) => k.startsWith("refresh:"))).toBe(false);
+
+    // A wrong password is still indistinguishable from any other failed login.
+    const wrongPassword = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: EMAIL, password: "WrongHorseBatteryStaple!" } });
+    expect(wrongPassword.statusCode).toBe(401);
+    expect(wrongPassword.json().error).toBe("invalid_credentials");
+    await app.close();
+  });
+
+  it("#183: recovery token → enrol → verify → login works, and the new authenticator is required afterwards", async () => {
+    const { app } = await setup();
+    const session = authHeader(app);
+    // Verify one window *behind* now, so the recovery re-verification and the login after it both
+    // have a strictly newer counter to present (replay protection is per parent, not per secret).
+    const firstEnroll = await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: session, payload: {} });
+    expect(firstEnroll.statusCode).toBe(200);
+    const firstSecret = firstEnroll.json().secret as string;
+    const firstVerify = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/verify",
+      headers: session,
+      payload: { code: totpAtCounter(firstSecret, currentCounter() - 1) },
+    });
+    expect(firstVerify.statusCode).toBe(200);
+
+    const token: string = (await recover(app, {
+      email: EMAIL,
+      password: PASSWORD,
+      code: firstVerify.json().recoveryCodes[0],
+    })).json().recoveryToken;
+    const h = { authorization: `Bearer ${token}` };
+
+    const enroll = await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: h, payload: {} });
+    expect(enroll.statusCode).toBe(200);
+    const secret = enroll.json().secret as string;
+    const verify = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/verify",
+      headers: h,
+      payload: { code: totpAtCounter(secret, currentCounter()) },
+    });
+    expect(verify.statusCode).toBe(200);
+    expect(verify.json().recoveryCodes).toHaveLength(10);
+
+    // The legitimate path still ends where it did before: the new authenticator signs in.
+    const bare = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: EMAIL, password: PASSWORD } });
+    expect(bare.statusCode).toBe(401);
+    expect(bare.json().error).toBe("mfa_required");
+    const login = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: EMAIL, password: PASSWORD, code: totpAtCounter(secret, currentCounter() + 1) },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().token).toBeTruthy();
+    expect(login.json().refreshToken).toBeTruthy();
+    await app.close();
+  });
+
+  it("#183: a normal MFA account is unchanged — no code, a wrong code, then the right one", async () => {
+    const { app } = await setup({ secret: OLD_SECRET, mfaEnabled: true });
+    const login = (body: Record<string, unknown>) =>
+      app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: EMAIL, password: PASSWORD, ...body } });
+
+    const noCode = await login({});
+    expect(noCode.statusCode).toBe(401);
+    expect(noCode.json().error).toBe("mfa_required");
+    const wrong = await login({ code: "000000" });
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.json().error).toBe("mfa_required");
+    const ok = await login({ code: totpAtCounter(OLD_SECRET, currentCounter()) });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().token).toBeTruthy();
+    await app.close();
+  });
+
+  it("#183: an account without MFA is unaffected — the password alone still signs in", async () => {
+    const { app } = await setup();
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: EMAIL, password: PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().token).toBeTruthy();
+    expect(login.json().error).toBeUndefined();
+    await app.close();
+  });
+
+  it("#183: a recovery token is refused once a new batch exists, even if its Redis marker survived", async () => {
+    const { app } = await setup();
+    const first = await enrolAndVerify(app);
+    const token: string = (await recover(app, {
+      email: EMAIL,
+      password: PASSWORD,
+      code: first.verify.json().recoveryCodes[0],
+    })).json().recoveryToken;
+    const { jti } = app.jwt.verify(token) as { jti: string };
+    const h = { authorization: `Bearer ${token}` };
+    const secret = (await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: h, payload: {} })).json().secret as string;
+    expect((await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/verify",
+      headers: h,
+      payload: { code: totpAtCounter(secret, currentCounter() + 1) },
+    })).statusCode).toBe(200);
+
+    // The Redis delete is the primary boundary; the database is the second one, so a store failure
+    // cannot keep a spent token alive.
+    store.set(`mfa:recovery:${jti}`, "parent-1");
+    expect((await app.inject({ method: "POST", url: "/v1/auth/mfa/enroll", headers: h, payload: {} })).statusCode).toBe(401);
+    expect((await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/verify",
+      headers: h,
+      payload: { code: totpAtCounter(secret, currentCounter() + 2) },
+    })).statusCode).toBe(401);
     await app.close();
   });
 });

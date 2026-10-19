@@ -183,15 +183,18 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
 
 MFA is optional and off by default (ADR-0004). When it is on, the account has two things the parent
 holds: the authenticator (TOTP) and, from the moment it is switched on, a set of ten one-time
-recovery codes.
+recovery codes. The account also carries two separate facts (#183): **`mfaEnabled`** says a second
+factor is required, **`mfaSecret`** says one is bound. A recovery removes the second and keeps the
+first, so "MFA required, no authenticator bound" is a real state and not a password-only account.
 
 | Surface | What it does | What it refuses |
 |---|---|---|
 | `POST /v1/auth/mfa/enroll` | mints a TOTP secret and its `otpauth://` URL; replacing an existing secret needs the account password or a current TOTP (#139) | a bare session for a replacement (`401 reauth_required`) |
 | `POST /v1/auth/mfa/verify` | enables MFA, revokes every session, and **returns ten recovery codes — the only time the plaintext exists** | a wrong TOTP (`401 invalid_code`), a verify with no secret (`400 mfa_not_enrolled`) |
 | `POST /v1/auth/mfa/recovery-codes` | issues/replaces the batch (same re-authentication rule as a secret replacement) and returns the new ten codes | no proof of parentage when a secret exists (`401 reauth_required`) |
-| `POST /v1/auth/mfa/recover` | takes `{email, password, code}`; clears `mfaSecret`/`mfaEnabled`, spends the code, deletes the rest of the batch, revokes every session, emails a notice, and returns `{recoveryToken}` | everything else with the same `401 {"error":"invalid_recovery"}` — unknown address, wrong password, wrong/spent code, MFA not enabled |
-| `POST /v1/auth/mfa/enroll` + `/verify` with `mfa_recovery` | the 15-minute recovery token re-enrols and re-verifies | once `mfaEnabled` is true again, and every other route (`401 unauthorized`) |
+| `POST /v1/auth/mfa/recover` | takes `{email, password, code}`; clears `mfaSecret` but **keeps `mfaEnabled`** (the policy outlives the factor, #183), spends the code, deletes the rest of the batch, revokes every session, emails a notice, and returns `{recoveryToken}` | everything else with the same `401 {"error":"invalid_recovery"}` — unknown address, wrong password, wrong/spent code, MFA not enabled |
+| `POST /v1/auth/mfa/enroll` + `/verify` with `mfa_recovery` | the 15-minute recovery token re-enrols and re-verifies | once a new batch of unused codes exists (a completed recovery), and every other route (`401 unauthorized`) |
+| `POST /v1/auth/login` on a recovered account | — | `401 {"error":"mfa_reenroll_required"}` for the correct password alone: no session, no refresh token, no recovery token. The recovery token is the only way back in |
 
 Code format: 16 Crockford base32 characters (80 bits), no `I`, `L`, `O`, `U`, displayed
 `XXXX-XXXX-XXXX-XXXX`. Normalisation before hashing: uppercase, separators stripped, `I`/`L` read as

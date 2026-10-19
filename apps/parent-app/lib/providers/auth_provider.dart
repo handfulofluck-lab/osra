@@ -193,6 +193,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (data is Map) {
       final err = data['error'];
       if (err is String) {
+        // #183: the account has MFA on but no authenticator bound (a recovery that has not been
+        // finished). This is not a wrong code, and the password alone cannot fix it — say what it
+        // actually is instead of the generic MFA message below.
+        if (err == 'mfa_reenroll_required') {
+          return 'Two-step verification is on for this account, but no authenticator is set up yet. '
+              'Sign in with an unused recovery code to finish setting it up.';
+        }
         final lower = err.toLowerCase();
         if (e.response?.statusCode == 401 && (lower.contains('mfa') || lower == 'invalid_code')) {
           return 'Invalid authentication code';

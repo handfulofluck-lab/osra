@@ -96,6 +96,36 @@ object LockEnforcementPolicy {
         return !isExemptPackage(foregroundPackage, facts)
     }
 
+    /**
+     * Issue #175: the multi-window form. A blocked app can be visible without being active — in the
+     * other half of a split screen or in a picture-in-picture window over the launcher — and the
+     * active-window-only check never brought the overlay back over it.
+     *
+     * Order matters:
+     * 1. An active call surface is never covered, whatever else is visible (issue #80).
+     * 2. Any other visible window that is not ours and not exempt means the overlay is not covering
+     *    the screen, whether it is active, beside us, or floating in PiP.
+     * 3. Our own overlay in PiP is not coverage either: a PiP window floats above the app behind it,
+     *    so the policy allows the service to replace (and expand) it. The service bounds that retry
+     *    ([OverlayRetryBudget]) because the platform may refuse to leave PiP.
+     */
+    fun shouldReraise(
+        mode: String?,
+        snapshot: WindowSnapshot,
+        ownPackage: String,
+        facts: PackageFacts,
+    ): Boolean {
+        if (!isLockingMode(mode)) return false
+        val active = snapshot.activePackage
+        if (!active.isNullOrBlank() && active != ownPackage && isExemptPackage(active, facts)) return false
+        if (!active.isNullOrBlank() && active != ownPackage) return true
+        if (snapshot.windows.any { it.packageName == ownPackage && it.inPictureInPicture }) return true
+        return snapshot.windows.any { window ->
+            val pkg = window.packageName
+            !pkg.isNullOrBlank() && pkg != ownPackage && !isExemptPackage(pkg, facts)
+        }
+    }
+
     /** Minimum gap between two re-raises, so a burst of window events does not start the activity repeatedly. */
     const val RERAISE_DEBOUNCE_MS: Long = 700
 }
