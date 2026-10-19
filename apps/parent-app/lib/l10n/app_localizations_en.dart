@@ -1082,6 +1082,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not create a pairing code. Check the connection and try again.';
 
   @override
+  String get pairConsentError =>
+      'The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.';
+
+  @override
   String get appearanceTitle => 'Appearance';
 
   @override
@@ -1458,4 +1462,153 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mfaFieldsRequired => 'Fill in email, password and recovery code.';
+
+  @override
+  String get onboardingWelcomeTitle => 'Welcome to OSRA';
+
+  @override
+  String get onboardingWelcomeBody =>
+      'Set up protection for your child in three short steps. It takes about five minutes.';
+
+  @override
+  String get onboardingGetStarted => 'Get started';
+
+  @override
+  String get onboardingSignInTitle => 'Sign in or create an account';
+
+  @override
+  String get onboardingSignInBody =>
+      'This account controls your child\'s protection. Sign in, or create your family account below.';
+
+  @override
+  String get onboardingWrongPassword =>
+      'The email or password is incorrect. Check it and try again.';
+
+  @override
+  String get onboardingInvalidMfaCode =>
+      'That authentication code was not accepted. Check the code and try again.';
+
+  @override
+  String get onboardingNoNetwork =>
+      'Cannot reach the server. Check the server address and your internet connection, then try again.';
+
+  @override
+  String get onboardingChildTitle => 'Add your child';
+
+  @override
+  String get onboardingChildIntro =>
+      'Enter your child\'s name and birth year. Choose how you gave parental consent — the server requires consent before a child can be added.';
+
+  @override
+  String get onboardingChildNameRequired => 'Enter your child\'s name.';
+
+  @override
+  String get onboardingBirthYearInvalid =>
+      'Enter a birth year between 1900 and this year.';
+
+  @override
+  String get onboardingAddChildContinue => 'Add child and continue';
+
+  @override
+  String get onboardingChildPrivacy =>
+      'Your child\'s name and birth year are stored on your family\'s server. They are used only for protection and reports.';
+
+  @override
+  String get onboardingExistingChildren =>
+      'Your account already has children. Continue to pair a device.';
+
+  @override
+  String get onboardingConsentRequired =>
+      'The server needs parental consent for this child. Check the consent details and try again.';
+
+  @override
+  String get onboardingOwnerOnly =>
+      'Only the family owner can add a child. Sign in with the owner account or ask the owner to add this child.';
+
+  @override
+  String get onboardingChildInvalid =>
+      'The server could not add this child. Check the name and birth year, then try again.';
+
+  @override
+  String get onboardingChildFailed =>
+      'Could not add your child. Check your connection and try again.';
+
+  @override
+  String get onboardingLeaveTitle => 'Go back to sign in?';
+
+  @override
+  String get onboardingLeaveBody =>
+      'You will be signed out. Anything you have already added stays on your account.';
+
+  @override
+  String get onboardingLeaveStay => 'Stay';
+
+  @override
+  String get onboardingLeaveConfirm => 'Sign out';
+
+  @override
+  String get onboardingPairTitle => 'Pair their device';
+
+  @override
+  String onboardingPairIntro(String childName) {
+    return 'Open OSRA on $childName\'s phone and choose Pair with a code.';
+  }
+
+  @override
+  String get onboardingPairSteps =>
+      'Scan this QR code, or type the six digits below if the camera cannot scan it. You do not need to give your password to the person holding the phone.';
+
+  @override
+  String get onboardingPairConfirm => 'My child has finished pairing';
+
+  @override
+  String get onboardingPairWaiting =>
+      'Not paired yet. Ask your child to finish on their phone, then tap again.';
+
+  @override
+  String get onboardingPairCheckFailed =>
+      'Could not check the pairing yet. Check your connection and tap again.';
+
+  @override
+  String get onboardingPairLater => 'Set up later';
+
+  @override
+  String get onboardingPairLaterNote =>
+      'You can pair from the dashboard whenever the phone is ready. Protection starts after pairing.';
+
+  @override
+  String pairingCodeSemantics(String code) {
+    return 'Pairing code $code';
+  }
+
+  @override
+  String get onboardingDoneStepTitle => 'Setup';
+
+  @override
+  String get onboardingDoneTitle => 'You\'re all set';
+
+  @override
+  String get onboardingDoneBody =>
+      'Your child is added and their device is paired. Open the dashboard to see their status.';
+
+  @override
+  String get onboardingDonePendingTitle => 'One step left';
+
+  @override
+  String get onboardingDonePendingBody =>
+      'Your child is added, but their phone is not paired yet. You can pair it any time from the dashboard.';
+
+  @override
+  String get onboardingGoToDashboard => 'Go to dashboard';
+
+  @override
+  String get onboardingFinishSetupTitle => 'Finish setting up';
+
+  @override
+  String onboardingFinishSetupBody(String childName) {
+    return 'Pair $childName\'s phone to start protection.';
+  }
+
+  @override
+  String get onboardingPairNow => 'Pair now';
 }

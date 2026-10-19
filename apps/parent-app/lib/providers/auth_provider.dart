@@ -19,15 +19,34 @@ class AuthState {
   final String? error;
   final bool loading;
 
-  const AuthState({this.isAuthenticated = false, this.parent, this.family, this.error, this.loading = false});
+  /// `bootstrap()` has not answered yet. The router holds a neutral screen
+  /// until this is false so a resumed session does not flash the login step.
+  final bool restoring;
 
-  AuthState copyWith({bool? isAuthenticated, Parent? parent, Family? family, Object? error = _sentinel, bool? loading}) {
+  const AuthState({
+    this.isAuthenticated = false,
+    this.parent,
+    this.family,
+    this.error,
+    this.loading = false,
+    this.restoring = false,
+  });
+
+  AuthState copyWith({
+    bool? isAuthenticated,
+    Parent? parent,
+    Family? family,
+    Object? error = _sentinel,
+    bool? loading,
+    bool? restoring,
+  }) {
     return AuthState(
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       parent: parent ?? this.parent,
       family: family ?? this.family,
       error: identical(error, _sentinel) ? this.error : error as String?,
       loading: loading ?? this.loading,
+      restoring: restoring ?? this.restoring,
     );
   }
 }
@@ -52,7 +71,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(this._api, {FlutterSecureStorage? storage, ServerUrlNotifier? serverUrl})
       : _storage = storage ?? const FlutterSecureStorage(),
         _serverUrl = serverUrl,
-        super(const AuthState());
+        super(const AuthState(restoring: true));
 
   bool _disposed = false;
 
@@ -97,7 +116,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Runs an auth call, persists the returned token, then loads /v1/family/me.
   Future<void> _authenticate(Future<Response<dynamic>> Function() call) async {
     await _applyServerUrl();
-    _setState(state.copyWith(loading: true, error: null));
+    _setState(state.copyWith(loading: true, error: null, restoring: false));
     try {
       final res = await call();
       final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
@@ -118,7 +137,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Loads GET /v1/family/me with the stored token; clears it on 401.
   Future<void> bootstrap() async {
-    await _applyServerUrl();
+    try {
+      await _applyServerUrl();
+    } catch (_) {
+      // A broken server-URL read must not leave the app on the startup frame.
+      _setState(const AuthState());
+      return;
+    }
     String? token;
     try {
       token = await _storage.read(key: 'jwt');

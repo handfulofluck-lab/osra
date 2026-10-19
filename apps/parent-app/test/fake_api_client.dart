@@ -30,6 +30,11 @@ class FakeHttpError {
   const FakeHttpError(this.status, [this.body = const {'error': 'boom'}]);
 }
 
+/// A transport failure (no response), for the "cannot reach the server" paths.
+class FakeNetworkError {
+  const FakeNetworkError();
+}
+
 /// Handler for one fake route; return the JSON body or a [FakeHttpError].
 typedef FakeRoute = Object? Function(RecordedRequest request);
 
@@ -69,6 +74,13 @@ class FakeApiClient extends ApiClient {
           requestOptions: options,
           response: Response(requestOptions: options, statusCode: result.status, data: result.body),
           type: DioExceptionType.badResponse,
+        ));
+      } else if (result is FakeNetworkError) {
+        handler.reject(DioException(
+          requestOptions: options,
+          type: DioExceptionType.connectionError,
+          error: 'connection refused',
+          message: 'The connection errored: Connection refused',
         ));
       } else {
         handler.resolve(Response(requestOptions: options, data: result));

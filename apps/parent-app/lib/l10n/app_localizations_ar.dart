@@ -1123,6 +1123,10 @@ class AppLocalizationsAr extends AppLocalizations {
       'تعذّر إنشاء رمز الإقران. تحقق من الاتصال وحاول مرة أخرى.';
 
   @override
+  String get pairConsentError =>
+      'يحتاج الخادم إلى موافقة الوالدين لهذا الطفل قبل إنشاء رمز الإقران. ارجع وأضف الطفل مرة أخرى ثم حاول مجددًا.';
+
+  @override
   String get appearanceTitle => 'المظهر';
 
   @override
@@ -1526,4 +1530,153 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get mfaFieldsRequired =>
       'املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد.';
+
+  @override
+  String get onboardingWelcomeTitle => 'مرحبًا بك في OSRA';
+
+  @override
+  String get onboardingWelcomeBody =>
+      'أعدّ الحماية لطفلك في ثلاث خطوات قصيرة. يستغرق الأمر نحو خمس دقائق.';
+
+  @override
+  String get onboardingGetStarted => 'ابدأ';
+
+  @override
+  String get onboardingSignInTitle => 'سجّل الدخول أو أنشئ حسابًا';
+
+  @override
+  String get onboardingSignInBody =>
+      'هذا الحساب يتحكم في حماية طفلك. سجّل الدخول، أو أنشئ حساب عائلتك أدناه.';
+
+  @override
+  String get onboardingWrongPassword =>
+      'البريد الإلكتروني أو كلمة المرور غير صحيحة. تحقق منها وحاول مجددًا.';
+
+  @override
+  String get onboardingInvalidMfaCode =>
+      'لم يُقبل رمز التحقق. تحقق من الرمز وحاول مجددًا.';
+
+  @override
+  String get onboardingNoNetwork =>
+      'تعذّر الوصول إلى الخادم. تحقق من عنوان الخادم واتصال الإنترنت ثم حاول مجددًا.';
+
+  @override
+  String get onboardingChildTitle => 'أضف طفلك';
+
+  @override
+  String get onboardingChildIntro =>
+      'أدخل اسم طفلك وسنة ميلاده. اختر طريقة موافقة الوالدين — يحتاج الخادم إلى الموافقة قبل إضافة الطفل.';
+
+  @override
+  String get onboardingChildNameRequired => 'أدخل اسم طفلك.';
+
+  @override
+  String get onboardingBirthYearInvalid =>
+      'أدخل سنة ميلاد بين 1900 وهذا العام.';
+
+  @override
+  String get onboardingAddChildContinue => 'أضف الطفل وتابع';
+
+  @override
+  String get onboardingChildPrivacy =>
+      'يُخزَّن اسم طفلك وسنة ميلاده على خادم عائلتك. يُستخدمان فقط للحماية والتقارير.';
+
+  @override
+  String get onboardingExistingChildren =>
+      'لدى حسابك أطفال بالفعل. تابع لإقران جهاز.';
+
+  @override
+  String get onboardingConsentRequired =>
+      'يحتاج الخادم إلى موافقة الوالدين لهذا الطفل. تحقق من بيانات الموافقة وحاول مجددًا.';
+
+  @override
+  String get onboardingOwnerOnly =>
+      'مالك العائلة وحده يمكنه إضافة طفل. سجّل الدخول بحساب المالك أو اطلب من المالك إضافة هذا الطفل.';
+
+  @override
+  String get onboardingChildInvalid =>
+      'تعذّر على الخادم إضافة هذا الطفل. تحقق من الاسم وسنة الميلاد ثم حاول مجددًا.';
+
+  @override
+  String get onboardingChildFailed =>
+      'تعذّرت إضافة طفلك. تحقق من اتصالك وحاول مجددًا.';
+
+  @override
+  String get onboardingLeaveTitle => 'العودة إلى تسجيل الدخول؟';
+
+  @override
+  String get onboardingLeaveBody =>
+      'سيتم تسجيل خروجك. أي شيء أضفته بالفعل يبقى على حسابك.';
+
+  @override
+  String get onboardingLeaveStay => 'ابقَ';
+
+  @override
+  String get onboardingLeaveConfirm => 'تسجيل الخروج';
+
+  @override
+  String get onboardingPairTitle => 'إقران جهازه';
+
+  @override
+  String onboardingPairIntro(String childName) {
+    return 'افتح OSRA على هاتف $childName واختر الإقران برمز.';
+  }
+
+  @override
+  String get onboardingPairSteps =>
+      'امسح رمز QR هذا، أو اكتب الأرقام الستة أدناه إذا تعذّر على الكاميرا مسحه. لا حاجة إلى إعطاء كلمة المرور لمن يحمل الهاتف.';
+
+  @override
+  String get onboardingPairConfirm => 'انتهى طفلي من الإقران';
+
+  @override
+  String get onboardingPairWaiting =>
+      'لم يتم الإقران بعد. اطلب من طفلك إكمال الخطوة على هاتفه ثم اضغط مجددًا.';
+
+  @override
+  String get onboardingPairCheckFailed =>
+      'تعذّر التحقق من الإقران بعد. تحقق من اتصالك واضغط مجددًا.';
+
+  @override
+  String get onboardingPairLater => 'الإعداد لاحقًا';
+
+  @override
+  String get onboardingPairLaterNote =>
+      'يمكنك الإقران من لوحة التحكم متى كان الهاتف جاهزًا. تبدأ الحماية بعد الإقران.';
+
+  @override
+  String pairingCodeSemantics(String code) {
+    return 'رمز الإقران $code';
+  }
+
+  @override
+  String get onboardingDoneStepTitle => 'الإعداد';
+
+  @override
+  String get onboardingDoneTitle => 'كل شيء جاهز';
+
+  @override
+  String get onboardingDoneBody =>
+      'تمت إضافة طفلك وإقران جهازه. افتح لوحة التحكم لعرض حالته.';
+
+  @override
+  String get onboardingDonePendingTitle => 'بقيت خطوة واحدة';
+
+  @override
+  String get onboardingDonePendingBody =>
+      'تمت إضافة طفلك، لكن هاتفه غير مقرون بعد. يمكنك إقرانه في أي وقت من لوحة التحكم.';
+
+  @override
+  String get onboardingGoToDashboard => 'الانتقال إلى لوحة التحكم';
+
+  @override
+  String get onboardingFinishSetupTitle => 'أكمل الإعداد';
+
+  @override
+  String onboardingFinishSetupBody(String childName) {
+    return 'أقرن هاتف $childName لتبدأ الحماية.';
+  }
+
+  @override
+  String get onboardingPairNow => 'أقرن الآن';
 }

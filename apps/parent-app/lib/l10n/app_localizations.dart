@@ -1826,6 +1826,12 @@ abstract class AppLocalizations {
   /// **'Could not create a pairing code. Check the connection and try again.'**
   String get pairCreateError;
 
+  /// No description provided for @pairConsentError.
+  ///
+  /// In en, this message translates to:
+  /// **'The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.'**
+  String get pairConsentError;
+
   /// No description provided for @appearanceTitle.
   ///
   /// In en, this message translates to:
@@ -2485,6 +2491,252 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Fill in email, password and recovery code.'**
   String get mfaFieldsRequired;
+
+  /// No description provided for @onboardingWelcomeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome to OSRA'**
+  String get onboardingWelcomeTitle;
+
+  /// No description provided for @onboardingWelcomeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up protection for your child in three short steps. It takes about five minutes.'**
+  String get onboardingWelcomeBody;
+
+  /// No description provided for @onboardingGetStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Get started'**
+  String get onboardingGetStarted;
+
+  /// No description provided for @onboardingSignInTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in or create an account'**
+  String get onboardingSignInTitle;
+
+  /// No description provided for @onboardingSignInBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This account controls your child\'s protection. Sign in, or create your family account below.'**
+  String get onboardingSignInBody;
+
+  /// No description provided for @onboardingWrongPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'The email or password is incorrect. Check it and try again.'**
+  String get onboardingWrongPassword;
+
+  /// No description provided for @onboardingInvalidMfaCode.
+  ///
+  /// In en, this message translates to:
+  /// **'That authentication code was not accepted. Check the code and try again.'**
+  String get onboardingInvalidMfaCode;
+
+  /// No description provided for @onboardingNoNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot reach the server. Check the server address and your internet connection, then try again.'**
+  String get onboardingNoNetwork;
+
+  /// No description provided for @onboardingChildTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your child'**
+  String get onboardingChildTitle;
+
+  /// No description provided for @onboardingChildIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your child\'s name and birth year. Choose how you gave parental consent — the server requires consent before a child can be added.'**
+  String get onboardingChildIntro;
+
+  /// No description provided for @onboardingChildNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your child\'s name.'**
+  String get onboardingChildNameRequired;
+
+  /// No description provided for @onboardingBirthYearInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a birth year between 1900 and this year.'**
+  String get onboardingBirthYearInvalid;
+
+  /// No description provided for @onboardingAddChildContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Add child and continue'**
+  String get onboardingAddChildContinue;
+
+  /// No description provided for @onboardingChildPrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Your child\'s name and birth year are stored on your family\'s server. They are used only for protection and reports.'**
+  String get onboardingChildPrivacy;
+
+  /// No description provided for @onboardingExistingChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account already has children. Continue to pair a device.'**
+  String get onboardingExistingChildren;
+
+  /// No description provided for @onboardingConsentRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'The server needs parental consent for this child. Check the consent details and try again.'**
+  String get onboardingConsentRequired;
+
+  /// No description provided for @onboardingOwnerOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the family owner can add a child. Sign in with the owner account or ask the owner to add this child.'**
+  String get onboardingOwnerOnly;
+
+  /// No description provided for @onboardingChildInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not add this child. Check the name and birth year, then try again.'**
+  String get onboardingChildInvalid;
+
+  /// No description provided for @onboardingChildFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add your child. Check your connection and try again.'**
+  String get onboardingChildFailed;
+
+  /// No description provided for @onboardingLeaveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Go back to sign in?'**
+  String get onboardingLeaveTitle;
+
+  /// No description provided for @onboardingLeaveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will be signed out. Anything you have already added stays on your account.'**
+  String get onboardingLeaveBody;
+
+  /// No description provided for @onboardingLeaveStay.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay'**
+  String get onboardingLeaveStay;
+
+  /// No description provided for @onboardingLeaveConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get onboardingLeaveConfirm;
+
+  /// No description provided for @onboardingPairTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair their device'**
+  String get onboardingPairTitle;
+
+  /// No description provided for @onboardingPairIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Open OSRA on {childName}\'s phone and choose Pair with a code.'**
+  String onboardingPairIntro(String childName);
+
+  /// No description provided for @onboardingPairSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this QR code, or type the six digits below if the camera cannot scan it. You do not need to give your password to the person holding the phone.'**
+  String get onboardingPairSteps;
+
+  /// No description provided for @onboardingPairConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'My child has finished pairing'**
+  String get onboardingPairConfirm;
+
+  /// No description provided for @onboardingPairWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Not paired yet. Ask your child to finish on their phone, then tap again.'**
+  String get onboardingPairWaiting;
+
+  /// No description provided for @onboardingPairCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check the pairing yet. Check your connection and tap again.'**
+  String get onboardingPairCheckFailed;
+
+  /// No description provided for @onboardingPairLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up later'**
+  String get onboardingPairLater;
+
+  /// No description provided for @onboardingPairLaterNote.
+  ///
+  /// In en, this message translates to:
+  /// **'You can pair from the dashboard whenever the phone is ready. Protection starts after pairing.'**
+  String get onboardingPairLaterNote;
+
+  /// No description provided for @pairingCodeSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Pairing code {code}'**
+  String pairingCodeSemantics(String code);
+
+  /// No description provided for @onboardingDoneStepTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Setup'**
+  String get onboardingDoneStepTitle;
+
+  /// No description provided for @onboardingDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re all set'**
+  String get onboardingDoneTitle;
+
+  /// No description provided for @onboardingDoneBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your child is added and their device is paired. Open the dashboard to see their status.'**
+  String get onboardingDoneBody;
+
+  /// No description provided for @onboardingDonePendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'One step left'**
+  String get onboardingDonePendingTitle;
+
+  /// No description provided for @onboardingDonePendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your child is added, but their phone is not paired yet. You can pair it any time from the dashboard.'**
+  String get onboardingDonePendingBody;
+
+  /// No description provided for @onboardingGoToDashboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to dashboard'**
+  String get onboardingGoToDashboard;
+
+  /// No description provided for @onboardingFinishSetupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish setting up'**
+  String get onboardingFinishSetupTitle;
+
+  /// No description provided for @onboardingFinishSetupBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair {childName}\'s phone to start protection.'**
+  String onboardingFinishSetupBody(String childName);
+
+  /// No description provided for @onboardingPairNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair now'**
+  String get onboardingPairNow;
 }
 
 class _AppLocalizationsDelegate

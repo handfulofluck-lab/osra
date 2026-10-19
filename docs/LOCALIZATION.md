@@ -82,11 +82,12 @@ never shown when a translation exists.
 
 ## What is translated
 
-English and Arabic are complete for: login, dashboard, child detail (including the command
-labels and the embedded social tab), alerts and the alert detail dialog, the rules editor
-(all four tabs and dialogs), reports, usage history, the pairing QR screen, and Settings →
-Appearance. The snippet-vault modal is translated too. The conversation-coach card is
-bilingual by design (EN/AR) and defaults to the app locale.
+English and Arabic are complete for: the first-run wizard (welcome, sign in / create account,
+add your child, pair their device, done), login, dashboard, child detail (including the command
+labels and the embedded social tab), alerts and the alert detail dialog, the rules editor (all four
+tabs and dialogs), reports, usage history, the pairing QR screen, and Settings → Appearance. The
+snippet-vault modal is translated too. The conversation-coach card is bilingual by design (EN/AR)
+and defaults to the app locale.
 
 ## What is not translated yet
 

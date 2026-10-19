@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/reports/usage_history_screen.dart';
 import 'package:familyshield_parent/features/settings/appearance_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/providers/theme_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 import 'package:familyshield_parent/theme/app_tokens.dart';
@@ -24,7 +25,7 @@ void main() {
 
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
   });
 
   /// WCAG 2.1 relative-luminance contrast ratio.

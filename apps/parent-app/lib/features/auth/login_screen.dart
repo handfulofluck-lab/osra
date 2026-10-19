@@ -5,13 +5,21 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
+import '../../providers/onboarding_provider.dart';
 import '../../providers/server_provider.dart';
+import '../onboarding/onboarding_messages.dart';
 import 'mfa_recovery_screen.dart';
 
 /// Sign-in screen with an expandable registration form. Navigation after a
 /// successful login/register is handled by the router's auth redirect.
+///
+/// [onboarding] is the first-run wizard's account step: it adds a back route
+/// to Welcome and names the causes a non-engineer can fix (wrong password,
+/// unreachable server) instead of showing the API's raw code.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.onboarding = false});
+
+  final bool onboarding;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -58,6 +66,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit(Future<void> Function() action) async {
     await action();
     if (mounted && ref.read(authProvider).isAuthenticated) {
+      if (widget.onboarding) {
+        // Save the next step before navigating so a kill here resumes at the
+        // child step rather than replaying sign-in.
+        ref.read(onboardingProvider.notifier).signedIn();
+      }
       ref.read(loginNoticeProvider.notifier).state = null;
       context.go('/');
     }
@@ -69,11 +82,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final serverUrl = ref.watch(serverUrlProvider);
     final showMfaNotice = ref.watch(loginNoticeProvider) == kLoginNoticeMfaSessionEnded;
     final l10n = context.l10n;
+    final onboarding = ref.watch(onboardingProvider);
+    final canGoBack = widget.onboarding &&
+        (onboarding.step == OnboardingStep.signIn || onboarding.step == OnboardingStep.welcome);
     // Keep the field in sync with the persisted URL until the user edits it.
     if (!_serverTouched && _server.text != serverUrl) {
       _server.text = serverUrl;
     }
+    final errorText = auth.error == null
+        ? null
+        : widget.onboarding
+            ? onboardingAuthError(l10n, auth.error!)
+            : auth.error!;
     return Scaffold(
+      appBar: widget.onboarding
+          ? AppBar(
+              title: Text(l10n.onboardingSignInTitle),
+              leading: canGoBack
+                  ? BackButton(onPressed: () {
+                      ref.read(onboardingProvider.notifier).backToWelcome();
+                      context.go('/welcome');
+                    })
+                  : null,
+            )
+          : null,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -89,6 +121,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Text(l10n.appTagline,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                if (widget.onboarding) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.onboardingSignInBody,
+                    key: const ValueKey('onboardingSignInBody'),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
                 // The current server is shown only once one has been entered and
                 // saved — a fresh install shows no server name at all.
                 if (serverUrl.isNotEmpty) ...[
@@ -153,9 +194,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     border: const OutlineInputBorder(),
                   ),
                 ),
-                if (auth.error != null) ...[
+                if (errorText != null) ...[
                   const SizedBox(height: 12),
-                  Text(auth.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  Text(errorText, key: const ValueKey('loginError'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
                 ],
                 const SizedBox(height: 16),
                 FilledButton.icon(
