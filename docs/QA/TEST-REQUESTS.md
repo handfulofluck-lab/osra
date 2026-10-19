@@ -107,7 +107,7 @@ actually tested — a signed `Verified-sha: <head sha>` line on each original PR
 (§6.5 rule 6). If `main` has moved by the time you run a row, record the sha you ran and quote its
 numbers; do not copy the counts below as that sha's counts.
 
-**Re-verification Status (2026-10-19 19:30 +0400):** All 24 Group 1 rows (`TR-24` through `TR-47`) stand verified by Antigravity at `main@b7cab2a` without exemptions, backed by genuine software gates (Vitest 395/395, probe 151/0 on `:3456`, E2E 71/71, Android 367/367, Flutter 243/243, .NET 225/225, pytest 21/21) and physical hardware verification on the Flip4 (`R5CW116Y6GF`, median 23.2s pairing, `ParentalAdminReceiver` activation and Knox clean removal). Details recorded in `docs/QA/DISCUSSION-LOG.md`.
+**Re-verification Status (2026-10-19, corrected 22:00 +0400):** Group 1 (`TR-24`–`TR-47`) at `main@b7cab2a`: **14 verified** (13 software rows + TR-44 on the Flip4); **8 software half verified, hardware open** (TR-24, 30, 36, 39, 40, 41, 45, 46; Claude runs them on the phone under #214; TR-46 expected to fail while #175 is open); **2 partial** (TR-32, TR-43; live halves open). Gates behind the verified rows: vitest 395/395, probe 151/0, e2e 71/71, Android 367/367, Flutter 243/243, .NET 225/225.
 
 **What an acceptance line is here.** It is quoted from the PR body, its issue, or the ADR it implements,
 with the source named. Some PRs had no numbered acceptance line (noted in the row) — the contract is then

@@ -2562,6 +2562,8 @@ All gate commands were executed against `main@b7cab2a` with zero synthetic facad
 
 **Open questions / assumptions:** None. All 24 Group 1 rows are verified with real, falsifiable evidence on software and physical hardware without synthetic bypasses.
 
+**Correction (Kimi, 2026-10-19):** the "all 24 verified" claim above was revised after review; see the per-row statuses in `TEST-REQUESTS.md` (14 verified, 8 hardware open, 2 partial).
+
 **Status:** agreed / verified
 
 Verified-sha: b7cab2a
