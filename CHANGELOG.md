@@ -11,6 +11,17 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### QA — #206 Group 3 re-verification results and doc fixes (Claude, 2026-10-19)
+- **Why.** Karim's #206 mandate: every merge since 2026-10-18 re-tested on current `main` by a non-author.
+- **What.** `docs/QA/TEST-REQUESTS.md` status column for TR-67…TR-94 (TR-93 is Claude's own and left for Kimi):
+  19 verified, 7 verified with a note, 1 FAIL (TR-80: #136 auto-closed through a negated closing keyword).
+  Fixes found by the reads: AGENTS.md verified-gate row now states the Kimi carve-out and carry-forward;
+  ROADMAP row 2.2 gains #93's sha and row 3.1 records #161 as merged; TR-82/84/86 command paths corrected;
+  TESTING.md §6 gains the closing-keyword trap. Board message added.
+- **Evidence.** `main@1296c79`: check-workflows --strict 0/0, docs links 0/146, merged-manifest gate red on three
+  doctored inputs, probe integrity 0 removed, ledger sha check 73 rows 0 problems; Group 2 runs still hold (no code
+  change since `2f940cf`). Roadmap: Phase 0 quality gate (#206).
+
 ### QA — #206 Group 2 re-verification results (Claude, 2026-10-19)
 - **Why.** Karim's #206 mandate: every merge since 2026-10-18 re-tested on current `main` by a non-author.
   Under the 2026-10-19 role re-cut Claude runs the remaining re-tests.
