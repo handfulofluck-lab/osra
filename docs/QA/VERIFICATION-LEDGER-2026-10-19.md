@@ -203,6 +203,10 @@ failure).
    SERIAL=R5CW116Y6GF; PKG=com.familyshield.agent
    A11Y="$PKG/$PKG.services.AccessibilityMonitorService"   # full class name; short form dropped on One UI (TESTING.md:439)
 
+   # record the two toggles this run changes, so the release can put them back (AGENTS.md §9.3)
+   adb -s $SERIAL shell settings get secure enabled_accessibility_services
+   adb -s $SERIAL shell settings get secure accessibility_enabled
+
    # while-in-use only: fine + coarse granted, background explicitly not
    adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_FINE_LOCATION
    adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_COARSE_LOCATION
@@ -228,10 +232,12 @@ failure).
 
    Pass means the lines above read as marked, plus the failed `locate_now` ack with
    `detail.reason = background_location_missing` in `/commands/history`. An empty crash buffer **with**
-   `LocationService` running is not a pass — the FGS started, so the guard did not engage. Restore
-   `enabled_accessibility_services` / `accessibility_enabled` to their pre-run values before the
-   release (`AGENTS.md` §9.3), and re-grant background location only if the run revoked it. The full
-   step-by-step, including the parent-side `locate_now` send, is the 2026-10-18 ledger's §4 item 8.
+   `LocationService` running is not a pass — the FGS started, so the guard did not engage. Restore the
+   two values read at the top of the block with `settings put secure enabled_accessibility_services
+   "<value>"` / `settings put secure accessibility_enabled <0|1>` before the release (`AGENTS.md` §9.3
+   asks for the previous values, not "left working"), and re-grant background location only if the run
+   revoked it. The full step-by-step, including the parent-side `locate_now` send, is the 2026-10-18
+   ledger's §4 item 8.
 
 ### Block C — the rest of the API, and the gates themselves
 

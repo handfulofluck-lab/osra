@@ -200,6 +200,10 @@ time, ≥ 60 s apart** — the shared API rate-limits at 200 req/min and the lat
    SERIAL=R5CW116Y6GF; PKG=com.familyshield.agent
    A11Y="$PKG/$PKG.services.AccessibilityMonitorService"   # full class name; the short form is dropped on One UI (TESTING.md:439)
 
+   # 0. record the two toggles this run changes, so the release can put them back (AGENTS.md §9.3)
+   adb -s $SERIAL shell settings get secure enabled_accessibility_services
+   adb -s $SERIAL shell settings get secure accessibility_enabled
+
    # 1. while-in-use only: fine + coarse granted, background explicitly not
    adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_FINE_LOCATION
    adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_COARSE_LOCATION
@@ -235,11 +239,12 @@ time, ≥ 60 s apart** — the shared API rate-limits at 200 req/min and the lat
    empty after 120 s, `LocationService` not running, and the `background_location_missing` line present
    as the positive control), and step 4 shows the failed ack with that reason. An empty crash buffer
    *with* `LocationService` running is not a pass — it means the FGS started, so the guard did not
-   engage. Restore the toggles before the release: `settings put secure enabled_accessibility_services ""`
-   and `settings put secure accessibility_enabled 0` (the pre-run values are what `AGENTS.md` §9.3 asks
-   for), and re-grant background location only if the run revoked it. #155 is JVM-proven only
-   (`LocationStartPolicy.kt:41-49`, `AccessibilityMonitorService.kt:144-166`,
-   `CommandDispatcher.kt:247`); this row is the hardware half.
+   engage. **Restore step 0's two values** — write the exact strings back with
+   `settings put secure enabled_accessibility_services "<value>"` and
+   `settings put secure accessibility_enabled <0|1>` (an empty string if that is what was there) — and
+   re-grant background location only if the run revoked it. §9.3 asks for the previous values, not for
+   "left working". #155 is JVM-proven only (`LocationStartPolicy.kt:41-49`,
+   `AccessibilityMonitorService.kt:144-166`, `CommandDispatcher.kt:247`); this row is the hardware half.
 9. **#129 / #114 / #111 — the gates' own failure modes.** Cheap, and they protect every later run: a
    stub answering 429 must abort with exit 2 and no `FAIL` line in both `qa-probe.mjs` and `e2e.mjs`.
 10. **#127 / TR-21 — the hardware rows.** S1 and S1b are **NOT MEASURED**; one maintainer unlock (or the
