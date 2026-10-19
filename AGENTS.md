@@ -5,15 +5,17 @@
 
 ## 1. Roles
 
-The split was re-cut by the maintainer on 2026-10-17. This table replaces the earlier one, in which
-Kimi verified and Antigravity implemented; the principle survives the re-cut, enforced at the merge
-instead (§6.5).
+The split was re-cut by the maintainer on 2026-10-17, and again on 2026-10-19 17:22Z, in his words:
+*"once Antigravity finish the current set of tests, Claude will be doing architecture and testing and
+Kimi as lead developer. Antigravity will not handle further testing tasks for the coming few days. He
+will be silent member in the team until further notice."* This table is the 2026-10-19 cut. The
+principle survives every re-cut, enforced at the merge (§6.5).
 
 | Agent | Role | May do | Must not do |
 |---|---|---|---|
 | **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
-| **Claude** (KCL lead) | Owns architecture decisions; constructive testing with a detailed fix for every finding (§12) | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; verify TR rows; write tests, checklists and test requests | Merge; push to `main`; write product code |
-| **Antigravity** (testing) | Testing: runs the gates, tests PR claims, runs the hardware rows | Read everything; re-run every gate on a branch; test each falsifiable claim; run hardware rows; file `TR-*` results with raw output | Merge; change the code under test to make a claim true; weaken or delete a failing check |
+| **Claude** (architecture + testing) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12) | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
+| **Antigravity** | **Inactive from 2026-10-19** (maintainer), once the Group 1 hardware re-runs and TR-52 in flight at that time are filed. A silent member until the maintainer says otherwise: takes no new testing tasks and is not assigned any | Finish the rows already in flight; read | Take new rows; merge |
 | Human maintainer | Product and security trade-offs; anything that needs an account or money | Everything; final call on scope | — |
 
 **The principle: the author of a change is never its only verifier.** With one agent authoring and
@@ -32,10 +34,11 @@ as such and the row goes to the human or stays open; it does not quietly become 
    branch** (§6), writes the test that fails before the fix (§3), runs the full local gate, and opens the
    PR with the template's restatement plus the raw gate output. The item's *Acceptance* line is the
    contract; normally that means the named `qa-probe` checks now pass.
-3. **Verify — by another agent.** Antigravity re-runs the gates on the branch (not a re-read of the
-   author's paste, §6.2), tests each falsifiable claim, and runs the hardware row where one applies,
-   recording the measurement. Claude reads the design and the diff and may add a test or a checklist; a
-   test Claude adds is evidence once Antigravity — or the maintainer, for a hardware row — has run it. The
+3. **Verify — by another agent.** Claude re-runs the gates on the branch (not a re-read of the
+   author's paste, §6.2), reads the design and the diff against the roadmap row, tests each falsifiable
+   claim, and runs the hardware row where one applies, recording the measurement. A PR Claude authored
+   (CI, harness, docs) is verified by Kimi Code, which CI allows only while the PR has no Kimi-authored
+   commit, or by the maintainer. The
    result is a `TR-*` row in `docs/QA/TEST-REQUESTS.md` with the raw output, and a point-by-point reply in
    `docs/QA/DISCUSSION-LOG.md`.
 4. **Merge or return.** Kimi merges when §6.5 holds, citing the verification record in the merge message;
@@ -198,22 +201,22 @@ A PR may merge only when all of the following hold:
 
 1. **The discussion is fully answered** (§6.2): every numbered claim has an agree / disagree /
    needs-evidence reply, and the restatement matches what was actually built.
-2. **The §3 gates are green on the branch, run by someone other than the author.** Antigravity runs the
-   software rows; Antigravity or the maintainer runs a hardware row. Kimi's own green run is the floor a
+2. **The §3 gates are green on the branch, run by someone other than the author.** Claude runs the
+   software rows; Claude or the maintainer runs a hardware row. Kimi's own green run is the floor a
    PR starts from, not the evidence for merging it — for a Kimi-authored change it is explicitly not
    enough.
 3. **The verification record is cited.** The merge message names the verifier, the `TR-*` row, the sha
    and the numbers, for example
-   `Merge #NNN — verified by Antigravity, TR-NN (probe 109/0 · e2e 69/69 at <sha>)`.
+   `Merge #NNN — verified by Claude, TR-NN (probe 109/0 · e2e 69/69 at <sha>)`.
    A merge with no such line is, to the next reader, a merge whose evidence cannot be checked.
 4. **The verified sha is the merged sha.** If `main` moved after verification, merge `main` into the
    branch (or rebase) and have the gates re-run; the numbers in the merge message belong to the tree that
    lands. This is the stacked-PR rule 6 in `docs/QA/TESTING-STRATEGY.md` §3, applied at the merge.
 5. **Cleanup is done and evidenced** (§7): device, database and cache returned to their found state, with
    the command output in the run log.
-6. **The `verified-gate` check is green** (maintainer decision, 2026-10-19). The verifier (Antigravity, or
-   Claude for a review-only or docs change, or Kimi Code for a PR with no Kimi-authored commit, which CI
-   checks by commit email) posts a signed comment containing a line
+6. **The `verified-gate` check is green** (maintainer decision, 2026-10-19). The verifier (Claude for every
+   PR it did not author; Kimi Code only for a PR with no Kimi-authored commit, which CI checks by commit
+   email; Antigravity only for rows already in flight on 2026-10-19) posts a signed comment containing a line
    `Verified-sha: <head sha>` (7+ characters), **then** adds `state:verified`; adding the label is what
    re-runs the check. Any push after that (fix, rebase) changes the head and turns the check red until
    the new head is verified, which is rule 4 made mechanical. One exception, because `main` is `strict`:
