@@ -12,6 +12,14 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'fake_api_client.dart';
 import 'test_app.dart';
 
+/// Fixed local wall-clock base for every seeded timestamp in this file.
+///
+/// Never derive a fixture from `DateTime.now()`: a "40 minutes ago" event
+/// crosses midnight when the suite runs at 00:00-00:40 local, and "26 hours
+/// ago" is two days back at 00:00-02:00, so the asserted day headers vanish
+/// (issue #176 — a two-hour red window every day).
+final DateTime testNow = DateTime(2026, 10, 19, 12, 0);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -84,7 +92,7 @@ void main() {
         'severity': severity,
         'preview': 'Are you coming tonight? Don\'t tell your parents.',
         'concernTypes': concernTypes,
-        'createdAt': (at ?? DateTime.now().subtract(const Duration(hours: 2))).toUtc().toIso8601String(),
+        'createdAt': (at ?? testNow.subtract(const Duration(hours: 2))).toUtc().toIso8601String(),
       };
 
   Map<String, dynamic> callJson({
@@ -98,7 +106,7 @@ void main() {
         'id': id,
         'type': 'call',
         'payload': {'number': number, 'durationSec': durationSec, 'direction': direction},
-        'ts': (at ?? DateTime.now().subtract(const Duration(minutes: 30))).toUtc().toIso8601String(),
+        'ts': (at ?? testNow.subtract(const Duration(minutes: 30))).toUtc().toIso8601String(),
       };
 
   Map<String, dynamic> smsJson({
@@ -111,7 +119,7 @@ void main() {
         'id': id,
         'type': 'sms',
         'payload': {'number': number, 'bodyPreview': bodyPreview},
-        'ts': (at ?? DateTime.now().subtract(const Duration(minutes: 10))).toUtc().toIso8601String(),
+        'ts': (at ?? testNow.subtract(const Duration(minutes: 10))).toUtc().toIso8601String(),
       };
 
   group('Monitoring toggles', () {
@@ -239,18 +247,24 @@ void main() {
   });
 
   group('Calls & texts timeline (#6)', () {
-    testWidgets('renders call rows (direction icon, mm:ss) and sms rows (120-char preview), day-grouped', (tester) async {
-      final now = DateTime.now();
-      final api = FakeApiClient(socialRoutes(
+    /// Seeds the timeline on [base]'s local calendar day: the recent call and
+    /// the SMS sit on that day, the older call on the previous one, whatever
+    /// [base]'s time of day. Built from calendar fields — never `base ±
+    /// Duration` — so a 00:00 or 23:59 fixture cannot cross a day boundary
+    /// (issue #176).
+    Map<String, FakeRoute> timelineRoutes(DateTime base) {
+      final yesterday = DateTime(base.year, base.month, base.day - 1, base.hour, base.minute);
+      final smsAt = DateTime(base.year, base.month, base.day, 12, 30);
+      return socialRoutes(
         calls: [
-          callJson(direction: 'outgoing', durationSec: 95, at: now.subtract(const Duration(minutes: 40))),
-          callJson(id: 'act-call-2', number: '+15550002222', direction: 'incoming', durationSec: 12, at: now.subtract(const Duration(hours: 26))),
+          callJson(direction: 'outgoing', durationSec: 95, at: DateTime(base.year, base.month, base.day, base.hour, base.minute)),
+          callJson(id: 'act-call-2', number: '+15550002222', direction: 'incoming', durationSec: 12, at: yesterday),
         ],
-        sms: [smsJson(bodyPreview: 'x' * 200, at: now.subtract(const Duration(minutes: 10)))],
-      ));
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
-      await flushFakeHttp(tester);
+        sms: [smsJson(bodyPreview: 'x' * 200, at: smsAt)],
+      );
+    }
 
+    Future<void> expectDayGroupedTimeline(WidgetTester tester, DateTime base) async {
       await reveal(tester, find.byIcon(Icons.call_made));
       expect(find.byIcon(Icons.call_made), findsOneWidget);
       expect(find.byIcon(Icons.call_received), findsOneWidget);
@@ -261,10 +275,31 @@ void main() {
       // 200-char body is capped at 120 chars.
       expect(find.text('${'x' * 120}…'), findsOneWidget);
       // Day groups: today and yesterday headers.
-      expect(find.text(DateFormat('EEEE, MMM d, yyyy').format(now)), findsOneWidget);
-      await reveal(tester, find.text(DateFormat('EEEE, MMM d, yyyy').format(now.subtract(const Duration(days: 1)))));
-      expect(find.text(DateFormat('EEEE, MMM d, yyyy').format(now.subtract(const Duration(days: 1)))), findsOneWidget);
+      final today = DateFormat('EEEE, MMM d, yyyy').format(DateTime(base.year, base.month, base.day));
+      final yesterday = DateFormat('EEEE, MMM d, yyyy').format(DateTime(base.year, base.month, base.day - 1));
+      expect(find.text(today), findsOneWidget);
+      await reveal(tester, find.text(yesterday));
+      expect(find.text(yesterday), findsOneWidget);
+    }
+
+    testWidgets('renders call rows (direction icon, mm:ss) and sms rows (120-char preview), day-grouped', (tester) async {
+      final api = FakeApiClient(timelineRoutes(testNow));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+
+      await expectDayGroupedTimeline(tester, testNow);
     });
+
+    for (final boundary in [DateTime(2026, 10, 19, 0, 0), DateTime(2026, 10, 19, 23, 59)]) {
+      final label = DateFormat('HH:mm').format(boundary);
+      testWidgets('groups today and yesterday with the fixture base pinned at $label local', (tester) async {
+        final api = FakeApiClient(timelineRoutes(boundary));
+        await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+        await flushFakeHttp(tester);
+
+        await expectDayGroupedTimeline(tester, boundary);
+      });
+    }
 
     testWidgets('shows the empty state and the iOS NOTE', (tester) async {
       final api = FakeApiClient(socialRoutes());
@@ -277,10 +312,9 @@ void main() {
     });
 
     testWidgets('fetches type=call and type=sms and merges newest-first', (tester) async {
-      final now = DateTime.now();
       final api = FakeApiClient(socialRoutes(
-        calls: [callJson(at: now.subtract(const Duration(minutes: 5)))],
-        sms: [smsJson(at: now.subtract(const Duration(minutes: 1)))],
+        calls: [callJson(at: testNow.subtract(const Duration(minutes: 5)))],
+        sms: [smsJson(at: testNow.subtract(const Duration(minutes: 1)))],
       ));
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
