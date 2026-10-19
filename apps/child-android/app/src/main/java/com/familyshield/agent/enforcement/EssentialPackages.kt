@@ -20,6 +20,12 @@ package com.familyshield.agent.enforcement
  * the lock: `LockEnforcementPolicy` deliberately still re-raises the lock over the launcher, and its
  * tests pin that.
  *
+ * **Issue #192: the set is explicit, never a namespace prefix.** Until this fix the agent's own name
+ * was matched with `startsWith("com.familyshield.")`, so any package in that namespace — including a
+ * sideloaded `com.familyshield.notanapp` — was exempt from every block rule. Package names are global
+ * only by convention. [OWN_PACKAGE] is the one package this app is built under; every component it
+ * legitimately fronts lives in it (see below), so exactly one name is exempt.
+ *
  * **Reopened 2026-10-19: the set was right, its input was wrong.** On the Flip4 (Android 16, WM-Shell)
  * the Home transition arrives as an accessibility event whose `packageName` is [FRAMEWORK_PACKAGE],
  * not the launcher's, so the decision asked this set about `android` — a name it must not contain —
@@ -37,12 +43,34 @@ object EssentialPackages {
     const val FRAMEWORK_PACKAGE: String = "android"
 
     /**
+     * The agent's own application package (`applicationId` in `app/build.gradle.kts`, shared by the
+     * `play` and `full` flavours).
+     *
+     * Android has no per-component package: every window the agent legitimately fronts is this one
+     * package. The surfaces, all declared in `app/src/main/AndroidManifest.xml` (plus the Full-only
+     * notification listener in `app/src/full/AndroidManifest.xml`), are the overlay and lock activities
+     * ([com.familyshield.agent.enforcement.BlockActivity],
+     * [com.familyshield.agent.commands.LockActivity], [com.familyshield.agent.commands.RingActivity]),
+     * SOS ([com.familyshield.agent.sos.SosActivity]), the tamper guard
+     * ([com.familyshield.agent.security.TamperGuardActivity]), pairing
+     * ([com.familyshield.agent.setup.PairingActivity],
+     * [com.familyshield.agent.setup.PairQrScanActivity]), and the services/receivers the OS starts
+     * (`AccessibilityMonitorService`, `LocationService`, `FilterVpnService`, `BootReceiver`, …).
+     *
+     * Issue #192: this is an explicit allow-list entry, not a namespace prefix. Do not replace it with
+     * a `startsWith` / shorter-string test and do not add a sibling `com.familyshield.*` name unless it
+     * is actually ours: the Full build is sideloaded, so a child can install a package called
+     * `com.familyshield.notanapp`.
+     */
+    const val OWN_PACKAGE: String = "com.familyshield.agent"
+
+    /**
      * Exact package names. A name here is exempt without asking the OS, because the JVM rule path has
      * no `PackageManager`. Names are OEM-specific by nature; [isEssential] with [PackageFacts] adds the
      * OS-assigned HOME/dialer roles and a system-gated fallback for names this table does not know.
      */
     val EXACT: Set<String> = setOf(
-        "com.familyshield.agent",
+        OWN_PACKAGE,
         "com.android.systemui",
         "com.android.settings",
         "com.android.phone",
@@ -62,18 +90,17 @@ object EssentialPackages {
         "com.sec.android.app.launcher",
     )
 
-    private const val OWN_PREFIX = "com.familyshield."
-
     /**
-     * True when [packageId] is on the static essential set (or is one of the agent's own packages).
+     * True when [packageId] is on the static essential set.
      *
      * NOTE: a name is a *hint* here, not a role. `com.anything.dialer` is NOT exempt by name — review
-     * of #83 (F1) established that a name the child can choose must not buy an exemption. The
-     * system-gated segment match lives in [isEssential] with [PackageFacts].
+     * of #83 (F1) established that a name the child can choose must not buy an exemption. The same
+     * applies to our own namespace: only [OWN_PACKAGE] is exempt, not every `com.familyshield.*` name
+     * (issue #192). The system-gated segment match lives in [isEssential] with [PackageFacts].
      */
     fun isEssential(packageId: String?): Boolean {
         if (packageId.isNullOrBlank()) return false
-        return packageId in EXACT || packageId.startsWith(OWN_PREFIX)
+        return packageId in EXACT
     }
 
     /**

@@ -48,6 +48,36 @@ environment where it was written — see `docs/QA/` for the verification state.
   overlay comes up **and** whether the PiP video keeps playing over it) is open on a clean phone.
   This entry does not claim the visual PiP result; if the PiP window stays above the overlay, the
   next step is decided from that measurement. See ADR-0026.
+### Child Android — the block-rule exemption for the agent is an explicit package, not a namespace prefix (issue #192)
+- **Why.** `enforcement/EssentialPackages.kt` exempted any package whose name started with
+  `com.familyshield.`. Package names are global only by convention and the Full build is explicitly the
+  sideloaded artefact, so a child could install `com.familyshield.notanapp` (or even name a package
+  exactly `com.familyshield.`) and escape bedtime, routines, pause, blocklists, screen time and the
+  block overlay. The prefix was meant as "our own components", which is a finite, enumerable set.
+- **What.** `EssentialPackages` now exposes `OWN_PACKAGE = "com.familyshield.agent"` (the
+  `applicationId` shared by the `play` and `full` flavours) as an explicit entry in `EXACT`, and
+  `isEssential(name)` is exactly `name in EXACT` — no `startsWith` on our namespace. The KDoc
+  enumerates the components that package legitimately fronts (`BlockActivity`, `LockActivity`,
+  `RingActivity`, `SosActivity`, `TamperGuardActivity`, `PairingActivity`, `PairQrScanActivity`, the
+  accessibility/location/VPN services and the OS-started receivers); Android has no per-component
+  package, so one exact name is the complete allow-list. The dynamic rules are untouched: the current
+  HOME handler and the OS-assigned dialer role remain genuine system-surface tests.
+- **Tests.** `EssentialPackagesTest` gains a case pinning that `com.familyshield.notanapp`,
+  `com.familyshield.agent.notanapp`, `com.familyshield.agent.test`, `com.familyshield.`,
+  `com.familyshield` and `com.familyshieldx` are **not** essential through both `isEssential`
+  overloads, while `OWN_PACKAGE` is; `RuleRepositoryEssentialExemptionTest` adds the decision-path
+  assertions (bedtime/empty-cache answer BLOCK for `com.familyshield.notanapp`, ALLOW for the agent).
+  The new assertions fail on the old predicate and pass after the change. The existing launcher,
+  system-UI, dialer and OEM cases are unchanged and stay green.
+- **Verification.** Author's run only (Kimi Code), on `origin/main@675a118`:
+  `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug --no-daemon` →
+  **BUILD SUCCESSFUL in 17m 26s** (101 tasks); XML sums **Play 52 suites / 345 tests, 0 failures,
+  0 errors, 0 skipped** and **Full 52 suites / 345 tests, 0 failures, 0 errors, 0 skipped**.
+  `node scripts/check-merged-manifest-gate.mjs` → `2 result set(s) checked, all assertions ran and
+  passed`, exit 0. Fail-before: the two new test methods were run against the old predicate and
+  failed (`18 tests completed, 2 failed`) before the fix. **⚠️ not verified here:** the hardware row
+  (install a stub package named `com.familyshield.<x>` and open it during bedtime) was **not run** —
+  no device lease was taken in this lane; it stays open for the testing lane.
 
 ### Parent app — consent status per child, and a withdrawal flow that says what it really does (plan 3.7)
 - **Why.** The API could withdraw consent (`POST /v1/family/children/:id/consent/revoke`,
