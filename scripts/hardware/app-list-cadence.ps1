@@ -130,6 +130,13 @@ function Test-CadenceInterval {
     return (($Seconds -ge $CADENCE_MIN_S) -and ($Seconds -le $CADENCE_MAX_S))
 }
 
+# A baseline older than the window cannot be half of a 14-16 minute pair, so the harness must wait
+# for two observed changes instead of using it. The boundary is the same 16 minutes.
+function Test-FreshBaseline {
+    param([double]$AgeSeconds, [int]$MaxAgeSeconds = $CADENCE_MAX_S)
+    return (($AgeSeconds -ge 0) -and ($AgeSeconds -le $MaxAgeSeconds))
+}
+
 # Reads one package's first install time in the device's own timezone. The phone can list more than
 # one user state, and the 1970 row is a placeholder, so the first non-1970 value wins.
 function Get-DeviceInstallTime {
@@ -208,6 +215,8 @@ function Invoke-AppListCadenceSelfTest {
     Check "cadence 16:00 -> PASS" (Test-CadenceInterval 960) "960 s"
     Check "cadence 13:59 -> FAIL" (-not (Test-CadenceInterval 839)) "839 s"
     Check "cadence 16:01 -> FAIL" (-not (Test-CadenceInterval 961)) "961 s"
+    Check "fresh baseline 16:00 -> usable" (Test-FreshBaseline -AgeSeconds 960) "960 s"
+    Check "fresh baseline 16:01 -> too old" (-not (Test-FreshBaseline -AgeSeconds 961)) "961 s"
 
     Write-Host ("app-list-cadence self-test: " + ($script:total - $script:failed) + "/" + $script:total + " fixtures passed")
     if ($script:failed -gt 0) {
@@ -346,7 +355,7 @@ if (-not $inv) {
     } else {
         $now = [DateTimeOffset]::UtcNow
         $age = ($now - $reportedAt).TotalSeconds
-        $fresh = (($age -ge 0) -and ($age -le ($CADENCE_MAX_S + 60)))
+        $fresh = Test-FreshBaseline -AgeSeconds $age
         $marks = @()
         if ($fresh) {
             $marks += $reportedAt
