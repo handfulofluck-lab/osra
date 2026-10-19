@@ -23,6 +23,26 @@ jobs:
         # deliberate `|| true` is ever needed; do not add one without saying why in the PR.
         run: node scripts/check-workflows.mjs --strict
 
+      - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
+        # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
+        # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter
+        # passed, GitHub rejected the file, the run failed in 0 s with no jobs, and the gate it was
+        # meant to enforce did not exist. A real parser closes that class.
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          python3 - <<'PY'
+          import glob, sys, yaml
+          bad = 0
+          for f in sorted(glob.glob('.github/workflows/*.yml')):
+              try:
+                  yaml.safe_load(open(f, encoding='utf-8'))
+                  print(f'{f}: YAML OK')
+              except Exception as exc:
+                  bad = 1
+                  print(f'::error file={f}::not valid YAML: {exc}')
+          sys.exit(bad)
+          PY
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.
