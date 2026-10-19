@@ -120,8 +120,9 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
   routes under /v1/*, realtime gateway, GET /health).
 - src/realtime/gateway.ts — DONE: WS auth via ?token= JWT, psubscribe `family:*:events`,
   exports `publishFamilyEvent(familyId, event)`.
-- src/routes/auth.ts — DONE skeleton; TODOs: MFA enroll (/mfa/enroll) + verify (/mfa/verify),
-  password reset via email token, refresh tokens with rotation.
+- src/routes/auth.ts — DONE. `POST /register`, `/login`, `/logout`, `/logout-all`, `/token/refresh`,
+  `/reset/request`, `/reset/confirm`, `/mfa/enroll`, `/mfa/verify`, and (ADR-0023) `/mfa/recovery-codes`
+  and `/mfa/recover`. See "MFA and account recovery" below for the second-factor contract.
 - src/routes/family.ts — GENERATE THIS:
     GET /me; POST /children (428 without active consent); GET/PATCH/DELETE /children/:id
     (DELETE = GDPR erasure cascade — ADR-0013: every child-scoped table in one transaction,
@@ -162,6 +163,35 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
 - Dockerfile — DONE. Package scripts: db:migrate = `prisma migrate deploy` (therefore a
   prisma/migrations/0001_init/migration.sql matching schema.prisma must be generated),
   db:seed = `tsx scripts/seed.ts`.
+
+### MFA and account recovery (ADR-0023)
+
+MFA is optional and off by default (ADR-0004). When it is on, the account has two things the parent
+holds: the authenticator (TOTP) and, from the moment it is switched on, a set of ten one-time
+recovery codes.
+
+| Surface | What it does | What it refuses |
+|---|---|---|
+| `POST /v1/auth/mfa/enroll` | mints a TOTP secret and its `otpauth://` URL; replacing an existing secret needs the account password or a current TOTP (#139) | a bare session for a replacement (`401 reauth_required`) |
+| `POST /v1/auth/mfa/verify` | enables MFA, revokes every session, and **returns ten recovery codes — the only time the plaintext exists** | a wrong TOTP (`401 invalid_code`), a verify with no secret (`400 mfa_not_enrolled`) |
+| `POST /v1/auth/mfa/recovery-codes` | issues/replaces the batch (same re-authentication rule as a secret replacement) and returns the new ten codes | no proof of parentage when a secret exists (`401 reauth_required`) |
+| `POST /v1/auth/mfa/recover` | takes `{email, password, code}`; clears `mfaSecret`/`mfaEnabled`, spends the code, deletes the rest of the batch, revokes every session, emails a notice, and returns `{recoveryToken}` | everything else with the same `401 {"error":"invalid_recovery"}` — unknown address, wrong password, wrong/spent code, MFA not enabled |
+| `POST /v1/auth/mfa/enroll` + `/verify` with `mfa_recovery` | the 15-minute recovery token re-enrols and re-verifies | once `mfaEnabled` is true again, and every other route (`401 unauthorized`) |
+
+Code format: 16 Crockford base32 characters (80 bits), no `I`, `L`, `O`, `U`, displayed
+`XXXX-XXXX-XXXX-XXXX`. Normalisation before hashing: uppercase, separators stripped, `I`/`L` read as
+`1` and `O` as `0`. Storage: `ParentMfaRecoveryCode.codeHash` = SHA-256 of the normalised code; the
+plaintext is never stored, logged or returned a second time. One-time use is the
+`updateMany({where:{id, usedAt:null}})` count, so two concurrent requests cannot both spend a code;
+a successful recovery deletes the remaining rows. A parent who loses the codes and the authenticator
+is still locked out until the support path (Option B) is decided — the API offers no other route, and
+`/reset/confirm` deliberately does **not** clear MFA.
+
+The recovery token is not a session: `{sub, purpose:"mfa_recovery", jti}`, 15 minutes, backed by
+Redis `mfa:recovery:<jti>` → parentId (deleted on a successful verify), no `familyId` and no `role`.
+`requireJwt` still rejects every `purpose` token (#146/#147); only the two enrolment routes use
+`requireParentOrMfaRecovery`. The parent app has no MFA screen yet, so the codes are reachable only
+through the API today — the Flutter work is a follow-up, not part of this contract.
 
 ## §4 AI Engine (`services/ai-engine`)
 

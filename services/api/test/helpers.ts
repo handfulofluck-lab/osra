@@ -32,6 +32,7 @@ function makePrismaMock() {
   for (const model of [
     "family",
     "parent",
+    "parentMfaRecoveryCode",
     "child",
     "device",
     "ruleSet",

@@ -48,6 +48,36 @@ export function passwordResetEmail(to: string, link: string, locale: Locale = "b
   return { to, subject: "Reset your OSRA password · إعادة تعيين كلمة المرور", html, text };
 }
 
+/**
+ * ADR-0023: a recovery code was used. It states what happened and what the parent must do, and it
+ * carries **no link**: the support path (Option B) is not decided, so inviting a click would promise
+ * a channel that does not exist. It never carries the code itself either.
+ */
+export function mfaRecoveredEmail(to: string, locale: Locale = "both"): EmailMessage {
+  const { html, text } = shell(
+    {
+      en: {
+        title: "A recovery code was used on your OSRA account",
+        body: [
+          "Someone used one of your MFA recovery codes to reset the second factor. Your authenticator has been removed, your recovery codes are no longer valid, and every session has been signed out.",
+          "If that was you, sign in with your password and set up a new authenticator; you will receive a fresh set of recovery codes.",
+          "If it was not you, change your password immediately. Whoever did this also had your password.",
+        ],
+      },
+      ar: {
+        title: "تم استخدام رمز استرداد على حسابك في أسرة",
+        body: [
+          "استخدم شخص ما أحد رموز الاسترداد لإعادة تعيين عامل التحقق الثاني. تمت إزالة تطبيق المصادقة، ولم تعد رموز الاسترداد صالحة، وتم تسجيل الخروج من كل الجلسات.",
+          "إذا كنت أنت من فعل ذلك، فسجّل الدخول بكلمة المرور وأعد إعداد تطبيق مصادقة جديد؛ وستحصل على مجموعة رموز استرداد جديدة.",
+          "إذا لم تكن أنت، فغيّر كلمة المرور فوراً — فمن فعل ذلك كان يعرف كلمة المرور أيضاً.",
+        ],
+      },
+    },
+    locale,
+  );
+  return { to, subject: "MFA recovery used on your OSRA account · تم استخدام رمز استرداد", html, text };
+}
+
 export function inviteEmail(to: string, opts: { inviterName: string; familyName: string; role: string; link: string }, locale: Locale = "both"): EmailMessage {
   const { html, text } = shell(
     {
