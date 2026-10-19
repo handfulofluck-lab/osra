@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue #170: a debug build is a test artefact, and must be cleanable by a test runner who does not
+  hold the app PIN (a credential that lives outside this repository since #164). Android's
+  `dpm remove-active-admin` shell command refuses a non-test admin, and a left-over admin blocks
+  `adb uninstall`. `android:testOnly="true"` is what makes the shell route legal on Android 14+.
+
+  This overlay exists only for the `debug` build type: `src/full` and `src/main` never declare it, so
+  neither Play nor Full **release** carries the flag — `testOnly` is exactly what makes an APK
+  trivially replaceable, and the release builds keep the hard admin behind the app PIN. The merged
+  manifests are pinned by PlayMergedManifestTest / FullMergedManifestTest.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:testOnly="true" />
+</manifest>

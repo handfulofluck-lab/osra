@@ -118,8 +118,9 @@ jobs:
           OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
           OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
         # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
-        # comes from the secrets above when present and falls back to the debug key.
-        run: ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease --console=plain
+        # comes from the secrets above when present and falls back to the debug key. Both release flavours
+        # are built because #170's gate asserts `android:testOnly` is absent from each release merge.
+        run: ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease --console=plain
       # ADR-0021's gate asserts the *merged* manifest (where a dependency's permissions arrive), so it
       # only means something if the unit tests above actually ran it. The test skips with a loud message
       # when the artefact is missing — that is what an IDE run needs and what CI must never accept — so

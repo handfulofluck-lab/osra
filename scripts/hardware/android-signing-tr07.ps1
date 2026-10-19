@@ -1,4 +1,4 @@
-﻿# scripts/hardware/android-signing-tr07.ps1 - the TR-07 hardware half, scripted (ADR-0014; plan item 1.9 seed).
+# scripts/hardware/android-signing-tr07.ps1 - the TR-07 hardware half, scripted (ADR-0014; plan item 1.9 seed).
 #
 # What it proves, on a real phone over adb:
 #   1. the Android agent built from <branch> pairs through its own launcher form against an API built from the
@@ -213,7 +213,7 @@ W ("pairing code issued (6 digits)")
 Adb reverse --remove-all | Out-Null
 Adb reverse "tcp:$PORT" "tcp:$PORT" | Out-Null
 W ("adb reverse tcp:$PORT -> host :$PORT")
-$inst = (Adb install -r -g $APK) -join " "
+$inst = (Adb install -t -r -g $APK) -join " "
 W ("adb install: " + $inst)
 if ($inst -notmatch "Success") { Fail "install failed" }
 foreach ($perm in "android.permission.ACCESS_FINE_LOCATION","android.permission.POST_NOTIFICATIONS") { Adb shell pm grant $PKG $perm 2>&1 | Out-Null }

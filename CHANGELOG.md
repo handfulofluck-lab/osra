@@ -11,6 +11,54 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — a debug build can be cleaned up without the app PIN, and only a debug build can (issue #170)
+- **The defect.** `dpm remove-active-admin` answered `SecurityException: Attempt to remove non-test
+  admin`, and with the admin still active `adb uninstall` answered
+  `DELETE_FAILED_DEVICE_POLICY_MANAGER`. The only route off the phone was the app's "Remove protection"
+  PIN gate, and since #164 the app PIN is deliberately not in the repository — so an agent without the
+  credential could not finish a hardware run's cleanup (`AGENTS.md` §7/§9), which happened twice on
+  2026-10-19.
+- **The fix is one debug-only declaration.** `apps/child-android/app/src/debug/AndroidManifest.xml`
+  merges `android:testOnly="true"` into the `<application>` of Play and Full **debug** builds. Android
+  permits the shell to remove an admin whose package is `testOnly`; the test runner needs no PIN to end
+  its run. Because the flag is a build-type overlay, `src/main` and `src/full` never see it: both
+  **release** merges carry no `android:testOnly`.
+- **The debug-only half is the acceptance, not a convenience.** `testOnly` is exactly what makes an APK
+  replaceable without the parent's consent, so a release build that carried it would weaken the hard
+  admin. `PlayMergedManifestTest` and `FullMergedManifestTest` now assert `testOnly="true"` in their
+  **debug** merged manifest and its **absence** in their **release** merged manifest. The unit-test tasks
+  depend on `process<Flavor>{Debug,Release}Manifest`, so a clean `./gradlew testPlayDebugUnitTest` builds
+  the release artefacts the assertions read; if one is missing the test skips and
+  `node scripts/check-merged-manifest-gate.mjs` fails on that skip rather than passing silently. The
+  checker's expected-name list grew by the four new assertions. CI now builds `assembleFullRelease` as
+  well as `assemblePlayRelease`.
+- **Install note.** `adb install` refuses a `testOnly` APK without `-t`; a hardware run installs a debug
+  build with `adb install -t -r …`. `scripts/hardware/android-signing-tr07.ps1` was updated accordingly,
+  and `docs/TESTING.md` §5 shows the command. The release APK is unchanged and keeps the hard admin
+  behind the app PIN.
+- **Cleanup procedure** (`docs/TESTING.md` §5, §5a, §5f, §7; `AGENTS.md` §7): on a debug build,
+  `adb shell dpm remove-active-admin --user 0
+  com.familyshield.agent/.security.FamilyShieldDeviceAdmin` then `adb uninstall com.familyshield.agent`.
+  On a release build the app PIN gate remains the path, and `dpm` still refuses — that difference is
+  intended.
+- **Gate:** `./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assemblePlayRelease
+  assembleFullRelease --no-daemon` → **BUILD SUCCESSFUL**, **307 tests / 0 failures / 0 errors / 48
+  suites** in each debug flavour. `node scripts/check-merged-manifest-gate.mjs` → *2 result set(s)
+  checked, all assertions ran and passed*, `exit=0`. Fail-before: moving the overlay to `src/release`
+  turned **both** new assertions red (`6 tests completed, 2 failed`); with the release merged manifests
+  removed the release assertion skips and the checker reports 6 skipped assertions and `exit=1`; and
+  pointing `-Dosra.mergedManifest.playRelease` at a manifest that does carry `testOnly` fails the
+  release assertion with the artefact path in the report. (That documented override now actually
+  reaches the test JVM — Gradle does not forward arbitrary `-D` properties to the worker, so
+  `app/build.gradle.kts` forwards the `osra.*` ones.)
+- **Hardware verified on the Flip4** (`SM-F721B`, Android 16) against the Full debug APK
+  (`app-full-debug.apk`, sha256 `ec41884a…`), phone lease held by Kimi Code and released `Clean`:
+  `adb install -t` → `Success`; `dpm set-active-admin com.familyshield.agent/.security.FamilyShieldDeviceAdmin`
+  → `Success`, and `dumpsys device_policy` reported `testOnlyAdmin=true`;
+  `dpm remove-active-admin --user 0 …` → `Success: Admin removed …`, **exit 0**; `adb uninstall
+  com.familyshield.agent` → `Success`, **exit 0**; `pm list packages | grep -i familyshield` empty. No
+  app PIN was held or used. The release build was not installed on the phone; its half is asserted by
+  the merged-manifest tests and the absence of `testOnly` in `assembleFullRelease` / `assemblePlayRelease`.
 ### Test infrastructure — the `parent-app` social test no longer depends on the wall clock (issue #176)
 - **The defect.** `apps/parent-app/test/social_screen_test.dart` seeded its timeline from
   `DateTime.now()`. Between 00:00 and 00:40 local, the `now - 40 min` call crossed midnight, so the

@@ -4,10 +4,12 @@ import java.io.File
 import org.junit.Assume
 
 /**
- * Finds the merged manifest AGP wrote for a flavour. The production path is
- * `app/build/intermediates/merged_manifests/<flavor>Debug/…/AndroidManifest.xml`, produced by
- * `process<Flavor>DebugManifest`; `build.gradle.kts` makes both debug unit-test tasks depend on the
- * merge of **both** flavours, so the artefact is present whenever the suite runs under Gradle.
+ * Finds the merged manifest AGP wrote for a flavour and build type. The production paths are
+ * `app/build/intermediates/merged_manifests/<flavor>Debug/…/AndroidManifest.xml` and
+ * `…/<flavor>Release/…/AndroidManifest.xml`, produced by `process<Flavor>DebugManifest` /
+ * `process<Flavor>ReleaseManifest`; `build.gradle.kts` makes both debug unit-test tasks depend on the
+ * merge of **both** flavours and **both** build types, so the artefacts are present whenever the suite
+ * runs under Gradle. Issue #170 needs the release half: `testOnly` must be absent there.
  *
  * The search walks up from the test's working directory (Gradle uses the project dir,
  * `apps/child-android`) instead of hard-coding a relative path, and accepts any depth below the variant
@@ -20,9 +22,13 @@ import org.junit.Assume
 object MergedManifestLocator {
 
     fun locate(flavor: String, buildType: String = "Debug"): File? {
-        System.getProperty("osra.mergedManifest.$flavor")?.let { override ->
-            return File(override).takeIf { it.isFile }
-        }
+        // Issue #170: the release manifest is read too, so the override must be per build type. The
+        // unsuffixed key stays valid for Debug — it is in the docs and prior run logs.
+        val overrides = listOfNotNull(
+            System.getProperty("osra.mergedManifest.$flavor$buildType"),
+            if (buildType == "Debug") System.getProperty("osra.mergedManifest.$flavor") else null,
+        )
+        overrides.forEach { override -> File(override).takeIf { it.isFile }?.let { return it } }
 
         var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (dir != null) {
@@ -41,15 +47,17 @@ object MergedManifestLocator {
     }
 
     /** Fails the test as *skipped* with a message a human and the CI guard can both read. */
-    fun require(file: File?, flavor: String) {
+    fun require(file: File?, flavor: String, buildType: String = "Debug") {
         if (file != null) return
+        val variant = "$flavor$buildType"
         val message = buildString {
-            append("MERGED-MANIFEST GATE SKIPPED: no merged $flavor Debug manifest found. ")
+            append("MERGED-MANIFEST GATE SKIPPED: no merged $variant manifest found. ")
             append("The gate reads app/build/intermediates/merged_manifests/")
-            append("${flavor}Debug/**/AndroidManifest.xml, which `./gradlew test")
+            append("$variant/**/AndroidManifest.xml, which `./gradlew test")
             append(flavor.replaceFirstChar { it.uppercase() })
-            append("DebugUnitTest` produces (it depends on process<Flavor>DebugManifest). ")
-            append("Set -Dosra.mergedManifest.$flavor=<path> to point it at a manifest explicitly. ")
+            append("DebugUnitTest` produces (it depends on process${flavor.replaceFirstChar { it.uppercase() }}DebugManifest ")
+            append("and process${flavor.replaceFirstChar { it.uppercase() }}ReleaseManifest). ")
+            append("Set -Dosra.mergedManifest.$variant=<path> to point it at a manifest explicitly. ")
             append("CI fails on this skip (scripts/check-merged-manifest-gate.mjs).")
         }
         System.err.println(message)
