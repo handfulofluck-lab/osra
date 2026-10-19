@@ -780,6 +780,41 @@ class AppLocalizationsAr extends AppLocalizations {
   String get addAppRule => 'إضافة قاعدة تطبيق';
 
   @override
+  String get chooseInstalledApp => 'اختيار من تطبيقات الطفل';
+
+  @override
+  String get installedAppsTitle => 'التطبيقات المثبتة';
+
+  @override
+  String get searchApps => 'البحث في التطبيقات';
+
+  @override
+  String get showSystemApps => 'إظهار تطبيقات النظام';
+
+  @override
+  String get alreadyRuled => 'له قاعدة بالفعل';
+
+  @override
+  String get installedAppsEmpty => 'لم يتم الإبلاغ عن أي تطبيقات بعد';
+
+  @override
+  String get installedAppsEmptyHint =>
+      'تظهر القائمة بعد تسجيل جهاز الطفل في المرة التالية (خلال 15 دقيقة كحد أقصى).';
+
+  @override
+  String get installedAppsNoMatch => 'لا توجد تطبيقات تطابق بحثك.';
+
+  @override
+  String installedAppsLoadFailed(String error) {
+    return 'تعذّر تحميل التطبيقات: $error';
+  }
+
+  @override
+  String installedAppsTruncated(int count) {
+    return 'عرض أول $count تطبيقًا.';
+  }
+
+  @override
   String get addAlwaysAllowedTitle => 'إضافة تطبيق مسموح دائمًا';
 
   @override

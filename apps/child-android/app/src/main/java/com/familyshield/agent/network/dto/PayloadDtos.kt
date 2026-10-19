@@ -29,6 +29,23 @@ data class PushTokenDto(
 )
 
 /**
+ * Roadmap 3.4: one installed-launchable app for POST /v1/devices/<id>/apps. The wire payload carries
+ * no icon, usage or launch data — package, launcher label and the OS system flag are the whole
+ * inventory. The server caps the same values (500 apps, 100-character labels).
+ */
+data class InstalledAppDto(
+    val packageId: String,
+    val label: String,
+    val isSystem: Boolean,
+)
+
+/** Replace-wholesale inventory report for POST /v1/devices/<id>/apps (`version` is the contract). */
+data class InstalledAppsDto(
+    val version: Int,
+    val apps: List<InstalledAppDto>,
+)
+
+/**
  * Alert creation payload for POST /v1/alerts/internal (HMAC-signed via X-FamilyShield-Signature).
  * [severity] is info|warning|critical; [category] matches the shared Alert category enum.
  */

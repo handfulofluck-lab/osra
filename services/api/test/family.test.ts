@@ -195,9 +195,12 @@ describe("family routes", () => {
     expect(prismaMock.webVisit.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.appUsageDaily.deleteMany).toHaveBeenCalledWith(cascade);
     expect(prismaMock.deviceCommand.deleteMany).toHaveBeenCalledWith({ where: { deviceId: { in: ["dev-1", "dev-2"] } } });
+    // Roadmap 3.4: the installed-app inventory is child data, deleted explicitly before the device
+    // rows so the erasure result can report how many rows were removed.
+    expect(prismaMock.deviceApp.deleteMany).toHaveBeenCalledWith({ where: { deviceId: { in: ["dev-1", "dev-2"] } } });
     expect(prismaMock.child.delete).toHaveBeenCalledWith({ where: { id: CHILD_ID } });
     const txCalls = prismaMock.$transaction.mock.calls[0][0] as unknown[];
-    expect(txCalls).toHaveLength(13);
+    expect(txCalls).toHaveLength(14);
     // Each deleted device's token is revoked like an unpair (#56), bounded by the token lifetime.
     const redis = getRedis() as unknown as MockRedis;
     for (const id of ["dev-1", "dev-2"]) {

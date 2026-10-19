@@ -323,6 +323,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: apps, updatedAt: _draft.updatedAt));
 
     return ListView(
+      key: const ValueKey('appsRulesList'),
       padding: const EdgeInsets.all(16),
       children: [
         // Feature #9: apps that stay open during bedtime, school time,
@@ -369,9 +370,29 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
+          key: const ValueKey('pickInstalledApp'),
+          icon: const Icon(Icons.apps),
+          label: Text(l10n.chooseInstalledApp),
+          onPressed: () async {
+            final rule = await showDialog<AppRule>(
+              context: context,
+              builder: (_) => _InstalledAppsPicker(
+                childId: widget.childId,
+                existingPackageIds: {for (final r in _draft.appRules) r.packageId},
+              ),
+            );
+            if (rule != null && !_draft.appRules.any((r) => r.packageId == rule.packageId)) {
+              update([..._draft.appRules, rule]);
+            }
+          },
+        ),
+        const SizedBox(height: 4),
+        OutlinedButton.icon(
           icon: const Icon(Icons.add),
           label: Text(l10n.addAppRule),
           onPressed: () async {
+            // Kept for an app the child has not reported yet: the typed path is
+            // still the only way to rule on a package the agent has not seen.
             final rule = await showDialog<AppRule>(context: context, builder: (_) => const _AddAppRuleDialog());
             if (rule != null) update([..._draft.appRules, rule]);
           },
@@ -527,9 +548,166 @@ class _AddAppRuleDialogState extends State<_AddAppRuleDialog> {
   }
 }
 
+/// Roadmap 3.4: pick an app the child actually has instead of typing a package id.
+///
+/// Reads [installedAppsProvider] (the child's devices, unioned). Search matches
+/// the label or the package id; system apps are hidden by default because a
+/// typical phone reports dozens of OEM entries before the apps a parent cares
+/// about. An app that already has a rule is shown disabled with a check mark,
+/// so the picker can never create a duplicate `AppRule`.
+class _InstalledAppsPicker extends ConsumerStatefulWidget {
+  final String childId;
+  final Set<String> existingPackageIds;
+
+  const _InstalledAppsPicker({required this.childId, required this.existingPackageIds});
+
+  @override
+  ConsumerState<_InstalledAppsPicker> createState() => _InstalledAppsPickerState();
+}
+
+class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
+  final _search = TextEditingController();
+  String _query = '';
+  bool _showSystem = false;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final report = ref.watch(installedAppsProvider(widget.childId));
+    return Dialog(
+      key: const ValueKey('installedAppsPicker'),
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(l10n.installedAppsTitle, style: Theme.of(context).textTheme.titleMedium)),
+                  IconButton(
+                    key: const ValueKey('installedAppsClose'),
+                    icon: const Icon(Icons.close),
+                    tooltip: l10n.close,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              TextField(
+                key: const ValueKey('installedAppsSearch'),
+                controller: _search,
+                decoration: InputDecoration(
+                  labelText: l10n.searchApps,
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+              const SizedBox(height: 8),
+              FilterChip(
+                key: const ValueKey('installedAppsSystemFilter'),
+                label: Text(l10n.showSystemApps),
+                selected: _showSystem,
+                onSelected: (v) => setState(() => _showSystem = v),
+              ),
+              const SizedBox(height: 4),
+              Flexible(
+                child: report.when(
+                  loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+                  error: (e, _) => Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(l10n.installedAppsLoadFailed('$e'), textAlign: TextAlign.center),
+                        TextButton(
+                          onPressed: () => ref.invalidate(installedAppsProvider(widget.childId)),
+                          child: Text(l10n.retry),
+                        ),
+                      ],
+                    ),
+                  ),
+                  data: _buildList,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildList(InstalledAppsReport report) {
+    final l10n = context.l10n;
+    if (report.apps.isEmpty) {
+      return ListView(
+        key: const ValueKey('installedAppsEmpty'),
+        shrinkWrap: true,
+        children: [
+          Text(l10n.installedAppsEmpty, style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(l10n.installedAppsEmptyHint, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      );
+    }
+    final query = _query.trim().toLowerCase();
+    final filtered = [
+      for (final app in report.apps)
+        if ((_showSystem || !app.isSystem) &&
+            (query.isEmpty || app.label.toLowerCase().contains(query) || app.packageId.toLowerCase().contains(query)))
+          app,
+    ];
+    if (filtered.isEmpty) {
+      return ListView(
+        key: const ValueKey('installedAppsNoMatch'),
+        shrinkWrap: true,
+        children: [Text(l10n.installedAppsNoMatch)],
+      );
+    }
+    return ListView.builder(
+      key: const ValueKey('installedAppsList'),
+      shrinkWrap: true,
+      itemCount: filtered.length + (report.truncated ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == filtered.length) {
+          return Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(l10n.installedAppsTruncated(report.apps.length), style: Theme.of(context).textTheme.bodySmall),
+          );
+        }
+        final app = filtered[index];
+        final ruled = widget.existingPackageIds.contains(app.packageId);
+        return ListTile(
+          key: ValueKey('installedApp-${app.packageId}'),
+          enabled: !ruled,
+          leading: Icon(app.isSystem ? Icons.settings_applications : Icons.apps),
+          title: Text(app.label),
+          subtitle: Text(app.packageId),
+          trailing: ruled
+              ? Icon(Icons.check_circle, semanticLabel: l10n.alreadyRuled)
+              : const Icon(Icons.add),
+          onTap: ruled
+              ? null
+              : () => Navigator.of(context).pop(
+                    AppRule(packageId: app.packageId, appName: app.label, action: 'allow'),
+                  ),
+        );
+      },
+    );
+  }
+}
+
 /// Feature #9 dialog: collects just a package id for the always-allowed list.
-class _AddAlwaysAllowedDialog extends StatefulWidget {
-  const _AddAlwaysAllowedDialog();
+class _AddAlwaysAllowedDialog extends StatefulWidget {  const _AddAlwaysAllowedDialog();
 
   @override
   State<_AddAlwaysAllowedDialog> createState() => _AddAlwaysAllowedDialogState();

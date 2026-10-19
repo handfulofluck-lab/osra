@@ -94,6 +94,47 @@ const ActivityBatchSchema = z.object({
     .max(500),
 });
 
+/**
+ * Roadmap 3.4: the installed-launchable-app inventory contract.
+ *
+ * The payload is an inventory only — package id, launcher label, system flag — never usage. Icons
+ * are deliberately not accepted: they are large (tens of KB per app), the parent picker can render a
+ * generic icon from the package today, and an icon column would make a privacy-minimised list heavier
+ * for little gain. The device and the server share the same bounds so a buggy agent cannot enlarge
+ * the table: 500 apps, 100-character labels, one row per package.
+ */
+const INSTALLED_APPS_VERSION = 1;
+const MAX_INSTALLED_APPS = 500;
+const MAX_APP_LABEL_LENGTH = 100;
+const APP_PACKAGE_ID = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+
+const InstalledAppSchema = z.object({
+  packageId: z.string().trim().min(1).max(255).regex(APP_PACKAGE_ID),
+  label: z.string().max(MAX_APP_LABEL_LENGTH),
+  isSystem: z.boolean().default(false),
+});
+
+const InstalledAppsSchema = z.object({
+  version: z.literal(INSTALLED_APPS_VERSION),
+  apps: z.array(InstalledAppSchema).max(MAX_INSTALLED_APPS),
+});
+
+/** Trim labels, fall back to the package id, and keep the first occurrence of a package (dedupe). */
+function normalizeInstalledApps(
+  apps: Array<z.infer<typeof InstalledAppSchema>>,
+): Array<{ packageId: string; label: string; isSystem: boolean }> {
+  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean }>();
+  for (const app of apps) {
+    if (seen.has(app.packageId)) continue;
+    seen.set(app.packageId, {
+      packageId: app.packageId,
+      label: app.label.trim() || app.packageId,
+      isSystem: app.isSystem,
+    });
+  }
+  return [...seen.values()];
+}
+
 type AuthedUser = { sub: string; familyId: string; role?: string; deviceId?: string; childId?: string };
 
 /** Generate a 6-digit pairing code and store its payload with a 600 s TTL, retrying on SET NX collision. */
@@ -237,6 +278,70 @@ export async function deviceRoutes(app: FastifyInstance) {
     return { device: sanitizeDevice(device), telemetry };
   });
 
+  /**
+   * Roadmap 3.4: the parent-facing view of a device's installed-launchable-app inventory, used by
+   * the Rules editor picker. It is family-scoped like every device route, and it names the `rules`
+   * permission because the payload is exactly what a parent needs to shape an app rule (a co-parent
+   * admitted only for `alerts` has no business enumerating the child's apps). Reads elsewhere are
+   * family-scoped; this one is also permission-gated on purpose — the inventory is more revealing
+   * than device metadata, and gating it cannot break a legitimate rules editor.
+   *
+   * `version` is the contract version (1), not the per-device report version: an old report still
+   * answers with the shape a current parent app understands. `reportedAt` is null until the agent
+   * has checked in once.
+   */
+  app.get("/:id/apps", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ model: "device" })] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const device = (req as unknown as { device: { appsReportedAt?: Date | null } }).device;
+    const apps = await prisma.deviceApp.findMany({
+      where: { deviceId: id },
+      select: { packageId: true, label: true, isSystem: true },
+      orderBy: [{ label: "asc" }, { packageId: "asc" }],
+    });
+    return {
+      deviceId: id,
+      version: INSTALLED_APPS_VERSION,
+      reportedAt: device?.appsReportedAt ? new Date(device.appsReportedAt).toISOString() : null,
+      count: apps.length,
+      apps,
+    };
+  });
+
+  /**
+   * Roadmap 3.4: replace a device's installed-launchable-app inventory.
+   *
+   * Agent write composed exactly like `/telemetry` and `/activity`: `requireFamily` proves the
+   * device belongs to the caller's family and `requireOwnDevice` proves the caller *is* that device,
+   * so device A cannot write sibling B (parent tokens stay family-scoped). Device-JWT auth, not the
+   * `/internal` HMAC contract — this is an agent surface route, and the HMAC helper is for service
+   * and alert writes. Consent withdrawal stops the upload (`assertProcessingAllowed`, 428).
+   *
+   * The write is a replace, not a merge: a package uninstalled on the phone disappears, and an empty
+   * list clears the inventory. That is the honest model for "what is installed now"; a merge would
+   * accumulate ghosts forever.
+   */
+  app.post("/:id/apps", { preHandler: [requireFamily({ model: "device" }), requireOwnDevice()] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = InstalledAppsSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+
+    const apps = normalizeInstalledApps(parsed.data.apps);
+    const reportedAt = new Date();
+    const ops: Prisma.PrismaPromise<unknown>[] = [
+      prisma.deviceApp.deleteMany({ where: { deviceId: id } }),
+      prisma.device.update({
+        where: { id },
+        data: { lastSeen: reportedAt, status: "online", appsReportedAt: reportedAt, appsVersion: parsed.data.version },
+      }),
+    ];
+    if (apps.length > 0) {
+      ops.splice(1, 0, prisma.deviceApp.createMany({ data: apps.map((app) => ({ deviceId: id, ...app })) }));
+    }
+    await prisma.$transaction(ops);
+    return reply.code(202).send({ accepted: true, count: apps.length, version: parsed.data.version });
+  });
 
   /** Publish a lock/unlock/ring/sos_clear command to the device's Redis command channel and queue. */
   app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {

@@ -399,6 +399,26 @@
   "noAlwaysAllowedApps": "No always-allowed apps yet",
   "addApp": "Add app",
   "addAppRule": "Add app rule",
+  "chooseInstalledApp": "Choose from child's apps",
+  "installedAppsTitle": "Installed apps",
+  "searchApps": "Search apps",
+  "showSystemApps": "Show system apps",
+  "alreadyRuled": "Already ruled",
+  "installedAppsEmpty": "No apps reported yet",
+  "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
+  "installedAppsNoMatch": "No apps match your search.",
+  "installedAppsLoadFailed": "Could not load apps: {error}",
+  "@installedAppsLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "installedAppsTruncated": "Showing the first {count} apps.",
+  "@installedAppsTruncated": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "addAlwaysAllowedTitle": "Add always-allowed app",
   "appNameLabel": "App name",
   "packageIdLabel": "Package ID (e.g. com.example.app)",

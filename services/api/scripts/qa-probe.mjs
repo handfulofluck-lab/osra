@@ -584,6 +584,47 @@ console.log("\n── G2. location & rules authorization ──");
   const writtenStatuses = (familyDevices.data?.devices ?? []).map((dev) => dev.status);
   check("G23 every device status written in this run is in the shared vocabulary (no `active`)", familyDevices.status === 200 && writtenStatuses.length > 0 && writtenStatuses.every((s) => ["online", "offline", "locked", "sos"].includes(s)), `statuses=${JSON.stringify(writtenStatuses)}`);
 
+  // Roadmap 3.4: the installed-launchable-app inventory. d2 is paired and live; the parent token
+  // reads it, another family cannot, and the agent cannot write a sibling device's list.
+  const appsWrite = await call("POST", `/v1/devices/${d2.deviceId}/apps`, {
+    token: d2.token,
+    body: {
+      version: 1,
+      apps: [
+        { packageId: "com.example.game", label: "Game", isSystem: false },
+        { packageId: "com.android.settings", label: "Settings", isSystem: true },
+        { packageId: "com.example.game", label: "Game duplicate", isSystem: false },
+      ],
+    },
+  });
+  check("G24 installed apps: the device uploads its own inventory (202) and duplicates collapse", appsWrite.status === 202 && appsWrite.data?.accepted === true && appsWrite.data?.count === 2, `got ${appsWrite.status} ${JSON.stringify(appsWrite.data)}`);
+  const appsRead = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
+  const appInventory = appsRead.data?.apps ?? [];
+  const appKeys = appInventory.length ? Object.keys(appInventory[0]).sort().join(",") : "";
+  check("G25 installed apps: the parent reads version 1 with package+label+system only", appsRead.status === 200 && appsRead.data?.version === 1 && appsRead.data?.count === 2 && appInventory.length === 2 && appKeys === "isSystem,label,packageId" && appInventory.some((a) => a.packageId === "com.android.settings" && a.isSystem === true), `status=${appsRead.status} version=${appsRead.data?.version} count=${appsRead.data?.count} keys=${appKeys}`);
+  const appsOtherFamily = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenB });
+  check("G26 installed apps: another family cannot read the inventory (403)", appsOtherFamily.status === 403, `got ${appsOtherFamily.status}`);
+  const appsSibling = await call("POST", `/v1/devices/${deviceIdA}/apps`, { token: d2.token, body: { version: 1, apps: [] } });
+  check("G27 installed apps: a device cannot write a sibling device's inventory (403)", appsSibling.status === 403, `got ${appsSibling.status} ${JSON.stringify(appsSibling.data)}`);
+  const appsTooMany = await call("POST", `/v1/devices/${d2.deviceId}/apps`, {
+    token: d2.token,
+    body: { version: 1, apps: Array.from({ length: 501 }, (_, i) => ({ packageId: `com.example.app${i}`, label: `App ${i}`, isSystem: false })) },
+  });
+  const appsLongLabel = await call("POST", `/v1/devices/${d2.deviceId}/apps`, {
+    token: d2.token,
+    body: { version: 1, apps: [{ packageId: "com.example.long", label: "x".repeat(101), isSystem: false }] },
+  });
+  const appsBadVersion = await call("POST", `/v1/devices/${d2.deviceId}/apps`, { token: d2.token, body: { version: 2, apps: [] } });
+  check("G28 installed apps: 501 apps, a 101-character label and version 2 are rejected (400)", appsTooMany.status === 400 && appsLongLabel.status === 400 && appsBadVersion.status === 400, `many=${appsTooMany.status} label=${appsLongLabel.status} version=${appsBadVersion.status}`);
+  const appsReplace = await call("POST", `/v1/devices/${d2.deviceId}/apps`, {
+    token: d2.token,
+    body: { version: 1, apps: [{ packageId: "com.example.only", label: "Only", isSystem: false }] },
+  });
+  const appsAfterReplace = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
+  const appsClear = await call("POST", `/v1/devices/${d2.deviceId}/apps`, { token: d2.token, body: { version: 1, apps: [] } });
+  const appsAfterClear = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
+  check("G29 installed apps: a later report replaces the list and an empty report clears it", appsReplace.status === 202 && appsAfterReplace.data?.count === 1 && appsAfterReplace.data?.apps?.[0]?.packageId === "com.example.only" && appsClear.status === 202 && appsAfterClear.data?.count === 0, `replace=${appsReplace.status} count=${appsAfterReplace.data?.count} clear=${appsClear.status} after=${appsAfterClear.data?.count}`);
+
   if (process.env.JWT_SECRET) {
     const parentId = JSON.parse(Buffer.from(tokenA.split(".")[1], "base64url").toString()).sub;
     const now = Math.floor(Date.now() / 1000);
@@ -658,6 +699,7 @@ const blockedPing = dJ.token ? await call("POST", "/v1/location/ping", { token: 
 const blockedRules = dJ.token ? await call("GET", `/v1/rules/${kidA}`, { token: dJ.token }) : { status: 0 };
 const parentRules = await call("GET", `/v1/rules/${kidA}`, { token: tokenA });
 const blockedDrain = dJ.token ? await call("GET", `/v1/devices/${dJ.deviceId}/commands`, { token: dJ.token }) : { status: 0 };
+const blockedApps = dJ.token ? await call("POST", `/v1/devices/${dJ.deviceId}/apps`, { token: dJ.token, body: { version: 1, apps: [{ packageId: "com.example.game", label: "Game", isSystem: false }] } }) : { status: 0 };
 // ADR-0008 §2c: safe-direction actions stay open; enforcement actions do not.
 const resumeOpen = await call("POST", `/v1/controls/children/${kidA}/resume`, { token: tokenA });
 const lockBlocked = dJ.deviceId ? await call("POST", `/v1/devices/${dJ.deviceId}/command`, { token: tokenA, body: { command: "lock" } }) : { status: 0 };
@@ -687,6 +729,11 @@ check(
   "J3d agents are told to pause and resume (consent_revoked + consent_granted commands queued)",
   drainTypes.includes("consent_revoked") && drainTypes.includes("consent_granted"),
   `drain=${JSON.stringify(drainTypes)}`,
+);
+check(
+  "J3e consent revocation stops the installed-app upload too (POST /devices/:id/apps -> 428)",
+  blockedApps.status === 428,
+  `apps=${blockedApps.status}`,
 );
 
 // Issue #53 (found by Kimi/Antigravity verification of PR #52): the probe never asserted that a
@@ -928,6 +975,9 @@ console.log("\n── N. sessions & roles ──");
     // `alerts` could repoint the child's notifications to a device they control.
     const coPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: coTok, body: { pushToken: `co-probe-${stamp}` } });
     check("N6d co-parent without 'devices' cannot set a device push token (403 permission_required)", coPush.status === 403 && coPush.data?.error === "permission_required" && coPush.data?.permission === "devices", `got ${coPush.status} ${JSON.stringify(coPush.data)}`);
+    // Roadmap 3.4: the installed-app inventory is a `rules` surface (it feeds the Rules editor).
+    const coApps = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: coTok });
+    check("N6f co-parent without 'rules' cannot read the installed-app inventory (403 permission_required)", coApps.status === 403 && coApps.data?.error === "permission_required" && coApps.data?.permission === "rules", `got ${coApps.status} ${JSON.stringify(coApps.data)}`);
     // ...and the owner's success response is an allowlist, not the raw Prisma row: `internalSecret` is
     // the device's signing key and `pushToken` is another user's FCM handle, so neither may leave the
     // server (the pre-fix response carried both).

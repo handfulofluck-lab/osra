@@ -154,7 +154,8 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     POST /register; GET /; GET /:id (+last 24h telemetry summary); POST /:id/command
     (lock, unlock, ring, sos_clear — Redis pub/sub channel `device:${deviceId}:commands`);
     POST /:id/push-token; DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
-    TelemetryUploader — aggregates of per-app minutes / url logs).
+    TelemetryUploader — aggregates of per-app minutes / url logs); PLUS GET/POST /:id/apps
+    (roadmap 3.4 — the installed-launchable-app inventory, §14.1a).
 - src/routes/rules.ts — GENERATE THIS: GET /:childId; PUT /:childId (zod-validated upsert);
     PATCH /:childId (partial). On every update publish to Redis `child:${childId}:rules`.
     Validate bedtime/school windows do not overlap unless explicitly allowed.
@@ -421,6 +422,34 @@ role (req.user.role !== "parent" → 403): enforce in requireAuth/requireFamily 
 Tests: extend services/api/test — pair → claim round-trip (201 + device row with correct
 family), wrong code 404, expired code 404, parent-JWT endpoints reject device tokens (403),
 agent endpoints accept device tokens.
+
+## §14.1a Installed-app inventory (roadmap 3.4)
+
+The child agent reports the launcher-visible apps so the parent can build an app rule from a real
+label instead of typing a package id. This is an inventory, not usage: package id, launcher label,
+system flag. Icons, minutes and launch counts are not part of the contract.
+
+```
+POST /v1/devices/:id/apps       (device JWT; requireFamily device + requireOwnDevice;
+                                 active consent required — 428 when withdrawn)
+  body: { version: 1,
+          apps: [ { packageId, label, isSystem } ] }
+  bounds: ≤ 500 apps; packageId 1..255 chars matching [A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*;
+          label ≤ 100 chars (trimmed; blank falls back to packageId);
+          duplicate packageIds collapse to the first occurrence.
+  → 202 { accepted: true, count, version }
+  Replace-wholesale: an app that is no longer installed disappears, and [] clears the list.
+
+GET /v1/devices/:id/apps        (parent JWT + `rules` permission + family-scoped device)
+  → 200 { deviceId, version: 1, reportedAt: <ISO> | null, count,
+          apps: [ { packageId, label, isSystem } ] }
+  `reportedAt` is null until the device has checked in once. Apps are ordered by label, then
+  packageId. Another family → 403; a co-parent without `rules` → 403 permission_required.
+```
+
+The agent uploads on its existing 15-minute telemetry tick, and only when the list's fingerprint
+changed or the last successful upload is older than 24 h. `DeviceApp` rows cascade with the device
+and are deleted explicitly in the GDPR erasure cascade.
 
 ## §14.2 Android child agent
 

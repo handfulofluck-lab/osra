@@ -390,6 +390,17 @@ const actBatch = await call("POST", `/v1/devices/${agentId}/activity`, { token: 
 check("activity batch accepted (agent JWT)", actBatch.status === 202, `got ${actBatch.status}`);
 const telTotal = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { totalMinutes: 30, batteryPct: 64 } });
 check("telemetry day total accepted", telTotal.status === 202, `got ${telTotal.status}`);
+// Roadmap 3.4: the agent reports the launcher-visible inventory; the parent reads it back.
+const appsUpload = await call("POST", `/v1/devices/${agentId}/apps`, {
+  token: agentToken,
+  body: { version: 1, apps: [
+    { packageId: "com.example.e2e", label: "E2E App", isSystem: false },
+    { packageId: "com.android.settings", label: "Settings", isSystem: true },
+  ] },
+});
+check("installed app inventory accepted (agent JWT)", appsUpload.status === 202 && appsUpload.data?.accepted === true && appsUpload.data?.count === 2, `got ${appsUpload.status} ${JSON.stringify(appsUpload.data)}`);
+const appsList = await call("GET", `/v1/devices/${agentId}/apps`, { token });
+check("parent reads the installed app inventory", appsList.status === 200 && appsList.data?.version === 1 && appsList.data?.count === 2 && appsList.data?.apps?.some((a) => a.packageId === "com.example.e2e" && a.isSystem === false) && appsList.data?.apps?.some((a) => a.packageId === "com.android.settings" && a.isSystem === true), `got ${appsList.status} ${JSON.stringify(appsList.data?.apps)}`);
 // Flush the cache the old code depended on, then read everything back from Postgres.
 const redisFlush = redis.duplicate();
 const flushed = await redisFlush.del(`usage:child:${sam.id}:${todayKey}`).catch(() => -1);
@@ -460,6 +471,7 @@ if (process.env.DATABASE_URL) {
       activityEvent: await db.activityEvent.count(where), socialEvent: await db.socialEvent.count(where),
       installRequest: await db.installRequest.count(where), webVisit: await db.webVisit.count(where),
       appUsageDaily: await db.appUsageDaily.count(where), locationPing: await db.locationPing.count(where),
+      deviceApp: await db.deviceApp.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),
       alert: await db.alert.count(where), device: await db.device.count(where), ruleSet: await db.ruleSet.count(where),
       geofence: await db.geofence.count(where), consentRecord: await db.consentRecord.count(where),
       deviceCommand: await db.deviceCommand.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),

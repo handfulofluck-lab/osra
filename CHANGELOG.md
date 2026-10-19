@@ -11,6 +11,41 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Roadmap 3.4 — the installed-app inventory and a Rules picker built from real apps
+- **Why.** An app rule used to require a typed package id and a typed label. A parent cannot read a
+  package id from the launcher, so the typed path produced typos and rules for apps that were not
+  installed at all.
+- **Device.** The child agent reports its launcher-visible apps — package id, launcher label and the
+  OS system flag — on the existing 15-minute telemetry tick. `InstalledAppsPolicy` (pure Kotlin) is
+  the list builder: launcher-only, one row per package (first wins), trimmed label with the package
+  id as fallback, 100-character label cap, 500-app cap, and a SHA-256 fingerprint so an unchanged
+  list costs no network. `InstalledAppsCollector` uses the `MAIN`/`LAUNCHER` intent, which the
+  manifest already declares under `<queries>` (since #165), so this adds **no** `QUERY_ALL_PACKAGES`
+  and no Play permission. No icons, usage stats or launch counts are sent.
+- **API.** New `DeviceApp` table plus `Device.appsReportedAt/appsVersion` (`0018_device_apps`).
+  `POST /v1/devices/:id/apps` is a device-JWT, self-scoped write (`requireFamily` +
+  `requireOwnDevice`, the same composition as telemetry), honours consent (428), dedupes, caps and
+  replaces the list wholesale (an empty report clears it). `GET /v1/devices/:id/apps` is
+  parent-only, family-scoped and gated on the `rules` permission; it returns contract version 1 and
+  `reportedAt` (null before the first report). The erasure cascade deletes the inventory before the
+  device rows so the GDPR row counts stay complete.
+- **Parent app.** The Rules editor's Apps tab now offers **Choose from child's apps**: search over
+  label and package id, system apps hidden until the filter is switched on, already-ruled apps shown
+  disabled with a check mark, and an empty state that says the list appears after the next check-in.
+  The typed package-id dialog is still there for an app the child has not reported yet. Every new
+  string exists in `app_en.arb` and `app_ar.arb`; the picker is tested in Arabic RTL at 320×568.
+- **Tests / evidence.** `pnpm --filter @familyshield/api test` **395 passed** (the new
+  `device-apps.test.ts` was 9/9 failing with 404 before the route existed); probe **151 passed / 0
+  failed** including G24–G29 (upload/read/dedupe/family isolation/self-scope/bounds/replace/clear),
+  J3e (consent 428) and N6f (`rules` permission); e2e **71 passed / 0 failed**, whose erasure row
+  counts show `deviceApp: 2` deleted and 0 left; `./gradlew testPlayDebugUnitTest
+  testFullDebugUnitTest` **362 tests / 0 failures / 0 errors / 0 skipped, 54 suites per flavour**,
+  `BUILD SUCCESSFUL`; `flutter test` **225 passed** and `flutter analyze` **No issues found**.
+- **Not verified here.** The physical phone was unavailable (stale Knox admin row, issue #181), so
+  the real PackageManager output, the 15-minute upload cadence and the picker against a real handset
+  were **not** observed. The JVM suite covers the pure list builder, not the Android query. No merge
+  sha and no independent verification yet.
+
 ### Process — verified-gate: Kimi cannot verify a PR with Kimi commits, and the signer is the last signature
 - **Why.** #196 was merged on a `— Kimi Code` verification at a head that contained Kimi's own commit to
   the gate (7e1236d), and that comment also quoted `— Claude`, which the substring match counted as a

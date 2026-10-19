@@ -29,6 +29,9 @@ interface WorkerEntryPoint {
     /** Usage reporter for the telemetry worker. */
     fun usageReporter(): UsageReporter
 
+    /** Roadmap 3.4: installed-launchable-app inventory, uploaded on the telemetry tick when changed. */
+    fun installedAppsReporter(): com.familyshield.agent.apps.InstalledAppsReporter
+
     /** Room database (DAOs). */
     fun database(): FamilyShieldDatabase
 

@@ -141,7 +141,7 @@ describe("usage model — reads and rollup", () => {
   it("the erasure list covers every child-scoped model that exists in the schema", () => {
     // If a child-scoped model is added to prisma/schema.prisma this list must grow with it.
     expect([...CHILD_SCOPED_DELETE_ORDER]).toEqual([
-      "deviceCommand", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest",
+      "deviceCommand", "deviceApp", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest",
       "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord", "child",
     ]);
   });

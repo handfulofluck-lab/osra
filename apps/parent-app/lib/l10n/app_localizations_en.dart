@@ -775,6 +775,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addAppRule => 'Add app rule';
 
   @override
+  String get chooseInstalledApp => 'Choose from child\'s apps';
+
+  @override
+  String get installedAppsTitle => 'Installed apps';
+
+  @override
+  String get searchApps => 'Search apps';
+
+  @override
+  String get showSystemApps => 'Show system apps';
+
+  @override
+  String get alreadyRuled => 'Already ruled';
+
+  @override
+  String get installedAppsEmpty => 'No apps reported yet';
+
+  @override
+  String get installedAppsEmptyHint =>
+      'The list appears after the child device\'s next check-in (up to 15 minutes).';
+
+  @override
+  String get installedAppsNoMatch => 'No apps match your search.';
+
+  @override
+  String installedAppsLoadFailed(String error) {
+    return 'Could not load apps: $error';
+  }
+
+  @override
+  String installedAppsTruncated(int count) {
+    return 'Showing the first $count apps.';
+  }
+
+  @override
   String get addAlwaysAllowedTitle => 'Add always-allowed app';
 
   @override

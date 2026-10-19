@@ -237,6 +237,40 @@ Map<String, dynamic> consentStatusPayload({
       'records': records,
     };
 
+/// One installed-app JSON object (`GET /v1/devices/:id/apps`, roadmap 3.4).
+Map<String, dynamic> installedAppJson(String packageId, String label, {bool isSystem = false}) => {
+      'packageId': packageId,
+      'label': label,
+      'isSystem': isSystem,
+    };
+
+/// The default inventory used by the Rules-editor picker tests: one app that
+/// already has a rule (`com.example.game`), two free user apps, and a system
+/// app that the picker hides until "Show system apps" is on.
+List<Map<String, dynamic>> defaultInstalledApps() => [
+      installedAppJson('com.example.game', 'Game'),
+      installedAppJson('com.example.video', 'Video'),
+      installedAppJson('org.example.reader', 'Reader'),
+      installedAppJson('com.android.settings', 'Settings', isSystem: true),
+    ];
+
+/// A `GET /v1/devices/:id/apps` response body.
+Map<String, dynamic> installedAppsPayload({
+  List<Map<String, dynamic>>? apps,
+  bool truncated = false,
+  String? reportedAt = '2026-10-19T08:30:00.000Z',
+}) {
+  final list = apps ?? defaultInstalledApps();
+  return {
+    'deviceId': 'dev-1',
+    'version': 1,
+    'reportedAt': reportedAt,
+    'count': list.length,
+    'truncated': truncated,
+    'apps': list,
+  };
+}
+
 /// One alert JSON object.
 Map<String, dynamic> alertJson(String id, String severity, String category, String title, DateTime at) => {
       'id': id,
@@ -309,6 +343,9 @@ Map<String, FakeRoute> standardRoutes({
     'GET /v1/rules/child-2': (_) => ruleSetPayload('child-2', blockedCategories: blockedCategories),
     'PUT /v1/rules/child-1': (_) => {'ok': true},
     'PUT /v1/rules/child-2': (_) => {'ok': true},
+    // Roadmap 3.4: the Rules-editor app picker reads the child's device inventories.
+    'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(),
+    'GET /v1/devices/dev-2/apps': (_) => installedAppsPayload(apps: [installedAppJson('com.example.game', 'Game')]),
     'GET /v1/location/child-1/latest': (_) => {'latest': null},
     'GET /v1/location/child-2/latest': (_) => {'latest': null},
     'GET /v1/alerts': (req) => req.query['ack'] == 'false'
