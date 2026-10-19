@@ -630,7 +630,12 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
                       children: [
                         Text(l10n.installedAppsLoadFailed('$e'), textAlign: TextAlign.center),
                         TextButton(
-                          onPressed: () => ref.invalidate(installedAppsProvider(widget.childId)),
+                          onPressed: () {
+                            // The apps provider awaits familyProvider; invalidate both or the
+                            // retry re-awaits the same cached family error.
+                            ref.invalidate(familyProvider);
+                            ref.invalidate(installedAppsProvider(widget.childId));
+                          },
                           child: Text(l10n.retry),
                         ),
                       ],

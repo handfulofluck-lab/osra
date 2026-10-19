@@ -193,6 +193,25 @@ void main() {
     expect(find.byKey(const ValueKey('installedAppsList')), findsNothing);
   });
 
+  testWidgets('a failed inventory load shows the error and offers a retry', (tester) async {
+    var fail = true;
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => fail ? const FakeHttpError(500, {'error': 'boom'}) : installedAppsPayload(),
+    });
+    await pumpRules(tester, api);
+    await openPicker(tester);
+
+    expect(find.textContaining('Could not load apps:'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+
+    fail = false;
+    await tester.tap(find.text('Retry'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+    expect(tile('com.example.video'), findsOneWidget);
+  });
+
   testWidgets('Arabic RTL at 320×568 shows the picker without layout exceptions', (tester) async {
     final api = FakeApiClient(standardRoutes());
     await pumpRules(

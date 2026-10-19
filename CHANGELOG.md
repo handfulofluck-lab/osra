@@ -40,7 +40,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   J3e (consent 428) and N6f (`rules` permission); e2e **71 passed / 0 failed**, whose erasure row
   counts show `deviceApp: 2` deleted and 0 left; `./gradlew testPlayDebugUnitTest
   testFullDebugUnitTest` **362 tests / 0 failures / 0 errors / 0 skipped, 54 suites per flavour**,
-  `BUILD SUCCESSFUL`; `flutter test` **225 passed** and `flutter analyze` **No issues found**.
+  `BUILD SUCCESSFUL`; `flutter test` **226 passed** and `flutter analyze` **No issues found**.
 - **Not verified here.** The physical phone was unavailable (stale Knox admin row, issue #181), so
   the real PackageManager output, the 15-minute upload cadence and the picker against a real handset
   were **not** observed. The JVM suite covers the pure list builder, not the Android query. No merge
