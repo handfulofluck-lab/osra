@@ -448,6 +448,33 @@ stack, and only `mCurrentFocus` says which one the owner sees. The row fails on 
 needed `resume` from the server). No PIN is entered by the row; it only asserts that the bouncer holds
 focus. It is a safety row, so it exits non-zero like the others.
 
+## 5g. QR pairing on hardware (roadmap 3.2)
+
+Prerequisite: a live stack and a pairing code (`POST /v1/devices/pair` with the parent token), then the
+payload `osra://pair?v=1&code=<6 digits>&host=<API base>` rendered as a QR on a second screen. The real
+source is the parent app's `PairingQrScreen`; a generated PNG is a surrogate and the run log must say so.
+
+1. Install the Full debug APK (`adb install -t -r app-full-debug.apk`) and open `PairingActivity`.
+2. Tap **Scan QR code**. The in-app rationale must appear *before* the OS prompt. Deny the OS prompt:
+   the form must return with "Camera permission was denied, so the QR scanner cannot start…" and both
+   typed fields must still work.
+3. Grant Camera and point at the QR. The scanner returns text only. The form must show `Server: …`
+   and `Code: ••••<last two digits>`, with the server/code fields filled and not editable.
+4. Nothing may reach `POST /v1/devices/pair/claim` before **Confirm and pair**. After confirming,
+   `GET /v1/family/me` must list the device and the app must reach the set-PIN screen.
+5. A QR that is not `osra://pair`, a v2 payload, a non-six-digit code or a non-http host must return
+   to the form with the stated reason and must not pair.
+6. Accessibility: `uiautomator dump` must show `content-desc` on the preview ("Camera preview"), the
+   live-region status line and the "Cancel scanning…" button.
+7. Cleanup: unpair through the API/parent app, `dpm remove-active-admin` (debug/testOnly),
+   `adb uninstall`, `adb reverse --remove-all`, release the lease `Clean`.
+
+**Hardware note (2026-10-19).** The Flip4's rear camera was covered in the test position, so the scan
+itself could not be aimed at the monitor; the run verified install, the rationale, the OS prompt, the
+camera-ready state and the denial fallback, and the typed path was paired end-to-end against the live
+API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
+the open 3.2 hardware row.
+
 ## 5b. Hardware runs on the Windows test host (scripted)
 
 `scripts/hardware/android-signing-tr07.ps1 -Branch <branch>` runs the TR-07 hardware half end to end on a

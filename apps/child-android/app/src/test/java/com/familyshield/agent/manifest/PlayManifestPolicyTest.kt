@@ -1,6 +1,7 @@
 package com.familyshield.agent.manifest
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -140,5 +141,23 @@ class PlayManifestPolicyTest {
     fun `a missing isMonitoringTool declaration fails the monitoring check`() {
         val violations = PlayManifestPolicy.monitoringViolations(merged(monitoringValue = ""))
         assertTrue(violations.toString(), violations.single().contains("isMonitoringTool"))
+    }
+
+    /**
+     * Roadmap 3.2: the camera is a deliberate, reviewed feature of the Play artefact — not a
+     * permission that arrived with CameraX. If it ever moves to the deny list or falls off the
+     * allow list, this test says so before a release build does.
+     */
+    @Test
+    fun `the camera is a reviewed Play permission rather than a dependency accident`() {
+        assertEquals(
+            "src/main — roadmap 3.2 QR scanner (PairQrScanActivity); user-facing in both flavours, " +
+                "preview only, nothing stored",
+            PlayManifestPolicy.ALLOWED_PERMISSIONS["android.permission.CAMERA"],
+        )
+        assertFalse(
+            "CAMERA must not be forbidden: it is the user-facing QR scanner, not a capture permission",
+            PlayManifestPolicy.FORBIDDEN_PERMISSIONS.containsKey("android.permission.CAMERA"),
+        )
     }
 }

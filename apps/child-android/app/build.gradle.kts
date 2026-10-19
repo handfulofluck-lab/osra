@@ -142,6 +142,15 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // Roadmap 3.2: QR pairing. CameraX is Apache-2.0. The ML Kit barcode model is bundled (its
+    // licence is Google's ML Kit terms, not Apache-2.0) so the first scan works offline — the
+    // five-minute first-run test must not wait for a model download. Size is measured in the PR.
+    implementation("androidx.camera:camera-core:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     // Room (ksp compiler)
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")

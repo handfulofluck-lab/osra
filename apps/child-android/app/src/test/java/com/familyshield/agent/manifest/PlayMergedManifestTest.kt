@@ -96,7 +96,9 @@ class PlayMergedManifestTest {
         )
     }
 
-    /** Issue #170's other half: `testOnly` makes an APK trivially replaceable, so release must not carry it. */
+    /**
+     * Issue #170's other half: `testOnly` makes an APK trivially replaceable, so release must not carry it.
+     */
     @Test
     fun `play release merged manifest is not testOnly`() {
         assertNull(
@@ -104,6 +106,24 @@ class PlayMergedManifestTest {
                 "manifest. `testOnly` is exactly what lets an APK be replaced without the parent's consent " +
                 "(issue #170); it belongs only in app/src/debug/AndroidManifest.xml.",
             releaseMerged.applicationTestOnly,
+        )
+    }
+
+    /**
+     * Roadmap 3.2: the QR scanner is a user-facing feature, so both flavours carry CAMERA. The allow
+     * list above is the policy decision; this test keeps the declaration and the decision together.
+     */
+    @Test
+    fun `play merged manifest keeps the camera permission the QR scanner needs`() {
+        assertTrue(
+            "android.permission.CAMERA is missing from the Play merged manifest, so the store build " +
+                "cannot scan the parent's pairing QR code (roadmap 3.2).",
+            "android.permission.CAMERA" in merged.includedPermissions,
+        )
+        assertTrue(
+            "CAMERA is absent from PlayManifestPolicy.ALLOWED_PERMISSIONS — a Play policy decision " +
+                "must be recorded there, not assumed by the manifest.",
+            "android.permission.CAMERA" in PlayManifestPolicy.ALLOWED_PERMISSIONS,
         )
     }
 }
