@@ -11,6 +11,14 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — roles re-cut: Claude does architecture and all testing; Antigravity inactive (maintainer, 2026-10-19)
+- **Why.** The maintainer re-cut the team at 17:22Z: once Antigravity files the rows already in flight
+  (Group 1 hardware re-runs, TR-52), Claude does architecture and testing, Kimi stays lead developer, and
+  Antigravity takes no testing tasks until further notice.
+- **What.** AGENTS.md §1 role table and quote, §2 step 3 and §6.5 rules 2, 3 and 6 now name Claude as the
+  verifier. A Claude-authored PR is verified by Kimi Code (CI allows it only with no Kimi commits) or the
+  maintainer. `verified-gate` is unchanged.
+
 ### Testing — harnesses for the two #206 hardware rows (TR-48, TR-51/52/53)
 - **Why.** Claude's #206 ruling left five acceptance lines with `no current check`; two of them are
   scriptable and this PR builds those harnesses. Neither changes product code.
