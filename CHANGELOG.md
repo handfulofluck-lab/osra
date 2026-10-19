@@ -11,6 +11,13 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — Antigravity goes silent; Claude holds testing alongside architecture (2026-10-19)
+- Maintainer decision: Antigravity completes the test set it currently holds, then takes no new testing
+  tasks for the next few days. Claude verifies from that point; Kimi remains development lead.
+- `AGENTS.md` §1 carries the cut as a dated banner so the roles table is not silently reinterpreted.
+  The rule it protects does not change: the author of a change is never its only verifier. A hardware
+  row nobody else can run is disclosed as author-run and stays open.
+
 ### Testing — harnesses for the two #206 hardware rows (TR-48, TR-51/52/53)
 - **Why.** Claude's #206 ruling left five acceptance lines with `no current check`; two of them are
   scriptable and this PR builds those harnesses. Neither changes product code.

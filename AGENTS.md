@@ -5,6 +5,14 @@
 
 ## 1. Roles
 
+> **Temporary cut, 2026-10-19 (maintainer):** Antigravity finishes the test set it already holds, then
+> goes **silent for the next few days** — no new testing tasks. From that point Claude owns
+> architecture **and** testing, and Kimi remains development lead. Practical consequences: every
+> verification request goes to Claude; a hardware row that Claude cannot run is disclosed as
+> author-run and stays open for the human, rather than being self-certified; and no row is closed
+> because "testing will pick it up later". The table below still describes the standing roles — only
+> the holder of the testing lane changes.
+
 The split was re-cut by the maintainer on 2026-10-17. This table replaces the earlier one, in which
 Kimi verified and Antigravity implemented; the principle survives the re-cut, enforced at the merge
 instead (§6.5).
