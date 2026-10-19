@@ -6,6 +6,7 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../theme/app_tokens.dart';
 
 const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
 
@@ -87,10 +88,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         title: Text(l10n.editRules),
         actions: [
           if (_saving)
-            const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+            const Padding(padding: EdgeInsets.all(AppSpace.lg), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
           else
             FilledButton(onPressed: _loaded ? _save : null, child: Text(l10n.save)),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpace.sm),
         ],
       ),
       body: rules.when(
@@ -160,24 +161,24 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         );
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         Text(l10n.dailyLimit(st.dailyLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
         Slider(value: st.dailyLimitMinutes.toDouble(), min: 15, max: 600, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         Text(l10n.weekendLimit(st.weekendLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
         Slider(value: st.weekendLimitMinutes.toDouble(), min: 15, max: 600, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
-        const Divider(height: 32),
+        const Divider(height: AppSpace.xxl),
         Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
         timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         timeTile(l10n.ends, st.bedtimeEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: formatTime(t), schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
-        const Divider(height: 32),
+        const Divider(height: AppSpace.xxl),
         Text(l10n.schoolHours, style: Theme.of(context).textTheme.titleMedium),
         timeTile(l10n.starts, st.schoolStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: formatTime(t), schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         timeTile(l10n.ends, st.schoolEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: formatTime(t), schoolDays: s.schoolDays))),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         Wrap(
-          spacing: 8,
+          spacing: AppSpace.sm,
           children: [
             for (var i = 1; i <= 7; i++)
               FilterChip(
@@ -244,7 +245,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
     return ListView(
       key: const ValueKey('webFilterList'),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         SwitchListTile(
           title: Text(l10n.recommendedProtection),
@@ -252,7 +253,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           value: _recommendedOn,
           onChanged: (v) => _toggleRecommended(v, update),
         ),
-        const Divider(height: 24),
+        const Divider(height: AppSpace.xl),
         Text(l10n.blockedCategories, style: Theme.of(context).textTheme.titleMedium),
         for (final c in categories)
           CheckboxListTile(
@@ -266,13 +267,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
               return w.copyWith(blockedCategories: cats.toList());
             }),
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         TextField(
           controller: _allowedDomains,
           decoration: InputDecoration(labelText: l10n.allowedDomainsLabel, border: const OutlineInputBorder()),
           onChanged: (v) => update((w) => w.copyWith(allowedDomains: splitDomains(v))),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpace.md),
         TextField(
           controller: _blockedDomains,
           decoration: InputDecoration(labelText: l10n.blockedDomainsLabel, border: const OutlineInputBorder()),
@@ -283,19 +284,19 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           value: wf.safeSearchEnforced,
           onChanged: (v) => update((w) => w.copyWith(safeSearchEnforced: v)),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.sm),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(l10n.youtubeRestrictedMode, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               Text(
                 l10n.youtubeRestrictedDesc,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               SegmentedButton<String>(
                 segments: [
                   ButtonSegment(value: 'strict', label: Text(l10n.strict)),
@@ -324,23 +325,23 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
     return ListView(
       key: const ValueKey('appsRulesList'),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         // Feature #9: apps that stay open during bedtime, school time,
         // pause and routines.
         Text(l10n.alwaysAllowed, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         Text(
           l10n.alwaysAllowedDesc,
           style: Theme.of(context).textTheme.bodySmall,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         if (_draft.alwaysAllowedApps.isEmpty)
           Text(l10n.noAlwaysAllowedApps)
         else
           Wrap(
-            spacing: 8,
-            runSpacing: 4,
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.xs,
             children: [
               for (final pkg in _draft.alwaysAllowedApps)
                 InputChip(
@@ -349,7 +350,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                 ),
             ],
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         OutlinedButton.icon(
           icon: const Icon(Icons.add),
           label: Text(l10n.addApp),
@@ -360,7 +361,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             }
           },
         ),
-        const Divider(height: 32),
+        const Divider(height: AppSpace.xxl),
         for (var i = 0; i < _draft.appRules.length; i++)
           _AppRuleTile(
             key: ValueKey(_draft.appRules[i].packageId),
@@ -368,7 +369,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             onChanged: (r) => update([..._draft.appRules]..[i] = r),
             onRemove: () => update([..._draft.appRules]..removeAt(i)),
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         OutlinedButton.icon(
           key: const ValueKey('pickInstalledApp'),
           icon: const Icon(Icons.apps),
@@ -386,7 +387,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             }
           },
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         OutlinedButton.icon(
           icon: const Icon(Icons.add),
           label: Text(l10n.addAppRule),
@@ -419,7 +420,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         for (final r in _draft.routines)
           Card(
@@ -431,7 +432,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
               onTap: () => edit(r),
             ),
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         OutlinedButton.icon(icon: const Icon(Icons.add), label: Text(l10n.addRoutine), onPressed: () => edit()),
       ],
     );
@@ -465,7 +466,7 @@ class _AppRuleTileState extends State<_AppRuleTile> {
     final r = widget.rule;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpace.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -476,7 +477,7 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               ],
             ),
             Text(r.packageId, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.sm),
             SegmentedButton<String>(
               segments: [
                 ButtonSegment(value: 'allow', label: Text(l10n.appActionAllow)),
@@ -487,7 +488,7 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               onSelectionChanged: (sel) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: sel.first, dailyLimitMinutes: r.dailyLimitMinutes)),
             ),
             if (r.action == 'time_limit') ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               TextField(
                 controller: _minutes,
                 keyboardType: TextInputType.number,
@@ -530,7 +531,7 @@ class _AddAppRuleDialogState extends State<_AddAppRuleDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(controller: _appName, decoration: InputDecoration(labelText: l10n.appNameLabel, border: const OutlineInputBorder())),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.md),
           TextField(controller: _packageId, decoration: InputDecoration(labelText: l10n.packageIdLabel, border: const OutlineInputBorder())),
         ],
       ),
@@ -582,11 +583,11 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
     final report = ref.watch(installedAppsProvider(widget.childId));
     return Dialog(
       key: const ValueKey('installedAppsPicker'),
-      insetPadding: const EdgeInsets.all(16),
+      insetPadding: const EdgeInsets.all(AppSpace.lg),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpace.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,17 +614,17 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
                 ),
                 onChanged: (v) => setState(() => _query = v),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               FilterChip(
                 key: const ValueKey('installedAppsSystemFilter'),
                 label: Text(l10n.showSystemApps),
                 selected: _showSystem,
                 onSelected: (v) => setState(() => _showSystem = v),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.xs),
               Flexible(
                 child: report.when(
-                  loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+                  loading: () => const Center(child: Padding(padding: EdgeInsets.all(AppSpace.xl), child: CircularProgressIndicator())),
                   error: (e, _) => Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -659,7 +660,7 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
         shrinkWrap: true,
         children: [
           Text(l10n.installedAppsEmpty, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpace.xs),
           Text(l10n.installedAppsEmptyHint, style: Theme.of(context).textTheme.bodySmall),
         ],
       );
@@ -685,7 +686,7 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
       itemBuilder: (context, index) {
         if (index == filtered.length) {
           return Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(AppSpace.sm),
             child: Text(l10n.installedAppsTruncated(report.apps.length), style: Theme.of(context).textTheme.bodySmall),
           );
         }
@@ -793,17 +794,17 @@ class _RoutineDialogState extends State<_RoutineDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(controller: _name, decoration: InputDecoration(labelText: l10n.nameLabel, border: const OutlineInputBorder())),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
             Row(
               children: [
                 Expanded(child: OutlinedButton(onPressed: () => _pick(true), child: Text(l10n.startTimeButton(formatTime(_start))))),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpace.sm),
                 Expanded(child: OutlinedButton(onPressed: () => _pick(false), child: Text(l10n.endTimeButton(formatTime(_end))))),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
             Wrap(
-              spacing: 8,
+              spacing: AppSpace.sm,
               children: [
                 for (var i = 1; i <= 7; i++)
                   FilterChip(
@@ -813,9 +814,9 @@ class _RoutineDialogState extends State<_RoutineDialog> {
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
             TextField(controller: _blocked, decoration: InputDecoration(labelText: l10n.blockedAppsLabel, border: const OutlineInputBorder())),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
             TextField(controller: _allowed, decoration: InputDecoration(labelText: l10n.allowedAppsLabel, border: const OutlineInputBorder())),
           ],
         ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/models.dart';
 import '../../providers/content_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../social/social_screen.dart' show formatRelativeTime;
 import 'snippet_vault_modal.dart';
 
@@ -16,12 +17,10 @@ IconData searchEngineIcon(String engine) => switch (engine.toLowerCase()) {
       _ => Icons.search,
     };
 
-/// Severity color for search query cards.
-Color searchSeverityColor(String severity) => switch (severity.toLowerCase()) {
-      'warning' => Colors.amber,
-      'critical' => Colors.red,
-      _ => Colors.blue,
-    };
+/// Severity dot colour for search query cards; the text role is used for the
+/// severity chip, because the pinned amber dot is not readable as text.
+Color searchSeverityColor(String severity, [BuildContext? context]) =>
+    (context?.tokens ?? AppTokens.light).severityDot(severity);
 
 /// Screen displaying flagged search queries for a child (Track 1 & 2 content monitoring).
 /// Queries are decrypted on-demand from the server-side AES-256-GCM vault.
@@ -49,12 +48,12 @@ class SearchSafetyScreen extends ConsumerWidget {
         child: searches.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpace.xl),
             children: [
               Center(
                 child: Text('Failed to load search activity: $e', textAlign: TextAlign.center),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
               Center(
                 child: FilledButton.tonal(
                   onPressed: () => ref.invalidate(searchEventsProvider(childId)),
@@ -66,17 +65,18 @@ class SearchSafetyScreen extends ConsumerWidget {
           data: (items) {
             if (items.isEmpty) {
               return ListView(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(AppSpace.xl),
                 children: [
+                  // 48 is a deliberate empty-state offset, not a gap on the scale.
                   const SizedBox(height: 48),
                   Icon(Icons.shield_outlined, size: 64, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpace.lg),
                   Text(
                     'No flagged searches detected',
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpace.sm),
                   Text(
                     'SafeSearch enforcement and content inspection are active across all supported browsers and apps.',
                     style: Theme.of(context).textTheme.bodyMedium,
@@ -87,7 +87,7 @@ class SearchSafetyScreen extends ConsumerWidget {
             }
 
             return ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpace.lg),
               children: [
                 Card(
                   color: Theme.of(context).colorScheme.primaryContainer,
@@ -97,9 +97,9 @@ class SearchSafetyScreen extends ConsumerWidget {
                     title: Text('Search queries are analyzed for safety concerns. High-severity matches are logged to the encrypted family vault.'),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpace.lg),
                 Text('Flagged searches (${items.length})', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 for (final item in items)
                   _SearchEventCard(childId: childId, item: item),
               ],
@@ -119,14 +119,15 @@ class _SearchEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sevColor = searchSeverityColor(item.severity);
+    final sevColor = searchSeverityColor(item.severity, context);
+    final sevText = context.tokens.severityText(item.severity);
     final engineLabel = item.engine.isEmpty ? 'Search' : item.engine[0].toUpperCase() + item.engine.substring(1);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: AppSpace.md),
       color: sevColor.withValues(alpha: 0.05),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: () => SnippetVaultModal.show(
           context,
           title: 'Search: "${item.query}"',
@@ -137,40 +138,44 @@ class _SearchEventCard extends StatelessWidget {
           timestamp: item.createdAt,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpace.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Icon(searchEngineIcon(item.engine), color: sevColor, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$engineLabel · ${formatRelativeTime(item.createdAt)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
+                    child: Text(
+                      '$engineLabel · ${formatRelativeTime(item.createdAt)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: AppSpace.xs),
                   Chip(
                     visualDensity: VisualDensity.compact,
                     backgroundColor: sevColor.withValues(alpha: 0.15),
                     side: BorderSide(color: sevColor.withValues(alpha: 0.3)),
                     label: Text(
                       item.severity.toUpperCase(),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: sevColor, fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: sevText, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               Text(
                 item.query.isEmpty ? '(Empty query)' : item.query,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               if (item.concernTypes.isNotEmpty) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 Wrap(
                   spacing: 6,
-                  runSpacing: 4,
+                  runSpacing: AppSpace.xs,
                   children: [
                     for (final t in item.concernTypes)
                       Chip(
@@ -180,12 +185,12 @@ class _SearchEventCard extends StatelessWidget {
                   ],
                 ),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text('View vault details', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppSpace.xs),
                   Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.primary),
                 ],
               ),

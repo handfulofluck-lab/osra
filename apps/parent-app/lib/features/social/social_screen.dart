@@ -8,6 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/social_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../content/snippet_vault_modal.dart';
@@ -47,24 +48,21 @@ class SocialSectionsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListView(
         key: const ValueKey('socialSectionsList'),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpace.lg),
         children: [
           MonitoringTogglesSection(childId: childId),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpace.xl),
           ConcernsSection(childId: childId),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpace.xl),
           CallsSmsSection(childId: childId),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpace.xl),
           AllowlistSection(childId: childId),
         ],
       );
 }
 
-Color socialSeverityColor(String severity) => switch (severity) {
-      'warning' => Colors.amber,
-      'critical' => Colors.red,
-      _ => Colors.blue,
-    };
+Color socialSeverityColor(String severity, [BuildContext? context]) =>
+    (context?.tokens ?? AppTokens.light).severityDot(severity);
 
 // NOTE: no brand icons in Material — closest generic glyphs per app.
 IconData socialAppIcon(String appKey) => switch (appKey) {
@@ -157,9 +155,9 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(l10n.monitoring, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         rules.when(
-          loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+          loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
@@ -212,24 +210,24 @@ class ConcernsSection extends ConsumerWidget {
             title: Text(l10n.vaultTrustCopy),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         Text(l10n.concerns, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         events.when(
-          loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+          loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (items) => items.isEmpty
               ? Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                   child: Center(child: Text(l10n.noConcernsDetected)),
                 )
               : Column(
                   children: [
                     for (final e in items)
                       Card(
-                        color: socialSeverityColor(e.severity).withValues(alpha: 0.07),
+                        color: socialSeverityColor(e.severity, context).withValues(alpha: 0.07),
                         child: ExpansionTile(
-                          leading: Icon(socialAppIcon(e.app), color: socialSeverityColor(e.severity)),
+                          leading: Icon(socialAppIcon(e.app), color: socialSeverityColor(e.severity, context)),
                           title: Text(e.contact.isEmpty ? l10n.unknownContact : e.contact),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,10 +235,10 @@ class ConcernsSection extends ConsumerWidget {
                               Text('${socialAppLabel(e.app, l10n)} · ${formatRelativeTime(e.createdAt, l10n)}'),
                               if (e.concernTypes.isNotEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                                  padding: const EdgeInsets.only(top: AppSpace.xs),
                                   child: Wrap(
                                     spacing: 6,
-                                    runSpacing: 4,
+                                    runSpacing: AppSpace.xs,
                                     children: [
                                       for (final t in e.concernTypes)
                                         Chip(
@@ -256,12 +254,12 @@ class ConcernsSection extends ConsumerWidget {
                             Align(
                               alignment: AlignmentDirectional.centerStart,
                               child: Padding(
-                                padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 8),
+                                padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
                                 child: Text(e.preview.isEmpty ? l10n.noPreviewAvailable : e.preview),
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 8),
+                              padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
                               child: Align(
                                 alignment: AlignmentDirectional.centerEnd,
                                 child: TextButton.icon(
@@ -309,14 +307,14 @@ class CallsSmsSection extends ConsumerWidget {
         // NOTE: iOS agent cannot observe calls/texts (no public API) — keep
         // the section but tell parents why it may stay empty.
         Text(l10n.iosNoCallMonitoring, style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         activity.when(
-          loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+          loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (items) {
             if (items.isEmpty) {
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                 child: Center(child: Text(l10n.noCallsOrTexts)),
               );
             }
@@ -337,7 +335,7 @@ class CallsSmsSection extends ConsumerWidget {
               children: [
                 for (final day in order) ...[
                   Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(4, 12, 4, 2),
+                    padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.xs, AppSpace.md, AppSpace.xs, AppSpace.xxs),
                     child: Text(_dayLabel(context, day), style: Theme.of(context).textTheme.titleSmall),
                   ),
                   for (final e in groups[day]!)
@@ -443,11 +441,11 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(l10n.trustedContacts, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.xs),
         Text(l10n.trustedContactsDesc, style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         rules.when(
-          loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+          loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
@@ -457,8 +455,8 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
               children: [
                 if (items.isNotEmpty)
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
+                    spacing: AppSpace.sm,
+                    runSpacing: AppSpace.xs,
                     children: [
                       for (final n in items)
                         InputChip(
@@ -468,7 +466,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
                         ),
                     ],
                   ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 TextField(
                   controller: _input,
                   keyboardType: TextInputType.phone,
@@ -480,7 +478,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
                   ),
                   onSubmitted: (_) => _add(),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpace.sm),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
                   child: FilledButton(

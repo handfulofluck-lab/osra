@@ -5,12 +5,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/app.dart';
+import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
+import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/reports/usage_history_screen.dart';
+import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/features/settings/appearance_screen.dart';
+import 'package:familyshield_parent/features/settings/digest_prefs_screen.dart';
+import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
 import 'package:familyshield_parent/providers/theme_provider.dart';
@@ -82,6 +88,36 @@ void main() {
               },
             ],
           },
+      // The migrated screens' feeds: one card of each severity so the
+      // severity rule and its labels are on screen in the dark layout test.
+      'GET /v1/content/searches': (_) => {
+            'items': [
+              {
+                'id': 's-1',
+                'engine': 'google',
+                'query': 'how to buy vape',
+                'severity': 'critical',
+                'concernTypes': ['drugs'],
+                'createdAt': DateTime.now().subtract(const Duration(minutes: 5)).toUtc().toIso8601String(),
+              },
+              {
+                'id': 's-2',
+                'engine': 'youtube',
+                'query': 'dangerous stunt tutorial',
+                'severity': 'warning',
+                'concernTypes': ['violence'],
+                'createdAt': DateTime.now().subtract(const Duration(hours: 1)).toUtc().toIso8601String(),
+              },
+            ],
+          },
+      'GET /v1/digests/prefs': (_) => {
+            'dailyEmail': true,
+            'weeklyEmail': false,
+            'pushEnabled': true,
+            'emails': ['qa@familyshield.dev'],
+          },
+      'GET /v1/location/geofences/child-1': (_) => {'items': <dynamic>[]},
+      'GET /v1/location/geofences/child-2': (_) => {'items': <dynamic>[]},
     });
   }
 
@@ -141,6 +177,66 @@ void main() {
         }
       }
     });
+
+    test('severity labels keep 4.5:1 on surfaces and on their own tint', () {
+      for (final entry in {'light': AppTokens.light, 'dark': AppTokens.dark}.entries) {
+        final tokens = entry.value;
+        final roles = [
+          ('critical', tokens.severityCriticalText, tokens.severityCritical),
+          ('warning', tokens.severityWarningText, tokens.severityWarning),
+          ('info', tokens.severityInfoText, tokens.severityInfo),
+        ];
+        for (final (name, text, dot) in roles) {
+          final backgrounds = {
+            'surface': tokens.surface,
+            'surfaceVariant': tokens.surfaceVariant,
+            '7% tint': Color.alphaBlend(dot.withValues(alpha: 0.07), tokens.surfaceVariant),
+            '15% tint': Color.alphaBlend(dot.withValues(alpha: 0.15), tokens.surfaceVariant),
+          };
+          for (final background in backgrounds.entries) {
+            final ratio = contrastRatio(text, background.value);
+            expect(
+              ratio,
+              greaterThanOrEqualTo(4.5),
+              reason: '${entry.key}/$name label on ${background.key} is ${ratio.toStringAsFixed(2)}:1',
+            );
+          }
+        }
+      }
+    });
+
+    test('the swipe-to-acknowledge pair keeps 4.5:1 in both themes', () {
+      for (final entry in {'light': AppTokens.light, 'dark': AppTokens.dark}.entries) {
+        final tokens = entry.value;
+        final ratio = contrastRatio(tokens.onOk, tokens.ok);
+        expect(
+          ratio,
+          greaterThanOrEqualTo(4.5),
+          reason: '${entry.key}/onOk on ok is ${ratio.toStringAsFixed(2)}:1',
+        );
+      }
+    });
+
+    test('the light severity dots keep the pinned Material values', () {
+      // widget_screens_test.dart pins these in the AlertsScreen; the token
+      // contract has to keep them (including runtime type) so a dark-mode
+      // remap can never change what a light-mode user sees.
+      expect(AppTokens.light.severityCritical, Colors.red);
+      expect(AppTokens.light.severityWarning, Colors.amber);
+      expect(AppTokens.light.severityInfo, Colors.blue);
+      expect(AppTokens.dark.severityCritical, isNot(AppTokens.light.severityCritical));
+      expect(AppTokens.dark.severityWarning, isNot(AppTokens.light.severityWarning));
+      expect(AppTokens.dark.severityInfo, isNot(AppTokens.light.severityInfo));
+    });
+
+    test('severity lookups are case-insensitive and default to info', () {
+      for (final tokens in [AppTokens.light, AppTokens.dark]) {
+        expect(tokens.severityDot('WARNING'), tokens.severityWarning);
+        expect(tokens.severityText('Critical'), tokens.severityCriticalText);
+        expect(tokens.severityDot('unknown'), tokens.severityInfo);
+        expect(tokens.severityText(''), tokens.severityInfoText);
+      }
+    });
   });
 
   group('appearance', () {
@@ -189,12 +285,45 @@ void main() {
     });
   });
 
+  group('severity in dark mode', () {
+    testWidgets('AlertsScreen resolves dots through the dark token set', (tester) async {
+      SharedPreferences.setMockInitialValues({kThemeModeKey: 'dark'});
+      await tester.pumpWidget(themedApp(const AlertsScreen(), designApi()));
+      await tester.pumpAndSettle();
+
+      Color dot(String title) => tester
+          .widget<Icon>(find.descendant(
+            of: find.ancestor(of: find.text(title), matching: find.byType(AlertTile)),
+            matching: find.byIcon(Icons.circle),
+          ))
+          .color!;
+
+      expect(dot('SOS pressed'), AppTokens.dark.severityCritical);
+      expect(dot('Blocked site visited'), AppTokens.dark.severityWarning);
+      expect(dot('Daily limit reached'), AppTokens.dark.severityInfo);
+    });
+
+    testWidgets('SearchSafetyScreen uses the readable dark severity label', (tester) async {
+      SharedPreferences.setMockInitialValues({kThemeModeKey: 'dark'});
+      await tester.pumpWidget(themedApp(const SearchSafetyScreen(childId: 'child-1'), designApi()));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(find.text('CRITICAL')).style?.color, AppTokens.dark.severityCriticalText);
+      expect(tester.widget<Text>(find.text('WARNING')).style?.color, AppTokens.dark.severityWarningText);
+    });
+  });
+
   group('dark layout at 320x568', () {
     for (final (name, screen) in <(String, Widget)>[
       ('dashboard', const DashboardScreen()),
       ('reports', const ReportsScreen(childId: 'child-1')),
       ('usage history', const UsageHistoryScreen(childId: 'child-1')),
       ('child detail', const ChildDetailScreen(childId: 'child-1')),
+      ('family map', const FamilyMapScreen()),
+      ('rules editor', const RulesEditorScreen(childId: 'child-1')),
+      ('social', const SocialScreen(childId: 'child-1')),
+      ('search safety', const SearchSafetyScreen(childId: 'child-1')),
+      ('digest preferences', const DigestPrefsScreen()),
     ]) {
       testWidgets('$name renders in dark mode without overflow', (tester) async {
         SharedPreferences.setMockInitialValues({kThemeModeKey: 'dark'});
