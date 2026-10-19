@@ -203,6 +203,24 @@ class RuleRepositoryEssentialExemptionTest {
         assertEquals(Decision.BLOCK, decide("com.evil.dialer", null, at(DayOfWeek.MONDAY, 22)))
         assertEquals(Decision.BLOCK, decide("com.evil.dialer", rules(), at(DayOfWeek.MONDAY, 22)))
         assertEquals(Decision.ALLOW, decide("com.evil.dialer", rules(), at(DayOfWeek.MONDAY, 12)))
+
+        // Issue #192: sharing our namespace is not the same package. The old prefix exemption let a
+        // sideloaded `com.familyshield.notanapp` through every rule on the decision path too.
+        assertEquals(
+            "com.familyshield.notanapp",
+            Decision.BLOCK,
+            decide("com.familyshield.notanapp", null, at(DayOfWeek.MONDAY, 22)),
+        )
+        assertEquals(
+            "com.familyshield.notanapp",
+            Decision.BLOCK,
+            decide("com.familyshield.notanapp", rules(), at(DayOfWeek.MONDAY, 22)),
+        )
+        assertEquals(
+            "com.familyshield.agent",
+            Decision.ALLOW,
+            decide("com.familyshield.agent", rules(), at(DayOfWeek.MONDAY, 22)),
+        )
     }
 
     @Test
