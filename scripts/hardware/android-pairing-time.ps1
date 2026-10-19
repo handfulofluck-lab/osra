@@ -202,7 +202,8 @@ if (-not $child) {
   $childId = $child.id
   W "reusing measurement child $ChildName ($childId)"
 }
-$state = @{ token = $TOKEN; childId = $childId; baseUrl = $BASE; apk = $Apk; apkSha256 = (Get-FileHash -Algorithm SHA256 $Apk).Hash.ToLower() }
+# The parent token is deliberately not written to disk: only what is needed to identify the run.
+$state = @{ childId = $childId; baseUrl = $BASE; apk = $Apk; apkSha256 = (Get-FileHash -Algorithm SHA256 $Apk).Hash.ToLower() }
 $state | ConvertTo-Json | Set-Content (Join-Path $Out "pairing-time-state.json") -Encoding utf8
 
 function RemoveApp {
