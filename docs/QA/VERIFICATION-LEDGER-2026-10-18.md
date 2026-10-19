@@ -23,6 +23,25 @@ the bug if the fix were absent — but they are not the independent verification
 merge (#93) landed three minutes after a changes-requested review whose findings are still open. The
 debt is real and this file makes it measurable.
 
+## 0. Amendments (2026-10-19) — the day's record is not rewritten
+
+Claude's diff read of [#143](https://github.com/handfulofluck-lab/osra/pull/143) at 16:46:16Z approved
+these two ledgers **conditionally**; #143 merged at 16:55:43Z with none of the three conditions in it
+(the successor ledger's §4.3, item 1). Two of the three are about *this* file. A dated amendment is the
+honest repair: the rows, totals and debts below are exactly what was written on 2026-10-18, and the
+notes here say what has changed since. **No gate was re-run to write them** — the new evidence is the
+`file:line` re-read at `1733d83` and the PR/issue records named in each line.
+
+| Claude's condition (#143 review, 16:46:16Z) | Amended 2026-10-19 | Where in this file |
+|---|---|---|
+| **1a.** the `#131` row must read *known incomplete: #132* | the Status cell now carries `author-run, known incomplete: #132`, and says that #132 was fixed the same day by [#155](https://github.com/handfulofluck-lab/osra/pull/155) (`4e56410`, 20:00:18Z; issue [#132](https://github.com/handfulofluck-lab/osra/issues/132) closed 20:00:20Z) | §2, row #131 |
+| **1b.** `#111` fixed the probe only — `#117` was still live | §3 gains item 8 as the eighth debt, marked fixed by [#156](https://github.com/handfulofluck-lab/osra/pull/156) (`0d0418c`, 19:40:02Z; issue [#117](https://github.com/handfulofluck-lab/osra/issues/117) closed 19:40:04Z) | §3, item 8 |
+| **2.** the app PIN is in clear text in `docs/QA/TEST-REQUESTS.md` | **closed.** Redacted by [#164](https://github.com/handfulofluck-lab/osra/pull/164) (`e202c9e`, 2026-10-18 21:47:25Z) in the 2026-10-18 13:05Z message, now [`TEST-REQUESTS.md:22`](TEST-REQUESTS.md). #164 removed the digits and wrote prose instead — "the app PIN (held outside this repo)" — rather than Claude's suggested `<app-PIN>` placeholder; the point (no credential in the record) is met either way, and the hardware probe now requires `-Pin` with no default (`docs/TESTING.md:356-360`). `grep -rnE 'app PIN [0-9]{4}' docs scripts` over this tree at `1733d83` returns nothing — the pattern, not the digits, so this file does not undo the redaction. Rotating the physical PIN is a separate half and stays with the maintainer — issue [#151](https://github.com/handfulofluck-lab/osra/issues/151) is still open for it | `TEST-REQUESTS.md` |
+| **3.** re-run item 8 (#131) omits the while-in-use-only case from #132 | §4 item 8 now carries that case with the exact commands, so the re-run cannot pass on the boot path alone | §4, item 8 |
+
+Both ledgers' re-run lists carry the case (§4 item 8 here, Block B item 5 in the successor); the
+disposition of all three conditions, with PR numbers, is tabulated in the successor ledger's §4.4.
+
 ## 1. How to read a row
 
 | Status | Means | What it does **not** mean |
@@ -69,7 +88,7 @@ Sorted by merge time (UTC). "Head" is the PR head at merge — the sha the numbe
 | [#127](https://github.com/handfulofluck-lab/osra/pull/127) | docs(qa): TR-21 hardware results + the two traps that cost the run | `53d1c93` 14:14Z | `6c6c987` | **Kimi (author, hardware run on the Flip4).** row 1 `DELETE_FAILED_DEVICE_POLICY_MANAGER` → **PASS** · row 3 no pid after 121 s → **FAIL** · **S1 and S1b NOT MEASURED** (secure keyguard, PIN ≠ app PIN) · `pause` surrogate dialer focus **2.2 / 6.2 / 11.2 s** on both flavours → PASS · links **0/123** | author-run (hardware rows are the author's per §6.5; S1/S1b are **unverified**) |
 | [#130](https://github.com/handfulofluck-lab/osra/pull/130) | fix(api): make the WebSocket handshake ticket-only (#120) | `7ded1ec` 14:24Z | `b8fdeab` | **Kimi (author).** vitest **31 files / 338** · fail-before on `origin/main`'s gateway: **3 failed \| 3 passed**, `404 !== 401` · probe on a branch instance `127.0.0.1:3100`: **120 passed · 0 failed** (L6, L7, L7b, L8, L9) · e2e **69/69** · integrity **94→99, 5 added** | author-run |
 | [#129](https://github.com/handfulofluck-lab/osra/pull/129) | fix(e2e): a 429 burst aborts with exit 2, and a missing /me envelope is a recorded failure | `2e1efbd` 14:35Z | `8071bca` | **Kimi (author).** vitest **32 files / 339** in the PR (**342** in the merge message) · fail-before against `origin/main`'s `e2e.mjs`: **4/4 failed, exit 3221226505** · integrity **94→94** · live: probe **exit 2 (1 × 429)**, e2e **exit 2 (1 × 429)**, **0 FAIL lines**, then clean e2e **69/69** after 60 s | author-run |
-| [#131](https://github.com/handfulofluck-lab/osra/pull/131) | fix(android): guard the boot location FGS before the grant (closes #128) | `265124f` 14:45Z | `89ea651` | **Kimi (author).** fail-before: `BootStartPolicyTest` **4 tests, 1 failed** at `:25` · after: both flavours **tests=251 failures=0 errors=0** · both APKs built · CI 7/7 at `51f0e87` (child-android 6m10s) · **reboot hardware row not run** (secure keyguard) | author-run |
+| [#131](https://github.com/handfulofluck-lab/osra/pull/131) | fix(android): guard the boot location FGS before the grant (closes #128) | `265124f` 14:45Z | `89ea651` | **Kimi (author).** fail-before: `BootStartPolicyTest` **4 tests, 1 failed** at `:25` · after: both flavours **tests=251 failures=0 errors=0** · both APKs built · CI 7/7 at `51f0e87` (child-android 6m10s) · **reboot hardware row not run** (secure keyguard) | author-run, **known incomplete: [#132](https://github.com/handfulofluck-lab/osra/issues/132)** — the boot path was guarded; `AccessibilityMonitorService` and `CommandDispatcher.locate_now` still started `LocationService` without the background grant, so the same crash class stayed live. **Amended 2026-10-19:** #132 is fixed by [#155](https://github.com/handfulofluck-lab/osra/pull/155) (`4e56410`, 20:00:18Z) — the three start sites that can run in the background now share `LocationStartPolicy`; #155 is author-run too, and its hardware path had not been run when it merged |
 | [#139](https://github.com/handfulofluck-lab/osra/pull/139) | fix(api): close audit findings 3–5 — nonce fail-closed, MFA re-enrol re-auth, family-move revocation | `ca2d86b` 15:20Z | `553538c` | **Kimi (author).** fail-before: **4 failed \| 37 passed (41)** · vitest **32 files / 346** · integrity **99→99** · probe **120 passed · 0 failed** and e2e **68/0** — **on the live `:3000`, which runs `main@265124f`, i.e. not this branch's code** | author-run — and the live-gate half does not evidence the diff |
 | [#140](https://github.com/handfulofluck-lab/osra/pull/140) | fix(desktop): per-install parent PIN (no 0000 default) + validated HTTPS upstreams | `90e0b76` 15:32Z | `57d213c` | **Kimi (author).** `dotnet test` **225 passed / 0 failed** (baseline `main@265124f`: 188) · fail-before: TLS **2 failed / 6 passed**, PIN **22 failed / 27 passed** · merge message records the lead re-running 225/225 on the merged tree · **no live pairing/TLS handshake; no desktop session** | author-run (the manual desktop row is **unverified**) |
 | [#141](https://github.com/handfulofluck-lab/osra/pull/141) | fix: gate device register and pair on the devices permission (#138) | `f5143c6` 16:01Z | `bdcff51` | **Kimi (author).** vitest **32 files / 349 tests** · fail-before against `origin/main`'s handlers: **3 failed \| 36 passed (39)** · integrity **99→102, 3 added** · probe **123 passed · 0 failed** on a branch server `127.0.0.1:3100` (N6b, N6c, setup secret check) · e2e **69/69** on the same instance, 65 s later | author-run |
@@ -119,6 +138,21 @@ Inside those author-run PRs, these named claims have **no run by anyone**: the h
 7. **The UI-only PRs rest on widget tests.** #107 (104), #109 (105), #116 (112) and #142 (126) are Flutter
    `flutter test` runs with no live-stack walk-through and no device. That is the right gate for the code
    they changed; it is not a claim the screens work end to end, and none of the four PRs makes that claim.
+8. **#111 fixed the probe, not the server: a token minted in the revocation second survived.**
+   *(Added 2026-10-19 — Claude's condition 1b on #143; this debt was missing from the day's list.)*
+   Claude's review named it at `sessions.ts:59`: the revocation path compared the token's `iat` with
+   `< before`, so a token minted in the same second as the revocation stayed valid. #111's `F8` check
+   only *waited* for the second boundary — that makes the probe deterministic, it does not close the
+   hole, and no API line changed in #111. A reader of the row above would have thought the ADR-0014
+   session story was clean.
+   **Fixed 2026-10-18 by [#156](https://github.com/handfulofluck-lab/osra/pull/156)** (`0d0418c`,
+   19:40:02Z; issue [#117](https://github.com/handfulofluck-lab/osra/issues/117) closed 19:40:04Z), read
+   at `1733d83`: revocation is a per-parent counter (`services/api/src/lib/sessions.ts:114`,
+   `incrby`), a token is refused when its `sv` is lower than the current counter (`:128-129`), and the
+   legacy no-`sv` fallback compares `iat` inclusively so the revocation second is dead there too
+   (`:133-134`). **#156 is author-run** — the same-second `F8`/`N2` assertion has only my run, so the
+   fix is on record but the live proof is not independent; it is the successor ledger's first re-run
+   (§5 there, Block A item 1).
 
 ## 4. What a verifier should re-run first — in risk order
 
@@ -149,8 +183,68 @@ time, ≥ 60 s apart** — the shared API rate-limits at 200 req/min and the lat
 7. **#124 — device silence, self-scoped telemetry, push-token shape.** No probe check exists; the three
    things to try by hand are the ones the PR lists in §5 (A→B telemetry 403, push-token without
    `internalSecret`, and a real `device_silent` alert after backdating `lastSeen`).
-8. **#131 — boot FGS guard.** Both flavours on a clean build, then the reboot row in `docs/TESTING.md`
-   §5 with location denied and granted — it needs a human unlock after `adb reboot` (`AGENTS.md` §9.3).
+8. **#131 — boot FGS guard, and the live call sites #132 named.** Both flavours on a clean build, then
+   the reboot row in `docs/TESTING.md` §5 with location denied and granted — it needs a human unlock
+   after `adb reboot` (`AGENTS.md` §9.3).
+   **Amended 2026-10-19 (Claude's condition 3):** the reboot row exercises the boot path only. #132 was
+   live in `AccessibilityMonitorService` and `CommandDispatcher.locate_now`, so the row must also run
+   the while-in-use case below — a green boot path with an unguarded accessibility start is exactly the
+   pass Claude warned about. #132 is fixed by #155; this case is what proves it on a handset, and it
+   has never been run (the successor ledger records the same case as Block B item 5).
+
+   Claim the lease first (§5.7); never send `lock`. The agent must be **paired** before step 2, or the
+   decision short-circuits to `null` and the empty crash buffer proves nothing
+   (`apps/child-android/app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt:262`).
+
+   ```bash
+   SERIAL=R5CW116Y6GF; PKG=com.familyshield.agent
+   A11Y="$PKG/$PKG.services.AccessibilityMonitorService"   # full class name; the short form is dropped on One UI (TESTING.md:439)
+
+   # 0. record the two toggles this run changes, so the release can put them back (AGENTS.md §9.3)
+   adb -s $SERIAL shell settings get secure enabled_accessibility_services
+   adb -s $SERIAL shell settings get secure accessibility_enabled
+
+   # 1. while-in-use only: fine + coarse granted, background explicitly not
+   adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_FINE_LOCATION
+   adb -s $SERIAL shell pm grant  $PKG android.permission.ACCESS_COARSE_LOCATION
+   adb -s $SERIAL shell pm revoke $PKG android.permission.ACCESS_BACKGROUND_LOCATION
+   adb -s $SERIAL shell dumpsys package $PKG | grep -E "ACCESS_(FINE|COARSE|BACKGROUND)_LOCATION"
+   #   expect fine and coarse granted=true; ACCESS_BACKGROUND_LOCATION must not be granted
+   #   `pm grant` can report success while appops still says ignore (ANTIGRAVITY-INBOX.md:83):
+   adb -s $SERIAL shell appops get $PKG FINE_LOCATION        # expect "FINE_LOCATION: allow"
+
+   # 2. nothing of ours in front, clear the crash buffer, then enable accessibility -> the service
+   #    binds in the background and runs the 60-s location tick there
+   adb -s $SERIAL shell input keyevent KEYCODE_HOME
+   adb -s $SERIAL logcat -b crash -c
+   adb -s $SERIAL shell settings put secure enabled_accessibility_services "$A11Y"
+   adb -s $SERIAL shell settings put secure accessibility_enabled 1
+   adb -s $SERIAL shell settings get secure enabled_accessibility_services   # must echo the full name
+
+   # 3. two minutes, then the assertion: an empty crash buffer and no LocationService
+   sleep 120
+   adb -s $SERIAL logcat -b crash -d                          # expect no com.familyshield.agent frame
+   adb -s $SERIAL logcat -b crash -d | grep -c "com.familyshield.agent"        # expect 0
+   adb -s $SERIAL shell dumpsys activity services $PKG | grep -c LocationService  # expect 0
+   # the positive control — without it "empty crash" could mean the tick never ran:
+   adb -s $SERIAL logcat -d -s AccessibilityMonitor | grep "not starting LocationService"
+   #   expect "... not starting LocationService: background_location_missing ... (#132)"
+
+   # 4. the ack half of #155: send locate_now from the parent side, then
+   #    GET /v1/devices/:id/commands/history — expect a failed ack with
+   #    detail.reason = background_location_missing, not 200 and not a process death
+   ```
+
+   **Pass means:** steps 1–3 print as above (fine/coarse granted, no background grant, crash buffer
+   empty after 120 s, `LocationService` not running, and the `background_location_missing` line present
+   as the positive control), and step 4 shows the failed ack with that reason. An empty crash buffer
+   *with* `LocationService` running is not a pass — it means the FGS started, so the guard did not
+   engage. **Restore step 0's two values** — write the exact strings back with
+   `settings put secure enabled_accessibility_services "<value>"` and
+   `settings put secure accessibility_enabled <0|1>` (an empty string if that is what was there) — and
+   re-grant background location only if the run revoked it. §9.3 asks for the previous values, not for
+   "left working". #155 is JVM-proven only (`LocationStartPolicy.kt:41-49`,
+   `AccessibilityMonitorService.kt:144-166`, `CommandDispatcher.kt:247`); this row is the hardware half.
 9. **#129 / #114 / #111 — the gates' own failure modes.** Cheap, and they protect every later run: a
    stub answering 429 must abort with exit 2 and no `FAIL` line in both `qa-probe.mjs` and `e2e.mjs`.
 10. **#127 / TR-21 — the hardware rows.** S1 and S1b are **NOT MEASURED**; one maintainer unlock (or the
@@ -287,7 +381,9 @@ Expected end state: one family (`Demo Family`), child `Alex`, device `Pixel 7a`,
 
 - **Not a re-verification.** No gate in §2 was re-run to write this file; every number is quoted from the
   merge message or the PR body/comment that claims it. The only command I ran for this document is
-  `node scripts/check-docs-links.mjs`, whose raw output is in the pull request's gate section.
+  `node scripts/check-docs-links.mjs`, whose raw output is in the pull request's gate section. The
+  **2026-10-19 amendments in §0** add no run either: they are the `file:line` re-reads at `1733d83`, the
+  PR/issue records they name, and one `grep -rnE 'app PIN [0-9]{4}'` over `docs`/`scripts` (§0, condition 2).
 - **Not a status upgrade.** Nothing here turns an author's run into verification, and #125's sign-off is
   recorded with its timestamp so a reader can see it landed after the merge.
 - **Not a substitute for a `TR-*` row.** When a verifier does re-run a row above, the record belongs in
