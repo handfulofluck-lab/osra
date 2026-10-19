@@ -1,6 +1,7 @@
 package com.familyshield.agent.manifest
 
 import java.io.File
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -15,11 +16,15 @@ class FullMergedManifestTest {
 
     private val artifact: File? by lazy { MergedManifestLocator.locate("full") }
     private val merged: MergedManifest by lazy { MergedManifest.read(artifact!!) }
+    private val releaseArtifact: File? by lazy { MergedManifestLocator.locate("full", "Release") }
+    private val releaseMerged: MergedManifest by lazy { MergedManifest.read(releaseArtifact!!) }
 
     @Before
     fun theMergedManifestMustExist() {
         MergedManifestLocator.require(artifact, "full")
-        println("merged-manifest gate (full): ${artifact!!.absolutePath}")
+        MergedManifestLocator.require(releaseArtifact, "full", "Release")
+        println("merged-manifest gate (full debug): ${artifact!!.absolutePath}")
+        println("merged-manifest gate (full release): ${releaseArtifact!!.absolutePath}")
     }
 
     @Test
@@ -62,6 +67,34 @@ class FullMergedManifestTest {
                 "(ADR-0021 decisions 3 and 5; Play Protect reads the flag on sideloads):\n" +
                 violations.joinToString("\n"),
             violations.isEmpty(),
+        )
+    }
+
+    /**
+     * Issue #170: the hardware cleanup path is `dpm remove-active-admin`, which Android refuses for a
+     * non-test admin. A Full debug build is the artefact the test runner installs, so it must be testOnly.
+     */
+    @Test
+    fun `full debug merged manifest is testOnly so the test admin is removable`() {
+        assertTrue(
+            "android:testOnly is absent from the Full debug merge. The test runner cannot run " +
+                "`dpm remove-active-admin` without it (issue #170), so cleanup again needs the app PIN. " +
+                "Declare it in app/src/debug/AndroidManifest.xml.",
+            merged.applicationTestOnly == "true",
+        )
+    }
+
+    /**
+     * Issue #170's acceptance: the sideloaded release build keeps the hard admin. `testOnly` would let
+     * anyone replace the package without the parent PIN, so it must be absent from `assembleFullRelease`.
+     */
+    @Test
+    fun `full release merged manifest is not testOnly`() {
+        assertNull(
+            "android:testOnly=${releaseMerged.applicationTestOnly} is declared in the Full RELEASE merged " +
+                "manifest. `testOnly` is exactly what lets an APK be replaced without the parent's consent " +
+                "(issue #170); it belongs only in app/src/debug/AndroidManifest.xml.",
+            releaseMerged.applicationTestOnly,
         )
     }
 }

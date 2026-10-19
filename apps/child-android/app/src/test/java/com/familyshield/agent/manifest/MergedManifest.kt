@@ -22,6 +22,12 @@ class MergedManifest private constructor(
     val applicationMetaData: Map<String, String>,
     val queries: List<QueryIntent>,
     val components: List<Component>,
+    /**
+     * `<application android:testOnly="…">`, verbatim, or `null` when the build type did not declare it.
+     * Issue #170: the debug overlay sets `"true"` so `dpm remove-active-admin` accepts the test admin;
+     * a release build must leave the attribute absent, because `testOnly` makes an APK replaceable.
+     */
+    val applicationTestOnly: String?,
 ) {
     data class QueryIntent(val actions: Set<String>, val categories: Set<String>)
 
@@ -94,6 +100,7 @@ class MergedManifest private constructor(
                     }
                 },
                 components = components,
+                applicationTestOnly = application?.attr("android:testOnly"),
             )
         }
     }

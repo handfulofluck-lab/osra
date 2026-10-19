@@ -28,7 +28,7 @@ probe is **not** evidence that a feature works on a phone — that is what hardw
 |---|---|
 | API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`ci.yml:28-33`) — CI's own step comment records that `pnpm install` did not create the client (`ci.yml:28`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time |
 | Flutter | the row's three commands are `ci.yml:47-49`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:68-79`) |
-| Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease` in one invocation (`:122`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:123-128` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` for `targetSdkVersion:'35'` and both network-security configs (`:130-137`). The gate's artefact is `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml`, which the test tasks now depend on (`app/build.gradle.kts`) |
+| Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`:123`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:130` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` for `targetSdkVersion:'35'` and both network-security configs (`:131-139`). The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
 | Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`:150`) |
 | AI engine | `pip install -r requirements-dev.txt` first (`:166`) |
 
@@ -125,7 +125,7 @@ explicitly, in its own commit, with the reasoning in the PR.
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended) |
+| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended) |
 | `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
 | `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
@@ -217,8 +217,9 @@ or accessibility rebinding until it is launched again (measured by probe row 3, 
 did it; the next owner relaunches and re-grants.
 
 **Release** is the last step of every run: clear `unlock` / `stop_ring` / `resume_internet` and verify,
-then follow §7 (deactivate device admin first if it is active, or `adb uninstall` fails — §5a), then
-release the claim with the state you are handing over:
+then follow §7 (deactivate device admin first if it is active, or `adb uninstall` fails — §5a). On a
+debug (testOnly) build that is `dpm remove-active-admin`, no PIN needed (#170); a release build keeps
+the PIN gate. Then release the claim with the state you are handing over:
 
 ```powershell
 .\scripts\hardware\phone-claim.ps1 -Action Release -Owner "<agent>" -LeftState Clean -Note "app uninstalled, reverse removed"
@@ -237,6 +238,8 @@ export PATH="/c/KARIM/tools/android-sdk/platform-tools:$PATH"
 adb devices -l                                  # confirm the intended device
 adb reverse tcp:3000 tcp:3000                   # device can now reach http://127.0.0.1:3000
 adb install -r apps/child-android/app/build/outputs/apk/release/app-release.apk
+# A DEBUG build is `android:testOnly` since #170, so adb refuses it without -t:
+#   adb install -t -r apps/child-android/app/build/outputs/apk/full/debug/app-full-debug.apk
 # pair with a code minted by the API, then verify what the build claims:
 adb logcat -c && adb shell monkey -p com.familyshield.agent -c android.intent.category.LAUNCHER 1
 adb logcat -d | grep -c "FATAL EXCEPTION"                       # must be 0
@@ -255,12 +258,20 @@ makes. Paste the raw evidence into the issue.
 **Clean up afterwards — always** (`AGENTS.md` §7):
 
 ```bash
+# Debug builds only (testOnly since #170): remove the test admin without the app PIN, then uninstall.
+# A RELEASE build refuses this (`SecurityException: Attempt to remove non-test admin`); use the app's
+# PIN gate instead (status screen → Remove protection), then uninstall.
+adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.FamilyShieldDeviceAdmin
 adb uninstall com.familyshield.agent && adb reverse --remove-all
 psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql
 psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # expect 1 / 1
 node services/api/scripts/cleanup-test-redis.mjs            # dry run: lists orphaned per-device keys
 node services/api/scripts/cleanup-test-redis.mjs --apply    # deletes only keys whose owner row is gone
 ```
+
+If `dpm remove-active-admin` answers `SecurityException: Attempt to remove non-test admin`, the APK was
+not the debug variant (or was built before #170). Do not try the app PIN by guessing it: stop, say the
+build is wrong, and report it — a release APK on the test phone is a finding, not a cleanup problem.
 
 **Redis is part of the environment too** — `AGENTS.md` §7 says persistent (`TTL -1`) keys must be
 removed or explained, and the SQL script cannot see them. `cleanup-test-redis.mjs` reaps only keys
@@ -285,6 +296,20 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:c
 #   -> POST /v1/alerts/internal 201 (type device_admin_removed) within 60 s (3.3 s on the Flip4);
 #      the status screen shows "alert-only" and `adb uninstall` works again
 ```
+
+**Debug builds take the shell route (issue #170).** The paragraph above describes a **release** build,
+which keeps the hard admin. An `assemblePlayDebug` / `assembleFullDebug` APK declares
+`android:testOnly="true"` in `app/src/debug/AndroidManifest.xml`, and Android then allows the test
+runner to revoke the admin without holding the app PIN:
+
+```bash
+adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.FamilyShieldDeviceAdmin
+adb uninstall com.familyshield.agent          # then succeeds
+```
+
+That exception is deliberately **debug-only**: `testOnly` makes an APK replaceable without the parent's
+consent, so the release manifests must not carry it. `PlayMergedManifestTest` / `FullMergedManifestTest`
+assert both halves against the merged manifests (#170).
 
 **Lock that holds (plan 1.3):** with the agent paired and "display over other apps" allowed, send a `lock`
 (parent app, or `POST /v1/devices/:id/command {"command":"lock"}`); the overlay appears. Then
@@ -358,6 +383,13 @@ runs, against a paired phone with the PIN set and the test API reachable through
 **`-Pin` is mandatory and has no default (since #151):** the app PIN is a credential for the paired
 device, so it lives in your local, gitignored credentials note, never in this repository. Set it when
 you pair, keep it out of commits, and rotate it if it has ever been pasted into a public place.
+
+**Cleanup on a debug build does not need that PIN (issue #170).** The probe is run against a debug APK,
+which is `android:testOnly`; end the run with `adb shell dpm remove-active-admin --user 0
+com.familyshield.agent/.security.FamilyShieldDeviceAdmin` and then `adb uninstall
+com.familyshield.agent` (§5). The `-Pin` above is still needed for the probe's in-app steps (the lock and
+ring gates) — only the admin-revocation cleanup changed. A **release** build has no `testOnly` and keeps
+the PIN-gated removal; that is the intended difference, not a bug.
 
 `adb uninstall` · `pm clear` · force-stop (the server must notice the silent device) · accessibility off ·
 overlay revoked · Private DNS provider · escaping a lock (Home / Recents / Settings) · going offline
@@ -450,7 +482,7 @@ after its parent dies.
 | `FATAL EXCEPTION: main … ForegroundServiceDidNotStartInTimeException` in a receiver, although the service saw the missing permission and called `stopSelf()` | `startForegroundService()` starts a clock that only `startForeground()` stops: returning `START_NOT_STICKY` and stopping **without** ever calling `startForeground()` still trips the deadline. "Check the permission inside the service and bail" is therefore not a safe pattern | Guard **before** `startForegroundService()` — `BootStartPolicy` (issue #128). A service that cannot legally start foreground must not be requested at all |
 | A new `ContextCompat.startForegroundService(… LocationService::class.java)` call site is added with a fine/coarse check only | #128 fixed boot, but `AccessibilityMonitorService` and `locate_now` kept starting the location FGS on a while-in-use grant alone; Android 14+ refuses a location FGS created from the background without `ACCESS_BACKGROUND_LOCATION` (issue #132). A JVM test of the policy proves the rule, not that the new call site asks it | Route background starts through `LocationStartPolicy` (fine **or** coarse plus the background grant on API 29+). Foreground-activity starts go in `LocationServiceStartSitesTest.FOREGROUND_START_SITES` with the reason; the test fails for any unlisted site without a policy reference. A refused `locate_now` must ack `failed` with `detail.reason = background_location_missing` so `/commands/history` shows it |
 | A work order says "run S1 with the app PIN" and the run stops at the phone's lock screen | **the app PIN (set during pairing, held outside this repo) is the OSRA parent PIN** — it opens the in-app gates ("Remove protection", stop ring). It is not the device keyguard credential, and `adb shell locksettings verify --old <app PIN>` answers "didn't match" on the Flip4 (2026-10-18, TR-21) | Never send `lock` on a phone whose keyguard PIN you do not hold: `lockNow()` raises a screen nobody in the room can dismiss. Ask the maintainer to unlock, or measure the `pause` overlay instead — it exercises the same `LockActivity` + policy + `<queries>` path and is honest only when labelled as a surrogate, never as S1 |
-| `dpm remove-active-admin` fails with `SecurityException: Attempt to remove non-test admin` during cleanup | The debug APK does not declare `android:testOnly`, so Android refuses the shell command — and a leftover admin blocks `adb uninstall` | Remove admin through the app's own PIN gate (the test family's app PIN), or build the debug variant with `testOnly` if you need the shell route. Check `dumpsys device_policy` shows the agent gone **before** uninstalling, or the cleanup half-fails and the next run starts from a dirty phone |
+| `dpm remove-active-admin` fails with `SecurityException: Attempt to remove non-test admin` during cleanup | The APK on the phone does **not** declare `android:testOnly` — either it is a **release** build (correct: it keeps the hard admin and wants the app PIN), or it is a debug build from before #170 — and a leftover admin blocks `adb uninstall` | Since #170 every debug build is `testOnly` (`app/src/debug/AndroidManifest.xml`), installed with `adb install -t`; cleanup on it is `dpm remove-active-admin` and needs no PIN (§5). A **release** build must not have `testOnly` (the merged-manifest tests assert its absence), so on release the PIN gate is the only route. Check `dumpsys device_policy` shows the agent gone **before** uninstalling, or the cleanup half-fails and the next run starts from a dirty phone |
 
 Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
@@ -491,6 +523,16 @@ A change is done when **all** of these are true (`AGENTS.md` §3): the API unit 
 is green **including the new checks for the behaviour you changed**, e2e is green, the platform suites
 for what you touched are green, a test exists that *failed before* the fix, and the docs (changelog,
 ADR if the decision was architectural, this guide if the procedure changed) are updated.
+
+**Hardware cleanup is part of done (issue #170).** A run that leaves the device admin standing is not
+finished (§7 of `AGENTS.md`). On a **debug** build (`assemblePlayDebug` / `assembleFullDebug`, installed
+with `adb install -t`) the admin is declared `testOnly`, so
+`adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.FamilyShieldDeviceAdmin`
+exits 0 without the app PIN and `adb uninstall` follows. That is the documented cleanup (§5). A
+**release** build deliberately does not carry `testOnly` — it would make the APK replaceable without
+the parent's consent — so its admin comes off only through the app's PIN gate. Never add `testOnly` to
+a release manifest to make a cleanup easier: `PlayMergedManifestTest` / `FullMergedManifestTest` assert
+its absence in both release merges.
 
 ### A PR that touches the probe must not narrow it — and that is now machine-checked
 

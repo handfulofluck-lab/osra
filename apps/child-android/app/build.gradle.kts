@@ -100,16 +100,28 @@ kapt {
 
 /**
  * ADR-0021's merged-manifest gate (`PlayMergedManifestTest`, `FullMergedManifestTest`) reads the
- * manifest AGP produced after merging, `app/build/intermediates/merged_manifests/<flavor>Debug/…`.
- * `process<Flavor>DebugManifest` is what writes it, and the unit-test task does not otherwise depend on
- * it — so without the wiring below the gate would skip on a clean build (which is how the hole it closes
- * stayed invisible). Both debug flavours are merged for either test task because each gate class reads
- * its own artefact, and a missing artefact is then a real failure instead of a routine skip.
+ * manifest AGP produced after merging, `app/build/intermediates/merged_manifests/<flavor><BuildType>/…`.
+ * `process<Flavor><BuildType>Manifest` is what writes it, and the unit-test task does not otherwise
+ * depend on it — so without the wiring below the gate would skip on a clean build (which is how the hole
+ * it closes stayed invisible). Both flavours and both build types are merged for either test task because
+ * each gate class reads its own artefacts, and a missing artefact is then a real failure instead of a
+ * routine skip. Issue #170 uses the release half: `android:testOnly` must be present in the debug merge
+ * and absent from the release merge, so the release manifest has to be built by the same task that runs
+ * the assertion.
  */
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     val variant = Regex("""^test(Play|Full)(Debug)UnitTest$""").matchEntire(name) ?: return@configureEach
+    // MergedManifestLocator documents `-Dosra.mergedManifest.<variant>=<path>` for pointing the gate at a
+    // manifest explicitly, but Gradle does not pass arbitrary CLI `-D` properties to the test worker.
+    // Forward the `osra.*` ones so that documented override (and the doctored-input check) works.
+    System.getProperties().forEach { key, value ->
+        val property = key.toString()
+        if (property.startsWith("osra.")) systemProperty(property, value.toString())
+    }
     for (flavor in listOf("Play", "Full")) {
-        dependsOn("process$flavor${variant.groupValues[2]}Manifest")
+        for (buildType in listOf(variant.groupValues[2], "Release")) {
+            dependsOn("process$flavor${buildType}Manifest")
+        }
     }
 }
 

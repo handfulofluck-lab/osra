@@ -1,6 +1,7 @@
 package com.familyshield.agent.manifest
 
 import java.io.File
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -22,11 +23,15 @@ class PlayMergedManifestTest {
 
     private val artifact: File? by lazy { MergedManifestLocator.locate("play") }
     private val merged: MergedManifest by lazy { MergedManifest.read(artifact!!) }
+    private val releaseArtifact: File? by lazy { MergedManifestLocator.locate("play", "Release") }
+    private val releaseMerged: MergedManifest by lazy { MergedManifest.read(releaseArtifact!!) }
 
     @Before
     fun theMergedManifestMustExist() {
         MergedManifestLocator.require(artifact, "play")
-        println("merged-manifest gate (play): ${artifact!!.absolutePath}")
+        MergedManifestLocator.require(releaseArtifact, "play", "Release")
+        println("merged-manifest gate (play debug): ${artifact!!.absolutePath}")
+        println("merged-manifest gate (play release): ${releaseArtifact!!.absolutePath}")
     }
 
     @Test
@@ -73,6 +78,32 @@ class PlayMergedManifestTest {
             "the Play artefact lost a declaration Play or S1 depends on (ADR-0021 decisions 3 and 5):\n" +
                 violations.joinToString("\n"),
             violations.isEmpty(),
+        )
+    }
+
+    /**
+     * Issue #170: a test runner must be able to remove the device admin without the app PIN, which
+     * Android only permits for a `testOnly` package. The debug overlay declares it; neither source set
+     * shared with release does.
+     */
+    @Test
+    fun `play debug merged manifest is testOnly so the test admin is removable`() {
+        assertTrue(
+            "android:testOnly is absent from the Play debug merge. The test runner cannot run " +
+                "`dpm remove-active-admin` without it (issue #170), so cleanup again needs the app PIN. " +
+                "Declare it in app/src/debug/AndroidManifest.xml.",
+            merged.applicationTestOnly == "true",
+        )
+    }
+
+    /** Issue #170's other half: `testOnly` makes an APK trivially replaceable, so release must not carry it. */
+    @Test
+    fun `play release merged manifest is not testOnly`() {
+        assertNull(
+            "android:testOnly=${releaseMerged.applicationTestOnly} is declared in the Play RELEASE merged " +
+                "manifest. `testOnly` is exactly what lets an APK be replaced without the parent's consent " +
+                "(issue #170); it belongs only in app/src/debug/AndroidManifest.xml.",
+            releaseMerged.applicationTestOnly,
         )
     }
 }

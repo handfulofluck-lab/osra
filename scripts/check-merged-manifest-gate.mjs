@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Fails unless ADR-0021's merged-manifest gate actually ran — every test, in both flavours, none skipped.
+ * Fails unless ADR-0021's merged-manifest gate actually ran — every test, in both flavours and both
+ * build types, none skipped.
  *
  * Why this exists. The gate (`PlayMergedManifestTest`, `FullMergedManifestTest` in
  * `apps/child-android/app/src/test/java/com/familyshield/agent/manifest/`) reads the manifest AGP
@@ -14,6 +15,13 @@
  *     without a diff that says so (AGENTS.md §4), and the expected names are listed below for that
  *     reason. Adding a test is free; removing or renaming one means editing this list in the same PR,
  *     which is the sentence of justification the rule asks for.
+ *
+ * Issue #170 added the second artefact and the second half of this gate: the debug merged manifest must
+ * declare `android:testOnly="true"` (so `dpm remove-active-admin` works for a runner without the app
+ * PIN) and the **release** merged manifest must not declare it at all (`testOnly` makes an APK
+ * replaceable). `build.gradle.kts` makes the unit-test tasks depend on
+ * `process<Flavor>{Debug,Release}Manifest`, so the release artefact exists on a Gradle run; if it is
+ * nonetheless missing, the test skips and this script fails on that skip rather than passing silently.
  *
  * The class and method names are exact: JUnit reports the backticked Kotlin names verbatim.
  *
@@ -36,10 +44,14 @@ const EXPECTED = {
     "play merged manifest declares none of the Play-forbidden permissions",
     "play merged manifest registers no notification, call-log or SMS component",
     "play merged manifest keeps isMonitoringTool and the required queries",
+    "play debug merged manifest is testOnly so the test admin is removable",
+    "play release merged manifest is not testOnly",
   ],
   "com.familyshield.agent.manifest.FullMergedManifestTest": [
     "full merged manifest keeps the capture permissions and the listener service",
     "full merged manifest keeps isMonitoringTool and the required queries",
+    "full debug merged manifest is testOnly so the test admin is removable",
+    "full release merged manifest is not testOnly",
   ],
 };
 
@@ -149,7 +161,8 @@ if (problems.length > 0) {
   console.error(`\nMERGED-MANIFEST GATE FAILED (${problems.length}):`);
   for (const problem of problems) console.error(`  - ${problem}`);
   console.error(
-    "\nThe gate must run and pass: `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest`.",
+    "\nThe gate must run and pass: `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` " +
+      "(it also merges the Play/Full release manifests for the testOnly-absence assertions).",
   );
   process.exit(1);
 }
