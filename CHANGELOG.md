@@ -11,7 +11,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### Android — the child app scans the parent's pairing QR (roadmap 3.2, second half)
+### Android — the child app scans the parent's pairing QR (roadmap 3.2, second half, PR #179)
 - **What a parent does.** `PairingActivity` now has a **Scan QR code** action next to the typed form.
   `PairQrScanActivity` (`apps/child-android/app/src/main/java/com/familyshield/agent/setup/`) reads the
   parent's `osra://pair` QR with CameraX and the **bundled** ML Kit barcode model and returns the raw
