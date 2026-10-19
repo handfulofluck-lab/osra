@@ -20,6 +20,14 @@ name: verified-gate
 # the label. A forged verification is still a signed, permanent record on the PR. The gate turns
 # "merged without verification" from an oversight into a deliberate act.
 #
+# CARRY-FORWARD (added 2026-10-19, issue #207): main's protection is `strict` (branch up to date), so every
+# merge forces the PRs behind it to merge main in, which changes their head. A signature at sha S still
+# counts for head H when (a) S is an ancestor of H and every commit in S..H that is not on main is a
+# merge commit, and
+# (b) the PR's own change is identical: diff(merge-base(main,S), S) and diff(merge-base(main,H), H)
+# have the same `git patch-id --stable`. A merge that resolves a conflict inside the PR's files, or
+# adds anything that is not main's, changes (b) and needs a fresh verification.
+#
 # ORDER for verifiers: post the signed comment first, then add the label. Adding (or removing and
 # re-adding) the label is what re-runs this check; a comment alone does not.
 #
@@ -38,6 +46,11 @@ jobs:
   verified-gate:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
       - name: Require state:verified and a signed verification of the head sha
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,6 +77,7 @@ jobs:
 
           # One line per comment body (newlines flattened). Signed by a verifier AND naming a sha.
           verified=""
+          signed=""
           while IFS= read -r body; do
             [ -n "$body" ] || continue
             # The signer is the LAST "— <name>" in the body: a comment that merely mentions another
@@ -81,15 +95,40 @@ jobs:
             esac
             for sha in $(printf '%s' "$body" | grep -oiE 'Verified-sha:[[:space:]]*`?[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$'); do
               sha=$(printf '%s' "$sha" | tr 'A-F' 'a-f')
+              signed="$signed $sha"
               case "$HEAD_SHA" in
                 "$sha"*) verified="$sha" ;;
               esac
             done
           done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[].body | gsub("[[:cntrl:]]"; " ")')
 
+          # Carry-forward (see header): only merges after the signature, and the PR's own patch unchanged.
+          pr_patch() {
+            local base
+            base=$(git merge-base origin/main "$1") || return 1
+            git diff "$base" "$1" | git patch-id --stable | awk '{print $1}'
+          }
+          if [ -z "$verified" ] && [ -n "$signed" ]; then
+            head_patch=$(pr_patch "$HEAD_SHA")
+            for sha in $signed; do
+              full=$(git rev-parse --verify --quiet "$sha^{commit}") || continue
+              git merge-base --is-ancestor "$full" "$HEAD_SHA" || continue
+              if [ -n "$(git rev-list --no-merges "$full..$HEAD_SHA" ^origin/main)" ]; then
+                echo "signature at $sha: non-merge commits since, not carried forward"
+                continue
+              fi
+              if [ "$(pr_patch "$full")" = "$head_patch" ]; then
+                echo "signature at $sha carried forward: only merges of main since, PR patch-id $head_patch unchanged"
+                verified="$sha (carried forward)"
+                break
+              fi
+              echo "signature at $sha: the PR's own change differs after the merge, not carried forward"
+            done
+          fi
+
           if [ -z "$verified" ]; then
             echo "::error::'state:verified' is set, but no comment signed by Antigravity, Claude or Kimi Code verifies the current head $HEAD_SHA."
-            echo "A push after verification (fix, rebase, merge of main) needs a fresh verification of the new head (AGENTS.md §6.5 rule 4)."
+            echo "A push after verification (fix, rebase, merge of main) needs a fresh verification of the new head (AGENTS.md §6.5 rule 4), unless it only merged main and left the PR's own change identical."
             exit 1
           fi
           echo "OK — head $HEAD_SHA verified (Verified-sha: $verified)."

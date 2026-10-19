@@ -215,8 +215,11 @@ A PR may merge only when all of the following hold:
    Claude for a review-only or docs change, or Kimi Code for a PR with no Kimi-authored commit, which CI
    checks by commit email) posts a signed comment containing a line
    `Verified-sha: <head sha>` (7+ characters), **then** adds `state:verified`; adding the label is what
-   re-runs the check. Any push after that (fix, rebase, merge of `main`) changes the head and turns the
-   check red until the new head is verified, which is rule 4 made mechanical. Nobody sets `state:verified`
+   re-runs the check. Any push after that (fix, rebase) changes the head and turns the check red until
+   the new head is verified, which is rule 4 made mechanical. One exception, because `main` is `strict`:
+   a signature carries forward when every commit added since it that is not on `main` is a merge, and the
+   PR's own change (diff from its merge-base with `main`) has the same `git patch-id`. A merge that
+   resolves a conflict in the PR's own files needs a fresh verification (#207). Nobody sets `state:verified`
    on their own PR, and the author never writes a `Verified-sha:` line.
 
 **Docs-only changes are no exception**, but the check is proportional: the verifier reads the diff line by
