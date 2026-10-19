@@ -465,7 +465,10 @@ later merge touched it; **#161** (localization, 3.1) is new here.
 ## 9. The 18 merges
 
 Sorted by merge time (UTC). Quotations are verbatim from `git log -1 --format=%B <sha>`, trimmed with
-`…` where marked. "Head" is the second parent — the sha the numbers should belong to.
+`…` where marked. "Head" is the second parent — the sha the numbers should belong to. **Dates, so the
+time-only cells cannot be misread:** the UTC date is **2026-10-18** up to and including `1733d83`
+(23:49:33Z) and **2026-10-19** from `efc8e35` (01:09:02Z) — a different window from the local (+0400)
+date, which is 2026-10-19 for all 18. Every cell's local time is on 2026-10-19.
 
 | PR | Title | Merged as (UTC · local) | Head | Who ran what · exact numbers claimed | Status |
 |---|---|---|---|---|---|
