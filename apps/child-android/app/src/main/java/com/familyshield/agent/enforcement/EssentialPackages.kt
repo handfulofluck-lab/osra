@@ -111,4 +111,29 @@ object EssentialPackages {
         if (!eventPackage.isNullOrBlank() && eventPackage != FRAMEWORK_PACKAGE) return eventPackage
         return null
     }
+
+    /**
+     * Issue #175: every package the block decision must be run on, in priority order — the active
+     * window first, then the other visible application windows (a split sibling, a PiP video).
+     *
+     * Before this the service judged only the active window, so a blocked app that was visible but
+     * not active was never named: with a YouTube video in PiP over Home the active window is the
+     * launcher (essential, ALLOW), and in split screen tapping the essential half did the same.
+     *
+     * The static names this set already exempts are filtered here; the OS-assigned roles (HOME,
+     * dialer) are applied by [RuleRepository.decide] with [PackageFacts], which is why this function
+     * needs no `PackageManager` and stays JVM-testable.
+     */
+    fun blockCandidates(active: String?, visible: List<VisibleWindow>): List<String> {
+        val candidates = LinkedHashSet<String>()
+        fun add(packageId: String?) {
+            if (packageId.isNullOrBlank()) return
+            if (packageId == FRAMEWORK_PACKAGE) return
+            if (isEssential(packageId)) return
+            candidates.add(packageId)
+        }
+        add(active)
+        visible.forEach { add(it.packageName) }
+        return candidates.toList()
+    }
 }

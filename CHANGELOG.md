@@ -11,6 +11,44 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Child agent — a blocked app can no longer hide in picture-in-picture or split screen (issue #175)
+- **Why.** #171 made every block decision from `rootInActiveWindow` alone. A blocked app that is
+  **visible but not the active window** was never judged: during bedtime a YouTube video in
+  picture-in-picture over Home left the launcher (essential → ALLOW) as the only decision, and the
+  video kept floating; the same trick worked in split screen beside the launcher or the dialer. This
+  is a regression of the Phase 1 gate introduced by #171, not a new feature gap.
+- **What.** `AccessibilityMonitorService` now takes one `WindowSnapshot` per event — the active
+  package plus every `TYPE_APPLICATION` `AccessibilityWindowInfo`, including
+  `isInPictureInPictureMode` — and runs the same `RuleRepository.evaluate` on
+  `EssentialPackages.blockCandidates(active, visible)`. The lock's re-raise trigger
+  (`LockEnforcementPolicy`) answers from the same snapshot, so a split sibling or a PiP window brings
+  the overlay back. Both overlay activities declare `android:resizeableActivity="false"` and
+  `android:supportsPictureInPicture="false"`: the system launches a non-resizable activity
+  full-screen, which leaves split screen and keeps the overlay itself out of PiP.
+- **Mechanism chosen, and why.** There is no public way for an accessibility service to close
+  **another app's** PiP window (`Activity.setPictureInPictureParams` is the target's method, and
+  `ActivityOptions.setLaunchWindowingMode` is hidden). The fallback from the issue is what was
+  built: detect the multi-window state, re-raise and expand the overlay, bounded by
+  `OverlayRetryBudget` — three raises per window-state signature, then one warning and no further
+  activity starts until the state changes. A media pause through `AudioManager` focus is **not**
+  added on a guess; ADR-0026 records that the hardware measurement decides it.
+- **Leak fixed (same issue).** `rootInActiveWindow` and every window/root node obtained on this path
+  are recycled; on API 26–32 an unrecycled `AccessibilityNodeInfo` leaked at up to ten walks a second.
+- **Tests.** `MultiWindowCoverageTest` (10 JVM cases): launcher active with a blocked app in split →
+  BLOCK; launcher active with a blocked app in PiP → BLOCK; a normal foreground app → BLOCK; a
+  background app with no visible window → no overlay (the #171 `spay` case); our own overlay and the
+  framework package are never candidates; the lock re-raises over split/PiP, does not when the
+  overlay is the only window, and treats its own window in PiP as replaceable; the call surface stays
+  reachable; the retry budget is bounded and resets on a state change. On the pre-fix tree the split,
+  PiP, own-candidate, launcher-covered and own-PiP assertions fail (5 of 10); after the change all 10
+  pass and both flavours' JVM suites stay green (raw output in the PR).
+- **Hardware: not measured — blocked.** The Flip4 `R5CW116Y6GF` carries the stale Knox admin row
+  from #181, so a run that needs a clean device-admin state cannot be trusted; the #175 row (YouTube
+  in PiP over Home during bedtime, then YouTube in split beside the dialer, recording whether the
+  overlay comes up **and** whether the PiP video keeps playing over it) is open on a clean phone.
+  This entry does not claim the visual PiP result; if the PiP window stays above the overlay, the
+  next step is decided from that measurement. See ADR-0026.
+
 ### Parent app — consent status per child, and a withdrawal flow that says what it really does (plan 3.7)
 - **Why.** The API could withdraw consent (`POST /v1/family/children/:id/consent/revoke`,
   ADR-0008) and gated collection on it with 428, but no client could show a parent the record or
