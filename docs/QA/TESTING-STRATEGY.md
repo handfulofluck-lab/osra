@@ -141,6 +141,37 @@ Two further rows #127's decision proposes are kept separate, so each can be argu
 Had the amendment been rejected, row 3 would have stayed FAIL and the probe red: that is the honest state,
 and the alternative is not a green row but a deleted one, which §3 rule 2 and `AGENTS.md` §4 forbid.
 
+## 3b. Rule **accepted** 2026-10-19 — a hardware PASS names the build kind (issue #178)
+
+**Status: ACCEPTED and enforced in the tooling 2026-10-19.** What is still owed is not a decision but a
+run: the Phase 1 tamper rows have not yet been measured on a release-signed build.
+
+Since #170 every **debug** APK declares `android:testOnly="true"` and is `debuggable`; its device admin is
+a **test admin** (`dumpsys device_policy` → `testOnlyAdmin=true`, measured on the Flip4 in #174). Such a
+build can be replaced with `adb install -r` without a signature match, its admin can be removed with
+`dpm`, and its process is debuggable. A PASS on it therefore says nothing about the artefact that ships,
+and the probe rows that measure exactly those protections (rows 1, 2, 10 and the force-stop guard) were
+measured on debug builds for weeks.
+
+**The rule.**
+
+- **Gate-eligible evidence** for the Phase 1 tamper rows is a **release-signed** build installed through
+  `scripts/hardware/android-signing-tr07.ps1`. The run's table must name the build kind.
+- **Safety rows** (S1, S2) and behaviour rows such as #165/#175 may be measured on a debug build — their
+  assertion does not depend on the properties `testOnly` relaxes — but the record still names the build
+  kind, so the next reader is not misled about what was tested.
+- **Pairing measurements** (roadmap 3.2) inherit a build kind too: a number taken on a debug install is a
+  proxy for the release experience and cannot open a gate.
+
+**How it is enforced, not just written.** Before the first row the probe classifies the installed package
+from `adb shell dumpsys package <pkg>` (`flags=[ … TEST_ONLY … DEBUGGABLE … ]`) with `run-as <pkg> true`
+as a second signal — the pure decision is `scripts/hardware/classify-build.ps1`, whose fixtures include
+real Flip4 output and whose `-SelfTest` runs in `workflow-lint`. On a `test-only` or `debuggable` build
+the probe refuses to run (**exit 3**, nothing measured) unless `-AllowTestBuild` is passed; under that
+switch every row's evidence is prefixed `NOT EVIDENCE (testOnly/debuggable build)`, the JSON carries
+`gateEligible: false`, and the summary says the run cannot open a gate. Exit 0 from a `-AllowTestBuild`
+run means the rows ran; it does not mean the gate is open.
+
 ## 4. Cadence and where messages go (agreed 2026-10-16)
 
 - **Interval (shortened 2026-10-17 at the maintainer's request):** while any request in
@@ -161,6 +192,8 @@ and the alternative is not a green row but a deleted one, which §3 rule 2 and `
 - [ ] Live `e2e` green, run in isolation (not in the rate-limit shadow of another gate).
 - [ ] Verified in at least one **non-author environment** from the matrix in §2.
 - [ ] CI actually ran the relevant jobs (steps inspected, not just the tick).
+- [ ] **Hardware evidence names the build kind it measured.** A `testOnly`/`debuggable` build cannot
+      open the Phase 1 tamper gate; the probe refuses it without `-AllowTestBuild` (§3b).
 - [ ] Docs updated in the same PR: `CHANGELOG.md`, an ADR for an architectural decision, `TESTING.md`/
       this file when a gate or procedure changes.
 - [ ] Test data cleaned (seeded DB state) and no stray processes left behind by the verification run.
