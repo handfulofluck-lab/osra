@@ -80,6 +80,22 @@ final rulesProvider = FutureProvider.family<RuleSet, String>((ref, childId) asyn
   return RuleSet.fromJson(Map<String, dynamic>.from(res.data as Map));
 });
 
+/// Roadmap 3.4: the installed-launchable apps reported by one child's device(s),
+/// unioned by package id. The Rules editor's picker reads this so a parent can
+/// choose a real app instead of typing a package id. A child with no paired
+/// device, or a device that has not checked in yet, yields an empty report.
+final installedAppsProvider = FutureProvider.family<InstalledAppsReport, String>((ref, childId) async {
+  final api = ref.watch(apiClientProvider);
+  final overview = await ref.watch(familyProvider.future);
+  var report = const InstalledAppsReport();
+  for (final device in overview.devicesFor(childId)) {
+    final res = await api.raw.get('/v1/devices/${device.id}/apps');
+    if (res.data is! Map) continue;
+    report = report.merge(InstalledAppsReport.fromJson(Map<String, dynamic>.from(res.data as Map)));
+  }
+  return report;
+});
+
 /// Latest location ping for one child (`GET /v1/location/:childId/latest`).
 final locationProvider = FutureProvider.family<LocationPing?, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);

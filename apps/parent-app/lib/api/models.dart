@@ -333,6 +333,77 @@ class AppRule {
       };
 }
 
+/// Roadmap 3.4: one launcher-visible app reported by a child device
+/// (`GET /v1/devices/:id/apps`). `isSystem` is the OS system flag; the list
+/// carries no usage, launch counts or icons.
+@immutable
+class InstalledApp {
+  final String packageId;
+  final String label;
+  final bool isSystem;
+
+  const InstalledApp({required this.packageId, required this.label, this.isSystem = false});
+
+  factory InstalledApp.fromJson(Map<String, dynamic> json) {
+    final packageId = _str(json['packageId']);
+    final label = _str(json['label']).trim();
+    return InstalledApp(
+      packageId: packageId,
+      // The API already falls back to the package id; repeat it so a hand-written
+      // fixture cannot render an empty row.
+      label: label.isEmpty ? packageId : label,
+      isSystem: _bool(json['isSystem']),
+    );
+  }
+}
+
+/// The union of a child's devices' installed-app reports. A child with two
+/// devices sees one merged list; the first device that names a package wins.
+@immutable
+class InstalledAppsReport {
+  final List<InstalledApp> apps;
+  final int version;
+  final DateTime? reportedAt;
+  final bool truncated;
+
+  const InstalledAppsReport({
+    this.apps = const [],
+    this.version = 1,
+    this.reportedAt,
+    this.truncated = false,
+  });
+
+  factory InstalledAppsReport.fromJson(Map<String, dynamic> json) => InstalledAppsReport(
+        apps: [for (final m in _mapList(json['apps'])) InstalledApp.fromJson(m)],
+        version: _int(json['version'], 1),
+        reportedAt: DateTime.tryParse(_str(json['reportedAt'])),
+        truncated: _bool(json['truncated']),
+      );
+
+  /// Merge another device's report into this one: dedupe by package id, keep
+  /// the newest `reportedAt`, and sort by label then package for a stable UI.
+  InstalledAppsReport merge(InstalledAppsReport other) {
+    final byPackage = <String, InstalledApp>{};
+    for (final app in [...apps, ...other.apps]) {
+      byPackage.putIfAbsent(app.packageId, () => app);
+    }
+    final merged = byPackage.values.toList()
+      ..sort((a, b) {
+        final byLabel = a.label.toLowerCase().compareTo(b.label.toLowerCase());
+        return byLabel != 0 ? byLabel : a.packageId.compareTo(b.packageId);
+      });
+    final a = reportedAt;
+    final b = other.reportedAt;
+    final newest = a == null ? b : (b == null || !b.isAfter(a) ? a : b);
+    return InstalledAppsReport(
+      apps: merged,
+      version: version >= other.version ? version : other.version,
+      reportedAt: newest,
+      truncated: truncated || other.truncated,
+    );
+  }
+}
+
 /// A named time window (homework, dinner, ...). Times are "HH:mm"; `days`
 /// is ISO weekday numbers (1=Mon ... 7=Sun).
 @immutable

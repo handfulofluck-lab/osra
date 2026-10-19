@@ -227,6 +227,20 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0" }
     }
 
+    /** Last uploaded installed-apps fingerprint (roadmap 3.4), or null before the first report. */
+    suspend fun installedAppsReportHash(): String? = read(KEY_INSTALLED_APPS_HASH)
+
+    /** Epoch-ms of the last successful installed-apps upload, or null. */
+    suspend fun installedAppsReportedAt(): Long? = read(KEY_INSTALLED_APPS_REPORTED_AT)?.toLongOrNull()
+
+    /** Records a successful inventory upload so an unchanged list is not sent again for 24 h. */
+    suspend fun saveInstalledAppsReport(hash: String, reportedAt: Long) {
+        store.edit {
+            it[KEY_INSTALLED_APPS_HASH] = hash
+            it[KEY_INSTALLED_APPS_REPORTED_AT] = reportedAt.toString()
+        }
+    }
+
     /** Synchronous cold-start read of the consent-pause flag (once per process). */
     fun consentPausedSync(): Boolean = runBlocking { read(KEY_CONSENT_PAUSED) } == "1"
 
@@ -246,5 +260,8 @@ class AgentSettings @Inject constructor(
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
+        // Roadmap 3.4: change detection for the installed-app inventory upload.
+        private val KEY_INSTALLED_APPS_HASH = stringPreferencesKey("installed_apps_hash")
+        private val KEY_INSTALLED_APPS_REPORTED_AT = stringPreferencesKey("installed_apps_reported_at")
     }
 }

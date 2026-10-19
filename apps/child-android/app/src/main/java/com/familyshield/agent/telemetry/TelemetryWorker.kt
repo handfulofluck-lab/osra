@@ -17,6 +17,8 @@ class TelemetryWorker(
         return try {
             val entryPoint = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
             entryPoint.usageReporter().aggregateAndUpload()
+            // Roadmap 3.4: piggyback on the same tick; the reporter uploads only when the list changed.
+            entryPoint.installedAppsReporter().reportIfChanged()
             entryPoint.commsCapture().flush() // Feature #6 backstop alongside the 5-min in-process loop
             Result.success()
         } catch (e: Exception) {

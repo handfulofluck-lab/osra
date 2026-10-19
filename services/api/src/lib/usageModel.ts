@@ -233,6 +233,9 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
 /** Every child-scoped table, in an order that respects the foreign keys. Exported so a test can assert the list. */
 export const CHILD_SCOPED_DELETE_ORDER = [
   "deviceCommand",
+  // Roadmap 3.4: the installed-app inventory is device-scoped but is child data; deleting it
+  // explicitly (before the Device rows cascade) makes the GDPR erasure result countable.
+  "deviceApp",
   "locationPing",
   "alert",
   "activityEvent",
@@ -265,6 +268,7 @@ export async function eraseChildData(childId: string, deviceTokenTtlSeconds: num
   const deviceIds = devices.map((d) => d.id);
   const results = await prisma.$transaction([
     prisma.deviceCommand.deleteMany({ where: { deviceId: { in: deviceIds } } }),
+    prisma.deviceApp.deleteMany({ where: { deviceId: { in: deviceIds } } }),
     prisma.locationPing.deleteMany({ where: { childId } }),
     prisma.alert.deleteMany({ where: { childId } }),
     prisma.activityEvent.deleteMany({ where: { childId } }),

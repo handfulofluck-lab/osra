@@ -1460,6 +1460,66 @@ abstract class AppLocalizations {
   /// **'Add app rule'**
   String get addAppRule;
 
+  /// No description provided for @chooseInstalledApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from child\'s apps'**
+  String get chooseInstalledApp;
+
+  /// No description provided for @installedAppsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed apps'**
+  String get installedAppsTitle;
+
+  /// No description provided for @searchApps.
+  ///
+  /// In en, this message translates to:
+  /// **'Search apps'**
+  String get searchApps;
+
+  /// No description provided for @showSystemApps.
+  ///
+  /// In en, this message translates to:
+  /// **'Show system apps'**
+  String get showSystemApps;
+
+  /// No description provided for @alreadyRuled.
+  ///
+  /// In en, this message translates to:
+  /// **'Already ruled'**
+  String get alreadyRuled;
+
+  /// No description provided for @installedAppsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps reported yet'**
+  String get installedAppsEmpty;
+
+  /// No description provided for @installedAppsEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The list appears after the child device\'s next check-in (up to 15 minutes).'**
+  String get installedAppsEmptyHint;
+
+  /// No description provided for @installedAppsNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No apps match your search.'**
+  String get installedAppsNoMatch;
+
+  /// No description provided for @installedAppsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load apps: {error}'**
+  String installedAppsLoadFailed(String error);
+
+  /// No description provided for @installedAppsTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the first {count} apps.'**
+  String installedAppsTruncated(int count);
+
   /// No description provided for @addAlwaysAllowedTitle.
   ///
   /// In en, this message translates to:

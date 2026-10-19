@@ -120,10 +120,32 @@ model Device {
   pushToken  String?
   // Per-device internal HMAC secret (minted at pair/claim; handoff item 5).
   internalSecret String?
+  /// Roadmap 3.4: when the agent last replaced its installed-launchable-app list, and the report
+  /// contract version it used. Null means the device has never reported (the parent picker says so).
+  appsReportedAt DateTime?    @db.Timestamptz(3)
+  appsVersion    Int?
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]
   commands   DeviceCommand[]
+  apps       DeviceApp[]
+}
+
+/// Roadmap 3.4: the launchable apps a child device reported, so the parent can build an AppRule from
+/// a real label instead of typing a package id. This is an inventory, not usage: one row per
+/// (device, package) replaced on every report, with no minutes, launches or screen-on data.
+/// `label` is the launcher label (capped at 100 characters); `isSystem` is the OS system flag.
+model DeviceApp {
+  id        String   @id @default(uuid())
+  deviceId  String
+  packageId String
+  label     String
+  isSystem  Boolean  @default(false)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, packageId])
+  @@index([deviceId])
 }
 
 /// Durable device command queue (Phase 2b, ADR-0012). Source of truth for "did the lock reach the

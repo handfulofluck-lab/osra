@@ -4,6 +4,7 @@ import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.network.dto.BlocklistPackDto
 import com.familyshield.agent.network.dto.CommandAckDto
 import com.familyshield.agent.network.dto.DeviceCommandDto
+import com.familyshield.agent.network.dto.InstalledAppsDto
 import com.familyshield.agent.network.dto.LocationPingBatchDto
 import com.familyshield.agent.network.dto.PushTokenDto
 import com.familyshield.agent.network.dto.RuleSetDto
@@ -33,6 +34,13 @@ interface ApiService {
     /** Uploads an aggregated usage delta for a device. */
     @POST("v1/devices/{id}/telemetry")
     suspend fun postTelemetry(@Path("id") deviceId: String, @Body telemetry: TelemetryDto)
+
+    /**
+     * Roadmap 3.4: replaces this device's installed-launchable-app inventory. Device JWT, self-scoped
+     * by the server (`requireOwnDevice`); a replace, not a merge, so uninstalled apps disappear.
+     */
+    @POST("v1/devices/{id}/apps")
+    suspend fun postInstalledApps(@Path("id") deviceId: String, @Body body: InstalledAppsDto)
 
     /** Registers a new FCM push token for a device. */
     @POST("v1/devices/{id}/push-token")

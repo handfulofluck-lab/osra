@@ -47,6 +47,7 @@ function makePrismaMock() {
     "familyInvite",
     "parentPushToken",
     "deviceCommand",
+    "deviceApp",
     "installRequest",
     "appUsageDaily",
     "webVisit",
