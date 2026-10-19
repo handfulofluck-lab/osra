@@ -1061,6 +1061,22 @@ const regenCodes = Array.isArray(regen.data?.recoveryCodes) ? regen.data.recover
 const oldAfterRegen = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: newCodes[0] } });
 check("O11 regenerating with the password replaces the batch: the old set is refused, ten new codes are issued", recLogin2.status === 200 && regen.status === 200 && regenCodes.length === 10 && newCodes.every((c) => !regenCodes.includes(c)) && oldAfterRegen.status === 401, `login=${recLogin2.status} regen=${regen.status} new=${regenCodes.length} oldCode=${oldAfterRegen.status}`);
 
+// #183: recovery clears the authenticator, not the policy. The password alone must not produce a
+// session — nor the re-enrolment credential that would let it bind one — and the account must still
+// be an MFA account after the token finishes the flow.
+const recoveredAgain = await call("POST", "/v1/auth/mfa/recover", { body: { email: recEmail, password: PASSWORD, code: regenCodes[0] } });
+const recoveryToken2 = recoveredAgain.data?.recoveryToken;
+const passwordOnly = await call("POST", "/v1/auth/login", { body: { email: recEmail, password: PASSWORD } });
+check("O12 after a recovery the password alone gets no session (401 mfa_reenroll_required, no token, no refreshToken, no recovery token)", recoveredAgain.status === 200 && passwordOnly.status === 401 && passwordOnly.data?.error === "mfa_reenroll_required" && passwordOnly.data?.token === undefined && passwordOnly.data?.refreshToken === undefined && passwordOnly.data?.recoveryToken === undefined && Object.keys(passwordOnly.data ?? {}).join(",") === "error", `recover=${recoveredAgain.status} login=${passwordOnly.status}/${passwordOnly.data?.error} body=${JSON.stringify(passwordOnly.data ?? {}).slice(0, 160)}`);
+
+// The next TOTP window is needed: re-verification must present a counter above the one O10's login used.
+await waitForNextTotpWindow();
+const enrollAgain = await call("POST", "/v1/auth/mfa/enroll", { token: recoveryToken2, body: {} });
+const secretAgain = enrollAgain.data?.secret ?? "";
+const verifyAgain = await call("POST", "/v1/auth/mfa/verify", { token: recoveryToken2, body: { code: secretAgain ? nextTotp(secretAgain) : "000000" } });
+const afterRecovery = await call("POST", "/v1/auth/login", { body: { email: recEmail, password: PASSWORD } });
+check("O13 the recovery token still re-enrols and re-verifies, and the account is back to a normal MFA account", enrollAgain.status === 200 && verifyAgain.status === 200 && Array.isArray(verifyAgain.data?.recoveryCodes) && verifyAgain.data.recoveryCodes.length === 10 && afterRecovery.status === 401 && afterRecovery.data?.error === "mfa_required", `enroll=${enrollAgain.status} verify=${verifyAgain.status} codes=${verifyAgain.data?.recoveryCodes?.length} login=${afterRecovery.status}/${afterRecovery.data?.error}`);
+
 
 console.log("\n── H. surface ──");
 const unknownRoute = await call("GET", `/v1/does-not-exist-${stamp}`);
