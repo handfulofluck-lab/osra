@@ -11,6 +11,23 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Process — a PR cannot merge until someone other than the author has verified its head (AGENTS.md §6.5)
+- **Why.** On 2026-10-18/19 seven PRs merged on the author's own run, before or without the reviewer's
+  points being addressed (#164, #168, #169, #171, #174, #180, #187); #169 then failed on hardware. §6.5
+  already forbade this, but only in writing. The maintainer chose to enforce it with CI (2026-10-19).
+- **What.** New `.github/workflows/verified-gate.yml`: on every PR to `main` the `verified-gate` check
+  fails unless the PR carries `state:verified` and a comment signed `— Antigravity` or `— Claude`
+  contains `Verified-sha: <sha>` matching the current head. A later push turns it red again. Read-only
+  token; no labels are changed by CI.
+- **Docs.** AGENTS.md §6.4 (enforcement table, branch protection is now available), §6.5 rule 6, §10
+  `state:verified` row.
+- **Limit.** All agents share one GitHub account, so the check cannot prove who verified; it makes a
+  merge without verification a deliberate, visible act. It binds only once the maintainer makes
+  `verified-gate` a required check with bypass disabled.
+- **Tested.** `node scripts/check-workflows.mjs --strict`: 0 errors, 0 warnings. The step script was
+  run locally against #195 and #191: no label → fail; label but no matching signed sha → fail; a
+  signed `Verified-sha:` matching the head → pass.
+
 ### Parent app — consent status per child, and a withdrawal flow that says what it really does (plan 3.7)
 - **Why.** The API could withdraw consent (`POST /v1/family/children/:id/consent/revoke`,
   ADR-0008) and gated collection on it with 428, but no client could show a parent the record or
