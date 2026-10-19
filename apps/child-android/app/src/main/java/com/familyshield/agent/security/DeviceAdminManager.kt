@@ -25,7 +25,7 @@ class DeviceAdminManager @Inject constructor(
     private val removalPolicy = AdminRemovalPolicy { knoxCapability }
 
     val adminComponent: ComponentName
-        get() = ComponentName(context, FamilyShieldDeviceAdmin::class.java)
+        get() = ComponentName(context, ParentalAdminReceiver::class.java)
 
     /** True when Samsung's Knox admin API is usable, so removal must not rely on AOSP alone. */
     val hasKnoxAdminApi: Boolean
@@ -79,7 +79,7 @@ class DeviceAdminManager @Inject constructor(
 
     /**
      * Clears admin after the parent PIN was verified (the only sanctioned way off the device). The OS
-     * removal screen is the child-facing path and is gated by [FamilyShieldDeviceAdmin.onDisableRequested]'s
+     * removal screen is the child-facing path and is gated by [ParentalAdminReceiver.onDisableRequested]'s
      * warning; this method is for the in-app "remove protection" flow behind the PIN.
      *
      * On Samsung, activation goes through Knox and Knox keeps its own admin registry; AOSP

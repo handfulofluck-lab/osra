@@ -1,5 +1,6 @@
 package com.familyshield.agent.manifest
 
+import com.familyshield.agent.security.ParentalAdminReceiver
 import java.io.File
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -124,6 +125,23 @@ class PlayMergedManifestTest {
             "CAMERA is absent from PlayManifestPolicy.ALLOWED_PERMISSIONS — a Play policy decision " +
                 "must be recorded there, not assumed by the manifest.",
             "android.permission.CAMERA" in PlayManifestPolicy.ALLOWED_PERMISSIONS,
+        )
+    }
+
+    /**
+     * Issue #202: the installed component name is what Samsung's Knox registry matches. The rename is
+     * only real if the merged Play manifest carries it with the admin contract intact.
+     */
+    @Test
+    fun `play merged manifest declares the renamed device-admin receiver`() {
+        val violations = PlayManifestPolicy.adminReceiverViolations(
+            merged,
+            ParentalAdminReceiver.COMPONENT_CLASS,
+        )
+        assertTrue(
+            "the Play artifact's device-admin receiver changed (issue #202):\n" +
+                violations.joinToString("\n"),
+            violations.isEmpty(),
         )
     }
 }
