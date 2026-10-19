@@ -93,6 +93,64 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
     await app.close();
   });
 
+  it("GET .../consent keeps a revoked record visible in `records` (the screen must not infer 'none')", async () => {
+    const app = await buildConsentApp();
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    // checkActiveConsent finds nothing active ...
+    prismaMock.consentRecord.findFirst.mockResolvedValue(null);
+    // ... but the history still holds the real row.
+    const grantedAt = new Date("2026-09-01T08:00:00.000Z");
+    const revokedAt = new Date("2026-10-01T09:30:00.000Z");
+    prismaMock.consentRecord.findMany.mockResolvedValue([{
+      id: "consent-revoked",
+      childId: CHILD_ID,
+      parentId: "parent-1",
+      method: "kba",
+      jurisdiction: "US",
+      grantedAt,
+      expiresAt: null,
+      revokedAt,
+      thirdPartySharing: true,
+    }]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/family/children/${CHILD_ID}/consent`,
+      headers: authHeader(app, "fam-1"),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().active).toBe(false);
+    expect(res.json().reason).toBe("parental_consent_required");
+    expect(res.json().records).toHaveLength(1);
+    expect(res.json().records[0]).toMatchObject({
+      id: "consent-revoked",
+      method: "kba",
+      jurisdiction: "US",
+      grantedAt: grantedAt.toISOString(),
+      expiresAt: null,
+      revokedAt: revokedAt.toISOString(),
+      thirdPartySharing: true,
+    });
+    expect(prismaMock.consentRecord.findMany).toHaveBeenCalledWith({
+      where: { childId: CHILD_ID },
+      orderBy: { grantedAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        childId: true,
+        parentId: true,
+        method: true,
+        jurisdiction: true,
+        grantedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        thirdPartySharing: true,
+      },
+    });
+    await app.close();
+  });
+
   it("revoke tells every device of the child to pause monitoring (consent_revoked command)", async () => {
     const app = await buildConsentApp();
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });

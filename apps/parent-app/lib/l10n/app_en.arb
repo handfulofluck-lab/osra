@@ -795,5 +795,124 @@
       "childName": { "type": "String" }
     }
   },
-  "onboardingPairNow": "Pair now"
+  "onboardingPairNow": "Pair now",
+  "consentRecordSummary": "Method, dates and withdrawal",
+  "consentStatusSubtitle": "What the server has on record for {childName}.",
+  "@consentStatusSubtitle": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentStateActive": "Active",
+  "consentStateExpiring": "Expiring soon",
+  "consentStateExpired": "Expired",
+  "consentStateRevoked": "Withdrawn",
+  "consentStateMismatch": "Wrong region",
+  "consentStateNone": "No consent record",
+  "consentStateActiveDetail": "Monitoring and data collection are allowed under this record.",
+  "consentStateExpiringDetail": "This record expires on {date}. Collection and alerts stop after that date unless consent is granted again.",
+  "@consentStateExpiringDetail": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentStateExpiredDetail": "This record expired on {date}. Monitoring and data collection are stopped until consent is granted again.",
+  "@consentStateExpiredDetail": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentStateRevokedDetail": "Consent was withdrawn on {date}. Monitoring and data collection are stopped until consent is granted again.",
+  "@consentStateRevokedDetail": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentStateMismatchDetail": "The record's jurisdiction ({record}) does not match your family region ({family}), so it cannot authorise monitoring.",
+  "@consentStateMismatchDetail": {
+    "placeholders": {
+      "record": { "type": "String" },
+      "family": { "type": "String" }
+    }
+  },
+  "consentStateNoneDetail": "No parental consent is on record for this child. Monitoring and data collection require an active record.",
+  "consentJurisdictionLabel": "Jurisdiction",
+  "consentGrantedLabel": "Granted",
+  "consentExpiryLabel": "Expires",
+  "consentNoExpiry": "No expiry",
+  "consentThirdPartyLabel": "Third-party sharing",
+  "consentSharingOn": "On",
+  "consentSharingOff": "Off",
+  "consentRevokedLabel": "Withdrawn",
+  "consentNotRevoked": "Not withdrawn",
+  "consentCurrentRecord": "Current record",
+  "consentHistorySection": "Earlier records",
+  "consentHistoryGranted": "{method} · granted {date}",
+  "@consentHistoryGranted": {
+    "placeholders": {
+      "method": { "type": "String" },
+      "date": { "type": "String" }
+    }
+  },
+  "consentHistoryRevoked": "withdrawn {date}",
+  "@consentHistoryRevoked": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentHistoryExpired": "expired {date}",
+  "@consentHistoryExpired": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "consentHistoryActive": "active",
+  "consentLoadFailed": "Could not load the consent record. Check your connection and try again.",
+  "consentWithdrawAction": "Withdraw consent",
+  "consentWithdrawOnlyOwner": "Only the family owner can withdraw consent.",
+  "consentWithdrawUnavailable": "There is no active consent record to withdraw.",
+  "consentWithdrawNote": "Withdrawing consent stops monitoring. It does not delete data that was already collected.",
+  "consentRevokeTitle": "Withdraw consent?",
+  "consentRevokeWarning": "This stops monitoring for {childName}. The device stays paired, and consent can be granted again later.",
+  "@consentRevokeWarning": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentRevokeStopsTitle": "What stops immediately",
+  "consentRevokeStopsCollection": "New data collection stops: location, app and web activity, and chat scans.",
+  "consentRevokeStopsAlerts": "Safety alerts stop, including SOS, screen-time and blocked-site alerts.",
+  "consentRevokeStopsRules": "Monitoring pauses on every device. Saved rules stay, but are not enforced until consent is granted again.",
+  "consentRevokeKeepsSafe": "Unlocking and resuming your child's device still work while consent is withdrawn.",
+  "consentRevokeDataTitle": "What happens to data already collected",
+  "consentRevokeDataRetained": "Nothing is deleted or anonymised now. Reports, alerts and location history already collected stay in your family account.",
+  "consentRevokeDataRetention": "Raw location, app, web and chat data is deleted by the retention job after 90 days by default. Usage summaries are kept for 365 days. Alerts are kept until the child's data is erased.",
+  "consentRevokeDataErase": "Deleting your child's profile is a separate action that removes all their data immediately. It is not part of withdrawing consent.",
+  "consentRevokeTypePrompt": "Type {childName} to confirm",
+  "@consentRevokeTypePrompt": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentRevokeTypeHint": "The name must match.",
+  "consentRevokeMismatch": "This does not match {childName}.",
+  "@consentRevokeMismatch": {
+    "placeholders": {
+      "childName": { "type": "String" }
+    }
+  },
+  "consentRevokeSubmit": "Withdraw consent now",
+  "consentRevokeCancel": "Keep consent",
+  "consentRevokeBusy": "Withdrawing…",
+  "consentRevokeFailed": "Could not withdraw consent. Nothing was changed. Check your connection and try again.",
+  "consentRevokeForbidden": "Only the family owner can withdraw consent. Nothing was changed.",
+  "consentRevokeDone": "Consent withdrawn. Monitoring is paused.",
+  "consentRevokeNoActive": "There was no active consent record. Nothing changed.",
+  "consentRevokeDevices": "{count, plural, =0{No device was connected.} =1{Pause signal queued for 1 device.} other{Pause signal queued for {count} devices.}}",
+  "@consentRevokeDevices": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "consentChildNameMissing": "Could not load your child's name. Go back and try again."
 }

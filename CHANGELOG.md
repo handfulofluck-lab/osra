@@ -11,6 +11,47 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — consent status per child, and a withdrawal flow that says what it really does (plan 3.7)
+- **Why.** The API could withdraw consent (`POST /v1/family/children/:id/consent/revoke`,
+  ADR-0008) and gated collection on it with 428, but no client could show a parent the record or
+  perform the withdrawal. The record's real fields (`method`, `jurisdiction`, `grantedAt`,
+  `expiresAt`, `thirdPartySharing`, `revokedAt`) were also invisible after withdrawal:
+  `GET …/consent` returned only the *active* row, so a withdrawn record looked exactly like
+  "never had one".
+- **API (additive).** `GET /v1/family/children/:id/consent` now returns `records` — up to 20 rows,
+  newest first, including revoked and expired ones — next to the existing
+  `active`/`reason`/`jurisdiction`/`consent` fields (`services/api/src/routes/family.ts:231`).
+  Nothing else changed on the server. New test in `services/api/test/consent.test.ts` failed
+  before the change (`records` undefined: `AssertionError: Target cannot be null or undefined` at
+  the length assertion) and passes after; the consent suite is **19/19**.
+- **Screen.** `apps/parent-app/lib/features/children/consent_screen.dart` at `/child/:id/consent`,
+  reached from a child-detail Overview tile. It shows method (translated label), jurisdiction,
+  granted date, expiry (`No expiry` when null), third-party sharing, withdrawal date, earlier
+  records, and a state chip: active / expiring within 14 days / expired / withdrawn / wrong
+  region / no record. Expiry is derived from `expiresAt`, not invented.
+- **Withdrawal is deliberately slow and honest.** A separate confirmation page states what stops —
+  new location, app, web and chat collection; safety alerts (SOS, screen-time, blocked sites); rule
+  enforcement on every device — and what keeps working (unlock and resume, per ADR-0008 §2c).
+  It states what happens to data: **nothing is deleted or anonymised on withdrawal**; raw rows are
+  removed by the retention job after `RETENTION_DAYS` (90 by default), usage summaries after
+  `ROLLUP_RETENTION_DAYS` (365), and alerts are kept until erasure (`applyRetention` in
+  `services/api/src/lib/usageModel.ts:220`; alerts are only removed by `eraseChildData`). Deleting
+  the child is named as the separate immediate-erasure action. The parent must type the child's
+  exact name before the button enables. The owner-only API (`requireOwner`) is respected in the UI;
+  a 403 and a transport failure both say nothing changed. The result is read from the server's
+  `count`: `count: 0` reports "There was no active consent record. Nothing changed." rather than a
+  false success, and `devicesNotified` is shown.
+- **Localization.** Every string is in both `app_en.arb` and `app_ar.arb`; the screen and the
+  confirmation are rendered in Arabic RTL at 320×568.
+- **Tests.** 14 widget/unit tests in `apps/parent-app/test/consent_test.dart` (state derivation,
+  active / expiring / expired / revoked / no-record, non-owner, load retry, the typed-name gate,
+  403 and transport failures, Arabic RTL) and two RTL cases in `test/localization_test.dart`.
+  Author's run: `flutter test` **218 passed** (202 before the change + 16 new), `flutter analyze`
+  clean; `services/api` `pnpm test` **382 passed** and `tsc --noEmit` exit 0. **⚠️ not verified
+  here**: the run is the author's (Kimi Code); no independent verification and no merge sha yet.
+  The live probe/e2e were not re-run from this branch: the API at `127.0.0.1:3000` predates it and
+  must not be restarted from a feature branch, so neither would exercise this tree.
+
 ### Parent app — first-run wizard makes the parent half of 3.2 one guided path
 - **Why.** Sign-in, family creation, adding a child and the pairing QR existed as separate screens
   reachable from different places. A non-engineer had no single path, and the 3.2 acceptance is

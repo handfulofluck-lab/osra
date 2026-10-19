@@ -1611,4 +1611,223 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingPairNow => 'Pair now';
+
+  @override
+  String get consentRecordSummary => 'Method, dates and withdrawal';
+
+  @override
+  String consentStatusSubtitle(String childName) {
+    return 'What the server has on record for $childName.';
+  }
+
+  @override
+  String get consentStateActive => 'Active';
+
+  @override
+  String get consentStateExpiring => 'Expiring soon';
+
+  @override
+  String get consentStateExpired => 'Expired';
+
+  @override
+  String get consentStateRevoked => 'Withdrawn';
+
+  @override
+  String get consentStateMismatch => 'Wrong region';
+
+  @override
+  String get consentStateNone => 'No consent record';
+
+  @override
+  String get consentStateActiveDetail =>
+      'Monitoring and data collection are allowed under this record.';
+
+  @override
+  String consentStateExpiringDetail(String date) {
+    return 'This record expires on $date. Collection and alerts stop after that date unless consent is granted again.';
+  }
+
+  @override
+  String consentStateExpiredDetail(String date) {
+    return 'This record expired on $date. Monitoring and data collection are stopped until consent is granted again.';
+  }
+
+  @override
+  String consentStateRevokedDetail(String date) {
+    return 'Consent was withdrawn on $date. Monitoring and data collection are stopped until consent is granted again.';
+  }
+
+  @override
+  String consentStateMismatchDetail(String record, String family) {
+    return 'The record\'s jurisdiction ($record) does not match your family region ($family), so it cannot authorise monitoring.';
+  }
+
+  @override
+  String get consentStateNoneDetail =>
+      'No parental consent is on record for this child. Monitoring and data collection require an active record.';
+
+  @override
+  String get consentJurisdictionLabel => 'Jurisdiction';
+
+  @override
+  String get consentGrantedLabel => 'Granted';
+
+  @override
+  String get consentExpiryLabel => 'Expires';
+
+  @override
+  String get consentNoExpiry => 'No expiry';
+
+  @override
+  String get consentThirdPartyLabel => 'Third-party sharing';
+
+  @override
+  String get consentSharingOn => 'On';
+
+  @override
+  String get consentSharingOff => 'Off';
+
+  @override
+  String get consentRevokedLabel => 'Withdrawn';
+
+  @override
+  String get consentNotRevoked => 'Not withdrawn';
+
+  @override
+  String get consentCurrentRecord => 'Current record';
+
+  @override
+  String get consentHistorySection => 'Earlier records';
+
+  @override
+  String consentHistoryGranted(String method, String date) {
+    return '$method · granted $date';
+  }
+
+  @override
+  String consentHistoryRevoked(String date) {
+    return 'withdrawn $date';
+  }
+
+  @override
+  String consentHistoryExpired(String date) {
+    return 'expired $date';
+  }
+
+  @override
+  String get consentHistoryActive => 'active';
+
+  @override
+  String get consentLoadFailed =>
+      'Could not load the consent record. Check your connection and try again.';
+
+  @override
+  String get consentWithdrawAction => 'Withdraw consent';
+
+  @override
+  String get consentWithdrawOnlyOwner =>
+      'Only the family owner can withdraw consent.';
+
+  @override
+  String get consentWithdrawUnavailable =>
+      'There is no active consent record to withdraw.';
+
+  @override
+  String get consentWithdrawNote =>
+      'Withdrawing consent stops monitoring. It does not delete data that was already collected.';
+
+  @override
+  String get consentRevokeTitle => 'Withdraw consent?';
+
+  @override
+  String consentRevokeWarning(String childName) {
+    return 'This stops monitoring for $childName. The device stays paired, and consent can be granted again later.';
+  }
+
+  @override
+  String get consentRevokeStopsTitle => 'What stops immediately';
+
+  @override
+  String get consentRevokeStopsCollection =>
+      'New data collection stops: location, app and web activity, and chat scans.';
+
+  @override
+  String get consentRevokeStopsAlerts =>
+      'Safety alerts stop, including SOS, screen-time and blocked-site alerts.';
+
+  @override
+  String get consentRevokeStopsRules =>
+      'Monitoring pauses on every device. Saved rules stay, but are not enforced until consent is granted again.';
+
+  @override
+  String get consentRevokeKeepsSafe =>
+      'Unlocking and resuming your child\'s device still work while consent is withdrawn.';
+
+  @override
+  String get consentRevokeDataTitle => 'What happens to data already collected';
+
+  @override
+  String get consentRevokeDataRetained =>
+      'Nothing is deleted or anonymised now. Reports, alerts and location history already collected stay in your family account.';
+
+  @override
+  String get consentRevokeDataRetention =>
+      'Raw location, app, web and chat data is deleted by the retention job after 90 days by default. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
+
+  @override
+  String get consentRevokeDataErase =>
+      'Deleting your child\'s profile is a separate action that removes all their data immediately. It is not part of withdrawing consent.';
+
+  @override
+  String consentRevokeTypePrompt(String childName) {
+    return 'Type $childName to confirm';
+  }
+
+  @override
+  String get consentRevokeTypeHint => 'The name must match.';
+
+  @override
+  String consentRevokeMismatch(String childName) {
+    return 'This does not match $childName.';
+  }
+
+  @override
+  String get consentRevokeSubmit => 'Withdraw consent now';
+
+  @override
+  String get consentRevokeCancel => 'Keep consent';
+
+  @override
+  String get consentRevokeBusy => 'Withdrawing…';
+
+  @override
+  String get consentRevokeFailed =>
+      'Could not withdraw consent. Nothing was changed. Check your connection and try again.';
+
+  @override
+  String get consentRevokeForbidden =>
+      'Only the family owner can withdraw consent. Nothing was changed.';
+
+  @override
+  String get consentRevokeDone => 'Consent withdrawn. Monitoring is paused.';
+
+  @override
+  String get consentRevokeNoActive =>
+      'There was no active consent record. Nothing changed.';
+
+  @override
+  String consentRevokeDevices(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Pause signal queued for $count devices.',
+      one: 'Pause signal queued for 1 device.',
+      zero: 'No device was connected.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get consentChildNameMissing =>
+      'Could not load your child\'s name. Go back and try again.';
 }

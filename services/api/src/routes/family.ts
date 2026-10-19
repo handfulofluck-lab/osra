@@ -221,12 +221,37 @@ export async function familyRoutes(app: FastifyInstance) {
     return reply.code(201).send({ consent });
   });
 
-  /** Current consent status for a child (ADR-0008). */
+  /**
+   * Current consent status for a child (ADR-0008).
+   *
+   * `records` carries the most recent rows regardless of state. Without it a revoked or expired
+   * record was invisible: `checkActiveConsent` only returns the active one, so a client could not
+   * show the real method/date after withdrawal and would have to guess or say "no record".
+   */
   app.get("/children/:id/consent", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
     const { id } = req.params as { id: string };
     const user = req.user as AuthedUser;
     const family = await prisma.family.findUnique({ where: { id: user.familyId } });
-    return checkActiveConsent(id, family?.region);
+    const [status, records] = await Promise.all([
+      checkActiveConsent(id, family?.region),
+      prisma.consentRecord.findMany({
+        where: { childId: id },
+        orderBy: { grantedAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          childId: true,
+          parentId: true,
+          method: true,
+          jurisdiction: true,
+          grantedAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          thirdPartySharing: true,
+        },
+      }),
+    ]);
+    return { ...status, records };
   });
 
   /**

@@ -217,6 +217,19 @@ class _OverviewTab extends ConsumerWidget {
         _BonusTimeCard(childId: childId),
         const SizedBox(height: AppSpace.sm),
         _WindDownCard(childId: childId),
+        const SizedBox(height: AppSpace.sm),
+        // Plan 3.7: the consent record and the withdrawal flow. Kept at the
+        // end so the cards above keep their existing position at 320 px.
+        Card(
+          child: ListTile(
+            key: const ValueKey('consentScreenTile'),
+            leading: const Icon(Icons.verified_user_outlined),
+            title: Text(l10n.parentalConsent),
+            subtitle: Text(l10n.consentRecordSummary),
+            trailing: const Icon(Icons.arrow_forward, size: 18),
+            onTap: () => context.push('/child/$childId/consent'),
+          ),
+        ),
       ],
     );
   }

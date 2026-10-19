@@ -5,6 +5,7 @@ import 'features/auth/login_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/children/child_detail_screen.dart';
 import 'features/children/command_history_screen.dart';
+import 'features/children/consent_screen.dart';
 import 'features/alerts/alerts_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
@@ -95,6 +96,14 @@ final router = GoRouter(
     GoRoute(path: '/child/:id', builder: (_, s) => ChildDetailScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/pair', builder: (_, s) => PairingQrScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/commands', builder: (_, s) => CommandHistoryScreen(childId: s.pathParameters['id']!)),
+    GoRoute(path: '/child/:id/consent', builder: (_, s) => ConsentScreen(childId: s.pathParameters['id']!)),
+    GoRoute(
+      path: '/child/:id/consent/revoke',
+      builder: (_, s) => ConsentRevokeScreen(
+        childId: s.pathParameters['id']!,
+        childName: s.extra is String ? s.extra as String : null,
+      ),
+    ),
     GoRoute(path: '/child/:id/reports', builder: (_, s) => ReportsScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/history', builder: (_, s) => UsageHistoryScreen(childId: s.pathParameters['id']!)),
     GoRoute(path: '/child/:id/rules', builder: (_, s) => RulesEditorScreen(childId: s.pathParameters['id']!)),

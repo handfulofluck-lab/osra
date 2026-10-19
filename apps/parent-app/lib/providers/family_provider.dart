@@ -17,6 +17,15 @@ final familyProvider = FutureProvider<FamilyOverview>((ref) async {
   return FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
 });
 
+/// Consent status and record history for one child
+/// (`GET /v1/family/children/:id/consent`, ADR-0008). Refresh after a revoke
+/// with `ref.invalidate(consentStatusProvider(childId))`.
+final consentStatusProvider = FutureProvider.family<ConsentStatus, String>((ref, childId) async {
+  final api = ref.watch(apiClientProvider);
+  final res = await api.raw.get('/v1/family/children/$childId/consent');
+  return ConsentStatus.fromJson(Map<String, dynamic>.from(res.data as Map));
+});
+
 /// Optional filters for [alertsProvider].
 class AlertFilter {
   final String? childId;
