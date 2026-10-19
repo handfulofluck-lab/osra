@@ -11,6 +11,29 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Docs + hardware — first-run pairing time measured as a proxy for 3.2's five-minute acceptance (TR-23, issue #181)
+- **What was measured.** Three clean installs of the Full debug build from `main@df7c89e` on the Flip4
+  reached the app's **"This device is paired"** screen in **21.4 / 21.1 / 21.2 s** wall clock from first
+  launch — median **21.2 s**. The path was the typed one: launch → server URL → parent-issued six-digit
+  code → PIN twice → **Activate device admin** → paired.
+- **How much of it is the measurement.** Of the 21.2 s, **~14.6 s** is the harness itself (11.9 s of
+  `uiautomator` dumps, 2.7 s of settle pauses) and ~0.65 s is machine typing, so the app-attributable path
+  is **~7 s**. `POST /v1/devices/pair/claim` answered in **5.7 / 6.6 / 9.7 ms**, so no step waits on the
+  network; the one ~1.6 s step (SAVE PIN) is PBKDF2 at 120 000 iterations on purpose.
+- **This is a proxy, not a pass.** It models no reading, no human typing and no parent-app step, and it
+  used the typed path rather than the QR. Roadmap 3.2's acceptance — a non-engineer parent pairs in five
+  minutes — stays open and needs a human usability run.
+- **Finding, filed not fixed (#181).** In **0 of 3** runs did device admin become active: the system
+  `SecDeviceAdminAdd` sheet reports **Activate** as `clickable=false`, a tap dismisses the sheet, and the
+  app ends on `⚠️ Protection: alert-only`. The flow measures the path to **paired**, not to "protection is
+  on"; the app's onboarding cannot turn protection on through the UI on this phone (the shell
+  `dpm set-active-admin` route, which earlier hardware runs used, still works).
+- **New committed procedure.** `scripts/hardware/android-pairing-time.ps1` (Windows PowerShell 5.1,
+  Full debug APK, app PIN supplied with `-Pin` at run time and never logged) and `docs/TESTING.md` §5h, which
+  also records the two traps found: a sideloaded APK raises the Play Protect "send for a security check"
+  sheet over the launcher (dismiss it before launching), and the One UI admin sheet's click target is the
+  Activate row, not the button. Evidence:
+  `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-PAIRING-TIME.md`.
 ### API — one-time MFA recovery codes (ADR-0023 Option A, roadmap 3.3, `feat/23-mfa-recovery-codes`)
 - **What a parent can now do.** With MFA on, the account has ten single-use recovery codes as well as
   the authenticator. `POST /v1/auth/mfa/verify` returns them (formatted `XXXX-XXXX-XXXX-XXXX`) in the
