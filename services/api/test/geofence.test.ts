@@ -181,6 +181,125 @@ describe("geofence transitions on POST /v1/location/ping", () => {
   });
 });
 
+describe("geofence baseline and stale-gap rule (issue #243)", () => {
+  // Claude's decision on #243: keep deriving the transition from pings, but a first ping after a
+  // hole is a baseline (no alert, no routine nudge), and a comparison more than 6 h stale says so
+  // in the alert. A tight fence at the fence centre, punched in the same coordinates as the
+  // existing tests.
+  const OUTSIDE = { lat: 40.72, lng: -74.006 };
+  const INSIDE = { lat: 40.7128, lng: -74.006 };
+
+  function pingBody(lat: number, lng: number, timestamp?: string) {
+    return { childId: CHILD_ID, deviceId: DEVICE_ID, lat, lng, accuracyM: 5, ...(timestamp ? { timestamp } : {}) };
+  }
+
+  beforeEach(() => {
+    resetPrismaMock();
+    // The MockRedis instance is shared across the file and `resetPrismaMock` does not touch it, so
+    // clear its call history or an earlier test's publish reads as this test's.
+    wireRedis().publish.mockClear();
+    prismaMock.device.findUnique.mockResolvedValue({ id: DEVICE_ID, childId: CHILD_ID });
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.locationPing.create.mockResolvedValue({ id: "ping-new" });
+    prismaMock.alert.create.mockResolvedValue({ id: "alert-1" });
+  });
+
+  it("treats the first ping after a retention hole as a baseline — no alert and no routine nudge", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    // A routine is bound to the fence: entering would publish the ruleset and queue rules_updated.
+    prismaMock.geofence.findMany.mockResolvedValue([{ ...HOME_FENCE, routineId: "routine-school" }]);
+    // No previous ping: first ping ever, or retention deleted the history (the 30-day window).
+    prismaMock.locationPing.findFirst.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: pingBody(INSIDE.lat, INSIDE.lng),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    // Feature #23's routine nudge is an enter action too: a baseline must not fire it.
+    expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.device.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    expect((getRedis() as unknown as MockRedis).publish).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("compares normally when the previous ping is 10 minutes old, with no gap note", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
+    prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T11:50:00.000Z") });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: pingBody(INSIDE.lat, INSIDE.lng, "2026-10-20T12:00:00.000Z"),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
+    expect(data.title).toBe("Entered Home");
+    expect(data.body).not.toMatch(/no location/i);
+    expect(data.metadata).toEqual({ geofenceId: HOME_FENCE.id, label: HOME_FENCE.label });
+    await app.close();
+  });
+
+  it("names a 14-hour gap when the previous ping is that old", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
+    prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T00:00:00.000Z") });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: pingBody(INSIDE.lat, INSIDE.lng, "2026-10-20T14:00:00.000Z"),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
+    expect(data.title).toBe("Entered Home");
+    expect(data.body).toContain("14 h");
+    expect(data.metadata.gapMinutes).toBe(840);
+    // F1 from #242 stands: the alert names the gap, never the child's position.
+    expect(data.metadata).not.toHaveProperty("lat");
+    expect(data.metadata).not.toHaveProperty("lng");
+    await app.close();
+  });
+
+  it("measures the gap from the earliest ping in the upload, so a buffered batch claims none", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
+    // Previous ping 14 h before the batch's last entry, but only 10 min before its first: the
+    // phone was buffering, so there was no quiet period to report.
+    prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T00:00:00.000Z") });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: {
+        childId: CHILD_ID,
+        deviceId: DEVICE_ID,
+        pings: [
+          { lat: OUTSIDE.lat, lng: OUTSIDE.lng, accuracyM: 10, timestamp: "2026-10-20T00:10:00.000Z" },
+          { lat: INSIDE.lat, lng: INSIDE.lng, accuracyM: 5, timestamp: "2026-10-20T14:00:00.000Z" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
+    expect(data.title).toBe("Entered Home");
+    expect(data.body).not.toMatch(/no location/i);
+    expect(data.metadata).not.toHaveProperty("gapMinutes");
+    await app.close();
+  });
+});
+
 describe("school-geofence routine auto-apply (Feature #23)", () => {
   beforeEach(() => {
     resetPrismaMock();

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { raiseAlert } from "../lib/alerts.js";
-import { isInsideFence } from "../lib/geo.js";
+import { geofenceTransition } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
@@ -99,13 +99,27 @@ async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void>
   await reply.code(401).send({ error: "unauthorized", reason: auth.reason });
 }
 
-/** Evaluate geofence enter/exit transitions for a fresh ping and raise alerts. */
+/** "14 h" for a whole number of hours, "7 h 13 min" otherwise — the old-position age in an alert. */
+function formatStaleGap(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}
+
+/**
+ * Evaluate geofence enter/exit transitions for a fresh ping and raise alerts.
+ *
+ * `earliestNewTs` is the oldest ping in this upload, not the one being evaluated: the gap since the
+ * previous ping is only real if the whole upload sat after it (issue #243).
+ */
 async function evaluateGeofences(
   childId: string,
   familyId: string,
   lat: number,
   lng: number,
   deviceId: string,
+  earliestNewTs: Date,
 ): Promise<void> {
   const fences = await prisma.geofence.findMany({ where: { childId } });
   if (fences.length === 0) return;
@@ -116,13 +130,19 @@ async function evaluateGeofences(
     orderBy: { timestamp: "desc" },
   });
   for (const fence of fences) {
-    const insideNow = isInsideFence(lat, lng, fence);
-    const insideBefore = previous ? isInsideFence(previous.lat, previous.lng, fence) : false;
-    if (insideNow === insideBefore) continue;
-    const entered = insideNow && fence.notifyOnEnter;
-    const exited = !insideNow && fence.notifyOnExit;
-    if (!entered && !exited) continue;
+    // Issue #243: no previous ping means this ping is a baseline, and `geofenceTransition` says so
+    // for every fence — so a first ping after pairing or after retention deleted the history raises
+    // nothing, and fires no routine nudge either.
+    const transition = geofenceTransition(previous, earliestNewTs, { lat, lng }, fence);
+    if (transition.kind !== "entered" && transition.kind !== "exited") continue;
+    const entered = transition.kind === "entered";
+    const notifyEnter = entered && fence.notifyOnEnter;
+    const notifyExit = !entered && fence.notifyOnExit;
+    if (!notifyEnter && !notifyExit) continue;
     const title = entered ? `Entered ${fence.label}` : `Left ${fence.label}`;
+    const gapNote = transition.gapMinutes === null
+      ? ""
+      : ` No location for ${formatStaleGap(transition.gapMinutes)} before this.`;
     await raiseAlert({
       childId,
       familyId,
@@ -130,12 +150,17 @@ async function evaluateGeofences(
       severity: "info",
       category: "geofence",
       title,
-      body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius)`,
+      body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius).${gapNote}`,
       // Privacy (Claude's #242 review): the alert names the fence, never the child's position. A
       // geofence crossing used to carry lat/lng in metadata, and Alert rows are not touched by the
       // retention job — so exact coordinates would have outlived the 30-day location window this PR
       // introduces, contradicting the consent copy. The fence's own position is in `Geofence`.
-      metadata: { geofenceId: fence.id, label: fence.label },
+      // Issue #243 adds only the age of the previous position, in minutes — still no coordinates.
+      metadata: {
+        geofenceId: fence.id,
+        label: fence.label,
+        ...(transition.gapMinutes === null ? {} : { gapMinutes: transition.gapMinutes }),
+      },
     });
     // Feature #23: entering a school/routine fence auto-applies the bound routine — push the
     // child's ruleset and nudge every device to refresh.
@@ -237,7 +262,22 @@ export async function locationRoutes(app: FastifyInstance) {
 
     // Evaluate transitions against the latest ping in the batch
     const latestPing = pingsList[pingsList.length - 1];
-    await evaluateGeofences(effectiveChildId, child.familyId, latestPing.lat, latestPing.lng, effectiveDeviceId);
+    // Issue #243: a gap is measured from the OLDEST ping in the upload — an offline buffer covers
+    // the gap it spans, so only the batch's earliest entry can start the quiet period. A ping with
+    // no `timestamp` is stored with the schema's `now()` default, so it counts as received now;
+    // for a single-ping payload this is that ping.
+    const receivedAt = new Date();
+    const earliestNewTs = new Date(Math.min(
+      ...pingsList.map((p) => (p.timestamp ? new Date(p.timestamp) : receivedAt).getTime()),
+    ));
+    await evaluateGeofences(
+      effectiveChildId,
+      child.familyId,
+      latestPing.lat,
+      latestPing.lng,
+      effectiveDeviceId,
+      earliestNewTs,
+    );
 
     let createdPings;
     try {
