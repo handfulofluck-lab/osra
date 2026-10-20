@@ -37,6 +37,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0026](0026-pip-split-overlay-coverage.md) | Multi-window coverage: judge every visible application window (PiP and split), expand the overlay with `resizeableActivity=false`, bound the re-raise; PiP itself cannot be closed by an accessibility service (#175) | accepted |
 | [0027](0027-tamper-alert-idempotency.md) | Tamper alerts are edge-triggered and idempotent: admin removal carries `<device>|<type>|<disable timestamp>` to a partial unique index; accessibility-off alerts only on a recorded on → off transition (#225) | accepted |
 | [0028](0028-hosting-regions-and-scaling.md) | Production hosting: managed containers on AWS, one independent stack per region in launch order (Middle East first: UAE), push-first device wake-ups, capability list and version gate, cost model 1k–1M families | proposed |
+| [0029](0029-repeated-remove-attempts-aggregate.md) | Repeated remove-protection attempts are one alert row per 5-minute window, updated in place with a count; the first attempt still pages immediately (#227) | proposed |
 
 ## Writing a new ADR
 
