@@ -22,6 +22,35 @@ environment where it was written — see `docs/QA/` for the verification state.
 - `scripts/hardware/app-list-cadence.ps1` compared the device against the API **once, before** the cadence wait, so an app uninstalled between syncs was always reported STALE — TR-48 run 2 reported FAIL while a fresh comparison after the sync matched 93/93.
 - The script now re-reads the phone after **every** observed `appsReportedAt` change, records each comparison, and takes PASS/FAIL from the **last** one; the start-of-run comparison is `C0` information only, and no observed change means WAITING (exit 4). The self-test grew from 16 to 20 fixtures, including a package removed between marks that PASSes on the post-sync comparison and would have FAILed under the old rule. The verdict rule is also written into the script header and `docs/TESTING.md` §5i.
 
+### Android — a deliberate parent-PIN removal is no longer reported as a stuck Knox record (#188)
+- **Why.** Claude's verification of #218 measured that, after the parent removed protection with the
+  PIN, the status screen inferred a stale Knox row from the mere presence of a Knox API and told the
+  parent that only a factory reset could clear it — although re-activation through the sheet worked
+  immediately. The inference predates #218 and belongs to #188.
+- **Fix.** `DeviceAdminManager.removeAdmin()` now records a completed parent-PIN removal in
+  `TamperState` (`admin_removed_by_parent`); `GuardianAdminReceiver.onEnabled` and a successful
+  `enrolmentOutcome()` clear it. `AdminEnrolmentPolicy.classify` returns `STALE_KNOX_ADMIN` only for
+  the observed "Admin is already added" shape — `RESULT_CANCELED` within 1 s of launching the sheet on
+  a Knox device (`isAlreadyAddedRefusal`) — and `NOT_GRANTED` for an ordinary Cancel or Back, so the
+  factory-reset wording appears only after the sheet itself refused. The status screen shows a calm
+  "removed with the parent PIN" note under an alert-only tier and no longer offers the stale-record
+  recovery pre-emptively.
+- **Docs.** TR-41's acceptance cell quotes #170's original `dpm remove-active-admin` line again, with
+  "procedure superseded by #217" after it, so the original contract and the reason the procedure
+  changed are both visible; the row's status is unchanged.
+- **Evidence.** See the PR: Android JVM test with the pre-#218 classifier restored fails
+  `AdminEnrolmentPolicyTest > a returned sheet with no active admin on Samsung is an ordinary
+  not-granted result`; the fixed tree is green. Not verified on hardware here — the phone was not
+  touched, so the sheet's 1-second refusal window is measured by code/JVM only until a tester runs it.
+- **Follow-up from #218's review (2026-10-20).** The parent-removal record is now written where the
+  removal is confirmed: device-admin removal is asynchronous, so the `isAdminActive()` check at the end
+  of `DeviceAdminManager.removeAdmin()` ran before it landed and the record stayed `false` (measured
+  twice on the Flip4). `GuardianAdminReceiver.onDisabled` now records a parent removal inside the
+  sanctioned window, so the status screen explains the deliberate removal instead of showing the
+  stuck-record/factory-reset warning; an out-of-band removal still sets the pending flag and enqueues
+  the tamper alert. JVM-tested at the policy level (`AdminDisabledPolicyTest`); the flag write itself
+  still needs a hardware run.
+
 ### CI — the scope guard also catches a revert by value, and refuses an undeclared title
 - The revert detector walks the last 30 first-parent merges on the base and fails when a PR restores a path's **pre-merge** blob while `main` still carries the merged one (additions, deletions and renames alike). A `revert(…)` title is the only way past it.
 - A title that declares no kind is now **refused** rather than skipped, so the check cannot be avoided by wording.

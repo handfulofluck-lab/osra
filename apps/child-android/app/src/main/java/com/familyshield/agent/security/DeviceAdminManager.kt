@@ -31,6 +31,14 @@ class DeviceAdminManager @Inject constructor(
     val hasKnoxAdminApi: Boolean
         get() = knoxCapability != null
 
+    /**
+     * True when this app removed its own admin through the parent-PIN flow and no activation has
+     * succeeded since (issue #188). A deliberate removal is not a stuck Knox record, and the status
+     * screen must not say it is.
+     */
+    val wasAdminRemovedByParent: Boolean
+        get() = TamperState.wasAdminRemovedByParent(context)
+
     fun isAdminActive(): Boolean = dpm.isAdminActive(adminComponent)
 
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
@@ -39,10 +47,23 @@ class DeviceAdminManager @Inject constructor(
 
     /**
      * Classifies an activation attempt after the system sheet returned. Call with `false` while the
-     * sheet is still open. The stale-Knox case is a suspicion with a recovery route, not a self-heal.
+     * sheet is still open. [alreadyAddedRefusal] is the observed "Admin is already added" shape from
+     * [AdminEnrolmentPolicy.isAlreadyAddedRefusal]; a successful activation clears the parent-removal
+     * memory (issue #188).
      */
-    fun enrolmentOutcome(sheetReturned: Boolean): EnrolmentOutcome =
-        AdminEnrolmentPolicy.classify(sheetReturned, isAdminActive(), isDeviceOwner(), hasKnoxAdminApi)
+    fun enrolmentOutcome(sheetReturned: Boolean, alreadyAddedRefusal: Boolean = false): EnrolmentOutcome {
+        val outcome = AdminEnrolmentPolicy.classify(
+            sheetReturned = sheetReturned,
+            isAdminActive = isAdminActive(),
+            isDeviceOwner = isDeviceOwner(),
+            knoxAvailable = hasKnoxAdminApi,
+            alreadyAddedRefusal = alreadyAddedRefusal,
+        )
+        if (AdminEnrolmentPolicy.clearsParentRemoval(outcome)) {
+            TamperState.setAdminRemovedByParent(context, false)
+        }
+        return outcome
+    }
 
     /** Intent that opens the OS "activate device admin" screen. Launched from the onboarding wizard. */
     fun requestAdminIntent(): Intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
@@ -85,7 +106,9 @@ class DeviceAdminManager @Inject constructor(
      * On Samsung, activation goes through Knox and Knox keeps its own admin registry; AOSP
      * `removeActiveAdmin` alone leaves a row that makes the next sheet activation fail with
      * `Admin is already added` (issue #186). [AdminRemovalPolicy] uses Knox when it is present and
-     * keeps AOSP for every other device, so behaviour is unchanged off Samsung.
+     * keeps AOSP for every other device, so behaviour is unchanged off Samsung. This method only
+     * opens the sanctioned window; the removal itself is recorded as parent-initiated by
+     * [GuardianAdminReceiver.onDisabled], where it is confirmed (issue #188).
      */
     fun removeAdmin(): AdminRemovalRoute {
         TamperState.markSanctionedRemoval(context, System.currentTimeMillis() + 60_000L)

@@ -31,6 +31,8 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         Log.i(TAG, "device admin enabled")
         TamperState.setAdminDisabledPending(context, false)
+        // Activation succeeded, so whatever an earlier parent-PIN removal recorded is no longer true.
+        TamperState.setAdminRemovedByParent(context, false)
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence =
@@ -38,17 +40,30 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
             "Your parent will be notified."
 
     override fun onDisabled(context: Context, intent: Intent) {
-        if (TamperState.isRemovalSanctioned(context, System.currentTimeMillis())) {
-            Log.i(TAG, "device admin disabled by the parent (PIN verified) — no alert")
-            TamperState.setLastTier(context, ProtectionTier.NONE.name)
-            return
+        val outcome = AdminDisabledPolicy.classify(
+            nowMs = System.currentTimeMillis(),
+            sanctionedUntilMs = TamperState.sanctionedRemovalUntil(context),
+        )
+        when (outcome) {
+            AdminDisabledOutcome.SANCTIONED_PARENT_REMOVAL -> {
+                Log.i(TAG, "device admin disabled by the parent (PIN verified) — no alert")
+                TamperState.setLastTier(context, ProtectionTier.NONE.name)
+                // The removal is asynchronous: onDisabled is the only place it is confirmed, and the
+                // open sanctioned window is what proves the parent asked for it.
+                TamperState.setAdminRemovedByParent(context, true)
+            }
+
+            AdminDisabledOutcome.TAMPER_ALERT -> {
+                Log.w(TAG, "device admin disabled — flagging tamper alert")
+                // No parent-removal record here: an out-of-band removal stays a tamper alert.
+                TamperState.setAdminDisabledPending(context, true)
+                // Tell the parent now, not at the next poll: expedited work survives the process
+                // death that usually follows an admin removal, and LocationService's 60-s loop is
+                // the fallback.
+                runCatching { TamperAlertWorker.enqueue(context, TamperAlertWorker.TYPE_ADMIN_REMOVED) }
+                    .onFailure { Log.w(TAG, "could not enqueue tamper alert", it) }
+            }
         }
-        Log.w(TAG, "device admin disabled — flagging tamper alert")
-        TamperState.setAdminDisabledPending(context, true)
-        // Tell the parent now, not at the next poll: expedited work survives the process death that
-        // usually follows an admin removal, and LocationService's 60-s loop is the fallback.
-        runCatching { TamperAlertWorker.enqueue(context, TamperAlertWorker.TYPE_ADMIN_REMOVED) }
-            .onFailure { Log.w(TAG, "could not enqueue tamper alert", it) }
     }
 
     companion object {
