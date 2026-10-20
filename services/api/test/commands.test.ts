@@ -118,7 +118,10 @@ describe("durable command queue (Phase 2b)", () => {
     prismaMock.deviceCommand.findUnique.mockResolvedValueOnce({ id: "c1", status: "acked" });
     expect(await ackDeviceCommand("dev-1", "c1", "ok", { lockedAt: "now" })).toEqual({ id: "c1", status: "acked" });
     expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "c1", deviceId: "dev-1", status: "delivered" }, data: expect.objectContaining({ status: "acked", result: { lockedAt: "now" } }) }),
+      expect.objectContaining({
+        where: { id: "c1", deviceId: "dev-1", status: "delivered" },
+        data: expect.objectContaining({ status: "acked", ackedAt: expect.any(Date), result: { lockedAt: "now" } }),
+      }),
     );
     prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 1 });
     prismaMock.deviceCommand.findUnique.mockResolvedValueOnce({ id: "c2", status: "failed" });
@@ -276,6 +279,30 @@ describe("command routes (Phase 2b)", () => {
     expect(gone.statusCode).toBe(404);
     const bad = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/ack", headers: deviceHeader(app), payload: { status: "maybe" } });
     expect(bad.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("an ok ack settles the row as acked with ackedAt, and the row cannot be acked twice (#231)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValueOnce({ id: "c1", status: "acked", ackedAt: new Date() });
+
+    const first = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/ack", headers: deviceHeader(app), payload: { status: "ok" } });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().command).toMatchObject({ id: "c1", status: "acked" });
+    // The transition is `delivered → acked`, and `ackedAt` is what makes the history say confirmed.
+    expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
+      where: { id: "c1", deviceId: "dev-1", status: "delivered" },
+      data: { status: "acked", ackedAt: expect.any(Date), result: {} },
+    });
+
+    // A second ack matches no `delivered` row, so the route refuses it; the parent cannot ack at all
+    // (probe B11; pinned in the test above).
+    prismaMock.deviceCommand.updateMany.mockResolvedValueOnce({ count: 0 });
+    const second = await app.inject({ method: "POST", url: "/v1/devices/dev-1/commands/c1/ack", headers: deviceHeader(app), payload: { status: "ok" } });
+    expect(second.statusCode).toBe(404);
+    expect(second.json()).toEqual({ error: "no_delivered_command" });
     await app.close();
   });
 

@@ -22,6 +22,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
 import com.familyshield.agent.commands.CommandDispatcher
+import com.familyshield.agent.commands.LocateFix
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
@@ -126,7 +127,10 @@ class LocationService : Service() {
             }
         }
         if (intent?.action == ACTION_PING_NOW) {
-            serviceScope.launch { locateNowOnce() }
+            // Issue #231: the row id travels with the intent so this service can ack `locate_now`
+            // once it knows whether a fix exists — the dispatcher deliberately does not.
+            val commandId = intent.getStringExtra(EXTRA_COMMAND_ID)
+            serviceScope.launch { locateNowOnce(commandId) }
         }
         return START_STICKY
     }
@@ -145,8 +149,12 @@ class LocationService : Service() {
      * [com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS] for it; only if that fails is
      * the last known fix used, and only while it is recent ([LocatePolicy.MAX_CACHED_AGE_MS]). Either way
      * the ping is flushed at once so the parent's map moves within the timeout, not at the next batch.
+     *
+     * Issue #231: [commandId] is the durable row from the poll (null on the FCM path, which has no
+     * row). The ack is sent after the flush attempt and says whether a fix was obtained — a started
+     * service is not an effect the parent can see, so the dispatcher defers this ack to here.
      */
-    private suspend fun locateNowOnce() {
+    private suspend fun locateNowOnce(commandId: String?) {
         val fresh: Location? = try {
             kotlinx.coroutines.withTimeoutOrNull(com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS) {
                 kotlinx.coroutines.suspendCancellableCoroutine { cont ->
@@ -176,12 +184,27 @@ class LocationService : Service() {
             } catch (e: Exception) { null }
         } else null
         val now = System.currentTimeMillis()
-        when (com.familyshield.agent.commands.LocatePolicy.choose(fresh != null, cached?.time, now)) {
-            com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> onLocation(fresh!!)
-            com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> onLocation(cached!!)
-            com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
+        val fix: LocateFix? = when (com.familyshield.agent.commands.LocatePolicy.choose(fresh != null, cached?.time, now)) {
+            com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> {
+                onLocation(fresh!!)
+                LocateFix.FRESH
+            }
+            com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> {
+                onLocation(cached!!)
+                LocateFix.CACHED
+            }
+            com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> {
+                Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
+                null
+            }
         }
-        runCatching { flushPings() }
+        // Issue #231 review: the ack may only claim a point the server has. An upload failure keeps
+        // the ping buffered, so no ack goes out and the row is re-offered at 120 s.
+        val uploaded = runCatching { flushPings() }.getOrDefault(false)
+        if (fix != null && !uploaded) {
+            Log.w(TAG, "locate_now: fix obtained but not uploaded; no ack, the command is re-offered at 120 s")
+        }
+        dispatcher.ackLocateNow(commandId, fix, uploaded)
     }
 
     /** Queues one ping and adapts the update interval to the current speed. */
@@ -218,33 +241,41 @@ class LocationService : Service() {
         }
     }
 
-    /** Uploads memory + Room pings; on failure persists the memory batch into Room. */
-    suspend fun flushPings() {
-        FLUSH_MUTEX.withLock {
-            if (consentState.isPaused()) {
-                // ADR-0008 §3: withdrawal stops collection — discard, do not buffer for later upload.
-                synchronized(pingLock) { memoryPings.clear() }
-                runCatching { db.pendingPingDao().clear() }
-                return
-            }
-            val mem = synchronized(pingLock) { ArrayList(memoryPings) }
-            val stored = db.pendingPingDao().all()
-            val all = mem + stored.map {
-                LocationPingDto(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.ofEpochMilli(it.timestamp).toString())
-            }
-            if (all.isEmpty()) return@withLock
-            try {
-                api.postLocationPings(LocationPingBatchDto(all))
-                synchronized(pingLock) { memoryPings.removeAll(mem) }
-                db.pendingPingDao().clear()
-            } catch (e: CancellationException) {
-                throw e // NOTE: never swallow coroutine cancellation
-            } catch (e: Exception) {
-                db.pendingPingDao().insertAll(mem.map {
-                    PendingPingEntity(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.parse(it.timestamp).toEpochMilli())
-                })
-                synchronized(pingLock) { memoryPings.removeAll(mem) }
-            }
+    /**
+     * Uploads memory + Room pings; on failure persists the memory batch into Room.
+     *
+     * Issue #231 review: returns **true only when the POST succeeded** — i.e. the batch that holds
+     * the caller's point is on the server. It returns false when consent is paused (the pings are
+     * discarded, never uploaded), when there was nothing to upload, and when the POST threw (the
+     * batch is buffered in Room). `locateNowOnce` uses this to withhold the `ok` ack; the periodic
+     * flush ignores it, because Room is the durable retry for that path.
+     */
+    suspend fun flushPings(): Boolean = FLUSH_MUTEX.withLock {
+        if (consentState.isPaused()) {
+            // ADR-0008 §3: withdrawal stops collection — discard, do not buffer for later upload.
+            synchronized(pingLock) { memoryPings.clear() }
+            runCatching { db.pendingPingDao().clear() }
+            return@withLock false
+        }
+        val mem = synchronized(pingLock) { ArrayList(memoryPings) }
+        val stored = db.pendingPingDao().all()
+        val all = mem + stored.map {
+            LocationPingDto(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.ofEpochMilli(it.timestamp).toString())
+        }
+        if (all.isEmpty()) return@withLock false
+        try {
+            api.postLocationPings(LocationPingBatchDto(all))
+            synchronized(pingLock) { memoryPings.removeAll(mem) }
+            db.pendingPingDao().clear()
+            true
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            db.pendingPingDao().insertAll(mem.map {
+                PendingPingEntity(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.parse(it.timestamp).toEpochMilli())
+            })
+            synchronized(pingLock) { memoryPings.removeAll(mem) }
+            false
         }
     }
 
@@ -455,6 +486,9 @@ class LocationService : Service() {
 
         /** Action that triggers an immediate single ping + flush (locate_now command). */
         const val ACTION_PING_NOW: String = "com.familyshield.agent.action.PING_NOW"
+
+        /** Issue #231: durable `DeviceCommand.id` carried from the dispatcher for the deferred ack. */
+        const val EXTRA_COMMAND_ID: String = "com.familyshield.agent.extra.COMMAND_ID"
 
         /** True while LocationService is active in foreground with updates running. */
         @Volatile

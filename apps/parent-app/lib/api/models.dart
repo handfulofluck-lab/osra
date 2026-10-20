@@ -165,6 +165,11 @@ class DeviceCommand {
   final DateTime? ackedAt;
   final int attempts;
 
+  /// Issue #231: what the agent reported when it settled the row — `{'reason': ...}` for a
+  /// device-side refusal, `{'fix': 'fresh'|'cached'}` for a locate that produced a fix. Null for
+  /// rows settled before this contract or by the server (a `locate_now` refused at the POST).
+  final Map<String, dynamic>? result;
+
   const DeviceCommand({
     required this.id,
     required this.deviceId,
@@ -175,6 +180,7 @@ class DeviceCommand {
     this.deliveredAt,
     this.ackedAt,
     this.attempts = 0,
+    this.result,
   });
 
   factory DeviceCommand.fromJson(Map<String, dynamic> json) => DeviceCommand(
@@ -187,10 +193,19 @@ class DeviceCommand {
         deliveredAt: DateTime.tryParse(_str(json['deliveredAt'])),
         ackedAt: DateTime.tryParse(_str(json['ackedAt'])),
         attempts: _int(json['attempts']),
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : null,
       );
 
   /// The child device has confirmed it ran the command.
   bool get isAcked => status == 'acked';
+
+  /// The agent's own refusal reason (`lock_screen_unavailable`, `background_location_missing`, …),
+  /// or null when the row carries none. Issue #231: a device-side refusal arrives as an ack, long
+  /// after the POST returned, so this is the only place the parent can learn why it failed.
+  String? get refusalReason =>
+      result != null && result!['reason'] is String ? result!['reason'] as String : null;
 }
 
 /// Daily screen-time windows. Times are "HH:mm" local strings; `days` is a

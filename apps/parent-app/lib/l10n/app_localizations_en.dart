@@ -412,6 +412,22 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get commandRefusedLockScreen =>
+      'The lock screen can\'t appear on your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.';
+
+  @override
+  String get commandRefusedWebFilter =>
+      'The web filter is not set up on your child\'s phone, so the internet was not paused.';
+
+  @override
+  String get commandRefusedUnsupportedCommand =>
+      'This command needs a newer OSRA on your child\'s phone.';
+
+  @override
+  String get commandRefusedInvalidPayload =>
+      'The phone rejected this command\'s settings.';
+
+  @override
   String rulesLoadFailed(String error) {
     return 'Failed to load rules: $error';
   }
