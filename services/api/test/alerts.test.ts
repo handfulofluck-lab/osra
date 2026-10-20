@@ -172,6 +172,121 @@ describe("alerts routes", () => {
     await app.close();
   });
 
+  /**
+   * Issue #227: a repeated attempt inside the same 5-minute window is not a second alert. The
+   * repeat carries the aggregate count and updates the row that already exists; the parent is not
+   * pushed again. This is deliberately not the #225 rule — that key names one event, this key names
+   * one window whose count grows.
+   */
+  it("updates the existing row's attempt count instead of creating a second row", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const firstRow = { id: "a-guard-1", category: "tamper", attemptCount: 1, body: "opened" };
+    const updated = { ...firstRow, attemptCount: 2, body: "2 attempts" };
+    prismaMock.alert.findFirst
+      .mockResolvedValueOnce(null) // attempt 1: the window's first alert
+      .mockResolvedValueOnce(firstRow); // attempt 2: same window, new count
+    prismaMock.alert.create.mockResolvedValue(firstRow);
+    prismaMock.alert.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.alert.findUnique.mockResolvedValue(updated);
+
+    const payload = {
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Someone tried to remove protection",
+      body: "opened",
+      dedupeKey: "dev-1|protection_screen_opened|1700000000000",
+      attemptCount: 1,
+    };
+    const post = (attemptCount: number, body: string) => {
+      const raw = JSON.stringify({ ...payload, attemptCount, body });
+      return app.inject({
+        method: "POST",
+        url: "/v1/alerts/internal",
+        headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+        payload: raw,
+      });
+    };
+
+    const first = await post(1, "opened");
+    const repeat = await post(2, "2 attempts");
+
+    expect(first.statusCode).toBe(201);
+    expect(repeat.statusCode).toBe(200);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.update).not.toHaveBeenCalled();
+    expect(prismaMock.alert.updateMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.updateMany).toHaveBeenCalledWith({
+      where: { id: firstRow.id, attemptCount: { lt: 2 } },
+      data: expect.objectContaining({ attemptCount: 2, body: "2 attempts" }),
+    });
+    expect(repeat.json().alert.attemptCount).toBe(2);
+    // An aggregate update is not a new page: push fan-out must not run a second time.
+    expect(prismaMock.parentPushToken.findMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("a new window creates a new row even when the previous window is still open", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.findFirst.mockResolvedValue(null); // a different window key was never seen
+    prismaMock.alert.create.mockResolvedValue({ id: "a-guard-2", attemptCount: 2 });
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Someone tried to remove protection",
+      body: "opened",
+      dedupeKey: "dev-1|protection_screen_opened|1700000300000",
+      attemptCount: 1,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ attemptCount: 1 }) }),
+    );
+    await app.close();
+  });
+
+  it("an out-of-order lower count does not lower the stored count", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const existing = { id: "a-guard-3", category: "tamper", attemptCount: 5, body: "5 attempts" };
+    prismaMock.alert.findFirst.mockResolvedValue(existing);
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Someone tried to remove protection",
+      body: "3 attempts",
+      dedupeKey: "dev-1|protection_screen_opened|1700000000000",
+      attemptCount: 3,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.attemptCount).toBe(5);
+    expect(prismaMock.alert.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("applies pagination math: page 3 with limit 20 skips 40 rows", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     prismaMock.alert.count.mockResolvedValue(100);
