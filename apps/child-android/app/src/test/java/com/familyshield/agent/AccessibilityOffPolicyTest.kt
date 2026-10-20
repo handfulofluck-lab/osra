@@ -1,6 +1,7 @@
 package com.familyshield.agent
 
 import com.familyshield.agent.receivers.AccessibilityOffPolicy
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,5 +79,42 @@ class AccessibilityOffPolicyTest {
         assertTrue(AccessibilityOffPolicy.isTamperState("0", component, component))
         assertTrue(AccessibilityOffPolicy.isTamperState("1", null, component))
         assertTrue(AccessibilityOffPolicy.isTamperState(null, null, component))
+    }
+
+    /**
+     * Issue #225: the alert is a true -> false edge over a recorded state, not "it is off now". The
+     * sequence below is the 60-s loop: first check on a fresh install (accessibility still off while
+     * the parent pairs), then the child turns it on, then turns it off.
+     */
+    @Test
+    fun `first check with accessibility off produces no alert`() {
+        var recorded: Boolean? = null
+        fun check(enabledNow: Boolean): Boolean {
+            val alert = AccessibilityOffPolicy.shouldAlertOnObservation(recorded, enabledNow)
+            if (!alert) recorded = enabledNow
+            return alert
+        }
+
+        assertFalse(check(false)) // fresh install, before setup granted accessibility
+        assertEquals(false, recorded)
+    }
+
+    @Test
+    fun `accessibility on then off produces one alert`() {
+        var recorded: Boolean? = null
+        var alerts = 0
+        fun check(enabledNow: Boolean): Boolean {
+            val alert = AccessibilityOffPolicy.shouldAlertOnObservation(recorded, enabledNow)
+            if (alert) alerts++ else recorded = enabledNow
+            return alert
+        }
+
+        assertFalse(check(false)) // first observation off: silent
+        assertFalse(check(true)) // setup granted it: recorded on
+        assertTrue(check(false)) // child turned it off: the one alert
+        assertEquals(1, alerts)
+        // While the POST is the only thing not done yet, the caller records off after success; a
+        // second tick before that still sees the edge and retries rather than going quiet.
+        assertTrue(AccessibilityOffPolicy.shouldAlertOnObservation(wasEnabled = true, isEnabledNow = false))
     }
 }

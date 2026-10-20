@@ -12,7 +12,9 @@ import android.os.Process
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.security.AccessibilityServiceListPolicy
 import com.familyshield.agent.security.DeviceAdminManager
+import com.familyshield.agent.services.AccessibilityMonitorService
 import com.familyshield.agent.vpn.VpnState
 
 /**
@@ -52,9 +54,13 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
     }
 
     private fun accessibilityEnabled(): Boolean {
-        val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-        val ours = "${context.packageName}/"
-        return enabled.split(':').any { it.startsWith(ours) }
+        val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            ?: return false
+        return AccessibilityServiceListPolicy.isEnabled(
+            enabled,
+            context.packageName,
+            AccessibilityMonitorService::class.java.name,
+        )
     }
 
     private fun usageAccessGranted(): Boolean {
