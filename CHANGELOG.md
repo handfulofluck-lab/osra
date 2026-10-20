@@ -11,6 +11,28 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android / API — five remove-protection attempts are one page that says five (#227)
+- Opening the admin-removal screen five times in five minutes used to send **five critical pages**:
+  the accessibility guard enqueued a new `protection_screen_opened` alert on every attempt, and
+  `AlertThrottlePolicy` was never consulted on that path. The agent now keeps a persisted per-device
+  5-minute window: the first attempt pages immediately, later attempts update the same row's
+  `attemptCount` (and body: "5 attempts were made …"), and a new window starts a new alert. The
+  window cannot be reset by closing and reopening the screen; a failed POST keeps the count, so the
+  next attempt still carries the lost one.
+- API: `Alert.attemptCount` (migration `0021`, default 1) makes a repeated window key update the
+  existing row in place and publish it for an open parent list, without a second push. A lower or
+  equal count is treated as a retry and changes nothing. Alerts without an `attemptCount` — every
+  other producer, including #225's `device_admin_removed` — keep their existing duplicate-is-a-no-op
+  behaviour, so that event still produces one row and a `200` on retry.
+- Tests: `GuardAttemptWindowTest` (five attempts → one window/count 5; boundary and exactly-at-boundary
+  → new window; first attempt pages at count 1; a failed POST leaves the next count at 3; a retried
+  POST of the same count posts once) and `alerts.test.ts` (repeat key updates the count with one
+  `create` and no push; a new window inserts; an out-of-order lower count is ignored; the #225 cases
+  pass unchanged). ADR-0029 records the choice of an in-place row over a closing notification.
+  **⚠️ not verified here:** JVM/API suites only — no phone and no live stack, so the five-attempts →
+  one-page row on hardware waits for the testing lane.
+- **Review fixes (Claude, #235).** A higher count now also marks the row **unread again** (the badge and the list show that the child kept trying) while still never pushing; and the guard alert is unique per **window**, so a pending retry from an earlier window is no longer cancelled when the next window opens — attempts made while the phone was offline are delivered instead of dropped.
+
 ### Android — a command that succeeds acks, so history reaches `acked` instead of staying `delivered` (#231)
 - The agent acked `failed` commands (issue #132) but never `ok`, so a `locate_now` that produced a fix, or a `lock` that applied, left its durable row `delivered` forever and `GET /v1/devices/:id/commands/history` told the parent the device had not confirmed it ran. `CommandDispatcher` now acks `ok` once per command: synchronous handlers when they return, `locate_now` only after `LocationService` has a fresh or recent cached fix (`detail.fix = fresh|cached`), and `wind_down` when the warning is posted and the timer armed (not when the lock fires). A handler that throws is acked `failed` with `reason: "command_failed"`, so a crash is reported rather than swallowed; a lost ack is logged once, not retried, and leaves the row `delivered` for the 120 s re-offer. **Verification on the Flip4 found two paths that still lied, and this PR closes them with `EnforceabilityPolicy`:** `ok` now means the effect is observable, and the ack names the path that produced it. `lock`/`pause` are `ok` only when one can actually put the screen up — `lockNow()` returned true (`detail.via = keyguard`), `Settings.canDrawOverlays` is granted (`overlay`), or our accessibility service is bound (`accessibility`; its own `onServiceConnected` state, not the persisted setting); otherwise `failed` with `reason: "lock_screen_unavailable"`, while `LockState` is still written so the lock applies when a grant returns. `pause_internet` is `failed` with `web_filter_not_set_up` when no VPN was consented or the OS no longer lets the tunnel start (the paused state is persisted regardless). A `locate_now` whose ping upload failed sends **no** ack — the buffered point is not observable — so the row is re-offered at 120 s. Unknown types are `failed` with `unsupported_command` and unparseable `bonus_time`/`wind_down` minutes with `invalid_payload` instead of staying `delivered` forever. The parent app maps the four reasons to EN/AR text. **⚠️ not verified here:** API unit tests and Android/Flutter JVM/unit suites only — no phone and no live stack in this run; the device-side refusals are shown by `_refusalMessage` only when a refusal arrives in the POST response; the history card still shows only the status, so surfacing the async `detail.reason` there is follow-up work.
 

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.familyshield.agent.receivers.AlertThrottlePolicy
 import com.familyshield.agent.receivers.InstallAlertPolicy
+import com.familyshield.agent.security.TamperState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +25,7 @@ private val Context.familyShieldDataStore: DataStore<Preferences> by preferences
  */
 @Singleton
 class AgentSettings @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     private val secure: com.familyshield.agent.security.SecureStore,
 ) {
     private val store = context.familyShieldDataStore
@@ -170,6 +171,8 @@ class AgentSettings @Inject constructor(
             it.remove(KEY_ACCESSIBILITY_WAS_ENABLED)
             it.remove(KEY_OVERLAY_WAS_GRANTED)
         }
+        // Issue #227: a re-pair is a new device enrolment; its first guard attempt opens a new window.
+        TamperState.clearGuardAttemptWindow(context)
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null

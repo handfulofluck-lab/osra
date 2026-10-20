@@ -25,6 +25,11 @@ import dagger.hilt.android.EntryPointAccessors
  * run skips the POST; the server's unique index covers the case where both are already in flight.
  * `admin_disabled_pending` is cleared only after a post succeeds (or after this worker confirms one
  * already did), never on failure, so an offline device retries.
+ *
+ * Issue #227: a protection-screen alert is an aggregate. [GuardAttemptWindow] gives the worker the
+ * window start and the running count; the server key names the window, and `attemptCount` makes a
+ * repeat update that row instead of inserting (and paging) again. The client-side key includes the
+ * count so a higher count is posted while a retry of the same work is a no-op.
  */
 class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -34,27 +39,39 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val entry = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
         val settings = entry.agentSettings()
         val childId = settings.childId() ?: return Result.success() // not paired: nobody to tell
-        val dedupeKey = if (type == TYPE_ADMIN_REMOVED) {
-            TamperAlertDedupe.adminRemovalKey(settings.deviceId(), eventTimestamp())
+        val deviceId = settings.deviceId()
+        val guardWindow = guardWindow()
+        val dedupeKey = when (type) {
+            TYPE_ADMIN_REMOVED -> TamperAlertDedupe.adminRemovalKey(deviceId, eventTimestamp())
+            TYPE_GUARD_TRIGGERED -> guardWindow?.let {
+                TamperAlertDedupe.guardAggregateKey(deviceId, it.windowStartMs)
+            }
+            else -> null
+        }
+        // The window key is stable across attempts; the local key adds the count so attempt N+1 is
+        // posted and a WorkManager retry of attempt N is not.
+        val postKey = if (type == TYPE_GUARD_TRIGGERED && guardWindow != null) {
+            TamperAlertDedupe.guardPostKey(deviceId, guardWindow)
         } else {
-            null
+            dedupeKey
         }
         val dispatcher = TamperAlertDispatcher(
             wasPosted = { TamperState.isTamperAlertPosted(applicationContext, it) },
             recordPosted = { TamperState.markTamperAlertPosted(applicationContext, it) },
         )
         return try {
-            dispatcher.dispatch(dedupeKey) {
+            dispatcher.dispatch(postKey) {
                 entry.apiService().postInternalAlert(
                     AlertDto(
                         childId = childId,
-                        deviceId = settings.deviceId(),
+                        deviceId = deviceId,
                         severity = "critical",
                         category = "tamper",
                         title = TITLES[type] ?: "Protection was changed",
-                        body = detail.ifBlank { BODIES[type] ?: "" },
+                        body = bodyFor(type, detail, guardWindow?.count),
                         metadata = mapOf("type" to type),
                         dedupeKey = dedupeKey,
+                        attemptCount = if (type == TYPE_GUARD_TRIGGERED) guardWindow?.count else null,
                     ),
                 )
             }
@@ -64,6 +81,26 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             Log.w(TAG, "tamper alert '$type' failed; retrying", e)
             if (runAttemptCount < 5) Result.retry() else Result.failure()
         }
+    }
+
+    /**
+     * The remove-protection window computed by the guard. Work enqueued by a pre-#227 build (or a
+     * malformed input) has no window and falls back to the old one-page-per-run behaviour.
+     */
+    private fun guardWindow(): GuardAttemptWindow.State? {
+        if (inputData.getString(KEY_TYPE) != TYPE_GUARD_TRIGGERED) return null
+        val start = inputData.getLong(KEY_WINDOW_START_MS, 0L)
+        val count = inputData.getInt(KEY_ATTEMPT_COUNT, 0)
+        if (start <= 0L || count <= 0) return null
+        return GuardAttemptWindow.State(windowStartMs = start, count = count)
+    }
+
+    /** The first attempt keeps the specific screen detail; later attempts say how many there were. */
+    private fun bodyFor(type: String, detail: String, attemptCount: Int?): String = when {
+        type == TYPE_GUARD_TRIGGERED && attemptCount != null && attemptCount > 1 ->
+            "$attemptCount attempts were made to open a protection-removal screen on this device in 5 minutes. " +
+                "The PIN was asked for each time."
+        else -> detail.ifBlank { BODIES[type] ?: "" }
     }
 
     /**
@@ -88,6 +125,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
         private const val KEY_EVENT_AT_MS = "event_at_ms"
+        private const val KEY_WINDOW_START_MS = "window_start_ms"
+        private const val KEY_ATTEMPT_COUNT = "attempt_count"
         private const val TAG = "TamperAlertWorker"
 
         private val TITLES = mapOf(
@@ -101,8 +140,30 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
         )
 
-        /** Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the first. */
-        fun enqueue(context: Context, type: String, detail: String = "", eventAtMs: Long = 0L) {
+        /**
+         * Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the
+         * first. For [TYPE_GUARD_TRIGGERED], [windowStartMs] and [attemptCount] identify the
+         * per-window aggregate row and its count (issue #227).
+         */
+        /**
+         * Issue #227 D1 (Claude's review): one unique name per type meant a new window's enqueue
+         * **cancelled the previous window's pending retry**, so attempts made while the phone was
+         * offline were dropped as soon as the child tried again in the next window. Guard alerts are
+         * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
+         * and a new window no longer cancels the old one. Every other type keeps the old name.
+         */
+        internal fun uniqueWorkName(type: String, windowStartMs: Long): String =
+            if (type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L) "tamper_alert_${type}_$windowStartMs"
+            else "tamper_alert_$type"
+
+        fun enqueue(
+            context: Context,
+            type: String,
+            detail: String = "",
+            eventAtMs: Long = 0L,
+            windowStartMs: Long = 0L,
+            attemptCount: Int = 0,
+        ) {
             val request = OneTimeWorkRequestBuilder<TamperAlertWorker>()
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setInputData(
@@ -110,10 +171,12 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         KEY_TYPE to type,
                         KEY_DETAIL to detail,
                         KEY_EVENT_AT_MS to eventAtMs,
+                        KEY_WINDOW_START_MS to windowStartMs,
+                        KEY_ATTEMPT_COUNT to attemptCount,
                     ),
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("tamper_alert_$type", ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(uniqueWorkName(type, windowStartMs), ExistingWorkPolicy.REPLACE, request)
         }
     }
 }

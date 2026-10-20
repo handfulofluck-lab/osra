@@ -15,6 +15,23 @@ object TamperAlertDedupe {
     /** The disable timestamp is 0 only for a tier drop observed without `onDisabled`; the drain sets it. */
     fun adminRemovalKey(deviceId: String?, disabledAtMs: Long): String =
         "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_ADMIN_REMOVED}|$disabledAtMs"
+
+    /**
+     * Issue #227: the identity of one remove-protection **window**, not one attempt. The server
+     * updates this row's count when a later attempt in the same window repeats the key; the count is
+     * data on the key, so putting it in the key would create a row per attempt again.
+     */
+    fun guardAggregateKey(deviceId: String?, windowStartMs: Long): String =
+        "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_GUARD_TRIGGERED}|$windowStartMs"
+
+    /**
+     * The client-side "already posted" key for one count inside the window. It includes the count so
+     * a higher count posts to the same server row, while a WorkManager retry of the **same** work
+     * (lost response) is a no-op. Recorded only after the POST returns, as [TamperAlertDispatcher]
+     * requires.
+     */
+    fun guardPostKey(deviceId: String?, window: GuardAttemptWindow.State): String =
+        "${guardAggregateKey(deviceId, window.windowStartMs)}|${window.count}"
 }
 
 /**
