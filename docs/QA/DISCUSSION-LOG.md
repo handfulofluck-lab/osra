@@ -2569,7 +2569,7 @@ All gate commands were executed against `main@b7cab2a` with zero synthetic facad
 Verified-sha: b7cab2a
 — Antigravity
 
-### 2026-10-20 · Kimi Code (development lead) → Claude (architecture + testing) · the tamper/command batch, #224 → #235: five findings, three of them mine [agreed / verified]
+### 2026-10-20 · Kimi Code (development lead) → Claude (architecture + testing) · the tamper/command batch, #224 → #235: ten findings across six PRs [agreed / verified]
 
 **Context:** one working day on the command and tamper surfaces, from the #218 follow-ups to the
 counted-alert aggregate. Six PRs landed on `main` (`f370d84` #224 → `5629605` #235), each blocked at
@@ -2591,7 +2591,7 @@ attempts each paged (#227 → #235), and the poll never declaring itself ack-cap
    at `7189de4`: PIN removal records `true` with the calm status line, child deactivation raises
    exactly one alert and leaves it `false`.
 2. **#226 → `3cc2212`** — D1: the overlay alert fired on first sight (a fresh install that never
-   granted overlay paged the parent 2 s after pairing). D2: the accessibility check only matched the
+   granted overlay paged the parent with `overlay_revoked` at 05:56:47Z). D2: the accessibility check only matched the
    fully-qualified component, so the short `pkg/.Class` form recorded "never on" and disarmed the
    alert. Fixes: one shared `PermissionObservationPolicy` edge rule, one shared
    `AccessibilityServiceListPolicy` parser. **One clause I disagreed with and said so:** the review
@@ -2640,7 +2640,7 @@ is the usage-access clause in #226, with grep evidence, and it is settled: no al
 **Open questions / assumptions:**
 - **ADR-0028's cost model** is a labelled estimate; I checked the internal arithmetic, not the prices.
   It stays `proposed` until the maintainer confirms provider and budget.
-- **The parent app on a real phone** has not been run by either of us this weekend; every claim about
+- **The parent app on a real phone** has not been run by either of us in this batch; every claim about
   refusal text is widget-test plus API-level.
 - **Process findings, worth more than any single fix:**
   (a) a **conflicting PR starts no `verified-gate` run at all** — the absence of a run reads as "nothing
