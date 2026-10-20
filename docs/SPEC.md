@@ -167,6 +167,10 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     is queued so the phone answers with its own reason. The agent also uploads the grant immediately
     when it changes (pairing-screen resume and the permission callbacks), not only on the 15-minute
     tick.
+    The agent polls `/commands?ack=1`, which declares it ack-capable: the server then re-offers a
+    `delivered`-but-unacked row after 120 s, up to three attempts. Re-delivery is **at-least-once** —
+    a `ring` whose ack POST failed rings again — which is the price of never leaving a row stuck at
+    `delivered` because one ack was lost (issue #231).
 - src/routes/rules.ts — GENERATE THIS: GET /:childId; PUT /:childId (zod-validated upsert);
     PATCH /:childId (partial). On every update publish to Redis `child:${childId}:rules`.
     Validate bedtime/school windows do not overlap unless explicitly allowed.

@@ -15,6 +15,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /** Retrofit API surface used by the child agent. */
 interface ApiService {
@@ -46,9 +47,19 @@ interface ApiService {
     @POST("v1/devices/{id}/push-token")
     suspend fun postPushToken(@Path("id") deviceId: String, @Body body: PushTokenDto)
 
-    /** Drains pending parent commands (FCM-free polling fallback, §14.2). */
+    /**
+     * Drains pending parent commands (FCM-free polling fallback, §14.2).
+     *
+     * Issue #231: `ack=1` declares this agent ack-capable, which is what makes the server re-offer a
+     * `delivered`-but-unacked row after 120 s (up to three attempts). Without it, a command whose
+     * ack was lost — `locate_now` with a failed upload deliberately sends none — would stay
+     * `delivered` forever, which is the defect #231 exists to remove.
+     */
     @GET("v1/devices/{id}/commands")
-    suspend fun getCommands(@Path("id") deviceId: String): List<DeviceCommandDto>
+    suspend fun getCommands(
+        @Path("id") deviceId: String,
+        @Query("ack") ackCapable: Int = ACK_CAPABLE,
+    ): List<DeviceCommandDto>
 
     /**
      * Reports the outcome of one delivered command (Phase 2b). Issue #132: a `locate_now` the agent
@@ -74,3 +85,6 @@ interface ApiService {
     @POST("v1/devices/{id}/activity")
     suspend fun postActivityEvents(@Path("id") deviceId: String, @Body batch: ActivityEventBatchDto)
 }
+
+/** `ack=1` on the command poll: this build acks every command it is given (issue #231). */
+private const val ACK_CAPABLE = 1
