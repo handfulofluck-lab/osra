@@ -11,6 +11,27 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android / API — five remove-protection attempts are one page that says five (#227)
+- Opening the admin-removal screen five times in five minutes used to send **five critical pages**:
+  the accessibility guard enqueued a new `protection_screen_opened` alert on every attempt, and
+  `AlertThrottlePolicy` was never consulted on that path. The agent now keeps a persisted per-device
+  5-minute window: the first attempt pages immediately, later attempts update the same row's
+  `attemptCount` (and body: "5 attempts were made …"), and a new window starts a new alert. The
+  window cannot be reset by closing and reopening the screen; a failed POST keeps the count, so the
+  next attempt still carries the lost one.
+- API: `Alert.attemptCount` (migration `0021`, default 1) makes a repeated window key update the
+  existing row in place and publish it for an open parent list, without a second push. A lower or
+  equal count is treated as a retry and changes nothing. Alerts without an `attemptCount` — every
+  other producer, including #225's `device_admin_removed` — keep their existing duplicate-is-a-no-op
+  behaviour, so that event still produces one row and a `200` on retry.
+- Tests: `GuardAttemptWindowTest` (five attempts → one window/count 5; boundary and exactly-at-boundary
+  → new window; first attempt pages at count 1; a failed POST leaves the next count at 3; a retried
+  POST of the same count posts once) and `alerts.test.ts` (repeat key updates the count with one
+  `create` and no push; a new window inserts; an out-of-order lower count is ignored; the #225 cases
+  pass unchanged). ADR-0029 records the choice of an in-place row over a closing notification.
+  **⚠️ not verified here:** JVM/API suites only — no phone and no live stack, so the five-attempts →
+  one-page row on hardware waits for the testing lane.
+
 ### Architecture — production hosting, regions and scaling (ADR-0028, proposed)
 - New `docs/adr/0028-hosting-regions-and-scaling.md`: AWS managed containers (ECS Fargate, RDS PostgreSQL with a standby, ElastiCache Valkey, SES, KMS); one independent stack per region, opened in Karim's launch order (2026-10-20): Middle East (UAE `me-central-1`), then Asia, Europe, the Americas; families routed by `Family.region`.
 - Records the measured device load on `main` (~3 requests a minute, ~4,400 a day, per Android child phone) and decides push-first wake-ups before launch (target ~430 a day), a per-device capability list, a minimum-version gate and 30-day location retention.
