@@ -109,6 +109,11 @@ if (argv.includes("--selftest")) {
     g("checkout", "-qb", "pr");
     fs.writeFileSync(pathMod.join(dir, "a.txt"), "v2"); // restores the PRE-merge value of a.txt
     g("add", "."); g("commit", "-qm", "R");
+    // A branch cut BEFORE the merge, touching an unrelated file: it still holds the pre-merge blob of
+    // a.txt, and must not be reported as a revert.
+    g("checkout", "-qb", "behind", "main~1");
+    fs.writeFileSync(pathMod.join(dir, "c.txt"), "y");
+    g("add", "."); g("commit", "-qm", "Be");
     return { dir };
   })();
 
@@ -118,6 +123,7 @@ if (argv.includes("--selftest")) {
     { name: "a revert-by-value PR fails under a fix(…) title", args: ["--title", "fix(x): fixture", "--base", "main", "--head", "pr", "--repo", FIXTURE.dir, "--quiet"], want: 1 },
     { name: "the same PR passes under a revert(…) title", args: ["--title", "revert(x): fixture", "--base", "main", "--head", "pr", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
     { name: "an unconventional title is refused", args: ["--title", "tidy up things", "--base", "origin/main", "--head", "HEAD", "--quiet"], want: 1 },
+    { name: "a branch cut before the merge, touching something else, passes", args: ["--title", "fix(x): fixture", "--base", "main", "--head", "behind", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
   ];
   let bad = 0;
   for (const c of cases) {
@@ -154,45 +160,73 @@ if (declared === "docs" && deletions > 0) {
   problems.push(`${deletions} file(s) deleted by a docs-titled PR — a squash on a stale base looks exactly like this`);
 }
 
-// A code-titled PR can still be a stale-base revert: the dead giveaway is that its blob for a path
-// equals the *pre-merge* blob of a recent merge on main, i.e. it puts back what that merge changed.
-// Claude asked for this after the #220 near-miss; it is the half the title check cannot see.
+// A code-titled PR can still be a stale-base revert: it restores a path's *pre-merge* blob while main
+// still carries the merged one. Two rules make it precise:
+//   - only paths the PR itself changes can be reverted by it (a branch merely behind main holds the
+//     pre-merge blobs of everything that merged after it was cut, and is not a revert); and
+//   - the comparison is by blob value, not by "touches a path a merge touched".
+// Blob ids come from one tree listing per rev and one `git diff --raw` per merge, not four spawns per
+// path: on this host a single git call costs seconds.
 const REVERSE_WINDOW = 30;
 const isRevertTitle = /^revert/i.test(title.trim());
-const blobAt = (rev, path) => {
+const prPaths = new Set(files.flatMap((f) => f.path.split("	")));
+const treeOf = (rev) => {
+  const map = new Map();
+  let out = "";
   try {
-    return execFileSync("git", ["rev-parse", `${rev}:${path}`], { encoding: "utf8", cwd: repo ?? undefined, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    out = execFileSync("git", ["ls-tree", "-r", rev], { encoding: "utf8", cwd: repo ?? undefined, stdio: ["ignore", "pipe", "ignore"] });
   } catch {
-    return null; // missing path counts as a blob
+    return null;
   }
+  for (const line of out.split(String.fromCharCode(10))) {
+    const m = line.match(/^\d+ blob ([0-9a-f]+)	(.+)$/);
+    if (m) map.set(m[2], m[1]);
+  }
+  return map;
 };
-if (!isRevertTitle) {
-  let merges = [];
+if (!isRevertTitle && prPaths.size > 0) {
+  const baseTree = treeOf(base);
+  const headTree = treeOf(head);
+  // One call lists the merges and the paths each one touched; only the merges that overlap the PR's
+  // own paths are worth a `diff --raw`. On this host a git call costs seconds, and a PR usually
+  // overlaps none of the last 30 merges.
+  let log = "";
   try {
-    merges = execFileSync("git", ["log", "--first-parent", "-n", String(REVERSE_WINDOW), "--format=%H", base], { encoding: "utf8", cwd: repo ?? undefined })
-      .split(String.fromCharCode(10))
-      .filter(Boolean);
+    log = execFileSync("git", ["log", "--first-parent", "-n", String(REVERSE_WINDOW), "--name-only", "--format=%x00%H", base], {
+      encoding: "utf8",
+      cwd: repo ?? undefined,
+    });
   } catch {
-    merges = [];
+    log = "";
   }
-  for (const m of merges) {
-    let changed = [];
-    try {
-      changed = execFileSync("git", ["diff", "--name-only", `${m}^1`, m], { encoding: "utf8", cwd: repo ?? undefined }).split(String.fromCharCode(10)).filter(Boolean);
-    } catch {
-      continue;
-    }
-    for (const path of changed) {
-      const preMerge = blobAt(`${m}^1`, path);   // null = absent before the merge
-      const mergedIn = blobAt(m, path);          // null = absent after it
-      const baseBlob = blobAt(base, path);
-      const headBlob = blobAt(head, path);
-      // The PR puts the path back exactly as it was before the merge, while main still carries the
-      // merged version. Works for additions (preMerge null, head null) and deletions/renames alike.
-      const undoes = headBlob === preMerge && baseBlob === mergedIn && preMerge !== mergedIn;
-      if (undoes) {
-        problems.push(`${path}: this PR restores the pre-merge state of ${m.slice(0, 7)} (title declares "${title}") — a revert needs a revert(…) title`);
-        break;
+  const candidates = [];
+  for (const block of log.split("\u0000")) {
+    const lines = block.split(String.fromCharCode(10)).filter(Boolean);
+    if (!lines.length) continue;
+    const [sha, ...paths] = lines;
+    if (paths.some((path) => prPaths.has(path))) candidates.push(sha);
+  }
+  if (baseTree && headTree) {
+    for (const m of candidates) {
+      let raw = "";
+      try {
+        raw = execFileSync("git", ["-c", "core.abbrev=40", "diff", "--raw", `${m}^1`, m], { encoding: "utf8", cwd: repo ?? undefined, stdio: ["ignore", "pipe", "ignore"] });
+      } catch {
+        continue;
+      }
+      for (const line of raw.split(String.fromCharCode(10))) {
+        const mm = line.match(/^:\d+ \d+ ([0-9a-f]+) ([0-9a-f]+) \S+	(.+)$/);
+        if (!mm) continue;
+        const [, oldSha, newSha, path] = mm;
+        if (!prPaths.has(path)) continue;
+        const preMerge = /^0+$/.test(oldSha) ? null : oldSha;
+        const mergedIn = /^0+$/.test(newSha) ? null : newSha;
+        const baseBlob = baseTree.get(path) ?? null;
+        const headBlob = headTree.get(path) ?? null;
+        if (headBlob === preMerge && baseBlob === mergedIn && preMerge !== mergedIn) {
+          console.error(`ERROR ${path}: this PR restores the pre-merge state of ${m.slice(0, 7)} (title declares "${title}") — a revert needs a revert(…) title`);
+          process.exit(1);
+        }
       }
     }
   }
