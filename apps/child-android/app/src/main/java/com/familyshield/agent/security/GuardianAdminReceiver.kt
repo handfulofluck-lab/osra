@@ -31,6 +31,8 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         Log.i(TAG, "device admin enabled")
         TamperState.setAdminDisabledPending(context, false)
+        // Activation succeeded, so whatever an earlier parent-PIN removal recorded is no longer true.
+        TamperState.setAdminRemovedByParent(context, false)
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence =

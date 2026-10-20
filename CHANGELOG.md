@@ -11,6 +11,27 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — a deliberate parent-PIN removal is no longer reported as a stuck Knox record (#188)
+- **Why.** Claude's verification of #218 measured that, after the parent removed protection with the
+  PIN, the status screen inferred a stale Knox row from the mere presence of a Knox API and told the
+  parent that only a factory reset could clear it — although re-activation through the sheet worked
+  immediately. The inference predates #218 and belongs to #188.
+- **Fix.** `DeviceAdminManager.removeAdmin()` now records a completed parent-PIN removal in
+  `TamperState` (`admin_removed_by_parent`); `GuardianAdminReceiver.onEnabled` and a successful
+  `enrolmentOutcome()` clear it. `AdminEnrolmentPolicy.classify` returns `STALE_KNOX_ADMIN` only for
+  the observed "Admin is already added" shape — `RESULT_CANCELED` within 1 s of launching the sheet on
+  a Knox device (`isAlreadyAddedRefusal`) — and `NOT_GRANTED` for an ordinary Cancel or Back, so the
+  factory-reset wording appears only after the sheet itself refused. The status screen shows a calm
+  "removed with the parent PIN" note under an alert-only tier and no longer offers the stale-record
+  recovery pre-emptively.
+- **Docs.** TR-41's acceptance cell quotes #170's original `dpm remove-active-admin` line again, with
+  "procedure superseded by #217" after it, so the original contract and the reason the procedure
+  changed are both visible; the row's status is unchanged.
+- **Evidence.** See the PR: Android JVM test with the pre-#218 classifier restored fails
+  `AdminEnrolmentPolicyTest > a returned sheet with no active admin on Samsung is an ordinary
+  not-granted result`; the fixed tree is green. Not verified on hardware here — the phone was not
+  touched, so the sheet's 1-second refusal window is measured by code/JVM only until a tester runs it.
+
 ### CI — a PR may only change what its title says it changes (stale-base guard)
 - `scripts/check-pr-diff-scope.mjs` reads the declared kind from the PR title (`docs(`, `ci(`, `feat(`, `fix(` …) and the reality from `git diff --name-status`, and fails when a docs-titled PR touches code, when a ci-titled PR touches app code, or when a docs PR deletes files. Wired into `workflow-lint` for every PR, with a self-test that includes the negative control.
 - Why: on 2026-10-19 a squash built from a `origin/main` that predated #218 produced a 24-file, +125/−503 diff that would have reverted the application label, `BlockSession`, the receiver rename and the cleanup-procedure change — and **every test stayed green**, because the tests proved the old tree worked. A suite proves code; it cannot prove the diff is the change intended.
