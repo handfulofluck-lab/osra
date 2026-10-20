@@ -139,6 +139,120 @@ describe("durable command queue (Phase 2b)", () => {
   });
 });
 
+describe("locate_now against the device's last-reported location grant (issue #221 D1)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    vi.mocked(publishJson).mockClear();
+  });
+
+  async function postLocate(device: Record<string, unknown>) {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(device);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app),
+      payload: { command: "locate_now" },
+    });
+    await app.close();
+    return res;
+  }
+
+  it("fails at the POST with background_location_missing when the last report is while-in-use only", async () => {
+    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use", locationGrantReportedAt: new Date() });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "background_location_missing", type: "locate_now" });
+    // The row is born failed, with the reason in `result` (what /commands/history returns), so it
+    // can never be claimed by a WorkManager tick that would run 15 minutes later.
+    expect(prismaMock.deviceCommand.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.deviceCommand.create.mock.calls[0][0].data).toMatchObject({
+      deviceId: "dev-1",
+      type: "locate_now",
+      status: "failed",
+      result: { reason: "background_location_missing" },
+      requestedBy: "parent-1",
+    });
+    // No device round trip: nothing is woken over pub/sub.
+    expect(publishJson).not.toHaveBeenCalled();
+  });
+
+  it("fails at the POST with location_permission_missing when the last report is no location at all", async () => {
+    const res = await postLocate({ ...DEVICE, locationGrant: "none", locationGrantReportedAt: new Date() });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "location_permission_missing" });
+    expect(prismaMock.deviceCommand.create.mock.calls[0][0].data).toMatchObject({
+      status: "failed",
+      result: { reason: "location_permission_missing" },
+    });
+    expect(publishJson).not.toHaveBeenCalled();
+  });
+
+  it("queues normally when the last report has the background grant", async () => {
+    const res = await postLocate({ ...DEVICE, locationGrant: "background", locationGrantReportedAt: new Date() });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: true, status: "pending", type: "locate_now" });
+    const data = prismaMock.deviceCommand.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ deviceId: "dev-1", type: "locate_now" });
+    expect(data).not.toHaveProperty("status");
+    expect(publishJson).toHaveBeenCalledWith("device:dev-1:commands", expect.objectContaining({ type: "locate_now" }));
+  });
+
+  it("queues when the stored grant is stale, so the phone answers instead of the server guessing (Claude's Flip4 finding)", async () => {
+    // "Allow all the time" was granted on the phone and a Locate four seconds later was still
+    // refused, because the server only knew the grant from the previous 15-minute upload. A report
+    // older than one telemetry period is not evidence about the phone now.
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use", locationGrantReportedAt: twoHoursAgo });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: true, status: "pending", type: "locate_now" });
+    expect(publishJson).toHaveBeenCalled();
+  });
+
+  it("queues when the grant has no report date at all", async () => {
+    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use", locationGrantReportedAt: null });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: true, status: "pending" });
+    expect(publishJson).toHaveBeenCalled();
+  });
+
+  it("still refuses on a report younger than one telemetry period", async () => {
+    const nineteenMinutesAgo = new Date(Date.now() - 19 * 60 * 1000);
+    const res = await postLocate({ ...DEVICE, locationGrant: "none", locationGrantReportedAt: nineteenMinutesAgo });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "location_permission_missing" });
+  });
+
+  it("queues normally when the device has never reported a grant (older agent or no telemetry yet)", async () => {
+    const res = await postLocate({ ...DEVICE, locationGrant: null });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: true, status: "pending" });
+    expect(publishJson).toHaveBeenCalled();
+  });
+
+  it("leaves every other command type alone even when the background grant is missing", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, locationGrant: "while_in_use" });
+    const ring = await app.inject({ method: "POST", url: "/v1/devices/dev-1/command", headers: authHeader(app), payload: { command: "ring" } });
+    expect(ring.statusCode).toBe(200);
+    expect(ring.json()).toMatchObject({ published: true, status: "pending", type: "ring" });
+    await app.close();
+  });
+
+  it("keeps locate_now claimable for 20 minutes — the 15-minute WorkManager floor plus its 5-minute flex", async () => {
+    expect(ttlFor("locate_now")).toBe(20 * 60);
+    // No other type in the table moved with it.
+    expect(ttlFor("ring")).toBe(600);
+    expect(ttlFor("stop_ring")).toBe(600);
+
+    const before = Date.now();
+    await enqueueDeviceCommand("dev-1", "locate_now", {});
+    const created = prismaMock.deviceCommand.create.mock.calls[0][0].data;
+    const ttlMs = created.expiresAt.getTime() - before;
+    expect(ttlMs).toBeGreaterThan(20 * 60 * 1000 - 2000);
+    expect(ttlMs).toBeLessThanOrEqual(20 * 60 * 1000 + 50);
+  });
+});
+
 describe("command routes (Phase 2b)", () => {
   beforeEach(() => resetPrismaMock());
 

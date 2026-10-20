@@ -156,6 +156,17 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     POST /:id/push-token; DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
     TelemetryUploader — aggregates of per-app minutes / url logs); PLUS GET/POST /:id/apps
     (roadmap 3.4 — the installed-launchable-app inventory, §14.1a).
+    Issue #221 (D1): `/telemetry` also accepts `locationGrant` (`background` | `while_in_use` |
+    `none`), stored on `Device.locationGrant` together with `Device.locationGrantReportedAt`;
+    `POST /:id/command {"command":"locate_now"}` answers
+    `{ published: false, status: "failed", reason: "background_location_missing" | "location_permission_missing" }`
+    at once when that stored state cannot support a background fix, with no device round trip. The
+    refusal needs a **fresh** report — younger than `LOCATION_GRANT_MAX_AGE_MS` (20 minutes, one
+    telemetry period plus its flex) — because a stale grant tells the parent to fix something the
+    child may already have fixed; a device that never reported, or whose report is old or undated,
+    is queued so the phone answers with its own reason. The agent also uploads the grant immediately
+    when it changes (pairing-screen resume and the permission callbacks), not only on the 15-minute
+    tick.
 - src/routes/rules.ts — GENERATE THIS: GET /:childId; PUT /:childId (zod-validated upsert);
     PATCH /:childId (partial). On every update publish to Redis `child:${childId}:rules`.
     Validate bedtime/school windows do not overlap unless explicitly allowed.

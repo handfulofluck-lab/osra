@@ -1,9 +1,13 @@
 package com.familyshield.agent.telemetry
 
+import android.Manifest
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.BatteryManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
@@ -84,7 +88,11 @@ class UsageReporter @Inject constructor(
         // Always POST: even idle, batteryPct is the device heartbeat that keeps
         // lastSeen/battery fresh for the parent app.
         try {
-            api.postTelemetry(deviceId, TelemetryDto(perAppMinutes = perApp, totalMinutes = total, unlockCount = unlocks, batteryPct = currentBatteryPct()))
+            val grant = currentLocationGrant()
+            api.postTelemetry(deviceId, TelemetryDto(perAppMinutes = perApp, totalMinutes = total, unlockCount = unlocks, batteryPct = currentBatteryPct(), locationGrant = grant))
+            // Issue #221: the periodic upload also counts as a report, so the expedited path does not
+            // re-send the same value on the next resume.
+            settings.recordReportedLocationGrant(grant)
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
             stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
@@ -126,6 +134,58 @@ class UsageReporter @Inject constructor(
             null
         }
     }
+
+    /**
+     * Issue #221 (D1 follow-up): upload the grant immediately when it changed, independent of usage.
+     *
+     * The periodic path ([aggregateAndUpload]) returns early while there are no usage events, so on a
+     * phone without accessibility the server could go a long time without learning that location was
+     * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
+     * resume and from the location-permission callbacks.
+     */
+    suspend fun reportLocationGrantIfChanged() {
+        val deviceId = settings.deviceId() ?: return
+        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
+        val reporter = LocationGrantReporter(
+            lastReported = { settings.reportedLocationGrant() },
+            recordReported = { settings.recordReportedLocationGrant(it) },
+            upload = { grant ->
+                api.postTelemetry(
+                    deviceId,
+                    TelemetryDto(
+                        perAppMinutes = emptyMap(),
+                        totalMinutes = 0,
+                        unlockCount = 0,
+                        batteryPct = currentBatteryPct(),
+                        locationGrant = grant,
+                    ),
+                )
+            },
+        )
+        try {
+            reporter.reportIfChanged(currentLocationGrant())
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            // Left unrecorded on purpose: the next resume retries with the same value.
+            Log.w(TAG, "location grant report failed", e)
+        }
+    }
+
+    /**
+     * Issue #221 (D1): the location grant the server stores so it can answer a `locate_now` at once.
+     * Read fresh on every tick — the parent can change the grant while the process runs, and a cached
+     * value would make the server refuse (or accept) the wrong state.
+     */
+    private fun currentLocationGrant(): String = LocationGrantState.classify(
+        hasFineLocation = granted(Manifest.permission.ACCESS_FINE_LOCATION),
+        hasCoarseLocation = granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+        hasBackgroundLocation = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+        apiLevel = Build.VERSION.SDK_INT,
+    )
+
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     /** Adds UsageStatsManager totals for packages missing from the event stream (best effort). */
     private fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {

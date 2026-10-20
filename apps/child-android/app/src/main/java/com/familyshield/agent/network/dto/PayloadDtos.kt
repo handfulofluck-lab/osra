@@ -21,6 +21,13 @@ data class TelemetryDto(
     val totalMinutes: Int,
     val unlockCount: Int,
     val batteryPct: Int? = null,
+    /**
+     * Issue #221 (D1): `background` | `while_in_use` | `none`, from
+     * [com.familyshield.agent.telemetry.LocationGrantState]. Non-null and always sent: the server
+     * uses it to fail a `locate_now` at once when no background fix is possible, instead of letting
+     * it expire before WorkManager's 15-minute poll.
+     */
+    val locationGrant: String,
 )
 
 /** Push-token registration for POST /v1/devices/<id>/push-token. */

@@ -163,6 +163,9 @@ class AgentSettings @Inject constructor(
             it.remove(KEY_DEVICE_TOKEN)
             it.remove(KEY_DEVICE_ID)
             it.remove(KEY_CHILD_ID)
+            // Issue #221: a re-pair is a new device identity, so the next grant report is a first
+            // report rather than a change the expedited upload should skip.
+            it.remove(KEY_REPORTED_LOCATION_GRANT)
             // Issue #225: after a re-pair the next accessibility/overlay check is a first observation again.
             it.remove(KEY_ACCESSIBILITY_WAS_ENABLED)
             it.remove(KEY_OVERLAY_WAS_GRANTED)
@@ -231,6 +234,18 @@ class AgentSettings @Inject constructor(
     }
 
     /**
+     * Issue #221 (D1 follow-up): the location grant the server was last told about. The expedited
+     * upload sends a report only when this differs from the grant read now, so a resume or a
+     * permission callback that changes nothing costs no request.
+     */
+    suspend fun reportedLocationGrant(): String? = read(KEY_REPORTED_LOCATION_GRANT)
+
+    /** Records the grant a successful upload covered, so the same value is not re-sent. */
+    suspend fun recordReportedLocationGrant(grant: String) {
+        store.edit { it[KEY_REPORTED_LOCATION_GRANT] = grant }
+    }
+
+    /**
      * Issue #225: the last observation of whether the OSRA accessibility service was effectively
      * enabled, or null when it has never been observed. The tamper alert is raised only on a
      * recorded true -> false edge, so a fresh install that has not granted accessibility yet stays
@@ -290,6 +305,8 @@ class AgentSettings @Inject constructor(
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
+        // Issue #221: the location grant the server was last told about (change detection).
+        private val KEY_REPORTED_LOCATION_GRANT = stringPreferencesKey("reported_location_grant")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
         private val KEY_ACCESSIBILITY_WAS_ENABLED = stringPreferencesKey("accessibility_was_enabled")
         // Issue #225: the recorded "was granted" state for the overlay-revoked transition rule.

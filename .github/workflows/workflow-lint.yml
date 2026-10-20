@@ -53,10 +53,12 @@ jobs:
         shell: pwsh
         run: ./scripts/hardware/classify-build.ps1 -SelfTest
 
-      - name: App-list cadence self-test - set comparison and the 14-16 minute window (TR-48, #201)
-        # The live harness is a phone + API measurement; this step exercises the two pure decisions
-        # it makes (what is missing/stale/tolerated, and whether a gap is inside 14-16 minutes).
-        # A regression here would either invent a PASS or fail an app installed after the last sync.
+      - name: App-list cadence self-test - set comparison, the 14-16 minute window, the verdict rule (TR-48, #201, #221)
+        # The live harness is a phone + API measurement; this step exercises the pure decisions it
+        # makes: what is missing/stale/tolerated, whether a gap is inside 14-16 minutes, and that the
+        # verdict comes from the last comparison after an observed sync, not from the start (#221 D2).
+        # A regression here would either invent a PASS, fail an app installed after the last sync, or
+        # fail a phone that had already uploaded the corrected list.
         shell: pwsh
         run: ./scripts/hardware/app-list-cadence.ps1 -SelfTest
 

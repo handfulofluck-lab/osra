@@ -409,21 +409,45 @@ class _WindDownCard extends ConsumerWidget {
 /// POSTs a lock/unlock/ring command for [device] and refreshes its delivery
 /// card. The snackbar says "queued", never "sent": the POST only creates a
 /// pending row (`POST /v1/devices/:id/command` → `{status: "pending"}`).
+///
+/// Issue #221: the API now answers some commands with `{status: "failed",
+/// reason}` instead of queueing them — a `locate_now` the phone's last
+/// telemetry says it cannot answer. Reporting "queued" there would be the same
+/// silent failure the refusal exists to remove, so the reason is shown instead.
 Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
   final l10n = context.l10n;
   try {
-    await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
+    final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
     ref.invalidate(deviceCommandHistoryProvider(device.id));
-    if (context.mounted) {
+    if (!context.mounted) return;
+    final body = response.data;
+    if (body is Map && body['status'] == 'failed') {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
+        SnackBar(content: Text(_refusalMessage(l10n, command, device, body['reason']))),
       );
+      return;
     }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
+    );
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));
     }
   }
+}
+
+/// The parent-facing text for a refused command. The reason vocabulary is the
+/// agent's own (`background_location_missing` / `location_permission_missing`,
+/// issue #132), so an unknown reason falls back to the raw code rather than a
+/// vague failure.
+String _refusalMessage(AppLocalizations l10n, String command, Device device, Object? reason) {
+  final type = l10n.commandType(command);
+  return switch (reason) {
+    'background_location_missing' => l10n.commandRefusedBackgroundLocation(type, device.model),
+    'location_permission_missing' => l10n.commandRefusedLocationPermission(type, device.model),
+    _ => l10n.commandFailed('${reason ?? 'unknown'}'),
+  };
 }
 
 /// Pauses/resumes the internet for [childId]'s devices (Feature #11); the
