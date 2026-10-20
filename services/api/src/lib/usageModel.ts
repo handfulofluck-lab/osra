@@ -8,8 +8,9 @@ import { getRedis } from "../redis.js";
  *    and reconciled from `ActivityEvent` by the nightly rollup, so a weekly report is correct after a
  *    Redis flush and after raw events age out. `app = "*"` is the device-reported day total.
  *  - `WebVisit` is one row per URL event, so browsing history is a query, not a JSON scan.
- *  - Retention: raw rows (`ActivityEvent`, `WebVisit`, `SocialEvent`, `LocationPing`) are deleted after
- *    `RETENTION_DAYS` (default 90); rollups after `ROLLUP_RETENTION_DAYS` (default 365).
+ *  - Retention: raw rows (`ActivityEvent`, `WebVisit`, `SocialEvent`) are deleted after `RETENTION_DAYS`
+ *    (default 90) and `LocationPing` after `LOCATION_RETENTION_DAYS` (default 30, ADR-0028 decision 5);
+ *    rollups after `ROLLUP_RETENTION_DAYS` (default 365).
  *  - Erasure: `eraseChildData()` is the one place that lists every child-scoped table and Redis key,
  *    so a GDPR delete leaves zero rows and no orphaned keys.
  *
@@ -24,6 +25,20 @@ const MS_PER_DAY = 86_400_000;
 export function retentionDays(env: NodeJS.ProcessEnv = process.env): number {
   const n = Number(env.RETENTION_DAYS ?? 90);
   return Number.isInteger(n) && n >= 7 ? n : 90;
+}
+
+/**
+ * Location history has its own, shorter window (ADR-0028 decision 5, Karim 2026-10-20): 30 days over
+ * the 90-day default for the other raw tables. `LOCATION_RETENTION_DAYS` may lower or raise it, but
+ * never past `RETENTION_DAYS` — the job must not keep one table longer than the window that governs
+ * the rest. An unusable value takes the product default, itself capped by the raw window; the two
+ * cases are separate so the fallback does not depend on clamp order.
+ */
+export function locationRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.LOCATION_RETENTION_DAYS;
+  const n = Number(raw);
+  if (raw === undefined || String(raw).trim() === "" || !Number.isInteger(n)) return Math.min(30, retentionDays(env));
+  return Math.min(Math.max(n, 7), retentionDays(env));
 }
 
 export function rollupRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
@@ -216,15 +231,22 @@ export interface RetentionResult {
   usageDays: number;
 }
 
-/** Delete raw rows older than the retention window and rollups older than theirs. */
+/**
+ * Delete raw rows older than their retention window and rollups older than theirs.
+ *
+ * `rawCutoff` governs every raw table except `LocationPing`, which is deleted against its own,
+ * shorter `locationCutoff` (ADR-0028 decision 5). A row older than the location window is gone even
+ * when it is newer than `rawCutoff`, so the two cutoffs are deliberately not interchangeable.
+ */
 export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<RetentionResult> {
   const rawCutoff = new Date(at.getTime() - retentionDays(env) * MS_PER_DAY);
+  const locationCutoff = new Date(at.getTime() - locationRetentionDays(env) * MS_PER_DAY);
   const rollupCutoff = utcDay(new Date(at.getTime() - rollupRetentionDays(env) * MS_PER_DAY));
   const [a, w, s, l, u] = await Promise.all([
     prisma.activityEvent.deleteMany({ where: { ts: { lt: rawCutoff } } }),
     prisma.webVisit.deleteMany({ where: { ts: { lt: rawCutoff } } }),
     prisma.socialEvent.deleteMany({ where: { createdAt: { lt: rawCutoff } } }),
-    prisma.locationPing.deleteMany({ where: { timestamp: { lt: rawCutoff } } }),
+    prisma.locationPing.deleteMany({ where: { timestamp: { lt: locationCutoff } } }),
     prisma.appUsageDaily.deleteMany({ where: { day: { lt: rollupCutoff } } }),
   ]);
   return { activityEvents: a.count, webVisits: w.count, socialEvents: s.count, locationPings: l.count, usageDays: u.count };
