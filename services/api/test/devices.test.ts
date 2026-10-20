@@ -428,7 +428,10 @@ describe("device enrollment & management", () => {
     });
     expect(reported.statusCode).toBe(202);
     expect(prismaMock.device.update).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: { id: "dev-1" }, data: expect.objectContaining({ locationGrant: "while_in_use" }) }),
+      expect.objectContaining({
+        where: { id: "dev-1" },
+        data: expect.objectContaining({ locationGrant: "while_in_use", locationGrantReportedAt: expect.any(Date) }),
+      }),
     );
 
     // An older agent (or any upload that omits the field) must not erase the stored grant.
@@ -441,6 +444,8 @@ describe("device enrollment & management", () => {
     expect(omitted.statusCode).toBe(202);
     const data = prismaMock.device.update.mock.calls.at(-1)![0].data;
     expect(data).not.toHaveProperty("locationGrant");
+    // ...and it must not refresh the report's date either, or a stale grant would look fresh.
+    expect(data).not.toHaveProperty("locationGrantReportedAt");
     await app.close();
   });
 

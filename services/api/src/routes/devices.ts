@@ -353,7 +353,9 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const user = req.user as AuthedUser & { sub: string };
-    const device = (req as unknown as { device: { id: string; childId: string; locationGrant?: string | null } }).device;
+    const device = (req as unknown as {
+      device: { id: string; childId: string; locationGrant?: string | null; locationGrantReportedAt?: Date | string | null };
+    }).device;
     // ADR-0008 §2c: enforcement commands need active consent; safe-direction commands
     // (unlock, resume, sos_clear) must always remain available to the parent.
     if (!SAFE_DIRECTION_COMMANDS.has(parsed.data.command)) {
@@ -362,8 +364,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     // Issue #221 (D1): a `locate_now` the last telemetry says the phone cannot answer is not queued
     // for a WorkManager tick it would miss. It is recorded `failed` at once with the same reason
     // vocabulary the agent acks (#132), and the device is not woken: no round trip is attempted.
+    // The report must also be FRESH: refusing on a stale grant tells a parent to fix something the
+    // child already fixed, so an old or undated report queues and lets the phone answer.
     if (parsed.data.command === "locate_now") {
-      const reason = locateNowRefusal(device?.locationGrant);
+      const reason = locateNowRefusal(device?.locationGrant, device?.locationGrantReportedAt);
       if (reason) {
         const failed = await enqueueFailedDeviceCommand(id, "locate_now", reason, { requestedBy: user.sub });
         return { published: false, status: "failed", reason, ...failed };
@@ -469,8 +473,12 @@ export async function deviceRoutes(app: FastifyInstance) {
         status: "online",
         ...(parsed.data.batteryPct !== undefined ? { batteryPct: parsed.data.batteryPct } : {}),
         // Issue #221 (D1): the latest grant report wins; omitting the field leaves the stored value
-        // untouched (an old agent does not erase what a newer one reported).
-        ...(parsed.data.locationGrant !== undefined ? { locationGrant: parsed.data.locationGrant } : {}),
+        // untouched (an old agent does not erase what a newer one reported). The report is timestamped
+        // so the command route can tell a fresh grant from a stale one (a refusal on a stale report
+        // tells the parent to fix something the child already fixed).
+        ...(parsed.data.locationGrant !== undefined
+          ? { locationGrant: parsed.data.locationGrant, locationGrantReportedAt: new Date() }
+          : {}),
       },
     });
     return reply.code(202).send({ accepted: true });

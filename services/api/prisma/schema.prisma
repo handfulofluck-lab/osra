@@ -129,6 +129,10 @@ model Device {
   /// reported once, which must be treated as "unknown", never as "missing": an older agent that
   /// does not send the field would otherwise have every `locate_now` failed at creation.
   locationGrant String?
+  /// Issue #221 D1 follow-up: when the agent reported that grant. The command route refuses a
+  /// `locate_now` only on a report younger than one telemetry period (lib/locationGrant.ts); an
+  /// older or undated report is "unknown" and the command is queued so the phone can answer it.
+  locationGrantReportedAt DateTime? @db.Timestamptz(3)
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]

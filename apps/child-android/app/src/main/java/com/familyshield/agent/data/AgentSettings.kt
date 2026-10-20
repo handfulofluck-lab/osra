@@ -163,6 +163,9 @@ class AgentSettings @Inject constructor(
             it.remove(KEY_DEVICE_TOKEN)
             it.remove(KEY_DEVICE_ID)
             it.remove(KEY_CHILD_ID)
+            // Issue #221: a re-pair is a new device identity, so the next grant report is a first
+            // report rather than a change the expedited upload should skip.
+            it.remove(KEY_REPORTED_LOCATION_GRANT)
         }
         baseUrlCache = null
         tokenCache = null
@@ -227,6 +230,18 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0" }
     }
 
+    /**
+     * Issue #221 (D1 follow-up): the location grant the server was last told about. The expedited
+     * upload sends a report only when this differs from the grant read now, so a resume or a
+     * permission callback that changes nothing costs no request.
+     */
+    suspend fun reportedLocationGrant(): String? = read(KEY_REPORTED_LOCATION_GRANT)
+
+    /** Records the grant a successful upload covered, so the same value is not re-sent. */
+    suspend fun recordReportedLocationGrant(grant: String) {
+        store.edit { it[KEY_REPORTED_LOCATION_GRANT] = grant }
+    }
+
     /** Last uploaded installed-apps fingerprint (roadmap 3.4), or null before the first report. */
     suspend fun installedAppsReportHash(): String? = read(KEY_INSTALLED_APPS_HASH)
 
@@ -260,6 +275,8 @@ class AgentSettings @Inject constructor(
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
+        // Issue #221: the location grant the server was last told about (change detection).
+        private val KEY_REPORTED_LOCATION_GRANT = stringPreferencesKey("reported_location_grant")
         // Roadmap 3.4: change detection for the installed-app inventory upload.
         private val KEY_INSTALLED_APPS_HASH = stringPreferencesKey("installed_apps_hash")
         private val KEY_INSTALLED_APPS_REPORTED_AT = stringPreferencesKey("installed_apps_reported_at")

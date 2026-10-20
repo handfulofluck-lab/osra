@@ -657,6 +657,26 @@ class PairingActivity : ComponentActivity() {
             }
 
             val isRunning = LocationService.isServiceRunning
+            // Issue #221 D3: a while-in-use grant can start the foreground service but cannot be
+            // started from the background, so the tick belongs only to the "allow all the time"
+            // state. LocationStartPolicy already owns that judgement; the line comes from it.
+            val hasBackground = ContextCompat.checkSelfPermission(
+                this@PairingActivity,
+                android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED
+            // Issue #221 (D1 follow-up): a grant change reaches the server now, not at the next
+            // 15-minute telemetry tick, so a Locate sent seconds after "Allow all the time" is
+            // delivered instead of refused. No-op when nothing changed.
+            try {
+                dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    applicationContext,
+                    com.familyshield.agent.di.WorkerEntryPoint::class.java,
+                ).usageReporter().reportLocationGrantIfChanged()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("PairingActivity", "location grant report failed", e)
+            }
 
             val tier = deviceAdmin.tier()
             replaceWith {
@@ -700,13 +720,6 @@ class PairingActivity : ComponentActivity() {
                     )
                 }
 
-                // Issue #221 D3: a while-in-use grant can start the foreground service but cannot be
-                // started from the background, so the tick belongs only to the "allow all the time"
-                // state. LocationStartPolicy already owns that judgement; the line comes from it.
-                val hasBackground = ContextCompat.checkSelfPermission(
-                    this@PairingActivity,
-                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                ) == PackageManager.PERMISSION_GRANTED
                 val locationStatus = LocationStatusPolicy.classify(
                     LocationStartPolicy.decide(hasFine, hasCoarse, hasBackground, Build.VERSION.SDK_INT),
                     isRunning,

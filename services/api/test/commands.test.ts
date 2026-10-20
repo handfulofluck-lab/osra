@@ -159,7 +159,7 @@ describe("locate_now against the device's last-reported location grant (issue #2
   }
 
   it("fails at the POST with background_location_missing when the last report is while-in-use only", async () => {
-    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use" });
+    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use", locationGrantReportedAt: new Date() });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "background_location_missing", type: "locate_now" });
     // The row is born failed, with the reason in `result` (what /commands/history returns), so it
@@ -177,7 +177,7 @@ describe("locate_now against the device's last-reported location grant (issue #2
   });
 
   it("fails at the POST with location_permission_missing when the last report is no location at all", async () => {
-    const res = await postLocate({ ...DEVICE, locationGrant: "none" });
+    const res = await postLocate({ ...DEVICE, locationGrant: "none", locationGrantReportedAt: new Date() });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "location_permission_missing" });
     expect(prismaMock.deviceCommand.create.mock.calls[0][0].data).toMatchObject({
@@ -188,13 +188,38 @@ describe("locate_now against the device's last-reported location grant (issue #2
   });
 
   it("queues normally when the last report has the background grant", async () => {
-    const res = await postLocate({ ...DEVICE, locationGrant: "background" });
+    const res = await postLocate({ ...DEVICE, locationGrant: "background", locationGrantReportedAt: new Date() });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ published: true, status: "pending", type: "locate_now" });
     const data = prismaMock.deviceCommand.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ deviceId: "dev-1", type: "locate_now" });
     expect(data).not.toHaveProperty("status");
     expect(publishJson).toHaveBeenCalledWith("device:dev-1:commands", expect.objectContaining({ type: "locate_now" }));
+  });
+
+  it("queues when the stored grant is stale, so the phone answers instead of the server guessing (Claude's Flip4 finding)", async () => {
+    // "Allow all the time" was granted on the phone and a Locate four seconds later was still
+    // refused, because the server only knew the grant from the previous 15-minute upload. A report
+    // older than one telemetry period is not evidence about the phone now.
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use", locationGrantReportedAt: twoHoursAgo });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: true, status: "pending", type: "locate_now" });
+    expect(publishJson).toHaveBeenCalled();
+  });
+
+  it("queues when the grant has no report date at all", async () => {
+    const res = await postLocate({ ...DEVICE, locationGrant: "while_in_use", locationGrantReportedAt: null });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: true, status: "pending" });
+    expect(publishJson).toHaveBeenCalled();
+  });
+
+  it("still refuses on a report younger than one telemetry period", async () => {
+    const nineteenMinutesAgo = new Date(Date.now() - 19 * 60 * 1000);
+    const res = await postLocate({ ...DEVICE, locationGrant: "none", locationGrantReportedAt: nineteenMinutesAgo });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "location_permission_missing" });
   });
 
   it("queues normally when the device has never reported a grant (older agent or no telemetry yet)", async () => {

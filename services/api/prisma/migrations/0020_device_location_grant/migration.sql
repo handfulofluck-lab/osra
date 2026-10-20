@@ -10,3 +10,9 @@
 -- not send `locationGrant`) reads NULL, which the command route treats as "unknown" and queues
 -- normally. No backfill is possible — the grant is only knowable from the handset.
 ALTER TABLE "Device" ADD COLUMN "locationGrant" TEXT;
+
+-- D1 follow-up (Claude's review of #228): the report needs a date, because a refusal on a stale
+-- grant tells a parent to fix something the child already fixed (measured on the Flip4: "allow all
+-- the time" granted, a Locate four seconds later still refused). The command route trusts a report
+-- only while it is younger than one telemetry period; older or undated reads NULL and queues.
+ALTER TABLE "Device" ADD COLUMN "locationGrantReportedAt" TIMESTAMPTZ(3);
