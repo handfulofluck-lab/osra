@@ -12,6 +12,9 @@ import org.junit.Test
  * launcher stayed in front. D2: `pause_internet` acked with no VPN consented and `ping 8.8.8.8`
  * still answered. [EnforceabilityPolicy] is the pure rule that decides whether any path can make the
  * effect observable; these tests pin every row of both tables plus the ack the reason becomes.
+ * Issue #233 review adds the `unlock`/`resume` row: no refusal — the ack names whether the
+ * lock/pause screen was up (`detail.screen = dismissed|not_showing`), because the phone showed that
+ * a refusal fired exactly when the unlock had worked.
  */
 class EnforceabilityPolicyTest {
 
@@ -114,6 +117,45 @@ class EnforceabilityPolicyTest {
             "overlay",
             via(EnforceabilityPolicy.pauseOutcome(canOverlay = true, accessibilityRunning = true)),
         )
+    }
+
+    // ---- unlock -------------------------------------------------------------------------------
+
+    @Test
+    fun `unlock is applied and names the screen it dismissed`() {
+        val outcome = EnforceabilityPolicy.unlockOutcome(lockScreenShowing = true)
+
+        assertEquals("ok detail", mapOf("screen" to "dismissed"), (outcome as CommandOutcome.Applied).detail)
+    }
+
+    @Test
+    fun `an unlock with nothing of ours on screen is still applied, and says so`() {
+        // Issue #233 review (F1): refusing here was the bug. With the lock screen up the visible
+        // window itself allows the dismiss launch; with nothing up there is nothing to take down and
+        // LockState.clear has already dropped the pending lock. A `failed` ack in either case told
+        // the parent the child's phone was still covered when it was not.
+        val outcome = EnforceabilityPolicy.unlockOutcome(lockScreenShowing = false)
+
+        assertEquals("ok detail", mapOf("screen" to "not_showing"), (outcome as CommandOutcome.Applied).detail)
+    }
+
+    @Test
+    fun `unlock never names a via path and has no keyguard row`() {
+        for (showing in listOf(true, false)) {
+            val detail = (EnforceabilityPolicy.unlockOutcome(showing) as CommandOutcome.Applied).detail
+            assertEquals("screen for showing=$showing", setOf("screen"), detail.keys)
+        }
+    }
+
+    @Test
+    fun `an unlock ack is ok on the wire, with the screen it found`() {
+        val dismissed = CommandAckPolicy.ackFor("c1", EnforceabilityPolicy.unlockOutcome(lockScreenShowing = true))!!
+        assertEquals("ok", dismissed.status)
+        assertEquals(mapOf("screen" to "dismissed"), dismissed.detail)
+
+        val notShowing = CommandAckPolicy.ackFor("c2", EnforceabilityPolicy.unlockOutcome(lockScreenShowing = false))!!
+        assertEquals("ok", notShowing.status)
+        assertEquals(mapOf("screen" to "not_showing"), notShowing.detail)
     }
 
     // ---- pause_internet -----------------------------------------------------------------------

@@ -4,8 +4,9 @@ import 'package:familyshield_parent/l10n/l10n.dart';
 ///
 /// The reason vocabulary belongs to the agent (`background_location_missing`,
 /// `lock_screen_unavailable`, `web_filter_not_set_up`, `unsupported_command`,
-/// `invalid_payload`, …), so an unknown code falls back to the raw string rather
-/// than a vague "failed" the parent cannot act on.
+/// `invalid_payload`, …), so an unknown code falls back to the raw string rather than a vague
+/// "failed" the parent cannot act on. `unlock`/`resume` have no reason: they are always acked
+/// `ok`, with `detail.screen = dismissed|not_showing` (issue #233 review).
 ///
 /// Two paths reach here and they must read the same:
 /// - the **immediate** refusal, `POST /v1/devices/:id/command` → `{status:"failed", reason}`;

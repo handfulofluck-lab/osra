@@ -177,6 +177,20 @@ class CommandDispatcherAckTest {
                 dispatcher.contains("EnforceabilityPolicy.pauseOutcome"),
         )
         assertTrue(
+            "unlock/resume must decide from the visible screen, so the unlock is only launched when " +
+                "there is something to take down (issue #233 review F1/F2)",
+            dispatcher.contains("EnforceabilityPolicy.unlockOutcome") &&
+                dispatcher.contains("LockActivity.isShowing"),
+        )
+        assertTrue(
+            "unlock/resume must share the policy-carrying handler, so resume cannot lose the reason",
+            !dispatcher.contains("unlock(); CommandOutcome.Applied()"),
+        )
+        assertTrue(
+            "the unlock ack must name the screen it found, not a via path",
+            dispatcher.contains("lockScreenShowing = showing"),
+        )
+        assertTrue(
             "accessibility running is the bound service, not a cached setting",
             dispatcher.contains("AccessibilityMonitorService.isRunning"),
         )

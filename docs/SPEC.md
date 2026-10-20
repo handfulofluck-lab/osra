@@ -486,12 +486,20 @@ and are deleted explicitly in the GDPR erasure cascade.
   for `locate_now`, only once a fix exists **and** the ping upload succeeded — or `{status: "failed",
   detail: {reason}}` when the handler refused or threw. `ok` never means merely "the message
   arrived"; a lost ack, and a `locate_now` whose flush failed, are logged and not retried, so the row
-  stays `delivered` and the 120 s re-offer retries the command. Refusal reasons (`EnforceabilityPolicy`,
-  review of #231; free-form strings stored in the row's `result.reason`):
+  stays `delivered` and the 120 s re-offer retries the command. Refusal reasons
+  (`EnforceabilityPolicy`, review of #231; free-form strings stored in the row's `result.reason`),
+  plus the `unlock`/`resume` outcome, which is not a refusal:
   - `lock_screen_unavailable` — `lock`/`pause`: no path can show the screen (overlay permission off,
     accessibility service not bound, and for `lock` `lockNow()` false). A successful lock/pause
     carries `detail.via = keyguard|overlay|accessibility` so the parent can tell which path applied.
     `LockState` is written even on the refusal, so a later grant applies the pending lock.
+  - `unlock`/`resume` always ack `ok`, with `detail.screen = dismissed|not_showing` (#233 review).
+    `dismissed`: the lock/pause screen was up, so the dismiss launch is allowed — our own visible
+    window is what lets Android start `LockActivity` from the background — and the screen is gone.
+    `not_showing`: nothing of ours was on screen, so there was nothing to take down and **no launch
+    is made**; a blind launch only creates a blocked activity record whose replayed `MODE_UNLOCK`
+    can cancel a later lock. `LockState` is cleared before the decision either way, and there is no
+    keyguard path (unlock never calls `lockNow()`).
   - `web_filter_not_set_up` — `pause_internet` with no VPN consent, or with the stored consent but
     the OS no longer allowing the tunnel; the sinkhole did not start, so packets still flow. The
     paused state is persisted and applies once the filter is set up.

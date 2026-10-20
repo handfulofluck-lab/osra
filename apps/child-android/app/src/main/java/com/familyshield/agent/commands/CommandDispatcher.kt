@@ -69,7 +69,8 @@ class CommandDispatcher @Inject constructor(
      *
      * No durable row is left unaudited: an unknown type is `failed` with `unsupported_command`, an
      * unparseable minutes payload with `invalid_payload`, and `lock`/`pause` are `ok` only when
-     * [EnforceabilityPolicy] finds a path that can actually show the screen.
+     * [EnforceabilityPolicy] finds a path that can actually show the screen. `unlock`/`resume` are
+     * always `ok` and carry `detail.screen = dismissed|not_showing` instead (issue #233 review).
      */
     fun dispatch(type: String, data: Map<String, String>, commandId: String? = null) {
         // ADR-0008 §3: consent lifecycle commands pause/resume the whole agent.
@@ -94,11 +95,11 @@ class CommandDispatcher @Inject constructor(
     private fun runHandler(type: String, data: Map<String, String>, commandId: String?): CommandOutcome =
         when (type) {
             "lock" -> lock()
-            "unlock" -> { unlock(); CommandOutcome.Applied() }
+            "unlock" -> unlock()
             // NOTE: pause/resume reuse the overlay mechanics with paused messaging —
             // a paused device shows the full-screen overlay until resumed.
             "pause" -> pause()
-            "resume" -> { unlock(); CommandOutcome.Applied() }
+            "resume" -> unlock()
             "ring" -> { ring(); CommandOutcome.Applied() }
             "sos_clear" -> { sosClear(); CommandOutcome.Applied() }
             "stop_ring" -> { Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND); CommandOutcome.Applied() }
@@ -207,16 +208,32 @@ class CommandDispatcher @Inject constructor(
         return outcome
     }
 
-    /** Dismisses the keyguard via LockActivity (device-owner devices unlock with lockNow+swipe) and cancels any pending wind-down. */
-    private fun unlock() {
+    /**
+     * Dismisses the overlay via [LockActivity] and cancels any pending wind-down. `resume` shares
+     * this call: a paused device shows the same overlay, so it is dismissed the same way.
+     *
+     * Issue #233 review (F1/F2): `LockState` is cleared first, then the outcome depends on whether
+     * [LockActivity] is on screen. When it is, our own visible window is what lets Android start the
+     * activity from the background (`BAL_ALLOW_VISIBLE_WINDOW`), even with overlay and accessibility
+     * off — so the launch happens and the screen goes away. When it is not, there is nothing to take
+     * down and a blind launch would only create the blocked activity record whose replayed
+     * `MODE_UNLOCK` finished a later `lock` (F2), so no launch is made. Either way the ack is `ok`
+     * with `detail.screen = dismissed|not_showing`: a refusal here fired exactly when the unlock had
+     * worked, telling the parent the phone was still covered.
+     */
+    private fun unlock(): CommandOutcome {
         windDownJob?.cancel()
         windDownJob = null
         com.familyshield.agent.enforcement.LockState.clear(context)
-        context.startActivity(
-            Intent(context, LockActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_UNLOCK),
-        )
+        val showing = LockActivity.isShowing
+        if (showing) {
+            context.startActivity(
+                Intent(context, LockActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_UNLOCK),
+            )
+        }
+        return EnforceabilityPolicy.unlockOutcome(lockScreenShowing = showing)
     }
 
     /**
