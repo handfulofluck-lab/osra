@@ -29,9 +29,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   changed because the decision changed — not to make a failing check pass; with only `applyRetention`
   reverted to the shared cutoff, the 30-day and 7-day cases fail (expected `2026-09-16T02:00:00Z` /
   `2026-10-09T02:00:00Z`, received `2026-07-18T02:00:00Z`).
-- **Not verified here:** no live stack, probe or e2e run in this session, and no migration — the
-  `LocationPing.timestamp` column already exists. Existing rows older than 30 days are removed by the
-  next retention run rather than by a backfill.
+- **Not verified here:** no live stack, probe or e2e run in this session. The retention change itself
+  needs no schema change — the `LocationPing.timestamp` column already exists and rows older than 30 days
+  are removed by the next retention run rather than by a backfill. Migration `0022` in the same PR is not
+  part of the retention change: it scrubs coordinates from geofence alerts, below.
 - **Geofence alerts no longer carry the child's coordinates** (review of #242). A crossing used to store `lat`/`lng` in the alert's metadata, and alert rows are not touched by the retention job — so exact positions would have outlived the 30-day window the consent copy now promises. The alert names the fence; migration `0022` scrubs the coordinates from rows written before this change.
 
 ### Architecture — 30-day location history confirmed (ADR-0028)
