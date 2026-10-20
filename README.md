@@ -199,8 +199,9 @@ verified where it was written is stated as such. Details:
   v2 signer is verified on hardware (TR-07, Galaxy Z Flip4 / Android 16); the Windows and iOS signers
   by their unit tests against the same reference vector only.
 - No push notifications in test builds (agents poll ~60 s); FCM/APNs is a roadmap item.
-- Raw activity, browsing, social and location rows are kept **90 days** (rollups one year) by a
-  nightly job — a global setting today, not per family (ADR-0013).
+- Raw activity, browsing and social rows are kept **90 days** and **location rows 30 days** (rollups
+  one year) by a nightly job — a global setting today, not per family (ADR-0013; the location window
+  is ADR-0028 decision 5, `LOCATION_RETENTION_DAYS`, never above `RETENTION_DAYS`).
 - Android pause-internet is overlay + app-blocking today; VPN-sinkhole is the production path. HTTPS
   inspection on Windows is opt-in (`FS_HTTPS_INSPECT=1`); it validates the upstream certificate chain
   and host name by default, and while enabled the agent mints per-site certificates from its own root

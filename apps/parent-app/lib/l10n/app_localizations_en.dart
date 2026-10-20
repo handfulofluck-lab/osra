@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1833,7 +1834,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get consentRevokeDataRetention =>
-      'Raw location, app, web and chat data is deleted by the retention job after 90 days by default. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
+      'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
 
   @override
   String get consentRevokeDataErase =>

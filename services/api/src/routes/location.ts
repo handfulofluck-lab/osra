@@ -131,7 +131,11 @@ async function evaluateGeofences(
       category: "geofence",
       title,
       body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius)`,
-      metadata: { geofenceId: fence.id, label: fence.label, lat, lng },
+      // Privacy (Claude's #242 review): the alert names the fence, never the child's position. A
+      // geofence crossing used to carry lat/lng in metadata, and Alert rows are not touched by the
+      // retention job — so exact coordinates would have outlived the 30-day location window this PR
+      // introduces, contradicting the consent copy. The fence's own position is in `Geofence`.
+      metadata: { geofenceId: fence.id, label: fence.label },
     });
     // Feature #23: entering a school/routine fence auto-applies the bound routine — push the
     // child's ruleset and nudge every device to refresh.

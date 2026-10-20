@@ -8,6 +8,7 @@ import {
   DEVICE_TOTAL_APP,
   applyRetention,
   bucketEvents,
+  locationRetentionDays,
   rollupDay,
   screenTimeTodayFromDb,
   usageSeries,
@@ -119,7 +120,7 @@ describe("usage model — reads and rollup", () => {
     expect(calls).toContainEqual(expect.objectContaining({ where: { childId_deviceId_day_app: { childId: "c1", deviceId: "", day: DAY, app: "Roblox" } } }));
   });
 
-  it("applyRetention deletes raw rows older than RETENTION_DAYS and rollups older than ROLLUP_RETENTION_DAYS, binding the instant from JS", async () => {
+  it("applyRetention deletes raw rows older than RETENTION_DAYS, location pings at the 30-day default of #238, and rollups older than ROLLUP_RETENTION_DAYS, binding the instant from JS", async () => {
     for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 2 });
     }
@@ -127,15 +128,68 @@ describe("usage model — reads and rollup", () => {
     const out = await applyRetention(now, { RETENTION_DAYS: "90", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
     expect(out).toEqual({ activityEvents: 2, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2 });
     const rawCutoff = new Date(now.getTime() - 90 * 86_400_000);
+    // ADR-0028 decision 5 (#238): location history stops at 30 days even when the raw window is 90.
+    // This assertion used to expect `rawCutoff` for locationPing; that was the old decision, so the
+    // change is the product decision being implemented, not a weakened check.
+    const locationCutoff = new Date(now.getTime() - 30 * 86_400_000);
     expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: rawCutoff } } });
     expect(prismaMock.webVisit.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: rawCutoff } } });
     expect(prismaMock.socialEvent.deleteMany).toHaveBeenCalledWith({ where: { createdAt: { lt: rawCutoff } } });
-    expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith({ where: { timestamp: { lt: rawCutoff } } });
+    expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith({ where: { timestamp: { lt: locationCutoff } } });
     expect(prismaMock.appUsageDaily.deleteMany).toHaveBeenCalledWith({ where: { day: { lt: new Date("2025-10-16T00:00:00.000Z") } } });
     // A too-short window is refused (never below 7 days), and rollups never outlive-less than raw.
     const guard = await applyRetention(now, { RETENTION_DAYS: "1", ROLLUP_RETENTION_DAYS: "3" } as NodeJS.ProcessEnv);
     expect(guard.activityEvents).toBe(2);
     expect(prismaMock.activityEvent.deleteMany).toHaveBeenLastCalledWith({ where: { ts: { lt: rawCutoff } } });
+  });
+
+  it("applyRetention caps the location window at RETENTION_DAYS: LOCATION_RETENTION_DAYS=120 with 90 keeps 90, not 120 (#238)", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-10-16T02:00:00Z");
+    const env = { RETENTION_DAYS: "90", LOCATION_RETENTION_DAYS: "120" } as NodeJS.ProcessEnv;
+    expect(locationRetentionDays(env)).toBe(90);
+    await applyRetention(now, env);
+    const rawCutoff = new Date(now.getTime() - 90 * 86_400_000);
+    expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith({ where: { timestamp: { lt: rawCutoff } } });
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { ts: { lt: rawCutoff } } });
+    // The cap also applies to the default: a 20-day raw window shortens unset location history to 20.
+    expect(locationRetentionDays({ RETENTION_DAYS: "20" } as NodeJS.ProcessEnv)).toBe(20);
+  });
+
+  it("applyRetention floors the location window at 7 days: LOCATION_RETENTION_DAYS=3 keeps 7 (#238)", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-10-16T02:00:00Z");
+    const env = { RETENTION_DAYS: "90", LOCATION_RETENTION_DAYS: "3" } as NodeJS.ProcessEnv;
+    expect(locationRetentionDays(env)).toBe(7);
+    await applyRetention(now, env);
+    expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith({
+      where: { timestamp: { lt: new Date(now.getTime() - 7 * 86_400_000) } },
+    });
+  });
+
+  it("applyRetention falls back to min(30, RETENTION_DAYS) for an unusable LOCATION_RETENTION_DAYS (#238)", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-10-16T02:00:00Z");
+    // 30 when the raw window allows it, the raw window itself when it is shorter (20 here) — the
+    // fallback is `min(30, retentionDays(env))`, not a hard-coded 30 and not an accidental clamp.
+    expect(locationRetentionDays({ RETENTION_DAYS: "90", LOCATION_RETENTION_DAYS: "abc" } as NodeJS.ProcessEnv)).toBe(30);
+    expect(locationRetentionDays({ RETENTION_DAYS: "20", LOCATION_RETENTION_DAYS: "abc" } as NodeJS.ProcessEnv)).toBe(20);
+    // An empty value is "unset", not "0 days".
+    expect(locationRetentionDays({ RETENTION_DAYS: "90", LOCATION_RETENTION_DAYS: "" } as NodeJS.ProcessEnv)).toBe(30);
+    const env = { RETENTION_DAYS: "20", LOCATION_RETENTION_DAYS: "abc" } as NodeJS.ProcessEnv;
+    await applyRetention(now, env);
+    expect(prismaMock.locationPing.deleteMany).toHaveBeenCalledWith({
+      where: { timestamp: { lt: new Date(now.getTime() - 20 * 86_400_000) } },
+    });
+    expect(prismaMock.activityEvent.deleteMany).toHaveBeenCalledWith({
+      where: { ts: { lt: new Date(now.getTime() - 20 * 86_400_000) } },
+    });
   });
 
   it("the erasure list covers every child-scoped model that exists in the schema", () => {
