@@ -11,6 +11,28 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API / parent app — location history is kept 30 days, and the consent copy says so (#238)
+- Children's **location history is kept 30 days**; raw app, web and chat rows stay at 90 and usage
+  rollups at 365 (ADR-0028 decision 5, Karim 2026-10-20). `services/api/src/lib/usageModel.ts` adds
+  `locationRetentionDays(env)` — `LOCATION_RETENTION_DAYS`, default 30, floor 7, never above
+  `RETENTION_DAYS`; an unusable value falls back to `min(30, RETENTION_DAYS)` as its own explicit
+  branch, not by clamp order. `applyRetention` now deletes `LocationPing` rows against that window
+  while every other raw table keeps the 90-day cutoff; the function's doc comment says so.
+- The parent app's withdrawal-confirmation copy (`consentRevokeDataRetention`, EN and AR) promised
+  raw location, app, web and chat data at 90 days. It now says location 30 days, the rest 90, with
+  the 365-day rollup sentence unchanged; generated localizations regenerated with `flutter gen-l10n`.
+  `docs/SPEC.md` (consent withdrawal), `docs/TESTING.md` (env table), `services/api/.env.example` and
+  `README.md` (limitations) carried the same single-window claim and are corrected.
+- Tests: `services/api/test/usage-model.test.ts` — the 30-day default against a 90-day raw window,
+  `LOCATION_RETENTION_DAYS=120` capped at 90, `"3"` floored at 7, `"abc"` falling back to
+  `min(30, RETENTION_DAYS)`. The pre-existing assertion that expected `rawCutoff` for `locationPing`
+  changed because the decision changed — not to make a failing check pass; with only `applyRetention`
+  reverted to the shared cutoff, the 30-day and 7-day cases fail (expected `2026-09-16T02:00:00Z` /
+  `2026-10-09T02:00:00Z`, received `2026-07-18T02:00:00Z`).
+- **Not verified here:** no live stack, probe or e2e run in this session, and no migration — the
+  `LocationPing.timestamp` column already exists. Existing rows older than 30 days are removed by the
+  next retention run rather than by a backfill.
+
 ### Architecture — 30-day location history confirmed (ADR-0028)
 - Karim chose 30 days over 90 for children's location history on 2026-10-20; ADR-0028 records the decision. Other raw data stays at 90 days and rollups at 365. The retention job change (a separate `LOCATION_RETENTION_DAYS`, default 30) is filed for Kimi in #238; no code changed here.
 
