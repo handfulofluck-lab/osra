@@ -42,6 +42,11 @@ const InternalAlertSchema = z.object({
    * device-admin-removed alert return the existing row instead of paging the parent twice.
    */
   dedupeKey: z.string().min(1).max(200).optional(),
+  /**
+   * Issue #227: attempts aggregated into one window alert. A repeat key with a higher count
+   * updates the existing row instead of inserting or dropping the information.
+   */
+  attemptCount: z.number().int().min(1).max(10_000).optional(),
 });
 
 type AuthedUser = { familyId: string };
@@ -92,7 +97,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, severity, category, title, body, metadata, dedupeKey } = parsed.data;
+    const { childId, deviceId, severity, category, title, body, metadata, dedupeKey, attemptCount } = parsed.data;
 
     if (auth.device) {
       // P0-5: Verify device is not revoked
@@ -128,6 +133,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       body,
       metadata,
       dedupeKey,
+      attemptCount,
       childName: child.displayName,
     });
     return reply.code(deduplicated ? 200 : 201).send({ alert });

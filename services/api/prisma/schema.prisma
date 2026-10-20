@@ -324,6 +324,9 @@ model Alert {
   /// Idempotency key supplied by the producer (issue #225). Null for alerts without one.
   /// The partial unique index lives in migration 0019 because Prisma cannot express it.
   dedupeKey    String?
+  /// Repeated attempts aggregated into this row (issue #227). 1 for every ordinary alert; a guard
+  /// alert's window updates it in place. Additive, defaulted, so no backfill and no producer change.
+  attemptCount Int      @default(1)
   createdAt    DateTime @default(now())
   acknowledged Boolean  @default(false)
   child        Child    @relation(fields: [childId], references: [id])

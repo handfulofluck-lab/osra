@@ -25,6 +25,7 @@ import com.familyshield.agent.enforcement.RetryDecision
 import com.familyshield.agent.enforcement.VisibleWindow
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
+import com.familyshield.agent.security.GuardAttemptWindow
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
@@ -323,7 +324,18 @@ class AccessibilityMonitorService : AccessibilityService() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(TamperGuardActivity.EXTRA_REASON, TamperGuardActivity.REASON_SETTINGS),
         )
-        TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_GUARD_TRIGGERED, "Screen: ${screen.name.lowercase()} in $pkg")
+        // Issue #227: one alert per five-minute window. The window start and count are persisted
+        // before enqueueing, so a failed POST cannot lose the attempt and the next guard retry
+        // increments from the stored count instead of opening a new alert.
+        val attempt = GuardAttemptWindow.record(TamperState.guardAttemptWindow(this), now)
+        TamperState.setGuardAttemptWindow(this, attempt.state)
+        TamperAlertWorker.enqueue(
+            this,
+            TamperAlertWorker.TYPE_GUARD_TRIGGERED,
+            detail = "Screen: ${screen.name.lowercase()} in $pkg",
+            windowStartMs = attempt.state.windowStartMs,
+            attemptCount = attempt.state.count,
+        )
     }
 
     private var lastReraiseMs = 0L

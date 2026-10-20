@@ -16,6 +16,8 @@ object TamperState {
     private const val KEY_LAST_TIER = "last_tier"
     private const val KEY_SANCTIONED_UNTIL = "sanctioned_removal_until_ms"
     private const val KEY_ADMIN_REMOVED_BY_PARENT = "admin_removed_by_parent"
+    private const val KEY_GUARD_WINDOW_START_MS = "guard_window_start_ms"
+    private const val KEY_GUARD_WINDOW_COUNT = "guard_window_count"
 
     /** How many accepted dedupe keys are kept; a retry only ever needs the newest one. */
     private const val MAX_POSTED_KEYS = 4
@@ -82,6 +84,35 @@ object TamperState {
 
     fun setLastTier(context: Context, tier: String) {
         prefs(context).edit().putString(KEY_LAST_TIER, tier).apply()
+    }
+
+    /**
+     * Issue #227: the current remove-protection attempt window, or null when none has opened. The
+     * count is persisted before the alert POST so an offline failure cannot lose an attempt; the
+     * window start survives process death, and neither value is derived from a screen the child can
+     * dismiss.
+     */
+    fun guardAttemptWindow(context: Context): GuardAttemptWindow.State? {
+        val p = prefs(context)
+        val start = p.getLong(KEY_GUARD_WINDOW_START_MS, 0L)
+        val count = p.getInt(KEY_GUARD_WINDOW_COUNT, 0)
+        if (start <= 0L || count <= 0) return null
+        return GuardAttemptWindow.State(windowStartMs = start, count = count)
+    }
+
+    fun setGuardAttemptWindow(context: Context, window: GuardAttemptWindow.State) {
+        prefs(context).edit()
+            .putLong(KEY_GUARD_WINDOW_START_MS, window.windowStartMs)
+            .putInt(KEY_GUARD_WINDOW_COUNT, window.count)
+            .apply()
+    }
+
+    /** A re-pair is a new device enrolment; its first guard attempt opens a fresh window. */
+    fun clearGuardAttemptWindow(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_GUARD_WINDOW_START_MS)
+            .remove(KEY_GUARD_WINDOW_COUNT)
+            .apply()
     }
 
     private fun prefs(context: Context) =

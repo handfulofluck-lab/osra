@@ -66,4 +66,10 @@ data class AlertDto(
     val metadata: Map<String, String> = emptyMap(),
     /** Issue #225: makes a retried alert a no-op server-side instead of a second parent page. */
     val dedupeKey: String? = null,
+    /**
+     * Issue #227: the number of attempts this aggregate alert represents. When a later POST repeats
+     * [dedupeKey] with a higher count, the server updates the existing row instead of inserting and
+     * does not push again. Null (the default) keeps the #225 duplicate-is-a-no-op rule.
+     */
+    val attemptCount: Int? = null,
 )
