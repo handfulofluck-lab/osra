@@ -86,6 +86,9 @@ if (argv.includes("--selftest")) {
   const cases = [
     { name: "docs PR with a docs diff passes", args: ["--title", "docs(x): fixture", "--base", "dd84bc0^", "--head", "dd84bc0", "--quiet"], want: 0 },
     { name: "docs title over a code diff fails", args: ["--title", "docs(x): fixture", "--base", "0530fdf^", "--head", "0530fdf", "--quiet"], want: 1 },
+    { name: "the stale-base squash fails under a fix(…) title", args: ["--title", "fix(x): fixture", "--base", "0530fdf", "--head", "6dd418f", "--quiet"], want: 1 },
+    { name: "the honest rebuild passes under the same title", args: ["--title", "fix(x): fixture", "--base", "0530fdf", "--head", "13faa6c", "--quiet"], want: 0 },
+    { name: "an unconventional title is refused", args: ["--title", "tidy up things", "--base", "origin/main", "--head", "HEAD", "--quiet"], want: 1 },
   ];
   let bad = 0;
   for (const c of cases) {
@@ -102,6 +105,10 @@ const files = changedFiles();
 const declared = declaredKind(title);
 const problems = [];
 
+if (declared === null && !/^revert/i.test(title.trim())) {
+  problems.push(`title "${title}" does not declare a kind — use docs(…), ci(…), feat(…), fix(…), test(…), refactor(…), perf(…) or revert(…)`);
+}
+
 if (declared === "docs") {
   const offenders = files.filter((f) => !DOC_PREFIXES.some((p) => f.path === p || f.path.startsWith(p)));
   for (const f of offenders) problems.push(`${f.status} ${f.path} — a docs-titled PR must not touch this`);
@@ -116,6 +123,52 @@ const deletions = files.filter((f) => f.status === "D").length;
 const total = files.filter((f) => f.path || f.status).length;
 if (declared === "docs" && deletions > 0) {
   problems.push(`${deletions} file(s) deleted by a docs-titled PR — a squash on a stale base looks exactly like this`);
+}
+
+// A code-titled PR can still be a stale-base revert: the dead giveaway is that its blob for a path
+// equals the *pre-merge* blob of a recent merge on main, i.e. it puts back what that merge changed.
+// Claude asked for this after the #220 near-miss; it is the half the title check cannot see.
+const REVERSE_WINDOW = 30;
+const isRevertTitle = /^revert/i.test(title.trim());
+const pathUnderChange = new Set(files.map((f) => f.path));
+const blobAt = (rev, path) => {
+  try {
+    return execFileSync("git", ["rev-parse", `${rev}:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null; // missing path counts as a blob
+  }
+};
+if (!isRevertTitle) {
+  let merges = [];
+  try {
+    merges = execFileSync("git", ["log", `--first-parent`, `-n`, String(REVERSE_WINDOW), "--format=%H", base], { encoding: "utf8" })
+      .split(String.fromCharCode(10))
+      .filter(Boolean);
+  } catch {
+    merges = [];
+  }
+  for (const m of merges) {
+    let changed = [];
+    try {
+      changed = execFileSync("git", ["diff", "--name-only", `${m}^1`, m], { encoding: "utf8" }).split(String.fromCharCode(10)).filter(Boolean);
+    } catch {
+      continue;
+    }
+    for (const path of changed) {
+      if (pathUnderChange.has(path)) continue; // the PR intends to touch it
+      const preMerge = blobAt(`${m}^1`, path);   // null = absent before the merge
+      const mergedIn = blobAt(m, path);          // null = absent after it
+      const baseBlob = blobAt(base, path);
+      const headBlob = blobAt(head, path);
+      // The PR puts the path back exactly as it was before the merge, while main still carries the
+      // merged version. Works for additions (preMerge null, head null) and deletions/renames alike.
+      const undoes = headBlob === preMerge && baseBlob === mergedIn && preMerge !== mergedIn;
+      if (undoes) {
+        problems.push(`${path}: this PR restores the pre-merge state of ${m.slice(0, 7)} (title declares "${title}") — a revert needs a revert(…) title`);
+        break;
+      }
+    }
+  }
 }
 
 if (!quiet) {
