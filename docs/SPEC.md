@@ -156,6 +156,11 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     POST /:id/push-token; DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
     TelemetryUploader — aggregates of per-app minutes / url logs); PLUS GET/POST /:id/apps
     (roadmap 3.4 — the installed-launchable-app inventory, §14.1a).
+    Issue #221 (D1): `/telemetry` also accepts `locationGrant` (`background` | `while_in_use` |
+    `none`), stored on `Device.locationGrant`; `POST /:id/command {"command":"locate_now"}` answers
+    `{ published: false, status: "failed", reason: "background_location_missing" | "location_permission_missing" }`
+    at once when that stored state cannot support a background fix, with no device round trip. A
+    device that has never reported is queued as before.
 - src/routes/rules.ts — GENERATE THIS: GET /:childId; PUT /:childId (zod-validated upsert);
     PATCH /:childId (partial). On every update publish to Redis `child:${childId}:rules`.
     Validate bedtime/school windows do not overlap unless explicitly allowed.

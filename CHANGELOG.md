@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API / Android — a Locate that cannot work fails at once, and stays claimable for 20 minutes (#221 D1)
+- A `locate_now` sent to a phone whose agent last reported **while-in-use only** location now comes back `failed` with `reason: "background_location_missing"` immediately; a phone with **no location permission at all** comes back `location_permission_missing`. Before, the command sat `pending` for 10 minutes and turned `expired` unseen, because the 60-second poll only runs with the background grant (#155) and WorkManager ticks at most every 15 minutes. A phone that can answer is queued exactly as before, and one that has never reported is queued rather than guessed at. The command's lifetime is now 20 minutes (the 15-minute WorkManager floor plus its 5-minute flex) instead of 10; every other command type keeps its lifetime. **⚠️ not verified here:** API unit tests and an Android JVM suite only — no phone and no live stack in this run.
+
 ### CI — the scope guard also catches a revert by value, and refuses an undeclared title
 - The revert detector walks the last 30 first-parent merges on the base and fails when a PR restores a path's **pre-merge** blob while `main` still carries the merged one (additions, deletions and renames alike). A `revert(…)` title is the only way past it.
 - A title that declares no kind is now **refused** rather than skipped, so the check cannot be avoided by wording.
