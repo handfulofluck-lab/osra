@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -414,10 +413,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedLockScreen =>
       'The lock screen can\'t appear on your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.';
-
-  @override
-  String get commandRefusedUnlockScreen =>
-      'The unlock can\'t reach your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.';
 
   @override
   String get commandRefusedWebFilter =>

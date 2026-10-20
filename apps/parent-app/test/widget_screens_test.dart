@@ -310,48 +310,6 @@ void main() {
       expect(find.textContaining('queued'), findsNothing);
     });
 
-    testWidgets('an unlock refused because the overlay cannot be dismissed shows the reason', (tester) async {
-      // Issue #233: the agent refuses an unlock when neither overlay nor accessibility can take the
-      // screen down. The toast must name the fix, never "queued" — the refusal is visible or it is not.
-      final api = FakeApiClient({
-        ...standardRoutes(),
-        'POST /v1/devices/dev-1/command': (_) => {
-              'published': false,
-              'status': 'failed',
-              'reason': 'unlock_screen_unavailable',
-            },
-      });
-      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
-
-      await tester.tap(find.text('Unlock'));
-      await flushFakeHttp(tester);
-
-      expect(find.textContaining("The unlock can't reach your child's phone"), findsOneWidget);
-      expect(find.textContaining('queued'), findsNothing);
-    });
-
-    testWidgets('an unlock the device settled failed shows why on the card', (tester) async {
-      // Issue #233: same reason arriving in the ack after the POST was queued; the card is the only
-      // place the parent sees it.
-      final api = FakeApiClient({
-        ...standardRoutes(),
-        'GET /v1/devices/dev-1/commands/history': (_) => {
-              'items': [
-                commandJson('cmd-failed', 'unlock', 'failed', DateTime.now().subtract(const Duration(minutes: 3)),
-                    deliveredAt: DateTime.now().subtract(const Duration(minutes: 3)),
-                    ackedAt: DateTime.now().subtract(const Duration(minutes: 2)),
-                    result: const {'reason': 'unlock_screen_unavailable'}),
-              ],
-            },
-      });
-      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
-
-      expect(
-        find.textContaining("The unlock can't reach your child's phone"),
-        findsOneWidget,
-      );
-    });
-
     testWidgets('a command the device settled failed shows why on the card', (tester) async {
       // Issue #231: this refusal arrives as an ack after the POST returned `pending`, so the card is
       // often the only place the parent ever sees the reason.
