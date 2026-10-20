@@ -417,6 +417,21 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get commandRefusedLockScreen =>
+      'لا يمكن ظهور شاشة القفل على هاتف طفلك: فعّل «العرض فوق التطبيقات الأخرى» أو إمكانية الوصول في OSRA على ذلك الهاتف.';
+
+  @override
+  String get commandRefusedWebFilter =>
+      'لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.';
+
+  @override
+  String get commandRefusedUnsupportedCommand =>
+      'يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.';
+
+  @override
+  String get commandRefusedInvalidPayload => 'رفض الهاتف إعدادات هذا الأمر.';
+
+  @override
   String rulesLoadFailed(String error) {
     return 'تعذّر تحميل القواعد: $error';
   }

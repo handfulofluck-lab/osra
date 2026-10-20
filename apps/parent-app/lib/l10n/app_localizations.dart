@@ -788,6 +788,30 @@ abstract class AppLocalizations {
   /// **'{command} was not sent to {device}: the phone has no location permission. Ask your child to open OSRA and grant location.'**
   String commandRefusedLocationPermission(String command, String device);
 
+  /// No description provided for @commandRefusedLockScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'The lock screen can\'t appear on your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.'**
+  String get commandRefusedLockScreen;
+
+  /// No description provided for @commandRefusedWebFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'The web filter is not set up on your child\'s phone, so the internet was not paused.'**
+  String get commandRefusedWebFilter;
+
+  /// No description provided for @commandRefusedUnsupportedCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'This command needs a newer OSRA on your child\'s phone.'**
+  String get commandRefusedUnsupportedCommand;
+
+  /// No description provided for @commandRefusedInvalidPayload.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone rejected this command\'s settings.'**
+  String get commandRefusedInvalidPayload;
+
   /// No description provided for @rulesLoadFailed.
   ///
   /// In en, this message translates to:

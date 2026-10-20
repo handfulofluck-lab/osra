@@ -446,6 +446,11 @@ String _refusalMessage(AppLocalizations l10n, String command, Device device, Obj
   return switch (reason) {
     'background_location_missing' => l10n.commandRefusedBackgroundLocation(type, device.model),
     'location_permission_missing' => l10n.commandRefusedLocationPermission(type, device.model),
+    // Issue #231 review: the agent now refuses a command whose effect cannot happen on the phone.
+    'lock_screen_unavailable' => l10n.commandRefusedLockScreen,
+    'web_filter_not_set_up' => l10n.commandRefusedWebFilter,
+    'unsupported_command' => l10n.commandRefusedUnsupportedCommand,
+    'invalid_payload' => l10n.commandRefusedInvalidPayload,
     _ => l10n.commandFailed('${reason ?? 'unknown'}'),
   };
 }

@@ -479,10 +479,19 @@ and are deleted explicitly in the GDPR erasure cascade.
   refresh after pairing. Keep FCM receivers (harmless when FCM is absent).
 - Command outcome ack (issue #231): after a command from the poll runs, the agent POSTs
   `/v1/devices/:id/commands/:commandId/ack` with `{status: "ok"}` when the effect is observable —
-  for `locate_now`, only once a fresh or recent cached fix exists — or `{status: "failed",
+  for `locate_now`, only once a fix exists **and** the ping upload succeeded — or `{status: "failed",
   detail: {reason}}` when the handler refused or threw. `ok` never means merely "the message
-  arrived"; a lost ack is logged and not retried, so the row stays `delivered` and the 120 s
-  re-offer retries the command.
+  arrived"; a lost ack, and a `locate_now` whose flush failed, are logged and not retried, so the row
+  stays `delivered` and the 120 s re-offer retries the command. Refusal reasons (`EnforceabilityPolicy`,
+  review of #231; free-form strings stored in the row's `result.reason`):
+  - `lock_screen_unavailable` — `lock`/`pause`: no path can show the screen (overlay permission off,
+    accessibility service not bound, and for `lock` `lockNow()` false). A successful lock/pause
+    carries `detail.via = keyguard|overlay|accessibility` so the parent can tell which path applied.
+    `LockState` is written even on the refusal, so a later grant applies the pending lock.
+  - `web_filter_not_set_up` — `pause_internet` with no VPN consent; the sinkhole did not start, so
+    packets still flow. The paused state is persisted and applies once the filter is set up.
+  - `unsupported_command` — a command type this agent version does not implement.
+  - `invalid_payload` — `bonus_time`/`wind_down` without parseable finite `minutes` in 1..240.
 - Signing: sign the release build with the debug key so the APK is installable:
   `signingConfig = signingConfigs.getByName("debug")` in the release build type.
 - Build artifact: `gradlew :app:assembleRelease` → copy
