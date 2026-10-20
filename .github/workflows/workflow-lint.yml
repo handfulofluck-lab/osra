@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -71,6 +74,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
+          git fetch --no-tags origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
           node scripts/check-pr-diff-scope.mjs --title "$PR_TITLE" --base "origin/${{ github.base_ref }}" --head "${{ github.event.pull_request.head.sha }}"
 
       - name: Diff-scope self-test

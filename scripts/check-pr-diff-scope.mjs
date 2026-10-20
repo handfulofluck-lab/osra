@@ -37,7 +37,15 @@ const DOC_PREFIXES = ["docs/", "CHANGELOG.md", "README.md", "AGENTS.md", "LICENS
 const CI_PREFIXES = [".github/", "scripts/"];
 
 function changedFiles() {
-  const out = execFileSync("git", ["diff", "--name-status", `${base}...${head}`], { encoding: "utf8" });
+  let out;
+  try {
+    out = execFileSync("git", ["diff", "--name-status", `${base}...${head}`], { encoding: "utf8" });
+  } catch (e) {
+    // A missing ref is an environment problem, not a scope violation: say so instead of a stack trace.
+    console.error(`cannot compute the diff between ${base} and ${head}: ${String(e.stderr ?? e.message).trim()}`);
+    console.error("In CI: check out with fetch-depth: 0 and fetch the base branch before running this check.");
+    process.exit(2);
+  }
   return out
     .split("\n")
     .filter(Boolean)
