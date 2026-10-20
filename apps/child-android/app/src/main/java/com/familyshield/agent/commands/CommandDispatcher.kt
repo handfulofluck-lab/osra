@@ -15,7 +15,6 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
-import com.familyshield.agent.network.dto.CommandAckDto
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import com.familyshield.agent.sos.SosActivity
@@ -47,12 +46,23 @@ class CommandDispatcher @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var windDownJob: Job? = null
+    private val ackSender = CommandAckSender(
+        send = { commandId, ack ->
+            settings.deviceId()?.let { deviceId ->
+                api.ackCommand(deviceId = deviceId, commandId = commandId, body = ack)
+            }
+        },
+        log = { message, error -> Log.w(TAG, message, error) },
+    )
 
     /**
      * Executes the command [type] with its string [data] payload; unknown types are ignored.
      *
-     * [commandId] is the durable queue row (`DeviceCommand.id`) when the command came from a poll;
-     * `locate_now` uses it to report a refusal the parent can see in `/commands/history`.
+     * [commandId] is the durable queue row (`DeviceCommand.id`) when the command came from a poll.
+     * Issue #231: a command that runs is acked `ok` so `/commands/history` reaches `acked` instead
+     * of staying `delivered`; what `ok` means per command is documented on [CommandAckPolicy], and
+     * `locate_now` defers its ack to [LocationService], which is the only place that knows a fix
+     * was obtained. A refused or throwing handler is acked `failed` with `detail.reason`.
      */
     fun dispatch(type: String, data: Map<String, String>, commandId: String? = null) {
         // ADR-0008 §3: consent lifecycle commands pause/resume the whole agent.
@@ -63,45 +73,80 @@ class CommandDispatcher @Inject constructor(
             } else {
                 rules.refreshAsync()
             }
+            reportOutcome(commandId, CommandOutcome.Applied())
             return
         }
+        val outcome = CommandAckPolicy.outcomeOf(
+            { runHandler(type, data, commandId) },
+            onFailure = { Log.w(TAG, "command '$type' failed", it) },
+        )
+        reportOutcome(commandId, outcome)
+    }
+
+    /** Runs one handler and says what the ack should claim; an unknown type stays unaudited. */
+    private fun runHandler(type: String, data: Map<String, String>, commandId: String?): CommandOutcome =
         when (type) {
-            "lock" -> lock()
-            "unlock" -> unlock()
+            "lock" -> { lock(); CommandOutcome.Applied() }
+            "unlock" -> { unlock(); CommandOutcome.Applied() }
             // NOTE: pause/resume reuse the overlay mechanics with paused messaging —
             // a paused device shows the full-screen overlay until resumed.
-            "pause" -> pause()
-            "resume" -> unlock()
-            "ring" -> ring()
-            "sos_clear" -> sosClear()
-            "stop_ring" -> Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND)
-            "rules_updated" -> scope.launch { rules.refresh() }
+            "pause" -> { pause(); CommandOutcome.Applied() }
+            "resume" -> { unlock(); CommandOutcome.Applied() }
+            "ring" -> { ring(); CommandOutcome.Applied() }
+            "sos_clear" -> { sosClear(); CommandOutcome.Applied() }
+            "stop_ring" -> { Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND); CommandOutcome.Applied() }
+            // Issue #231: the refresh is accepted here, not awaited. refresh() has no failure signal
+            // (it falls back to the cached set), so "ok" claims the request was taken up, not that
+            // new rules arrived.
+            "rules_updated" -> { scope.launch { rules.refresh() }; CommandOutcome.Applied() }
+            // Issue #231: starting the service is not a fix — LocationService acks once it has one.
             "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
             // keep the overlay up until resume_internet arrives.
-            "pause_internet" -> pauseInternet()
-            "resume_internet" -> resumeInternet()
+            "pause_internet" -> { pauseInternet(); CommandOutcome.Applied() }
+            "resume_internet" -> { resumeInternet(); CommandOutcome.Applied() }
             // Feature #10: grant N extra screen-time minutes for today only.
             "bonus_time" -> dispatchMinutes(data) { rules.addBonusMinutes(it) }
-            // Feature #22: warn, then lock after N minutes.
+            // Feature #22: warn, then lock after N minutes. Issue #231: the ack claims the warning
+            // is posted and the timer armed, not that the lock has fired — the parent asked for the
+            // warning, and waiting minutes for the timer would leave the row `delivered` meanwhile.
             "wind_down" -> dispatchMinutes(data) { windDown(it) }
-            else -> Unit // NOTE: unknown command types are ignored by design
+            else -> CommandOutcome.Ignored // NOTE: unknown command types are ignored by design
         }
-    }
 
     /**
      * Parses and validates the minutes payload: tolerates "30" and "30.0" (the poll worker
      * stringifies JSON numbers), clamps to 1..240, and returns null for anything unparseable
-     * or out of range — invalid values are ignored with a log rather than applied.
+     * or out of range — invalid values are ignored with a log rather than applied (and are not
+     * acked: nothing ran, same as before #231).
      */
-    private fun dispatchMinutes(data: Map<String, String>, action: (Int) -> Unit) {
+    private fun dispatchMinutes(data: Map<String, String>, action: (Int) -> Unit): CommandOutcome {
         val raw = data["minutes"]
         val minutes = parseMinutes(raw)
         if (minutes == null) {
             Log.w(TAG, "ignoring command: invalid minutes payload '$raw' (expected 1..240)")
-            return
+            return CommandOutcome.Ignored
         }
         action(minutes)
+        return CommandOutcome.Applied()
+    }
+
+    /** Sends at most one ack for [outcome]; a blank id (the FCM path) has no durable row. */
+    private fun reportOutcome(commandId: String?, outcome: CommandOutcome) {
+        val id = commandId?.takeIf { it.isNotBlank() } ?: return
+        val ack = CommandAckPolicy.ackFor(id, outcome) ?: return
+        scope.launch { ackSender.sendOnce(id, ack) }
+    }
+
+    /**
+     * Issue #231: the deferred `locate_now` ack. Called by [LocationService] once it has (or has
+     * not) obtained a fix, so `ok` means "the parent can see where the child is", not "the service
+     * was asked to start".
+     */
+    fun ackLocateNow(commandId: String?, fix: LocateFix?) {
+        val id = commandId?.takeIf { it.isNotBlank() } ?: return
+        val ack = CommandAckPolicy.locateAck(id, fix) ?: return
+        scope.launch { ackSender.sendOnce(id, ack) }
     }
 
     /** Locks the device immediately when device owner, otherwise shows the full-screen overlay. */
@@ -233,11 +278,15 @@ class CommandDispatcher @Inject constructor(
      * needs the background grant — fine/coarse alone is while-in-use. Starting it anyway is the
      * #128 failure in this call site: Android 14+ refuses `startForeground()`, and at best
      * `locate_now` dies silently with the parent told nothing. The guard runs first and the refusal
-     * is reported as a `failed` command ack keyed by [LocationStartPolicy.Decision.reason], so
+     * becomes a `failed` command ack keyed by [LocationStartPolicy.Decision.reason], so
      * `/v1/devices/:id/commands/history` says `failed` with `detail.reason` instead of the command
      * looking merely undelivered.
+     *
+     * Issue #231: on a successful start the outcome is [CommandOutcome.Deferred], not `ok`.
+     * [LocationService] carries the row id through the intent and acks `ok` only after it has a
+     * fresh or recent cached fix, so `acked` in the parent's history means the map can move.
      */
-    private fun locateNow(commandId: String?) {
+    private fun locateNow(commandId: String?): CommandOutcome {
         val decision = locateNowDecision(
             hasFineLocation = granted(Manifest.permission.ACCESS_FINE_LOCATION),
             hasCoarseLocation = granted(Manifest.permission.ACCESS_COARSE_LOCATION),
@@ -245,55 +294,35 @@ class CommandDispatcher @Inject constructor(
             apiLevel = Build.VERSION.SDK_INT,
         )
         if (decision != LocationStartPolicy.Decision.START) {
-            val reason = decision.reason ?: "location_unavailable"
+            val reason = decision.reason ?: CommandAckPolicy.REASON_LOCATION_UNAVAILABLE
             Log.w(
                 TAG,
                 "locate_now refused: $reason — a location foreground service started from the background " +
                     "needs fine or coarse location and, on Android 10+, \"Location (allow all the time)\"",
             )
-            reportFailedCommand(commandId, reason)
-            return
+            return CommandOutcome.Refused(reason)
         }
-        runCatching {
+        return try {
             // NOTE: must be startForegroundService — LocationService calls startForeground() in
             // onStartCommand, and a plain startService() from the background (FCM/worker context)
             // throws IllegalStateException on API 26+, silently killing locate_now.
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, LocationService::class.java)
-                    .setAction(LocationService.ACTION_PING_NOW),
+                    .setAction(LocationService.ACTION_PING_NOW)
+                    .putExtra(LocationService.EXTRA_COMMAND_ID, commandId),
             )
-        }.onFailure {
+            CommandOutcome.Deferred
+        } catch (e: Exception) {
             // The OS refused the start after the grants looked right (API 31+ background-start
             // restriction, or permission revoked in between). Say so rather than swallow it.
-            Log.w(TAG, "locate_now: the OS refused to start LocationService", it)
-            reportFailedCommand(commandId, "foreground_service_start_failed")
+            Log.w(TAG, "locate_now: the OS refused to start LocationService", e)
+            CommandOutcome.Refused("foreground_service_start_failed")
         }
     }
 
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-
-    /**
-     * Issue #132: best-effort `failed` ack for a command the agent could not run. The command came
-     * from a poll, so [commandId] is the durable row the parent's command history reads; the ack is
-     * fire-and-forget because the poll loop already returned and a lost ack only leaves the row
-     * `delivered`, which is the pre-fix behaviour, not a worse one.
-     */
-    private fun reportFailedCommand(commandId: String?, reason: String) {
-        if (commandId.isNullOrBlank()) return
-        scope.launch {
-            runCatching {
-                val deviceId = settings.deviceId() ?: return@runCatching
-                api.ackCommand(
-                    deviceId = deviceId,
-                    commandId = commandId,
-                    body = CommandAckDto(status = "failed", detail = mapOf("reason" to reason)),
-                )
-            }.onFailure { Log.w(TAG, "could not report failed command $commandId ($reason)", it) }
-        }
-    }
-
 
     companion object {
         private const val TAG = "CommandDispatcher"

@@ -22,6 +22,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
 import com.familyshield.agent.commands.CommandDispatcher
+import com.familyshield.agent.commands.LocateFix
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
@@ -126,7 +127,10 @@ class LocationService : Service() {
             }
         }
         if (intent?.action == ACTION_PING_NOW) {
-            serviceScope.launch { locateNowOnce() }
+            // Issue #231: the row id travels with the intent so this service can ack `locate_now`
+            // once it knows whether a fix exists — the dispatcher deliberately does not.
+            val commandId = intent.getStringExtra(EXTRA_COMMAND_ID)
+            serviceScope.launch { locateNowOnce(commandId) }
         }
         return START_STICKY
     }
@@ -145,8 +149,12 @@ class LocationService : Service() {
      * [com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS] for it; only if that fails is
      * the last known fix used, and only while it is recent ([LocatePolicy.MAX_CACHED_AGE_MS]). Either way
      * the ping is flushed at once so the parent's map moves within the timeout, not at the next batch.
+     *
+     * Issue #231: [commandId] is the durable row from the poll (null on the FCM path, which has no
+     * row). The ack is sent after the flush attempt and says whether a fix was obtained — a started
+     * service is not an effect the parent can see, so the dispatcher defers this ack to here.
      */
-    private suspend fun locateNowOnce() {
+    private suspend fun locateNowOnce(commandId: String?) {
         val fresh: Location? = try {
             kotlinx.coroutines.withTimeoutOrNull(com.familyshield.agent.commands.LocatePolicy.FRESH_FIX_TIMEOUT_MS) {
                 kotlinx.coroutines.suspendCancellableCoroutine { cont ->
@@ -176,12 +184,22 @@ class LocationService : Service() {
             } catch (e: Exception) { null }
         } else null
         val now = System.currentTimeMillis()
-        when (com.familyshield.agent.commands.LocatePolicy.choose(fresh != null, cached?.time, now)) {
-            com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> onLocation(fresh!!)
-            com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> onLocation(cached!!)
-            com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
+        val fix: LocateFix? = when (com.familyshield.agent.commands.LocatePolicy.choose(fresh != null, cached?.time, now)) {
+            com.familyshield.agent.commands.LocatePolicy.Choice.FRESH -> {
+                onLocation(fresh!!)
+                LocateFix.FRESH
+            }
+            com.familyshield.agent.commands.LocatePolicy.Choice.CACHED -> {
+                onLocation(cached!!)
+                LocateFix.CACHED
+            }
+            com.familyshield.agent.commands.LocatePolicy.Choice.NONE -> {
+                Log.w(TAG, "locate_now: no fix within the timeout and nothing recent cached")
+                null
+            }
         }
         runCatching { flushPings() }
+        dispatcher.ackLocateNow(commandId, fix)
     }
 
     /** Queues one ping and adapts the update interval to the current speed. */
@@ -455,6 +473,9 @@ class LocationService : Service() {
 
         /** Action that triggers an immediate single ping + flush (locate_now command). */
         const val ACTION_PING_NOW: String = "com.familyshield.agent.action.PING_NOW"
+
+        /** Issue #231: durable `DeviceCommand.id` carried from the dispatcher for the deferred ack. */
+        const val EXTRA_COMMAND_ID: String = "com.familyshield.agent.extra.COMMAND_ID"
 
         /** True while LocationService is active in foreground with updates running. */
         @Volatile

@@ -477,6 +477,12 @@ and are deleted explicitly in the GDPR erasure cascade.
   hitting GET /v1/devices/:id/commands with the device JWT and dispatching via
   CommandDispatcher; make RulesSyncWorker periodic at 60 min AND trigger an immediate
   refresh after pairing. Keep FCM receivers (harmless when FCM is absent).
+- Command outcome ack (issue #231): after a command from the poll runs, the agent POSTs
+  `/v1/devices/:id/commands/:commandId/ack` with `{status: "ok"}` when the effect is observable —
+  for `locate_now`, only once a fresh or recent cached fix exists — or `{status: "failed",
+  detail: {reason}}` when the handler refused or threw. `ok` never means merely "the message
+  arrived"; a lost ack is logged and not retried, so the row stays `delivered` and the 120 s
+  re-offer retries the command.
 - Signing: sign the release build with the debug key so the APK is installable:
   `signingConfig = signingConfigs.getByName("debug")` in the release build type.
 - Build artifact: `gradlew :app:assembleRelease` → copy

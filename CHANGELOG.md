@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — a command that succeeds acks, so history reaches `acked` instead of staying `delivered` (#231)
+- The agent acked `failed` commands (issue #132) but never `ok`, so a `locate_now` that produced a fix, or a `lock` that applied, left its durable row `delivered` forever and `GET /v1/devices/:id/commands/history` told the parent the device had not confirmed it ran. `CommandDispatcher` now acks `ok` once per command: synchronous handlers when they return, `locate_now` only after `LocationService` has a fresh or recent cached fix (`detail.fix = fresh|cached`), and `wind_down` when the warning is posted and the timer armed (not when the lock fires). A handler that throws is acked `failed` with `reason: "command_failed"`, so a crash is reported rather than swallowed; a lost ack is logged once, not retried, and leaves the row `delivered` for the 120 s re-offer. **⚠️ not verified here:** API unit tests and an Android JVM suite only — no phone and no live stack in this run.
+
 ### Architecture — production hosting, regions and scaling (ADR-0028, proposed)
 - New `docs/adr/0028-hosting-regions-and-scaling.md`: AWS managed containers (ECS Fargate, RDS PostgreSQL with a standby, ElastiCache Valkey, SES, KMS); one independent stack per region, opened in Karim's launch order (2026-10-20): Middle East (UAE `me-central-1`), then Asia, Europe, the Americas; families routed by `Family.region`.
 - Records the measured device load on `main` (~3 requests a minute, ~4,400 a day, per Android child phone) and decides push-first wake-ups before launch (target ~430 a day), a per-device capability list, a minimum-version gate and 30-day location retention.
