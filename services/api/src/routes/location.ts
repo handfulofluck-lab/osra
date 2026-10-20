@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { raiseAlert } from "../lib/alerts.js";
-import { geofenceTransition } from "../lib/geo.js";
+import { geofenceTransition, pickTransitionPair, type GeofencePoint } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
@@ -108,18 +108,18 @@ function formatStaleGap(minutes: number): string {
 }
 
 /**
- * Evaluate geofence enter/exit transitions for a fresh ping and raise alerts.
+ * Evaluate geofence enter/exit transitions for this upload and raise alerts.
  *
- * `earliestNewTs` is the oldest ping in this upload, not the one being evaluated: the gap since the
- * previous ping is only real if the whole upload sat after it (issue #243).
+ * `upload` is the batch as received, in whatever order the agent sent it: `pickTransitionPair` sorts
+ * it and chooses the two pings to judge, so an unordered `mem + stored` upload is read from its
+ * newest ping (issue #243 review, F2).
  */
 async function evaluateGeofences(
   childId: string,
   familyId: string,
-  lat: number,
-  lng: number,
+  upload: GeofencePoint[],
   deviceId: string,
-  earliestNewTs: Date,
+  receivedAt: Date,
 ): Promise<void> {
   const fences = await prisma.geofence.findMany({ where: { childId } });
   if (fences.length === 0) return;
@@ -129,11 +129,13 @@ async function evaluateGeofences(
     where: { childId, deviceId },
     orderBy: { timestamp: "desc" },
   });
+  // Issue #243: `null` means the upload is not newer than what is stored; `{ baseline: true }` means
+  // there is no `before` at all (first ping ever, or retention deleted the history). Neither raises
+  // an alert, and neither fires the school-routine nudge.
+  const pair = pickTransitionPair(previous, upload, receivedAt);
+  if (!pair || "baseline" in pair) return;
   for (const fence of fences) {
-    // Issue #243: no previous ping means this ping is a baseline, and `geofenceTransition` says so
-    // for every fence — so a first ping after pairing or after retention deleted the history raises
-    // nothing, and fires no routine nudge either.
-    const transition = geofenceTransition(previous, earliestNewTs, { lat, lng }, fence);
+    const transition = geofenceTransition(pair.before, pair.now, fence);
     if (transition.kind !== "entered" && transition.kind !== "exited") continue;
     const entered = transition.kind === "entered";
     const notifyEnter = entered && fence.notifyOnEnter;
@@ -260,23 +262,17 @@ export async function locationRoutes(app: FastifyInstance) {
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (!(await assertProcessingAllowed(effectiveChildId, reply))) return;
 
-    // Evaluate transitions against the latest ping in the batch
-    const latestPing = pingsList[pingsList.length - 1];
-    // Issue #243: a gap is measured from the OLDEST ping in the upload — an offline buffer covers
-    // the gap it spans, so only the batch's earliest entry can start the quiet period. A ping with
-    // no `timestamp` is stored with the schema's `now()` default, so it counts as received now;
-    // for a single-ping payload this is that ping.
+    // Issue #243 review (F2): the upload is not in time order — the agent sends fresh in-memory
+    // pings first, then older Room-buffered ones. `pickTransitionPair` sorts it by `timestamp` and
+    // merges the stored previous ping; a ping with no `timestamp` is stored with the schema's
+    // `now()` default, so it counts as received at `receivedAt`.
     const receivedAt = new Date();
-    const earliestNewTs = new Date(Math.min(
-      ...pingsList.map((p) => (p.timestamp ? new Date(p.timestamp) : receivedAt).getTime()),
-    ));
     await evaluateGeofences(
       effectiveChildId,
       child.familyId,
-      latestPing.lat,
-      latestPing.lng,
+      pingsList.map((p) => ({ lat: p.lat, lng: p.lng, timestamp: p.timestamp ?? null })),
       effectiveDeviceId,
-      earliestNewTs,
+      receivedAt,
     );
 
     let createdPings;

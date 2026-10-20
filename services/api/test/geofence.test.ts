@@ -270,11 +270,46 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     await app.close();
   });
 
-  it("measures the gap from the earliest ping in the upload, so a buffered batch claims none", async () => {
+  // F2 (Claude's review of #243): the agent sends fresh in-memory pings first, then the older
+  // Room-buffered ones in ascending order (LocationService.kt:262). The route used to judge
+  // `pingsList[pingsList.length - 1]` — the newest of the OLD pings — so after any dropped
+  // connection a real arrival never fired.
+  it("judges an unordered upload from its newest ping, not the last array element", async () => {
     const app = await buildApp(locationRoutes, "/v1/location");
     prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
-    // Previous ping 14 h before the batch's last entry, but only 10 min before its first: the
-    // phone was buffering, so there was no quiet period to report.
+    // Stored previous: outside, 40 min before the newest ping in the upload.
+    prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T11:20:00.000Z") });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: {
+        childId: CHILD_ID,
+        deviceId: DEVICE_ID,
+        pings: [
+          { lat: INSIDE.lat, lng: INSIDE.lng, accuracyM: 5, timestamp: "2026-10-20T11:55:00.000Z" }, // mem
+          { lat: OUTSIDE.lat, lng: OUTSIDE.lng, accuracyM: 10, timestamp: "2026-10-20T11:30:00.000Z" }, // Room
+          { lat: OUTSIDE.lat, lng: OUTSIDE.lng, accuracyM: 10, timestamp: "2026-10-20T11:40:00.000Z" }, // Room
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
+    expect(data.title).toBe("Entered Home");
+    // The step before 11:55 is the 11:40 outside ping: 15 min, no quiet period to name.
+    expect(data.body).not.toMatch(/no location/i);
+    expect(data.metadata).not.toHaveProperty("gapMinutes");
+    await app.close();
+  });
+
+  // F1 (Claude's corrected rule): the gap is the age of the position we compare against, so a
+  // hole INSIDE a buffered batch is named. This replaces the old fourth test, which measured from
+  // the batch's earliest ping; the decision changed, not the strength of the check.
+  it("names the hole inside a buffered batch, measured to the ping before the judged one", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
     prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T00:00:00.000Z") });
 
     const res = await app.inject({
@@ -294,8 +329,78 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
     expect(data.title).toBe("Entered Home");
+    expect(data.body).toContain("13 h 50 min");
+    expect(data.metadata.gapMinutes).toBe(830);
+    await app.close();
+  });
+
+  it("names no gap for a dense buffered batch — the pings themselves cover the time", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
+    prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T00:00:00.000Z") });
+
+    // Every 15 min from 00:15 to 14:00, outside until the last entry, which arrives Home.
+    const pings = [];
+    for (let minute = 15; minute <= 14 * 60; minute += 15) {
+      const ts = new Date(Date.UTC(2026, 9, 20, 0, minute)).toISOString();
+      const point = minute === 14 * 60 ? INSIDE : OUTSIDE;
+      pings.push({ lat: point.lat, lng: point.lng, accuracyM: 10, timestamp: ts });
+    }
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: { childId: CHILD_ID, deviceId: DEVICE_ID, pings },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
+    expect(data.title).toBe("Entered Home");
     expect(data.body).not.toMatch(/no location/i);
     expect(data.metadata).not.toHaveProperty("gapMinutes");
+    await app.close();
+  });
+
+  it("does not evaluate an upload that is older than the stored previous ping", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
+    // What we already stored is newer than anything in this upload: a re-sent or delayed batch.
+    prismaMock.locationPing.findFirst.mockResolvedValue({ ...OUTSIDE, timestamp: new Date("2026-10-20T12:00:00.000Z") });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: pingBody(INSIDE.lat, INSIDE.lng, "2026-10-20T11:00:00.000Z"),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("treats a two-ping upload with no previous ping as a transition, not a baseline", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.geofence.findMany.mockResolvedValue([HOME_FENCE]);
+    prismaMock.locationPing.findFirst.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: authHeader(app),
+      payload: {
+        childId: CHILD_ID,
+        deviceId: DEVICE_ID,
+        pings: [
+          { lat: OUTSIDE.lat, lng: OUTSIDE.lng, accuracyM: 10, timestamp: "2026-10-20T11:30:00.000Z" },
+          { lat: INSIDE.lat, lng: INSIDE.lng, accuracyM: 5, timestamp: "2026-10-20T11:55:00.000Z" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string };
+    expect(data.title).toBe("Entered Home");
     await app.close();
   });
 });
