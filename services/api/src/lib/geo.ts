@@ -31,6 +31,16 @@ const GEOFENCE_STALE_GAP_MINUTES = 360;
 /** A ping as far as the transition rule is concerned: where it was, and when it was taken. */
 export type GeofencePoint = { lat: number; lng: number; timestamp?: Date | string | null };
 
+/**
+ * A ping with the millisecond value the pair was ordered by (issue #247).
+ *
+ * `pickTransitionPair` already resolves a missing `timestamp` to the request's receive time in order
+ * to sort, and then threw that value away — so a timestamp-less ping was ordered as "now" but had no
+ * `timestamp` for the gap, and a real 14-hour silence went unmentioned. Carrying `ms` makes the gap
+ * use the same clock as the ordering, so the note cannot disagree with the comparison.
+ */
+export type TransitionPoint = GeofencePoint & { ms: number };
+
 export type GeofenceTransition =
   | { kind: "none"; gapMinutes: null }
   | { kind: "entered" | "exited"; gapMinutes: number | null };
@@ -42,7 +52,7 @@ export type GeofenceTransition =
  * - `null` — the upload is not newer than what is already stored: nothing new happened.
  */
 export type TransitionPair =
-  | { before: GeofencePoint; now: GeofencePoint }
+  | { before: TransitionPoint; now: TransitionPoint }
   | { baseline: true }
   | null;
 
@@ -86,7 +96,8 @@ export function pickTransitionPair(
   const newest = entries[entries.length - 1];
   if (previous && newest.ms <= timestampMs(previous, Number.NEGATIVE_INFINITY)) return null;
   if (entries.length === 1) return { baseline: true };
-  return { before: entries[entries.length - 2].point, now: newest.point };
+  const before = entries[entries.length - 2];
+  return { before: { ...before.point, ms: before.ms }, now: { ...newest.point, ms: newest.ms } };
 }
 
 /**
@@ -110,8 +121,27 @@ export function geofenceTransition(
   if (insideNow === insideBefore) return { kind: "none", gapMinutes: null };
   return {
     kind: insideNow ? "entered" : "exited",
-    gapMinutes: staleGapMinutes(before.timestamp, now.timestamp),
+    gapMinutes: pairGapMinutes(before, now),
   };
+}
+
+/**
+ * Gap in whole minutes for a pair, or null when the age of "before" is unknown.
+ *
+ * Prefers the `ms` the pair was ordered by (issue #247): a ping without a `timestamp` still has a
+ * real receive time, and the note must agree with the ordering rather than fall silent. Plain
+ * `GeofencePoint` callers keep the timestamp-only behaviour. A `before` with no usable time at all
+ * (ordered as `-Infinity`) gives null — the age is not claimed either way.
+ */
+function pairGapMinutes(before: TransitionPoint | GeofencePoint, now: TransitionPoint | GeofencePoint): number | null {
+  const beforeMs = typeof (before as TransitionPoint).ms === "number" ? (before as TransitionPoint).ms : null;
+  const nowMs = typeof (now as TransitionPoint).ms === "number" ? (now as TransitionPoint).ms : null;
+  if (beforeMs !== null && nowMs !== null) {
+    if (!Number.isFinite(beforeMs) || !Number.isFinite(nowMs)) return null;
+    const minutes = Math.floor((nowMs - beforeMs) / 60000);
+    return minutes > GEOFENCE_STALE_GAP_MINUTES ? minutes : null;
+  }
+  return staleGapMinutes(before.timestamp, now.timestamp);
 }
 
 /** Gap in whole minutes when it exceeds the stale threshold, otherwise null. */

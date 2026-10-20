@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
-import { haversineMeters, isInsideFence } from "../src/lib/geo.js";
+import { geofenceTransition, haversineMeters, isInsideFence, pickTransitionPair } from "../src/lib/geo.js";
 import { locationRoutes } from "../src/routes/location.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
@@ -891,5 +891,49 @@ describe("geofence CRUD", () => {
     expect(res.statusCode).toBe(401);
     expect(res.json().error).toBe("device_revoked");
     await app.close();
+  });
+});
+
+describe("geofence transition gap with a timestamp-less ping (issue #247)", () => {
+  // Claude's row D on #246: a ping without a `timestamp` was sorted as "received now" but had no
+  // timestamp for the gap, so a real 14-hour silence went unmentioned. The pair now carries the
+  // millisecond value it was ordered by, so the note cannot disagree with the comparison.
+  const HOME = { lat: 40.7128, lng: -74.006, radiusM: 200 };
+  const OUTSIDE = { lat: 40.72, lng: -74.006 }; // ~800 m away
+  const INSIDE = { lat: 40.7128, lng: -74.006 };
+  const MIN = 60_000;
+
+  it("names a 14-hour gap when the new ping has no timestamp", () => {
+    const now = new Date("2026-10-20T14:00:00Z");
+    const previous = { ...OUTSIDE, timestamp: new Date(now.getTime() - 840 * MIN) };
+    const pair = pickTransitionPair(previous, [{ ...INSIDE }], now.getTime());
+    expect(pair).not.toBeNull();
+    if (pair === null || "baseline" in pair) throw new Error("expected a pair");
+    const transition = geofenceTransition(pair.before, pair.now, HOME);
+    expect(transition).toEqual({ kind: "entered", gapMinutes: 840 });
+  });
+
+  it("says nothing when a timestamp-less ping follows a 10-minute-old position", () => {
+    const now = new Date("2026-10-20T14:00:00Z");
+    const previous = { ...OUTSIDE, timestamp: new Date(now.getTime() - 10 * MIN) };
+    const pair = pickTransitionPair(previous, [{ ...INSIDE }], now.getTime());
+    if (pair === null || "baseline" in pair) throw new Error("expected a pair");
+    expect(geofenceTransition(pair.before, pair.now, HOME)).toEqual({ kind: "entered", gapMinutes: null });
+  });
+
+  it("claims nothing when neither ping has a usable time", () => {
+    // Previous without a timestamp is ordered as -Infinity: its age is unknown, so no note.
+    const pair = pickTransitionPair({ ...OUTSIDE }, [{ ...INSIDE }], Date.now());
+    if (pair === null || "baseline" in pair) throw new Error("expected a pair");
+    expect(geofenceTransition(pair.before, pair.now, HOME)).toEqual({ kind: "entered", gapMinutes: null });
+  });
+
+  it("keeps the timestamped behaviour unchanged", () => {
+    const now = new Date("2026-10-20T14:00:00Z");
+    const previous = { ...OUTSIDE, timestamp: new Date(now.getTime() - 840 * MIN) };
+    const upload = [{ ...INSIDE, timestamp: now }];
+    const pair = pickTransitionPair(previous, upload, now.getTime());
+    if (pair === null || "baseline" in pair) throw new Error("expected a pair");
+    expect(geofenceTransition(pair.before, pair.now, HOME)).toEqual({ kind: "entered", gapMinutes: 840 });
   });
 });
