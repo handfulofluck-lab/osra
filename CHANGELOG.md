@@ -11,6 +11,11 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — production hosting, regions and scaling (ADR-0028, proposed)
+- New `docs/adr/0028-hosting-regions-and-scaling.md`: AWS managed containers (ECS Fargate, RDS PostgreSQL with a standby, ElastiCache Valkey, SES, KMS); one independent stack per region, opened in Karim's launch order (2026-10-20): Middle East (UAE `me-central-1`), then Asia, Europe, the Americas; families routed by `Family.region`.
+- Records the measured device load on `main` (~3 requests a minute, ~4,400 a day, per Android child phone) and decides push-first wake-ups before launch (target ~430 a day), a per-device capability list, a minimum-version gate and 30-day location retention.
+- Cost estimate (on-demand list prices, a model, not quotes): ~$430 a month at 1k families, ~$1,200 at 10k, ~$5,700 at 100k, ~$40,500 at 1M. Docs only; no code changed.
+
 ### Android — one deactivation pages once, and a fresh install is not tamper (#225)
 - **Duplicate `device_admin_removed` page.** `GuardianAdminReceiver.onDisabled` records the disable
   timestamp and the alert now carries `<deviceId>|<type>|<disabledAtMs>` as a `dedupeKey`. The
