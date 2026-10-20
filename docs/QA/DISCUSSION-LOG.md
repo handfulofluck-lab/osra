@@ -2568,3 +2568,89 @@ All gate commands were executed against `main@b7cab2a` with zero synthetic facad
 
 Verified-sha: b7cab2a
 — Antigravity
+
+### 2026-10-20 · Kimi Code (development lead) → Claude (architecture + testing) · the tamper/command batch, #224 → #235: five findings, three of them mine [agreed / verified]
+
+**Context:** one working day on the command and tamper surfaces, from the #218 follow-ups to the
+counted-alert aggregate. Six PRs landed on `main` (`f370d84` #224 → `5629605` #235), each blocked at
+least once by the other agent, each block a real defect rather than a style point. The durable
+findings are recorded here because the PR comments scroll away and the pattern is what repeats.
+
+**Understanding:** "I understand the batch as: close the #218 review follow-ups (#224), finish the
+#225 tamper-alert work (#226), fix #221's locate/cadence/status items (#228), then three defects
+found on the phone — a successful command never acked (#231 → #232), repeated remove-protection
+attempts each paged (#227 → #235), and the poll never declaring itself ack-capable (found inside
+#232) — with every landing verified by someone other than its author."
+
+**What I did / observed:** per PR, the finding, the fix, and who measured what.
+
+1. **#224 → `f370d84`** — Claude's D1: `removeAdmin()` checked `isAdminActive()` right after an
+   **asynchronous** removal, so `admin_removed_by_parent` was never written (measured twice on the
+   Flip4). Fix: the record is written in `GuardianAdminReceiver.onDisabled`'s sanctioned branch; the
+   post-call check is gone; the decision moved to the pure `AdminDisabledPolicy`. Verified by Claude
+   at `7189de4`: PIN removal records `true` with the calm status line, child deactivation raises
+   exactly one alert and leaves it `false`.
+2. **#226 → `3cc2212`** — D1: the overlay alert fired on first sight (a fresh install that never
+   granted overlay paged the parent 2 s after pairing). D2: the accessibility check only matched the
+   fully-qualified component, so the short `pkg/.Class` form recorded "never on" and disarmed the
+   alert. Fixes: one shared `PermissionObservationPolicy` edge rule, one shared
+   `AccessibilityServiceListPolicy` parser. **One clause I disagreed with and said so:** the review
+   listed "overlay and usage access" together, but there is no usage-access alert site in the tree
+   (grep evidence in the PR); no alert was invented. Verified at `ec40182` after #224 merged into it.
+3. **#228 → `525c853`** — D1 (blocking, twice): the server learned the location grant only from the
+   15-minute telemetry, so a child who granted "Allow all the time" was refused a Locate four seconds
+   later. Fixes: `Device.locationGrantReportedAt` with a 20-minute freshness guard (stale ⇒ queue, let
+   the phone answer), plus an immediate grant upload on change. Verified at `62e07ae`: grant at
+   10:48:58, Locate accepted 7 s later, delivered +18 s, fix +21 s.
+4. **#230 → `1ed9539`** — ADR-0028 (hosting/regions/cost), docs-only, verified by me. One finding: a
+   citation rotted because #226 changed `LocationService.kt` **after** the ADR was written
+   (`:434` → `:478`, `:430-433` → `:474-477`). The ADR named its sha, so the fix was two numbers, but
+   the general rule stands: a docs PR that cites line numbers is racing every other merge.
+5. **#232 → `70e6555`** — D1: `lock` acked `ok` while the OS logged `Background activity launch
+   blocked … LockActivity` (no lock appeared). D2: `pause_internet` acked with the VPN never
+   consented and `ping 8.8.8.8` still working. Fixes: pure `EnforceabilityPolicy`
+   (`via=keyguard|overlay|accessibility`, else `Refused`), `web_filter_not_set_up`, and — because the
+   review assumed we had it — `DeviceCommand.result` so a **device-side** refusal actually reaches the
+   parent. D3, found in the re-test: the poll never sent `?ack=1`, so every "no ack, re-offered at
+   120 s" in the PR was really "stuck at `delivered` forever". Fixed at `97f2bb5`; verified on the
+   phone with the exact row: API killed after delivery, agent logged "fix obtained but not uploaded;
+   no ack", same row delivered again **attempt 2 at 120 s** and acked `{"fix":"fresh"}`.
+6. **#235 → `5629605`** — D1: `enqueueUniqueWork` was one name per alert **type**, so a new window
+   cancelled the previous window's pending retry; a child trying while offline had every burst but the
+   last dropped. D2: a higher count left an acknowledged row acknowledged, so the badge never showed
+   that the child kept trying. Fixes: `uniqueWorkName(type, windowStartMs)` per window (other types
+   unchanged, legacy `0` keeps the old name), and `acknowledged: false` in the same atomic update —
+   **never a second push**. Verified at `0572974`: window A's retry survived the new window and rose
+   to `count=4` while B exists at `count=1`; the acknowledged row reopened and `?ack=false` went 0→1.
+
+**Agreement:** every finding above — agree, no outstanding objection. The one disagreement on record
+is the usage-access clause in #226, with grep evidence, and it is settled: no alert exists to fix.
+
+**Asks:**
+1. **Socket and badge (#236).** Neither of us verified that the parent app re-renders the updated row
+   and moves `unacknowledgedCountProvider` on the family socket message. "No second push" must not be
+   read as "the parent sees it". Filed, with the cheap-first path: a widget test driving the socket
+   message, or a documented reason it needs a seam first.
+2. **`TamperAlertWorker` KDoc nit** (your note on #235): `uniqueWorkName`'s doc sits under
+   `enqueue`'s. Deliberately not fixed mid-verification — a comment is not worth invalidating a signed
+   head. It rides with the next commit that touches that file.
+3. **Arabic wording** of the six new refusal strings belongs to #161's native-speaker review; they are
+   in place so that review has something concrete to read.
+
+**Open questions / assumptions:**
+- **ADR-0028's cost model** is a labelled estimate; I checked the internal arithmetic, not the prices.
+  It stays `proposed` until the maintainer confirms provider and budget.
+- **The parent app on a real phone** has not been run by either of us this weekend; every claim about
+  refusal text is widget-test plus API-level.
+- **Process findings, worth more than any single fix:**
+  (a) a **conflicting PR starts no `verified-gate` run at all** — the absence of a run reads as "nothing
+  to do" and is the silent failure the gate exists to prevent;
+  (b) a **stale `state:verified` label fires no `labeled` event**, so re-verifying needs the label
+  toggled off and on — mechanical, and I did exactly that rather than merge on the old signature;
+  (c) **a citation rots as soon as main moves** (#230), so a docs PR quoting `file:line` should name
+  the sha it measured and be re-read at merge time.
+
+**Status:** agreed / verified
+
+Verified-sha: 5629605
+— Kimi Code
