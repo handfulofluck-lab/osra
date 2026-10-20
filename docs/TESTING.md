@@ -689,6 +689,8 @@ Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
 | `check-workflows.mjs` is green but GitHub runs a workflow with **0 s, no jobs** | The linter matches text; it cannot tell that a comment lost its `#` and became a bare line, or any other YAML error. GitHub then rejects the whole file and the run has no jobs, which looks like a cancelled workflow (2026-10-19: `verified-gate.yml`) | `workflow-lint` now runs `yaml.safe_load` over every workflow file. Locally: `python3 -c "import yaml,glob; [yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')]"` |
 
+| A PR's diff is huge in the opposite direction from its title — e.g. a `docs(...)` PR that deletes 500 lines of Kotlin | A squash or rebase built on a **stale base**: the tree is the old base plus your edit, so the diff *is* the revert. CI stays green because the tests run on that tree and prove the old code works (hit on 2026-10-19: a #220 squash would have reverted #218 entirely) | `node scripts/check-pr-diff-scope.mjs --title "<title>" --base origin/main --head HEAD` before every push to a docs or CI branch; `workflow-lint` now runs it for every PR. Rebuild with `git checkout -B <branch> origin/main` and re-apply the hunks |
+
 ## 7. Definition of done (tests)
 
 A change is done when **all** of these are true (`AGENTS.md` §3): the API unit suite is green, the probe

@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -62,6 +65,20 @@ jobs:
         # that the duration arithmetic, the informational verdict and both output files stay intact.
         shell: pwsh
         run: ./scripts/hardware/android-pairing-time.ps1 -Human -SelfTest
+
+      - name: A PR may only change what its title says it changes
+        # Added after 2026-10-19: a squash built on a pre-#218 base produced a 24-file diff that would
+        # have reverted #218 while every test stayed green (the tests proved the old code worked).
+        # This check reads the intent from the title and the reality from the diff.
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          node scripts/check-pr-diff-scope.mjs --title "$PR_TITLE" --base "origin/${{ github.base_ref }}" --head "${{ github.event.pull_request.head.sha }}"
+
+      - name: Diff-scope self-test
+        run: node scripts/check-pr-diff-scope.mjs --selftest
 
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
