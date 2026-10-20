@@ -37,4 +37,12 @@ class CommandDispatcherMinutesTest {
         assertNull(CommandDispatcher.parseMinutes(""))
         assertNull(CommandDispatcher.parseMinutes(null))
     }
+
+    @Test
+    fun `non-finite minutes are rejected rather than clamped`() {
+        // Issue #231 review: "NaN"/"Infinity" parse as Double but are not a duration; the old parser
+        // turned them into 1/240 minutes and applied them.
+        assertNull(CommandDispatcher.parseMinutes("NaN"))
+        assertNull(CommandDispatcher.parseMinutes("Infinity"))
+    }
 }

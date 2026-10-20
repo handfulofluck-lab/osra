@@ -296,6 +296,7 @@ Map<String, dynamic> commandJson(
   DateTime? deliveredAt,
   DateTime? ackedAt,
   int attempts = 1,
+  Map<String, dynamic>? result,
 }) =>
     {
       'id': id,
@@ -309,6 +310,7 @@ Map<String, dynamic> commandJson(
       'expiresAt': createdAt.add(const Duration(hours: 1)).toUtc().toIso8601String(),
       if (deliveredAt != null) 'deliveredAt': deliveredAt.toUtc().toIso8601String(),
       if (ackedAt != null) 'ackedAt': ackedAt.toUtc().toIso8601String(),
+      if (result != null) 'result': result,
     };
 
 /// Default alert feed: one critical + one warning today, one info yesterday.

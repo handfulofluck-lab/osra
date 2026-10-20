@@ -290,6 +290,48 @@ void main() {
       expect(find.textContaining('queued'), findsNothing);
     });
 
+    testWidgets('a lock refused because the lock screen cannot appear shows the reason', (tester) async {
+      // Issue #231 review D1: the agent refuses a lock when overlay, accessibility and the keyguard
+      // are all unavailable. The toast must name the fix ("Display over other apps"), never "queued".
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/devices/dev-1/command': (_) => {
+              'published': false,
+              'status': 'failed',
+              'reason': 'lock_screen_unavailable',
+            },
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.text('Lock'));
+      await flushFakeHttp(tester);
+
+      expect(find.textContaining('Display over other apps'), findsOneWidget);
+      expect(find.textContaining('queued'), findsNothing);
+    });
+
+    testWidgets('a command the device settled failed shows why on the card', (tester) async {
+      // Issue #231: this refusal arrives as an ack after the POST returned `pending`, so the card is
+      // often the only place the parent ever sees the reason.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/devices/dev-1/commands/history': (_) => {
+              'items': [
+                commandJson('cmd-failed', 'lock', 'failed', DateTime.now().subtract(const Duration(minutes: 3)),
+                    deliveredAt: DateTime.now().subtract(const Duration(minutes: 3)),
+                    ackedAt: DateTime.now().subtract(const Duration(minutes: 2)),
+                    result: const {'reason': 'lock_screen_unavailable'}),
+              ],
+            },
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      expect(
+        find.textContaining("The lock screen can't appear on your child's phone"),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('an unknown refusal reason still names the code, not "queued"', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),

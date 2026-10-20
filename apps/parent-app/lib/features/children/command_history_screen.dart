@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import 'command_messages.dart';
 import '../../providers/family_provider.dart';
 
 IconData commandStatusIcon(String status) => switch (status) {
@@ -148,7 +149,7 @@ class _DeviceCommandSection extends ConsumerWidget {
                   : Column(
                       children: [
                         for (final command in commands)
-                          _CommandTile(command: command),
+                          _CommandTile(command: command, deviceModel: device.model),
                       ],
                     ),
             ),
@@ -161,7 +162,8 @@ class _DeviceCommandSection extends ConsumerWidget {
 
 class _CommandTile extends StatelessWidget {
   final DeviceCommand command;
-  const _CommandTile({required this.command});
+  final String deviceModel;
+  const _CommandTile({required this.command, required this.deviceModel});
 
   @override
   Widget build(BuildContext context) {
@@ -186,6 +188,17 @@ class _CommandTile extends StatelessWidget {
               style: TextStyle(color: color)),
           Text(events.join(' · '),
               style: Theme.of(context).textTheme.bodySmall),
+          // Issue #231: a device-side refusal settles the row as failed long after the POST, so the
+          // reason from the agent's ack is the only explanation the parent gets.
+          if (command.refusalReason != null)
+            Text(
+              commandRefusalText(
+                  l10n, command.type, deviceModel, command.refusalReason),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.error),
+            ),
         ],
       ),
     );
