@@ -35,6 +35,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0024](0024-digest-claim-failure-lifecycle.md) | A digest send claim outlives a permanent refusal (`DigestSend.failedReason`), not a transient one; the sender classifies `retryable` | accepted |
 | [0025](0025-session-revocation-counter.md) | Parent session revocation is a monotonic counter (`sv` claim), not a second-grained `iat` epoch; a token minted in the revocation second is dead (#117) | accepted |
 | [0026](0026-pip-split-overlay-coverage.md) | Multi-window coverage: judge every visible application window (PiP and split), expand the overlay with `resizeableActivity=false`, bound the re-raise; PiP itself cannot be closed by an accessibility service (#175) | accepted |
+| [0027](0027-tamper-alert-idempotency.md) | Tamper alerts are edge-triggered and idempotent: admin removal carries `<device>|<type>|<disable timestamp>` to a partial unique index; accessibility-off alerts only on a recorded on → off transition (#225) | accepted |
 
 ## Writing a new ADR
 

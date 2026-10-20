@@ -374,7 +374,18 @@ class LocationService : Service() {
         com.familyshield.agent.security.TamperState.setLastTier(this, tier.name)
         val dropped = previous != null && com.familyshield.agent.security.TamperPolicy.shouldAlertOnTier(previous, tier)
         if (com.familyshield.agent.security.TamperState.isAdminDisabledPending(this) || dropped) {
-            com.familyshield.agent.security.TamperAlertWorker.enqueue(this, com.familyshield.agent.security.TamperAlertWorker.TYPE_ADMIN_REMOVED)
+            // Issue #225: reuse the timestamp onDisabled recorded so this enqueue and the receiver's
+            // expedited work carry the same dedupe key; only a drop with no recorded event stamps now.
+            val eventAtMs = com.familyshield.agent.security.TamperState.adminDisabledAtMs(this)
+                .takeIf { it > 0L }
+                ?: System.currentTimeMillis().also {
+                    com.familyshield.agent.security.TamperState.setAdminDisabledAt(this, it)
+                }
+            com.familyshield.agent.security.TamperAlertWorker.enqueue(
+                this,
+                com.familyshield.agent.security.TamperAlertWorker.TYPE_ADMIN_REMOVED,
+                eventAtMs = eventAtMs,
+            )
         }
     }
 

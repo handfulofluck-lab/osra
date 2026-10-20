@@ -11,6 +11,24 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — one deactivation pages once, and a fresh install is not tamper (#225)
+- **Duplicate `device_admin_removed` page.** `GuardianAdminReceiver.onDisabled` records the disable
+  timestamp and the alert now carries `<deviceId>|<type>|<disabledAtMs>` as a `dedupeKey`. The
+  expedited worker and the 60-s drain in `LocationService` derive the same key from it, so the second
+  run skips the POST; `admin_disabled_pending` is cleared only after a successful post, never on
+  failure. The API adds `Alert.dedupeKey` (nullable, migration `0019`) with a partial unique index on
+  `(deviceId, category, dedupeKey)`: a retry answers `200`, creates no second row, publishes no
+  second realtime event and sends no second push. Alerts without a key are unchanged.
+- **False "accessibility service was turned off" during setup.** The accessibility-off alert is now
+  a true → false edge over a persisted observation (`AgentSettings.accessibilityWasEnabled`); a first
+  observation that the service is off is silent. Re-pair clears the record, so a re-paired device
+  with accessibility still off is silent too. A failed POST leaves `true` recorded and retries.
+- Tests: `TamperAlertDedupeTest` (receiver alert + worker retry → one POST; new deactivation → new
+  key; failed POST is not recorded) and `AccessibilityOffPolicyTest` (first check off silent, on → off
+  one alert); API `alerts.test.ts` (duplicate key `200`, one `create`; unique-collision race `200`).
+- ADR-0027 records the rule and the rejected alternatives (dropping the drain, time-window
+  throttling, a `(device, category)`-only index).
+
 ### CI — the scope guard also catches a revert by value, and refuses an undeclared title
 - The revert detector walks the last 30 first-parent merges on the base and fails when a PR restores a path's **pre-merge** blob while `main` still carries the merged one (additions, deletions and renames alike). A `revert(…)` title is the only way past it.
 - A title that declares no kind is now **refused** rather than skipped, so the check cannot be avoided by wording.

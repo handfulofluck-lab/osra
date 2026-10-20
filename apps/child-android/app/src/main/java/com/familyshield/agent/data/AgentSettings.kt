@@ -163,6 +163,8 @@ class AgentSettings @Inject constructor(
             it.remove(KEY_DEVICE_TOKEN)
             it.remove(KEY_DEVICE_ID)
             it.remove(KEY_CHILD_ID)
+            // Issue #225: after a re-pair the next accessibility check is a first observation again.
+            it.remove(KEY_ACCESSIBILITY_WAS_ENABLED)
         }
         baseUrlCache = null
         tokenCache = null
@@ -227,6 +229,20 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0" }
     }
 
+    /**
+     * Issue #225: the last observation of whether the OSRA accessibility service was effectively
+     * enabled, or null when it has never been observed. The tamper alert is raised only on a
+     * recorded true -> false edge, so a fresh install that has not granted accessibility yet stays
+     * silent.
+     */
+    suspend fun accessibilityWasEnabled(): Boolean? =
+        read(KEY_ACCESSIBILITY_WAS_ENABLED)?.let { it == "1" }
+
+    /** Records an accessibility observation (on or off) for the #225 transition rule. */
+    suspend fun recordAccessibilityEnabled(enabled: Boolean) {
+        store.edit { it[KEY_ACCESSIBILITY_WAS_ENABLED] = if (enabled) "1" else "0" }
+    }
+
     /** Last uploaded installed-apps fingerprint (roadmap 3.4), or null before the first report. */
     suspend fun installedAppsReportHash(): String? = read(KEY_INSTALLED_APPS_HASH)
 
@@ -260,6 +276,8 @@ class AgentSettings @Inject constructor(
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
+        // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
+        private val KEY_ACCESSIBILITY_WAS_ENABLED = stringPreferencesKey("accessibility_was_enabled")
         // Roadmap 3.4: change detection for the installed-app inventory upload.
         private val KEY_INSTALLED_APPS_HASH = stringPreferencesKey("installed_apps_hash")
         private val KEY_INSTALLED_APPS_REPORTED_AT = stringPreferencesKey("installed_apps_reported_at")

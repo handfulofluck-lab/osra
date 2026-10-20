@@ -57,4 +57,6 @@ data class AlertDto(
     val title: String,
     val body: String,
     val metadata: Map<String, String> = emptyMap(),
+    /** Issue #225: makes a retried alert a no-op server-side instead of a second parent page. */
+    val dedupeKey: String? = null,
 )

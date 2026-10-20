@@ -96,6 +96,82 @@ describe("alerts routes", () => {
     await app.close();
   });
 
+  /** Issue #225 bug 1: the receiver's alert and the worker retry share a dedupe key. */
+  it("returns 200 and creates no second row for a duplicate dedupeKey", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const existing = { id: "a-admin-1", category: "tamper" };
+    prismaMock.alert.findFirst
+      .mockResolvedValueOnce(null) // first POST: key not seen
+      .mockResolvedValueOnce(existing); // second POST: key already stored
+    prismaMock.alert.create.mockResolvedValue(existing);
+
+    const payload = {
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Device admin was removed",
+      body: "b",
+      dedupeKey: "dev-1|device_admin_removed|1700000000000",
+    };
+    const post = () => {
+      const raw = JSON.stringify(payload);
+      return app.inject({
+        method: "POST",
+        url: "/v1/alerts/internal",
+        headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+        payload: raw,
+      });
+    };
+
+    const first = await post();
+    const retry = await post();
+
+    expect(first.statusCode).toBe(201);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().alert.id).toBe(existing.id);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ dedupeKey: payload.dedupeKey }) }),
+    );
+    await app.close();
+  });
+
+  /** The two workers can race past the pre-check; the partial unique index must still answer 200. */
+  it("treats a unique-index collision on dedupeKey as a successful retry", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const existing = { id: "a-admin-2", category: "tamper" };
+    prismaMock.alert.findFirst
+      .mockResolvedValueOnce(null) // both workers pass the pre-check
+      .mockResolvedValueOnce(existing); // then lose the insert race and read the winner
+    prismaMock.alert.create.mockRejectedValue(
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+    );
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Device admin was removed",
+      body: "b",
+      dedupeKey: "dev-1|device_admin_removed|1700000000001",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.id).toBe(existing.id);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
   it("applies pagination math: page 3 with limit 20 skips 40 rows", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     prismaMock.alert.count.mockResolvedValue(100);

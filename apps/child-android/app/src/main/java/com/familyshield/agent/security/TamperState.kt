@@ -10,9 +10,14 @@ import android.content.Context
 object TamperState {
     private const val PREFS = "osra_tamper_state"
     private const val KEY_ADMIN_DISABLED_PENDING = "admin_disabled_pending"
+    private const val KEY_ADMIN_DISABLED_AT_MS = "admin_disabled_at_ms"
+    private const val KEY_ADMIN_ALERTS_POSTED = "admin_alerts_posted"
     private const val KEY_GRACE_UNTIL = "guard_grace_until_ms"
     private const val KEY_LAST_TIER = "last_tier"
     private const val KEY_SANCTIONED_UNTIL = "sanctioned_removal_until_ms"
+
+    /** How many accepted dedupe keys are kept; a retry only ever needs the newest one. */
+    private const val MAX_POSTED_KEYS = 4
 
     fun setAdminDisabledPending(context: Context, pending: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADMIN_DISABLED_PENDING, pending).apply()
@@ -20,6 +25,28 @@ object TamperState {
 
     fun isAdminDisabledPending(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ADMIN_DISABLED_PENDING, false)
+
+    /**
+     * Issue #225: the wall-clock time [GuardianAdminReceiver.onDisabled] observed the removal. It is
+     * half of the alert's idempotency key, so every retry path (the expedited worker and the 60-s
+     * drain) derives the same key for the same deactivation.
+     */
+    fun adminDisabledAtMs(context: Context): Long =
+        prefs(context).getLong(KEY_ADMIN_DISABLED_AT_MS, 0L)
+
+    fun setAdminDisabledAt(context: Context, atMs: Long) {
+        prefs(context).edit().putLong(KEY_ADMIN_DISABLED_AT_MS, atMs).apply()
+    }
+
+    /** True when the server already accepted an admin-removal alert with this dedupe key (#225). */
+    fun isTamperAlertPosted(context: Context, key: String): Boolean =
+        prefs(context).getStringSet(KEY_ADMIN_ALERTS_POSTED, emptySet()).orEmpty().contains(key)
+
+    fun markTamperAlertPosted(context: Context, key: String) {
+        val current = prefs(context).getStringSet(KEY_ADMIN_ALERTS_POSTED, emptySet()).orEmpty()
+        val updated = (current + key).toList().takeLast(MAX_POSTED_KEYS).toSet()
+        prefs(context).edit().putStringSet(KEY_ADMIN_ALERTS_POSTED, updated).apply()
+    }
 
     /** Parent verified the PIN: the guard stands down until this wall-clock time (ADR-0010 §3). */
     fun grantGrace(context: Context, untilMs: Long) {

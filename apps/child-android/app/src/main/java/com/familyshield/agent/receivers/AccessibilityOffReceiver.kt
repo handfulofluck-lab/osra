@@ -12,22 +12,35 @@ import com.familyshield.agent.services.AccessibilityMonitorService
  * Feature #19 tamper: accessibility-service-disabled detection. Settings.Secure carries no
  * broadcast for ACCESSIBILITY_ENABLED changes, so this is NOT a BroadcastReceiver — it is polled
  * from LocationService's 60 s loop (see [checkOnce]) and fire-and-forget HMAC-POSTs a critical
- * tamper alert when the OSRA accessibility service is no longer effectively enabled while
- * the device is paired (1 h per-type throttle, see [AlertThrottlePolicy]).
+ * tamper alert when the OSRA accessibility service goes from recorded-on to off while the device is
+ * paired (1 h per-type throttle, see [AlertThrottlePolicy]).
+ *
+ * Issue #225: "off" alone is not tamper. A fresh install spends setup with the service off, and the
+ * first poll there used to page the parent with a protection they had never granted. The alert is
+ * now a true -> false edge over a persisted observation (see [AccessibilityOffPolicy.shouldAlertOnObservation]).
  */
 class AccessibilityOffReceiver {
 
     /**
-     * Reads the Secure settings, and when the service is missing while paired, throttle-checks
-     * and posts the tamper alert. Timestamp is recorded only on POST success so a failed call
-     * does not throttle the retry.
+     * Reads the Secure settings, and when the service has just transitioned off while paired,
+     * throttle-checks and posts the tamper alert. The new observation is recorded even when no alert
+     * is raised; the off state is recorded only after a successful POST so a failed call retries.
      */
     suspend fun checkOnce(context: Context, api: ApiService, settings: AgentSettings, nowMs: Long) {
         val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED)
         val services = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val component = ComponentName(context, AccessibilityMonitorService::class.java).flattenToString()
-        if (!AccessibilityOffPolicy.isTamperState(enabled, services, component)) return
-        if (!AlertThrottlePolicy.shouldAlert(settings.tamperAlertTimestamp(AccessibilityOffPolicy.TYPE), nowMs)) return
+        val enabledNow = AccessibilityOffPolicy.isEffectivelyEnabled(enabled, services, component)
+        if (!AccessibilityOffPolicy.shouldAlertOnObservation(settings.accessibilityWasEnabled(), enabledNow)) {
+            settings.recordAccessibilityEnabled(enabledNow)
+            return
+        }
+        // The edge is real. If the type is throttled, record it off: this event was already reported
+        // inside the window, and leaving it "on" would repeat the alert when the window expires.
+        if (!AlertThrottlePolicy.shouldAlert(settings.tamperAlertTimestamp(AccessibilityOffPolicy.TYPE), nowMs)) {
+            settings.recordAccessibilityEnabled(false)
+            return
+        }
         val childId = settings.childId() ?: return
         runCatching {
             api.postInternalAlert(
@@ -42,6 +55,7 @@ class AccessibilityOffReceiver {
                 ),
             )
         }.onSuccess {
+            settings.recordAccessibilityEnabled(false)
             settings.recordTamperAlert(AccessibilityOffPolicy.TYPE, nowMs)
         }
     }
@@ -78,4 +92,13 @@ object AccessibilityOffPolicy {
     /** True when paired protection has been tampered with (inverse of [isEffectivelyEnabled]). */
     fun isTamperState(accessibilityEnabled: String?, enabledServices: String?, component: String): Boolean =
         !isEffectivelyEnabled(accessibilityEnabled, enabledServices, component)
+
+    /**
+     * Issue #225: the accessibility-off alert is an edge, not a level. It is raised only when the
+     * service was previously recorded **on** and is off now. `wasEnabled = null` means it has never
+     * been observed on, so a first check that finds it off — a fresh install, before setup granted
+     * it — is silent instead of paging the parent about a protection they never had.
+     */
+    fun shouldAlertOnObservation(wasEnabled: Boolean?, isEnabledNow: Boolean): Boolean =
+        wasEnabled == true && !isEnabledNow
 }
