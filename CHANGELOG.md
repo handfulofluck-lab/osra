@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — 30-day location history confirmed (ADR-0028)
+- Karim chose 30 days over 90 for children's location history on 2026-10-20; ADR-0028 records the decision. Other raw data stays at 90 days and rollups at 365. The retention job change (a separate `LOCATION_RETENTION_DAYS`, default 30) is filed for Kimi in #238; no code changed here.
+
 ### Android / API — five remove-protection attempts are one page that says five (#227)
 - Opening the admin-removal screen five times in five minutes used to send **five critical pages**:
   the accessibility guard enqueued a new `protection_screen_opened` alert on every attempt, and
