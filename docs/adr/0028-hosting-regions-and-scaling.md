@@ -36,7 +36,7 @@
 
    | Order | Market | AWS region | Note |
    |---|---|---|---|
-   | 1 | Middle East | UAE `me-central-1` | If Saudi Arabia is a launch country, check its in-country data rules first; a Saudi region may be needed |
+   | 1 | Middle East | UAE `me-central-1` | Serves Saudi Arabia too: in-country storage applies to companies operating inside the kingdom (Karim, 2026-10-20); revisit if OSRA sets up a company there |
    | 2 | Asia | Singapore `ap-southeast-1` | Mumbai `ap-south-1` if India is the main Asian market |
    | 3 | Europe | Frankfurt `eu-central-1` | GDPR |
    | 4 | Americas | N. Virginia `us-east-1` | COPPA |
@@ -60,8 +60,11 @@
      a read replica for parent dashboards.
    - ~100k: savings plans; the AI classifier on its own autoscaled service; history older than 30 days
      to cheap storage; the second region when its market opens.
-   - ~1M: families split across several databases by family id; Kubernetes only if a platform engineer
-     is in place.
+   - ~1M and beyond: families split across several databases by family id through a small lookup
+     table; more regions as markets open; the busiest paths (location ingestion, alerts) become their
+     own services behind a queue; managed Kubernetes (EKS Auto Mode) only if Fargate starts to limit
+     us. Every step is infrastructure as code (Terraform from day one), run by the agents with paging
+     alerts; no dedicated hire is assumed, and no step changes the device apps.
 7. **Service targets at launch:** 99.9% monthly uptime, a parent's lock/ring reaches the phone in 5 s,
    a concern alert reaches the parent within 1 minute, a public status page, and one restore-from-backup
    drill before launch.
@@ -98,8 +101,13 @@ the full analysis.
 
 ## Alternatives considered
 
-- **Kubernetes (EKS / GKE) from day one.** Same containers, more control, but someone must run the
-  cluster. Rejected until ~1M families or a platform engineer.
+- **Kubernetes (EKS / GKE) from day one.** Same containers, more control. Fargate already automates
+  what Kubernetes automates for us (restarts, scaling, rolling deploys) without a cluster to upgrade.
+  Rejected until Fargate limits us; then managed (EKS Auto Mode), not a self-run cluster.
+- **Build for more than 1M families from day one** (sharded databases, multi-region from launch).
+  Rejected: roughly $3,000–5,000 a month with no users (estimate), every feature pays the sharding
+  complexity before launch, and real traffic must show which path strains first. Kept cheap instead:
+  data keyed by family, stateless API, independent regions, infrastructure as code.
 - **Serverless functions for the API.** The parent WebSocket and the Prisma connection pool want
   long-lived processes. Rejected for the API; acceptable for side jobs.
 - **Rented servers (Hetzner, OVH) with self-run PostgreSQL.** 2–4× cheaper compute, but we would own
