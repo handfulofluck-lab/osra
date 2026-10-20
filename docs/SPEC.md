@@ -204,6 +204,11 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     still collapsed to its last step: only the newest pair is judged. The pair is chosen by
     `pickTransitionPair()` and the transition itself decided by `geofenceTransition()` in
     `services/api/src/lib/geo.ts`.
+    `routineId` is accepted and stored on a fence for compatibility, but it has **no effect** yet:
+    nothing carries fence state to the agent, whose school rule is time-only. The create-fence
+    dialog therefore offers no routine switch (issue #245) — a control that does nothing is worse
+    than no control. A location-conditioned routine is a roadmap item, and any implementation must
+    follow the rule above: location lives only in `LocationPing`, under its window.
 - src/middleware/requireFamily.ts — GENERATE THIS: preHandler factory that loads the
   family-scoped resource by request param (child/device/geofence/alert), returns 403 when
   resource.familyId !== req.user.familyId, attaches resource to the request.
