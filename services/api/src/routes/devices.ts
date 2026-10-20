@@ -7,7 +7,8 @@ import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
-import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
@@ -78,6 +79,9 @@ const TelemetrySchema = z
       .optional(),
     urls: z.array(z.string()).optional(),
     timestamp: z.string().datetime().optional(),
+    // Issue #221 (D1): the agent's own classification of its location grant. Optional so an older
+    // agent keeps working (the server then leaves the stored value unknown and queues locate_now).
+    locationGrant: z.enum(LOCATION_GRANT_STATES).optional(),
   })
   .passthrough();
 
@@ -349,11 +353,21 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
     const user = req.user as AuthedUser & { sub: string };
+    const device = (req as unknown as { device: { id: string; childId: string; locationGrant?: string | null } }).device;
     // ADR-0008 §2c: enforcement commands need active consent; safe-direction commands
     // (unlock, resume, sos_clear) must always remain available to the parent.
     if (!SAFE_DIRECTION_COMMANDS.has(parsed.data.command)) {
-      const device = (req as unknown as { device: { id: string; childId: string } }).device;
       if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    }
+    // Issue #221 (D1): a `locate_now` the last telemetry says the phone cannot answer is not queued
+    // for a WorkManager tick it would miss. It is recorded `failed` at once with the same reason
+    // vocabulary the agent acks (#132), and the device is not woken: no round trip is attempted.
+    if (parsed.data.command === "locate_now") {
+      const reason = locateNowRefusal(device?.locationGrant);
+      if (reason) {
+        const failed = await enqueueFailedDeviceCommand(id, "locate_now", reason, { requestedBy: user.sub });
+        return { published: false, status: "failed", reason, ...failed };
+      }
     }
     // Phase 2b: the command is a durable row; the response carries its id so the parent app can
     // poll /commands/history for delivered / acked / failed instead of guessing.
@@ -454,6 +468,9 @@ export async function deviceRoutes(app: FastifyInstance) {
         lastSeen: new Date(),
         status: "online",
         ...(parsed.data.batteryPct !== undefined ? { batteryPct: parsed.data.batteryPct } : {}),
+        // Issue #221 (D1): the latest grant report wins; omitting the field leaves the stored value
+        // untouched (an old agent does not erase what a newer one reported).
+        ...(parsed.data.locationGrant !== undefined ? { locationGrant: parsed.data.locationGrant } : {}),
       },
     });
     return reply.code(202).send({ accepted: true });

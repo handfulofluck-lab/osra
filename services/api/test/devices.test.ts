@@ -415,6 +415,49 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("issue #221: stores the location grant a device reports, and leaves it alone when omitted", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const reported = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { batteryPct: 44, locationGrant: "while_in_use" },
+    });
+    expect(reported.statusCode).toBe(202);
+    expect(prismaMock.device.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: "dev-1" }, data: expect.objectContaining({ locationGrant: "while_in_use" }) }),
+    );
+
+    // An older agent (or any upload that omits the field) must not erase the stored grant.
+    const omitted = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { batteryPct: 43 },
+    });
+    expect(omitted.statusCode).toBe(202);
+    const data = prismaMock.device.update.mock.calls.at(-1)![0].data;
+    expect(data).not.toHaveProperty("locationGrant");
+    await app.close();
+  });
+
+  it("rejects an unknown location grant on telemetry (400)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { locationGrant: "always" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("rejects telemetry for another family's device (403)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, child: { familyId: "fam-2" } });

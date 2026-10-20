@@ -124,6 +124,11 @@ model Device {
   /// contract version it used. Null means the device has never reported (the parent picker says so).
   appsReportedAt DateTime?    @db.Timestamptz(3)
   appsVersion    Int?
+  /// Issue #221: the location grant an Android agent last reported in its telemetry upload —
+  /// `background` | `while_in_use` | `none` (src/lib/locationGrant.ts). Null until the agent has
+  /// reported once, which must be treated as "unknown", never as "missing": an older agent that
+  /// does not send the field would otherwise have every `locate_now` failed at creation.
+  locationGrant String?
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]
