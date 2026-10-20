@@ -22,6 +22,9 @@
  * Exits 1 on a scope violation, 0 otherwise. `--quiet` prints only failures.
  */
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import pathMod from "node:path";
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -32,6 +35,7 @@ const title = flag("--title", "");
 const base = flag("--base", "origin/main");
 const head = flag("--head", "HEAD");
 const quiet = argv.includes("--quiet");
+const repo = flag("--repo", null); // run git in another checkout (used by the synthetic self-test)
 
 const DOC_PREFIXES = ["docs/", "CHANGELOG.md", "README.md", "AGENTS.md", "LICENSE"];
 const CI_PREFIXES = [".github/", "scripts/"];
@@ -39,7 +43,7 @@ const CI_PREFIXES = [".github/", "scripts/"];
 function changedFiles() {
   let out;
   try {
-    out = execFileSync("git", ["diff", "--name-status", `${base}...${head}`], { encoding: "utf8" });
+    out = execFileSync("git", ["diff", "--name-status", `${base}...${head}`], { encoding: "utf8", cwd: repo ?? undefined });
   } catch (e) {
     // A missing ref is an environment problem, not a scope violation: say so instead of a stack trace.
     console.error(`cannot compute the diff between ${base} and ${head}: ${String(e.stderr ?? e.message).trim()}`);
@@ -83,11 +87,36 @@ if (argv.includes("--selftest")) {
       return e.status ?? 1;
     }
   };
+  // A durable fixture: the earlier version of this self-test pointed at two commits on a
+  // force-pushed branch, which CI's fetch never sees (exit 2 "cannot compute the diff"). This repo
+  // is built in a temp dir, so the case exists wherever the check runs.
+  const FIXTURE = (() => {
+    const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "scope-fixture-"));
+    const g = (...args) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+    g("init", "-q", "-b", "main");
+    g("config", "user.email", "fixture@local");
+    g("config", "user.name", "fixture");
+    fs.writeFileSync(pathMod.join(dir, "a.txt"), "v1");
+    g("add", "."); g("commit", "-qm", "A");
+    fs.writeFileSync(pathMod.join(dir, "a.txt"), "v2");
+    g("add", "."); g("commit", "-qm", "B");
+    g("checkout", "-qb", "feat");
+    fs.writeFileSync(pathMod.join(dir, "a.txt"), "v3");   // the merge itself changes a.txt
+    fs.writeFileSync(pathMod.join(dir, "b.txt"), "x");
+    g("add", "."); g("commit", "-qm", "C");
+    g("checkout", "-q", "main");
+    g("merge", "-q", "--no-ff", "feat", "-m", "merge feature");
+    g("checkout", "-qb", "pr");
+    fs.writeFileSync(pathMod.join(dir, "a.txt"), "v2"); // restores the PRE-merge value of a.txt
+    g("add", "."); g("commit", "-qm", "R");
+    return { dir };
+  })();
+
   const cases = [
     { name: "docs PR with a docs diff passes", args: ["--title", "docs(x): fixture", "--base", "dd84bc0^", "--head", "dd84bc0", "--quiet"], want: 0 },
     { name: "docs title over a code diff fails", args: ["--title", "docs(x): fixture", "--base", "0530fdf^", "--head", "0530fdf", "--quiet"], want: 1 },
-    { name: "the stale-base squash fails under a fix(…) title", args: ["--title", "fix(x): fixture", "--base", "0530fdf", "--head", "6dd418f", "--quiet"], want: 1 },
-    { name: "the honest rebuild passes under the same title", args: ["--title", "fix(x): fixture", "--base", "0530fdf", "--head", "13faa6c", "--quiet"], want: 0 },
+    { name: "a revert-by-value PR fails under a fix(…) title", args: ["--title", "fix(x): fixture", "--base", "main", "--head", "pr", "--repo", FIXTURE.dir, "--quiet"], want: 1 },
+    { name: "the same PR passes under a revert(…) title", args: ["--title", "revert(x): fixture", "--base", "main", "--head", "pr", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
     { name: "an unconventional title is refused", args: ["--title", "tidy up things", "--base", "origin/main", "--head", "HEAD", "--quiet"], want: 1 },
   ];
   let bad = 0;
@@ -130,10 +159,9 @@ if (declared === "docs" && deletions > 0) {
 // Claude asked for this after the #220 near-miss; it is the half the title check cannot see.
 const REVERSE_WINDOW = 30;
 const isRevertTitle = /^revert/i.test(title.trim());
-const pathUnderChange = new Set(files.map((f) => f.path));
 const blobAt = (rev, path) => {
   try {
-    return execFileSync("git", ["rev-parse", `${rev}:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", ["rev-parse", `${rev}:${path}`], { encoding: "utf8", cwd: repo ?? undefined, stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null; // missing path counts as a blob
   }
@@ -141,7 +169,7 @@ const blobAt = (rev, path) => {
 if (!isRevertTitle) {
   let merges = [];
   try {
-    merges = execFileSync("git", ["log", `--first-parent`, `-n`, String(REVERSE_WINDOW), "--format=%H", base], { encoding: "utf8" })
+    merges = execFileSync("git", ["log", "--first-parent", "-n", String(REVERSE_WINDOW), "--format=%H", base], { encoding: "utf8", cwd: repo ?? undefined })
       .split(String.fromCharCode(10))
       .filter(Boolean);
   } catch {
@@ -150,12 +178,11 @@ if (!isRevertTitle) {
   for (const m of merges) {
     let changed = [];
     try {
-      changed = execFileSync("git", ["diff", "--name-only", `${m}^1`, m], { encoding: "utf8" }).split(String.fromCharCode(10)).filter(Boolean);
+      changed = execFileSync("git", ["diff", "--name-only", `${m}^1`, m], { encoding: "utf8", cwd: repo ?? undefined }).split(String.fromCharCode(10)).filter(Boolean);
     } catch {
       continue;
     }
     for (const path of changed) {
-      if (pathUnderChange.has(path)) continue; // the PR intends to touch it
       const preMerge = blobAt(`${m}^1`, path);   // null = absent before the merge
       const mergedIn = blobAt(m, path);          // null = absent after it
       const baseBlob = blobAt(base, path);
