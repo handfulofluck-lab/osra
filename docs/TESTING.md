@@ -691,6 +691,8 @@ Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 
 | A PR's diff is huge in the opposite direction from its title — e.g. a `docs(...)` PR that deletes 500 lines of Kotlin | A squash or rebase built on a **stale base**: the tree is the old base plus your edit, so the diff *is* the revert. CI stays green because the tests run on that tree and prove the old code works (hit on 2026-10-19: a #220 squash would have reverted #218 entirely) | `node scripts/check-pr-diff-scope.mjs --title "<title>" --base origin/main --head HEAD` before every push to a docs or CI branch; `workflow-lint` now runs it for every PR. Rebuild with `git checkout -B <branch> origin/main` and re-apply the hunks |
 
+| A `fix(...)`/`feat(...)` PR quietly undoes an earlier merge, with a small and plausible diff | The title check cannot see it: the diff is the right *shape* for a code PR, but its **values** are the pre-merge ones. This is how a stale-base revert would arrive if it wore a code title instead of a docs one | `node scripts/check-pr-diff-scope.mjs --title "<title>" --base origin/main --head HEAD` — it compares each path's blob against the last 30 first-parent merges and fails when the PR restores a pre-merge blob while `main` carries the merged one. Only a `revert(...)` title may do that |
+
 ## 7. Definition of done (tests)
 
 A change is done when **all** of these are true (`AGENTS.md` §3): the API unit suite is green, the probe
