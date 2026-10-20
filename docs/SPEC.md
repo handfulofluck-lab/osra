@@ -186,6 +186,18 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     GET /geofences/:childId; POST /geofences; DELETE /geofences/:id.
     Geofence evaluation: on each ping, haversine distance to all child geofences; on
     enter/exit transition raise Alert category "geofence".
+    Geofence transition across a gap (issue #243): the previous ping for the same device is the
+    "before". **No previous ping** — first ping ever, or the 30-day location window deleted them
+    all — makes this ping a **baseline**: no enter/exit alert and no school-routine nudge, because
+    a child cannot arrive somewhere we never knew they were. A previous ping **at any age** is
+    compared as usual, so a phone off at home overnight and on at school in the morning still
+    gives both true alerts. When the gap since that previous ping is **more than 6 h**, the alert
+    body names it (`Entered School (geofence "School", 200 m radius). No location for 14 h before
+    this.`) and `metadata.gapMinutes` carries the number — **no coordinates**, per the alert rule
+    above. The gap is measured from the **earliest ping in the upload**, not the one being
+    evaluated: a batch of offline-buffered pings covers the gap it spans and must not claim a quiet
+    period that did not happen. The rule is one pure function, `geofenceTransition()` in
+    `services/api/src/lib/geo.ts`.
 - src/middleware/requireFamily.ts — GENERATE THIS: preHandler factory that loads the
   family-scoped resource by request param (child/device/geofence/alert), returns 403 when
   resource.familyId !== req.user.familyId, attaches resource to the request.

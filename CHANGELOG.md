@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — a geofence alert is not invented after a gap, and a stale one says how old it is (#243)
+- A geofence enter/exit is no longer raised against a `before` that does not exist: when the device has **no previous ping** (first ping after pairing, or the 30-day location window deleted the history) the ping is a **baseline** — no alert and no school-routine nudge. A real previous ping at any age is still compared normally, so the ordinary overnight-off case keeps its "Left Home" and "Entered School". When the gap is **over 6 h** the alert body says so ("No location for 14 h before this.") and the metadata carries `gapMinutes`, measured from the **earliest ping in the upload** so an offline buffer claims no quiet period it covers — and **no coordinates**, per #242. Rule in `services/api/src/lib/geo.ts` (`geofenceTransition`), contract in `docs/SPEC.md`, tests in `services/api/test/geofence.test.ts`.
+
 ### API / parent app — location history is kept 30 days, and the consent copy says so (#238)
 - Children's **location history is kept 30 days**; raw app, web and chat rows stay at 90 and usage
   rollups at 365 (ADR-0028 decision 5, Karim 2026-10-20). `services/api/src/lib/usageModel.ts` adds
