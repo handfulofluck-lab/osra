@@ -1,9 +1,13 @@
 package com.familyshield.agent.telemetry
 
+import android.Manifest
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.BatteryManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
@@ -84,7 +88,7 @@ class UsageReporter @Inject constructor(
         // Always POST: even idle, batteryPct is the device heartbeat that keeps
         // lastSeen/battery fresh for the parent app.
         try {
-            api.postTelemetry(deviceId, TelemetryDto(perAppMinutes = perApp, totalMinutes = total, unlockCount = unlocks, batteryPct = currentBatteryPct()))
+            api.postTelemetry(deviceId, TelemetryDto(perAppMinutes = perApp, totalMinutes = total, unlockCount = unlocks, batteryPct = currentBatteryPct(), locationGrant = currentLocationGrant()))
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
             stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
@@ -126,6 +130,21 @@ class UsageReporter @Inject constructor(
             null
         }
     }
+
+    /**
+     * Issue #221 (D1): the location grant the server stores so it can answer a `locate_now` at once.
+     * Read fresh on every tick — the parent can change the grant while the process runs, and a cached
+     * value would make the server refuse (or accept) the wrong state.
+     */
+    private fun currentLocationGrant(): String = LocationGrantState.classify(
+        hasFineLocation = granted(Manifest.permission.ACCESS_FINE_LOCATION),
+        hasCoarseLocation = granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+        hasBackgroundLocation = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+        apiLevel = Build.VERSION.SDK_INT,
+    )
+
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     /** Adds UsageStatsManager totals for packages missing from the event stream (best effort). */
     private fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
