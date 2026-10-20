@@ -32,6 +32,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **Not verified here:** no live stack, probe or e2e run in this session, and no migration — the
   `LocationPing.timestamp` column already exists. Existing rows older than 30 days are removed by the
   next retention run rather than by a backfill.
+- **Geofence alerts no longer carry the child's coordinates** (review of #242). A crossing used to store `lat`/`lng` in the alert's metadata, and alert rows are not touched by the retention job — so exact positions would have outlived the 30-day window the consent copy now promises. The alert names the fence; migration `0022` scrubs the coordinates from rows written before this change.
 
 ### Architecture — 30-day location history confirmed (ADR-0028)
 - Karim chose 30 days over 90 for children's location history on 2026-10-20; ADR-0028 records the decision. Other raw data stays at 90 days and rollups at 365. The retention job change (a separate `LOCATION_RETENTION_DAYS`, default 30) is filed for Kimi in #238; no code changed here.

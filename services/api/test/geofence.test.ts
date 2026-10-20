@@ -112,6 +112,12 @@ describe("geofence transitions on POST /v1/location/ping", () => {
         data: expect.objectContaining({ category: "geofence", title: "Entered Home" }),
       }),
     );
+    // Issue #242 review: the alert must name the fence only. A geofence alert is not deleted by the
+    // retention job, so coordinates here would outlive the 30-day location window.
+    const enterData = prismaMock.alert.create.mock.calls[0][0].data as { metadata: Record<string, unknown> };
+    expect(enterData.metadata).toEqual({ geofenceId: HOME_FENCE.id, label: HOME_FENCE.label });
+    expect(enterData.metadata).not.toHaveProperty("lat");
+    expect(enterData.metadata).not.toHaveProperty("lng");
     await app.close();
   });
 
@@ -136,6 +142,10 @@ describe("geofence transitions on POST /v1/location/ping", () => {
         data: expect.objectContaining({ category: "geofence", title: "Left Home" }),
       }),
     );
+    const exitData = prismaMock.alert.create.mock.calls[0][0].data as { metadata: Record<string, unknown> };
+    expect(exitData.metadata).toEqual({ geofenceId: HOME_FENCE.id, label: HOME_FENCE.label });
+    expect(exitData.metadata).not.toHaveProperty("lat");
+    expect(exitData.metadata).not.toHaveProperty("lng");
     await app.close();
   });
 

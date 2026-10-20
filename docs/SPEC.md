@@ -87,6 +87,9 @@ nothing: existing rows stay until the retention job (`RETENTION_DAYS`, default 9
 decision 5; `ROLLUP_RETENTION_DAYS`, default 365 for usage summaries; alerts and device commands are
 kept until erasure) or until `DELETE /v1/family/children/:id` erases the child. A client must not claim
 that withdrawal deletes or anonymises data.
+Alerts carry **no coordinates**: a geofence alert names the fence (`metadata.geofenceId` and `label`),
+because alert rows sit outside the retention job and exact positions there would outlive the 30-day
+location window. Migration `0022` scrubs the coordinates written before #242.
 
 ## AI alerts pipeline (§12.6)
 
