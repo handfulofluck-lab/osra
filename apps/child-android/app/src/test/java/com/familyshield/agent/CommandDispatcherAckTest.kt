@@ -181,6 +181,10 @@ class CommandDispatcherAckTest {
             dispatcher.contains("AccessibilityMonitorService.isRunning"),
         )
         assertTrue(
+            "the web filter must be prepared in the OS, not just the stored consent flag",
+            dispatcher.contains("FilterVpnService.isPrepared(context)"),
+        )
+        assertTrue(
             "unknown types and malformed minutes must be refused, not left unaudited",
             dispatcher.contains("unknownTypeOutcome()") && dispatcher.contains("invalidMinutesOutcome()"),
         )

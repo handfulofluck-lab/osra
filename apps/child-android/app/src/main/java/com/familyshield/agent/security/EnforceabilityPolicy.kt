@@ -69,11 +69,11 @@ object EnforceabilityPolicy {
         }
 
     /**
-     * D2: `ok` means the sinkhole is running, not that the intent to pause was recorded.
-     * `VpnState.isEnabled` is the persisted consent (`FilterVpnService.prepare` still has to return
-     * null for the start to succeed; a start that fails is a `command_failed` from the throwing
-     * handler, not this refusal). The caller persists the paused state either way, so the pause
-     * applies when the filter is set up.
+     * D2: `ok` means the filter can be running, not that the intent to pause was recorded.
+     * [webFilterSetUp] is the caller's determination that both the stored consent and the OS
+     * preparation are in place (`VpnState.isEnabled` alone stays true after the consent is revoked
+     * in Settings, while `FilterVpnService.start` silently returns). The caller persists the paused
+     * state either way, so the pause applies when the filter is set up.
      */
     fun pauseInternetOutcome(webFilterSetUp: Boolean): CommandOutcome =
         if (webFilterSetUp) {

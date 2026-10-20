@@ -231,11 +231,17 @@ class CommandDispatcher @Inject constructor(
      * so `ok` would be false (measured: `ping 8.8.8.8` still answered after an acked pause). The
      * refusal is [EnforceabilityPolicy.REASON_WEB_FILTER_NOT_SET_UP]; the paused state is persisted
      * anyway so the pause applies once the filter is set up.
+     *
+     * "Set up" is the stored consent **and** the OS still allowing the tunnel
+     * ([com.familyshield.agent.vpn.FilterVpnService.isPrepared]): `VpnState.isEnabled` is only ever
+     * set true, so a consent revoked in Settings would otherwise leave the flag saying yes while
+     * `FilterVpnService.start` silently returns and no packet is dropped.
      */
     private fun pauseInternet(): CommandOutcome {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
-        val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context)
+        val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context) &&
+            com.familyshield.agent.vpn.FilterVpnService.isPrepared(context)
         if (webFilterSetUp) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
         }

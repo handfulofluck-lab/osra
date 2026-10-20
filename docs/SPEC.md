@@ -488,8 +488,9 @@ and are deleted explicitly in the GDPR erasure cascade.
     accessibility service not bound, and for `lock` `lockNow()` false). A successful lock/pause
     carries `detail.via = keyguard|overlay|accessibility` so the parent can tell which path applied.
     `LockState` is written even on the refusal, so a later grant applies the pending lock.
-  - `web_filter_not_set_up` — `pause_internet` with no VPN consent; the sinkhole did not start, so
-    packets still flow. The paused state is persisted and applies once the filter is set up.
+  - `web_filter_not_set_up` — `pause_internet` with no VPN consent, or with the stored consent but
+    the OS no longer allowing the tunnel; the sinkhole did not start, so packets still flow. The
+    paused state is persisted and applies once the filter is set up.
   - `unsupported_command` — a command type this agent version does not implement.
   - `invalid_payload` — `bonus_time`/`wind_down` without parseable finite `minutes` in 1..240.
 - Signing: sign the release build with the debug key so the APK is installable:
