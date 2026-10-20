@@ -268,9 +268,13 @@ Future<void> showGeofenceCreateDialog(
   );
 }
 
-/// Create-geofence dialog (feature #23): label, radius slider and an optional
-/// 'Apply school routine when here' switch → `POST /v1/location/geofences`
-/// with `routineId: 'school'` when the switch is on.
+/// Create-geofence dialog (feature #23): label and radius.
+///
+/// Issue #245: a "Apply school routine when here" switch used to sit here and stored `routineId`.
+/// It had no effect — nothing carries fence state to the agent, whose school rule is time-only — so
+/// the control is gone rather than left promising a behaviour that does not exist. The API still
+/// accepts `routineId` so existing fences keep working; `docs/SPEC.md` says it has no effect until
+/// location-conditioned routines exist.
 class GeofenceCreateDialog extends ConsumerStatefulWidget {
   final List<Child> children;
   final LatLng initialCenter;
@@ -284,7 +288,6 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
   final _label = TextEditingController();
   late String _childId = widget.children.first.id;
   double _radiusM = 250;
-  bool _applySchoolRoutine = false;
   bool _saving = false;
   String? _error;
 
@@ -311,7 +314,6 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
         'lat': widget.initialCenter.latitude,
         'lng': widget.initialCenter.longitude,
         'radiusM': _radiusM.round(),
-        if (_applySchoolRoutine) 'routineId': 'school',
       });
       ref.invalidate(geofencesProvider(_childId));
       if (!mounted) return;
@@ -361,12 +363,6 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
               divisions: 18,
               label: '${_radiusM.round()} m',
               onChanged: (v) => setState(() => _radiusM = v),
-            ),
-            SwitchListTile(
-              title: const Text('Apply school routine when here'),
-              subtitle: const Text('Agents enforce the school routine inside this fence'),
-              value: _applySchoolRoutine,
-              onChanged: (v) => setState(() => _applySchoolRoutine = v),
             ),
             if (_error != null) ...[
               const SizedBox(height: AppSpace.sm),

@@ -11,6 +11,15 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — a switch that promised a behaviour nobody implemented is gone (#245)
+- The create-geofence dialog offered **"Apply school routine when here"** and stored `routineId`.
+  Nothing carried fence state to the agent — its school rule is time-only — so arriving at the fence
+  changed nothing, and the parent was promised a behaviour that did not exist. The switch is removed,
+  the fence is created without `routineId`, and `docs/SPEC.md` states that the field has no effect
+  until location-conditioned routines exist. Existing fences keep their `routineId`; the API is
+  unchanged.
+
+
 ### API — a geofence arrival after a dropped connection is reported, and a stale gap is named (#243)
 - **Missed arrival (found in review of the first cut):** the Android agent uploads fresh in-memory
   pings first and the older Room-buffered ones after (`LocationService.kt:262`), and the API judged

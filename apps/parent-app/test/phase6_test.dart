@@ -234,16 +234,20 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('switch on → POSTs geofence with routineId "school"', (tester) async {
+    testWidgets('the dialog offers no routine switch, and the POST carries no routineId',
+        (tester) async {
+      // Issue #245: the switch promised a behaviour that does not exist — nothing carries fence
+      // state to the agent, whose school rule is time-only. It was removed rather than left dead.
       final api = FakeApiClient({
         ...standardRoutes(),
         'POST /v1/location/geofences': (_) => {'ok': true},
       });
       await openDialog(tester, api);
 
+      expect(find.byType(SwitchListTile), findsNothing);
+      expect(find.textContaining('school routine'), findsNothing);
+
       await tester.enterText(fieldByLabel('Label (e.g. School)'), 'School');
-      await tester.tap(find.widgetWithText(SwitchListTile, 'Apply school routine when here'));
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Create'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
@@ -256,27 +260,8 @@ void main() {
       expect(body['lat'], 30.0444);
       expect(body['lng'], 31.2357);
       expect(body['radiusM'], 250);
-      expect(body['routineId'], 'school');
-      expect(find.text('Geofence "School" added'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('switch off → POSTs geofence without routineId', (tester) async {
-      final api = FakeApiClient({
-        ...standardRoutes(),
-        'POST /v1/location/geofences': (_) => {'ok': true},
-      });
-      await openDialog(tester, api);
-
-      await tester.enterText(fieldByLabel('Label (e.g. School)'), 'Home');
-      await tester.tap(find.text('Create'));
-      await flushFakeHttp(tester);
-      await tester.pumpAndSettle();
-
-      final body = api.calls('POST', '/v1/location/geofences').single.body;
-      expect(body['label'], 'Home');
       expect(body.containsKey('routineId'), isFalse);
+      expect(find.text('Geofence "School" added'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
     });
