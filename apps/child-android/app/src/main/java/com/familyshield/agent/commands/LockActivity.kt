@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.familyshield.agent.enforcement.KeyguardPolicy
+import com.familyshield.agent.enforcement.LockScreenPolicy
+import com.familyshield.agent.enforcement.LockState
 
 /**
  * Full-screen overlay used by CommandDispatcher. MODE_LOCKED shows "device locked by your
@@ -31,10 +33,11 @@ import com.familyshield.agent.enforcement.KeyguardPolicy
  * resume_internet to tear the paused-internet overlay down). Single-task: repeat commands
  * re-deliver via onNewIntent and re-apply, so resume/pause always lands on the visible overlay.
  * Cannot be dismissed with Back or Home (AND-05): back is swallowed and navigation away re-raises.
+ *
+ * Issue #233 review (F2): the intent is only a wake-up — what is drawn comes from [LockState],
+ * through [LockScreenPolicy], so a replayed MODE_UNLOCK cannot finish a lock a later `lock` raised.
  */
 class LockActivity : ComponentActivity() {
-
-    @Volatile private var currentMode: String = MODE_LOCKED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +57,30 @@ class LockActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         applyMode(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Issue #233 review (F1): our own visible window is what lets Android start this activity
+        // from the background (BAL_ALLOW_VISIBLE_WINDOW), so CommandDispatcher checks this flag
+        // before launching an unlock. Cleared in onStop: an activity that is no longer visible is
+        // nothing an unlock can take down, and a blind launch would only recreate the blocked
+        // activity record F2 describes.
+        isShowing = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isShowing = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Issue #233 review (F2): an instance restored from Recents may still be drawing a mode the
+        // parent already cleared (unlock, or resume_internet's dismiss). LockState is the truth, so a
+        // stale instance finishes instead of re-asserting a restriction that is no longer stored.
+        val decision = LockScreenPolicy.resolve(LockState.mode(this), intent.getStringExtra(EXTRA_MODE))
+        if (decision !is LockScreenPolicy.Decision.Show) finish()
     }
 
     override fun onUserLeaveHint() {
@@ -76,37 +103,35 @@ class LockActivity : ComponentActivity() {
     }
 
     private fun applyMode(intent: Intent) {
-        val mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_LOCKED
-        // Issue #87: never draw over the keyguard. The bouncer must stay reachable so the owner can
-        // enter their PIN; LockState keeps the mode and AccessibilityMonitorService re-raises the
-        // overlay over the first non-exempt window after the keyguard is gone.
-        val keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
-        if (KeyguardPolicy.shouldDeferToKeyguard(mode, keyguardLocked)) {
-            currentMode = mode
-            finish()
-            return
-        }
-        when (mode) {
-            MODE_UNLOCK -> {
-                currentMode = MODE_UNLOCK
-                val km = getSystemService(KeyguardManager::class.java)
-                km.requestDismissKeyguard(this, null)
-                finish()
-            }
-            MODE_DISMISS -> {
-                currentMode = MODE_DISMISS
-                finish()
-            }
-            else -> {
-                currentMode = mode
+        // Issue #233 review (F2): the intent is a wake-up, LockState is the truth. Drawing from the
+        // intent let a replayed MODE_UNLOCK — queued on an activity record a refused `lock` created
+        // and never started — finish a lock screen a later `lock` had just raised (measured on the
+        // Flip4, 2026-10-20: 5 ms after on_create, with the `lock` ack saying via=overlay).
+        when (val decision = LockScreenPolicy.resolve(LockState.mode(this), intent.getStringExtra(EXTRA_MODE))) {
+            is LockScreenPolicy.Decision.Show -> {
+                // Issue #87: never draw over the keyguard. The bouncer must stay reachable so the
+                // owner can enter their PIN; LockState keeps the mode and AccessibilityMonitorService
+                // re-raises the overlay over the first non-exempt window after the keyguard is gone.
+                val keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+                if (KeyguardPolicy.shouldDeferToKeyguard(decision.mode, keyguardLocked)) {
+                    finish()
+                    return
+                }
                 setContent {
                     MaterialTheme {
                         Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
-                            OverlayScreen(mode)
+                            OverlayScreen(decision.mode)
                         }
                     }
                 }
             }
+            // Stored state says nothing of ours is up. The intent only decides whether the keyguard
+            // our own lockNow() may have raised is dismissed on the way out.
+            LockScreenPolicy.Decision.DismissKeyguard -> {
+                getSystemService(KeyguardManager::class.java)?.requestDismissKeyguard(this, null)
+                finish()
+            }
+            LockScreenPolicy.Decision.Finish -> finish()
         }
     }
 
@@ -128,6 +153,19 @@ class LockActivity : ComponentActivity() {
 
         /** Finishes the visible overlay without touching the keyguard (resume_internet). */
         const val MODE_DISMISS: String = "dismiss"
+
+        /**
+         * Whether an instance of this activity is started — visible enough that Android allows a
+         * background launch to it (`BAL_ALLOW_VISIBLE_WINDOW`). Set in `onStart`, cleared in
+         * `onStop`; read by `CommandDispatcher.unlock()` to decide whether an unlock launches at all.
+         *
+         * Process-scoped on purpose: it survives a configuration change (the instance stays started)
+         * and resets to false on process death, which is the right default — after a restart nothing
+         * of ours is on screen until a command or the accessibility service raises it again.
+         */
+        @Volatile
+        var isShowing: Boolean = false
+            internal set
     }
 }
 
