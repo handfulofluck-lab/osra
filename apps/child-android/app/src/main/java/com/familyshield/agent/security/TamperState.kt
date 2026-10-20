@@ -34,8 +34,9 @@ object TamperState {
         prefs(context).edit().putLong(KEY_SANCTIONED_UNTIL, untilMs).apply()
     }
 
-    fun isRemovalSanctioned(context: Context, nowMs: Long): Boolean =
-        nowMs < prefs(context).getLong(KEY_SANCTIONED_UNTIL, 0L)
+    /** The end of the parent-PIN removal window, or 0 when no removal was ever sanctioned. */
+    fun sanctionedRemovalUntil(context: Context): Long =
+        prefs(context).getLong(KEY_SANCTIONED_UNTIL, 0L)
 
     /**
      * True while this app's own parent-PIN removal has not been followed by a successful activation

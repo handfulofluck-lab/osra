@@ -106,8 +106,9 @@ class DeviceAdminManager @Inject constructor(
      * On Samsung, activation goes through Knox and Knox keeps its own admin registry; AOSP
      * `removeActiveAdmin` alone leaves a row that makes the next sheet activation fail with
      * `Admin is already added` (issue #186). [AdminRemovalPolicy] uses Knox when it is present and
-     * keeps AOSP for every other device, so behaviour is unchanged off Samsung. A removal that
-     * actually cleared the admin records itself as parent-initiated (issue #188).
+     * keeps AOSP for every other device, so behaviour is unchanged off Samsung. This method only
+     * opens the sanctioned window; the removal itself is recorded as parent-initiated by
+     * [GuardianAdminReceiver.onDisabled], where it is confirmed (issue #188).
      */
     fun removeAdmin(): AdminRemovalRoute {
         TamperState.markSanctionedRemoval(context, System.currentTimeMillis() + 60_000L)
@@ -119,7 +120,6 @@ class DeviceAdminManager @Inject constructor(
                     .onFailure { Log.w(TAG, "removeActiveAdmin failed", it) }
             },
         )
-        if (!isAdminActive()) TamperState.setAdminRemovedByParent(context, true)
         Log.i(TAG, "protection removed via $route")
         return route
     }

@@ -31,6 +31,15 @@ environment where it was written — see `docs/QA/` for the verification state.
   `AdminEnrolmentPolicyTest > a returned sheet with no active admin on Samsung is an ordinary
   not-granted result`; the fixed tree is green. Not verified on hardware here — the phone was not
   touched, so the sheet's 1-second refusal window is measured by code/JVM only until a tester runs it.
+- **Follow-up from #218's review (2026-10-20).** The parent-removal record is now written where the
+  removal is confirmed: device-admin removal is asynchronous, so the `isAdminActive()` check at the end
+  of `DeviceAdminManager.removeAdmin()` ran before it landed and the record stayed `false` (measured
+  twice on the Flip4). `GuardianAdminReceiver.onDisabled` now records a parent removal inside the
+  sanctioned window, so the status screen explains the deliberate removal instead of showing the
+  stuck-record/factory-reset warning; an out-of-band removal still sets the pending flag and enqueues
+  the tamper alert. JVM-tested at the policy level (`AdminDisabledPolicyTest`); the flag write itself
+  still needs a hardware run.
+
 ### CI — the scope guard also catches a revert by value, and refuses an undeclared title
 - The revert detector walks the last 30 first-parent merges on the base and fails when a PR restores a path's **pre-merge** blob while `main` still carries the merged one (additions, deletions and renames alike). A `revert(…)` title is the only way past it.
 - A title that declares no kind is now **refused** rather than skipped, so the check cannot be avoided by wording.
