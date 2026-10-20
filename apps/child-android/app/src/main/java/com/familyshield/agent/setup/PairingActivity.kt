@@ -30,6 +30,7 @@ import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.ProtectionTier
 import com.familyshield.agent.security.TamperGuardActivity
 import com.familyshield.agent.services.LocationService
+import com.familyshield.agent.services.LocationStartPolicy
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -673,40 +674,33 @@ class PairingActivity : ComponentActivity() {
                     )
                 }
 
-                if (!hasLocation) {
-                    addView(
-                        label("\n⚠️ Location permission is required for live GPS tracking and geofence alerts.").apply {
-                            setTextColor(0xFFB00020.toInt())
-                        },
-                    )
+                // Issue #221 D3: a while-in-use grant can start the foreground service but cannot be
+                // started from the background, so the tick belongs only to the "allow all the time"
+                // state. LocationStartPolicy already owns that judgement; the line comes from it.
+                val hasBackground = ContextCompat.checkSelfPermission(
+                    this@PairingActivity,
+                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                ) == PackageManager.PERMISSION_GRANTED
+                val locationStatus = LocationStatusPolicy.classify(
+                    LocationStartPolicy.decide(hasFine, hasCoarse, hasBackground, Build.VERSION.SDK_INT),
+                    isRunning,
+                )
+                addView(
+                    label(LocationStatusPolicy.line(locationStatus)).apply {
+                        setTextColor(
+                            when (locationStatus) {
+                                LocationStatus.ACTIVE -> 0xFF2E7D32.toInt()
+                                LocationStatus.MISSING_PERMISSION -> 0xFFB00020.toInt()
+                                else -> 0xFFE65100.toInt()
+                            },
+                        )
+                    },
+                )
+                LocationStatusPolicy.actionLabel(locationStatus)?.let { action ->
                     addView(
                         Button(this@PairingActivity).apply {
-                            text = "Grant location permission"
-                            setOnClickListener { requestLocationPermission() }
-                        },
-                    )
-                } else if (!isRunning) {
-                    addView(
-                        label("\n⚠️ Location service is not running.").apply {
-                            setTextColor(0xFFE65100.toInt())
-                        },
-                    )
-                    addView(
-                        Button(this@PairingActivity).apply {
-                            text = "Start location service"
-                            setOnClickListener {
-                                startLocationServiceIfPermitted()
-                                lifecycleScope.launch {
-                                    kotlinx.coroutines.delay(500)
-                                    showStatus()
-                                }
-                            }
-                        },
-                    )
-                } else {
-                    addView(
-                        label("\n✓ Location tracking: Active").apply {
-                            setTextColor(0xFF2E7D32.toInt())
+                            text = action
+                            setOnClickListener { onLocationStatusAction(locationStatus) }
                         },
                     )
                 }
@@ -844,6 +838,31 @@ class PairingActivity : ComponentActivity() {
             } catch (e: Exception) {
                 android.util.Log.e("PairingActivity", "Failed to start LocationService", e)
             }
+        }
+    }
+
+    /**
+     * Issue #221 D3: the status screen's fix action. "Allow all the time" is a separate OS prompt on
+     * Android 10+ and must be launched on its own, exactly as [locationPermissionLauncher] does after
+     * the while-in-use grant.
+     */
+    private fun onLocationStatusAction(status: LocationStatus) {
+        when (status) {
+            LocationStatus.MISSING_PERMISSION -> requestLocationPermission()
+            LocationStatus.MISSING_BACKGROUND ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    backgroundLocationLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                } else {
+                    requestLocationPermission()
+                }
+            LocationStatus.SERVICE_STOPPED -> {
+                startLocationServiceIfPermitted()
+                lifecycleScope.launch {
+                    kotlinx.coroutines.delay(500)
+                    showStatus()
+                }
+            }
+            LocationStatus.ACTIVE -> Unit
         }
     }
 
