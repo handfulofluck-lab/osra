@@ -15,10 +15,10 @@
 - The API is already a stateless container: PostgreSQL is the source of truth (ADR-0012, ADR-0013),
   Redis is used for fan-out, tickets, revocation flags and caches.
 - Launch order (Karim, 2026-10-20): **Middle East first, then Asia, Europe and the Americas.**
-- Measured from the code on `main` (`f370d84`), one Android child phone with the protection service
+- Measured from the code on `main` (`3cc2212`), one Android child phone with the protection service
   running sends about **3 requests a minute (~4,400 a day)**: a command poll every 60 s
-  (`LocationService.kt:434`), a live-activity heartbeat every 60 s, a location flush every 60 s
-  (fixes every 5 min still / 30 s moving, `LocationService.kt:430-433`), plus telemetry every 15 min
+  (`LocationService.kt:478`), a live-activity heartbeat every 60 s, a location flush every 60 s
+  (fixes every 5 min still / 30 s moving, `LocationService.kt:474-477`), plus telemetry every 15 min
   (`WorkScheduler.kt`). The Windows agent polls rules every 60 s (`RuleSyncService.cs:9`). Child
   devices, not parents, set the backend's size.
 - iOS does not let an app run a 60-second loop in the background, so the iPhone agent cannot use the
@@ -127,7 +127,8 @@ rules in ADR-0002/0003/0006/0008/0012/0013 are untouched; release-build rows get
 **Bad, and accepted.** A cloud bill from the first day (~$150 a month for staging, ~$430 at 1k
 families); push-first adds a dependency on FCM / APNs delivery, so the 15-minute safety poll stays; the
 capability list and version gate are new contract surface to keep in `packages/shared-types`; shorter
-location history is a visible product change that the privacy policy must state.
+location history is a visible product change that the privacy policy must state; the 30-day
+window is a product decision for Karim to confirm, recorded here only because it sizes storage.
 
 ## Falsifiable claims a verifier can test
 
