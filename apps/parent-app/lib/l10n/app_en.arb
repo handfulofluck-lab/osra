@@ -924,7 +924,7 @@
   "consentRevokeKeepsSafe": "Unlocking and resuming your child's device still work while consent is withdrawn.",
   "consentRevokeDataTitle": "What happens to data already collected",
   "consentRevokeDataRetained": "Nothing is deleted or anonymised now. Reports, alerts and location history already collected stay in your family account.",
-  "consentRevokeDataRetention": "Raw location, app, web and chat data is deleted by the retention job after 90 days by default. Usage summaries are kept for 365 days. Alerts are kept until the child's data is erased.",
+  "consentRevokeDataRetention": "Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child's data is erased.",
   "consentRevokeDataErase": "Deleting your child's profile is a separate action that removes all their data immediately. It is not part of withdrawing consent.",
   "consentRevokeTypePrompt": "Type {childName} to confirm",
   "@consentRevokeTypePrompt": {

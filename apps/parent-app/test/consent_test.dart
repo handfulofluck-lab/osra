@@ -334,8 +334,13 @@ void main() {
       expect(find.textContaining('Safety alerts stop'), findsOneWidget);
       expect(find.textContaining('Nothing is deleted or anonymised now'),
           findsOneWidget);
+      // The retention copy is a promise: location 30 days (#238, ADR-0028 decision 5), the rest 90.
       expect(
-          find.textContaining('retention job after 90 days'), findsOneWidget);
+          find.textContaining(
+              'location data is deleted by the retention job after 30 days'),
+          findsOneWidget);
+      expect(find.textContaining('app, web and chat data after 90 days'),
+          findsOneWidget);
 
       FilledButton confirm() => tester.widget<FilledButton>(
           find.byKey(const ValueKey('consentRevokeConfirm')));
