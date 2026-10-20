@@ -576,7 +576,12 @@ stored package the device no longer has. The documented tolerance is `-Tolerance
 60 s of clock skew): an app whose `firstInstallTime` is at or after `reportedAt` minus that margin
 is reported as TOLERATED, because it was installed after the last sync. The reverse direction has
 no tolerance: a package uninstalled after the last sync stays stored until the next upload and is
-reported STALE, so run the comparison after a sync or expect that row to say so.
+reported STALE. Because that is expected between syncs, the harness **repeats C1–C4 after every
+observed change of `appsReportedAt` and gives the verdict from the last comparison** (#221 D2).
+The start-of-run comparison is printed as `C0`, information only, so a package removed between
+syncs no longer fails a run whose next upload has already corrected the API list. With no observed
+change there is no verdict comparison: the run is WAITING (exit 4) and the start rows stay
+information, so a re-run no longer has to be timed around a sync.
 
 The cadence half needs two consecutive `appsReportedAt` values 14–16 minutes apart, using the same
 rule as the acceptance (inclusive at 840 and 960 s). **The agent uploads only when the list changes

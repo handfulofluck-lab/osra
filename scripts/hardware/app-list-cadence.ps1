@@ -22,11 +22,20 @@
 # never invents a timestamp. To exercise the upload path, change the launcher-visible list on the
 # phone (install or uninstall a harmless app) once per telemetry tick.
 #
+# VERDICT RULE (#221 D2). The device-vs-API comparison (C1-C4) is repeated after EVERY observed
+# change of `appsReportedAt`, and the verdict comes from the LAST of those comparisons. The
+# comparison at the start of the run is information only (C0): an app uninstalled between syncs is
+# still stored by the API at that moment, so a start-only verdict calls it STALE and fails a phone
+# that is about to upload the correct list (run 2 reported FAIL; a fresh comparison matched 93/93).
+# With no observed change there is no verdict comparison: the run is WAITING (exit 4), and the start
+# comparison stays in the log and JSON as information rather than a verdict.
+#
 # TOLERANCE for "on the device but not stored yet": an app whose `firstInstallTime` is at or after
 # `reportedAt - ToleranceSeconds` is treated as installed after the last sync and is reported as
 # TOLERATED, not FAIL. The default -ToleranceSeconds 60 is a clock-skew margin between the phone and
 # the API host, not a product grace period. An app installed before that boundary is a FAIL. The
-# reverse direction has no tolerance: a stored package the device no longer has is STALE and FAILs.
+# reverse direction has no tolerance: a stored package the device no longer has is STALE and FAILs
+# at the verdict comparison (the last one after a sync).
 #
 # The OSRA agent package (`com.familyshield.agent`) is excluded from the device set because the
 # collector deliberately skips itself (a parent must not be able to block the protection agent), so
@@ -137,6 +146,21 @@ function Test-FreshBaseline {
     return (($AgeSeconds -ge 0) -and ($AgeSeconds -le $MaxAgeSeconds))
 }
 
+# #221 D2: which comparison supplies the verdict. The start-of-run comparison is information only;
+# the verdict is the LAST comparison taken after an observed `appsReportedAt` change. No observed
+# change means there is no verdict comparison, and the run is WAITING (exit 4).
+function Select-VerdictComparison {
+    param([object[]]$AfterChange = @())
+    if ($AfterChange -and $AfterChange.Count -gt 0) {
+        return [pscustomobject]@{
+            Comparison = $AfterChange[$AfterChange.Count - 1]
+            Source     = "after-sync"
+            Count      = $AfterChange.Count
+        }
+    }
+    return [pscustomobject]@{ Comparison = $null; Source = "none"; Count = 0 }
+}
+
 # Reads one package's first install time in the device's own timezone. The phone can list more than
 # one user state, and the 1970 row is a placeholder, so the first non-1970 value wins.
 function Get-DeviceInstallTime {
@@ -209,6 +233,23 @@ function Invoke-AppListCadenceSelfTest {
     $cmp = Compare-AppInventory -DeviceLaunchable $device -DeviceAll $all -Stored ($device + "com.example.gone") -Tolerated @()
     Check "stored package gone from device -> FAIL" ((-not $cmp.Pass) -and $cmp.Stale.Count -eq 1) ("stale " + ($cmp.Stale -join ", "))
 
+    # #221 D2: a package uninstalled between two syncs. At the start the API still stores it, so the
+    # start comparison is STALE; the upload that follows removes it and the list matches again. The
+    # old harness gave the verdict from that start comparison and reported FAIL (run 2), while a
+    # fresh comparison matched 93/93. The fixture below would have FAILed under that rule and PASSes
+    # under the new one.
+    $storedBeforeSync = $device + "com.example.gone"
+    $startCmp = Compare-AppInventory -DeviceLaunchable $device -DeviceAll $all -Stored $storedBeforeSync -Tolerated @()
+    $afterCmp = Compare-AppInventory -DeviceLaunchable $device -DeviceAll $all -Stored $device -Tolerated @()
+    $noChange = Select-VerdictComparison -AfterChange @()
+    $oneChange = Select-VerdictComparison -AfterChange @($afterCmp)
+    Check "start-of-run STALE is information, not a verdict" ((-not $startCmp.Pass) -and ($startCmp.Stale.Count -eq 1) -and ($null -eq $noChange.Comparison) -and ($noChange.Source -eq "none")) ("start pass " + $startCmp.Pass + "; stale " + ($startCmp.Stale -join ", ") + "; verdict source " + $noChange.Source)
+    Check "package removed between syncs -> PASS on the post-sync comparison (old start-only rule: FAIL)" ($oneChange.Comparison.Pass -and ($oneChange.Source -eq "after-sync")) ("source " + $oneChange.Source + ", pass " + $oneChange.Comparison.Pass)
+    $twoChanges = Select-VerdictComparison -AfterChange @($startCmp, $afterCmp)
+    Check "verdict is the LAST post-sync comparison" ($twoChanges.Comparison.Pass -and ($twoChanges.Count -eq 2)) ("compared " + $twoChanges.Count + ", pass " + $twoChanges.Comparison.Pass)
+    $staleFinal = Select-VerdictComparison -AfterChange @($startCmp)
+    Check "a stale list after the last sync -> FAIL" ((-not $staleFinal.Comparison.Pass) -and $staleFinal.Comparison.Stale.Count -eq 1) ("stale " + ($staleFinal.Comparison.Stale -join ", "))
+
     # Cadence window, inclusive at both ends.
     Check "cadence 14:00 -> PASS" (Test-CadenceInterval 840) "840 s"
     Check "cadence 15:00 -> PASS" (Test-CadenceInterval 900) "900 s"
@@ -258,6 +299,61 @@ function Record($n, $name, $status, $evidence) {
     W ("#" + $n + " " + $name + " -> " + $status + " : " + $evidence)
 }
 
+# Reads the phone's current package lists into a snapshot. $null means the lists could not be read;
+# the caller decides whether that is a start abort (exit 3) or a skipped post-sync comparison.
+function Get-DeviceSnapshot {
+    $raw3 = Sh "pm list packages -3"
+    $thirdPartyNow = @($raw3 -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -like "package:*" } | ForEach-Object { $_.Substring(8) } | Sort-Object -Unique)
+    $rawAll = Sh "pm list packages"
+    $allNow = @($rawAll -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -like "package:*" } | ForEach-Object { $_.Substring(8) } | Sort-Object -Unique)
+    $rawLaunch = Sh "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
+    $launchableNow = @([regex]::Matches($rawLaunch, "(?m)^\s+([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)/") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    if ($thirdPartyNow.Count -eq 0 -or $launchableNow.Count -eq 0) { return $null }
+    return [pscustomobject]@{
+        ThirdParty  = $thirdPartyNow
+        AllPackages = $allNow
+        LaunchableAll = $launchableNow
+        DeviceApps  = @(Get-DeviceAppSet -ThirdParty $thirdPartyNow -Launchable $launchableNow -AgentPackage $AGENT_PKG)
+    }
+}
+
+# One device-vs-API comparison for a snapshot, including the install-time tolerance. #221 D2: the
+# live run calls this at the start (information) and again after every observed appsReportedAt change.
+function Compare-DeviceSnapshot {
+    param(
+        [object]$Snapshot,
+        [string[]]$Stored = @(),
+        [object]$ReportedAt = $null,
+        [int]$ToleranceSeconds = 60
+    )
+    $cmp0 = Compare-AppInventory -DeviceLaunchable $Snapshot.DeviceApps -DeviceAll $Snapshot.AllPackages -Stored $Stored -Tolerated @()
+    $installTimes = @{}
+    $tolerated = @()
+    if ($ReportedAt -and $cmp0.Missing.Count -gt 0) {
+        $deviceOffset = (Sh "date +%z").Trim()
+        foreach ($pkg in $cmp0.Missing) {
+            $first = Get-DeviceInstallTime -Package $pkg -DeviceOffset $deviceOffset
+            if ($first) { $installTimes[$pkg] = $first }
+        }
+        $tolerated = Get-ToleratedInstalls -InstallTimes $installTimes -ReportedAt ([DateTimeOffset]$ReportedAt) -ToleranceSeconds $ToleranceSeconds
+    }
+    return [pscustomobject]@{
+        Comparison = Compare-AppInventory -DeviceLaunchable $Snapshot.DeviceApps -DeviceAll $Snapshot.AllPackages -Stored $Stored -Tolerated $tolerated
+        Tolerated  = $tolerated
+    }
+}
+
+# C1-C4 for one comparison. $Verdict false means the row is information only (NOTE): the start
+# comparison, or an earlier post-sync comparison that a later one supersedes.
+function Record-InventoryChecks {
+    param([object]$Cmp, [string]$Label, [bool]$Verdict, [int]$ToleranceSeconds = 60)
+    $suffix = if ($Label) { " (" + $Label + ")" } else { "" }
+    Record "C1" ("matched launchable user apps" + $suffix) $(if ($Verdict) { "PASS" } else { "NOTE" }) ($Cmp.Matched.Count.ToString() + " of " + $Cmp.DeviceCount + " on the device are stored")
+    Record "C2" ("on device but not stored (outside the tolerance)" + $suffix) $(if (-not $Verdict) { "NOTE" } elseif ($Cmp.Missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($Cmp.Missing.Count -eq 0) { "none" } else { ($Cmp.Missing -join ", ") })
+    Record "C3" ("stored but no longer on the device" + $suffix) $(if (-not $Verdict) { "NOTE" } elseif ($Cmp.Stale.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($Cmp.Stale.Count -eq 0) { "none" } else { ($Cmp.Stale -join ", ") })
+    Record "C4" ("installed after the last sync (tolerated)" + $suffix) "NOTE" $(if ($Cmp.ToleratedMissing.Count -eq 0) { "none" } else { ($Cmp.ToleratedMissing -join ", ") + "; tolerance " + $ToleranceSeconds + " s" })
+}
+
 $results = New-Object System.Collections.ArrayList
 $verdict = "FAIL"
 $exitCode = 1
@@ -278,17 +374,15 @@ if ((Sh "dumpsys window") -match "isKeyguardShowing=true") {
     exit 2
 }
 
-$raw3 = Sh "pm list packages -3"
-$thirdParty = @($raw3 -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -like "package:*" } | ForEach-Object { $_.Substring(8) } | Sort-Object -Unique)
-$rawAll = Sh "pm list packages"
-$allPackages = @($rawAll -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -like "package:*" } | ForEach-Object { $_.Substring(8) } | Sort-Object -Unique)
-$rawLaunch = Sh "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
-$launchableAll = @([regex]::Matches($rawLaunch, "(?m)^\s+([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)/") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-if ($thirdParty.Count -eq 0 -or $launchableAll.Count -eq 0) {
-    W ("ABORT: could not read the package lists (third-party " + $thirdParty.Count + ", launchable " + $launchableAll.Count + "). Nothing was measured.")
+$deviceSnapshot = Get-DeviceSnapshot
+if (-not $deviceSnapshot) {
+    W "ABORT: could not read the package lists (pm list packages -3 or query-activities empty). Nothing was measured."
     exit 3
 }
-$deviceApps = Get-DeviceAppSet -ThirdParty $thirdParty -Launchable $launchableAll -AgentPackage $AGENT_PKG
+$thirdParty = $deviceSnapshot.ThirdParty
+$allPackages = $deviceSnapshot.AllPackages
+$launchableAll = $deviceSnapshot.LaunchableAll
+$deviceApps = $deviceSnapshot.DeviceApps
 W ("device reports " + $thirdParty.Count + " third-party packages, " + $launchableAll.Count + " launchable packages total, " + $deviceApps.Count + " launchable third-party apps (agent excluded)")
 
 $agentInstalled = ($allPackages -contains $AGENT_PKG)
@@ -298,12 +392,18 @@ Record "D2" "OSRA agent installed on the device" $(if ($agentInstalled) { "PASS"
 # ---- API inventory --------------------------------------------------------------------------------
 $uri = $Base.TrimEnd("/") + "/v1/devices/" + [uri]::EscapeDataString($DeviceId) + "/apps"
 $inv = $null
-$stored = @()
-$reportedAt = $null
-$cmp = [pscustomobject]@{
+$startStored = @()
+$startReportedAt = $null
+$last = $null
+$startCmp = $null
+$outputCmp = [pscustomobject]@{
     Pass = $false; Missing = @(); ToleratedMissing = @(); Stale = @(); Matched = @()
     DeviceCount = $deviceApps.Count; StoredCount = 0
 }
+$outputStored = @()
+$outputSnapshot = $deviceSnapshot
+$changeComparisons = @()
+$comparisonSource = "none"
 $cadenceStatus = "WAITING"
 $cadenceNote = ""
 $t1 = $null; $t2 = $null; $gapSeconds = $null
@@ -319,51 +419,30 @@ if (-not $inv) {
     $cadenceNote = "no API inventory; cadence not measured"
     Record "T1" "two consecutive appsReportedAt timestamps 14-16 min apart" "WAITING" $cadenceNote
 } else {
-    if ($inv.apps) { $stored = @($inv.apps | ForEach-Object { [string]$_.packageId }) }
-    if ($inv.reportedAt) { $reportedAt = [DateTimeOffset]::Parse([string]$inv.reportedAt) }
-    Record "A1" "API inventory read (GET /v1/devices/:id/apps)" "PASS" ($stored.Count.ToString() + " stored; reportedAt " + $(if ($reportedAt) { $reportedAt.ToString("o") } else { "null" }))
+    if ($inv.apps) { $startStored = @($inv.apps | ForEach-Object { [string]$_.packageId }) }
+    if ($inv.reportedAt) { $startReportedAt = [DateTimeOffset]::Parse([string]$inv.reportedAt) }
+    $last = $startReportedAt
+    Record "A1" "API inventory read (GET /v1/devices/:id/apps)" "PASS" ($startStored.Count.ToString() + " stored; reportedAt " + $(if ($startReportedAt) { $startReportedAt.ToString("o") } else { "null" }))
 
-    # ---- comparison -------------------------------------------------------------------------------
-    $cmp0 = Compare-AppInventory -DeviceLaunchable $deviceApps -DeviceAll $allPackages -Stored $stored -Tolerated @()
-    $installTimes = @{}
-    $tolerated = @()
-    if ($reportedAt -and $cmp0.Missing.Count -gt 0) {
-        $deviceOffset = (Sh "date +%z").Trim()
-        foreach ($pkg in $cmp0.Missing) {
-            $first = Get-DeviceInstallTime -Package $pkg -DeviceOffset $deviceOffset
-            if ($first) { $installTimes[$pkg] = $first }
-        }
-        $tolerated = Get-ToleratedInstalls -InstallTimes $installTimes -ReportedAt $reportedAt -ToleranceSeconds $ToleranceSeconds
-    }
-    $cmp = Compare-AppInventory -DeviceLaunchable $deviceApps -DeviceAll $allPackages -Stored $stored -Tolerated $tolerated
-
-    Record "C1" "matched launchable user apps" "PASS" ($cmp.Matched.Count.ToString() + " of " + $cmp.DeviceCount + " on the device are stored")
-    Record "C2" "on device but not stored (outside the tolerance)" $(if ($cmp.Missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($cmp.Missing.Count -eq 0) { "none" } else { ($cmp.Missing -join ", ") })
-    Record "C3" "stored but no longer on the device" $(if ($cmp.Stale.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($cmp.Stale.Count -eq 0) { "none" } else { ($cmp.Stale -join ", ") })
-    Record "C4" "installed after the last sync (tolerated)" "NOTE" $(if ($cmp.ToleratedMissing.Count -eq 0) { "none" } else { ($cmp.ToleratedMissing -join ", ") + "; tolerance " + $ToleranceSeconds + " s" })
-
-    # A stored third-party package that is present but no longer launchable is a NOTE, not a FAIL:
-    # the acceptance is existence, and the next change upload replaces the row.
-    $extraNonLaunchable = @($stored | Where-Object { ($thirdParty -contains $_) -and ($launchableAll -notcontains $_) } | Sort-Object -Unique)
-    if ($extraNonLaunchable.Count -gt 0) {
-        Record "C5" "stored but not launchable now" "NOTE" ($extraNonLaunchable -join ", ")
-    }
+    # #221 D2: the start comparison is information only. It is the comparison most likely to be STALE
+    # on a phone whose list changed since the last upload; the verdict waits for an observed sync.
+    $startCmp = (Compare-DeviceSnapshot -Snapshot $deviceSnapshot -Stored $startStored -ReportedAt $startReportedAt -ToleranceSeconds $ToleranceSeconds).Comparison
+    Record "C0" "start-of-run comparison (information only; the verdict is the last comparison after a sync)" "NOTE" ("matched " + $startCmp.Matched.Count + " of " + $startCmp.DeviceCount + ", missing " + $startCmp.Missing.Count + ", stale " + $startCmp.Stale.Count + ", would be " + $(if ($startCmp.Pass) { "PASS" } else { "FAIL" }))
 
     # ---- cadence ----------------------------------------------------------------------------------
-    if (-not $reportedAt) {
+    if (-not $startReportedAt) {
         $cadenceNote = "the API has no appsReportedAt (the agent has never reported)"
     } else {
         $now = [DateTimeOffset]::UtcNow
-        $age = ($now - $reportedAt).TotalSeconds
+        $age = ($now - $startReportedAt).TotalSeconds
         $fresh = Test-FreshBaseline -AgeSeconds $age
         $marks = @()
         if ($fresh) {
-            $marks += $reportedAt
+            $marks += $startReportedAt
             W ("cadence: current appsReportedAt is " + [math]::Round($age / 60.0, 1) + " min old; using it as the first endpoint and waiting for one change")
         } else {
             W ("cadence: current appsReportedAt is " + [math]::Round($age / 60.0, 1) + " min old; too old for a 14-16 min pair, so two observed changes are required")
         }
-        $last = $reportedAt
         $deadline = (Get-Date).AddMinutes($CadenceWaitMinutes)
         while ((Get-Date) -lt $deadline -and $marks.Count -lt 2) {
             Start-Sleep -Seconds $PollSeconds
@@ -379,6 +458,23 @@ if (-not $inv) {
                 W ("appsReportedAt moved: " + $last.ToString("o") + " -> " + $r2.ToString("o"))
                 $marks += $r2
                 $last = $r2
+                # The sync just landed, so re-read the phone and compare the list the API now stores
+                # with the device as it is at this moment. This is the comparison the verdict uses.
+                $syncSnapshot = Get-DeviceSnapshot
+                if (-not $syncSnapshot) {
+                    W ("comparison after sync " + ($changeComparisons.Count + 1) + " skipped: package lists unreadable")
+                } else {
+                    $syncStored = @()
+                    if ($poll.apps) { $syncStored = @($poll.apps | ForEach-Object { [string]$_.packageId }) }
+                    $syncCmp = (Compare-DeviceSnapshot -Snapshot $syncSnapshot -Stored $syncStored -ReportedAt $r2 -ToleranceSeconds $ToleranceSeconds).Comparison
+                    $changeComparisons += [pscustomobject]@{
+                        Comparison = $syncCmp
+                        Snapshot   = $syncSnapshot
+                        Stored     = $syncStored
+                        ReportedAt = $r2
+                    }
+                    W ("comparison after sync " + $changeComparisons.Count + " (appsReportedAt " + $r2.ToString("o") + "): matched " + $syncCmp.Matched.Count + " of " + $syncCmp.DeviceCount + ", missing " + $syncCmp.Missing.Count + ", stale " + $syncCmp.Stale.Count + " -> " + $(if ($syncCmp.Pass) { "PASS" } else { "FAIL" }))
+                }
             }
         }
         if ($marks.Count -ge 2) {
@@ -391,6 +487,39 @@ if (-not $inv) {
             $cadenceNote = "fewer than two endpoints within " + $CadenceWaitMinutes + " min; no value invented (an unchanged list uploads only every 24 h)"
         }
     }
+
+    # #221 D2: C1-C4 are recorded after every observed change; only the last one can be FAIL. Earlier
+    # post-sync comparisons stay in the table as NOTE so the history is visible without deciding the run.
+    $selection = Select-VerdictComparison -AfterChange $changeComparisons
+    $comparisonSource = $selection.Source
+    if ($selection.Comparison) {
+        $verdictRun = $changeComparisons[$changeComparisons.Count - 1]
+        $outputCmp = $verdictRun.Comparison
+        $outputStored = $verdictRun.Stored
+        $outputSnapshot = $verdictRun.Snapshot
+        $last = $verdictRun.ReportedAt
+        for ($i = 0; $i -lt $changeComparisons.Count; $i++) {
+            $isLast = ($i -eq ($changeComparisons.Count - 1))
+            $label = "after sync " + ($i + 1) + " of " + $changeComparisons.Count + $(if ($isLast) { "" } else { ", superseded" })
+            Record-InventoryChecks -Cmp $changeComparisons[$i].Comparison -Label $label -Verdict $isLast -ToleranceSeconds $ToleranceSeconds
+        }
+    } else {
+        $outputCmp = $startCmp
+        $outputStored = $startStored
+        $outputSnapshot = $deviceSnapshot
+        Record-InventoryChecks -Cmp $startCmp -Label "start, no change observed" -Verdict $false -ToleranceSeconds $ToleranceSeconds
+        if ($cadenceStatus -eq "PASS") {
+            Record "C6" "post-sync list comparison read" "FAIL" "the cadence passed but no comparison after a sync could be read; no verdict on the list"
+        }
+    }
+
+    # A stored third-party package that is present but no longer launchable is a NOTE, not a FAIL:
+    # the acceptance is existence, and the next change upload replaces the row.
+    $extraNonLaunchable = @($outputStored | Where-Object { ($outputSnapshot.ThirdParty -contains $_) -and ($outputSnapshot.LaunchableAll -notcontains $_) } | Sort-Object -Unique)
+    if ($extraNonLaunchable.Count -gt 0) {
+        Record "C5" "stored but not launchable now" "NOTE" ($extraNonLaunchable -join ", ")
+    }
+
     Record "T1" "two consecutive appsReportedAt timestamps 14-16 min apart" $cadenceStatus ($cadenceNote + $(if ($t1) { "; t1 " + $t1.ToString("o") } else { "" }) + $(if ($t2) { "; t2 " + $t2.ToString("o") } else { "" }))
 }
 
@@ -408,28 +537,35 @@ $report = [ordered]@{
     device      = [ordered]@{
         model          = $model
         android        = $rel
-        thirdParty     = $thirdParty.Count
-        launchableAll  = $launchableAll.Count
-        launchableUser = $deviceApps.Count
+        thirdParty     = $outputSnapshot.ThirdParty.Count
+        launchableAll  = $outputSnapshot.LaunchableAll.Count
+        launchableUser = $outputSnapshot.DeviceApps.Count
         agentInstalled = $agentInstalled
     }
     api         = [ordered]@{
-        stored     = $stored.Count
-        reportedAt = $(if ($reportedAt) { $reportedAt.ToString("o") } else { $null })
+        stored          = $outputStored.Count
+        reportedAt      = $(if ($last) { $last.ToString("o") } else { $null })
+        startStored     = $startStored.Count
+        startReportedAt = $(if ($startReportedAt) { $startReportedAt.ToString("o") } else { $null })
+        syncComparisons = $changeComparisons.Count
     }
     tolerance   = [ordered]@{
         seconds = $ToleranceSeconds
         rule    = "firstInstallTime at or after reportedAt minus the skew margin is treated as installed after the last sync"
     }
-    counts      = [ordered]@{
-        matched   = $cmp.Matched.Count
-        missing   = $cmp.Missing.Count
-        tolerated = $cmp.ToleratedMissing.Count
-        stale     = $cmp.Stale.Count
+    comparison  = [ordered]@{
+        source = $comparisonSource
+        rule   = "the verdict is the last C1-C4 comparison after an observed appsReportedAt change; the start comparison is information only"
     }
-    missing     = @($cmp.Missing)
-    tolerated   = @($cmp.ToleratedMissing)
-    stale       = @($cmp.Stale)
+    counts      = [ordered]@{
+        matched   = $outputCmp.Matched.Count
+        missing   = $outputCmp.Missing.Count
+        tolerated = $outputCmp.ToleratedMissing.Count
+        stale     = $outputCmp.Stale.Count
+    }
+    missing     = @($outputCmp.Missing)
+    tolerated   = @($outputCmp.ToleratedMissing)
+    stale       = @($outputCmp.Stale)
     cadence     = [ordered]@{
         field         = "appsReportedAt"
         windowSeconds = @($CADENCE_MIN_S, $CADENCE_MAX_S)
@@ -448,5 +584,5 @@ $report | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Out "app-list-cadenc
 W "---- RESULTS ----"
 $results | Format-Table -AutoSize | Out-String -Width 220
 $results | Format-Table -AutoSize | Out-String -Width 220 | Add-Content $LOG -Encoding utf8
-W ("TR-48 verdict: " + $verdict + " (device " + $deviceApps.Count + " launchable user apps, API " + $stored.Count + " stored); log " + $LOG)
+W ("TR-48 verdict: " + $verdict + " (device " + $outputSnapshot.DeviceApps.Count + " launchable user apps, API " + $outputStored.Count + " stored; verdict " + $comparisonSource + "); log " + $LOG)
 exit $exitCode
