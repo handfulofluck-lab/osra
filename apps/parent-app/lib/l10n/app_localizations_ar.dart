@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -403,6 +404,16 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String commandFailed(String error) {
     return 'فشل الأمر: $error';
+  }
+
+  @override
+  String commandRefusedBackgroundLocation(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.';
+  }
+
+  @override
+  String commandRefusedLocationPermission(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح OSRA ومنح إذن الموقع.';
   }
 
   @override

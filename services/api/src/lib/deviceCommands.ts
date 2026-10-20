@@ -32,7 +32,10 @@ export interface DeviceCommandMessage {
 export const COMMAND_TTL_SECONDS: Record<string, number> = {
   ring: 10 * 60,
   stop_ring: 10 * 60,
-  locate_now: 10 * 60,
+  // Issue #221 (D1): a phone without the background location grant is polled only by WorkManager,
+  // which Android clamps to a 15-minute floor plus its 5-minute flex. 10 minutes could expire
+  // before the single remaining poll ran; 20 covers the worst-case gap between two ticks.
+  locate_now: 20 * 60,
   sos_clear: 60 * 60,
   rules_updated: 24 * 3600,
   consent_granted: 7 * 24 * 3600,
@@ -107,6 +110,38 @@ export async function enqueueDeviceCommand(
   // Wake-up only: an agent that misses this still finds the row on its next drain.
   await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
   return message;
+}
+
+/**
+ * Record a command the server already knows cannot run, without queueing or waking the device.
+ *
+ * Issue #221 (D1): `locate_now` against a handset whose last telemetry says the background location
+ * grant is missing would otherwise sit `pending` until the next 15-minute WorkManager tick and then
+ * turn `expired` without ever reaching the phone. The row is born `failed` with the reason in
+ * `result`, so `/commands/history` and the POST response tell the parent immediately. There is
+ * deliberately no Redis publish: no device round trip is attempted.
+ */
+export async function enqueueFailedDeviceCommand(
+  deviceId: string,
+  type: string,
+  reason: string,
+  opts: EnqueueOptions = {},
+): Promise<DeviceCommandMessage> {
+  const now = new Date();
+  const ttl = opts.ttlSeconds ?? ttlFor(type);
+  const row = await prisma.deviceCommand.create({
+    data: {
+      deviceId,
+      type,
+      payload: {},
+      requestedBy: opts.requestedBy ?? "system",
+      status: "failed",
+      ackedAt: now,
+      result: { reason } as Prisma.InputJsonValue,
+      expiresAt: new Date(now.getTime() + ttl * 1000),
+    },
+  });
+  return toMessage(row);
 }
 
 /**

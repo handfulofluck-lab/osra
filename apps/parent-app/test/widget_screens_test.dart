@@ -268,6 +268,45 @@ void main() {
       final posts = api.calls('POST', '/v1/devices/dev-1/command');
       expect(posts, hasLength(3));
     });
+
+    testWidgets('a refused command reports the reason instead of "queued"', (tester) async {
+      // Issue #221: the API refuses a locate_now the phone's last telemetry says it cannot answer.
+      // The toast must carry the reason; saying "queued" is the silent failure the refusal removes.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/devices/dev-1/command': (_) => {
+              'published': false,
+              'status': 'failed',
+              'reason': 'background_location_missing',
+            },
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.text('Lock'));
+      await flushFakeHttp(tester);
+
+      expect(find.textContaining('Allow all the time'), findsOneWidget);
+      expect(find.textContaining('not sent'), findsOneWidget);
+      expect(find.textContaining('queued'), findsNothing);
+    });
+
+    testWidgets('an unknown refusal reason still names the code, not "queued"', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/devices/dev-1/command': (_) => {
+              'published': false,
+              'status': 'failed',
+              'reason': 'some_new_reason',
+            },
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.text('Lock'));
+      await flushFakeHttp(tester);
+
+      expect(find.textContaining('some_new_reason'), findsOneWidget);
+      expect(find.textContaining('queued'), findsNothing);
+    });
   });
 
   group('Internet pause pill (Feature #11)', () {
