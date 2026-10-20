@@ -112,3 +112,19 @@ parent to ignore the tamper alert — the same failure #225 fixed for one deacti
 
 **⚠️ Not verified here:** no physical phone and no live stack in this run — the five-attempts →
 one-page row on hardware remains to be re-run by the testing lane.
+
+## Extended 2026-10-20 — Claude's review of #235: a re-opened row and one retry per window
+
+Two things the first implementation got wrong, both found on the Flip4:
+
+1. **A higher count re-opens the row.** A parent who acknowledged "5 attempts" and then saw no badge
+   never learned the child kept trying. A higher `attemptCount` now also sets `acknowledged = false`
+   in the same atomic update, so the list and the badge show it. **It still does not push** — the rule
+   in this ADR stands: a dismissed page is not repeated.
+2. **One retry per window, not one per type.** `enqueueUniqueWork("tamper_alert_<type>", REPLACE, …)`
+   meant the next window's enqueue **cancelled the previous window's pending retry**: attempts made
+   while the phone was offline were dropped as soon as the child tried again in the next window, and
+   the older row kept its old count. Guard alerts are now unique per **window**
+   (`tamper_alert_protection_screen_opened_<windowStart>`): REPLACE still coalesces inside a window,
+   and a new window cannot cancel an older window's retry. Every other alert type keeps its single
+   per-type name.

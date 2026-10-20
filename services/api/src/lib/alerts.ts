@@ -68,6 +68,10 @@ async function applyAttemptCount(existing: Alert, input: RaiseAlertInput): Promi
       body: input.body,
       metadata: (input.metadata ?? existing.metadata ?? {}) as Prisma.InputJsonValue,
       attemptCount: input.attemptCount,
+      // Issue #227 D2 (Claude's review): a parent who acknowledged "2 attempts" and then sees no
+      // badge never learns the child kept trying. A higher count marks the row unread again, so the
+      // badge and the list show it; it still never pushes (ADR-0029).
+      acknowledged: false,
     },
   });
   if (count === 0) return existing;

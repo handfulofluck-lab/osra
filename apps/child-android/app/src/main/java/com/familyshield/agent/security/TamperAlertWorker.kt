@@ -145,6 +145,17 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
          * first. For [TYPE_GUARD_TRIGGERED], [windowStartMs] and [attemptCount] identify the
          * per-window aggregate row and its count (issue #227).
          */
+        /**
+         * Issue #227 D1 (Claude's review): one unique name per type meant a new window's enqueue
+         * **cancelled the previous window's pending retry**, so attempts made while the phone was
+         * offline were dropped as soon as the child tried again in the next window. Guard alerts are
+         * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
+         * and a new window no longer cancels the old one. Every other type keeps the old name.
+         */
+        internal fun uniqueWorkName(type: String, windowStartMs: Long): String =
+            if (type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L) "tamper_alert_${type}_$windowStartMs"
+            else "tamper_alert_$type"
+
         fun enqueue(
             context: Context,
             type: String,
@@ -165,7 +176,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                     ),
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("tamper_alert_$type", ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(uniqueWorkName(type, windowStartMs), ExistingWorkPolicy.REPLACE, request)
         }
     }
 }

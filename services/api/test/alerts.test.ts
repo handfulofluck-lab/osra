@@ -228,6 +228,74 @@ describe("alerts routes", () => {
     await app.close();
   });
 
+  it("a higher count re-opens an acknowledged alert without paging again (#227 D2)", async () => {
+    // Claude's D2: acknowledging "5 attempts" and then seeing no badge meant the parent never learned
+    // the child kept trying. A higher count marks the row unread; it still must not push.
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const acknowledgedRow = { id: "a-guard-ack", category: "tamper", attemptCount: 5, acknowledged: true };
+    const reopened = { ...acknowledgedRow, attemptCount: 6, acknowledged: false };
+    prismaMock.alert.findFirst.mockResolvedValue(acknowledgedRow);
+    prismaMock.alert.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.alert.findUnique.mockResolvedValue(reopened);
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Someone tried to remove protection",
+      body: "6 attempts",
+      dedupeKey: "dev-1|protection_screen_opened|1700000000000",
+      attemptCount: 6,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.alert.updateMany).toHaveBeenCalledWith({
+      where: { id: acknowledgedRow.id, attemptCount: { lt: 6 } },
+      data: expect.objectContaining({ attemptCount: 6, acknowledged: false }),
+    });
+    expect(res.json().alert.acknowledged).toBe(false);
+    expect(prismaMock.parentPushToken.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("an equal or lower count leaves acknowledgement alone (#227 D2)", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const acknowledgedRow = { id: "a-guard-ack", category: "tamper", attemptCount: 5, acknowledged: true };
+    prismaMock.alert.findFirst.mockResolvedValue(acknowledgedRow);
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Someone tried to remove protection",
+      body: "5 attempts",
+      dedupeKey: "dev-1|protection_screen_opened|1700000000000",
+      attemptCount: 5,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.alert.updateMany).not.toHaveBeenCalled();
+    expect(res.json().alert.acknowledged).toBe(true);
+    await app.close();
+  });
+
   it("a new window creates a new row even when the previous window is still open", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
