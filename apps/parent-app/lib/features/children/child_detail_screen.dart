@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+import 'command_messages.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
@@ -162,7 +163,7 @@ class _OverviewTab extends ConsumerWidget {
                     padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, 0, AppSpace.lg, AppSpace.xxs),
                     child: Align(
                       alignment: AlignmentDirectional.centerStart,
-                      child: _DeviceDeliverySummary(deviceId: d.id),
+                      child: _DeviceDeliverySummary(deviceId: d.id, deviceModel: d.model),
                     ),
                   ),
                   Padding(
@@ -247,7 +248,8 @@ class _OverviewTab extends ConsumerWidget {
 /// "sent".
 class _DeviceDeliverySummary extends ConsumerWidget {
   final String deviceId;
-  const _DeviceDeliverySummary({required this.deviceId});
+  final String deviceModel;
+  const _DeviceDeliverySummary({required this.deviceId, required this.deviceModel});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -260,15 +262,30 @@ class _DeviceDeliverySummary extends ConsumerWidget {
       data: (commands) {
         if (commands.isEmpty) return Text(l10n.noCommandsYet, style: style);
         final latest = commands.first;
-        return Text(
-          l10n.latestCommand(
-            l10n.commandType(latest.type),
-            l10n.commandStatus(latest.status),
-            formatCommandTime(context, latest.createdAt),
-          ),
-          style: style,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        final reason = latest.refusalReason;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.latestCommand(
+                l10n.commandType(latest.type),
+                l10n.commandStatus(latest.status),
+                formatCommandTime(context, latest.createdAt),
+              ),
+              style: style,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            // Issue #231: a device-side refusal arrives as an ack, so this card is often the only
+            // place the parent ever sees why the command did not take effect.
+            if (reason != null)
+              Text(
+                commandRefusalText(l10n, latest.type, deviceModel, reason),
+                style: style?.copyWith(color: Theme.of(context).colorScheme.error),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
         );
       },
     );
@@ -437,23 +454,10 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
   }
 }
 
-/// The parent-facing text for a refused command. The reason vocabulary is the
-/// agent's own (`background_location_missing` / `location_permission_missing`,
-/// issue #132), so an unknown reason falls back to the raw code rather than a
-/// vague failure.
-String _refusalMessage(AppLocalizations l10n, String command, Device device, Object? reason) {
-  final type = l10n.commandType(command);
-  return switch (reason) {
-    'background_location_missing' => l10n.commandRefusedBackgroundLocation(type, device.model),
-    'location_permission_missing' => l10n.commandRefusedLocationPermission(type, device.model),
-    // Issue #231 review: the agent now refuses a command whose effect cannot happen on the phone.
-    'lock_screen_unavailable' => l10n.commandRefusedLockScreen,
-    'web_filter_not_set_up' => l10n.commandRefusedWebFilter,
-    'unsupported_command' => l10n.commandRefusedUnsupportedCommand,
-    'invalid_payload' => l10n.commandRefusedInvalidPayload,
-    _ => l10n.commandFailed('${reason ?? 'unknown'}'),
-  };
-}
+/// Issue #231: both the immediate POST refusal and a later device-side refusal read the same
+/// mapping, so the parent is never told two different things about one command.
+String _refusalMessage(AppLocalizations l10n, String command, Device device, Object? reason) =>
+    commandRefusalText(l10n, command, device.model, reason);
 
 /// Pauses/resumes the internet for [childId]'s devices (Feature #11); the
 /// status flips optimistically and reverts when the POST fails. The snackbar

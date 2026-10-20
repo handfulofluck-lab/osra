@@ -101,6 +101,49 @@ void main() {
       expect(find.textContaining('Created '), findsNWidgets(5));
     });
 
+    testWidgets(
+        "shows the agent's refusal reason on a command the device settled failed",
+        (tester) async {
+      // Issue #231: the refusal arrives as an ack long after the POST, so the history card is the
+      // only place the parent can learn why it did not take effect.
+      final api = historyApi(histories: {
+        'dev-1': [
+          commandJson('cmd-failed', 'lock', 'failed',
+              now.subtract(const Duration(minutes: 6)),
+              deliveredAt: now.subtract(const Duration(minutes: 6)),
+              ackedAt: now.subtract(const Duration(minutes: 5)),
+              result: const {'reason': 'lock_screen_unavailable'}),
+        ],
+        'dev-2': [],
+      });
+      await pumpScreen(
+          tester, const CommandHistoryScreen(childId: 'child-1'), api);
+
+      expect(
+        find.textContaining("The lock screen can't appear on your child's phone"),
+        findsOneWidget,
+      );
+      expect(find.text('Failed on device'), findsWidgets);
+    });
+
+    testWidgets('a failed command with no reported reason shows no invented one',
+        (tester) async {
+      final api = historyApi(histories: {
+        'dev-1': [
+          commandJson('cmd-failed', 'unlock', 'failed',
+              now.subtract(const Duration(minutes: 6)),
+              deliveredAt: now.subtract(const Duration(minutes: 6)),
+              ackedAt: now.subtract(const Duration(minutes: 5))),
+        ],
+        'dev-2': [],
+      });
+      await pumpScreen(
+          tester, const CommandHistoryScreen(childId: 'child-1'), api);
+
+      expect(find.text('Failed on device'), findsWidgets);
+      expect(find.textContaining('could not'), findsNothing);
+    });
+
     // Plan 3.6 acceptance: UI never says "sent" for an unacked command.
     testWidgets(
         'never says "sent" for a pending or delivered-but-unacked command',
