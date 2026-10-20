@@ -794,6 +794,12 @@ abstract class AppLocalizations {
   /// **'The lock screen can\'t appear on your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.'**
   String get commandRefusedLockScreen;
 
+  /// No description provided for @commandRefusedUnlockScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'The unlock can\'t reach your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.'**
+  String get commandRefusedUnlockScreen;
+
   /// No description provided for @commandRefusedWebFilter.
   ///
   /// In en, this message translates to:

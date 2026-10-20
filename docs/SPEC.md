@@ -492,6 +492,10 @@ and are deleted explicitly in the GDPR erasure cascade.
     accessibility service not bound, and for `lock` `lockNow()` false). A successful lock/pause
     carries `detail.via = keyguard|overlay|accessibility` so the parent can tell which path applied.
     `LockState` is written even on the refusal, so a later grant applies the pending lock.
+  - `unlock_screen_unavailable` — `unlock`/`resume` (#233): neither the overlay app-op nor the
+    accessibility service can dismiss the overlay, so it stays up. A successful unlock/resume
+    carries `detail.via = overlay|accessibility`; there is no keyguard path (unlock never calls
+    `lockNow()`). `LockState` is cleared even on the refusal, so a later grant applies it.
   - `web_filter_not_set_up` — `pause_internet` with no VPN consent, or with the stored consent but
     the OS no longer allowing the tunnel; the sinkhole did not start, so packets still flow. The
     paused state is persisted and applies once the filter is set up.

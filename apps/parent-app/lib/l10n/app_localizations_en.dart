@@ -416,6 +416,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The lock screen can\'t appear on your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.';
 
   @override
+  String get commandRefusedUnlockScreen =>
+      'The unlock can\'t reach your child\'s phone: turn on OSRA\'s \'Display over other apps\' or accessibility there.';
+
+  @override
   String get commandRefusedWebFilter =>
       'The web filter is not set up on your child\'s phone, so the internet was not paused.';
 

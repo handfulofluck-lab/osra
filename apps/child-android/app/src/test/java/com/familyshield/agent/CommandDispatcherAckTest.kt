@@ -172,9 +172,14 @@ class CommandDispatcherAckTest {
         )
         assertTrue(service.contains("ackLocateNow"))
         assertTrue(
-            "lock/pause must be acked by the enforceability policy, not unconditionally",
+            "lock/pause/unlock/resume must be acked by the enforceability policy, not unconditionally",
             dispatcher.contains("EnforceabilityPolicy.lockOutcome") &&
-                dispatcher.contains("EnforceabilityPolicy.pauseOutcome"),
+                dispatcher.contains("EnforceabilityPolicy.pauseOutcome") &&
+                dispatcher.contains("EnforceabilityPolicy.unlockOutcome"),
+        )
+        assertTrue(
+            "unlock/resume must share the policy-carrying handler, so resume cannot lose the reason",
+            !dispatcher.contains("unlock(); CommandOutcome.Applied()"),
         )
         assertTrue(
             "accessibility running is the bound service, not a cached setting",

@@ -68,8 +68,8 @@ class CommandDispatcher @Inject constructor(
      * was obtained. A refused or throwing handler is acked `failed` with `detail.reason`.
      *
      * No durable row is left unaudited: an unknown type is `failed` with `unsupported_command`, an
-     * unparseable minutes payload with `invalid_payload`, and `lock`/`pause` are `ok` only when
-     * [EnforceabilityPolicy] finds a path that can actually show the screen.
+     * unparseable minutes payload with `invalid_payload`, and `lock`/`pause`/`unlock`/`resume` are
+     * `ok` only when [EnforceabilityPolicy] finds a path that can actually show or dismiss the screen.
      */
     fun dispatch(type: String, data: Map<String, String>, commandId: String? = null) {
         // ADR-0008 §3: consent lifecycle commands pause/resume the whole agent.
@@ -94,11 +94,11 @@ class CommandDispatcher @Inject constructor(
     private fun runHandler(type: String, data: Map<String, String>, commandId: String?): CommandOutcome =
         when (type) {
             "lock" -> lock()
-            "unlock" -> { unlock(); CommandOutcome.Applied() }
+            "unlock" -> unlock()
             // NOTE: pause/resume reuse the overlay mechanics with paused messaging —
             // a paused device shows the full-screen overlay until resumed.
             "pause" -> pause()
-            "resume" -> { unlock(); CommandOutcome.Applied() }
+            "resume" -> unlock()
             "ring" -> { ring(); CommandOutcome.Applied() }
             "sos_clear" -> { sosClear(); CommandOutcome.Applied() }
             "stop_ring" -> { Ringer.stop(context, RingPolicy.StopSource.PARENT_COMMAND); CommandOutcome.Applied() }
@@ -207,16 +207,30 @@ class CommandDispatcher @Inject constructor(
         return outcome
     }
 
-    /** Dismisses the keyguard via LockActivity (device-owner devices unlock with lockNow+swipe) and cancels any pending wind-down. */
-    private fun unlock() {
+    /**
+     * Dismisses the overlay via [LockActivity] and cancels any pending wind-down. `resume` shares
+     * this call: a paused device shows the same overlay, so it is dismissed the same way.
+     *
+     * Issue #233: `startActivity` does not fail when the OS blocks the background launch, so the ack
+     * is decided by [EnforceabilityPolicy.unlockOutcome] — `Applied` only when the overlay or the
+     * accessibility service can actually take the screen down. `LockState` is cleared first in
+     * every case, including a refusal, so the unlock applies the moment a grant returns.
+     */
+    private fun unlock(): CommandOutcome {
         windDownJob?.cancel()
         windDownJob = null
         com.familyshield.agent.enforcement.LockState.clear(context)
+        val outcome = EnforceabilityPolicy.unlockOutcome(
+            canOverlay = Settings.canDrawOverlays(context),
+            accessibilityRunning = AccessibilityMonitorService.isRunning,
+        )
+        // Best effort in the refused case too, as in lock()/pause().
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_UNLOCK),
         )
+        return outcome
     }
 
     /**

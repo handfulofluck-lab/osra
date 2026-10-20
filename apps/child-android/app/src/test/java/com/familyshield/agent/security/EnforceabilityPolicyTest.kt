@@ -12,6 +12,8 @@ import org.junit.Test
  * launcher stayed in front. D2: `pause_internet` acked with no VPN consented and `ping 8.8.8.8`
  * still answered. [EnforceabilityPolicy] is the pure rule that decides whether any path can make the
  * effect observable; these tests pin every row of both tables plus the ack the reason becomes.
+ * Issue #233 adds the `unlock`/`resume` table: the same two paths, a refusal of its own, and no
+ * keyguard row.
  */
 class EnforceabilityPolicyTest {
 
@@ -116,6 +118,37 @@ class EnforceabilityPolicyTest {
         )
     }
 
+    // ---- unlock -------------------------------------------------------------------------------
+
+    @Test
+    fun `unlock is applied via the overlay when the overlay permission is granted`() {
+        val outcome = EnforceabilityPolicy.unlockOutcome(canOverlay = true, accessibilityRunning = false)
+
+        assertEquals("overlay", via(outcome))
+    }
+
+    @Test
+    fun `unlock is applied via accessibility when the service is bound and the overlay is off`() {
+        val outcome = EnforceabilityPolicy.unlockOutcome(canOverlay = false, accessibilityRunning = true)
+
+        assertEquals("accessibility", via(outcome))
+    }
+
+    @Test
+    fun `unlock is refused when neither the overlay nor accessibility can dismiss it`() {
+        val outcome = EnforceabilityPolicy.unlockOutcome(canOverlay = false, accessibilityRunning = false)
+
+        assertEquals("unlock_screen_unavailable", refusal(outcome))
+    }
+
+    @Test
+    fun `unlock prefers the overlay and never names a keyguard path`() {
+        assertEquals(
+            "overlay",
+            via(EnforceabilityPolicy.unlockOutcome(canOverlay = true, accessibilityRunning = true)),
+        )
+    }
+
     // ---- pause_internet -----------------------------------------------------------------------
 
     @Test
@@ -150,6 +183,10 @@ class EnforceabilityPolicyTest {
         val internet = CommandAckPolicy.ackFor("c3", EnforceabilityPolicy.pauseInternetOutcome(false))!!
         assertEquals("failed", internet.status)
         assertEquals(mapOf("reason" to "web_filter_not_set_up"), internet.detail)
+
+        val unlock = CommandAckPolicy.ackFor("c4", EnforceabilityPolicy.unlockOutcome(false, false))!!
+        assertEquals("failed", unlock.status)
+        assertEquals(mapOf("reason" to "unlock_screen_unavailable"), unlock.detail)
     }
 
     @Test

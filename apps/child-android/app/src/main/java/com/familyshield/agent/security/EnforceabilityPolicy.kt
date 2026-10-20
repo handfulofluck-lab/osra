@@ -20,6 +20,11 @@ import com.familyshield.agent.commands.CommandOutcome
  * `pause` has no keyguard path on purpose: it must stay resumable by `resume`, so it never calls
  * `lockNow()`. Its viable paths are the overlay and the accessibility service.
  *
+ * `unlock`/`resume` have no keyguard path either: they dismiss our overlay, and `lockNow` is not
+ * involved (there is nothing to "unlock" at the OS level — the keyguard belongs to the human, and
+ * `docs/TESTING.md` §5.0 forbids an agent touching it). Their viable paths are the same overlay and
+ * accessibility service, with their own refusal reason.
+ *
  * The dispatcher writes `LockState` **before** asking this policy, in every case — including the
  * refusal — so the lock applies the moment a grant returns. The ack is about now, not later.
  *
@@ -29,6 +34,12 @@ object EnforceabilityPolicy {
 
     /** No path can show the lock/pause screen: overlay permission off and the service not bound. */
     const val REASON_LOCK_SCREEN_UNAVAILABLE = "lock_screen_unavailable"
+
+    /**
+     * Neither the overlay nor accessibility can dismiss the overlay: `unlock`/`resume` were recorded,
+     * but the screen stays up until a grant returns.
+     */
+    const val REASON_UNLOCK_SCREEN_UNAVAILABLE = "unlock_screen_unavailable"
 
     /** `pause_internet` asked for a filter the device never consented to, so no packet is dropped. */
     const val REASON_WEB_FILTER_NOT_SET_UP = "web_filter_not_set_up"
@@ -42,6 +53,12 @@ object EnforceabilityPolicy {
 
     /** The path that can actually make a `pause` visible; its wire value is the ack's `detail.via`. */
     enum class PausePath(val wire: String) {
+        OVERLAY("overlay"),
+        ACCESSIBILITY("accessibility"),
+    }
+
+    /** The path that can actually dismiss the overlay; its wire value is the ack's `detail.via`. */
+    enum class UnlockPath(val wire: String) {
         OVERLAY("overlay"),
         ACCESSIBILITY("accessibility"),
     }
@@ -66,6 +83,23 @@ object EnforceabilityPolicy {
             canOverlay -> CommandOutcome.Applied(detail = mapOf("via" to PausePath.OVERLAY.wire))
             accessibilityRunning -> CommandOutcome.Applied(detail = mapOf("via" to PausePath.ACCESSIBILITY.wire))
             else -> CommandOutcome.Refused(REASON_LOCK_SCREEN_UNAVAILABLE)
+        }
+
+    /**
+     * Issue #233: `Applied(via=…)` when the overlay can actually be dismissed — the overlay app-op
+     * or the accessibility service, the same two paths [pauseOutcome] accepts. Refused with
+     * [REASON_UNLOCK_SCREEN_UNAVAILABLE] otherwise.
+     *
+     * There is no keyguard path: `unlock`/`resume` only take down our own full-screen overlay and
+     * never call `lockNow()`, so the `adminLocked` argument [lockOutcome] takes has nothing to
+     * decide here. The child's keyguard is the human's lock screen, not ours
+     * (`docs/TESTING.md` §5.0), and an agent must not attempt it.
+     */
+    fun unlockOutcome(canOverlay: Boolean, accessibilityRunning: Boolean): CommandOutcome =
+        when {
+            canOverlay -> CommandOutcome.Applied(detail = mapOf("via" to UnlockPath.OVERLAY.wire))
+            accessibilityRunning -> CommandOutcome.Applied(detail = mapOf("via" to UnlockPath.ACCESSIBILITY.wire))
+            else -> CommandOutcome.Refused(REASON_UNLOCK_SCREEN_UNAVAILABLE)
         }
 
     /**

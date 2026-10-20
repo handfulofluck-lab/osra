@@ -421,6 +421,10 @@ class AppLocalizationsAr extends AppLocalizations {
       'لا يمكن ظهور شاشة القفل على هاتف طفلك: فعّل «العرض فوق التطبيقات الأخرى» أو إمكانية الوصول في OSRA على ذلك الهاتف.';
 
   @override
+  String get commandRefusedUnlockScreen =>
+      'لا يمكن وصول أمر فتح القفل إلى هاتف طفلك: فعّل «العرض فوق التطبيقات الأخرى» أو إمكانية الوصول في OSRA على ذلك الهاتف.';
+
+  @override
   String get commandRefusedWebFilter =>
       'لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.';
 
