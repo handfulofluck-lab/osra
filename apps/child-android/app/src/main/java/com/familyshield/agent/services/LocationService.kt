@@ -198,8 +198,13 @@ class LocationService : Service() {
                 null
             }
         }
-        runCatching { flushPings() }
-        dispatcher.ackLocateNow(commandId, fix)
+        // Issue #231 review: the ack may only claim a point the server has. An upload failure keeps
+        // the ping buffered, so no ack goes out and the row is re-offered at 120 s.
+        val uploaded = runCatching { flushPings() }.getOrDefault(false)
+        if (fix != null && !uploaded) {
+            Log.w(TAG, "locate_now: fix obtained but not uploaded; no ack, the command is re-offered at 120 s")
+        }
+        dispatcher.ackLocateNow(commandId, fix, uploaded)
     }
 
     /** Queues one ping and adapts the update interval to the current speed. */
@@ -236,33 +241,41 @@ class LocationService : Service() {
         }
     }
 
-    /** Uploads memory + Room pings; on failure persists the memory batch into Room. */
-    suspend fun flushPings() {
-        FLUSH_MUTEX.withLock {
-            if (consentState.isPaused()) {
-                // ADR-0008 §3: withdrawal stops collection — discard, do not buffer for later upload.
-                synchronized(pingLock) { memoryPings.clear() }
-                runCatching { db.pendingPingDao().clear() }
-                return
-            }
-            val mem = synchronized(pingLock) { ArrayList(memoryPings) }
-            val stored = db.pendingPingDao().all()
-            val all = mem + stored.map {
-                LocationPingDto(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.ofEpochMilli(it.timestamp).toString())
-            }
-            if (all.isEmpty()) return@withLock
-            try {
-                api.postLocationPings(LocationPingBatchDto(all))
-                synchronized(pingLock) { memoryPings.removeAll(mem) }
-                db.pendingPingDao().clear()
-            } catch (e: CancellationException) {
-                throw e // NOTE: never swallow coroutine cancellation
-            } catch (e: Exception) {
-                db.pendingPingDao().insertAll(mem.map {
-                    PendingPingEntity(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.parse(it.timestamp).toEpochMilli())
-                })
-                synchronized(pingLock) { memoryPings.removeAll(mem) }
-            }
+    /**
+     * Uploads memory + Room pings; on failure persists the memory batch into Room.
+     *
+     * Issue #231 review: returns **true only when the POST succeeded** — i.e. the batch that holds
+     * the caller's point is on the server. It returns false when consent is paused (the pings are
+     * discarded, never uploaded), when there was nothing to upload, and when the POST threw (the
+     * batch is buffered in Room). `locateNowOnce` uses this to withhold the `ok` ack; the periodic
+     * flush ignores it, because Room is the durable retry for that path.
+     */
+    suspend fun flushPings(): Boolean = FLUSH_MUTEX.withLock {
+        if (consentState.isPaused()) {
+            // ADR-0008 §3: withdrawal stops collection — discard, do not buffer for later upload.
+            synchronized(pingLock) { memoryPings.clear() }
+            runCatching { db.pendingPingDao().clear() }
+            return@withLock false
+        }
+        val mem = synchronized(pingLock) { ArrayList(memoryPings) }
+        val stored = db.pendingPingDao().all()
+        val all = mem + stored.map {
+            LocationPingDto(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.ofEpochMilli(it.timestamp).toString())
+        }
+        if (all.isEmpty()) return@withLock false
+        try {
+            api.postLocationPings(LocationPingBatchDto(all))
+            synchronized(pingLock) { memoryPings.removeAll(mem) }
+            db.pendingPingDao().clear()
+            true
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            db.pendingPingDao().insertAll(mem.map {
+                PendingPingEntity(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.parse(it.timestamp).toEpochMilli())
+            })
+            synchronized(pingLock) { memoryPings.removeAll(mem) }
+            false
         }
     }
 

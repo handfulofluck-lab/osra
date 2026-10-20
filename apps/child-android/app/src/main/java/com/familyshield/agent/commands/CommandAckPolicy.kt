@@ -20,8 +20,11 @@ import com.familyshield.agent.network.dto.CommandAckDto
  *   falls back to the cached set on a network error, so it has no failure signal to report).
  *
  * A handler that throws is a `failed` ack with `detail.reason = "command_failed"`. An unknown type
- * or an unparseable payload is [CommandOutcome.Ignored] and acks nothing, as designed before #231.
- * A null/blank command id acks nothing: the FCM path carries no durable row.
+ * is `failed` with `unsupported_command` and an unparseable `bonus_time`/`wind_down` minutes payload
+ * with `invalid_payload` (issue #231 review): a row left `delivered` forever is the defect #231
+ * names, so no handler for a durable row is allowed to stay silent. A null/blank command id acks
+ * nothing — the FCM path carries no durable row — and [CommandOutcome.Deferred] is acked later by
+ * the component that owns it.
  */
 sealed class CommandOutcome {
     /** The handler applied the effect (or, for rules_updated, accepted the asynchronous refresh). */
@@ -32,9 +35,6 @@ sealed class CommandOutcome {
 
     /** Another component owns the ack: `locate_now` is acked by `LocationService` when a fix exists. */
     object Deferred : CommandOutcome()
-
-    /** Nothing ran and nothing should be acked: unknown command type or malformed payload. */
-    object Ignored : CommandOutcome()
 }
 
 /** Which source a `locate_now` fix came from; part of the `ok` ack's `detail`. */
@@ -46,6 +46,12 @@ enum class LocateFix(val wire: String) {
 object CommandAckPolicy {
     const val REASON_HANDLER_FAILED = "command_failed"
     const val REASON_LOCATION_UNAVAILABLE = "location_unavailable"
+
+    /** Issue #231 review: a type this agent does not implement; the parent can ask for an update. */
+    const val REASON_UNSUPPORTED_COMMAND = "unsupported_command"
+
+    /** Issue #231 review: `bonus_time`/`wind_down` arrived without a parseable minutes value. */
+    const val REASON_INVALID_PAYLOAD = "invalid_payload"
 
     /**
      * Runs [handler], turning a throw into [CommandOutcome.Refused] so the command is reported as
@@ -67,7 +73,7 @@ object CommandAckPolicy {
                 CommandAckDto(status = "ok", detail = outcome.detail.ifEmpty { null })
             is CommandOutcome.Refused ->
                 CommandAckDto(status = "failed", detail = mapOf("reason" to outcome.reason))
-            CommandOutcome.Deferred, CommandOutcome.Ignored -> null
+            CommandOutcome.Deferred -> null
         }
     }
 
@@ -75,9 +81,19 @@ object CommandAckPolicy {
     fun ackAfter(commandId: String?, handler: () -> CommandOutcome): CommandAckDto? =
         ackFor(commandId, outcomeOf(handler))
 
-    /** `ok` only when a fix was obtained; `failed` with `location_unavailable` when there was none. */
-    fun locateAck(commandId: String?, fix: LocateFix?): CommandAckDto? =
-        ackFor(
+    /**
+     * `ok` only when a fix was obtained **and** the flush uploaded it; `failed` with
+     * `location_unavailable` when there was no fix at all.
+     *
+     * Issue #231 review: `LocationService.flushPings()` used to swallow an upload failure, so a
+     * `fresh` ack could go out while the point sat in the phone's buffer and the parent's map did
+     * not move. With [uploaded] false and a fix in hand there is no observable effect, so the ack is
+     * null and the row stays `delivered` for the 120 s re-offer. A missing fix is still acked
+     * `failed`: there is nothing to upload, and leaving it silent would hide the refusal.
+     */
+    fun locateAck(commandId: String?, fix: LocateFix?, uploaded: Boolean): CommandAckDto? {
+        if (fix != null && !uploaded) return null
+        return ackFor(
             commandId,
             if (fix == null) {
                 CommandOutcome.Refused(REASON_LOCATION_UNAVAILABLE)
@@ -85,6 +101,7 @@ object CommandAckPolicy {
                 CommandOutcome.Applied(mapOf("fix" to fix.wire))
             },
         )
+    }
 }
 
 /**

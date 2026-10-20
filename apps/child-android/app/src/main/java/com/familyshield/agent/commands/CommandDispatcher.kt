@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -15,6 +16,8 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
+import com.familyshield.agent.security.EnforceabilityPolicy
+import com.familyshield.agent.services.AccessibilityMonitorService
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import com.familyshield.agent.sos.SosActivity
@@ -56,13 +59,17 @@ class CommandDispatcher @Inject constructor(
     )
 
     /**
-     * Executes the command [type] with its string [data] payload; unknown types are ignored.
+     * Executes the command [type] with its string [data] payload.
      *
      * [commandId] is the durable queue row (`DeviceCommand.id`) when the command came from a poll.
      * Issue #231: a command that runs is acked `ok` so `/commands/history` reaches `acked` instead
      * of staying `delivered`; what `ok` means per command is documented on [CommandAckPolicy], and
      * `locate_now` defers its ack to [LocationService], which is the only place that knows a fix
      * was obtained. A refused or throwing handler is acked `failed` with `detail.reason`.
+     *
+     * No durable row is left unaudited: an unknown type is `failed` with `unsupported_command`, an
+     * unparseable minutes payload with `invalid_payload`, and `lock`/`pause` are `ok` only when
+     * [EnforceabilityPolicy] finds a path that can actually show the screen.
      */
     fun dispatch(type: String, data: Map<String, String>, commandId: String? = null) {
         // ADR-0008 §3: consent lifecycle commands pause/resume the whole agent.
@@ -83,14 +90,14 @@ class CommandDispatcher @Inject constructor(
         reportOutcome(commandId, outcome)
     }
 
-    /** Runs one handler and says what the ack should claim; an unknown type stays unaudited. */
+    /** Runs one handler and says what the ack should claim. Every outcome is acked or deferred. */
     private fun runHandler(type: String, data: Map<String, String>, commandId: String?): CommandOutcome =
         when (type) {
-            "lock" -> { lock(); CommandOutcome.Applied() }
+            "lock" -> lock()
             "unlock" -> { unlock(); CommandOutcome.Applied() }
             // NOTE: pause/resume reuse the overlay mechanics with paused messaging —
             // a paused device shows the full-screen overlay until resumed.
-            "pause" -> { pause(); CommandOutcome.Applied() }
+            "pause" -> pause()
             "resume" -> { unlock(); CommandOutcome.Applied() }
             "ring" -> { ring(); CommandOutcome.Applied() }
             "sos_clear" -> { sosClear(); CommandOutcome.Applied() }
@@ -103,7 +110,7 @@ class CommandDispatcher @Inject constructor(
             "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
             // keep the overlay up until resume_internet arrives.
-            "pause_internet" -> { pauseInternet(); CommandOutcome.Applied() }
+            "pause_internet" -> pauseInternet()
             "resume_internet" -> { resumeInternet(); CommandOutcome.Applied() }
             // Feature #10: grant N extra screen-time minutes for today only.
             "bonus_time" -> dispatchMinutes(data) { rules.addBonusMinutes(it) }
@@ -111,21 +118,25 @@ class CommandDispatcher @Inject constructor(
             // is posted and the timer armed, not that the lock has fired — the parent asked for the
             // warning, and waiting minutes for the timer would leave the row `delivered` meanwhile.
             "wind_down" -> dispatchMinutes(data) { windDown(it) }
-            else -> CommandOutcome.Ignored // NOTE: unknown command types are ignored by design
+            // Issue #231 review: a type this agent does not know must not stay `delivered` forever.
+            // `unsupported_command` lets the parent say "update OSRA on the child's phone".
+            else -> {
+                Log.w(TAG, "refusing unknown command type '$type'")
+                unknownTypeOutcome()
+            }
         }
 
     /**
      * Parses and validates the minutes payload: tolerates "30" and "30.0" (the poll worker
-     * stringifies JSON numbers), clamps to 1..240, and returns null for anything unparseable
-     * or out of range — invalid values are ignored with a log rather than applied (and are not
-     * acked: nothing ran, same as before #231).
+     * stringifies JSON numbers), clamps to 1..240, and refuses an unparseable value with
+     * [invalidMinutesOutcome] instead of leaving the row unaudited.
      */
     private fun dispatchMinutes(data: Map<String, String>, action: (Int) -> Unit): CommandOutcome {
         val raw = data["minutes"]
         val minutes = parseMinutes(raw)
         if (minutes == null) {
-            Log.w(TAG, "ignoring command: invalid minutes payload '$raw' (expected 1..240)")
-            return CommandOutcome.Ignored
+            Log.w(TAG, "refusing command: invalid minutes payload '$raw' (expected 1..240)")
+            return invalidMinutesOutcome()
         }
         action(minutes)
         return CommandOutcome.Applied()
@@ -141,35 +152,59 @@ class CommandDispatcher @Inject constructor(
     /**
      * Issue #231: the deferred `locate_now` ack. Called by [LocationService] once it has (or has
      * not) obtained a fix, so `ok` means "the parent can see where the child is", not "the service
-     * was asked to start".
+     * was asked to start". [uploaded] is [LocationService.flushPings]'s result: a fix that only sits
+     * in the phone's buffer is not observable, so no ack is sent and the row is re-offered at 120 s.
      */
-    fun ackLocateNow(commandId: String?, fix: LocateFix?) {
+    fun ackLocateNow(commandId: String?, fix: LocateFix?, uploaded: Boolean) {
         val id = commandId?.takeIf { it.isNotBlank() } ?: return
-        val ack = CommandAckPolicy.locateAck(id, fix) ?: return
+        val ack = CommandAckPolicy.locateAck(id, fix, uploaded) ?: return
         scope.launch { ackSender.sendOnce(id, ack) }
     }
 
-    /** Locks the device immediately when device owner, otherwise shows the full-screen overlay. */
-    private fun lock() {
+    /**
+     * Locks the device immediately when device owner, otherwise shows the full-screen overlay.
+     *
+     * Issue #231 review D1: `startActivity` does not fail when the OS blocks a background launch, so
+     * the ack is decided by [EnforceabilityPolicy] from the paths that can actually lock, not by the
+     * handler returning. `LockState` is written first in every case — including a refusal — so the
+     * lock lands the moment the parent grants overlay or accessibility.
+     */
+    private fun lock(): CommandOutcome {
         // ADR-0010: a real screen lock when admin/owner permits it; the overlay stays up either way
         // so the child sees the "locked by your parent" screen and cannot swipe back to their apps.
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_LOCKED)
-        deviceAdmin.lockNow()
+        val adminLocked = deviceAdmin.lockNow()
+        val outcome = EnforceabilityPolicy.lockOutcome(
+            canOverlay = Settings.canDrawOverlays(context),
+            accessibilityRunning = AccessibilityMonitorService.isRunning,
+            adminLocked = adminLocked,
+        )
+        // Best effort in the refused case too: if the policy is wrong about the OS, the attempt costs
+        // nothing and the persisted LockState still applies when a grant returns.
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_LOCKED),
         )
+        return outcome
     }
 
-    /** Shows the paused overlay (never device-owner lockNow — pause must be resumable via "resume"). */
-    private fun pause() {
+    /**
+     * Shows the paused overlay (never device-owner lockNow — pause must be resumable via "resume").
+     * Same D1 rule as [lock]: `Applied` only when the overlay can actually appear.
+     */
+    private fun pause(): CommandOutcome {
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED)
+        val outcome = EnforceabilityPolicy.pauseOutcome(
+            canOverlay = Settings.canDrawOverlays(context),
+            accessibilityRunning = AccessibilityMonitorService.isRunning,
+        )
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_PAUSED),
         )
+        return outcome
     }
 
     /** Dismisses the keyguard via LockActivity (device-owner devices unlock with lockNow+swipe) and cancels any pending wind-down. */
@@ -190,12 +225,18 @@ class CommandDispatcher @Inject constructor(
      * Plan 1.4: when the parent granted the VPN consent, the sinkhole also takes the default
      * route and drops every packet that is not from an always-allowed app, so "paused" holds
      * even for an app the accessibility monitor never sees (background sync, a game's own
-     * network stack). Without the consent the overlay plus app blocking is what enforces it.
+     * network stack).
+     *
+     * Issue #231 review D2: without the consent the overlay and app blocking do not stop packets,
+     * so `ok` would be false (measured: `ping 8.8.8.8` still answered after an acked pause). The
+     * refusal is [EnforceabilityPolicy.REASON_WEB_FILTER_NOT_SET_UP]; the paused state is persisted
+     * anyway so the pause applies once the filter is set up.
      */
-    private fun pauseInternet() {
+    private fun pauseInternet(): CommandOutcome {
         rules.setPausedInternet(true)
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
-        if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
+        val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context)
+        if (webFilterSetUp) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
         }
         context.startActivity(
@@ -203,6 +244,7 @@ class CommandDispatcher @Inject constructor(
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_PAUSED_INTERNET),
         )
+        return EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp)
     }
 
     /** Clears pause-the-internet and dismisses the paused-internet overlay (single-task onNewIntent). */
@@ -350,9 +392,25 @@ class CommandDispatcher @Inject constructor(
 
         /**
          * Pure minutes parser for command payloads: returns the clamped value in 1..240, or null
-         * when [raw] is missing or not a number.
+         * when [raw] is missing, not a number, or not finite (`NaN`/`Infinity` parse as doubles but
+         * are not a duration the parent asked for).
          */
         internal fun parseMinutes(raw: String?): Int? =
-            raw?.toDoubleOrNull()?.toInt()?.coerceIn(MIN_MINUTES, MAX_MINUTES)
+            raw?.toDoubleOrNull()?.takeIf { it.isFinite() }?.toInt()?.coerceIn(MIN_MINUTES, MAX_MINUTES)
+
+        /**
+         * Issue #231 review: a type this agent does not implement is acked `failed` with
+         * [CommandAckPolicy.REASON_UNSUPPORTED_COMMAND], so the parent can say "update OSRA on your
+         * child's phone" instead of the row staying `delivered` forever.
+         */
+        internal fun unknownTypeOutcome(): CommandOutcome =
+            CommandOutcome.Refused(CommandAckPolicy.REASON_UNSUPPORTED_COMMAND)
+
+        /**
+         * Issue #231 review: an unparseable `bonus_time`/`wind_down` payload is acked `failed` with
+         * [CommandAckPolicy.REASON_INVALID_PAYLOAD]; nothing ran, and silence left the row `delivered`.
+         */
+        internal fun invalidMinutesOutcome(): CommandOutcome =
+            CommandOutcome.Refused(CommandAckPolicy.REASON_INVALID_PAYLOAD)
     }
 }

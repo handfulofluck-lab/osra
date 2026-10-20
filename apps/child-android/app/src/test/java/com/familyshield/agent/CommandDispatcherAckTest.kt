@@ -2,6 +2,7 @@ package com.familyshield.agent
 
 import com.familyshield.agent.commands.CommandAckPolicy
 import com.familyshield.agent.commands.CommandAckSender
+import com.familyshield.agent.commands.CommandDispatcher
 import com.familyshield.agent.commands.CommandOutcome
 import com.familyshield.agent.commands.LocateFix
 import com.familyshield.agent.network.dto.CommandAckDto
@@ -70,25 +71,51 @@ class CommandDispatcherAckTest {
     }
 
     @Test
-    fun `an unknown command or deferred locate_now is not acked here`() {
-        assertNull(CommandAckPolicy.ackFor("c1", CommandOutcome.Ignored))
+    fun `a deferred locate_now is acked by the service, not here`() {
         assertNull(CommandAckPolicy.ackFor("c1", CommandOutcome.Deferred))
     }
 
     @Test
+    fun `an unknown command type is refused as unsupported instead of left delivered`() {
+        val ack = CommandAckPolicy.ackFor("c1", CommandDispatcher.unknownTypeOutcome())!!
+
+        assertEquals("failed", ack.status)
+        assertEquals(mapOf("reason" to "unsupported_command"), ack.detail)
+    }
+
+    @Test
+    fun `an unparseable minutes payload is refused as invalid instead of left delivered`() {
+        val ack = CommandAckPolicy.ackFor("c1", CommandDispatcher.invalidMinutesOutcome())!!
+
+        assertEquals("failed", ack.status)
+        assertEquals(mapOf("reason" to "invalid_payload"), ack.detail)
+    }
+
+    @Test
     fun `locate_now acks ok only when a fix exists and names its source`() {
-        val fresh = CommandAckPolicy.locateAck("c1", LocateFix.FRESH)!!
+        val fresh = CommandAckPolicy.locateAck("c1", LocateFix.FRESH, uploaded = true)!!
         assertEquals("ok", fresh.status)
         assertEquals(mapOf("fix" to "fresh"), fresh.detail)
 
-        val cached = CommandAckPolicy.locateAck("c1", LocateFix.CACHED)!!
+        val cached = CommandAckPolicy.locateAck("c1", LocateFix.CACHED, uploaded = true)!!
         assertEquals("ok", cached.status)
         assertEquals(mapOf("fix" to "cached"), cached.detail)
 
-        val none = CommandAckPolicy.locateAck("c1", null)!!
+        val none = CommandAckPolicy.locateAck("c1", null, uploaded = false)!!
         assertEquals("failed", none.status)
         assertEquals(mapOf("reason" to CommandAckPolicy.REASON_LOCATION_UNAVAILABLE), none.detail)
-        assertNull("the FCM path has no durable row to ack", CommandAckPolicy.locateAck(null, LocateFix.FRESH))
+        assertNull(
+            "the FCM path has no durable row to ack",
+            CommandAckPolicy.locateAck(null, LocateFix.FRESH, uploaded = true),
+        )
+    }
+
+    @Test
+    fun `a fix whose upload failed sends no ack, so the row is re-offered at 120 s`() {
+        // Issue #231 review: flushPings() used to swallow the upload failure, so a `fresh` ack could
+        // go out while the point was only buffered on the phone. No upload means no observable effect.
+        assertNull(CommandAckPolicy.locateAck("c1", LocateFix.FRESH, uploaded = false))
+        assertNull(CommandAckPolicy.locateAck("c1", LocateFix.CACHED, uploaded = false))
     }
 
     @Test
@@ -144,6 +171,27 @@ class CommandDispatcherAckTest {
             dispatcher.contains("CommandOutcome.Deferred"),
         )
         assertTrue(service.contains("ackLocateNow"))
+        assertTrue(
+            "lock/pause must be acked by the enforceability policy, not unconditionally",
+            dispatcher.contains("EnforceabilityPolicy.lockOutcome") &&
+                dispatcher.contains("EnforceabilityPolicy.pauseOutcome"),
+        )
+        assertTrue(
+            "accessibility running is the bound service, not a cached setting",
+            dispatcher.contains("AccessibilityMonitorService.isRunning"),
+        )
+        assertTrue(
+            "unknown types and malformed minutes must be refused, not left unaudited",
+            dispatcher.contains("unknownTypeOutcome()") && dispatcher.contains("invalidMinutesOutcome()"),
+        )
+        assertTrue(
+            "flushPings must report whether it uploaded",
+            service.contains("suspend fun flushPings(): Boolean"),
+        )
+        assertTrue(
+            "the locate ack must carry the flush result, so a buffered fix is not acked",
+            service.contains("ackLocateNow(commandId, fix, uploaded)"),
+        )
     }
 
     private fun sourceFile(relative: String): String {

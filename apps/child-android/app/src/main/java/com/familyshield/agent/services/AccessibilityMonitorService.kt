@@ -70,6 +70,10 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        // Issue #231 review: this callback is the system telling us it has bound the service, so it
+        // is the authoritative "accessibility is running" for EnforceabilityPolicy — not the
+        // ENABLED_ACCESSIBILITY_SERVICES setting, which stays true while the service is not alive.
+        isRunning = true
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REPLACED)
@@ -79,7 +83,15 @@ class AccessibilityMonitorService : AccessibilityService() {
         runCatching { registerReceiver(packageChangeReceiver, filter) }
     }
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        // Called when the system is about to unbind (the user turned the service off, or it was
+        // replaced); onDestroy follows, but the command poll must see the service as gone at once.
+        isRunning = false
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        isRunning = false
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
     }
@@ -378,6 +390,17 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AccessibilityMonitor"
+
+        /**
+         * Issue #231 review: true while the system holds this service bound, set from
+         * [onServiceConnected] and cleared when it unbinds. `EnforceabilityPolicy` uses it for the
+         * `lock`/`pause` accessibility path: the bound service is exempt from the background-activity
+         * launch rule and re-raises the overlay, whereas `Settings.Secure` only says the user enabled
+         * it. Same-process state, so it describes the process that is about to dispatch the command.
+         */
+        @Volatile
+        var isRunning: Boolean = false
+            internal set
 
         /**
          * Issue #132: [ensureLocationServiceRunning]'s decision, pure so the JVM suite holds it in
