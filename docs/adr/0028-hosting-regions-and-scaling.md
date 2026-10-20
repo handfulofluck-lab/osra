@@ -51,7 +51,8 @@
    report) and **every client sends its app version**; the server keeps old request shapes working for
    at least two releases and can answer "update required". This is how mixed Android / iPhone / Windows
    families get honest screens, and how an app stuck in store review keeps working.
-5. **Location retention drops to 30 days**; other raw data stays at 90 days, rollups at 365 (ADR-0013
+5. **Location retention drops to 30 days** (confirmed by Karim as a product decision, 2026-10-20 17:28Z);
+   other raw data stays at 90 days, rollups at 365 (ADR-0013
    otherwise unchanged).
 6. **Growth steps, taken when traffic calls for them, not before:**
    - ~10k families: background jobs move out of the API process into a worker; the realtime gateway
@@ -128,7 +129,7 @@ rules in ADR-0002/0003/0006/0008/0012/0013 are untouched; release-build rows get
 families); push-first adds a dependency on FCM / APNs delivery, so the 15-minute safety poll stays; the
 capability list and version gate are new contract surface to keep in `packages/shared-types`; shorter
 location history is a visible product change that the privacy policy must state; the 30-day
-window is a product decision for Karim to confirm, recorded here only because it sizes storage.
+window is a product decision, confirmed by Karim on 2026-10-20 (30 days chosen over 90).
 
 ## Falsifiable claims a verifier can test
 
