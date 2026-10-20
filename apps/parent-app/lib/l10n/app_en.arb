@@ -214,6 +214,20 @@
       "error": { "type": "String" }
     }
   },
+  "commandRefusedBackgroundLocation": "{command} was not sent to {device}: the phone has not granted “Allow all the time” location, so Locate and geofence alerts cannot reach it. Ask your child to open OSRA and grant it.",
+  "@commandRefusedBackgroundLocation": {
+    "placeholders": {
+      "command": { "type": "String" },
+      "device": { "type": "String" }
+    }
+  },
+  "commandRefusedLocationPermission": "{command} was not sent to {device}: the phone has no location permission. Ask your child to open OSRA and grant location.",
+  "@commandRefusedLocationPermission": {
+    "placeholders": {
+      "command": { "type": "String" },
+      "device": { "type": "String" }
+    }
+  },
   "rulesLoadFailed": "Failed to load rules: {error}",
   "@rulesLoadFailed": {
     "placeholders": {

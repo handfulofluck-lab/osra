@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -398,6 +399,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String commandFailed(String error) {
     return 'Command failed: $error';
+  }
+
+  @override
+  String commandRefusedBackgroundLocation(String command, String device) {
+    return '$command was not sent to $device: the phone has not granted “Allow all the time” location, so Locate and geofence alerts cannot reach it. Ask your child to open OSRA and grant it.';
+  }
+
+  @override
+  String commandRefusedLocationPermission(String command, String device) {
+    return '$command was not sent to $device: the phone has no location permission. Ask your child to open OSRA and grant location.';
   }
 
   @override

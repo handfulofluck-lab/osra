@@ -116,6 +116,8 @@
   "commandQueued": "تم وضع «{command}» في قائمة الانتظار لـ{device} — لم يؤكّد الجهاز تنفيذه بعد.",
   "netQueued": "تم وضع «{action}» في قائمة الانتظار لـ{device} — لم يؤكّد الجهاز تنفيذه بعد.",
   "commandFailed": "فشل الأمر: {error}",
+  "commandRefusedBackgroundLocation": "لم يُرسل «{command}» إلى {device}: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.",
+  "commandRefusedLocationPermission": "لم يُرسل «{command}» إلى {device}: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح OSRA ومنح إذن الموقع.",
   "rulesLoadFailed": "تعذّر تحميل القواعد: {error}",
   "noPerAppRules": "لا توجد قواعد لكل تطبيق",
   "appActionBlock": "حظر",
