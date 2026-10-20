@@ -312,7 +312,8 @@ adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:c
 # "Attempt to remove non-test admin" on Android 14+): enter the PIN once on the guard to open a grace
 # window, then Settings > Device admin apps > OSRA parental controls > Deactivate > OK
 #   -> POST /v1/alerts/internal 201 (type device_admin_removed) within 60 s (3.3 s on the Flip4);
-#      the status screen shows "alert-only" and `adb uninstall` works again
+#      exactly ONE such row per deactivation (issue #225: a second, ~16 s later, is a regression
+#      of the dedupe key); the status screen shows "alert-only" and `adb uninstall` works again
 ```
 
 **Debug builds keep `testOnly`, but cleanup is still the app's PIN gate (issues #170, #217).** An

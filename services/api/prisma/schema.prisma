@@ -321,6 +321,9 @@ model Alert {
   title        String
   body         String
   metadata     Json     @default("{}")
+  /// Idempotency key supplied by the producer (issue #225). Null for alerts without one.
+  /// The partial unique index lives in migration 0019 because Prisma cannot express it.
+  dedupeKey    String?
   createdAt    DateTime @default(now())
   acknowledged Boolean  @default(false)
   child        Child    @relation(fields: [childId], references: [id])

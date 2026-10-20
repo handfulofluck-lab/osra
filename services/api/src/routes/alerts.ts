@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { raiseAlert } from "../lib/alerts.js";
+import { raiseAlertOnce } from "../lib/alerts.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
@@ -37,6 +37,11 @@ const InternalAlertSchema = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
   metadata: z.record(z.unknown()).optional(),
+  /**
+   * Issue #225: producer idempotency key. `<deviceId>|<type>|<event timestamp>` makes a retry of a
+   * device-admin-removed alert return the existing row instead of paging the parent twice.
+   */
+  dedupeKey: z.string().min(1).max(200).optional(),
 });
 
 type AuthedUser = { familyId: string };
@@ -87,7 +92,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, severity, category, title, body, metadata } = parsed.data;
+    const { childId, deviceId, severity, category, title, body, metadata, dedupeKey } = parsed.data;
 
     if (auth.device) {
       // P0-5: Verify device is not revoked
@@ -112,7 +117,8 @@ export async function alertsRoutes(app: FastifyInstance) {
     const effectiveDeviceId = deviceId ?? auth.device?.id;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
-    const alert = await raiseAlert({
+    // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
+    const { alert, deduplicated } = await raiseAlertOnce({
       childId,
       familyId: child.familyId,
       deviceId: effectiveDeviceId,
@@ -121,9 +127,10 @@ export async function alertsRoutes(app: FastifyInstance) {
       title,
       body,
       metadata,
+      dedupeKey,
       childName: child.displayName,
     });
-    return reply.code(201).send({ alert });
+    return reply.code(deduplicated ? 200 : 201).send({ alert });
   });
 
 }
