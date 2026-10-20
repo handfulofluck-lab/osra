@@ -72,3 +72,33 @@ off" on an untouched install, makes every later alert suspect.
   it is enabled and then disabled.
 - Cost: one more DataStore write per 60-second poll and one `findFirst` per keyed alert. Both are
   negligible beside the POST they guard.
+
+## Extended 2026-10-20 — the rule is shared, and both component forms count
+
+Claude's review of PR #226 found two gaps in the first implementation.
+
+1. **The overlay check was still level-triggered.** `LocationService.overlayCheckOnce` alerted
+   whenever `Settings.canDrawOverlays` was false, so a fresh install that never granted it paged the
+   parent 2 s after pairing. The transition rule is now one shared pure policy,
+   `security.PermissionObservationPolicy.shouldAlertOnObservation(wasGranted, isGrantedNow)`;
+   `AccessibilityOffPolicy` delegates to it and the overlay check applies it over a new persisted
+   observation (`AgentSettings.overlayWasGranted` / `recordOverlayGranted`, cleared on re-pair in
+   `clearPairing`). The overlay site mirrors the accessibility one: a non-edge observation is
+   recorded and returns; a throttled edge is recorded revoked so it does not repeat when the window
+   expires; a genuine edge posts, and revoked is recorded only on success so a failed POST retries.
+   The alert type (`overlay_revoked`), title, body, severity, category and throttle are unchanged, so
+   the existing probe row and telemetry stay valid. Usage access is not part of this: it has no alert
+   site, only the setup checklist reads it, so no alert was added.
+2. **The accessibility parse recognised only the fully-qualified component.** Android may store the
+   short form `pkg/.services.AccessibilityMonitorService`, which the old equality against
+   `pkg/pkg.services.AccessibilityMonitorService` did not match; the policy then recorded the service
+   as never-on and a later off raised no alert. `security.AccessibilityServiceListPolicy` now parses
+   every `:`-separated entry the way `ComponentName.unflattenFromString` does — a leading dot is
+   relative to the package, a `:subId` suffix and malformed entries are tolerated — and compares
+   package and fully-qualified class. Both `AccessibilityOffPolicy.isServiceEnabled` and
+   `GrantChecks.accessibilityEnabled` use it, so the tamper check and the setup checklist agree.
+   The parser is plain Kotlin because `ComponentName` is stubbed in this repo's JVM tests.
+
+`PerPermissionEdgeTriggerTableTest` covers both permissions with the three observations (off first
+→ 0 alerts, on → off → 1, off → off → 0), and `AccessibilityServiceListPolicyTest` covers both string
+forms, other services/packages, `:subId`, null/blank, and same-package different class.

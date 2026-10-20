@@ -30,6 +30,7 @@ import com.familyshield.agent.network.dto.LocationPingDto
 import com.familyshield.agent.receivers.AccessibilityOffReceiver
 import com.familyshield.agent.receivers.AlertThrottlePolicy
 import com.familyshield.agent.receivers.VpnDetectPolicy
+import com.familyshield.agent.security.PermissionObservationPolicy
 import com.familyshield.agent.telemetry.UsageReporter
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -344,10 +345,42 @@ class LocationService : Service() {
         postTamperOnce(nowMs, TYPE_PRIVATE_DNS, "Web filter bypassed", "Private DNS was set to a provider on this device, which routes around OSRA's web filter")
     }
 
-    /** Plan 1.9 (bypass #5): the overlay permission revoked means the lock/pause screens cannot be shown. */
+    /**
+     * Plan 1.9 (bypass #5): the overlay permission revoked means the lock/pause screens cannot be
+     * shown. Issue #225: like the accessibility check, this is an edge over a persisted observation
+     * — a fresh install that never granted the permission is not tamper, so the first observation
+     * is silent. The new observation is recorded even when no alert is raised; revoked is recorded
+     * only after a successful POST so a failed call retries.
+     */
     private suspend fun overlayCheckOnce(nowMs: Long) {
-        if (android.provider.Settings.canDrawOverlays(this)) return
-        postTamperOnce(nowMs, TYPE_OVERLAY_REVOKED, "Lock screen permission removed", "\"Display over other apps\" was turned off for OSRA; the lock and pause screens cannot be shown until it is re-enabled")
+        val grantedNow = android.provider.Settings.canDrawOverlays(this)
+        if (!PermissionObservationPolicy.shouldAlertOnObservation(settings.overlayWasGranted(), grantedNow)) {
+            settings.recordOverlayGranted(grantedNow)
+            return
+        }
+        // The edge is real. If the type is throttled, record it revoked: this event was already
+        // reported inside the window, and leaving it granted would repeat the alert when it expires.
+        if (!AlertThrottlePolicy.shouldAlert(settings.tamperAlertTimestamp(TYPE_OVERLAY_REVOKED), nowMs)) {
+            settings.recordOverlayGranted(false)
+            return
+        }
+        val childId = settings.childId() ?: return
+        runCatching {
+            api.postInternalAlert(
+                AlertDto(
+                    childId = childId,
+                    deviceId = settings.deviceId(),
+                    severity = "critical",
+                    category = "tamper",
+                    title = "Lock screen permission removed",
+                    body = "\"Display over other apps\" was turned off for OSRA; the lock and pause screens cannot be shown until it is re-enabled",
+                    metadata = mapOf("type" to TYPE_OVERLAY_REVOKED),
+                ),
+            )
+        }.onSuccess {
+            settings.recordOverlayGranted(false)
+            settings.recordTamperAlert(TYPE_OVERLAY_REVOKED, nowMs)
+        }
     }
 
     private suspend fun postTamperOnce(nowMs: Long, type: String, title: String, body: String) {

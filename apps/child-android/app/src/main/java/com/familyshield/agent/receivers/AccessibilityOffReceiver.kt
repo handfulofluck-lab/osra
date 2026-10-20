@@ -6,6 +6,8 @@ import android.provider.Settings
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.security.AccessibilityServiceListPolicy
+import com.familyshield.agent.security.PermissionObservationPolicy
 import com.familyshield.agent.services.AccessibilityMonitorService
 
 /**
@@ -67,23 +69,15 @@ object AccessibilityOffPolicy {
     /** Detection type; doubles as the per-type throttle key segment. */
     const val TYPE: String = "accessibility"
 
-    /** Matches one flattened component `pkg/pkg.Class` inside ENABLED_ACCESSIBILITY_SERVICES. */
-    private val COMPONENT_REGEX = Regex("([A-Za-z0-9_.$-]+/[A-Za-z0-9_.$-]+)")
-
     /**
      * True when the service identified by flattened [component] appears in the
      * ENABLED_ACCESSIBILITY_SERVICES value. Entries are `pkg/pkg.Class[:subId]` strings joined
-     * by ':' — a naive split(':') breaks on the separator inside each flattened name and on
-     * multi-colon entries, so the pair scan matches `pkg/Class` directly and tolerates a
-     * colon-suffixed variant of our own component.
+     * by ':'; [AccessibilityServiceListPolicy] parses each entry the way
+     * `ComponentName.unflattenFromString` does, so both the fully-qualified and the short
+     * `pkg/.Class` form match (issue #225).
      */
-    fun isServiceEnabled(enabledServices: String?, component: String): Boolean {
-        if (enabledServices.isNullOrBlank()) return false
-        return COMPONENT_REGEX.findAll(enabledServices).any { match ->
-            val entry = match.value
-            entry == component || entry.startsWith("$component:") || component.startsWith("$entry:")
-        }
-    }
+    fun isServiceEnabled(enabledServices: String?, component: String): Boolean =
+        AccessibilityServiceListPolicy.isEnabled(enabledServices, component)
 
     /** True when the service is effectively enabled: global switch on AND our component listed. */
     fun isEffectivelyEnabled(accessibilityEnabled: String?, enabledServices: String?, component: String): Boolean =
@@ -97,8 +91,9 @@ object AccessibilityOffPolicy {
      * Issue #225: the accessibility-off alert is an edge, not a level. It is raised only when the
      * service was previously recorded **on** and is off now. `wasEnabled = null` means it has never
      * been observed on, so a first check that finds it off — a fresh install, before setup granted
-     * it — is silent instead of paging the parent about a protection they never had.
+     * it — is silent instead of paging the parent about a protection they never had. The rule lives
+     * in [PermissionObservationPolicy] and is shared with the overlay check.
      */
     fun shouldAlertOnObservation(wasEnabled: Boolean?, isEnabledNow: Boolean): Boolean =
-        wasEnabled == true && !isEnabledNow
+        PermissionObservationPolicy.shouldAlertOnObservation(wasEnabled, isEnabledNow)
 }

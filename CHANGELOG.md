@@ -23,9 +23,23 @@ environment where it was written — see `docs/QA/` for the verification state.
   a true → false edge over a persisted observation (`AgentSettings.accessibilityWasEnabled`); a first
   observation that the service is off is silent. Re-pair clears the record, so a re-paired device
   with accessibility still off is silent too. A failed POST leaves `true` recorded and retries.
+- **Overlay revocation on first sight, and the short accessibility component form (#225).**
+  `overlayCheckOnce` applies the same true → false edge rule as accessibility, over a new persisted
+  observation (`AgentSettings.overlayWasGranted` / `recordOverlayGranted`, cleared on re-pair): a
+  fresh install that never granted "Display over other apps" is silent, while a recorded grant that
+  is revoked still alerts once. The rule is one shared pure policy
+  (`security.PermissionObservationPolicy`), and `AccessibilityOffPolicy` delegates to it. The
+  accessibility parser now mirrors `ComponentName.unflattenFromString` in
+  `security.AccessibilityServiceListPolicy`, so the short form
+  `com.familyshield.agent/.services.AccessibilityMonitorService` counts as enabled in both the
+  tamper check and `GrantChecks.accessibilityEnabled`, not only the fully-qualified form. Usage
+  access has no alert site (only the setup checklist reads it), so no usage-access alert was added.
 - Tests: `TamperAlertDedupeTest` (receiver alert + worker retry → one POST; new deactivation → new
-  key; failed POST is not recorded) and `AccessibilityOffPolicyTest` (first check off silent, on → off
-  one alert); API `alerts.test.ts` (duplicate key `200`, one `create`; unique-collision race `200`).
+  key; failed POST is not recorded), `AccessibilityOffPolicyTest` (first check off silent, on → off
+  one alert), `PerPermissionEdgeTriggerTableTest` (accessibility and overlay: first observation off
+  → 0 alerts, on → off → 1, off → off → 0) and `AccessibilityServiceListPolicyTest` (both component
+  forms, other services/packages, `:subId`, null/blank, same-package different class); API
+  `alerts.test.ts` (duplicate key `200`, one `create`; unique-collision race `200`).
 - ADR-0027 records the rule and the rejected alternatives (dropping the drain, time-window
   throttling, a `(device, category)`-only index).
 

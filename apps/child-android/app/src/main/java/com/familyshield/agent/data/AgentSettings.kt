@@ -163,8 +163,9 @@ class AgentSettings @Inject constructor(
             it.remove(KEY_DEVICE_TOKEN)
             it.remove(KEY_DEVICE_ID)
             it.remove(KEY_CHILD_ID)
-            // Issue #225: after a re-pair the next accessibility check is a first observation again.
+            // Issue #225: after a re-pair the next accessibility/overlay check is a first observation again.
             it.remove(KEY_ACCESSIBILITY_WAS_ENABLED)
+            it.remove(KEY_OVERLAY_WAS_GRANTED)
         }
         baseUrlCache = null
         tokenCache = null
@@ -243,6 +244,19 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_ACCESSIBILITY_WAS_ENABLED] = if (enabled) "1" else "0" }
     }
 
+    /**
+     * Issue #225: the last observation of whether the overlay permission was granted, or null when
+     * it has never been observed. Same tri-state encoding as [accessibilityWasEnabled], and the
+     * overlay alert is likewise raised only on a recorded true -> false edge.
+     */
+    suspend fun overlayWasGranted(): Boolean? =
+        read(KEY_OVERLAY_WAS_GRANTED)?.let { it == "1" }
+
+    /** Records an overlay-permission observation (granted or not) for the #225 transition rule. */
+    suspend fun recordOverlayGranted(granted: Boolean) {
+        store.edit { it[KEY_OVERLAY_WAS_GRANTED] = if (granted) "1" else "0" }
+    }
+
     /** Last uploaded installed-apps fingerprint (roadmap 3.4), or null before the first report. */
     suspend fun installedAppsReportHash(): String? = read(KEY_INSTALLED_APPS_HASH)
 
@@ -278,6 +292,8 @@ class AgentSettings @Inject constructor(
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
         private val KEY_ACCESSIBILITY_WAS_ENABLED = stringPreferencesKey("accessibility_was_enabled")
+        // Issue #225: the recorded "was granted" state for the overlay-revoked transition rule.
+        private val KEY_OVERLAY_WAS_GRANTED = stringPreferencesKey("overlay_was_granted")
         // Roadmap 3.4: change detection for the installed-app inventory upload.
         private val KEY_INSTALLED_APPS_HASH = stringPreferencesKey("installed_apps_hash")
         private val KEY_INSTALLED_APPS_REPORTED_AT = stringPreferencesKey("installed_apps_reported_at")
