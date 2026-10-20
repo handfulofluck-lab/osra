@@ -31,6 +31,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   `AdminEnrolmentPolicyTest > a returned sheet with no active admin on Samsung is an ordinary
   not-granted result`; the fixed tree is green. Not verified on hardware here — the phone was not
   touched, so the sheet's 1-second refusal window is measured by code/JVM only until a tester runs it.
+### CI — the scope guard also catches a revert by value, and refuses an undeclared title
+- The revert detector walks the last 30 first-parent merges on the base and fails when a PR restores a path's **pre-merge** blob while `main` still carries the merged one (additions, deletions and renames alike). A `revert(…)` title is the only way past it.
+- A title that declares no kind is now **refused** rather than skipped, so the check cannot be avoided by wording.
+- Self-test grew to five cases, two of them live: the stale-base squash (`6dd418f`) must fail under a `fix(…)` title, and the honest rebuild (`13faa6c`) must pass. That pair is the regression test for the near-miss of 2026-10-19.
 
 ### CI — a PR may only change what its title says it changes (stale-base guard)
 - `scripts/check-pr-diff-scope.mjs` reads the declared kind from the PR title (`docs(`, `ci(`, `feat(`, `fix(` …) and the reality from `git diff --name-status`, and fails when a docs-titled PR touches code, when a ci-titled PR touches app code, or when a docs PR deletes files. Wired into `workflow-lint` for every PR, with a self-test that includes the negative control.
