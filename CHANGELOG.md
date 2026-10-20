@@ -11,6 +11,25 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — a geofence arrival after a dropped connection is reported, and a stale gap is named (#243)
+- **Missed arrival (found in review of the first cut):** the Android agent uploads fresh in-memory
+  pings first and the older Room-buffered ones after (`LocationService.kt:262`), and the API judged
+  the **last array element** — the newest of the *old* pings — so after any failed upload a real
+  "Entered Home" never fired. The upload is now sorted by `timestamp` (a ping without one counts as
+  received now) and judged from its **newest** ping; the stored previous ping is merged in, and the
+  entry just before the newest is the "before". `pickTransitionPair()` makes that choice and
+  `geofenceTransition()` decides the transition, both in `services/api/src/lib/geo.ts`.
+- An enter/exit is no longer raised against a `before` that does not exist: when the device has
+  **no previous ping** and the upload is a single ping (first ping after pairing, or the 30-day
+  location window deleted the history) it is a **baseline** — no alert and no school-routine nudge.
+  A previous ping at any age is still compared normally, so the ordinary overnight-off case keeps
+  its "Left Home" and "Entered School". When the gap between "before" and "now" is **over 6 h** —
+  the age of the position compared against, not the distance back to the oldest ping in the upload
+  — the alert body says so ("No location for 13 h 50 min before this.") and the metadata carries
+  `gapMinutes`: a dense buffered batch claims no quiet period, and a hole inside one is named.
+  Still **no coordinates**, per #242. Contract in `docs/SPEC.md`, tests in
+  `services/api/test/geofence.test.ts`.
+
 ### API / parent app — location history is kept 30 days, and the consent copy says so (#238)
 - Children's **location history is kept 30 days**; raw app, web and chat rows stay at 90 and usage
   rollups at 365 (ADR-0028 decision 5, Karim 2026-10-20). `services/api/src/lib/usageModel.ts` adds

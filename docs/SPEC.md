@@ -186,6 +186,24 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     GET /geofences/:childId; POST /geofences; DELETE /geofences/:id.
     Geofence evaluation: on each ping, haversine distance to all child geofences; on
     enter/exit transition raise Alert category "geofence".
+    Geofence transition across a gap (issue #243): the upload is sorted by `timestamp` (a ping
+    without one counts as received now) and the stored previous ping for the same device is merged
+    in. The **newest** entry is "now"; the entry **just before it** is "before". **No previous
+    ping** — first ping ever, or the 30-day location window deleted them all — with a **single-ping**
+    upload makes this ping a **baseline**: no enter/exit alert and no school-routine nudge, because
+    a child cannot arrive somewhere we never knew they were. With no previous ping but two or more
+    upload pings, "before" is the second-newest of them — a real transition, not a baseline. An
+    upload whose newest ping is **not newer** than the stored previous (`latest.ts <= previous.ts`)
+    is not evaluated at all: nothing new happened. A previous position **at any age** is compared
+    as usual, so a phone off at home overnight and on at school in the morning still gives both true
+    alerts. When the gap between "before" and "now" is **more than 6 h**, the alert body names it
+    (`Entered School (geofence "School", 200 m radius). No location for 14 h before this.`) and
+    `metadata.gapMinutes` carries the number — **no coordinates**, per the alert rule above. A dense
+    buffered batch therefore claims no quiet period by itself, and a hole *inside* a batch is named
+    by the age of the ping either side of it. Crossings earlier inside one long buffered upload are
+    still collapsed to its last step: only the newest pair is judged. The pair is chosen by
+    `pickTransitionPair()` and the transition itself decided by `geofenceTransition()` in
+    `services/api/src/lib/geo.ts`.
 - src/middleware/requireFamily.ts — GENERATE THIS: preHandler factory that loads the
   family-scoped resource by request param (child/device/geofence/alert), returns 403 when
   resource.familyId !== req.user.familyId, attaches resource to the request.
