@@ -15,6 +15,7 @@ object TamperState {
     private const val KEY_GRACE_UNTIL = "guard_grace_until_ms"
     private const val KEY_LAST_TIER = "last_tier"
     private const val KEY_SANCTIONED_UNTIL = "sanctioned_removal_until_ms"
+    private const val KEY_ADMIN_REMOVED_BY_PARENT = "admin_removed_by_parent"
 
     /** How many accepted dedupe keys are kept; a retry only ever needs the newest one. */
     private const val MAX_POSTED_KEYS = 4
@@ -60,8 +61,21 @@ object TamperState {
         prefs(context).edit().putLong(KEY_SANCTIONED_UNTIL, untilMs).apply()
     }
 
-    fun isRemovalSanctioned(context: Context, nowMs: Long): Boolean =
-        nowMs < prefs(context).getLong(KEY_SANCTIONED_UNTIL, 0L)
+    /** The end of the parent-PIN removal window, or 0 when no removal was ever sanctioned. */
+    fun sanctionedRemovalUntil(context: Context): Long =
+        prefs(context).getLong(KEY_SANCTIONED_UNTIL, 0L)
+
+    /**
+     * True while this app's own parent-PIN removal has not been followed by a successful activation
+     * (issue #188). The status screen uses it to explain an alert-only tier instead of claiming a
+     * stuck Knox record; [GuardianAdminReceiver.onEnabled] and a protected `enrolmentOutcome()` clear it.
+     */
+    fun wasAdminRemovedByParent(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ADMIN_REMOVED_BY_PARENT, false)
+
+    fun setAdminRemovedByParent(context: Context, removed: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ADMIN_REMOVED_BY_PARENT, removed).apply()
+    }
 
     /** Last protection tier observed by the agent, so a drop to NONE can be alerted exactly once. */
     fun lastTier(context: Context): String? = prefs(context).getString(KEY_LAST_TIER, null)

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
@@ -23,10 +24,12 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.network.ServerUrls
 import com.familyshield.agent.security.AdminEnrolmentMessages
+import com.familyshield.agent.security.AdminEnrolmentPolicy
 import com.familyshield.agent.security.DeviceAdminManager
 import com.familyshield.agent.security.EnrolmentOutcome
 import com.familyshield.agent.security.ParentPin
 import com.familyshield.agent.security.ParentPinStore
+import com.familyshield.agent.security.ProtectionStatusNote
 import com.familyshield.agent.security.ProtectionTier
 import com.familyshield.agent.security.TamperGuardActivity
 import com.familyshield.agent.services.LocationService
@@ -55,18 +58,42 @@ class PairingActivity : ComponentActivity() {
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
 
+    /** When the admin sheet was launched, so a self-closing refusal can be told from a parent's Cancel. */
+    private var adminSheetLaunchedAtMs = 0L
+
     /**
-     * ADR-0010: the OS "activate device admin" screen. A returned sheet with no active admin on a
-     * Samsung device is the stale-Knox state (#186): name it and offer the Settings route instead of
-     * falling through to the generic "alert-only" screen. Every other answer keeps the old behaviour.
+     * ADR-0010: the OS "activate device admin" screen. The stale-Knox state (#186) is named only when
+     * the sheet itself refused as "Admin is already added" (#188) — a returned sheet with no admin
+     * and Knox merely present is the ordinary not-granted case. Every other answer keeps the old
+     * behaviour.
      */
-    private val deviceAdminLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    private val deviceAdminLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         deviceAdmin.applyUninstallProtection()
-        if (deviceAdmin.enrolmentOutcome(sheetReturned = true) == EnrolmentOutcome.STALE_KNOX_ADMIN) {
+        val elapsedMs = if (adminSheetLaunchedAtMs == 0L) {
+            Long.MAX_VALUE
+        } else {
+            SystemClock.elapsedRealtime() - adminSheetLaunchedAtMs
+        }
+        adminSheetLaunchedAtMs = 0L
+        val alreadyAddedRefusal = AdminEnrolmentPolicy.isAlreadyAddedRefusal(
+            resultOk = result.resultCode == RESULT_OK,
+            elapsedSinceLaunchMs = elapsedMs,
+        )
+        val outcome = deviceAdmin.enrolmentOutcome(
+            sheetReturned = true,
+            alreadyAddedRefusal = alreadyAddedRefusal,
+        )
+        if (outcome == EnrolmentOutcome.STALE_KNOX_ADMIN) {
             showStaleKnoxAdmin()
             return@registerForActivityResult
         }
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showComplete() }
+    }
+
+    /** Launches the admin sheet through one place, so every return can be timed (issue #188). */
+    private fun launchAdminSheet() {
+        adminSheetLaunchedAtMs = SystemClock.elapsedRealtime()
+        deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent())
     }
 
     /** Plan 1.4: the OS VPN consent dialog; on OK the sinkhole starts and comes back on every boot. */
@@ -422,7 +449,7 @@ class PairingActivity : ComponentActivity() {
             addView(
                 Button(this@PairingActivity).apply {
                     text = "Activate device admin"
-                    setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+                    setOnClickListener { launchAdminSheet() }
                 },
             )
             addView(
@@ -454,7 +481,7 @@ class PairingActivity : ComponentActivity() {
             addView(
                 Button(this@PairingActivity).apply {
                     text = "Try Activate again"
-                    setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+                    setOnClickListener { launchAdminSheet() }
                 },
             )
             addView(
@@ -555,7 +582,7 @@ class PairingActivity : ComponentActivity() {
         OnboardingPolicy.oemHint(g, Build.MANUFACTURER)?.let { container.addView(label(it)) }
         val button = Button(this).apply { text = "Grant: ${g.title}" }
         when (g) {
-            OnboardingPolicy.Grant.DEVICE_ADMIN -> button.setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+            OnboardingPolicy.Grant.DEVICE_ADMIN -> button.setOnClickListener { launchAdminSheet() }
             OnboardingPolicy.Grant.WEB_FILTER -> button.setOnClickListener {
                 val prepare = android.net.VpnService.prepare(this)
                 if (prepare != null) vpnConsentLauncher.launch(prepare) else {
@@ -647,21 +674,20 @@ class PairingActivity : ComponentActivity() {
                     addView(
                         Button(this@PairingActivity).apply {
                             text = "Activate device admin"
-                            setOnClickListener { deviceAdminLauncher.launch(deviceAdmin.requestAdminIntent()) }
+                            setOnClickListener { launchAdminSheet() }
                         },
                     )
-                    // A Samsung device can stay in this generic state forever if Knox holds a stale
-                    // row (#186). Offer the Knox-aware recovery route before the parent hits it.
-                    if (deviceAdmin.hasKnoxAdminApi) {
-                        AdminEnrolmentMessages.forOutcome(EnrolmentOutcome.STALE_KNOX_ADMIN)?.let { message ->
-                            addView(label("\n" + message.recovery).apply { setTextColor(0xFF616161.toInt()) })
-                            addView(
-                                Button(this@PairingActivity).apply {
-                                    text = message.action
-                                    setOnClickListener { openDeviceAdminSettings() }
-                                },
-                            )
-                        }
+                    // Knox merely existing is not evidence of a stale row (#188): a parent-PIN removal
+                    // leaves this screen exactly like this and re-activation works. The stale-record
+                    // text is only shown after the sheet itself refused (deviceAdminLauncher above).
+                    if (AdminEnrolmentPolicy.statusNote(tier, deviceAdmin.wasAdminRemovedByParent) ==
+                        ProtectionStatusNote.REMOVED_BY_PARENT
+                    ) {
+                        addView(
+                            label("\n" + AdminEnrolmentMessages.PARENT_REMOVAL_NOTE).apply {
+                                setTextColor(0xFF616161.toInt())
+                            },
+                        )
                     }
                 }
                 if (!pinStore.isConfigured()) {

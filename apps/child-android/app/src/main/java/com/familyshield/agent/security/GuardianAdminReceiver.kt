@@ -33,6 +33,8 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
         TamperState.setAdminDisabledPending(context, false)
         // A re-activation starts a new event; the next disable records its own timestamp.
         TamperState.setAdminDisabledAt(context, 0L)
+        // Activation succeeded, so whatever an earlier parent-PIN removal recorded is no longer true.
+        TamperState.setAdminRemovedByParent(context, false)
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence =
@@ -40,21 +42,34 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
             "Your parent will be notified."
 
     override fun onDisabled(context: Context, intent: Intent) {
-        if (TamperState.isRemovalSanctioned(context, System.currentTimeMillis())) {
-            Log.i(TAG, "device admin disabled by the parent (PIN verified) — no alert")
-            TamperState.setLastTier(context, ProtectionTier.NONE.name)
-            return
+        val outcome = AdminDisabledPolicy.classify(
+            nowMs = System.currentTimeMillis(),
+            sanctionedUntilMs = TamperState.sanctionedRemovalUntil(context),
+        )
+        when (outcome) {
+            AdminDisabledOutcome.SANCTIONED_PARENT_REMOVAL -> {
+                Log.i(TAG, "device admin disabled by the parent (PIN verified) — no alert")
+                TamperState.setLastTier(context, ProtectionTier.NONE.name)
+                // The removal is asynchronous: onDisabled is the only place it is confirmed, and the
+                // open sanctioned window is what proves the parent asked for it.
+                TamperState.setAdminRemovedByParent(context, true)
+            }
+
+            AdminDisabledOutcome.TAMPER_ALERT -> {
+                // Issue #225: the timestamp is the event identity. Both this enqueue and the 60-s
+                // drain derive the same dedupe key from it, so one deactivation posts one alert.
+                val disabledAtMs = System.currentTimeMillis()
+                Log.w(TAG, "device admin disabled — flagging tamper alert ($disabledAtMs)")
+                TamperState.setAdminDisabledAt(context, disabledAtMs)
+                // No parent-removal record here: an out-of-band removal stays a tamper alert.
+                TamperState.setAdminDisabledPending(context, true)
+                // Tell the parent now, not at the next poll: expedited work survives the process
+                // death that usually follows an admin removal, and LocationService's 60-s loop is
+                // the fallback.
+                runCatching { TamperAlertWorker.enqueue(context, TamperAlertWorker.TYPE_ADMIN_REMOVED, eventAtMs = disabledAtMs) }
+                    .onFailure { Log.w(TAG, "could not enqueue tamper alert", it) }
+            }
         }
-        // Issue #225: the timestamp is the event identity. Both this enqueue and the 60-s drain
-        // derive the same dedupe key from it, so one deactivation posts one alert.
-        val disabledAtMs = System.currentTimeMillis()
-        Log.w(TAG, "device admin disabled — flagging tamper alert ($disabledAtMs)")
-        TamperState.setAdminDisabledAt(context, disabledAtMs)
-        TamperState.setAdminDisabledPending(context, true)
-        // Tell the parent now, not at the next poll: expedited work survives the process death that
-        // usually follows an admin removal, and LocationService's 60-s loop is the fallback.
-        runCatching { TamperAlertWorker.enqueue(context, TamperAlertWorker.TYPE_ADMIN_REMOVED, eventAtMs = disabledAtMs) }
-            .onFailure { Log.w(TAG, "could not enqueue tamper alert", it) }
     }
 
     companion object {
