@@ -30,6 +30,44 @@ environment where it was written — see `docs/QA/` for the verification state.
 - `docs/ROADMAP.md` 4.1 moves to ✅ as *built and measured as an evaluation scorer*, with the production
   sentence kept verbatim, and the Phase 4 progress row now reads 4.1 measured / 4.3 done / 4.2 partial.
 
+### Screen time — the UsageStats backfill is a delta, so an app is no longer re-counted every upload (#267)
+- The 15-minute upload is a delta and the server adds each one to the day (issue #31), but
+  `backfillFromUsageStats` added Android's **whole-day** total for every package this window's events did
+  not mention. A child who watched YouTube for 60 minutes in the morning and used only WhatsApp afterwards
+  had YouTube's 60 minutes added again on every later upload, so the parent's "today" grew without bound —
+  for every family that grants usage access. Moving the query's start does not help: `INTERVAL_DAILY`
+  returns whole buckets.
+- The totals are now treated as running counters (`UsageStatsDelta.deltaMinutes`): each upload adds the
+  increase since the last snapshot, and **every** package's total is recorded — including those the events
+  covered, so a later window without one of them adds only its increase. A total below the snapshot means
+  the day rolled over, and the whole total is new rather than a subtraction.
+- **The snapshot is keyed by Android's own bucket, not the calendar date** (#272 review). The phone rolls its
+  `INTERVAL_DAILY` bucket at a time it picks — measured at 20:07, not local midnight — so a date key
+  re-sent up to four hours of the previous evening on every morning's first upload. The key is the
+  bucket's `firstTimeStamp`, and a query that returns two buckets keeps only the newer one per package.
+- **A clock change no longer looks like a rollover** (#272 review). Android shifts every interval when the
+  wall clock moves — a network time correction above a couple of seconds does it too — so `firstTimeStamp`
+  changes while the counters stay put. Treating a moved key as a rollover re-sent every package's whole
+  total, which is this issue again, triggered by one clock change. `isRollover` now requires evidence from
+  the counters: a total below its snapshot, or a package with minutes that has vanished. The one case it
+  cannot tell apart — a real rollover where every app is already above yesterday's count before the first
+  upload — falls back to increments and under-counts by at most one upload window.
+- **An empty UsageStats query records nothing** (#272 review): storing a snapshot keyed `0` with no totals
+  gave the next upload a snapshot with no baseline, so it sent whole totals — the first-upload bug through
+  a side door.
+- **The first upload after a pairing adds nothing** (#272 review): with no snapshot the total reaches back
+  before OSRA existed, so it records a baseline instead — #229's rule that collection starts at the grant.
+  The cost is the tail of the last bucket before a rollover for apps the event stream missed: one window a
+  day, on the under-counting side.
+- **A re-grant now establishes a baseline instead of skipping the backfill** — #266's "skip on a re-grant
+  day" is removed, because the baseline excludes the withdrawn window *and* the morning before the grant
+  without losing the rest of the day. A re-grant therefore no longer costs the day's backfill.
+- Tests: `UsageStatsDeltaTest` (4) for the three cases from the issue plus the rollover, and the
+  `UsageReporter` wiring test now pins the delta, the day keying, the recording of every package and the
+  re-grant baseline — the assertion that pinned #266's skip is replaced, not deleted silently.
+- **⚠️ not verified here:** the phone row — one app for a few minutes, then only another across two
+  uploads, with the first app's minutes appearing once — is Claude's, on the Flip4.
+
 ### AI — the hosted scorer for plan 4.1, evaluation-only (#274)
 - `services/ai-engine/eval/deepseek_scorer.py` scores text with DeepSeek through the OpenAI-compatible
   chat-completions shape: a strict JSON object (`response_format: json_object`, temperature 0), values
@@ -81,7 +119,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   date arrives" and "a row at the floor is never imported" are JVM tests rather than phone rows alone.
 - **⚠️ not verified here:** the phone rows — a text dated a year ahead reaches the server once with `ts`
   clamped, and the same text inserted during a withdrawal never uploads — are Claude's, on the Flip4.
-
 
 ### AI — second author pass on the two banks that carry the Phase 4 gate (plan 4.2)
 - `self_harm` grows from 21/26 to **41/46** templates (EN/AR) and `grooming` from 20/23 to **40/43** —
@@ -345,7 +382,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   the fence is created without `routineId`, and `docs/SPEC.md` states that the field has no effect
   until location-conditioned routines exist. Existing fences keep their `routineId`; the API is
   unchanged.
-
 
 ### API — a geofence arrival after a dropped connection is reported, and a stale gap is named (#243)
 - **Missed arrival (found in review of the first cut):** the Android agent uploads fresh in-memory
@@ -2542,7 +2578,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   against a table instead of a guess; the delete command is one copy-paste block inside it.
 - Also in this PR: the trap row for the failure I hit today — a background build that reports a *plausible but
   wrong* count after the working tree changed under it (`docs/TESTING.md` §6), with the sha check that catches it.
-
 
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
