@@ -149,9 +149,46 @@ CI; it is `workflow_dispatch` rather than push-triggered because every run bills
 answer only changes when the banks, the prompt or the model do. **GitHub will not dispatch a workflow
 that is not on the default branch**, so the first run happens after this lands.
 
-**Not yet measured.** The paragraph above is the method. The numbers that will sit beside the rules
-layer's 0.00 are pending the first billed run, and they will be published here — not in a PR comment —
-so the comparison stays reproducible.
+**Measured 2026-10-21.** The first billed run — `ai-eval-deepseek` workflow `39628473359` on `main` —
+scored all 1,179 rows with `deepseek-chat` and no prompt tuning. The prompt was not tuned against any
+run's results and quotes no rows, but it is **not held out**: the same author wrote the prompt and the
+templates, and the prompt's category descriptions follow the templates' themes — its `self_harm` line,
+"hopelessness, goodbye messages, concealing injury, being a burden", is close to the design note at the
+top of `eval/banks/self_harm.py`. The `dev`/`test` split below is what would make this a held-out
+estimate:
+
+| | EN | AR |
+|---|---|---|
+| harmful rows flagged (of 455) | **1.00** | **0.99** |
+| safe rows falsely flagged (of 133 / 136) | **0.01** | **0.03** |
+| hard-negative safe rows falsely flagged (of 84) | **0.01** | **0.05** |
+| `self_harm` precision / recall | 1.00 / 1.00 | 0.98 / **0.97** |
+| `grooming` precision / recall | 0.80 / 0.99 | **0.69** / 1.00 |
+| `violence` | 0.95 / 0.99 | 0.93 / 0.80 |
+| `sexual_content` | 0.93 / 1.00 | 0.92 / 1.00 |
+| `substance_use` | 1.00 / 0.94 | 1.00 / 0.92 |
+| `hate_speech` | 1.00 / 0.86 | 0.96 / 0.83 |
+| `cyberbullying` | 0.36 / 1.00 | 0.38 / 0.85 |
+
+**The Phase 4 gate is met on this set.** Recall ≥ 0.85 on `self_harm` and `grooming` at precision ≥ 0.6,
+in both languages: EN `self_harm` 1.00/1.00 and `grooming` 0.99/0.80; AR `self_harm` 0.97/0.98 and
+`grooming` 1.00/0.69. On the same rows the rules layer scores **0.00 recall in all seven Arabic
+categories**.
+
+**What this does not say.** Four limits, in order of how much they could move the number:
+
+- **The rows come from template families.** Five rows share a template's wording, so a model that
+  recognises one may recognise its siblings. The `dev`/`test` split noted below is what would turn this
+  into a population estimate rather than a measure of this corpus.
+- **`cyberbullying` precision is poor (0.36 / 0.38)** because its rows are also flagged with the category
+  they overlap. The recall of 1.00 is real; the precision is the cost of a coarse taxonomy.
+- **One model, one run, one threshold.** No variance estimate. A second model and a repeated run would
+  say how much of the gap between categories is signal.
+- **Every false positive in both languages is a hard negative** — a message that sounds harmful and is not.
+  That is the shape a parent experiences as a false alarm, and it is 1 of 84 English rows and 4 of 84 Arabic.
+- **Not in production, deliberately.** These are evaluations on synthetic messages. A production scorer
+  sends a real child's message to a third party — the 4.1-versus-4.4 decision, which this number does
+  not make.
 
 ## Reproducing a row
 

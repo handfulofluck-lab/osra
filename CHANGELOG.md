@@ -11,6 +11,27 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
+- The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
+  no prompt tuning) scored **Arabic recall 0.97 `self_harm`, 1.00 `grooming`, 1.00 `sexual_content`,
+  0.92 `substance_use`, 0.83 `hate_speech`, 0.85 `cyberbullying`, 0.80 `violence`**, flagging 99 % of harmful
+  Arabic rows with a **3 % safe false-positive rate**. English: recall 0.86–1.00 across the seven categories,
+  1.00 of harmful rows flagged, **1 %** safe FP.
+- **On the same rows the rules layer scores 0.00 recall in all seven Arabic categories.** That contrast is
+  the whole point of 4.1, and it is now a published measurement rather than a premise.
+- **The Phase 4 gate's measurement is met on this set**: `self_harm` and `grooming`, recall ≥ 0.85 at
+  precision ≥ 0.6, in both languages — EN 1.00/1.00 and 0.99/0.80; AR 0.97/0.98 and 1.00/0.69.
+- **What it does not say**, in `EVAL.md` next to the table: the rows come from template families (five per
+  template), so the `dev`/`test` split is what would make this a population estimate; `cyberbullying`
+  precision is 0.36/0.38 because its rows overlap other categories; one model, one run, one threshold; and
+  the scorer is **not in production** — that is the 4.1-versus-4.4 decision.
+- Cost of the run: about **US$0.10**, estimated from token counts (≈400 input + ≈40 output per row);
+  Karim's DeepSeek balance is the real figure. **Each workflow run bills the whole set again** — the
+  workflow caches pip, not the scores — so "re-running is free" is true only for a *local* run, which
+  reuses `eval/.deepseek-cache.json`. Nobody has a local key today, so in practice every run costs.
+- `docs/ROADMAP.md` 4.1 moves to ✅ as *built and measured as an evaluation scorer*, with the production
+  sentence kept verbatim, and the Phase 4 progress row now reads 4.1 measured / 4.3 done / 4.2 partial.
+
 ### Parent app — the digest preferences screen speaks Arabic (#277)
 - 27 ARB keys cover every string on the screen: the three switches and their subtitles, the emails field,
   the timezone section and its "sent at 18:00 your local time" line, the save and send buttons, the busy
