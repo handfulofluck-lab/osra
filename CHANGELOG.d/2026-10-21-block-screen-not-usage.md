@@ -1,4 +1,4 @@
-### Android — time on OSRA's own block screen is no longer charged to the blocked app (#NNN, fixes #284)
+### Android — time on OSRA's own block screen is no longer charged to the blocked app (#288, fixes #284)
 - **The measurement:** on the Flip4, 103 s on a bedtime block screen ("This app is blocked by your
   parent") charged My Files 103 s, and a 1-minute limit then fired **0.9 s** after the app was opened
   again — on time it had never been used. The second stay, 123 s, was charged the same way.
