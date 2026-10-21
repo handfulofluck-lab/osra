@@ -112,8 +112,9 @@ class DeepSeekScorer:
         self.api_key = (api_key or os.environ.get("DEEPSEEK_API_KEY", "")).strip()
         if not self.api_key:
             raise DeepSeekUnavailable(
-                "DEEPSEEK_API_KEY is not set. Plan 4.1 needs it as a repository secret (CI) or in "
-                "services/ai-engine/.env (locally); the rules layer runs without it."
+                "DEEPSEEK_API_KEY is not set. It is a repository secret: run the ai-eval-deepseek "
+                "workflow, or export your own key in this shell for a local run. The rules layer runs "
+                "without it."
             )
         self.model = model or os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL)
         self.base_url = (base_url or os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL)).rstrip("/")
