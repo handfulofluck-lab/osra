@@ -72,7 +72,10 @@ class RuleRepository @Inject constructor(
 
     init {
         appScope.launch {
-            cached = loadFromDisk()
+            // A DataStore read error must not kill this coroutine before the counters are rebuilt (#287
+            // review R1): the persist gate would stay shut for the life of the process, nothing would be
+            // saved, and the next restart would lose the day — the bypass this file now closes.
+            cached = runCatching { loadFromDisk() }.getOrNull()
             rebuildCounters()
             refresh()
         }
@@ -155,7 +158,10 @@ class RuleRepository @Inject constructor(
      * in sequence — restore, then rebuild from the events left in Room — replaced the day with the last
      * upload window and unlocked used-up limits on every restart.
      */
-    suspend fun rebuildCounters(today: LocalDate = LocalDate.now()) {
+    private suspend fun rebuildCounters(today: LocalDate = LocalDate.now()) {
+        // Private on purpose (#287 review R2): `restore` merges, so a second call would add the snapshot
+        // on top of counters that already hold it, doubling the day and firing limits at half time.
+        if (startupDone.isCompleted) return
         try {
             val savedDate = settings.todayUsageDate()
             val savedMs = savedUsageMs(today)

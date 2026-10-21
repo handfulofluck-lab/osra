@@ -15,5 +15,8 @@
 - Tests: `UsageStartupTest` pins the precedence (snapshot wins over Room, no snapshot falls back, a
   yesterday snapshot does not seed today, neither is an empty day); `UsageCountersTest` pins that a
   restored snapshot keeps the seconds an early event counted.
-- **⚠️ not verified here:** the handset row — use up a limit, wait for an upload, `adb reboot`, and the app
-  is still blocked — is Claude's.
+- **Verified on the Flip4 by Claude (2026-10-21, Full debug build, fresh family):** Clock used up a 1-minute
+  `time_limit`. After the next telemetry upload and 12 s of Calculator, the agent process was killed with
+  `kill -9`, and later the same build was reinstalled over itself. Both times the saved counters were
+  unchanged and Clock showed "Daily limit reached" within 2 s of opening. A reboot was not run, because the
+  phone's lock needs its owner after one; it starts the same fresh process.
