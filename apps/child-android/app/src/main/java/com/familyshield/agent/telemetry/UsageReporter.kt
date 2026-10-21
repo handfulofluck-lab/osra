@@ -115,7 +115,7 @@ class UsageReporter @Inject constructor(
 
         val window = computePerAppMinutes(events, windowEnd, settings.usageRemainderMs())
         val perApp = window.minutes.toMutableMap()
-        backfillFromUsageStats(perApp)
+        backfillFromUsageStats(perApp, window.eventPackages)
 
         val unlocks = unlockCounter.getAndSet(0)
         val total = perApp.values.sum()
@@ -281,7 +281,7 @@ class UsageReporter @Inject constructor(
      * last snapshot, and every package's total is recorded so a later window without it adds only its
      * increase. A total below the snapshot means the day rolled over, and the whole total is new.
      */
-    private suspend fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
+    private suspend fun backfillFromUsageStats(perApp: MutableMap<String, Int>, eventPackages: Set<String> = emptySet()) {
         val (bucketBegin, totals) = usageStatsTotals() ?: return
         val (storedBucket, lastSeen) = settings.usageStatsSnapshot()
         val hasSnapshot = storedBucket != null
@@ -289,7 +289,12 @@ class UsageReporter @Inject constructor(
         // change shifts the key and leaves the totals alone.
         val rollover = UsageStatsDelta.isRollover(storedBucket, bucketBegin, lastSeen, totals)
         for ((pkg, total) in totals) {
-            if (perApp.containsKey(pkg)) continue // counted from this window's events already
+            // R1 on #281: skip a package this window's events mentioned even when it produced no whole
+            // minute. Its time is counted here — as a minute now or as a carry next window — and the
+            // backfill adding Android's increase on top of it reported 1.5x the real time for an app
+            // used in short bursts. A package with only a carried remainder is not in the set: the
+            // previous upload's snapshot covered that time, so Android's increase since is real.
+            if (pkg in eventPackages || perApp.containsKey(pkg)) continue
             val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }

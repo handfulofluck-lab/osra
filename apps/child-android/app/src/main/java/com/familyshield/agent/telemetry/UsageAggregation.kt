@@ -5,10 +5,21 @@ import com.familyshield.agent.data.db.UsageEventEntity
 /** Cap applied to a single inter-event gap (screen-off gaps are not usage). */
 internal const val MAX_GAP_MS: Long = 5L * 60L * 1000L
 
-/** One aggregated window: whole minutes per app, plus the sub-minute ms left over for the next window. */
+/**
+ * One aggregated window: whole minutes per app, the sub-minute ms left over for the next window, and
+ * the packages this window's own events credited time to.
+ */
 internal data class PerAppUsage(
     val minutes: Map<String, Int>,
     val remainderMs: Map<String, Long>,
+    /**
+     * Packages the window's **events** mentioned, taken before [carriedMs] is merged in. The UsageStats
+     * backfill must skip these even when they produced no whole minute: their time is already counted
+     * here (as a minute now or as a carry later), and adding Android's increase on top double-counts
+     * (review R1 on #281). A package that has only a carried remainder is deliberately absent — the
+     * previous upload's snapshot already covered it, so Android's increase since then is real time.
+     */
+    val eventPackages: Set<String>,
 )
 
 /**
@@ -33,6 +44,9 @@ internal fun computePerAppMinutes(
         val gapMs = (next - events[i].timestamp).coerceIn(0L, MAX_GAP_MS)
         if (gapMs > 0) perAppMs.merge(events[i].packageId, gapMs) { a, b -> a + b }
     }
+    // Taken before the carry is merged: the backfill's rule is "add only what this window's events did
+    // not mention", and a carry is the previous window's time, already snapshotted once.
+    val eventPackages = perAppMs.keys.toSet()
     for ((pkg, carried) in carriedMs) {
         if (carried > 0) perAppMs.merge(pkg, carried) { a, b -> a + b }
     }
@@ -45,5 +59,5 @@ internal fun computePerAppMinutes(
         // Kept even with no minutes yet: that remainder is what makes the next window count.
         if (rest > 0) remainderMs[pkg] = rest
     }
-    return PerAppUsage(minutes, remainderMs)
+    return PerAppUsage(minutes, remainderMs, eventPackages)
 }

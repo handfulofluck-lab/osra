@@ -82,4 +82,19 @@ class UsageAggregationTest {
         val second = computePerAppMinutes(listOf(ev("com.a", 60_000L)), windowEnd = 90_000L, carriedMs = first.remainderMs)
         assertEquals(mapOf("com.a" to 1), second.minutes)
     }
+
+    @Test
+    fun `a sub-minute event package is mentioned, a carried-only package is not`() {
+        // Review R1 on #281: the backfill skips the packages the window's events mentioned even when they
+        // produced no whole minute, and must still add Android's increase for a package that only carries
+        // a remainder — that time was already in the previous upload's snapshot.
+        val window = computePerAppMinutes(
+            listOf(ev("com.a", 0L)),
+            windowEnd = 40_000L,
+            carriedMs = mapOf("com.b" to 30_000L),
+        )
+        assertTrue(window.minutes.isEmpty())
+        assertEquals(mapOf("com.a" to 40_000L, "com.b" to 30_000L), window.remainderMs)
+        assertEquals(setOf("com.a"), window.eventPackages)
+    }
 }
