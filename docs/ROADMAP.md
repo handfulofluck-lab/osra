@@ -118,7 +118,7 @@ warning accepted). Both flavors land with 1.8.
 | 5.5 | iOS: Xcode project with App Group + three extension targets, FamilyActivityPicker selection, rule sync + APNs, CoreLocation | builds on the GitHub macOS runner | ⬜ |
 | 5.6 | TestFlight build | installs on a parent's phone | ⬜ |
 | 5.7 | Store listing copy EN/AR, screenshots | — | ⬜ |
-| 5.8 | Production hosting per ADR-0028: HTTPS staging, then the UAE (`me-central-1`) production stack; push-first device wake-ups, capability list and version gate before launch | release build passes TR-73 against HTTPS staging; idle child phone ≤ 3 requests per 10 min with lock still ≤ 5 s | ⬜ (needs Karim's go on AWS and budget) |
+| 5.8 | Production hosting per ADR-0028: HTTPS staging, then the UAE (`me-central-1`) production stack; push-first device wake-ups, capability list and version gate before launch | release build passes TR-73 against HTTPS staging; idle child phone ≤ 3 requests per 10 min with lock still ≤ 5 s | ⬜ AWS and budget approved by Karim 2026-10-21; staging next (#258) |
 
 ## Needs the maintainer (open)
 
