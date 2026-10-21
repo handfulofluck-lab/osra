@@ -110,7 +110,8 @@ carries its documentation **in the same PR**:
   fragments into `CHANGELOG.md`'s `[Unreleased]` block at release. **Why a file:** every PR used to edit
   that one block, so every merge conflicted with every open PR — three re-signatures and one duplicated
   entry on 2026-10-21. A fragment is a file nobody else touches. See `CHANGELOG.d/README.md`. Two titles are
-  exempt from the CI check by name: a `revert(...)` and exactly `feat(release): assemble the changelog`.
+  exempt from the CI check by name: a `revert(...)`, and a title that starts `feat(release): assemble the
+  changelog` (a date or version suffix is allowed, so the release commit can name what it releases).
 - **`docs/adr/NNNN-*.md`** — an architectural decision, or a decision that closes off an option for the
   future. Record context, the decision, the reasoning, the alternatives you rejected and why, and the
   costs (including the bad ones). Never edit an accepted ADR to reflect a new decision: add a new one

@@ -49,9 +49,11 @@ const needsFragment = changed.some((path) => codePath.test(path) && !path.endsWi
 // Only a fragment this PR *adds* counts: editing someone else's is not carrying one.
 const fragment = added.find((path) => path.startsWith("CHANGELOG.d/") && path.endsWith(".md") && !path.endsWith("README.md"));
 // A revert carries nothing else, and a release commit assembles the fragments — both are named in
-// AGENTS.md rather than inferred, so they may skip.
+// AGENTS.md rather than inferred, so they may skip. The assembly title is anchored to `feat(release):`
+// and admits a suffix, because the release commit names what it releases ("… — 1.4.0"). A bare word
+// match would exempt `feat(android): assemble the block screen` (review B4).
 const title = process.env.PR_TITLE || "";
-const exempt = /^revert[(:]/i.test(title) || /^\w+\(release\): assemble the changelog\b/i.test(title);
+const exempt = /^revert[(:]/i.test(title) || /^feat\(release\): assemble the changelog\b/i.test(title);
 
 if (!needsFragment || fragment || exempt) {
   if (fragment) console.log(`changelog fragment: ${fragment}`);

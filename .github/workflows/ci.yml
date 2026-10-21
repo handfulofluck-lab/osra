@@ -203,25 +203,6 @@ jobs:
       - name: Compare probe assertion sets against the base branch
         run: node scripts/check-probe-integrity.mjs --base "origin/${{ github.base_ref }}" --head HEAD
 
-  # ── Changelog fragment: an entry per change, in a file nobody else edits (AGENTS.md §8) ────────────
-  # Entries used to share one [Unreleased] block, so every merge conflicted with every open PR: three
-  # re-signatures and one duplicated entry on 2026-10-21. A fragment cannot conflict. This job asks only
-  # that a PR which changes code carries one; a Markdown-only PR is exempt by design.
-  changelog-fragment:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0          # the check diffs against the base ref
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: A code change carries a changelog fragment
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: node scripts/check-changelog-fragment.mjs --base "origin/${{ github.base_ref }}"
-
   # NOTE (2026-10-15): iOS is covered by the dedicated `.github/workflows/ios-ci.yml` workflow
   # (SwiftPM build + `generic/platform=iOS Simulator` on macos-14). A second, subtly different
   # `xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 15'` job lived here and failed

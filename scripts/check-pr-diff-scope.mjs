@@ -114,7 +114,18 @@ if (argv.includes("--selftest")) {
     g("add", "."); g("commit", "-qm", "R");
     // A branch cut BEFORE the merge, touching an unrelated file: it still holds the pre-merge blob of
     // a.txt, and must not be reported as a revert.
-    g("checkout", "-qb", "behind", "main~1");
+    // The assembly branch: a recent merge added a changelog fragment and assembly deletes it. Without B6
+    // this is indistinguishable from a stale-base revert — which is why every release would have failed.
+    g("checkout", "-qb", "assembly", "main");
+    fs.mkdirSync(pathMod.join(dir, "CHANGELOG.d"), { recursive: true });
+    fs.writeFileSync(pathMod.join(dir, "CHANGELOG.d", "x.md"), "entry");
+    g("add", "."); g("commit", "-qm", "fragment added by the merge");
+    g("checkout", "-q", "main");
+    g("merge", "-q", "--no-ff", "assembly", "-m", "merge fragment");
+    g("checkout", "-qb", "assembly2", "main");
+    fs.rmSync(pathMod.join(dir, "CHANGELOG.d", "x.md"));
+    g("add", "-A"); g("commit", "-qm", "assemble");
+    g("checkout", "-qb", "behind", "main~2");
     fs.writeFileSync(pathMod.join(dir, "c.txt"), "y");
     g("add", "."); g("commit", "-qm", "Be");
     return { dir };
@@ -127,6 +138,7 @@ if (argv.includes("--selftest")) {
     { name: "the same PR passes under a revert(…) title", args: ["--title", "revert(x): fixture", "--base", "main", "--head", "pr", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
     { name: "an unconventional title is refused", args: ["--title", "tidy up things", "--base", "origin/main", "--head", "HEAD", "--quiet"], want: 1 },
     { name: "a branch cut before the merge, touching something else, passes", args: ["--title", "fix(x): fixture", "--base", "main", "--head", "behind", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
+    { name: "an assembly PR that deletes fragments a recent merge added passes under the release title", args: ["--title", "feat(release): assemble the changelog", "--base", "main", "--head", "assembly2", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
   ];
   let bad = 0;
   for (const c of cases) {
@@ -222,6 +234,10 @@ if (!isRevertTitle && prPaths.size > 0) {
         if (!mm) continue;
         const [, oldSha, newSha, path] = mm;
         if (!prPaths.has(path)) continue;
+        // B6 (review): assembling the changelog deletes every fragment, and each one arrived with a recent
+        // merge — the exact shape of the stale-base revert this looks for. Deleting a fragment is assembly,
+        // never a revert of behaviour; a real revert is still caught on every code path.
+        if (path.startsWith("CHANGELOG.d/")) continue;
         const preMerge = /^0+$/.test(oldSha) ? null : oldSha;
         const mergedIn = /^0+$/.test(newSha) ? null : newSha;
         const baseBlob = baseTree.get(path) ?? null;
