@@ -73,18 +73,37 @@ class UsageReporterConsentWiringTest {
     }
 
     @Test
-    fun `the UsageStats backfill is skipped on a re-grant day`() {
+    fun `the backfill is a delta, and a re-grant resets its baseline instead of skipping`() {
         val body = reporter.substringAfter("private fun backfillFromUsageStats").substringBefore("companion object")
-        val startOfDay = body.indexOf("startOfDay =")
-        val skip = body.indexOf("if (consent.resumedAtMs() > startOfDay) return")
-        val query = body.indexOf("queryUsageStats")
-        // #266 review D2: queryUsageStats returns whole day buckets, and a paused device writes no rows,
-        // so an app used only during the withdrawal would be backfilled with its whole-day total.
-        assertTrue("the skip must exist", skip >= 0)
-        assertTrue("and run before the query", startOfDay < skip && skip < query)
+        // #267: the whole-day totals are counters now, so an app absent from this window adds only its
+        // increase. Adding the total is what over-counted every family with usage access.
+        assertTrue(
+            "each package's increase is judged against the rollover decision",
+            body.contains("UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)"),
+        )
+        // #272 review D3: a moved bucket key is not a rollover on its own -- a clock change shifts the
+        // key and leaves the counters alone, so the counters decide.
+        assertTrue("the rollover decision is the policy's", body.contains("UsageStatsDelta.isRollover(storedBucket, bucketBegin, lastSeen, totals)"))
+        // And an empty query must not record a snapshot keyed 0: that would baseline nothing and send
+        // whole totals on the next upload.
+        assertTrue("an empty query records nothing", body.contains("if (stats.isEmpty()) return null"))
+        assertTrue("every package's total is recorded, not only the ones added", body.contains("settings.setUsageStatsSnapshot(bucketBegin, totals)"))
+        // #272 review: the snapshot must be keyed by Android's own bucket, not the calendar date — the
+        // phone rolls it at 20:07, so a date key re-sent up to four hours every morning.
+        assertFalse("a calendar-date key is the bug", body.contains("LocalDate.now().toString()"))
         assertFalse(
-            "a floor inside the day does not exclude the bucket, so it is not the fix",
-            body.contains("maxOf(startOfDay"),
+            "the whole-day total is the bug: it was added on every upload",
+            body.contains("perApp[s.packageName] = minutes"),
+        )
+        assertFalse(
+            "and #266's skip is replaced by the baseline, not kept beside it",
+            body.contains("if (consent.resumedAtMs() > startOfDay) return"),
+        )
+        // The re-grant baseline lives in aggregateAndUpload's reset block.
+        val reset = reporter.substringAfter("CommsConsentPolicy.resetTo(").substringBefore("if (consent.isPaused())")
+        assertTrue(
+            "a re-grant excludes what Android has already counted instead of uploading it",
+            reset.contains("usageStatsTotals()?.let { (bucketBegin, totals) -> settings.setUsageStatsSnapshot(bucketBegin, totals) }"),
         )
     }
 

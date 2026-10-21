@@ -262,6 +262,37 @@ class AgentSettings @Inject constructor(
     }
 
     /**
+     * Issue #267 review: the **bucket** and the per-package UsageStats totals at the last backfill.
+     *
+     * Android rolls its `INTERVAL_DAILY` bucket at a time the device picks — measured at 20:07 on the
+     * Flip4 — so a snapshot keyed by the calendar date re-sent up to four hours every morning. The key
+     * is the bucket's own begin time, which is what makes "same bucket" mean the same thing Android does.
+     *
+     * Encoded as `bucketBegin|pkg=minutes;pkg=minutes` — package names contain no `|`, `;` or `=`, so no
+     * escaping is needed and the whole thing stays one preference rather than a table for two numbers per
+     * app. Returns `(null, empty)` on a device that has never backfilled.
+     */
+    suspend fun usageStatsSnapshot(): Pair<Long?, Map<String, Int>> {
+        val raw = read(KEY_USAGE_STATS_SNAPSHOT) ?: return null to emptyMap()
+        val bucket = raw.substringBefore('|').toLongOrNull()
+        val totals = raw.substringAfter('|', "")
+            .split(';')
+            .mapNotNull { entry ->
+                val name = entry.substringBefore('=', "")
+                val minutes = entry.substringAfter('=', "").toIntOrNull()
+                if (name.isEmpty() || minutes == null) null else name to minutes
+            }
+            .toMap()
+        return bucket to totals
+    }
+
+    /** Records the snapshot a backfill covered, so the next upload sends only the increase. */
+    suspend fun setUsageStatsSnapshot(bucketBegin: Long, totals: Map<String, Int>) {
+        val encoded = totals.entries.joinToString(";") { "${it.key}=${it.value}" }
+        store.edit { it[KEY_USAGE_STATS_SNAPSHOT] = "$bucketBegin|$encoded" }
+    }
+
+    /**
      * Issue #264 (F1): the future-dated texts already imported, so a row the clock ran ahead on is
      * uploaded once instead of on every harvest until its date arrives.
      *
@@ -348,6 +379,8 @@ class AgentSettings @Inject constructor(
         private val KEY_CONSENT_RESUMED_AT = stringPreferencesKey("consent_resumed_at")
         // Issue #221: the location grant the server was last told about (change detection).
         private val KEY_REPORTED_LOCATION_GRANT = stringPreferencesKey("reported_location_grant")
+        // Issue #267: the bucket and per-package UsageStats totals the last backfill covered.
+        private val KEY_USAGE_STATS_SNAPSHOT = stringPreferencesKey("usage_stats_snapshot")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
         private val KEY_ACCESSIBILITY_WAS_ENABLED = stringPreferencesKey("accessibility_was_enabled")
         // Issue #225: the recorded "was granted" state for the overlay-revoked transition rule.

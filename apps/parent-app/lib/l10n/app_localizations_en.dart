@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1933,4 +1932,96 @@ class AppLocalizationsEn extends AppLocalizations {
   String searchSafetyVaultTitle(String query) {
     return 'Search: \"$query\"';
   }
+
+  @override
+  String get digestPrefsTitle => 'Digest preferences';
+
+  @override
+  String digestPrefsLoadFailed(String error) {
+    return 'Failed to load preferences: $error';
+  }
+
+  @override
+  String get digestPrefsDailyTitle => 'Daily email digest';
+
+  @override
+  String get digestPrefsDailyBody => 'A short summary every evening';
+
+  @override
+  String get digestPrefsWeeklyTitle => 'Weekly email digest';
+
+  @override
+  String get digestPrefsWeeklyBody => 'A deeper summary once a week';
+
+  @override
+  String get digestPrefsPushTitle => 'Push notifications';
+
+  @override
+  String get digestPrefsPushBody => 'Critical alerts as push messages';
+
+  @override
+  String get digestPrefsEmailsLabel => 'Digest emails (comma separated)';
+
+  @override
+  String get digestPrefsTimezoneTitle => 'Digest timezone (local send hour)';
+
+  @override
+  String get digestPrefsTimezoneLabel => 'Timezone';
+
+  @override
+  String get digestPrefsTimezoneLoading => 'Loading…';
+
+  @override
+  String get digestPrefsSendHour =>
+      'The digest is sent at 18:00 your local time';
+
+  @override
+  String get digestPrefsSavingSuffix => 'saving…';
+
+  @override
+  String get digestPrefsSaving => 'Saving…';
+
+  @override
+  String get digestPrefsSave => 'Save preferences';
+
+  @override
+  String get digestPrefsRendering => 'Rendering…';
+
+  @override
+  String get digestPrefsSendNow => 'Send test digest now';
+
+  @override
+  String get digestPrefsSaved => 'Digest preferences saved';
+
+  @override
+  String digestPrefsSaveFailed(String error) {
+    return 'Save failed: $error';
+  }
+
+  @override
+  String digestPrefsTimezoneSet(String zone) {
+    return 'Digest timezone set to $zone';
+  }
+
+  @override
+  String digestPrefsTimezoneFailed(String error) {
+    return 'Timezone not saved: $error';
+  }
+
+  @override
+  String get digestPrefsTestTitle => 'Test digest';
+
+  @override
+  String get digestPrefsClose => 'Close';
+
+  @override
+  String digestPrefsSendFailed(String error) {
+    return 'Send failed: $error';
+  }
+
+  @override
+  String get digestPrefsNoDigests => 'No digests generated';
+
+  @override
+  String get digestPrefsChildFallback => 'Child';
 }

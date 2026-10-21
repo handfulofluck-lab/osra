@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/children/consent_screen.dart';
 import 'package:familyshield_parent/features/content/search_safety_screen.dart';
+import 'package:familyshield_parent/features/settings/digest_prefs_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
@@ -338,6 +339,38 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('لم يُرصد أي بحث مُبلَّغ عنه'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
+  });
+
+  /// Digest preferences was the next screen still written in English (#277).
+  group('Digest preferences in Arabic (#277)', () {
+    FakeApiClient digestApi() => FakeApiClient({
+          ...standardRoutes(),
+          'GET /v1/digests/prefs': (_) => {
+                'dailyEmail': true,
+                'weeklyEmail': false,
+                'pushEnabled': true,
+                'emails': ['parent@example.com'],
+              },
+          'GET /v1/family/me': (_) => {
+                'family': {'id': 'fam-1', 'name': 'Demo Family', 'timezone': 'Asia/Dubai', 'timezoneSource': 'parent'},
+              },
+        });
+
+    testWidgets('renders the switches and labels in Arabic, RTL, no overflow', (tester) async {
+      await pumpArabic(tester, const DigestPrefsScreen(), digestApi());
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('تفضيلات الملخّص'), findsOneWidget);
+      expect(find.text('ملخّص بريدي يومي'), findsOneWidget);
+      expect(find.text('الإشعارات الفورية'), findsOneWidget);
+      // The buttons sit below the fold at 320x568 and a ListView builds lazily, so they are reached by
+      // scrolling -- an assertion that fails without it is testing the viewport, not the copy.
+      await tester.drag(find.byType(ListView), const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(find.text('حفظ التفضيلات'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
   });
