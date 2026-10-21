@@ -33,5 +33,12 @@
     "reason": "Label only; the condition is unchanged (401 with reason legacy_signature_disabled when v1 is refused). Renamed because TR-09 made INTERNAL_SIGNING_ALLOW_V1 opt-in: the refusal now happens by default, so '=0' is no longer the trigger and the old label told a reader that setting =0 was required. Verified by Kimi on 2026-10-17 (main@7f019d6) against TR-09's two configurations: 109/0 with 0 targets by default, 108/0 with 1 target when =1.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-17"
+  },
+  {
+    "kind": "check",
+    "name": "G19 password-reset purpose token refused as a bearer credential (/mfa/enroll and /logout-all -> 401)",
+    "reason": "Renamed and strengthened in #167 (single-use reset tokens): the assertion is now 'G19 a password-reset purpose token is refused as a reset (no store record) and as a bearer credential (/mfa/enroll and /logout-all -> 401)', which additionally requires the token to be refused at /reset/confirm because a hand-signed JWT carries no reset:<jti> record. The old name asserted confirm=200, which was the defect (#167): a token not minted through the route could set a password. Probe run not yet executed against a live stack on this branch, so the green state of the new assertion is the reviewer's to confirm.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-21"
   }
 ]
