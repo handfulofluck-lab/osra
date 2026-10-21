@@ -86,6 +86,34 @@ wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and
 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the count was skipped — that skip is not a
 pass. The probe does not need it, and deliberately has no database connection (§6).
 
+### The AI evaluation harness (plan 4.2/4.3) — no stack, no key, seconds to run
+
+```bash
+cd services/ai-engine
+export PYTHONIOENCODING=utf-8          # Windows consoles are cp1252 and raise on Arabic stdout
+python -m pytest tests -q              # 33 passed at 2026-10-21 (20 before this harness existed)
+python -m eval.banks                   # validate every template bank; must print the 7-row table
+python -m eval.generate --check        # fail if eval/dataset.jsonl is stale against the banks
+python -m eval.run_eval --scorer regex # publish-grade table; --write-md EVAL.md refreshes EVAL.md
+```
+
+Four things to know before reading a failure:
+
+- **`--scorer regex` measures the rules layer alone** (`eval/run_eval.py:score_regex`), which is what
+  runs when no checkpoint is shipped. `--scorer model` uses `MODEL_PATH`; `--scorer deepseek` refuses
+  to run by design until plan 4.1 exists and the key is a repository secret.
+- **A low recall is a published result, not a red gate.** Arabic is 0.00 across all seven categories
+  (`EVAL.md` §The headline): the rules are English regular expressions, so nothing can match. CI runs
+  the harness without a recall floor for exactly this reason — a floor of 0 cannot fail.
+- **`test_regex_floor_catches_its_own_vocabulary` is the control.** It keeps the published numbers
+  honest: the banks use paraphrase, so if that test fails the scorer itself broke, and if
+  `test_regex_floor_is_blind_to_arabic` fails someone added Arabic rules and `EVAL.md` must be
+  regenerated before the old numbers are quoted again.
+- **The dataset is generated, not edited.** Change a bank, then `python -m eval.generate`, then commit
+  the regenerated `dataset.jsonl` in the same change; a hand-edited row is a row the seed cannot
+  reproduce. `eval/schema.md` carries the row format and the rule for adding a public or
+  parent-reported source.
+
 ### Notification env (Phase 2a) — all optional
 
 | Variable | Effect when set |

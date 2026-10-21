@@ -173,6 +173,16 @@ jobs:
       # seconds without them (verified: 21 passed vs 18 passed + 1 skipped when fastapi is absent).
       - run: pip install -r requirements-dev.txt
       - run: pytest tests -q
+      # Plan 4.2/4.3: the evaluation set is committed, deterministic and scored here. The gate is
+      # that the harness runs and the set is not stale -- deliberately NOT a recall floor, because
+      # today's rules layer scores 0.00 on Arabic (EVAL.md) and a floor of 0 would be a check that
+      # cannot fail. The floor arrives with the hosted scorer (4.1).
+      - name: Validate the evaluation banks
+        run: python -m eval.banks
+      - name: The committed dataset matches the banks
+        run: python -m eval.generate --check
+      - name: Score the rules layer (numbers published in EVAL.md)
+        run: python -m eval.run_eval --scorer regex
 
   # ── Probe integrity: the adversarial gate may only be extended (AGENTS.md §4) ──────────────
   # Runs `scripts/check-probe-integrity.mjs` (PR #68) on every pull request: the assertion-name sets
