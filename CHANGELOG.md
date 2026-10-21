@@ -34,6 +34,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   the rules layer keys on nothing they contain.
 - **⚠️ not verified here:** the numbers are the author's run; a second agent has not re-run the table, and
   no native speaker has reviewed the new Arabic.
+
 ### Parent app — the search-safety screen speaks Arabic (#275)
 - Every string on `SearchSafetyScreen` and its cards now comes from `app_en.arb`/`app_ar.arb`: the title,
   the refresh tooltip, the load-failure line (with the error as a placeholder), the retry button, the
@@ -47,28 +48,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   confirmed) and the empty state. `test/content_safety_test.dart` follows the chip's new casing.
 - **⚠️ not verified here:** a native speaker has not read the new Arabic — the same standing gap as TR-54,
   and this screen is now part of what that review should cover.
-
-### AI — the hosted scorer for plan 4.1, evaluation-only (#274)
-- `services/ai-engine/eval/deepseek_scorer.py` scores text with DeepSeek through the OpenAI-compatible
-  chat-completions shape: a strict JSON object (`response_format: json_object`, temperature 0), values
-  clamped to 0..1, missing categories 0.0 with `safe` derived, code fences stripped, and three attempts
-  on 429/5xx only — a 401 or 400 fails fast with one sentence that names the cause instead of retrying
-  a problem that will not fix itself. A disk cache keyed by `(model, text)` sha256, flushed every 25
-  calls and at exit, means a re-run of an unchanged set bills nothing and a crash keeps what it paid for.
-- **It is imported by nothing in production.** It lives in `eval/` and `run_eval --scorer deepseek`
-  reaches it lazily. An evaluation sends synthetic messages; a production scorer would send a real
-  child's message to a third party, and that decision belongs to 4.1-vs-4.4, not to a configuration flag.
-- `python -m eval.run_eval --scorer deepseek` is real, replacing the placeholder that refused to run. A
-  missing or refused key is one line, not a traceback.
-- `.github/workflows/ai-eval-deepseek.yml` runs it on `workflow_dispatch` only: every run bills the
-  dataset and the answer changes only when the banks, the prompt or the model do. The secret is read
-  through `env:`, never `if:`.
-- Tests: 9 offline cases over `httpx.MockTransport` — the contract, the clamps, fences, the retry rule
-  (401 does not retry), the cache surviving a new process, a corrupt cache, and a transport error that
-  gives up.
-- **⚠️ not measured yet:** the numbers. `DEEPSEEK_API_KEY` is set as a repository secret, but GitHub will
-  not dispatch a workflow that is not on the default branch, so the first billed run follows the merge
-  and the table lands in `EVAL.md` — beside the rules layer's 0.00, which is the comparison 4.1 exists for.
 
 ### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
 - The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
