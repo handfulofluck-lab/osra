@@ -96,6 +96,53 @@ describe("alerts routes", () => {
     await app.close();
   });
 
+  /**
+   * Issue #252: a malformed or empty JSON body must be the caller's error (400), not ours (500).
+   * The raw-body parser used to hand Fastify a `JSON.parse` error with no status code, so both cases
+   * came back as server faults.
+   */
+  describe("body parsing (issue #252)", () => {
+    it("answers an empty JSON body with 400, not 500", async () => {
+      const app = await buildApp(alertsRoutes, "/v1/alerts");
+      prismaMock.alert.findUnique.mockResolvedValue({ id: "a1", child: { familyId: "fam-1" } });
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/alerts/a1/ack",
+        headers: { ...authHeader(app), "content-type": "application/json" },
+        payload: "",
+      });
+      expect(res.statusCode).toBe(400);
+      await app.close();
+    });
+
+    it("answers a malformed JSON body with 400, not 500", async () => {
+      const app = await buildApp(alertsRoutes, "/v1/alerts");
+      prismaMock.alert.findUnique.mockResolvedValue({ id: "a1", child: { familyId: "fam-1" } });
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/alerts/a1/ack",
+        headers: { ...authHeader(app), "content-type": "application/json" },
+        payload: "{bad",
+      });
+      expect(res.statusCode).toBe(400);
+      await app.close();
+    });
+
+    it("still accepts a valid JSON body", async () => {
+      const app = await buildApp(alertsRoutes, "/v1/alerts");
+      prismaMock.alert.findUnique.mockResolvedValue({ id: "a1", child: { familyId: "fam-1" } });
+      prismaMock.alert.update.mockResolvedValue({ id: "a1", acknowledged: true });
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/alerts/a1/ack",
+        headers: { ...authHeader(app), "content-type": "application/json" },
+        payload: JSON.stringify({ acknowledged: true }),
+      });
+      expect(res.statusCode).toBe(200);
+      await app.close();
+    });
+  });
+
   /** Issue #225 bug 1: the receiver's alert and the worker retry share a dedupe key. */
   it("returns 200 and creates no second row for a duplicate dedupeKey", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");

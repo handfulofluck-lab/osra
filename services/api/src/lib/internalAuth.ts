@@ -224,14 +224,32 @@ export async function verifyInternalSignature(
   return result.valid;
 }
 
-/** Register a JSON parser that keeps the raw body string for HMAC verification. */
+/**
+ * Register a JSON parser that keeps the raw body string for HMAC verification.
+ *
+ * Issue #252: a malformed or empty body must be a **400**, not a 500. Fastify's own parser answers
+ * both with 400; this one only replaced it to keep the raw string, and without a status code the
+ * `JSON.parse` error was reported as a server fault — which pollutes error monitoring and tells a
+ * caller its request was our problem. The status codes here mirror Fastify's:
+ * `FST_ERR_CTP_EMPTY_JSON_BODY` for an empty body, and a 400 for invalid JSON.
+ */
 export function registerRawBodyParser(app: FastifyInstance): void {
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
-    (req as { rawBody?: string }).rawBody = body as string;
+    const raw = body as string;
+    (req as { rawBody?: string }).rawBody = raw;
+    if (raw.trim() === "") {
+      const err = new Error("Body cannot be empty when content-type is set to 'application/json'") as Error & {
+        statusCode?: number;
+      };
+      err.statusCode = 400;
+      return done(err);
+    }
     try {
-      done(null, JSON.parse(body as string));
-    } catch (err) {
-      done(err as Error);
+      done(null, JSON.parse(raw));
+    } catch (parseError) {
+      const err = parseError as Error & { statusCode?: number };
+      err.statusCode = 400;
+      done(err);
     }
   });
 }
