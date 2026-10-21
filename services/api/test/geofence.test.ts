@@ -223,7 +223,15 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     expect(prismaMock.ruleSet.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.device.findMany).not.toHaveBeenCalled();
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
-    expect((getRedis() as unknown as MockRedis).publish).not.toHaveBeenCalled();
+    // Issue #253 makes every stored upload publish one `location` family event; that is the only
+    // bus write this baseline is allowed. A routine nudge would publish `child:<id>:rules` as well.
+    const publishes = (getRedis() as unknown as MockRedis).publish.mock.calls;
+    expect(publishes).toHaveLength(1);
+    expect(publishes[0][0]).toBe("family:fam-1:events");
+    expect(JSON.parse(String(publishes[0][1]))).toMatchObject({
+      type: "location",
+      payload: { childId: CHILD_ID },
+    });
     await app.close();
   });
 

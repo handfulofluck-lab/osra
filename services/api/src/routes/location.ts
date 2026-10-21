@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { raiseAlert } from "../lib/alerts.js";
 import { geofenceTransition, pickTransitionPair, type GeofencePoint } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
+import { publishFamilyEvent } from "../realtime/gateway.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -307,6 +308,18 @@ export async function locationRoutes(app: FastifyInstance) {
     }
 
     const last = createdPings[createdPings.length - 1];
+
+    // Issue #253: an open map has no way to learn that a ping arrived — the parent app's `location`
+    // branch was dead code. Publish one event per upload (not per ping: the app refetches the newest
+    // position once) with the child id and the ping's timestamp only. Coordinates never travel on the
+    // bus; the client reads them through the authorised `GET /:childId/latest` (#242). Best-effort:
+    // the rows are already stored, so a Redis failure must not fail the upload.
+    await publishFamilyEvent(child.familyId, {
+      type: "location",
+      payload: { childId: effectiveChildId, ts: last.timestamp },
+      ts: new Date().toISOString(),
+    }).catch(() => undefined);
+
     return reply.code(201).send({ ping: last, pings: createdPings, count: createdPings.length });
   });
 
