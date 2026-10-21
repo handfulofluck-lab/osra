@@ -81,15 +81,22 @@ class UsageCounters {
         }
     }
 
-    /** Restores counters from a previously saved snapshot of per-app milliseconds for [today]. */
+    /**
+     * Restores counters from a previously saved snapshot of per-app milliseconds for [today].
+     *
+     * Merged rather than replacing: an accessibility event can arrive before the startup restore runs
+     * (#286), and clearing here would throw away the seconds it had already counted. A fresh counter is
+     * empty, so the merge is a plain copy on the normal path.
+     */
     fun restore(
         persistedMs: Map<String, Long>,
         today: LocalDate = LocalDate.now(),
     ) {
         synchronized(lock) {
             resetIfNewDayLocked(today)
-            storedMs.clear()
-            storedMs.putAll(persistedMs)
+            for ((pkg, ms) in persistedMs) {
+                if (ms > 0) storedMs.merge(pkg, ms) { a, b -> a + b }
+            }
             currentPkg = null
             currentSinceMs = 0L
         }

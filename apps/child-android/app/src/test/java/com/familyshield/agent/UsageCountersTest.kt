@@ -113,6 +113,17 @@ class UsageCountersTest {
     }
 
     @Test
+    fun `restore keeps the seconds an early event already counted`() {
+        // #286: the accessibility service can deliver an event before the startup restore runs. Clearing
+        // the counters there would drop the seconds it had counted; the restore merges instead.
+        val c = UsageCounters()
+        c.onForegroundEvent("com.a", 0L, day1)
+        c.onForegroundEvent("com.b", 30_000L, day1) // com.a earns 30 s
+        c.restore(mapOf("com.a" to 90_000L), day1)
+        assertEquals(mapOf("com.a" to 2), c.snapshot(30_000L, day1))
+    }
+
+    @Test
     fun `status-bar cadence of 59 point 9 seconds accumulates real minutes`() {
         val c = UsageCounters()
         // The Flip4 sends an accessibility event every ~60 s, so no single gap ever reaches a minute.
