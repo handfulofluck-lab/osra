@@ -73,18 +73,26 @@ class UsageReporterConsentWiringTest {
     }
 
     @Test
-    fun `the UsageStats backfill is skipped on a re-grant day`() {
+    fun `the backfill is a delta, and a re-grant resets its baseline instead of skipping`() {
         val body = reporter.substringAfter("private fun backfillFromUsageStats").substringBefore("companion object")
-        val startOfDay = body.indexOf("startOfDay =")
-        val skip = body.indexOf("if (consent.resumedAtMs() > startOfDay) return")
-        val query = body.indexOf("queryUsageStats")
-        // #266 review D2: queryUsageStats returns whole day buckets, and a paused device writes no rows,
-        // so an app used only during the withdrawal would be backfilled with its whole-day total.
-        assertTrue("the skip must exist", skip >= 0)
-        assertTrue("and run before the query", startOfDay < skip && skip < query)
+        // #267: the whole-day totals are counters now, so an app absent from this window adds only its
+        // increase. Adding the total is what over-counted every family with usage access.
+        assertTrue("each package's increase is added", body.contains("UsageStatsDelta.deltaMinutes(total, baseline[pkg])"))
+        assertTrue("every package's total is recorded, not only the ones added", body.contains("settings.setUsageStatsLastSeen(today, totals)"))
+        assertTrue("the snapshot is keyed by day", body.contains("val baseline = if (storedDay == today) lastSeen else emptyMap()"))
         assertFalse(
-            "a floor inside the day does not exclude the bucket, so it is not the fix",
-            body.contains("maxOf(startOfDay"),
+            "the whole-day total is the bug: it was added on every upload",
+            body.contains("perApp[s.packageName] = minutes"),
+        )
+        assertFalse(
+            "and #266's skip is replaced by the baseline, not kept beside it",
+            body.contains("if (consent.resumedAtMs() > startOfDay) return"),
+        )
+        // The re-grant baseline lives in aggregateAndUpload's reset block.
+        val reset = reporter.substringAfter("CommsConsentPolicy.resetTo(").substringBefore("if (consent.isPaused())")
+        assertTrue(
+            "a re-grant excludes what Android has already counted instead of uploading it",
+            reset.contains("usageStatsTotals()?.let { settings.setUsageStatsLastSeen(LocalDate.now().toString(), it) }"),
         )
     }
 

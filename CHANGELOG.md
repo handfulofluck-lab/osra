@@ -11,6 +11,27 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Screen time — the UsageStats backfill is a delta, so an app is no longer re-counted every upload (#267)
+- The 15-minute upload is a delta and the server adds each one to the day (issue #31), but
+  `backfillFromUsageStats` added Android's **whole-day** total for every package this window's events did
+  not mention. A child who watched YouTube for 60 minutes in the morning and used only WhatsApp afterwards
+  had YouTube's 60 minutes added again on every later upload, so the parent's "today" grew without bound —
+  for every family that grants usage access. Moving the query's start does not help: `INTERVAL_DAILY`
+  returns whole buckets.
+- The totals are now treated as running counters (`UsageStatsDelta.deltaMinutes`): each upload adds the
+  increase since the last snapshot, and **every** package's total is recorded — including those the events
+  covered, so a later window without one of them adds only its increase. A total below the snapshot means
+  the day rolled over, and the whole total is new rather than a subtraction.
+- The snapshot is keyed by day (`usage_stats_last_seen`), so midnight starts clean.
+- **A re-grant now establishes a baseline instead of skipping the backfill** — #266's "skip on a re-grant
+  day" is removed, because the baseline excludes the withdrawn window *and* the morning before the grant
+  without losing the rest of the day. A re-grant therefore no longer costs the day's backfill.
+- Tests: `UsageStatsDeltaTest` (4) for the three cases from the issue plus the rollover, and the
+  `UsageReporter` wiring test now pins the delta, the day keying, the recording of every package and the
+  re-grant baseline — the assertion that pinned #266's skip is replaced, not deleted silently.
+- **⚠️ not verified here:** the phone row — one app for a few minutes, then only another across two
+  uploads, with the first app's minutes appearing once — is Claude's, on the Flip4.
+
 ### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
 - The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
   to before the grant had a higher id (it is a new row) and an older `DATE`: the floor excluded it forever
