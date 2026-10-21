@@ -35,7 +35,8 @@ import kotlinx.coroutines.launch
 /**
  * Records foreground-app transitions (Room `usage_events`) and periodically aggregates
  * per-app minutes, total minutes and an unlock counter into POST /v1/devices/<id>/telemetry.
- * Minutes are computed from consecutive event gaps capped at 5 min. A UsageStatsManager
+ * Minutes are computed from consecutive event gaps accumulated in milliseconds, capped at 5 min
+ * per gap, with the sub-minute remainder carried into the next window (#276). A UsageStatsManager
  * backfill runs behind try/catch because the PACKAGE_USAGE_STATS permission is not guaranteed.
  * Also posts the Feature #29 live-activity app_usage event from the LocationService 60 s loop.
  */
@@ -103,13 +104,17 @@ class UsageReporter @Inject constructor(
             // withdrawn window and the morning before the grant are excluded rather than uploaded — this
             // replaces the "skip the backfill on a re-grant day" rule from #266.
             usageStatsTotals()?.let { (bucketBegin, totals) -> settings.setUsageStatsSnapshot(bucketBegin, totals) }
+            // Issue #276: the carry is the tail of the withdrawn window; dropped with its events so the
+            // re-grant cannot upload it as the first minute of the new one (#266's rule).
+            settings.setUsageRemainderMs(emptyMap())
         }
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
         val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return
         val windowEnd = System.currentTimeMillis()
         val events = dao.since(watermark)
 
-        val perApp = computePerAppMinutes(events, windowEnd).toMutableMap()
+        val window = computePerAppMinutes(events, windowEnd, settings.usageRemainderMs())
+        val perApp = window.minutes.toMutableMap()
         backfillFromUsageStats(perApp)
 
         val unlocks = unlockCounter.getAndSet(0)
@@ -129,6 +134,9 @@ class UsageReporter @Inject constructor(
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
             stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
+            // Issue #276: the sub-minute remainder moves in the same success step as the watermark, so
+            // a failed POST recomputes the same window from the same carry — neither lost nor doubled.
+            settings.setUsageRemainderMs(window.remainderMs)
         } catch (e: CancellationException) {
             unlockCounter.addAndGet(unlocks) // ...and the unlock counter is restored on failure
             throw e // NOTE: never swallow coroutine cancellation
