@@ -11,7 +11,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### AI — the hosted scorer measured: Arabic recall 0.83–1.00 per category (plan 4.1)
+### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
 - The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
   no prompt tuning) scored **Arabic recall 0.97 `self_harm`, 1.00 `grooming`, 1.00 `sexual_content`,
   0.92 `substance_use`, 0.83 `hate_speech`, 0.85 `cyberbullying`, 0.80 `violence`**, flagging 99 % of harmful
