@@ -20,6 +20,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.network.ServerUrls
@@ -58,6 +59,9 @@ class PairingActivity : ComponentActivity() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
+
+    /** Issue #229: re-check the call/SMS grants on a permission result and on every resume. */
+    @Inject lateinit var commsCapture: CommsCapture
 
     /** When the admin sheet was launched, so a self-closing refusal can be told from a parent's Cancel. */
     private var adminSheetLaunchedAtMs = 0L
@@ -115,10 +119,12 @@ class PairingActivity : ComponentActivity() {
     }
 
     // NOTE: READ_CALL_LOG/READ_SMS are dangerous permissions; the request is optional (the agent
-    // stays in log-only skip mode without them) so pairing never blocks on it.
+    // stays in log-only skip mode without them) so pairing never blocks on it. Issue #229: the
+    // registration that failed at start without the permission is retried here, and one harvest
+    // runs at once, so a grant takes effect without a reboot.
     private val commsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { /* granted or not, CommsLogger starts harvesting once permission exists */ }
+    ) { commsCapture.onPermissionsChanged() }
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -218,6 +224,8 @@ class PairingActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Issue #229: a grant made in Settings (not through this screen) reaches the logger here.
+        commsCapture.onPermissionsChanged()
         lifecycleScope.launch {
             if (settings.isPaired()) {
                 startLocationServiceIfPermitted()
