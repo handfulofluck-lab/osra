@@ -17,5 +17,7 @@
   reads the block screen, and a child waiting on "Request access" no longer spends the granted bonus
   before the parent has answered. The parent's screen-time report no longer shows minutes in an app the
   child could not open.
-- **⚠️ not verified here:** the handset row — a bedtime block screen left up for two minutes adds
-  nothing to the blocked app, and the parent's report stays flat — is the reviewer's.
+- **Verified on the Flip4 by Claude (2026-10-21, Full debug build, fresh family):** My Files' block screen
+  stayed in front for 133 s and My Files earned 0.2 s; Clock's "Daily limit reached" screen stayed for
+  124 s and Clock's counter did not move; 128 s of Calculator still counted as 128 s. The next upload
+  listed Calculator 2 and Clock 1 minutes, and neither My Files nor OSRA's own package.
