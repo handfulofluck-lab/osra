@@ -11,6 +11,33 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### AI — the labelled evaluation set and per-category, per-language scores (plan 4.2 + 4.3, WO-01)
+- `services/ai-engine/eval/` now holds the labelled set the scorer is measured against: seven
+  template banks (one per harmful category) in English and Arabic, expanded deterministically into
+  **1,181 rows — 591 EN / 590 AR** (`eval/dataset.jsonl`), each tracing to `(bank, template_index,
+  seed)`. Content rule, binding and written where a contributor will read it: banks describe the
+  *social pattern* (secrecy, coercion, isolation, threat, group targeting) in teen register and
+  carry no method, dosage, price, sourcing route, weapon construction or graphic description.
+- `eval/run_eval.py` scores any scorer function and prints precision/recall **per category and per
+  language**, plus the flag-level rates a parent feels (harmful rows flagged, and the false-positive
+  rate split between generic safe text and hard negatives).
+- **The first numbers are the finding, not a regression:** Arabic recall is **0.00 in all seven
+  categories** and English flags **12 %** of harmful rows (`EVAL.md`, generated table, 2026-10-21).
+  The rules layer is a set of English regular expressions, so no Arabic string can match it; the
+  banks deliberately use paraphrase rather than the regexes' own vocabulary, so the number measures
+  the gap the hosted scorer (plan 4.1) must close. The lexical floor is pinned separately by
+  `tests/test_eval_harness.py::test_regex_floor_catches_its_own_vocabulary`, so a low recall cannot be
+  read as "the scorer is broken".
+- CI (`.github/workflows/ci.yml`, `ai-engine`) validates the banks, fails if the committed dataset has
+  drifted from them (`python -m eval.generate --check`) and runs the scorer. It deliberately sets no
+  recall floor yet: a floor of 0 cannot fail, and the real floor arrives with 4.1.
+- New: `services/ai-engine/EVAL.md` (published numbers + how to read them), `eval/README.md`,
+  `eval/schema.md` (row format and how to add a public or parent-reported source).
+- **⚠️ not verified here:** the numbers are the author's run on Python 3.13 / Windows; CI runs
+  Python 3.11 on ubuntu and regenerates the same dataset by construction (the generator is seeded),
+  but a second agent has not re-run them.
+
+
 ### Architecture — ADR-0028 accepted: AWS hosting approved
 - Karim confirmed AWS as the cloud provider and approved the budget on 2026-10-21; ADR-0028 moves from proposed to accepted. The first infrastructure item, an HTTPS staging API in the UAE region built with Terraform, is filed for Kimi as #258 (roadmap 5.8). No code changed here.
 
