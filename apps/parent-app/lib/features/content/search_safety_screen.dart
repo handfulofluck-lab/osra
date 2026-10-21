@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/content_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../social/social_screen.dart' show formatRelativeTime;
@@ -22,6 +23,14 @@ IconData searchEngineIcon(String engine) => switch (engine.toLowerCase()) {
 Color searchSeverityColor(String severity, [BuildContext? context]) =>
     (context?.tokens ?? AppTokens.light).severityDot(severity);
 
+/// The severity label in the app's language. The API sends `info`/`warning`/`critical`; an Arabic
+/// screen showing `CRITICAL` in Latin capitals was the last English string on this page.
+String _severityLabel(BuildContext context, String severity) => switch (severity.toLowerCase()) {
+      'critical' => context.l10n.severityCritical,
+      'warning' => context.l10n.severityWarning,
+      _ => context.l10n.severityInfo,
+    };
+
 /// Screen displaying flagged search queries for a child (Track 1 & 2 content monitoring).
 /// Queries are decrypted on-demand from the server-side AES-256-GCM vault.
 class SearchSafetyScreen extends ConsumerWidget {
@@ -31,14 +40,15 @@ class SearchSafetyScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searches = ref.watch(searchEventsProvider(childId));
+    final l10n = context.l10n;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search safety'),
+        title: Text(l10n.searchSafetyTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+            tooltip: l10n.refresh,
             onPressed: () => ref.invalidate(searchEventsProvider(childId)),
           ),
         ],
@@ -51,13 +61,13 @@ class SearchSafetyScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(AppSpace.xl),
             children: [
               Center(
-                child: Text('Failed to load search activity: $e', textAlign: TextAlign.center),
+                child: Text(l10n.searchSafetyLoadFailed('$e'), textAlign: TextAlign.center),
               ),
               const SizedBox(height: AppSpace.lg),
               Center(
                 child: FilledButton.tonal(
                   onPressed: () => ref.invalidate(searchEventsProvider(childId)),
-                  child: const Text('Retry'),
+                  child: Text(l10n.retry),
                 ),
               ),
             ],
@@ -72,13 +82,13 @@ class SearchSafetyScreen extends ConsumerWidget {
                   Icon(Icons.shield_outlined, size: 64, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(height: AppSpace.lg),
                   Text(
-                    'No flagged searches detected',
+                    l10n.searchSafetyEmptyTitle,
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpace.sm),
                   Text(
-                    'SafeSearch enforcement and content inspection are active across all supported browsers and apps.',
+                    l10n.searchSafetyEmptyBody,
                     style: Theme.of(context).textTheme.bodyMedium,
                     textAlign: TextAlign.center,
                   ),
@@ -91,14 +101,14 @@ class SearchSafetyScreen extends ConsumerWidget {
               children: [
                 Card(
                   color: Theme.of(context).colorScheme.primaryContainer,
-                  child: const ListTile(
+                  child: ListTile(
                     dense: true,
-                    leading: Icon(Icons.lock_outline),
-                    title: Text('Search queries are analyzed for safety concerns. High-severity matches are logged to the encrypted family vault.'),
+                    leading: const Icon(Icons.lock_outline),
+                    title: Text(l10n.searchSafetyVaultNotice),
                   ),
                 ),
                 const SizedBox(height: AppSpace.lg),
-                Text('Flagged searches (${items.length})', style: Theme.of(context).textTheme.titleMedium),
+                Text(l10n.searchSafetyFlaggedCount(items.length), style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: AppSpace.sm),
                 for (final item in items)
                   _SearchEventCard(childId: childId, item: item),
@@ -119,9 +129,12 @@ class _SearchEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final sevColor = searchSeverityColor(item.severity, context);
     final sevText = context.tokens.severityText(item.severity);
-    final engineLabel = item.engine.isEmpty ? 'Search' : item.engine[0].toUpperCase() + item.engine.substring(1);
+    final engineLabel = item.engine.isEmpty
+        ? l10n.searchSafetyEngineFallback
+        : item.engine[0].toUpperCase() + item.engine.substring(1);
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpace.md),
@@ -130,7 +143,7 @@ class _SearchEventCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: () => SnippetVaultModal.show(
           context,
-          title: 'Search: "${item.query}"',
+          title: l10n.searchSafetyVaultTitle(item.query),
           snippet: item.query,
           severity: item.severity,
           concernTypes: item.concernTypes,
@@ -160,7 +173,7 @@ class _SearchEventCard extends StatelessWidget {
                     backgroundColor: sevColor.withValues(alpha: 0.15),
                     side: BorderSide(color: sevColor.withValues(alpha: 0.3)),
                     label: Text(
-                      item.severity.toUpperCase(),
+                      _severityLabel(context, item.severity),
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(color: sevText, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -168,7 +181,7 @@ class _SearchEventCard extends StatelessWidget {
               ),
               const SizedBox(height: AppSpace.sm),
               Text(
-                item.query.isEmpty ? '(Empty query)' : item.query,
+                item.query.isEmpty ? l10n.searchSafetyEmptyQuery : item.query,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               if (item.concernTypes.isNotEmpty) ...[
@@ -189,7 +202,7 @@ class _SearchEventCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text('View vault details', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
+                  Text(l10n.searchSafetyViewVault, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
                   const SizedBox(width: AppSpace.xs),
                   Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.primary),
                 ],

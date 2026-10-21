@@ -952,5 +952,19 @@
       "count": { "type": "int" }
     }
   },
-  "consentChildNameMissing": "Could not load your child's name. Go back and try again."
+  "consentChildNameMissing": "Could not load your child's name. Go back and try again.",
+  "refresh": "Refresh",
+  "searchSafetyTitle": "Search safety",
+  "searchSafetyLoadFailed": "Failed to load search activity: {error}",
+  "searchSafetyEmptyTitle": "No flagged searches detected",
+  "searchSafetyEmptyBody": "SafeSearch enforcement and content inspection are active across all supported browsers and apps.",
+  "searchSafetyVaultNotice": "Search queries are analysed for safety concerns. High-severity matches are logged to the encrypted family vault.",
+  "searchSafetyFlaggedCount": "Flagged searches ({count})",
+  "searchSafetyEngineFallback": "Search",
+  "searchSafetyEmptyQuery": "(Empty query)",
+  "searchSafetyViewVault": "View vault details",
+  "searchSafetyVaultTitle": "Search: \"{query}\"",
+  "@searchSafetyLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@searchSafetyFlaggedCount": {"placeholders": {"count": {"type": "int"}}},
+  "@searchSafetyVaultTitle": {"placeholders": {"query": {"type": "String"}}}
 }

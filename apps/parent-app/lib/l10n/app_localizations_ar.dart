@@ -1958,4 +1958,45 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get consentChildNameMissing =>
       'تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا.';
+
+  @override
+  String get refresh => 'تحديث';
+
+  @override
+  String get searchSafetyTitle => 'أمان البحث';
+
+  @override
+  String searchSafetyLoadFailed(String error) {
+    return 'تعذّر تحميل نشاط البحث: $error';
+  }
+
+  @override
+  String get searchSafetyEmptyTitle => 'لم يُرصد أي بحث مُبلَّغ عنه';
+
+  @override
+  String get searchSafetyEmptyBody =>
+      'فرض البحث الآمن وفحص المحتوى مُفعّلان في كل المتصفحات والتطبيقات المدعومة.';
+
+  @override
+  String get searchSafetyVaultNotice =>
+      'تُحلَّل عبارات البحث للكشف عن مخاطر السلامة، وتُسجَّل المطابقات عالية الخطورة في خزنة العائلة المشفّرة.';
+
+  @override
+  String searchSafetyFlaggedCount(int count) {
+    return 'عمليات البحث المُبلَّغ عنها ($count)';
+  }
+
+  @override
+  String get searchSafetyEngineFallback => 'بحث';
+
+  @override
+  String get searchSafetyEmptyQuery => '(عبارة فارغة)';
+
+  @override
+  String get searchSafetyViewVault => 'عرض تفاصيل الخزنة';
+
+  @override
+  String searchSafetyVaultTitle(String query) {
+    return 'بحث: \"$query\"';
+  }
 }
