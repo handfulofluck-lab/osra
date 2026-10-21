@@ -351,8 +351,10 @@ void main() {
       await tester.pumpWidget(themedApp(const SearchSafetyScreen(childId: 'child-1'), designApi()));
       await tester.pumpAndSettle();
 
-      expect(tester.widget<Text>(find.text('CRITICAL')).style?.color, AppTokens.dark.severityCriticalText);
-      expect(tester.widget<Text>(find.text('WARNING')).style?.color, AppTokens.dark.severityWarningText);
+      // #275: the chip shows the translated label, not the raw enum in Latin capitals, so the
+      // contrast assertion follows the same keys the screen uses.
+      expect(tester.widget<Text>(find.text('Critical')).style?.color, AppTokens.dark.severityCriticalText);
+      expect(tester.widget<Text>(find.text('Warning')).style?.color, AppTokens.dark.severityWarningText);
     });
   });
 

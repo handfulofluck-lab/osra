@@ -1892,4 +1892,45 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get consentChildNameMissing =>
       'Could not load your child\'s name. Go back and try again.';
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get searchSafetyTitle => 'Search safety';
+
+  @override
+  String searchSafetyLoadFailed(String error) {
+    return 'Failed to load search activity: $error';
+  }
+
+  @override
+  String get searchSafetyEmptyTitle => 'No flagged searches detected';
+
+  @override
+  String get searchSafetyEmptyBody =>
+      'SafeSearch enforcement and content inspection are active across all supported browsers and apps.';
+
+  @override
+  String get searchSafetyVaultNotice =>
+      'Search queries are analysed for safety concerns. High-severity matches are logged to the encrypted family vault.';
+
+  @override
+  String searchSafetyFlaggedCount(int count) {
+    return 'Flagged searches ($count)';
+  }
+
+  @override
+  String get searchSafetyEngineFallback => 'Search';
+
+  @override
+  String get searchSafetyEmptyQuery => '(Empty query)';
+
+  @override
+  String get searchSafetyViewVault => 'View vault details';
+
+  @override
+  String searchSafetyVaultTitle(String query) {
+    return 'Search: \"$query\"';
+  }
 }

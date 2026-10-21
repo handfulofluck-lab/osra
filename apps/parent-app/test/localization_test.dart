@@ -11,6 +11,7 @@ import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/children/consent_screen.dart';
+import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
@@ -284,6 +285,60 @@ void main() {
         };
         expect(arNames, enNames, reason: 'placeholder mismatch for "$key"');
       }
+    });
+  });
+
+  /// The fake HTTP layer resolves on a microtask after the first frame, so a provider-backed screen
+  /// needs a few pumps before its data is on screen. `coach_test.dart` has the same helper privately.
+  Future<void> flushFakeHttp(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  /// Search safety was the last screen with hardcoded English (#275). This holds its Arabic form: RTL,
+  /// no overflow at 320 px, and the two strings a parent actually reads first.
+  group('Search safety in Arabic (#275)', () {
+    FakeApiClient searchApi() => FakeApiClient({
+          ...standardRoutes(),
+          'GET /v1/content/searches': (_) => {
+                'items': [
+                  {
+                    'id': 's-1',
+                    'engine': 'google',
+                    'query': 'كيف أشتري فيب',
+                    'severity': 'warning',
+                    'concernTypes': ['substance_use'],
+                    'createdAt': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+                  },
+                ],
+              },
+        });
+
+    testWidgets('renders the flagged query in Arabic, RTL, no overflow', (tester) async {
+      await pumpArabic(tester, const SearchSafetyScreen(childId: 'child-1'), searchApi());
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('أمان البحث'), findsOneWidget);
+      expect(find.text('كيف أشتري فيب'), findsOneWidget);
+      // The severity chip is translated rather than an English enum in Latin capitals.
+      expect(find.text('تحذير'), findsOneWidget);
+      expect(find.text('عرض تفاصيل الخزنة'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
+
+    testWidgets('the empty state is translated too', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/content/searches': (_) => {'items': []},
+      });
+      await pumpArabic(tester, const SearchSafetyScreen(childId: 'child-1'), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('لم يُرصد أي بحث مُبلَّغ عنه'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
     });
   });
 }

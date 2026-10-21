@@ -66,6 +66,21 @@ environment where it was written — see `docs/QA/` for the verification state.
   the rules layer keys on nothing they contain.
 - **⚠️ not verified here:** the numbers are the author's run; a second agent has not re-run the table, and
   no native speaker has reviewed the new Arabic.
+
+### Parent app — the search-safety screen speaks Arabic (#275)
+- Every string on `SearchSafetyScreen` and its cards now comes from `app_en.arb`/`app_ar.arb`: the title,
+  the refresh tooltip, the load-failure line (with the error as a placeholder), the retry button, the
+  empty-state heading and body, the vault notice, the flagged count, the engine fallback, the empty-query
+  placeholder, the "view vault details" action, and the snippet-vault modal title.
+- **The severity chip is translated rather than an English enum in Latin capitals.** `CRITICAL` on an
+  Arabic screen was the last English string on the page; it now goes through `severityCritical`,
+  `severityWarning` and `severityInfo`, so it reads `حرج` in Arabic.
+- Two Arabic tests at 320×568 in `test/localization_test.dart`: a populated list (asserting the Arabic
+  title, the query, the translated severity chip and the vault action, with no layout exception and RTL
+  confirmed) and the empty state. `test/content_safety_test.dart` follows the chip's new casing.
+- **⚠️ not verified here:** a native speaker has not read the new Arabic — the same standing gap as TR-54,
+  and this screen is now part of what that review should cover.
+
 ### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
 - The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
   to before the grant had a higher id (it is a new row) and an older `DATE`: the floor excluded it forever
