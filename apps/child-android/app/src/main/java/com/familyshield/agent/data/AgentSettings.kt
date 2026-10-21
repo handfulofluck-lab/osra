@@ -214,11 +214,12 @@ class AgentSettings @Inject constructor(
         store.edit { it[stringPreferencesKey(AlertThrottlePolicy.throttleKey(type))] = nowMs.toString() }
     }
 
-    /** Persists today's usage counters snapshot for persistence across reboots (AND-02). */
+    /** Persists today's usage counters snapshot, in milliseconds, across reboots (AND-02, #276). */
     suspend fun saveTodayUsage(date: String, json: String) {
         store.edit {
             it[KEY_TODAY_USAGE_DATE] = date
             it[KEY_TODAY_USAGE_JSON] = json
+            it[KEY_TODAY_USAGE_UNIT] = USAGE_UNIT_MS
         }
     }
 
@@ -227,6 +228,34 @@ class AgentSettings @Inject constructor(
 
     /** Returns the persisted today-usage snapshot JSON, or null. */
     suspend fun todayUsageJson(): String? = read(KEY_TODAY_USAGE_JSON)
+
+    /**
+     * Unit of the persisted today-usage snapshot, or null for one written before #276 (whole
+     * minutes). Reading absent as ms would shrink a mid-day upgrade's count by 60×.
+     */
+    suspend fun todayUsageUnit(): String? = read(KEY_TODAY_USAGE_UNIT)
+
+    /**
+     * Per-package sub-minute remainder from the last telemetry window (#276), encoded
+     * `pkg=ms;pkg=ms` like [usageStatsSnapshot]; empty before the first upload.
+     */
+    suspend fun usageRemainderMs(): Map<String, Long> {
+        val raw = read(KEY_USAGE_REMAINDER_MS) ?: return emptyMap()
+        return raw.split(';')
+            .mapNotNull { entry ->
+                val name = entry.substringBefore('=', "")
+                val ms = entry.substringAfter('=', "").toLongOrNull()
+                if (name.isEmpty() || ms == null) null else name to ms
+            }
+            .toMap()
+    }
+
+    /** Replaces the #276 remainder, written with the upload's watermark so a failed POST keeps it. */
+    suspend fun setUsageRemainderMs(remainders: Map<String, Long>) {
+        store.edit {
+            it[KEY_USAGE_REMAINDER_MS] = remainders.entries.joinToString(";") { (pkg, ms) -> "$pkg=$ms" }
+        }
+    }
 
     /** Synchronous snapshot of pairing status (device token present). */
     fun isPairedSync(): Boolean = !deviceTokenSync().isNullOrBlank()
@@ -360,6 +389,9 @@ class AgentSettings @Inject constructor(
     private suspend fun read(key: Preferences.Key<String>): String? = store.data.first()[key]
 
     companion object {
+        /** Unit written by `saveTodayUsage` since #276; a snapshot without it holds whole minutes. */
+        const val USAGE_UNIT_MS: String = "ms"
+
         private val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         private val KEY_CHILD_ID = stringPreferencesKey("child_id")
         private val KEY_DEVICE_TOKEN = stringPreferencesKey("device_token")
@@ -372,6 +404,10 @@ class AgentSettings @Inject constructor(
         private val KEY_BASE_URL = stringPreferencesKey("base_url")
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
+        // Issue #276: the snapshot switched from whole minutes to milliseconds.
+        private val KEY_TODAY_USAGE_UNIT = stringPreferencesKey("today_usage_unit")
+        // Issue #276: each package's sub-minute remainder, carried into the next telemetry window.
+        private val KEY_USAGE_REMAINDER_MS = stringPreferencesKey("usage_remainder_ms")
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
         // Issue #257 review: observed-withdrawal counter and the re-grant time, so the comms
         // watermark restart does not depend on a harvest happening to run at the right moment.

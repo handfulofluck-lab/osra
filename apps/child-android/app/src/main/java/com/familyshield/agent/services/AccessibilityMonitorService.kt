@@ -99,7 +99,12 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val eventPkg = event?.packageName?.toString() ?: return
-        if (eventPkg == packageName) return
+        // Issue #284: our own block screen is in front and this stream never records our package, so
+        // the blocked app's interval would stay open and the next real event would charge it the stay.
+        if (eventPkg == packageName) {
+            usage.recordOwnWindow(System.currentTimeMillis())
+            return
+        }
         // Issue #175: read every visible application window once per event. The active window alone
         // cannot name a PiP video or the blocked app in the other split pane, and #171's active-only
         // decision therefore never judged them.
@@ -125,6 +130,11 @@ class AccessibilityMonitorService : AccessibilityService() {
             social.onAccessibilityEvent(event)
             if (foreground != eventPkg) Log.i(TAG, "event package $eventPkg, window in front $foreground (#165)")
             usage.recordForeground(foreground, System.currentTimeMillis())
+        } else if (foreground == packageName) {
+            // #284: the window in front is our own overlay (a block or time-limit screen) while the
+            // event came from somewhere else. Close the blocked app's interval here too, or the time
+            // the child spends reading "Daily limit reached" is charged to the app behind it.
+            usage.recordOwnWindow(System.currentTimeMillis())
         }
         // Issue #175: judge every visible application window, including one in the other split pane
         // or a PiP window over Home. This runs even when our own overlay is the active window, which
