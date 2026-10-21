@@ -29,7 +29,7 @@ environment where it was written — see `docs/QA/` for the verification state.
   because `ل` + the definite article produced `لالمرشدة`; the replacement uses `حق`, which the validator
   cannot catch and the generated rows did.
 - `EVAL.md` regenerated: English flags **30 %** of harmful rows (`sexual_content` 0.74,
-  `substance_use` 0.57, `self_harm` 0.05, `grooming` 0.16, `violence` 0.13, `hate_speech` 0.00), Arabic
+  `substance_use` 0.57, `self_harm` 0.05, `grooming` 0.18, `violence` 0.13, `hate_speech` 0.00), Arabic
   0.00 throughout with `n/a`. Grooming's recall falling from 0.23 is the new registers doing their job —
   the rules layer keys on nothing they contain.
 - **⚠️ not verified here:** the numbers are the author's run; a second agent has not re-run the table, and

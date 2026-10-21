@@ -69,8 +69,8 @@ POSITIVES_EN = [
     "i'll send you {money} every week, {target}, your mum doesn't need to know where it comes from, i'm {age}",
     "you want the new phone, don't you, {target}, i'll buy it, your mum can't afford it but i can, i'm {age}",
     "{target}, drop {friend}, she's jealous of us and she'll ruin it, i'm {age} and you're 13, remember",
-    "the guy from the game who's {age} told {target_m} to drop {friend}, he said {friend} was getting in the way",
-    "the guy from the game who's {age} told {target_f} to drop {friend}, he said {friend} was getting in the way",
+    "the guy from the game who's {age} told {target_m} to drop {friend_named}, he said {friend_named} was getting in the way",
+    "the guy from the game who's {age} told {target_f} to drop {friend_named}, he said {friend_named} was getting in the way",
     "i told you i was 17, {target}, really i'm {age}, but we already talk every night so it doesn't matter, right",
     "last time was fine, {target}, nobody saw us, so we can meet again {time}, i'm {age}",
     "you could model, {target}, you've got the look, i'm {age} and i know the right people, just keep it off your mum's radar for now",
@@ -107,7 +107,7 @@ POSITIVES_AR = [
     "الشاب اللي في اللعبة نقل محادثته مع {target_m} من السيرفر إلى الخاص، عمره {age} وقال له ألا يخبر الشلة",
     "الشاب اللي في اللعبة نقل محادثته مع {target_f} من السيرفر إلى الخاص، عمره {age} وقال لها ألا تخبر الشلة",
     "أمك ما تفهمك مثلي يا {target_m}، تقدر تقول لي أي شيء، عمري {age} وما أحكم عليك",
-    "أمك ما تفهمك مثلي يا {target_f}، تقدرين تقولي لي أي شيء، عمري {age} وما أحكم عليك",
+    "أمك ما تفهمك مثلي يا {target_f}، تقدرين تقولين لي أي شيء، عمري {age} وما أحكم عليك",
     "خلي الصورة اللي أرسلتها لك بيننا يا {target_m}، لا توريها {friend} ولا تتركها مكان تشوفه أمك، عمري {age}",
     "خلي الصورة اللي أرسلتها لك بيننا يا {target_f}، لا توريها {friend} ولا تتركيها مكان تشوفه أمك، عمري {age}",
     "بأرسل لك {money} كل أسبوع يا {target_m}، بس لا تخبر أمك من وين، عمري {age}",
@@ -134,6 +134,9 @@ SLOTS_EN = {
              "perfume", "a gold bracelet"],
     # Disjoint from the name slots: a fill must not produce "don't bring Layla ... Layla".
     "friend": ["Rania", "Yara", "your best friend", "Salma", "Aisha", "Mona"],
+    # Third-person templates must name the friend: "your best friend" reads as the reader's
+    # friend, not the child being talked about (#271 review D2).
+    "friend_named": ["Rania", "Yara", "Salma", "Aisha", "Mona"],
     "place": ["at the park", "behind the shops", "in the mall car park",
               "at the cafe near school", "by the gate behind the school",
               "at the end of the street"],

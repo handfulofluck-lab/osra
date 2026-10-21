@@ -23,7 +23,7 @@ Two message patterns are true overlaps: a child reporting that others keep
 telling them to die is cyberbullying as well as self_harm. The Arabic gender
 twins of the first pattern count as separate templates, so AR declares three.
 
-The second author pass (templates 21-40 per language) adds the registers the
+The second author pass (templates 21-40 English, 26-45 Arabic) adds the registers the
 first pass did not carry: a friend noticing the change, a note left to be found,
 a message to a sibling, being told it is attention-seeking, belongings given
 away, the morning after a bad night, a worried parent's message, and the slide
@@ -118,8 +118,8 @@ POSITIVES_AR = [
     "سألتني المرشدة إذا كنت أتكلم عن الموت عشان الانتباه، ما راح أرجع لها مرة ثانية",
     "صرت أوزع أغراضي، أعطيت {name} {belonging} لأني ما راح أكون موجود فترة طويلة",
     "كتبت اسم {name} على {belonging} عشان يعرفون شنو يحتفظون فيه بعد ما أموت",
-    "صباح الخير، الليلة كانت صعبة، سهرت لين أربع وما وقفت أفكر إني أنهي حياتي",
-    "أنا في المدرسة بس ما نمت، الليلة كنت أصيح وما وقفت أفكر إني ما أبي أعيش",
+    "صباح الخير، البارحة كانت صعبة، سهرت لين أربع وما وقفت أفكر إني أنهي حياتي",
+    "أنا في المدرسة بس ما نمت، البارحة كنت أصيح وما وقفت أفكر إني ما أبي أعيش",
     "{person_f} أرسلت لي 'صاير ساكت وايد، قلبي عليك' وأنا ما أعرف شنو أرد، رجعت أفكر في الموت",
     "{person_m} أرسل لي 'صاير ساكت وايد، قلبي عليك' وأنا ما عرفت شنو أرد، رجعت أفكر في الموت",
     "من يوم ما صار الانفصال ما طلعت من غرفتي وأنا أفكر إني ما أبي أعيش",
