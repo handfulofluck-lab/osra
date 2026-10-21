@@ -33,17 +33,20 @@ unaffected.
 written by hand: 17–26 positive templates per language, a slot dictionary that expands them to 65
 distinct messages, 12–14 hard negatives per language, and 7–8 generic safe messages. Everything is
 committed, so a reviewer reads the pattern instead of 2,000 lines, and a row traces back to
-`(bank, template_index, seed)`.
+`(bank, template_index, pattern, seed)`.
 
 **The cap is five rows per template.** `--per-category` above `templates × 5` raises rather than
 filling: one template filled 65 times is one item, not 65, and a recall interval computed from it is a
 fiction. The set grows through **new templates or new sources**, which is why plan 4.2's 2,000 +
 2,000 is an authoring target rather than a configuration value (Claude's ruling on #262).
 
-**The split is per template, never per row.** `split_of(bank, template_index)` in `split.py` hashes the
-template's identity to `dev` or `test`, and every row it generates carries that side in
-`provenance.split`; `run_eval --split test` is the held-out estimate. A per-row draw would leave
-paraphrases of a test template in dev, so the five rows that share a template always stay together.
+**The split is per pattern, never per row.** A pattern is a template, its translation in the other
+language and its gender twin under one id (`PATTERN_EN`/`PATTERN_AR` and `LANGUAGE_ONLY` in each bank);
+`split_of(bank, pattern)` in `split.py` hashes that identity to `dev` or `test`, and every row it
+generates carries both in `provenance`; `run_eval --split test` is the held-out estimate. A per-row draw
+would leave paraphrases of a test row in dev, so the five rows that share a pattern always stay together
+— and cutting on the template's *position* rather than its pattern put 8 of 14 gender twins, and
+translations like `self_harm` EN 5 ↔ AR 6, on opposite sides.
 
 **A positive must be labelable from the message alone.** Naming the substance or the act is required;
 naming the *method* is forbidden. "We're vaping in the toilets at break, watch the door" is a

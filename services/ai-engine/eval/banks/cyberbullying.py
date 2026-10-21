@@ -63,6 +63,16 @@ POSITIVES_AR = [
     "حتى {target_f} نفسها تعرف إنها {insult_f}",
 ]
 
+# Pattern ids for POSITIVES_EN/AR — the unit the dev/test split is cut on (`eval/split.py`): a
+# template, its Arabic translation and its gender twin share one id. Three ids exist in one language
+# only: EN 13/14 ("is so <adj>, no wonder nobody sits with him/her") has no Arabic line behind it,
+# and AR 9 ("laughed at in class") and AR 24/25 ("even he knows he is <noun>") have none in English.
+PATTERN_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 14, 14]
+
+PATTERN_AR = [0, 0, 1, 1, 2, 3, 4, 5, 5, 15, 6, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 14, 14, 16, 16]
+
+LANGUAGE_ONLY = {"positives:13", "positives:15", "positives:16"}
+
 SLOTS_EN = {
     "target": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
     # Only the templates with a pronoun use these, so the verb and the name agree.

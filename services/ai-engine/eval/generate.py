@@ -50,15 +50,22 @@ def fill(template: str, slots: Dict[str, List[str]], rng: random.Random) -> str:
 
 def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
            rng: random.Random, category: str, lang: str, seed: int,
-           also_labels: Dict[int, List[str]] = None) -> List[dict]:
+           also_labels: Dict[int, List[str]] = None,
+           patterns: List[int] = None) -> List[dict]:
     """Fill `count` unique snippets, cycling the templates so each is used.
 
     At most [MAX_ROWS_PER_TEMPLATE] rows come from one template. Beyond that the set is the same
     sentence with a different slot fill, which inflates the sample without adding an independent item —
     and the plan's gate is a recall interval, so independent items are the point.
+
+    `patterns` is the pattern id of each template, aligned with `templates`; without it a template is
+    its own pattern. `template_index` stays in provenance because it is the reproduction key, and the
+    split is cut on the pattern, which also covers the translation and the gender twin.
     """
     if not templates:
         raise ValueError(f"{category}/{lang}: no positive templates")
+    if patterns is None:
+        patterns = list(range(len(templates)))
     if count > len(templates) * MAX_ROWS_PER_TEMPLATE:
         raise ValueError(
             f"{category}/{lang}: {count} rows requested from {len(templates)} templates, but the cap is "
@@ -89,6 +96,7 @@ def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
             continue
         seen.add(text)
         per_template[template_index] = per_template.get(template_index, 0) + 1
+        pattern = patterns[template_index]
         rows.append({
             "id": f"{category}-{lang}-{len(rows) + 1:04d}",
             "lang": lang,
@@ -102,7 +110,8 @@ def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
                 "kind": "synthetic",
                 "bank": category,
                 "template_index": template_index,
-                "split": split_of(category, template_index),
+                "pattern": pattern,
+                "split": split_of(category, pattern),
                 "seed": seed,
             },
         })
@@ -110,7 +119,7 @@ def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
 
 
 def _rows(category: str, lang: str, texts: List[str], labels: List[str],
-          hard_negative_of, bank: str, seed: int) -> List[dict]:
+          hard_negative_of, bank: str, seed: int, patterns: List[int]) -> List[dict]:
     rows = []
     for index, text in enumerate(texts):
         rows.append({
@@ -123,12 +132,23 @@ def _rows(category: str, lang: str, texts: List[str], labels: List[str],
             "provenance": {
                 "kind": "synthetic",
                 "bank": bank,
+                # The draw position, as this field has always been for a sampled list; `pattern`
+                # below is the index of the source template, which is what the split is cut on.
                 "template_index": index,
-                "split": split_of(bank, index),
+                "pattern": patterns[index],
+                "split": split_of(bank, patterns[index]),
                 "seed": seed,
             },
         })
     return rows
+
+
+def _sample_indices(texts: List[str], count: int, rng: random.Random) -> List[int]:
+    """`count` source indices in a shuffled order — a draw without replacement, so a bank smaller
+    than the ask contributes all of its entries rather than a repeat of one."""
+    order = list(range(len(texts)))
+    rng.shuffle(order)
+    return order[:count]
 
 
 def build_dataset(per_category: int = DEFAULT_PER_CATEGORY,
@@ -158,26 +178,24 @@ def build_dataset(per_category: int = DEFAULT_PER_CATEGORY,
             ("en", bank.positives_en, bank.slots_en, bank.also_labels_en),
             ("ar", bank.positives_ar, bank.slots_ar, bank.also_labels_ar),
         ):
-            positives = expand(templates, slots, per_category, rng, category, lang, seed, also)
+            positives = expand(templates, slots, per_category, rng, category, lang, seed, also,
+                               bank.patterns("positives", lang))
             rows += [row for row in positives if keep(row)]
 
         for lang, hard, generic in (
             ("en", bank.hard_negatives_en, bank.generic_safe_en),
             ("ar", bank.hard_negatives_ar, bank.generic_safe_ar),
         ):
-            # Sample without replacement, then top up with random repeats only
-            # if the bank is smaller than the ask -- no invented text.
-            sample = hard[:]
-            rng.shuffle(sample)
-            taken = sample[:hard_negatives]
-            rows += [row for row in _rows(category, lang, taken, ["safe"], category,
-                                          bank.module_name, seed) if keep(row)]
-
-            safe_sample = generic[:]
-            rng.shuffle(safe_sample)
-            taken_safe = safe_sample[:generic_safe]
-            rows += [row for row in _rows(category, lang, taken_safe, ["safe"], None,
-                                          bank.module_name, seed) if keep(row)]
+            # Sample by source index: the pattern belongs to the bank's template, not to the drawn
+            # position. Shuffling the index list draws the same order as shuffling the texts did.
+            for texts, patterns, count, hard_of in (
+                (hard, bank.patterns("hard_negatives", lang), hard_negatives, category),
+                (generic, bank.patterns("generic_safe", lang), generic_safe, None),
+            ):
+                taken = _sample_indices(texts, count, rng)
+                rows += [row for row in _rows(category, lang, [texts[i] for i in taken], ["safe"],
+                                              hard_of, bank.module_name, seed,
+                                              [patterns[i] for i in taken]) if keep(row)]
 
     rows.sort(key=lambda r: (r["lang"], r["category"], r["labels"][0], r["id"]))
     return rows

@@ -73,6 +73,13 @@ POSITIVES_AR = [
     "{target_f} انمسكت في {class} ومعاها فيب، والحين محد في {group} يكلمها",
 ]
 
+# Pattern ids for POSITIVES_EN/AR (`eval/split.py` cuts the dev/test split on these). AR inserts a
+# gender twin wherever the verb agrees with the target (AR 1/2, 11/12), and the English m/f pairs
+# 14/15, 16/17 and 18/19 share one id each. No id is language-only.
+PATTERN_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 14, 15, 15, 16, 16]
+
+PATTERN_AR = [0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 14, 15, 15, 16, 16]
+
 SLOTS_EN = {
     "target": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
     # Only the templates with a pronoun use these, so the pronoun and the name agree.
@@ -125,6 +132,15 @@ HARD_NEGATIVES_AR = [
     "أختي الصغيرة تخبي سماعاتي في غرفتها كل يوم",
 ]
 
+# Pattern ids for HARD_NEGATIVES_EN/AR. EN 2, 8 and 10-13 have no Arabic line (team on a high, the
+# school-trip group chat, the broken plate, the smoke-alarm test, the film about a doctor, the fizzy
+# drink), and AR 7-10 have none in English (laundry powder, the club smelling of smoke, the school's
+# vaping letter, smoke against vapour). The aligned middle maps EN 3 <-> AR 6, EN 4 <-> AR 3,
+# EN 5 <-> AR 2, EN 6 <-> AR 4 and EN 7 <-> AR 5.
+PATTERN_HARD_NEG_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+
+PATTERN_HARD_NEG_AR = [0, 1, 5, 4, 6, 7, 3, 14, 15, 16, 17, 9]
+
 GENERIC_SAFE_EN = [
     "did you finish the history worksheet or should we do it together",
     "my mum's making rice and chicken tonight if you want to stay",
@@ -144,6 +160,19 @@ GENERIC_SAFE_AR = [
     "أبوي بيوصلني المدرسة باجر الصبح",
     "عندنا اختبار إملاء يوم الأحد، لازم نراجع",
 ]
+
+# Pattern ids for GENERIC_SAFE_EN/AR. These two lists are *not* translations in the same order:
+# EN 1 <-> AR 1, EN 2 <-> AR 3, EN 3 <-> AR 2, EN 4 <-> AR 6, EN 6 <-> AR 5. EN 0 and 5 (history
+# worksheet, the new kid at basketball) and AR 0 and 4 (football training, the biology video) have no
+# counterpart, so they keep ids outside the shared numbering.
+PATTERN_SAFE_EN = [0, 1, 2, 3, 4, 5, 6]
+
+PATTERN_SAFE_AR = [7, 1, 3, 2, 8, 6, 4]
+
+LANGUAGE_ONLY = {"hard_negatives:2", "hard_negatives:8", "hard_negatives:10", "hard_negatives:11",
+                 "hard_negatives:12", "hard_negatives:13", "hard_negatives:14", "hard_negatives:15",
+                 "hard_negatives:16", "hard_negatives:17", "generic_safe:0", "generic_safe:5",
+                 "generic_safe:7", "generic_safe:8"}
 
 # 5 is a debt threat as well as substance pressure; 18/19 ostracise the child who was caught.
 ALSO_LABELS_EN = {5: ["violence"], 18: ["cyberbullying"], 19: ["cyberbullying"]}

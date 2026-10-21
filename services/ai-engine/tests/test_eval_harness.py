@@ -6,6 +6,7 @@ same sentence 65 times, a metric that reports 1.00 because the denominator was
 zero, and an Arabic file that is English with Arabic quotation marks around it.
 """
 
+import difflib
 import json
 import os
 import random
@@ -15,7 +16,7 @@ import pytest
 
 import model
 from eval import generate, run_eval
-from eval.banks import HARMFUL_CATEGORIES, SLOT_RE, load_banks, validate_module
+from eval.banks import HARMFUL_CATEGORIES, LISTS, SLOT_RE, load_banks, validate_module
 from eval.split import SPLITS, split_of
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -159,17 +160,99 @@ def _dataset_rows():
 
 
 def test_split_of_is_stable():
-    """The hash input *is* the split's identity: change it and the set is re-cut, so fail here first."""
+    """The hash input *is* the split's identity: change it and the set is re-cut, so fail here first.
+
+    Pinned on **pattern** numbers, not on a template position, because the position is what the
+    reviewer showed does not identify a meaning across languages (`eval/split.py`).
+    """
     assert split_of("self_harm", 0) == "test"
     assert split_of("cyberbullying", 3) == "dev"
     assert split_of("violence", 7) == "dev"
+    assert split_of("self_harm", 13) == "test"
+    assert split_of("self_harm", 14) == "dev"
 
 
 def test_split_is_carried_by_generated_rows():
     rows = generate.expand(["hi {n}", "bye {n}"], {"n": ["a", "b", "c"]}, 4, random.Random(2),
-                           "x", "en", 2)
+                           "x", "en", 2, None, [7, 7])
     for row in rows:
-        assert row["provenance"]["split"] == split_of("x", row["provenance"]["template_index"])
+        assert row["provenance"]["pattern"] == 7
+        assert row["provenance"]["split"] == split_of("x", row["provenance"]["pattern"])
+
+
+def test_every_pattern_list_has_the_same_length_as_its_templates(banks):
+    """A pattern list one entry short silently shifts every id after the gap."""
+    for category, bank in banks.items():
+        for list_name in LISTS:
+            for lang in ("en", "ar"):
+                templates = bank.templates(list_name, lang)
+                patterns = bank.patterns(list_name, lang)
+                assert len(patterns) == len(templates), (
+                    f"{category}/{list_name}/{lang}: {len(patterns)} pattern ids for "
+                    f"{len(templates)} templates")
+                assert all(isinstance(p, int) and not isinstance(p, bool) and p >= 0 for p in patterns)
+                assert list(bank.pattern_map(list_name, lang).values()) == patterns
+
+
+def test_both_languages_use_the_same_patterns_outside_language_only(banks):
+    """One id must mean one meaning in both languages; `LANGUAGE_ONLY` is the only allowed gap."""
+    for category, bank in banks.items():
+        for list_name in LISTS:
+            only = {int(key.split(":")[1]) for key in bank.language_only
+                    if key.split(":")[0] == list_name}
+            en = set(bank.patterns(list_name, "en")) - only
+            ar = set(bank.patterns(list_name, "ar")) - only
+            assert en == ar, f"{category}/{list_name}: EN only {sorted(en - ar)}, AR only {sorted(ar - en)}"
+
+
+def _gender_shape(template):
+    return [slot[:-2] if slot.endswith(("_m", "_f")) else slot for slot in SLOT_RE.findall(template)]
+
+
+def _gendered_slots(template):
+    return [slot for slot in SLOT_RE.findall(template) if slot.endswith(("_m", "_f"))]
+
+
+def _gender_twins(templates):
+    """Adjacent templates that are one sentence with the gender changed.
+
+    A twin keeps the slot shape — the same slots in the same order with `_m`/`_f` folded — and the
+    text is still the same sentence once the slots are masked. Shape alone is not enough
+    (`cyberbullying` AR 9 sits beside AR 8 with a matching shape but is a different line, 0.69), and
+    order is what separates a twin from the block next to it at 0.8 text identity.
+    """
+    for index in range(len(templates) - 1):
+        first, second = templates[index], templates[index + 1]
+        if _gender_shape(first) != _gender_shape(second):
+            continue
+        if _gendered_slots(first) == _gendered_slots(second):
+            continue
+        left, right = SLOT_RE.sub("<s>", first), SLOT_RE.sub("<s>", second)
+        if difflib.SequenceMatcher(None, left, right).ratio() >= 0.8:
+            yield index, index + 1
+
+
+def test_gender_twins_share_a_pattern_and_a_side(banks):
+    """The leak the reviewer measured: 8 of 14 twin pairs sat on opposite sides of the split.
+
+    A twin is the same meaning in the other gender, so it must carry the same pattern — and the
+    pattern is what the split is cut on, so the side follows. The pair count is pinned so a change to
+    the twin detector cannot quietly shrink the guard to nothing.
+    """
+    found = {}
+    for category, bank in banks.items():
+        for list_name in LISTS:
+            for lang in ("en", "ar"):
+                templates = bank.templates(list_name, lang)
+                patterns = bank.patterns(list_name, lang)
+                for first, second in _gender_twins(templates):
+                    found[category] = found.get(category, 0) + 1
+                    assert patterns[first] == patterns[second], (
+                        f"{category}/{list_name}/{lang}: templates {first} and {second} are twins "
+                        f"but carry patterns {patterns[first]} and {patterns[second]}")
+                    assert split_of(category, patterns[first]) == split_of(category, patterns[second])
+    assert found == {"cyberbullying": 12, "grooming": 27, "self_harm": 15, "sexual_content": 2,
+                     "substance_use": 8, "violence": 6}, found
 
 
 def test_every_bank_and_language_has_both_sides():
@@ -189,15 +272,15 @@ def test_committed_dataset_agrees_with_the_split_rule():
     """The regression that matters: a dataset and a rule that drift apart make a held-out number a lie."""
     for row in _dataset_rows():
         prov = row["provenance"]
-        assert prov["split"] == split_of(prov["bank"], prov["template_index"]), row["id"]
+        assert prov["split"] == split_of(prov["bank"], prov["pattern"]), row["id"]
 
 
-def test_rows_from_one_template_share_one_side():
-    """The anti-leak invariant: a paraphrase of a test template must not sit in dev."""
+def test_rows_from_one_pattern_share_one_side():
+    """The anti-leak invariant: a paraphrase, a translation or a gender twin of a test row is not in dev."""
     sides = {}
     for row in _dataset_rows():
         prov = row["provenance"]
-        sides.setdefault((prov["bank"], prov["template_index"]), set()).add(prov["split"])
+        sides.setdefault((prov["bank"], prov["pattern"]), set()).add(prov["split"])
     leaked = {key: sorted(value) for key, value in sides.items() if len(value) > 1}
     assert not leaked, leaked
 
@@ -208,6 +291,14 @@ def test_split_filter_selects_only_that_side():
     assert test_rows and all(row["provenance"]["split"] == "test" for row in test_rows)
     assert len(test_rows) < len(rows)
     assert run_eval.filter_rows(rows, "all") == rows
+
+
+def test_a_dataset_without_a_split_is_refused():
+    """An old dataset would silently score as if every row were held out."""
+    stale = [{"id": "self_harm-en-0001", "lang": "en", "category": "self_harm", "text": "a",
+              "labels": ["self_harm"], "hard_negative_of": None, "provenance": {"bank": "self_harm"}}]
+    with pytest.raises(SystemExit, match="carry no dev/test split"):
+        run_eval.filter_rows(stale, "test")
 
 
 def _toy_dataset():

@@ -51,7 +51,7 @@ is written as recall ≥ 0.85 at precision ≥ 0.6 rather than "the tests pass".
 The dataset is 1,179 rows (588 EN / 591 AR) generated deterministically from seven template banks —
 377 positive templates, 176 hard negatives and 106 generic safe messages across the two languages,
 from which the generator draws 455 positive rows, 84 hard negatives and 49/52 safe rows per language. The
-template count is the number that matters for the gate's interval, and it is what the second author pass
+pattern count is the number that matters for the gate's interval, and it is what the second author pass
 on `self_harm` (21/26 -> 41/46) and `grooming` (20/23 -> 40/43) moved: at a fixed 65 rows per category the
 sample now draws from nearly twice as many independent patterns.
 It
@@ -99,24 +99,53 @@ Known limits, stated rather than discovered later:
 
 ### The dev/test split
 
-Every generated row carries `provenance.split` — `dev` or `test`. The split is **per template, never
-per row**: all rows from one template land on the same side. Five rows share a template's wording, so a
-model that recognises one fill very likely recognises its siblings; a per-row draw would put a
-paraphrase of a test template into dev and the "held-out" number would be contaminated by exactly the
-overlap the five-row cap exists to limit. `eval/split.py` hashes `f"{bank}:{template_index}"` with
-sha256 and takes a bit of the digest. A hashed side rather than an alternating one matters because
-alternation is positional: inserting one template in the middle of a bank flips every later template's
-side, silently moving rows already measured from test into dev with no diff that shows it happened.
-The hash makes a template's side depend only on its identity, and `tests/test_eval_harness.py` pins
-three values so a change to the hash input is a failing test, not a quiet re-split.
+Every generated row carries `provenance.split` — `dev` or `test` — and `provenance.pattern`, the id the
+side is cut on. The split is **per pattern, never per row**: a pattern is a template, its translation in
+the other language and its gender twin under one id (`PATTERN_EN` / `PATTERN_AR` and `LANGUAGE_ONLY` in
+each bank), and all rows from one pattern land on the same side. Five rows share a pattern's wording, so
+a model that recognises one fill very likely recognises its siblings; a per-row draw would put a
+paraphrase of a test row into dev and the "held-out" number would be contaminated by exactly the overlap
+the five-row cap exists to limit.
 
-Counts in the committed set (2026-10-21):
+The first cut of this split hashed the template's **position** in its list, and that leaked. The Arabic
+banks translate the English ones with gender twins inserted (`{name_m}`/`{name_f}`,
+`{person_m}`/`{person_f}`, `{target_m}`/`{target_f}`), so from the first twin onward EN *i* and AR *i*
+are different sentences and a translation sits at another index with an independent coin flip: **8 of 14
+adjacent twin pairs landed on opposite sides**, and translation pairs such as `self_harm` EN 5 ↔ AR 6 and
+EN 7 ↔ AR 10 did too. One prompt scores both languages, so a dev sentence whose translation or whose
+other-gender twin was in test is a paraphrase inside the tuning set — the leak this split exists to
+prevent. The unit that identifies a meaning is therefore the pattern, not the position.
+
+`eval/split.py` hashes `f"{bank}:{pattern}"` with sha256 and takes a bit of the digest. A hashed side
+rather than an alternating one matters because alternation is positional: inserting one pattern in the
+middle of a list flips every later pattern's side, silently moving rows already measured from test into
+dev with no diff that shows it happened. The hash makes a pattern's side depend only on its identity, and
+`tests/test_eval_harness.py` pins five values so a change to the hash input is a failing test, not a quiet
+re-split.
+
+Counts in the committed set (2026-10-21): 161 patterns, none of them on both sides.
 
 | split | rows | EN | AR |
 |---|---|---|---|
-| `dev` | 665 | 338 | 327 |
-| `test` | 514 | 250 | 264 |
+| `dev` | 695 | 349 | 346 |
+| `test` | 484 | 239 | 245 |
 | `all` | 1,179 | 588 | 591 |
+
+Per bank, dev / test rows:
+
+| bank | dev / test | EN dev / test | AR dev / test |
+|---|---|---|---|
+| cyberbullying | 117 / 51 | 59 / 25 | 58 / 26 |
+| grooming | 92 / 71 | 46 / 34 | 46 / 37 |
+| hate_speech | 88 / 82 | 44 / 41 | 44 / 41 |
+| self_harm | 78 / 92 | 38 / 47 | 40 / 45 |
+| sexual_content | 113 / 57 | 56 / 29 | 57 / 28 |
+| substance_use | 108 / 60 | 54 / 30 | 54 / 30 |
+| violence | 99 / 71 | 52 / 33 | 47 / 38 |
+
+On the `test` side an Arabic category has 22–34 rows, so a recall of 1.00 there only rules out a miss
+rate above about 9–14% (95%, rule of three: 3/n). `substance_use` is the thinnest at 22 and
+`violence` the widest at 34; read the per-category numbers with that width in mind.
 
 Every bank, and both languages, has both sides non-empty — a bank that was 100 % dev would make its
 category unmeasurable in one direction.
@@ -124,9 +153,7 @@ category unmeasurable in one direction.
 - **The tables in this file are `all` rows.** The split is a provenance field, not a filter applied to
   them: `--scorer regex` above and the hosted-scorer table below both cover all 1,179 rows, and their
   numbers are unchanged by this work.
-- **The held-out estimate is `python -m eval.run_eval --scorer deepseek --split test`.** It has **not
-  been run yet**; nothing in this file was measured on `test` alone. Until it is, the tables above
-  remain the only measurements, and they are not held out.
+- **What `--split test` measures.** From this split on, the prompt may be changed only on `dev` results, so `test` is held out from tuning. It is not independent of the prompt's author: the prompt and every template, test included, were written by the same author, and the prompt's category descriptions follow the templates' themes. A `test` number therefore measures this corpus under a prompt written with its themes in view. It has **not been run yet**. An independent estimate needs test templates written by someone who has not seen the prompt (the native Arabic reviewer on the open-items list is the obvious first), or real messages under the consent rules.
 
 ## Generated table
 
@@ -226,8 +253,10 @@ categories**.
 
 ## Reproducing a row
 
-Each row carries `provenance = {kind, bank, template_index, split, seed}`, so a surprising item can be
-traced to the exact template and the seed that filled its slots:
+Each row carries `provenance = {kind, bank, template_index, pattern, split, seed}`, so a surprising item
+can be traced to the exact template and the seed that filled its slots. `template_index` is the
+reproduction key; `pattern` is the id the split is cut on (a template, its translation and its gender twin
+share one), which is why a row's side can be explained from `pattern` alone:
 
 ```bash
 cd services/ai-engine
