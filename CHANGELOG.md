@@ -11,6 +11,38 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Screen time — collection stops while consent is withdrawn, and the paused window is never uploaded (#265)
+- `UsageReporter.postLiveActivity()` had **no consent check** while every sibling call had one, so a
+  withdrawn phone kept posting the foreground app to `POST /v1/devices/:id/activity` every 60 s, the
+  server answered 428, and the stack was logged once a minute. It now returns on `consent.isPaused()`,
+  and a 428 that races the check is one silent line rather than a warning, the same rule the command
+  poll follows (#263).
+- `recordForeground()` keeps tracking the open package (the lock overlay's "what is open now" and the
+  live-activity payload read it) and stops everything else while consent is withdrawn: no Room row, no
+  unlock count, and no call into `rules.onForegroundEvent` — which is **not** enforcement (the rule
+  engine returns `ALLOW` while paused) but the daily minute counter, so crediting it was what reported
+  the withdrawn window as today's total after a re-grant (#266 review). The largest remaining leak is
+  one open gap, capped at `UsageCounters.MAX_GAP_MINUTES` (5).
+- `aggregateAndUpload()` reuses the comms epoch decision (`CommsConsentPolicy.resetTo`) instead of
+  copying it: at the first upload after a re-grant the watermark moves to the moment the phone learned
+  consent came back, older events are deleted, and the paused-window unlock count is dropped — so the
+  withdrawn window is not uploaded as today's screen time. The epoch lives under its own
+  `telemetry_consent_epoch` key, so a comms reset cannot clear it and vice versa.
+- `backfillFromUsageStats()` is **skipped entirely on a re-grant day**. A floor inside the day does not
+  help: `queryUsageStats(INTERVAL_DAILY, start, now)` returns whole buckets, and because a paused
+  device writes no rows, an app used only during the withdrawal looks "missing from the stream" and had
+  its whole-day total added back (#266 review). Cost: apps the accessibility stream missed go
+  uncounted until the next day — an under-count a parent can see beats a leak they cannot. The
+  double-counting that remains on every 15-minute upload is **#267**, filed by Claude with the delta
+  design that replaces this skip.
+- Tests: `UsageReporterConsentWiringTest` (6) pins each site — the pause check before the minute
+  counter, the 428 branch, the reset's four steps, the re-grant-day skip and the separate epoch key. The
+  decision table itself is `CommsConsentPolicyTest` (5 cases) from #257.
+- **⚠️ not verified here:** the phone row — withdraw consent, switch apps for a few minutes, re-grant,
+  then check the first upload contains none of those minutes and logcat shows no
+  `live activity post failed` stack — is Claude's, on the Flip4. No JVM test can withdraw consent from
+  a running accessibility stream.
+
 ### AI — the labelled evaluation set and per-category, per-language scores (plan 4.2 + 4.3, WO-01)
 - `services/ai-engine/eval/` now holds the labelled set the scorer is measured against: seven
   template banks (one per harmful category) in English and Arabic, expanded deterministically into

@@ -8,7 +8,10 @@ import android.os.BatteryManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.comms.CommsConsentPolicy
+import com.familyshield.agent.comms.CommsWatermarkPolicy
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.ConsentPolicy
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.db.AgentStateEntity
@@ -57,21 +60,47 @@ class UsageReporter @Inject constructor(
         val prevTs = lastTs
         lastPkg = pkg
         lastTs = ts
+        // Issue #265: the foreground package is still tracked while paused -- the lock overlay's "what
+        // is open now" and the live-activity payload read it, and that is not collection.
+        if (consent.isPaused()) return
+        // `rules.onForegroundEvent` is NOT enforcement: `RuleRepository.decide` returns ALLOW while
+        // consent is paused, so it only feeds the daily minute counter (`UsageCounters`, which saves to
+        // settings). Calling it while paused credited the withdrawn window to the app that was open, and
+        // the first live-activity post after a re-grant then reported those minutes as today's total
+        // (#266 review, D1). The most that can still leak is one open gap, capped at
+        // `UsageCounters.MAX_GAP_MINUTES` (5).
+        rules.onForegroundEvent(pkg, ts)
         // NOTE: the accessibility stream has no screen-on/off events, so a "new session"
         // (counted as an unlock) is a package change or the first event after a >60 s gap.
         if (prevPkg == null || prevPkg != pkg || ts - prevTs > 60_000L) {
             unlockCounter.incrementAndGet()
         }
-        rules.onForegroundEvent(pkg, ts)
         scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts)) }
     }
 
     /** Aggregates the usage since the last successful run and uploads the delta; no-op without a device id. */
     suspend fun aggregateAndUpload() {
         val deviceId = settings.deviceId() ?: return
-        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
         val dao = db.usageEventDao()
         val stateDao = db.agentStateDao()
+        // Issue #265: the same epoch rule the comms streams use (#257), not a copy of it. While consent
+        // is withdrawn this returns null and nothing moves; at the first upload after a re-grant it
+        // returns the moment the phone learned consent came back, so the paused window is dropped here
+        // rather than uploaded as today's screen time.
+        val epoch = consent.pauseEpoch()
+        val storedEpoch = CommsWatermarkPolicy.normalize(stateDao.get(KEY_CONSENT_EPOCH))
+        CommsConsentPolicy.resetTo(
+            storedEpoch = storedEpoch,
+            epoch = epoch,
+            paused = consent.isPaused(),
+            resumedAtMs = consent.resumedAtMs(),
+        )?.let { restartFrom ->
+            stateDao.set(AgentStateEntity(KEY_WATERMARK, restartFrom))
+            dao.deleteOlderThan(restartFrom)
+            unlockCounter.set(0)
+            stateDao.set(AgentStateEntity(KEY_CONSENT_EPOCH, epoch))
+        }
+        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
         val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return
         val windowEnd = System.currentTimeMillis()
         val events = dao.since(watermark)
@@ -111,6 +140,10 @@ class UsageReporter @Inject constructor(
      */
     suspend fun postLiveActivity() {
         val deviceId = settings.deviceId() ?: return
+        // Issue #265: this had no consent check while its siblings did, so a withdrawn phone kept
+        // posting the foreground app every 60 s, the server answered 428, and the stack was logged
+        // once a minute. ADR-0008 decision 3 pauses collection, not just enforcement.
+        if (consent.isPaused()) return
         val event = liveActivityPayload(rules.minutesSnapshot(), currentForeground())
         val liveEvent = event.copy(payload = event.payload + ("live" to true))
         try {
@@ -118,6 +151,9 @@ class UsageReporter @Inject constructor(
         } catch (e: CancellationException) {
             throw e // NOTE: never swallow coroutine cancellation
         } catch (e: Exception) {
+            // A withdrawal between the check above and the post is still the expected answer, not a
+            // warning: one line at INFO, no stack, the same rule the command poll follows (#263).
+            if (ConsentPolicy.httpStatusOf(e) == 428) return
             Log.w(TAG, "live activity post failed", e)
         }
     }
@@ -187,12 +223,23 @@ class UsageReporter @Inject constructor(
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-    /** Adds UsageStatsManager totals for packages missing from the event stream (best effort). */
+    /**
+     * Adds UsageStatsManager totals for packages missing from the event stream (best effort).
+     *
+     * Issue #266 review (D2): `queryUsageStats(INTERVAL_DAILY, start, now)` returns **whole buckets** —
+     * the platform includes the interval a timestamp falls in, so a floor in the middle of the day does
+     * not exclude the morning. And since a paused device writes no Room rows, an app used only during the
+     * withdrawal looks "missing from the event stream" and its whole-day total would be added back. Both
+     * are the withdrawn window reaching the parent, so the backfill is skipped entirely on a re-grant day.
+     * The cost: apps the accessibility stream missed go uncounted until the next day. That is the right
+     * trade — an under-count a parent can see is better than a leak they cannot.
+     */
     private fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
         try {
+            val startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            if (consent.resumedAtMs() > startOfDay) return
             val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val start = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, System.currentTimeMillis())
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
             for (s in stats ?: emptyList()) {
                 if (!perApp.containsKey(s.packageName)) {
                     val minutes = (s.totalTimeInForeground / 60_000L).toInt()
@@ -209,6 +256,10 @@ class UsageReporter @Inject constructor(
         const val WORK_NAME: String = "telemetry_upload"
 
         private const val KEY_WATERMARK = "telemetry_watermark"
+
+        /** Issue #265: the consent epoch last applied to this stream, separate from the comms ones. */
+        private const val KEY_CONSENT_EPOCH = "telemetry_consent_epoch"
+
         private const val TAG = "UsageReporter"
     }
 }
