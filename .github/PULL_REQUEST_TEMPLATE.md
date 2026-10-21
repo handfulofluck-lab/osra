@@ -17,6 +17,8 @@
 
 ## 3. What changed and why
 
+<!-- A user-visible change needs CHANGELOG.d/<date>-<slug>.md; see CHANGELOG.d/README.md -->
+
 | File:line | Change | Why |
 |---|---|---|
 |  |  |  |

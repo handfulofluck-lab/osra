@@ -9,6 +9,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `edited` (review N2): this workflow reads the PR title — the diff-scope check's declared kind comes
+    # from it — so a retitle must re-run it. Without this a fixed title left the red run of the old one
+    # standing, which is what happened to #279's `chore(process)` title.
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   lint-workflows:
@@ -21,6 +25,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # Moved here from ci.yml (review N2): this gate reads the PR title, and `workflow-lint` runs on
+      # `edited`, so a retitle re-checks it in ~20 s instead of rebuilding the Android app.
+      - name: A code change carries a changelog fragment
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/check-changelog-fragment.mjs --base "origin/${{ github.base_ref }}"
+
       - name: Check .github/workflows for schema traps and gates that cannot fail
         # --strict: warnings (failure-swallowing steps) also fail the gate. Remove the flag if a
         # deliberate `|| true` is ever needed; do not add one without saying why in the PR.

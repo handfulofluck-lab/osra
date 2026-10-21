@@ -103,6 +103,16 @@ One branch, one commit, named `release/<version>`. That name follows the pattern
 list currently names only `qa/`, `fix/` and `feat/` — the release lane adds it, and §6 should name it too
 so the next reader does not invent a fourth form. Content:
 
+0. **Assemble the fragments first.** Entries are written as `CHANGELOG.d/<date>-<slug>.md` (see
+   `CHANGELOG.d/README.md`); nothing else moves them into `CHANGELOG.md`.
+
+   ```bash
+   node scripts/assemble-changelog.mjs --check   # must exit 0: no fragment left unassembled
+   node scripts/assemble-changelog.mjs           # insert them under [Unreleased], delete the files
+   ```
+
+   This is the step that makes "nobody forgets the changelog" true: a fragment still sitting in
+   `CHANGELOG.d/` at release time is an entry that would ship unannounced, and `--check` says so.
 1. Every carrier in §3.
 2. `CHANGELOG.md:12` — insert a dated heading `## [YYYY-MM-DD] — <one-line summary>` above the existing
    `## [Unreleased]`, keeping `[Unreleased]` in place for the next cycle. Move the entries under it. Do
