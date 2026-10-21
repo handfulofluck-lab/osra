@@ -602,5 +602,16 @@
       "count": { "type": "int" }
     }
   },
-  "consentChildNameMissing": "تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا."
+  "consentChildNameMissing": "تعذّر تحميل اسم طفلك. ارجع وحاول مجددًا.",
+  "refresh": "تحديث",
+  "searchSafetyTitle": "أمان البحث",
+  "searchSafetyLoadFailed": "تعذّر تحميل نشاط البحث: {error}",
+  "searchSafetyEmptyTitle": "لم يُرصد أي بحث مُبلَّغ عنه",
+  "searchSafetyEmptyBody": "فرض البحث الآمن وفحص المحتوى مُفعّلان في كل المتصفحات والتطبيقات المدعومة.",
+  "searchSafetyVaultNotice": "تُحلَّل عبارات البحث للكشف عن مخاطر السلامة، وتُسجَّل المطابقات عالية الخطورة في خزنة العائلة المشفّرة.",
+  "searchSafetyFlaggedCount": "عمليات البحث المُبلَّغ عنها ({count})",
+  "searchSafetyEngineFallback": "بحث",
+  "searchSafetyEmptyQuery": "(عبارة فارغة)",
+  "searchSafetyViewVault": "عرض تفاصيل الخزنة",
+  "searchSafetyVaultTitle": "بحث: \"{query}\""
 }
