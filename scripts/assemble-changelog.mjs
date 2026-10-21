@@ -66,15 +66,27 @@ async function main() {
 
   const insertion = index + UNRELEASED.length;
   const pending = [];
+  const alreadyAssembled = [];
   for (const name of files) {
     const body = (await readFile(join(FRAGMENT_DIR, name), "utf8")).trim();
     if (!body) continue;
     // Idempotence: a fragment whose text is already in the file is an assembled one, not a new entry.
-    if (changelog.includes(body)) continue;
+    if (changelog.includes(body)) {
+      alreadyAssembled.push(name);
+      continue;
+    }
     pending.push({ name, body });
   }
 
   if (pending.length === 0) {
+    // B5 (review): a `--keep` run leaves the file behind, so the next real run used to return here and
+    // delete nothing — `--check` then stayed red for good. Delete the assembled ones on this path too.
+    if (!args.has("--keep") && alreadyAssembled.length > 0) {
+      for (const name of alreadyAssembled) await unlink(join(FRAGMENT_DIR, name));
+      console.log(`every fragment was already assembled; removed ${alreadyAssembled.length} file(s)`);
+      for (const name of alreadyAssembled) console.log(`  CHANGELOG.d/${name}`);
+      return 0;
+    }
     console.log("every fragment is already assembled; nothing to insert");
     return 0;
   }
@@ -84,11 +96,17 @@ async function main() {
   await writeFile(CHANGELOG, next, "utf8");
 
   if (!args.has("--keep")) {
+    // Both lists: a fragment inserted in an earlier `--keep` run is assembled too, and leaving it would
+    // keep `--check` red forever.
     for (const entry of pending) await unlink(join(FRAGMENT_DIR, entry.name));
+    for (const name of alreadyAssembled) await unlink(join(FRAGMENT_DIR, name));
   }
 
   console.log(`inserted ${pending.length} entr${pending.length === 1 ? "y" : "ies"} under ${UNRELEASED}`);
   for (const entry of pending) console.log(`  CHANGELOG.d/${entry.name}${args.has("--keep") ? " (kept)" : ""}`);
+  if (!args.has("--keep")) {
+    for (const name of alreadyAssembled) console.log(`  removed CHANGELOG.d/${name} (already assembled)`);
+  }
   return 0;
 }
 

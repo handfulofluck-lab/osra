@@ -26,8 +26,12 @@ function git(...gitArgs) {
 }
 
 let changed;
+let added;
 try {
-  changed = git("diff", "--name-only", "--diff-filter=d", `${base}...HEAD`).split("\n").filter(Boolean);
+  // S1 (review): the *unfiltered* diff decides whether code changed. A branch whose only change is a
+  // deletion removes a feature, which a parent notices — `--diff-filter=d` dropped exactly that case.
+  changed = git("diff", "--name-only", `${base}...HEAD`).split("\n").filter(Boolean);
+  added = git("diff", "--name-only", "--diff-filter=A", `${base}...HEAD`).split("\n").filter(Boolean);
 } catch (error) {
   console.error(`could not diff against ${base}: ${error.message}`);
   process.exit(1);
@@ -39,12 +43,15 @@ if (changed.length === 0) {
 }
 
 const codePath = /^(apps|services|scripts|infra)\/|^\.github\/workflows\//;
-const needsFragment = changed.some((path) => codePath.test(path));
-const fragment = changed.find((path) => path.startsWith("CHANGELOG.d/") && path.endsWith(".md") && !path.endsWith("README.md"));
+// A Markdown file under `apps/` or `services/` is documentation about that code, not code itself.
+// `services/ai-engine/EVAL.md` is the case that made this matter (#278).
+const needsFragment = changed.some((path) => codePath.test(path) && !path.endsWith(".md"));
+// Only a fragment this PR *adds* counts: editing someone else's is not carrying one.
+const fragment = added.find((path) => path.startsWith("CHANGELOG.d/") && path.endsWith(".md") && !path.endsWith("README.md"));
 // A revert carries nothing else, and a release commit assembles the fragments — both are named in
 // AGENTS.md rather than inferred, so they may skip.
 const title = process.env.PR_TITLE || "";
-const exempt = /^revert[(:]/i.test(title) || /\bassemble\b/i.test(title);
+const exempt = /^revert[(:]/i.test(title) || /^\w+\(release\): assemble the changelog\b/i.test(title);
 
 if (!needsFragment || fragment || exempt) {
   if (fragment) console.log(`changelog fragment: ${fragment}`);

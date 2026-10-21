@@ -109,7 +109,8 @@ carries its documentation **in the same PR**:
   so** — an unqualified "fixed" is a documentation bug. `node scripts/assemble-changelog.mjs` folds the
   fragments into `CHANGELOG.md`'s `[Unreleased]` block at release. **Why a file:** every PR used to edit
   that one block, so every merge conflicted with every open PR — three re-signatures and one duplicated
-  entry on 2026-10-21. A fragment is a file nobody else touches. See `CHANGELOG.d/README.md`.
+  entry on 2026-10-21. A fragment is a file nobody else touches. See `CHANGELOG.d/README.md`. Two titles are
+  exempt from the CI check by name: a `revert(...)` and exactly `feat(release): assemble the changelog`.
 - **`docs/adr/NNNN-*.md`** — an architectural decision, or a decision that closes off an option for the
   future. Record context, the decision, the reasoning, the alternatives you rejected and why, and the
   costs (including the bad ones). Never edit an accepted ADR to reflect a new decision: add a new one

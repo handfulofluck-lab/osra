@@ -4,10 +4,13 @@
   inside a file the PR itself edits changes its patch-id, so §6.5's carry-forward correctly refuses the old
   signature — and shipped **one duplicated entry** that only a reviewer caught.
 - Entries are now one file per change, `CHANGELOG.d/<YYYY-MM-DD>-<slug>.md`, containing the entry verbatim.
-  `node scripts/assemble-changelog.mjs` folds them into `[Unreleased]` newest-first at release, skips an
-  entry whose text is already present, and deletes the fragments unless `--keep` is passed.
-- A new CI job, `changelog-fragment`, fails a PR that changes code (`apps/`, `services/`, `scripts/`,
-  `infra/`, `.github/workflows/`) without adding a fragment, and exempts a Markdown-only PR — demanding a
-  changelog entry for a documentation sweep is how a rule gets ignored.
-- `AGENTS.md` §3 and §8 and the PR template now say fragment rather than `CHANGELOG.md`; the reasoning and
-  the "when it is owed" rule (per case: would a parent notice?) live in `CHANGELOG.d/README.md`.
+  `node scripts/assemble-changelog.mjs` folds them into `[Unreleased]` newest-first, skips an entry whose text
+  is already present, and deletes the fragments unless `--keep` — including fragments a previous `--keep` run
+  left behind, so `--check` cannot stay red for good.
+- A new CI job, `changelog-fragment`, fails a PR that changes code (`apps/`, `services/`, `scripts/`, `infra/`,
+  `.github/workflows/`) without **adding** a fragment, treats Markdown under those trees as documentation
+  (`services/ai-engine/EVAL.md` is the case that mattered), and exempts only a revert or the one release title
+  `feat(release): assemble the changelog`.
+- `check-pr-diff-scope.mjs` now classifies `CHANGELOG.d/` as documentation, so the fragment gate and the scope
+  gate cannot contradict each other; `AGENTS.md` §3/§8, the PR template, `docs/RELEASING.md` and the docs index
+  point at the new shape, and `CHANGELOG.d/README.md` keeps §8's per-case rule ("would a parent notice?").

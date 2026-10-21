@@ -23,8 +23,13 @@ Create `CHANGELOG.d/<YYYY-MM-DD>-<slug>.md` whose contents are the entry **verba
 No front matter, no metadata, no parser. The assembler concatenates.
 
 **When a fragment is required:** any change under `apps/`, `services/`, `scripts/`, `infra/` or
-`.github/workflows/`. A PR that only touches Markdown does not need one — a documentation sweep is its own
+`.github/workflows/`, **except Markdown** — `services/ai-engine/EVAL.md` is documentation about that code,
+not code. A PR that only touches Markdown does not need one either; a documentation sweep is its own
 record. `scripts/check-changelog-fragment.mjs` enforces exactly that and prints the remedy when it fails.
+
+**Two titles are exempt by name**, because each carries its own record: `revert(...)`, and exactly
+`feat(release): assemble the changelog` — the release commit that consumes the fragments. Nothing else is:
+an unanchored match on a word like "assemble" would exempt `feat(android): assemble the block screen`.
 
 **The number in the heading:** if you do not know the PR number when you write the file, leave the heading
 without one and add it after opening the PR. Do not guess — on 2026-10-21 a PR was labelled `#276` in four

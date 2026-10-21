@@ -37,7 +37,7 @@ const head = flag("--head", "HEAD");
 const quiet = argv.includes("--quiet");
 const repo = flag("--repo", null); // run git in another checkout (used by the synthetic self-test)
 
-const DOC_PREFIXES = ["docs/", "CHANGELOG.md", "README.md", "AGENTS.md", "LICENSE"];
+const DOC_PREFIXES = ["docs/", "CHANGELOG.md", "CHANGELOG.d/", "README.md", "AGENTS.md", "LICENSE"];
 const CI_PREFIXES = [".github/", "scripts/"];
 
 function changedFiles() {
@@ -61,6 +61,9 @@ function changedFiles() {
 
 function kindOf(path) {
   if (path.startsWith("docs/")) return "docs";
+  // A changelog fragment is documentation: `CHANGELOG.d/<date>-<slug>.md` is what CHANGELOG.md used to be.
+  // Without this, the new `changelog-fragment` gate and this one contradict each other (review B2).
+  if (path.startsWith("CHANGELOG.d/")) return "docs";
   if (CI_PREFIXES.some((p) => path.startsWith(p))) return "ci";
   if (path === "CHANGELOG.md" || path === "README.md" || path === "AGENTS.md") return "docs";
   if (path.startsWith("apps/") || path.startsWith("services/") || path.startsWith("packages/")) return "code";
@@ -149,7 +152,7 @@ if (declared === "docs") {
   for (const f of offenders) problems.push(`${f.status} ${f.path} — a docs-titled PR must not touch this`);
 }
 if (declared === "ci") {
-  const offenders = files.filter((f) => !CI_PREFIXES.some((p) => f.path.startsWith(p)) && f.path !== "docs/TESTING.md" && f.path !== "CHANGELOG.md");
+  const offenders = files.filter((f) => !CI_PREFIXES.some((p) => f.path.startsWith(p)) && f.path !== "docs/TESTING.md" && f.path !== "CHANGELOG.md" && !f.path.startsWith("CHANGELOG.d/"));
   for (const f of offenders) problems.push(`${f.status} ${f.path} — a ci-titled PR must not touch this`);
 }
 
