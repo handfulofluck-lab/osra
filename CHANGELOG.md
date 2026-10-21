@@ -29,12 +29,17 @@ environment where it was written — see `docs/QA/` for the verification state.
   can no longer keep superseding a parent's newest link or flood their inbox — and a Redis outage on
   that write answers `503 reset_unavailable` for a known and an unknown address alike, because the
   lookup is never reached.
+  A failure after the claim — a database error on the lookup, a failed key write, or a provider refusal
+  — releases it, so the parent's retry inside the minute sends a link instead of being told `{ok:true}`
+  with nothing sent.
 - The #162 retry contract is kept. If hashing, the password write or the session revocation fails
   after the consume, `reset:<jti>` is restored with the token's **remaining** lifetime (`exp − now`),
   so the client's retry with the same link succeeds; only a `200` has both stored the new password
   and revoked every refresh token and access token. Every post-consume failure replies explicitly —
   `503 reset_unavailable` — rather than rethrowing, because `server.ts`'s global handler maps anything
-  Prisma-shaped to `400 invalid_input`, which no client retries.
+  Prisma-shaped to `400 invalid_input`, which no client retries. Known limit, accepted: a connection lost after the
+  consume script has run leaves the link spent — the client sees a 5xx, its retry a 401, and asks for
+  a new link; closing it needs an idempotency record.
 - A parent that no longer exists is a `404 account_not_found`, decided from the update's
   `PrismaClientKnownRequestError` code `P2025` alone. The previous draft re-read the parent and used
   `.catch(() => null)`, which turned "cannot reach the database" into "account gone", deleted the

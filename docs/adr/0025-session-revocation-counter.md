@@ -135,6 +135,14 @@ Revocation is a monotonic per-parent counter in the shared Redis.
   email. Running the claim first also makes a Redis outage answer `503 reset_unavailable` for a known
   and an unknown address alike — a nicety, since `/register` already answers `409 email_taken` and the
   address is not a secret.
+  - A failure **after** the claim releases it (`DEL reset:cooldown:<hash>`) and answers
+    `503 reset_unavailable`, and a provider refusal releases it too. Without the release the parent's
+    retry inside the minute would be told `{ok:true}` while nothing was sent — the rule this cooldown
+    exists to protect. The release runs only on failure paths, and the lookup that can fail does so for
+    known and unknown addresses alike, so it reveals nothing.
+  - Known limit, accepted: a connection lost **after** the consume script has run leaves the link
+    spent. The client gets a 5xx and its retry a `401`, so the parent asks for a new link. Closing that
+    needs an idempotency record keyed to the request, which is a larger contract than this issue.
 - A failure after the consume (hash, password update, or this ADR’s counter bump) restores
   `reset:<jti>` with the token’s own remaining lifetime (`exp − now`), never a fresh 900: that is what
   keeps #162’s 5xx-then-retry contract, since the retry presents the same link. A `200` means the
