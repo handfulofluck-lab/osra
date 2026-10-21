@@ -149,6 +149,10 @@ abstract class RealtimeEffects {
   void invalidateUnacknowledgedCount();
   void invalidateFamily();
   void invalidateLocation(String childId);
+
+  /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
+  /// refreshes. Revocation is exactly the moment that screen must stop saying "consented".
+  void invalidateConsent(String childId);
   void updateLiveActivity(LiveActivity activity);
 }
 
@@ -172,6 +176,9 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
 
   @override
+  void invalidateConsent(String childId) => _ref.invalidate(consentStatusProvider(childId));
+
+  @override
   void updateLiveActivity(LiveActivity activity) =>
       _ref.read(liveActivityProvider.notifier).update((m) => {...m, activity.childId: activity});
 }
@@ -179,6 +186,8 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
 /// Maps one decoded `/v1/ws` message onto [effects]. Unknown types do nothing;
 /// a `location` message without a `childId` refreshes only the family overview,
 /// and a `live_activity` message without one is ignored (unchanged behaviour).
+/// A `consent_revoked` message refreshes the family overview and, when it names
+/// a child, that child's location (#253).
 void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
   switch (msg['type']) {
     case 'alert':
@@ -189,6 +198,14 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {
         effects.invalidateLocation(payload['childId'] as String);
+      }
+      effects.invalidateFamily();
+    case 'consent_revoked':
+      final payload = msg['payload'];
+      if (payload is Map && payload['childId'] != null) {
+        final childId = payload['childId'] as String;
+        effects.invalidateLocation(childId);
+        effects.invalidateConsent(childId);
       }
       effects.invalidateFamily();
     case 'live_activity':
