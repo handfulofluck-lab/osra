@@ -11,5 +11,6 @@
   about which prompt produced a cached score — and a test can prove that a changed prompt misses.
 - `services/ai-engine/EVAL.md` said the cache was keyed on `(model, text)`; it now names the prompt and
   says plainly that editing the prompt is not free, because a score is the model's answer to that prompt.
-- **One-off cost:** the first run after this change re-scores every row (about US$0.10 on the current set),
-  because every existing key is a miss. That is the fix, not a regression.
+- **One-off cost, local runs only:** an existing local `.deepseek-cache.json` misses on every row once
+  (about US$0.10 on the current set), because its keys predate the prompt. CI runs already start with an
+  empty cache, so they are unaffected.
