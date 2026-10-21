@@ -644,11 +644,17 @@ export async function authRoutes(app: FastifyInstance) {
     }
     try {
       await prisma.parent.update({ where: { id: payload.sub }, data: { passwordHash } });
-    } catch {
-      // Parent deleted between token issuance and confirmation (review API-8). Put the record back
-      // as well: a transient database error must not turn a retry into "spent link".
+    } catch (err) {
+      // Review API-8 answered 404 for "parent deleted between issuance and confirmation", and that
+      // answer is right for a *missing* parent — but it was used for every failure, so a transient
+      // database error told the client its account was gone and the retry #162 promised never came.
+      // Distinguish them by re-reading: gone -> 404 with the link left dead (there is nobody to
+      // restore it for); still there -> restore the record and fail 5xx, which is transient.
+      const stillExists = await prisma.parent.findUnique({ where: { id: payload.sub }, select: { id: true } }).catch(() => null);
+      if (!stillExists) return reply.code(404).send({ error: "account_not_found" });
       await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
-      return reply.code(404).send({ error: "account_not_found" });
+      req.log.error({ err }, "[security] password update failed after the reset token was consumed; the token was restored for the retry");
+      throw err;
     }
     // Handoff item 3: a password change revokes every existing session. This must not be reported as
     // success when it throws (#162/#135: a revocation that did not happen is a 5xx), and the restored

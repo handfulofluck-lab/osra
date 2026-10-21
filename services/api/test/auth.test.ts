@@ -634,6 +634,47 @@ describe("auth routes", () => {
 
   // #162 made a 5xx from the counter bump retryable with the same token. The single-use consume
   // runs first, so a failure after it must restore the record with its remaining lifetime.
+  it("#167: a transient update failure is a 5xx with the token restored, not a 404", async () => {
+    // Review API-8 answered 404 for any parent-update failure, which told the client its account was
+    // gone on a transient database error and stopped the retry #162 promised. Only a genuinely
+    // missing parent is a 404 now.
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash: await argon2.hash(PASSWORD) });
+
+    const token = await requestResetToken(app);
+    const claims = app.jwt.decode<{ jti: string }>(token)!;
+
+    prismaMock.parent.update.mockRejectedValueOnce(new Error("connection reset"));
+    // The re-read finds the parent: still there, so this was transient.
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ id: "parent-1" });
+
+    const failed = await confirmReset(app, token);
+    expect(failed.statusCode).toBe(500);
+    expect(store.get(`reset:${claims.jti}`)).toBe("parent-1");
+
+    const retry = await confirmReset(app, token);
+    expect(retry.statusCode).toBe(200);
+  });
+
+  it("#167: a deleted parent is still a 404, and the link is dead", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash: await argon2.hash(PASSWORD) });
+
+    const token = await requestResetToken(app);
+    const claims = app.jwt.decode<{ jti: string }>(token)!;
+
+    prismaMock.parent.update.mockRejectedValueOnce(new Error("record not found"));
+    // The re-read finds nothing: the parent was deleted between issuance and confirmation.
+    prismaMock.parent.findUnique.mockResolvedValueOnce(null);
+
+    const gone = await confirmReset(app, token);
+    expect(gone.statusCode).toBe(404);
+    expect(gone.json().error).toBe("account_not_found");
+    expect(store.has(`reset:${claims.jti}`)).toBe(false);
+  });
+
   it("#167: a failed session revocation is a 5xx, then the retry with the same token succeeds and old sessions are dead", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const { store, ttls } = wireRedisStore();
