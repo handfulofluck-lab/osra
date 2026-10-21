@@ -14,7 +14,8 @@ makes the second one a deliberate change to `model.py` rather than a configurati
 
 The client is the OpenAI-compatible chat-completions shape, which DeepSeek serves. It is written to be
 boring on purpose: a strict JSON contract, a retry on 429/5xx only, and a disk cache keyed by
-`(model, text)` so that re-running the evaluation bills nothing for rows it has already scored.
+`(model, prompt, text)` so that re-running the evaluation bills nothing for rows it has already scored —
+and so that changing the prompt re-scores them, because a score is the model's answer to *that* prompt.
 """
 
 import atexit
@@ -60,8 +61,20 @@ class DeepSeekUnavailable(RuntimeError):
     """The key is missing, or the service refused in a way that retrying will not fix."""
 
 
-def _cache_key(model: str, text: str) -> str:
-    return hashlib.sha256(f"{model}\x00{text}".encode("utf-8")).hexdigest()
+def _cache_key(model: str, text: str, prompt: str = SYSTEM_PROMPT) -> str:
+    """The cache key: model, prompt and text — because the score is a function of all three.
+
+    Keyed on `(model, text)`, a cache entry answers "what did this model say about this text", which is
+    the wrong question once the prompt changes: the *prompt* is what tells the model what to look for, so
+    editing it can change every score while leaving every key valid. A re-run after a prompt edit would
+    then serve the previous prompt's answers and the numbers in `EVAL.md` would describe a prompt that no
+    longer exists — silently, because a cache hit looks exactly like a cheap success.
+
+    The prompt enters as its own digest rather than as text, so the key stays a fixed size whatever the
+    prompt grows to, and two prompts cannot be confused by a separator appearing inside one.
+    """
+    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{model}\x00{prompt_digest}\x00{text}".encode("utf-8")).hexdigest()
 
 
 def _strip_fences(content: str) -> str:
@@ -108,6 +121,7 @@ class DeepSeekScorer:
         client: Optional[httpx.Client] = None,
         sleep: Callable[[float], None] = time.sleep,
         log: Optional[Callable[[str], None]] = print,
+        prompt: Optional[str] = None,
     ):
         self.api_key = (api_key or os.environ.get("DEEPSEEK_API_KEY", "")).strip()
         if not self.api_key:
@@ -123,6 +137,9 @@ class DeepSeekScorer:
         self._client = client
         self._sleep = sleep
         self._log = log or (lambda _m: None)
+        # The prompt is instance state, not a module constant, so the key and the request cannot disagree
+        # about which prompt produced a cached score — and so a test can prove a changed prompt misses.
+        self.prompt = prompt or SYSTEM_PROMPT
         self._cache: Dict[str, Dict[str, float]] = self._load_cache()
         self.calls = 0  # network calls actually made, for the run summary
         self.hits = 0
@@ -158,7 +175,7 @@ class DeepSeekScorer:
         body = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.prompt},
                 {"role": "user", "content": text},
             ],
             "response_format": {"type": "json_object"},
@@ -201,7 +218,7 @@ class DeepSeekScorer:
                 client.close()
 
     def __call__(self, text: str) -> Dict[str, float]:
-        key = _cache_key(self.model, text)
+        key = _cache_key(self.model, text, self.prompt)
         cached = self._cache.get(key)
         if cached is not None:
             self.hits += 1
