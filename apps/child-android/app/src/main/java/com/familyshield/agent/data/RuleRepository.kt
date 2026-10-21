@@ -146,10 +146,9 @@ class RuleRepository @Inject constructor(
         if (savedDate == today.toString()) {
             val json = settings.todayUsageJson()
             if (!json.isNullOrBlank()) {
-                val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Int::class.javaObjectType)
-                val map = runCatching { moshi.adapter<Map<String, Int>>(mapType).fromJson(json) }.getOrNull()
+                val map = runCatching { moshi.adapter<Map<String, Long>>(LONG_MAP).fromJson(json) }.getOrNull()
                 if (map != null) {
-                    counters.restore(map, today)
+                    counters.restore(persistedUsageMs(map, settings.todayUsageUnit()), today)
                 }
             }
         }
@@ -164,11 +163,10 @@ class RuleRepository @Inject constructor(
         persistCounters(today)
     }
 
-    /** Persists today's counters snapshot to AgentSettings (AND-02). */
+    /** Persists today's counters snapshot (milliseconds) to AgentSettings (AND-02, #276). */
     suspend fun persistCounters(today: LocalDate = LocalDate.now()) {
-        val snapshot = counters.snapshot(System.currentTimeMillis(), today)
-        val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Int::class.javaObjectType)
-        val json = moshi.adapter<Map<String, Int>>(mapType).toJson(snapshot)
+        val snapshot = counters.snapshotMs(System.currentTimeMillis(), today)
+        val json = moshi.adapter<Map<String, Long>>(LONG_MAP).toJson(snapshot)
         runCatching { settings.saveTodayUsage(today.toString(), json) }
     }
 
@@ -219,12 +217,23 @@ class RuleRepository @Inject constructor(
     }
 
     companion object {
+        private val LONG_MAP: java.lang.reflect.Type =
+            Types.newParameterizedType(Map::class.java, String::class.java, Long::class.javaObjectType)
+
         /**
          * The launcher, the system UI and the call surfaces are exempt from every block rule, not only
          * from fail-closed (issue #165). The list lives in [EssentialPackages] so the lock, the
          * decision path and the overlay guard cannot drift apart.
          */
         fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
+
+        /**
+         * #276: the persisted snapshot is milliseconds now, but a build before it wrote whole
+         * minutes and no unit. Read those as minutes × 60_000 — reading them as ms instead would
+         * leave a phone that updates mid-day with 1/60 of the count it had.
+         */
+        internal fun persistedUsageMs(values: Map<String, Long>, unit: String?): Map<String, Long> =
+            if (unit == AgentSettings.USAGE_UNIT_MS) values else values.mapValues { it.value * 60_000L }
 
         /**
          * Pure core of [evaluate] (JVM-tested, issue #165), in order: consent, then the essential
