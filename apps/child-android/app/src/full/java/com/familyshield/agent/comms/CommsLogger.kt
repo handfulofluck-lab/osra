@@ -196,18 +196,45 @@ class CommsLogger @Inject constructor(
      * window. A withdrawal and re-grant that both happen while no process is alive cannot be seen by
      * the device; [CommsWatermarkPolicy.startFrom] then still floors the read at the stored grant time.
      */
+    /**
+     * Restarts the comms watermarks when a consent withdrawal has been observed (issue #257 review).
+     *
+     * The marker used to be written by *this* function, so a pause that began and ended between two
+     * 5-minute ticks was never recorded — while paused, both observers and both harvests return before
+     * reaching here — and the paused-window rows were read after the re-grant. Worse, the reset ran at
+     * the first harvest after the re-grant, which then read nothing and dropped the call that triggered
+     * it.
+     *
+     * The transition is now recorded where the flag flips (`ConsentState`), and this function only
+     * compares epochs. The restart point is [ConsentState.resumedAtMs] — when the phone learned consent
+     * came back — so a row created just after the re-grant is still read.
+     */
     private suspend fun noteConsentState(dao: com.familyshield.agent.data.db.AgentStateDao) {
-        val pausedSeen = CommsWatermarkPolicy.normalize(dao.get(KEY_PAUSED_SEEN)) != null
-        if (consent.isPaused()) {
-            if (!pausedSeen) dao.set(AgentStateEntity(KEY_PAUSED_SEEN, 1L))
-            return
+        val epoch = consent.pauseEpoch()
+        val stored = CommsWatermarkPolicy.normalize(dao.get(KEY_CONSENT_EPOCH))
+        if (commsConsentReset(dao, stored, epoch)) return
+    }
+
+    /**
+     * Pure-in-spirit reset decision, pinned by [CommsConsentPolicy.resetTo]: null means "leave the
+     * watermarks alone"; a value is the timestamp every watermark restarts from.
+     */
+    private suspend fun commsConsentReset(
+        dao: com.familyshield.agent.data.db.AgentStateDao,
+        storedEpoch: Long?,
+        epoch: Long,
+    ): Boolean {
+        val from = CommsConsentPolicy.resetTo(
+            storedEpoch = storedEpoch,
+            epoch = epoch,
+            paused = consent.isPaused(),
+            resumedAtMs = consent.resumedAtMs(),
+        ) ?: return false
+        dao.set(AgentStateEntity(KEY_CONSENT_EPOCH, epoch))
+        for (key in listOf(KEY_CALL_WATERMARK, KEY_SMS_WATERMARK, KEY_CALL_SINCE, KEY_SMS_SINCE)) {
+            dao.set(AgentStateEntity(key, from))
         }
-        if (!pausedSeen) return
-        dao.set(AgentStateEntity(KEY_PAUSED_SEEN, 0L))
-        dao.set(AgentStateEntity(KEY_CALL_WATERMARK, 0L))
-        dao.set(AgentStateEntity(KEY_SMS_WATERMARK, 0L))
-        dao.set(AgentStateEntity(KEY_CALL_SINCE, 0L))
-        dao.set(AgentStateEntity(KEY_SMS_SINCE, 0L))
+        return true
     }
 
     /**
@@ -472,6 +499,6 @@ class CommsLogger @Inject constructor(
         private const val KEY_SMS_SINCE = "comms_sms_since"
 
         /** Issue #229: a withdrawal was observed; the next grant restarts the window at the grant. */
-        private const val KEY_PAUSED_SEEN = "comms_consent_paused_seen"
+        private const val KEY_CONSENT_EPOCH = "comms_consent_epoch"
     }
 }

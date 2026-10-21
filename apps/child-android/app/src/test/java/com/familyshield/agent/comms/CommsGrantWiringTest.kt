@@ -92,6 +92,35 @@ class CommsGrantWiringTest {
         assertFalse(logger.contains("Log.w(TAG, \"READ_SMS"))
     }
 
+    /**
+     * Issue #257 review: the reset must be driven by the consent transition, not by a marker only a
+     * harvest could write. A green run here means `ConsentState` records the epoch where the flag
+     * flips and `CommsLogger` compares it; the phone rows are what prove the timing.
+     */
+    @Test
+    fun `the consent transition is recorded where the flag flips, not by the harvest`() {
+        val consentState = sourceFile("app/src/main/java/com/familyshield/agent/data/ConsentState.kt")
+        assertTrue(
+            "the epoch must advance at the flip, or a pause shorter than the loop is never recorded",
+            consentState.contains("if (next) pauseEpoch += 1 else resumedAtMs = System.currentTimeMillis()"),
+        )
+        assertTrue(consentState.contains("fun pauseEpoch(): Long"))
+        assertTrue(consentState.contains("fun resumedAtMs(): Long"))
+        assertTrue(
+            "both values are persisted with the flag, so a reboot keeps the epoch",
+            consentState.contains("settings.saveConsentState(next, pauseEpoch, resumedAtMs)"),
+        )
+        assertTrue(
+            "the logger compares epochs instead of writing its own paused marker",
+            logger.contains("CommsConsentPolicy.resetTo("),
+        )
+        assertTrue(logger.contains("consent.resumedAtMs()"))
+        assertFalse(
+            "the harvest must no longer be the only writer of the pause marker",
+            logger.contains("comms_consent_paused_seen"),
+        )
+    }
+
     private fun sourceFile(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null) {

@@ -78,7 +78,11 @@ back to 2026-01-23 in the TR-24 run on the Flip4, including calls made before th
 and before this consent record. The agent now stores `comms_call_since` / `comms_sms_since` and the
 matching watermark the first time each permission is seen granted, reads nothing on that harvest,
 and floors later reads at the grant time. A withdrawal the agent observes resets both keys, so a
-re-grant starts a new window at the re-grant time. The rule lives in `CommsWatermarkPolicy`
+re-grant starts a new window at the re-grant time. The transition is recorded **where the consent flag
+flips** (`ConsentState` counts withdrawals and stores the re-grant time), not at the first harvest after
+it: a pause shorter than the 5-minute comms loop would otherwise never be recorded, and the resetting
+harvest would read nothing — dropping the very row that triggered it. `CommsConsentPolicy.resetTo`
+decides when to reset and restarts from the re-grant time. The rule lives in `CommsWatermarkPolicy`
 (`apps/child-android/app/src/main/java/com/familyshield/agent/comms/CommsWatermarkPolicy.kt`) with
 the harness caveat recorded in `CHANGELOG.md`: the policy is JVM-tested, the permission-flip
 lifecycle is source-pinned only.
