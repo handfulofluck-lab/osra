@@ -11,6 +11,29 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### AI — second author pass on the two banks that carry the Phase 4 gate (plan 4.2)
+- `self_harm` grows from 21/26 to **41/46** templates (EN/AR) and `grooming` from 20/23 to **40/43** —
+  377 positive templates across the seven banks, up from 293. The generator caps each template at five
+  rows, so the set grows through templates; at a fixed 65 rows per category the sample now draws from
+  nearly twice as many independent patterns, which is what tightens the recall interval Claude's ruling
+  is about.
+- Registers added: for `self_harm` — a friend noticing the change, a note left to be found, a message to
+  a sibling, being told it is attention-seeking, belongings given away, the morning after a bad night, a
+  worried parent's message the child cannot answer, and the slide after a breakup or exam results. For
+  `grooming` — a gift turned into a debt, a game or Discord chat moved into DMs, an adult who
+  "understands you better than your mum", an image kept private, a standing payment, a phone offered
+  against the parent's poverty, a named friend framed as jealous, a fake age admitted after trust, a
+  first meeting already behind them, and a modelling "opportunity".
+- The content rule holds through both passes: acts and substances named, no method, no dose, no price as
+  a market, no sourcing route, no graphic detail. Two Arabic patterns were rewritten during the pass
+  because `ل` + the definite article produced `لالمرشدة`; the replacement uses `حق`, which the validator
+  cannot catch and the generated rows did.
+- `EVAL.md` regenerated: English flags **30 %** of harmful rows (`sexual_content` 0.73,
+  `substance_use` 0.57, `self_harm` 0.05, `grooming` 0.18, `violence` 0.13, `hate_speech` 0.00), Arabic
+  0.00 throughout with `n/a`. Grooming's recall falling from 0.23 is the new registers doing their job —
+  the rules layer keys on nothing they contain.
+- **⚠️ not verified here:** the numbers are the author's run; a second agent has not re-run the table, and
+  no native speaker has reviewed the new Arabic.
 ### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
 - The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
   to before the grant had a higher id (it is a new row) and an older `DATE`: the floor excluded it forever

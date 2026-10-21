@@ -22,6 +22,13 @@ agrees with a named person is split into masculine and feminine twins
 Two message patterns are true overlaps: a child reporting that others keep
 telling them to die is cyberbullying as well as self_harm. The Arabic gender
 twins of the first pattern count as separate templates, so AR declares three.
+
+The second author pass (templates 21-40 English, 26-45 Arabic) adds the registers the
+first pass did not carry: a friend noticing the change, a note left to be found,
+a message to a sibling, being told it is attention-seeking, belongings given
+away, the morning after a bad night, a worried parent's message, and the slide
+after a breakup or exam results. The same rule holds in each: the intent is
+named, the method still is not.
 """
 
 CATEGORY = "self_harm"
@@ -50,6 +57,26 @@ POSITIVES_EN = [
     "{name_m} is the only one who knows i cut myself, he promised not to tell anyone",
     "{name_f} is the only one who knows i cut myself, she promised not to tell anyone",
     "everyone in {group} keeps telling me to go die and i'm starting to believe them",
+    "my friend {name_f} says i've changed and it scares her, i told her it's nothing but i think about dying every day",
+    "my friend {name_m} says i've changed and it scares him, i told him it's nothing but i think about dying every day",
+    "i left a note {spot} for {person} saying nobody should blame themselves, i've decided i don't want to be alive anymore",
+    "there's a note {spot} and it's for whoever finds it, i'm sorry, i've decided i'm not going to be here {time}",
+    "i texted {sibling_m} that i'm sorry and that i don't want to be alive anymore, i made him promise not to tell mum",
+    "i texted {sibling_f} that i'm sorry and that i don't want to be alive anymore, i made her promise not to tell mum",
+    "i texted {sibling_m} goodbye last night and deleted it before he saw, i still want to die",
+    "i texted {sibling_f} goodbye last night and deleted it before she saw, i still want to die",
+    "{person} said i'm only talking about dying to get attention, so i've stopped telling anyone how bad it is",
+    "i told the counsellor i think about dying and got asked if i was doing it for attention, i'm not going back",
+    "i've been giving my things away, {name} got my {belonging} and i said i won't need it much longer",
+    "i put {name}'s name on my {belonging} so they know what to keep after i die",
+    "morning. last night was bad, i was up till four and i couldn't stop thinking about ending it",
+    "i'm at school but i didn't sleep, last night i was crying and i kept thinking i don't want to be alive",
+    "{person} texted me 'you've been so quiet, i'm worried about you' and i don't know what to say back, i've been thinking about dying again",
+    "mum sent me a long message saying she's scared of losing me and i read it and still wished i wasn't here",
+    "since {name} ended things i haven't left my room and i keep thinking i don't want to be alive",
+    "{name} broke up with me on friday and i've been hurting myself again every night since",
+    "the {subject} results came out and i failed, i sat in the car and thought about not being alive anymore",
+    "i got my {subject} result back and it's bad, i've been thinking about dying since i opened it and i can't tell {person}",
 ]
 
 POSITIVES_AR = [
@@ -79,6 +106,26 @@ POSITIVES_AR = [
     "{name_f} هي الوحيدة اللي تدري إني أجرح نفسي، ووعدتني ما تقول لأحد",
     "كل {group} يضحكون عليّ ويقولون لي روح مت، وأنا صرت أصدقهم",
     "أخاف أقول لأحد إني أفكر أموت، بيحسبوني أتدلع",
+    "{name_f} تقول إني تغيرت وهذا يخوفها، قلت لها ما في شي وأنا أفكر في الموت كل يوم",
+    "{name_m} يقول إني تغيرت وهذا يخوفه، قلت له ما في شي وأنا أفكر في الموت كل يوم",
+    "كتبت ورقة حق {person_f} وتركتها {spot}، مكتوب فيها إني آسف وإني ما أبي أعيش",
+    "تركت ورقة {spot} حق {person_m}، كتبت فيها إني آسف وإني قررت إني ما راح أكمل حياتي",
+    "قلت ل{sibling_m} إني آسف وإني ما أبي أعيش، ووعدني ما يقول لأمي",
+    "قلت ل{sibling_f} إني آسف وإني ما أبي أعيش، ووعدتني ما تقول لأمي",
+    "أرسلت ل{sibling_m} رسالة وداع بالليل ومسحتها قبل ما يشوفها، وأنا للحين أبي أموت",
+    "أرسلت ل{sibling_f} رسالة وداع بالليل ومسحتها قبل ما تشوفها، وأنا للحين أبي أموت",
+    "قالوا لي إني أتكلم عن الموت عشان ألفت الانتباه، فصرت ما أقول لأحد شكثر الموضوع صعب",
+    "سألتني المرشدة إذا كنت أتكلم عن الموت عشان الانتباه، ما راح أرجع لها مرة ثانية",
+    "صرت أوزع أغراضي، أعطيت {name} {belonging} لأني ما راح أكون موجود فترة طويلة",
+    "كتبت اسم {name} على {belonging} عشان يعرفون شنو يحتفظون فيه بعد ما أموت",
+    "صباح الخير، البارحة كانت صعبة، سهرت لين أربع وما وقفت أفكر إني أنهي حياتي",
+    "أنا في المدرسة بس ما نمت، البارحة كنت أصيح وما وقفت أفكر إني ما أبي أعيش",
+    "{person_f} أرسلت لي 'صاير ساكت وايد، قلبي عليك' وأنا ما أعرف شنو أرد، رجعت أفكر في الموت",
+    "{person_m} أرسل لي 'صاير ساكت وايد، قلبي عليك' وأنا ما عرفت شنو أرد، رجعت أفكر في الموت",
+    "من يوم ما صار الانفصال ما طلعت من غرفتي وأنا أفكر إني ما أبي أعيش",
+    "انفصلنا يوم الجمعة ورجعت أجرح نفسي كل ليلة من وقتها",
+    "طلعت نتيجة {subject} وأنا رسبت، قعدت في السيارة أفكر إني ما أبي أعيش",
+    "خذيت درجة {subject} وهي سيئة، من فتحت النتيجة وأنا أفكر في الموت وما أقدر أقول حق {person_f}",
 ]
 
 # EN 14 and 20, AR 17, 18 and 24: the message is a child reporting that others
@@ -99,6 +146,13 @@ SLOTS_EN = {
     "group": ["the squad", "year 9", "7B", "the class", "the team", "the group"],
     "time": ["tonight", "tomorrow", "this week", "this weekend", "next week",
              "in a few days", "after practice", "before the holidays"],
+    # Where a note is left to be found, and the things that get given away.
+    "spot": ["under my pillow", "in my desk drawer", "on my bed", "in my school bag", "on my desk"],
+    "belonging": ["headphones", "console", "watch", "jacket", "bike", "skateboard", "books"],
+    "subject": ["maths", "science", "history", "english", "arabic"],
+    # A sibling is named as the addressee, so the possessive pronoun agrees with the slot.
+    "sibling_m": ["my little brother", "my big brother"],
+    "sibling_f": ["my little sister", "my big sister"],
 }
 
 SLOTS_AR = {
@@ -114,6 +168,13 @@ SLOTS_AR = {
     "place": ["الحوش", "الحديقة", "الممر", "الملعب", "الدرج", "المدرسة"],
     "time": ["الليلة", "باجر", "هذا الأسبوع", "نهاية الأسبوع", "الأسبوع الجاي",
              "بعد كم يوم", "بعد التمرين", "قبل العطلة"],
+    # Where a note is left to be found, and the things that get given away.
+    "spot": ["تحت المخدة", "في الدرج", "على السرير", "في شنطة المدرسة", "على المكتب"],
+    "belonging": ["سماعاتي", "السوني", "الساعة", "الجاكيت", "السيكل", "كتبي", "اللابتوب"],
+    "subject": ["الرياضيات", "العلوم", "التاريخ", "العربي", "الإنجليزي"],
+    # A sibling is addressed directly, so the verb and the possessive agree with the slot.
+    "sibling_m": ["أخوي الصغير", "أخوي الكبير"],
+    "sibling_f": ["أختي الصغيرة", "أختي الكبيرة"],
 }
 
 # The trigger vocabulary -- hopeless, disappear, burden, goodbye, gone, tired of
