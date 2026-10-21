@@ -59,7 +59,7 @@ as such and the row goes to the human or stays open; it does not quietly become 
       (`ANDROID_HOME` required) · `apps/agent-desktop` → `dotnet test` ·
       `services/ai-engine` → `pytest tests`.
 - [ ] New/changed behaviour has a test in the same suite that failed before the fix.
-- [ ] **Documentation is updated in the same PR** (§8): a `CHANGELOG.md` entry for anything
+- [ ] **Documentation is updated in the same PR** (§8): a `CHANGELOG.d/` fragment for anything
       user-visible, an ADR for an architectural decision, and `docs/TESTING.md` when the procedure,
       a suite or a gate changes.
 - [ ] **Hardware evidence names the build kind.** A `testOnly`/`debuggable` build cannot open the
@@ -103,9 +103,15 @@ as such and the row goes to the human or stays open; it does not quietly become 
 Code without the reasoning behind it is a liability for the next person (or agent). So every change
 carries its documentation **in the same PR**:
 
-- **`CHANGELOG.md`** — any user-visible change (feature, fix, behaviour, dependency, CI gate). Include
-  the PR/issue number and, where relevant, the measured evidence. If something could not be verified
-  where you wrote it, **say so** — an unqualified "fixed" is a documentation bug.
+- **A changelog fragment** — `CHANGELOG.d/<YYYY-MM-DD>-<slug>.md`, containing the entry verbatim, for any
+  user-visible change (feature, fix, behaviour, dependency, CI gate). Include the PR/issue number and,
+  where relevant, the measured evidence. If something could not be verified where you wrote it, **say
+  so** — an unqualified "fixed" is a documentation bug. `node scripts/assemble-changelog.mjs` folds the
+  fragments into `CHANGELOG.md`'s `[Unreleased]` block at release. **Why a file:** every PR used to edit
+  that one block, so every merge conflicted with every open PR — three re-signatures and one duplicated
+  entry on 2026-10-21. A fragment is a file nobody else touches. See `CHANGELOG.d/README.md`. Two titles are
+  exempt from the CI check by name: a `revert(...)`, and a title that starts `feat(release): assemble the
+  changelog` (a date or version suffix is allowed, so the release commit can name what it releases).
 - **`docs/adr/NNNN-*.md`** — an architectural decision, or a decision that closes off an option for the
   future. Record context, the decision, the reasoning, the alternatives you rejected and why, and the
   costs (including the bad ones). Never edit an accepted ADR to reflect a new decision: add a new one

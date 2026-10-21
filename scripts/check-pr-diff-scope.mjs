@@ -37,7 +37,7 @@ const head = flag("--head", "HEAD");
 const quiet = argv.includes("--quiet");
 const repo = flag("--repo", null); // run git in another checkout (used by the synthetic self-test)
 
-const DOC_PREFIXES = ["docs/", "CHANGELOG.md", "README.md", "AGENTS.md", "LICENSE"];
+const DOC_PREFIXES = ["docs/", "CHANGELOG.md", "CHANGELOG.d/", "README.md", "AGENTS.md", "LICENSE"];
 const CI_PREFIXES = [".github/", "scripts/"];
 
 function changedFiles() {
@@ -61,6 +61,9 @@ function changedFiles() {
 
 function kindOf(path) {
   if (path.startsWith("docs/")) return "docs";
+  // A changelog fragment is documentation: `CHANGELOG.d/<date>-<slug>.md` is what CHANGELOG.md used to be.
+  // Without this, the new `changelog-fragment` gate and this one contradict each other (review B2).
+  if (path.startsWith("CHANGELOG.d/")) return "docs";
   if (CI_PREFIXES.some((p) => path.startsWith(p))) return "ci";
   if (path === "CHANGELOG.md" || path === "README.md" || path === "AGENTS.md") return "docs";
   if (path.startsWith("apps/") || path.startsWith("services/") || path.startsWith("packages/")) return "code";
@@ -111,7 +114,18 @@ if (argv.includes("--selftest")) {
     g("add", "."); g("commit", "-qm", "R");
     // A branch cut BEFORE the merge, touching an unrelated file: it still holds the pre-merge blob of
     // a.txt, and must not be reported as a revert.
-    g("checkout", "-qb", "behind", "main~1");
+    // The assembly branch: a recent merge added a changelog fragment and assembly deletes it. Without B6
+    // this is indistinguishable from a stale-base revert — which is why every release would have failed.
+    g("checkout", "-qb", "assembly", "main");
+    fs.mkdirSync(pathMod.join(dir, "CHANGELOG.d"), { recursive: true });
+    fs.writeFileSync(pathMod.join(dir, "CHANGELOG.d", "x.md"), "entry");
+    g("add", "."); g("commit", "-qm", "fragment added by the merge");
+    g("checkout", "-q", "main");
+    g("merge", "-q", "--no-ff", "assembly", "-m", "merge fragment");
+    g("checkout", "-qb", "assembly2", "main");
+    fs.rmSync(pathMod.join(dir, "CHANGELOG.d", "x.md"));
+    g("add", "-A"); g("commit", "-qm", "assemble");
+    g("checkout", "-qb", "behind", "main~2");
     fs.writeFileSync(pathMod.join(dir, "c.txt"), "y");
     g("add", "."); g("commit", "-qm", "Be");
     return { dir };
@@ -124,6 +138,7 @@ if (argv.includes("--selftest")) {
     { name: "the same PR passes under a revert(…) title", args: ["--title", "revert(x): fixture", "--base", "main", "--head", "pr", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
     { name: "an unconventional title is refused", args: ["--title", "tidy up things", "--base", "origin/main", "--head", "HEAD", "--quiet"], want: 1 },
     { name: "a branch cut before the merge, touching something else, passes", args: ["--title", "fix(x): fixture", "--base", "main", "--head", "behind", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
+    { name: "an assembly PR that deletes fragments a recent merge added passes under the release title", args: ["--title", "feat(release): assemble the changelog", "--base", "main", "--head", "assembly2", "--repo", FIXTURE.dir, "--quiet"], want: 0 },
   ];
   let bad = 0;
   for (const c of cases) {
@@ -149,7 +164,7 @@ if (declared === "docs") {
   for (const f of offenders) problems.push(`${f.status} ${f.path} — a docs-titled PR must not touch this`);
 }
 if (declared === "ci") {
-  const offenders = files.filter((f) => !CI_PREFIXES.some((p) => f.path.startsWith(p)) && f.path !== "docs/TESTING.md" && f.path !== "CHANGELOG.md");
+  const offenders = files.filter((f) => !CI_PREFIXES.some((p) => f.path.startsWith(p)) && f.path !== "docs/TESTING.md" && f.path !== "CHANGELOG.md" && !f.path.startsWith("CHANGELOG.d/"));
   for (const f of offenders) problems.push(`${f.status} ${f.path} — a ci-titled PR must not touch this`);
 }
 
@@ -219,6 +234,10 @@ if (!isRevertTitle && prPaths.size > 0) {
         if (!mm) continue;
         const [, oldSha, newSha, path] = mm;
         if (!prPaths.has(path)) continue;
+        // B6 (review): assembling the changelog deletes every fragment, and each one arrived with a recent
+        // merge — the exact shape of the stale-base revert this looks for. Deleting a fragment is assembly,
+        // never a revert of behaviour; a real revert is still caught on every code path.
+        if (path.startsWith("CHANGELOG.d/")) continue;
         const preMerge = /^0+$/.test(oldSha) ? null : oldSha;
         const mergedIn = /^0+$/.test(newSha) ? null : newSha;
         const baseBlob = baseTree.get(path) ?? null;

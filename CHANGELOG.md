@@ -11,27 +11,26 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### Android — per-app time limits fire: the usage counter keeps milliseconds (#276)
-- **Measured on the Flip4:** the status bar sends an accessibility event every minute, so the gap between
-  two foreground events is ~59.9 s. `UsageCounters` floored **each gap** to whole minutes (`gapMs / 60_000`),
-  every gap became 0, and the counter never reached 1 — a per-app `time_limit` never fired. Blocking
-  (`action: "block"`) was never affected. Found by Claude on the Flip4.
-- The floor lived in two places and both are gone: `UsageCounters.onForegroundEvent`, the counter the
-  enforcement decision reads, and `computePerAppMinutes` in the telemetry path, which lost the same
-  seconds from the parent's screen-time total.
-- Usage is now accumulated as milliseconds and converted once. The 5-minute screen-off heuristic is still
-  a **per-gap** cap, just in ms. Each package's sub-minute remainder (`usage_remainder_ms`) is carried into
-  the next upload window and written in the same success step as the watermark, so fifteen 59 s windows no
-  longer lose a minute each: two consecutive windows sum to the same total as one window covering both.
-  A re-grant drops the carry with the events it belongs to (#266's rule).
-- **A mid-day update keeps the count:** today's counters are persisted in ms under a unit key, and a
-  snapshot written by an older build is read as `minutes × 60_000` instead of being divided by 60.
-- Tests: `UsageCountersTest` (59.9 s cadence reads 10 minutes, a 1-minute `time_limit` is reached from
-  sub-minute gaps, the 20-minute gap still caps at 5, an old minutes snapshot restores to 45) and
-  `UsageAggregationTest` (16 events 59.9 s apart read 15 with the remainder carried, two windows equal
-  one). `./gradlew testPlayDebugUnitTest testFullDebugUnitTest` green, both flavours.
-- **⚠️ not verified here:** the fix on the handset — a 1-minute limit firing on the Flip4 — has not been
-  re-run; the measurement above is Claude's observation of the bug.
+### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
+- The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
+  no prompt tuning) scored **Arabic recall 0.97 `self_harm`, 1.00 `grooming`, 1.00 `sexual_content`,
+  0.92 `substance_use`, 0.83 `hate_speech`, 0.85 `cyberbullying`, 0.80 `violence`**, flagging 99 % of harmful
+  Arabic rows with a **3 % safe false-positive rate**. English: recall 0.86–1.00 across the seven categories,
+  1.00 of harmful rows flagged, **1 %** safe FP.
+- **On the same rows the rules layer scores 0.00 recall in all seven Arabic categories.** That contrast is
+  the whole point of 4.1, and it is now a published measurement rather than a premise.
+- **The Phase 4 gate's measurement is met on this set**: `self_harm` and `grooming`, recall ≥ 0.85 at
+  precision ≥ 0.6, in both languages — EN 1.00/1.00 and 0.99/0.80; AR 0.97/0.98 and 1.00/0.69.
+- **What it does not say**, in `EVAL.md` next to the table: the rows come from template families (five per
+  template), so the `dev`/`test` split is what would make this a population estimate; `cyberbullying`
+  precision is 0.36/0.38 because its rows overlap other categories; one model, one run, one threshold; and
+  the scorer is **not in production** — that is the 4.1-versus-4.4 decision.
+- Cost of the run: about **US$0.10**, estimated from token counts (≈400 input + ≈40 output per row);
+  Karim's DeepSeek balance is the real figure. **Each workflow run bills the whole set again** — the
+  workflow caches pip, not the scores — so "re-running is free" is true only for a *local* run, which
+  reuses `eval/.deepseek-cache.json`. Nobody has a local key today, so in practice every run costs.
+- `docs/ROADMAP.md` 4.1 moves to ✅ as *built and measured as an evaluation scorer*, with the production
+  sentence kept verbatim, and the Phase 4 progress row now reads 4.1 measured / 4.3 done / 4.2 partial.
 
 ### Parent app — the digest preferences screen speaks Arabic (#277)
 - 27 ARB keys cover every string on the screen: the three switches and their subtitles, the emails field,
