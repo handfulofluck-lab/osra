@@ -11,6 +11,28 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### API — a password-reset link works once, and a failed confirm can still be retried (#167)
+- `POST /v1/auth/reset/confirm` now consumes the link before doing any work: `/reset/request` mints
+  the token with a `jti` and stores `reset:<jti>` → parent in Redis (`EX 900`), and the confirm
+  `GETDEL`s that record and answers `401 invalid_or_expired_token` when it is gone. A link replayed
+  inside its 15-minute window no longer sets a second password — before this, whoever saw the mail
+  could take the account back after the parent had used it.
+- A second `/reset/request` supersedes the first: `reset:latest:<parentId>` names the only honoured
+  `jti`, so the older link answers 401 even though it has not expired.
+- The #162 retry contract is kept. If hashing, the password write or the session revocation fails
+  after the consume, `reset:<jti>` is restored with the token's **remaining** lifetime (`exp − now`),
+  so the client's retry with the same link succeeds; only a `200` has both stored the new password
+  and revoked every refresh token and access token. The reason for the restore is in a comment at
+  the route, so it is not deleted as dead code.
+- Tokens issued before this change have no `jti` and are refused at confirm (one forced re-login),
+  the same migration cost ADR-0025 accepted for legacy refresh records. ADR-0025 carries the
+  amendment.
+- Author-run here: `services/api` `pnpm test` 440/440 and `pnpm run build` clean; the four new
+  tests were shown red on the pre-change route (replay 200, concurrent pair 200/200, older token 200,
+  no record restored after a failed revocation). Live `qa-probe`/`e2e` were **not** run in this
+  checkout; the probe's G19 expectation was updated because a hand-signed reset token (no store
+  record) is now refused at confirm.
+
 ### Parent app — an open map moves when a ping arrives, and a revoked consent refreshes (#253)
 - `POST /v1/location/ping` now publishes one `location` event per upload carrying only
   `{ childId, ts }`, so a parent who keeps the map open sees the new position instead of the one from

@@ -116,3 +116,17 @@ Revocation is a monotonic per-parent counter in the shared Redis.
   it can never mint, so this is storage, not security.
 - This amendment supersedes the “Race semantics” bullet’s second sentence and the “out of scope”
   conclusion for the refresh path. Everything else in the accepted decision stands.
+
+## Amendment 2026-10-21 — a password-reset link is single-use, and a failed confirm restores it (#167)
+
+- `/reset/request` mints a `jti` and stores `reset:<jti>` → `parentId` and
+  `reset:latest:<parentId>` → `jti`, both `EX 900`. `/reset/confirm` consumes `reset:<jti>` with
+  `GETDEL` **before** hashing and refuses a missing key — or a `jti` that is not the parent’s latest —
+  with `401 invalid_or_expired_token`; a second request therefore kills the first, and two concurrent
+  confirmations of one link cannot both win.
+- A failure after the consume (hash, password update, or this ADR’s counter bump) restores
+  `reset:<jti>` with the token’s own remaining lifetime (`exp − now`), never a fresh 900: that is what
+  keeps #162’s 5xx-then-retry contract, since the retry presents the same link. A `200` means the
+  password changed **and** `revokeAllRefreshTokens` completed.
+- Tokens minted before this change carry no `jti` and no record, so they are refused like a spent
+  link: one re-login per parent, the same migration cost accepted above for legacy refresh records.
