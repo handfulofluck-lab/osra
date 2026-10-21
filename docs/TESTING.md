@@ -73,8 +73,8 @@ cd services/api
 export DATABASE_URL=<launcher> INTERNAL_HMAC_SECRET=<launcher> VAULT_KEY=<launcher>
 export API_BASE=http://127.0.0.1:3000                  # never localhost — see §6, the ::1 trap
 
-node scripts/e2e.mjs        # 69 passed / 0 failed at 2026-10-18 (#150) — the count grows, read the 0
-node scripts/qa-probe.mjs   # 130 passed / 0 failed at 2026-10-18 (#150) — any failure exits 1
+node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count grows, read the 0
+node scripts/qa-probe.mjs   # 151 passed / 0 failed / 0 targets at 2026-10-21 — any failure exits 1
 ```
 
 `VAULT_KEY` is **its own** value, not the HMAC secret: the launcher sets a 44-character base64 key that
@@ -91,7 +91,7 @@ pass. The probe does not need it, and deliberately has no database connection (�
 ```bash
 cd services/ai-engine
 export PYTHONIOENCODING=utf-8          # Windows consoles are cp1252 and raise on Arabic stdout
-python -m pytest tests -q              # 33 passed at 2026-10-21 (20 before this harness existed)
+python -m pytest tests -q              # 39 passed at 2026-10-21 (20 before this harness existed)
 python -m eval.banks                   # validate every template bank; must print the 7-row table
 python -m eval.generate --check        # fail if eval/dataset.jsonl is stale against the banks
 python -m eval.run_eval --scorer regex # publish-grade table; --write-md EVAL.md refreshes EVAL.md
