@@ -2026,7 +2026,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsPushBody => 'التنبيهات الحرجة كرسائل فورية';
 
   @override
-  String get digestPrefsEmailsLabel => 'بُرُد الملخّص (مفصولة بفواصل)';
+  String get digestPrefsEmailsLabel =>
+      'عناوين البريد للملخّص (افصل بينها بفاصلة)';
 
   @override
   String get digestPrefsTimezoneTitle =>

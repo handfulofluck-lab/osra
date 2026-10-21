@@ -622,7 +622,7 @@
   "digestPrefsWeeklyBody": "ملخّص أوسع مرة كل أسبوع",
   "digestPrefsPushTitle": "الإشعارات الفورية",
   "digestPrefsPushBody": "التنبيهات الحرجة كرسائل فورية",
-  "digestPrefsEmailsLabel": "بُرُد الملخّص (مفصولة بفواصل)",
+  "digestPrefsEmailsLabel": "عناوين البريد للملخّص (افصل بينها بفاصلة)",
   "digestPrefsTimezoneTitle": "المنطقة الزمنية للملخّص (ساعة الإرسال المحلية)",
   "digestPrefsTimezoneLabel": "المنطقة الزمنية",
   "digestPrefsTimezoneLoading": "جارٍ التحميل…",

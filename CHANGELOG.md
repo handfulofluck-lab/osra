@@ -11,7 +11,7 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### Parent app — the digest preferences screen speaks Arabic (#276)
+### Parent app — the digest preferences screen speaks Arabic (#277)
 - 27 ARB keys cover every string on the screen: the three switches and their subtitles, the emails field,
   the timezone section and its "sent at 18:00 your local time" line, the save and send buttons, the busy
   labels, six snackbars, the test-digest dialog and its empty state, and the child-name fallback that is

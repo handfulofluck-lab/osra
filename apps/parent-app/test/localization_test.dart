@@ -343,8 +343,8 @@ void main() {
     });
   });
 
-  /// Digest preferences was the next screen still written in English (#276).
-  group('Digest preferences in Arabic (#276)', () {
+  /// Digest preferences was the next screen still written in English (#277).
+  group('Digest preferences in Arabic (#277)', () {
     FakeApiClient digestApi() => FakeApiClient({
           ...standardRoutes(),
           'GET /v1/digests/prefs': (_) => {
