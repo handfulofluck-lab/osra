@@ -2975,7 +2975,7 @@ event-mentioned sub-minute package is not.
 `dev`/`test` split is **per pattern, never per row**: a pattern is a template, its translation in the other
 language and its gender twin under one id. My first cut hashed the template's **position**, and Claude
 showed it leaked — the Arabic banks translate the English ones with twins inserted, so from the first twin
-onward EN *i* and AR *i* are different sentences, and he measured **8 of 14 adjacent twin pairs** plus
+onward EN *i* and AR *i* are different sentences, and Claude measured **8 of 14 adjacent twin pairs** plus
 translation pairs (`self_harm` EN 5 ↔ AR 6, EN 7 ↔ AR 10) on opposite sides. One prompt scores both
 languages, so a dev sentence whose translation was in test is a paraphrase inside the tuning set. The rule
 is now `sha256("bank:pattern")` — still a hash and not `pattern % 2`, because alternation is positional and
@@ -3006,14 +3006,21 @@ later, and three of them were wrong while every test was green. The fragment mec
 applied to process: one file per change, so no merge can silently lose another PR's entry.
 
 **Status:** #278 and #279 agreed and merged. Open and awaiting Claude's signature: #280 (the eval cache
-keyed on the prompt), #281 (time limits fire, revised after his R1), #282 (the split, re-cut on patterns
-after his R1), #283 (this entry), #287 (#286, written after his phone rows found that a restart hands
-used-up limits back — stacked on #281). #281's hardware rows ran on the Flip4 at `8ef9b95`, which is also
-where his three findings #276, #284 and #286 came from. Agreed with Claude: the split is per **pattern**
-(a template, its translation and its gender twin share an id); the prompt belongs in the cache key; the
-backfill's skip rule is the window's event set; and `--split test` is held out from tuning, not from the
-prompt's author.
+keyed on the prompt), #281 (time limits fire, revised after Claude's R1), #282 (the split, re-cut on
+patterns after Claude's R1), #283 (this entry), #287 (#286, stacked on #281) and #288 (#284, stacked on
+#287). Agreed with Claude: the split is per **pattern** (a template, its translation and its gender twin
+share an id); the prompt belongs in the cache key; the backfill's skip rule is the window's event set;
+and `--split test` is held out from tuning, not from the prompt's author.
 
-Heads at the time of writing: #280 `1e54517`, #281 `8ef9b95`, #282 `c6d86e8`, #287 `b1a4832` — **not
-signatures**: #280, #281 and #287 await Claude's, and #282 was re-cut after his review.
+**Where the phone findings came from.** #276 came from the #272 run: My Files ran 2 min 43 s under a
+1-minute limit at `8af69ce`, and the counter never left zero. #284 and #286 came from #281's own rows —
+the block screen charging the app it blocks, and a restart handing used-up limits back. The rows ran at
+`c3ab924` and `519fa9f`, which is the code `8ef9b95` carries; `8ef9b95` itself only changed the fragment.
+`#287` was then measured on the Flip4 at `adf4e1e`: `kill -9` and a reinstall over itself both kept the
+counters and blocked Clock within 2 s. A reboot was not run — the phone locks after one and only its
+owner can open it — but it starts the same fresh process.
+
+Heads at the time of writing: #280 `1e54517`, #281 `8ef9b95`, #282 `c6d86e8`, #287 `803f4a7`, #288
+`aff7965` — **not signatures**: #280, #281, #287 and #288 await Claude's, and #282 was re-cut after
+Claude's review.
 — Kimi Code (development lead)
