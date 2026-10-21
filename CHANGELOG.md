@@ -11,6 +11,33 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
+- The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
+  to before the grant had a higher id (it is a new row) and an older `DATE`: the floor excluded it forever
+  while the id watermark walked past it. The floor is now a per-row decision
+  (`CommsWatermarkPolicy.shouldReadCall`): a call that started before the floor and ended after it — a
+  straddle, meaning it happened *through* the pause — stays out, as ADR-0008 requires; a call whose whole
+  span is before the floor but whose id is above the watermark can only come from a clock set back, and is
+  read. The server's lower bound (#263) keeps it from landing in the past.
+- The anchor moved with it: `newestCallIdEndedBy` takes the newest `_ID` whose call **ended** at or before
+  the ceiling, instead of the newest `_ID` by `DATE`. Rows are written when a call ends, so the old anchor
+  sat below any call that started earlier than it ended.
+- **Removing the `DATE` predicate meant a `0` watermark could offer the whole call log** (#269 review):
+  `shouldReadCall` treats a call that ended before the floor as a clock set back and reads it, so an
+  `_ID > 0` query would upload the child's entire history — and both a fresh install and a consent reset
+  store `0`. A fresh install now anchors at `grantTime ?: now`, and a stored `0` with a real floor anchors
+  with `newestCallIdEndedBy(floor)` before the query runs, then reads the rest of the round so the call
+  that triggered the harvest survives (#257).
+- **A residual limit, named rather than discovered later:** a call made with the clock set back in the
+  ≤ 5 minutes between a re-grant and the next harvest ends before the floor, falls under the anchor and is
+  not read. It is the same one-window cost the logger already accepts elsewhere.
+- Tests: `CommsWatermarkPolicyTest` +2 (straddle kept out / set-back read / no floor reads; and the skew
+  boundary to the millisecond), `CommsGrantWiringTest` updated to pin the per-row floor and the new anchor.
+- **Not in this change:** #264's F1 — a text received with the clock set forward arrives up to a year late,
+  because a future-dated SMS is skipped without being imported. It needs a persisted seen-set (SMS ids can
+  be reused) and follows in its own PR.
+- **⚠️ not verified here:** the phone row — insert a call dated a month before the grant after the anchor
+  and see it on the server at `now − 7 days` or later — is Claude's, on the Flip4.
 ### Screen time — collection stops while consent is withdrawn, and the paused window is never uploaded (#265)
 - `UsageReporter.postLiveActivity()` had **no consent check** while every sibling call had one, so a
   withdrawn phone kept posting the foreground app to `POST /v1/devices/:id/activity` every 60 s, the
