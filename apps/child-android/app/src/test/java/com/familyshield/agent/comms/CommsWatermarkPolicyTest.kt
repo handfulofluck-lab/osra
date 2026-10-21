@@ -62,4 +62,62 @@ class CommsWatermarkPolicyTest {
             CommsWatermarkPolicy.startFrom(past, regrant),
         )
     }
+
+    // ── Issue #260 ────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The call-waiting case from the phone run: a 50-second call was answered during a 290-second one,
+     * so the short call ends first (smaller `_ID`, later `DATE`) and the long call ends second (larger
+     * `_ID`, earlier `DATE`). A `DATE` watermark set by the short call is past the long call's `DATE`,
+     * which is why the long call was never read; by `_ID` it is simply the next row.
+     */
+    @Test
+    fun `a call inserted after a newer-dated one is still read, because the watermark is an id`() {
+        val shortCallId = 1_001L
+        val longCallId = 1_002L
+        val shortCallDate = 1_792_563_200_000L
+        val longCallDate = shortCallDate - 290_000L
+
+        assertTrue(
+            "the long call has an older DATE than the watermark the short call set, but a higher _ID",
+            longCallDate < shortCallDate && CommsWatermarkPolicy.shouldReadById(longCallId, shortCallId),
+        )
+        assertFalse(
+            "a row at or below the stored id is not re-read every five minutes",
+            CommsWatermarkPolicy.shouldReadById(shortCallId, shortCallId),
+        )
+        assertTrue("nothing read yet means every row is new", CommsWatermarkPolicy.shouldReadById(1L, null))
+    }
+
+    @Test
+    fun `a clock set forward once is detected instead of silently stopping collection`() {
+        val now = 1_792_563_200_000L
+        val aYearAhead = now + 365L * 24 * 60 * 60 * 1000
+
+        assertTrue("a watermark a year ahead means the clock moved back", CommsWatermarkPolicy.isClockBack(aYearAhead, now))
+        assertFalse("the skew itself is tolerated", CommsWatermarkPolicy.isClockBack(now + CommsWatermarkPolicy.CLOCK_SKEW_MS, now))
+        assertTrue("just past the skew is not", CommsWatermarkPolicy.isClockBack(now + CommsWatermarkPolicy.CLOCK_SKEW_MS + 1, now))
+        assertFalse("no watermark is not a clock problem", CommsWatermarkPolicy.isClockBack(null, now))
+    }
+
+    @Test
+    fun `a row dated in the future never becomes the watermark`() {
+        val now = 1_792_563_200_000L
+        val futureRow = now + 365L * 24 * 60 * 60 * 1000
+
+        assertTrue(CommsWatermarkPolicy.isFutureRow(futureRow, now))
+        assertFalse(CommsWatermarkPolicy.isFutureRow(now - 1_000L, now))
+        assertEquals("the stored watermark is the newest honest row, never a future one",
+            now - 1_000L, CommsWatermarkPolicy.nextWatermark(now - 1_000L, now))
+        assertEquals("and never a time past now", now,
+            CommsWatermarkPolicy.nextWatermark(futureRow, now))
+    }
+
+    @Test
+    fun `a grant time in the future is clamped, so it cannot hide every row`() {
+        val now = 1_792_563_200_000L
+        assertEquals(now, CommsWatermarkPolicy.clampedFloor(now + 60_000L, now))
+        assertEquals(now - 5_000L, CommsWatermarkPolicy.clampedFloor(now - 5_000L, now))
+        assertEquals(0L, CommsWatermarkPolicy.clampedFloor(null, now))
+    }
 }

@@ -11,6 +11,35 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Comms — calls reach the parent with the time they happened, and a clock set forward cannot switch logging off (#260)
+- **Every call and text was dated to the moment of the 5-minute flush.** `CommsLogger.flush()` built
+  `ActivityEventDto(type, payload)` with no `ts`, so the server fell back to `new Date()`: two calls
+  eight seconds apart arrived with the same timestamp, and a phone offline for hours dated all of its
+  calls to the moment it reconnected. The DTO now carries `ts`, `flush()` sends
+  `CommsEventTimestamps.isoUtc(e.timestamp)`, and the server keeps a reported time exactly — **except**
+  when the device clock is more than five minutes ahead, which a child can arrange: one call dated a
+  year in the future pinned itself to the top of the parent's list and hid every real one
+  (`activityEventTs` in `services/api/src/routes/devices.ts`).
+- **The call watermark is `CallLog._ID`, not `DATE`.** `DATE` is when a call *started* but the row is
+  written when it *ends*, so a 290-second call with a short call answered during it ends last and
+  carries the older `DATE`: the short call raised the watermark past it and the long call was never
+  read. `_ID` is monotonic and never reused, so the long call is simply the next id. The query is
+  `_ID > ? AND DATE >= ?` ordered by `_ID`, keeping ADR-0008's grant floor on `DATE`; the old `DATE`
+  watermark is converted once on upgrade (`newestCallIdUpTo`), and a consent reset clears the id
+  watermark so the next harvest re-anchors at the re-grant rather than importing the paused window.
+- **SMS keeps its `DATE` watermark but can no longer be stopped by the clock.** A stored watermark more
+  than five minutes ahead of now means the clock moved back: the watermark re-anchors to now, one
+  window is lost instead of every message after it, and a message dated beyond the skew never advances
+  the watermark. Same guard for a grant time in the future (`clampedFloor`).
+- **A withdrawn phone no longer logs a full `HTTP 428` stack every 60 seconds**
+  (`LocationService`); the transition is logged once, by `ConsentState`.
+- Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, clamped floor),
+  new `CommsEventTimestampsTest` (4), `CommsGrantWiringTest` +4 pinning the query, the `ts` field and
+  the 428 branch, and one API test asserting the reported time is preserved to the millisecond while a
+  far-future one is clamped.
+- **⚠️ not verified here:** the two phone rows — call waiting, and a clock set forward once — are
+  Claude's, on the Flip4. The JVM tests hold the rules; no JVM test can insert `CallLog` rows.
+
 ### Child agent — a later call/SMS grant takes effect without a reboot, and history is never imported (#229)
 - `CommsLogger` no longer sets one `started` flag before registering both `ContentObserver`s. Each
   stream has its own `callObserverRegistered` / `smsObserverRegistered` flag, and a stream is

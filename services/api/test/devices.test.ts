@@ -565,6 +565,64 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("activity: the device's own event time is kept, and a clock set forward is clamped (#260)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.activityEvent.createMany.mockResolvedValue({ count: 3 });
+
+    // Two calls eight seconds apart, an older one from the same hour, and one from a phone whose clock
+    // is a year forward. Before #260 none of them sent `ts`, so every row was dated to the flush.
+    const happened = [
+      "2026-10-21T06:06:52.000Z",
+      "2026-10-21T06:14:40.875Z",
+      "2026-10-21T06:14:48.875Z",
+    ];
+    const future = "2027-10-21T06:14:48.875Z";
+    const payload = {
+      events: [
+        { ts: happened[0], type: "call", payload: { number: "+10000000250", durationSec: 290, direction: "incoming" } },
+        { ts: happened[1], type: "call", payload: { number: "+10000000251", durationSec: 50, direction: "incoming" } },
+        { ts: happened[2], type: "sms", payload: { number: "+10000000252", bodyPreview: "hi" } },
+        { ts: future, type: "call", payload: { number: "+10000000253", durationSec: 12, direction: "outgoing" } },
+      ],
+    };
+
+    const before = Date.now();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/activity",
+      headers: deviceHeader(app),
+      payload,
+    });
+    expect(res.statusCode).toBe(202);
+
+    const rows = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ ts: Date }>;
+    expect(rows).toHaveLength(4);
+    // Reported times are preserved exactly, including the milliseconds -- this is the assertion that
+    // was impossible while the server fell back to `new Date()`.
+    expect(rows[0].ts.toISOString()).toBe("2026-10-21T06:06:52.000Z");
+    expect(rows[1].ts.toISOString()).toBe("2026-10-21T06:14:40.875Z");
+    expect(rows[2].ts.toISOString()).toBe("2026-10-21T06:14:48.875Z");
+    expect(rows[1].ts.getTime() - rows[0].ts.getTime()).toBe(468_875);
+    // The future timestamp is bounded to now + 5 minutes rather than pinning itself to the top of the
+    // parent's list forever.
+    expect(rows[3].ts.getTime()).toBeGreaterThanOrEqual(before + 5 * 60_000 - 1_000);
+    expect(rows[3].ts.getTime()).toBeLessThanOrEqual(Date.now() + 5 * 60_000 + 1_000);
+
+    // An event with no `ts` still gets the server's now: old agents stay compatible.
+    prismaMock.activityEvent.createMany.mockClear();
+    const legacy = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/activity",
+      headers: deviceHeader(app),
+      payload: { events: [{ type: "call", payload: { number: "+10000000254", durationSec: 5, direction: "missed" } }] },
+    });
+    expect(legacy.statusCode).toBe(202);
+    const legacyRows = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ ts: Date }>;
+    expect(Math.abs(legacyRows[0].ts.getTime() - Date.now())).toBeLessThan(5_000);
+    await app.close();
+  });
+
   it("unenrolls a device (200), 403 for device tokens, 404 for an unknown id", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);

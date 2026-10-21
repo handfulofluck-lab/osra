@@ -22,6 +22,15 @@ data class ActivityEventDto(
     val type: String,
     /** Typed payload: CallActivityPayload, SmsActivityPayload or app_usage {app, minutes} values as a plain map. */
     val payload: Map<String, Any?>,
+    /**
+     * When the event happened, ISO-8601 UTC, or null for "now".
+     *
+     * Issue #260: the server stamps `new Date()` when this is absent, so every row in a batch was dated
+     * to the moment of the 5-minute flush -- two calls eight seconds apart arrived with the same
+     * timestamp, and a phone offline for hours dated all its calls to the reconnect. The comms queue
+     * already carries the event time (`CommsEventEntity.timestamp`); this is the field that sends it.
+     */
+    val ts: String? = null,
 )
 
 /** Batched activity upload for POST /v1/devices/<id>/activity. */

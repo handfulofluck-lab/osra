@@ -98,6 +98,27 @@ const ActivityBatchSchema = z.object({
     .max(500),
 });
 
+/** Five minutes: the most a device clock may legitimately drift ahead of the server (#260). */
+const ACTIVITY_CLOCK_SKEW_MS = 5 * 60_000;
+
+/**
+ * Issue #260: the time an activity event happened, bounded from above.
+ *
+ * A device used to send no `ts` at all, so the server stamped `new Date()` and a whole batch of calls
+ * was dated to the moment of the 5-minute flush. Now the agent sends the row's own time and this keeps
+ * it — **except** when the device clock is ahead, which a child can arrange: one call dated a year in
+ * the future pinned itself to the top of the parent's list and hid every real call behind it. A time
+ * more than five minutes ahead is clamped to now + five; an older time is left exactly as reported,
+ * because a phone that was offline for hours is telling the truth.
+ */
+function activityEventTs(ts: string | undefined, now: Date = new Date()): Date {
+  if (!ts) return now;
+  const parsed = new Date(ts);
+  const millis = parsed.getTime();
+  if (Number.isNaN(millis)) return now;
+  return new Date(Math.min(millis, now.getTime() + ACTIVITY_CLOCK_SKEW_MS));
+}
+
 /**
  * Roadmap 3.4: the installed-launchable-app inventory contract.
  *
@@ -502,7 +523,7 @@ export async function deviceRoutes(app: FastifyInstance) {
         data: persistentEvents.map((e) => ({
           childId: device.childId,
           deviceId: id,
-          ts: e.ts ? new Date(e.ts) : new Date(),
+          ts: activityEventTs(e.ts),
           type: e.type,
           payload: e.payload as Prisma.InputJsonValue,
         })),
