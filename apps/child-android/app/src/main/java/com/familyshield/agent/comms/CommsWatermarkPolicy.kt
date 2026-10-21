@@ -44,18 +44,18 @@ object CommsWatermarkPolicy {
         watermark?.let { maxOf(it, grantTime?.takeIf { t -> t > 0L } ?: 0L) }
 
     /**
-     * Issue #260: a stored watermark further ahead than the skew means the clock moved back.
+     * Issue #260: a stored watermark or grant time further ahead than the skew means the clock moved back.
      *
      * The SMS stream keeps a `DATE` watermark, so a phone that was set a year forward leaves one year in
-     * the future and drops every real message afterwards. The caller re-anchors to `now`: the rows dated
-     * during the excursion cannot be placed honestly by any watermark, and one lost window is better
-     * than silently collecting nothing until the bad date arrives.
+     * the future and drops every real message afterwards. The same applies to the stored *grant* time
+     * (`comms_call_since` / `comms_sms_since`): it is the read floor, and clamping it at read time does
+     * not help, because `now` moves each harvest and the floor stays ahead of it — so the caller
+     * re-anchors the stored value to `now` once. The rows dated during the excursion cannot be placed
+     * honestly by any watermark, and one lost window is better than collecting nothing until the bad
+     * date arrives.
      */
     fun isClockBack(stored: Long?, now: Long): Boolean =
         stored != null && stored > now + CLOCK_SKEW_MS
-
-    /** The floor to query from: a grant time in the future must not hide rows, so it is clamped to now. */
-    fun clampedFloor(floor: Long?, now: Long): Long = minOf(floor ?: 0L, now).coerceAtLeast(0L)
 
     /** True when a row is dated more than the skew ahead of now, so it cannot advance the watermark. */
     fun isFutureRow(rowTime: Long, now: Long): Boolean = rowTime > now + CLOCK_SKEW_MS

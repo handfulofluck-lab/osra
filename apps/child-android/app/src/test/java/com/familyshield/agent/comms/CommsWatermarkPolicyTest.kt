@@ -114,10 +114,15 @@ class CommsWatermarkPolicyTest {
     }
 
     @Test
-    fun `a grant time in the future is clamped, so it cannot hide every row`() {
+    fun `a grant time in the future is re-anchored, not clamped at read time`() {
+        // Clamping at read time does not work: `now` moves each harvest and the stored floor stays
+        // ahead of it, so the call made two minutes ago is excluded again and again. The caller must
+        // store `now` over the bad value, which is what isClockBack tells it to do.
         val now = 1_792_563_200_000L
-        assertEquals(now, CommsWatermarkPolicy.clampedFloor(now + 60_000L, now))
-        assertEquals(now - 5_000L, CommsWatermarkPolicy.clampedFloor(now - 5_000L, now))
-        assertEquals(0L, CommsWatermarkPolicy.clampedFloor(null, now))
+        val yearAhead = now + 365L * 24 * 60 * 60 * 1000
+
+        assertTrue("a grant time a year ahead must be re-anchored", CommsWatermarkPolicy.isClockBack(yearAhead, now))
+        assertFalse("an honest grant time is left alone", CommsWatermarkPolicy.isClockBack(now - 90L * 24 * 60 * 60 * 1000, now))
+        assertFalse("no grant time is not a clock problem", CommsWatermarkPolicy.isClockBack(null, now))
     }
 }

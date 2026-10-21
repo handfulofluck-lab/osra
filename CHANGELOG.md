@@ -16,10 +16,13 @@ environment where it was written — see `docs/QA/` for the verification state.
   `ActivityEventDto(type, payload)` with no `ts`, so the server fell back to `new Date()`: two calls
   eight seconds apart arrived with the same timestamp, and a phone offline for hours dated all of its
   calls to the moment it reconnected. The DTO now carries `ts`, `flush()` sends
-  `CommsEventTimestamps.isoUtc(e.timestamp)`, and the server keeps a reported time exactly — **except**
-  when the device clock is more than five minutes ahead, which a child can arrange: one call dated a
-  year in the future pinned itself to the top of the parent's list and hid every real one
-  (`activityEventTs` in `services/api/src/routes/devices.ts`).
+  `CommsEventTimestamps.isoUtc(e.timestamp)`, and the server keeps a reported time exactly — bounded
+  at both ends: a time more than five minutes **ahead** is clamped (a child can set the clock forward
+  once and pin a call to the top of the parent's list), and a time more than **seven days back** is
+  floored (`activityEventTs` in `services/api/src/routes/devices.ts`), because retention deletes
+  `ActivityEvent` by `ts` and an unbounded old timestamp is otherwise a deletion request against the
+  90-day sweep. A phone offline for over a week has its older calls placed at the seven-day mark:
+  misdated, but kept and visible.
 - **The call watermark is `CallLog._ID`, not `DATE`.** `DATE` is when a call *started* but the row is
   written when it *ends*, so a 290-second call with a short call answered during it ends last and
   carries the older `DATE`: the short call raised the watermark past it and the long call was never
@@ -27,10 +30,17 @@ environment where it was written — see `docs/QA/` for the verification state.
   `_ID > ? AND DATE >= ?` ordered by `_ID`, keeping ADR-0008's grant floor on `DATE`; the old `DATE`
   watermark is converted once on upgrade (`newestCallIdUpTo`), and a consent reset clears the id
   watermark so the next harvest re-anchors at the re-grant rather than importing the paused window.
+  **The upgrade anchor skips one call** — a long call still in progress across the last old-build
+  harvest — but the old rule had already lost it, so this is forward-looking rather than a regression.
+- **A stored grant time in the future is repaired, not clamped at read time.** `comms_call_since` /
+  `comms_sms_since` are the read floor; if a child sets the clock forward and is re-granted consent
+  there, clamping with `min(since, now)` keeps excluding every later call as `now` advances. The floor
+  is re-anchored to now once and stored, the same way the SMS watermark is.
 - **SMS keeps its `DATE` watermark but can no longer be stopped by the clock.** A stored watermark more
   than five minutes ahead of now means the clock moved back: the watermark re-anchors to now, one
-  window is lost instead of every message after it, and a message dated beyond the skew never advances
-  the watermark. Same guard for a grant time in the future (`clampedFloor`).
+  window is lost instead of every message after it, and a message dated beyond the skew is **not
+  imported and does not advance the watermark** — it is re-selected and skipped each harvest until its
+  date arrives (#264 files the remaining evasion).
 - **A withdrawn phone no longer logs a full `HTTP 428` stack every 60 seconds**
   (`LocationService`); the transition is logged once, by `ConsentState`.
 - Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, clamped floor),

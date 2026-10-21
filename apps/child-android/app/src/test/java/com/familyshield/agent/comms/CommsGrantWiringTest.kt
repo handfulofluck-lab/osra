@@ -186,6 +186,24 @@ class CommsGrantWiringTest {
     }
 
     @Test
+    fun `a grant time in the future is repaired in both harvests, not clamped`() {
+        // #263 review: clamping with min(since, now) never lets the row through, because now advances
+        // and the stored floor stays ahead of it. Both harvests must write now over the bad value.
+        assertTrue(
+            "calls: the stored floor is re-anchored",
+            logger.contains("isClockBack(grantTime, now)") && logger.contains("dao.set(AgentStateEntity(KEY_CALL_SINCE, now))"),
+        )
+        assertTrue(
+            "SMS: the stored floor is re-anchored",
+            logger.contains("dao.set(AgentStateEntity(KEY_SMS_SINCE, now))"),
+        )
+        assertFalse(
+            "read-time clamping is the bug, not the fix",
+            logger.contains("clampedFloor"),
+        )
+    }
+
+    @Test
     fun `the SMS stream keeps DATE but cannot be stopped by a clock set forward`() {
         assertTrue("SMS stays on its own watermark", logger.contains("KEY_SMS_WATERMARK"))
         assertTrue("the clock-back guard runs before the read", logger.contains("CommsWatermarkPolicy.isClockBack(stored, now)"))

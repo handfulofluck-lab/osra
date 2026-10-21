@@ -265,8 +265,17 @@ class CommsLogger @Inject constructor(
         // because a zero id watermark with a real grant floor reads the first call and keeps logging.
         val storedId: Long? = dao.get(KEY_CALL_ID_WATERMARK)
         val legacyDate = CommsWatermarkPolicy.normalize(dao.get(KEY_CALL_WATERMARK))
-        val grantTime = CommsWatermarkPolicy.normalize(dao.get(KEY_CALL_SINCE))
-        val dateFloor = CommsWatermarkPolicy.clampedFloor(grantTime, now)
+        var grantTime = CommsWatermarkPolicy.normalize(dao.get(KEY_CALL_SINCE))
+        // Issue #260 review: a grant time in the future hides every call, permanently. The floor is read
+        // twice per harvest and `now` moves, so clamping at read time keeps excluding a call made two
+        // minutes ago -- and the id watermark never advances past it. Re-anchor the stored floor once
+        // instead. The device can reach this state honestly (a clock set forward, then consent
+        // re-granted), so it is repaired rather than treated as tampering.
+        if (CommsWatermarkPolicy.isClockBack(grantTime, now)) {
+            dao.set(AgentStateEntity(KEY_CALL_SINCE, now))
+            grantTime = now
+        }
+        val dateFloor = grantTime ?: 0L
         if (storedId == null) {
             // First harvest, and the one upgrade path from the old `DATE` watermark: anchor at the newest
             // id at or before what the old watermark already covered, and read nothing this round.
@@ -331,9 +340,9 @@ class CommsLogger @Inject constructor(
     /**
      * Issue #260: the newest `CallLog._ID` at or before [ceilingDate], or 0 when there is none.
      *
-     * Used twice: the first harvest after this version (anchor at what the old `DATE` watermark already
-     * covered, so the upgrade does not re-read history) and after a consent reset (anchor at the
-     * re-grant, so a re-granted window starts empty rather than importing the paused one).
+     * Used by the first harvest after this version, to anchor at what the old `DATE` watermark already
+     * covered so the upgrade does not re-read history. A consent reset does not call it: a reset writes
+     * `0` into the id watermark and the stored `DATE` floor does the work.
      */
     private fun newestCallIdUpTo(ceilingDate: Long): Long {
         if (ceilingDate <= 0L) return 0L
@@ -371,7 +380,14 @@ class CommsLogger @Inject constructor(
         if (consent.isPaused()) return@withLock // ADR-0008 §3
         val now = System.currentTimeMillis()
         val stored = CommsWatermarkPolicy.normalize(dao.get(KEY_SMS_WATERMARK))
-        val grantTime = CommsWatermarkPolicy.normalize(dao.get(KEY_SMS_SINCE))
+        var grantTime = CommsWatermarkPolicy.normalize(dao.get(KEY_SMS_SINCE))
+        // Issue #260 review: a grant time in the future hides every message for as long as it is stored,
+        // because the floor is re-read with a newer `now` each harvest and never lets the row through.
+        // Re-anchor it once, exactly as the watermark below is re-anchored.
+        if (CommsWatermarkPolicy.isClockBack(grantTime, now)) {
+            dao.set(AgentStateEntity(KEY_SMS_SINCE, now))
+            grantTime = now
+        }
         // Issue #260: SMS keeps a DATE watermark (the SMS table may reuse ids, and messages are written
         // in time order), so it needs the clock guard the call stream no longer does. A watermark more
         // than the skew in the future means the clock moved back: re-anchor to now and read nothing this
@@ -385,7 +401,6 @@ class CommsLogger @Inject constructor(
             return@withLock
         }
         val from = CommsWatermarkPolicy.startFrom(stored, grantTime)
-            ?.let { CommsWatermarkPolicy.clampedFloor(it, now) }
         if (from == null) {
             dao.set(AgentStateEntity(KEY_SMS_WATERMARK, CommsWatermarkPolicy.initialWatermark(stored, now)))
             dao.set(AgentStateEntity(KEY_SMS_SINCE, now))
@@ -409,9 +424,11 @@ class CommsLogger @Inject constructor(
             cursor?.use {
                 while (it.moveToNext()) {
                     val ts = it.getLong(3)
-                    // A message dated beyond the skew is not trusted with the watermark: importing it is
-                    // harmless (the server clamps its timestamp), but letting it set the watermark would
-                    // hide every honest message behind it.
+                    // A message dated beyond the skew is not imported and does not advance the watermark:
+                    // it is re-selected and skipped on every harvest until its date arrives, then read up
+                    // to a year late (#264 files the remaining evasion — set the clock forward, receive a
+                    // text, set it back inside five minutes). The watermark cannot absorb it instead,
+                    // because that would hide every honest message behind it.
                     if (CommsWatermarkPolicy.isFutureRow(ts, now)) continue
                     newest = maxOf(newest, ts)
                     events.add(

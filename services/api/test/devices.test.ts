@@ -568,22 +568,23 @@ describe("device enrollment & management", () => {
   it("activity: the device's own event time is kept, and a clock set forward is clamped (#260)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
-    prismaMock.activityEvent.createMany.mockResolvedValue({ count: 3 });
+    prismaMock.activityEvent.createMany.mockResolvedValue({ count: 5 });
 
-    // Two calls eight seconds apart, an older one from the same hour, and one from a phone whose clock
-    // is a year forward. Before #260 none of them sent `ts`, so every row was dated to the flush.
-    const happened = [
-      "2026-10-21T06:06:52.000Z",
-      "2026-10-21T06:14:40.875Z",
-      "2026-10-21T06:14:48.875Z",
-    ];
-    const future = "2027-10-21T06:14:48.875Z";
+    // Relative to now, deliberately: a hard-coded date would start clamping on its own anniversary.
+    const now = Date.now();
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const first = now - 8 * 60_000;      // a call from earlier this hour
+    const second = now - 7 * 60_000;     // eight seconds after the first
+    const third = second + 8_000;
+    const future = now + 365 * 24 * 60 * 60_000;   // clock set a year forward
+    const ancient = now - 180 * 24 * 60 * 60_000;  // clock set six months back
     const payload = {
       events: [
-        { ts: happened[0], type: "call", payload: { number: "+10000000250", durationSec: 290, direction: "incoming" } },
-        { ts: happened[1], type: "call", payload: { number: "+10000000251", durationSec: 50, direction: "incoming" } },
-        { ts: happened[2], type: "sms", payload: { number: "+10000000252", bodyPreview: "hi" } },
-        { ts: future, type: "call", payload: { number: "+10000000253", durationSec: 12, direction: "outgoing" } },
+        { ts: iso(first), type: "call", payload: { number: "+10000000250", durationSec: 290, direction: "incoming" } },
+        { ts: iso(second), type: "call", payload: { number: "+10000000251", durationSec: 50, direction: "incoming" } },
+        { ts: iso(third), type: "sms", payload: { number: "+10000000252", bodyPreview: "hi" } },
+        { ts: iso(future), type: "call", payload: { number: "+10000000253", durationSec: 12, direction: "outgoing" } },
+        { ts: iso(ancient), type: "call", payload: { number: "+10000000254", durationSec: 5, direction: "missed" } },
       ],
     };
 
@@ -597,17 +598,23 @@ describe("device enrollment & management", () => {
     expect(res.statusCode).toBe(202);
 
     const rows = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ ts: Date }>;
-    expect(rows).toHaveLength(4);
-    // Reported times are preserved exactly, including the milliseconds -- this is the assertion that
-    // was impossible while the server fell back to `new Date()`.
-    expect(rows[0].ts.toISOString()).toBe("2026-10-21T06:06:52.000Z");
-    expect(rows[1].ts.toISOString()).toBe("2026-10-21T06:14:40.875Z");
-    expect(rows[2].ts.toISOString()).toBe("2026-10-21T06:14:48.875Z");
-    expect(rows[1].ts.getTime() - rows[0].ts.getTime()).toBe(468_875);
-    // The future timestamp is bounded to now + 5 minutes rather than pinning itself to the top of the
+    expect(rows).toHaveLength(5);
+    // Reported times are preserved to the millisecond, including the gap between two calls — the
+    // assertion that was impossible while the server fell back to `new Date()`.
+    expect(rows[0].ts.toISOString()).toBe(iso(first));
+    expect(rows[1].ts.toISOString()).toBe(iso(second));
+    expect(rows[2].ts.toISOString()).toBe(iso(third));
+    expect(rows[1].ts.getTime() - rows[0].ts.getTime()).toBe(60_000);
+    expect(rows[2].ts.getTime() - rows[1].ts.getTime()).toBe(8_000);
+    // A future timestamp is bounded to now + 5 minutes rather than pinning itself to the top of the
     // parent's list forever.
     expect(rows[3].ts.getTime()).toBeGreaterThanOrEqual(before + 5 * 60_000 - 1_000);
     expect(rows[3].ts.getTime()).toBeLessThanOrEqual(Date.now() + 5 * 60_000 + 1_000);
+    // A six-month-old timestamp is a deletion request against the 90-day retention sweep, so it is
+    // floored to seven days: misdated, but kept and visible to the parent.
+    const sevenDays = 7 * 24 * 60 * 60_000;
+    expect(rows[4].ts.getTime()).toBeGreaterThanOrEqual(before - sevenDays - 1_000);
+    expect(rows[4].ts.getTime()).toBeLessThanOrEqual(Date.now() - sevenDays + 1_000);
 
     // An event with no `ts` still gets the server's now: old agents stay compatible.
     prismaMock.activityEvent.createMany.mockClear();
@@ -615,7 +622,7 @@ describe("device enrollment & management", () => {
       method: "POST",
       url: "/v1/devices/dev-1/activity",
       headers: deviceHeader(app),
-      payload: { events: [{ type: "call", payload: { number: "+10000000254", durationSec: 5, direction: "missed" } }] },
+      payload: { events: [{ type: "call", payload: { number: "+10000000255", durationSec: 5, direction: "missed" } }] },
     });
     expect(legacy.statusCode).toBe(202);
     const legacyRows = prismaMock.activityEvent.createMany.mock.calls[0][0].data as Array<{ ts: Date }>;
