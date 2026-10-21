@@ -9,5 +9,7 @@
   two pairs collide.
 - The prompt is instance state rather than a module constant, so the key and the request cannot disagree
   about which prompt produced a cached score — and a test can prove that a changed prompt misses.
+- `services/ai-engine/EVAL.md` said the cache was keyed on `(model, text)`; it now names the prompt and
+  says plainly that editing the prompt is not free, because a score is the model's answer to that prompt.
 - **One-off cost:** the first run after this change re-scores every row (about US$0.10 on the current set),
   because every existing key is a miss. That is the fix, not a regression.
