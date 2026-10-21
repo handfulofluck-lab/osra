@@ -119,9 +119,10 @@ const ACTIVITY_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
  * A device used to send no `ts` at all, so the server stamped `new Date()` and a whole batch of calls
  * was dated to the moment of the 5-minute flush. Now the agent sends the row's own time and this keeps
  * it — **except** when the device clock is ahead, which a child can arrange: one call dated a year in
- * the future pinned itself to the top of the parent's list and hid every real call behind it. And not
- * when it is older than the retention window, for the reason on [ACTIVITY_MAX_AGE_MS]: the sweep would
- * delete it. Between those bounds the reported time is exact.
+ * the future pinned itself to the top of the parent's list and hid every real call behind it. It is also
+ * bounded below at [ACTIVITY_MAX_AGE_MS] — **seven days, not the 90-day retention window** — because
+ * retention deletes `ActivityEvent` by `ts`, so an older reported time acts as a deletion request rather
+ * than as a timestamp. Between those two bounds the reported time is exact.
  */
 function activityEventTs(ts: string | undefined, now: Date = new Date()): Date {
   if (!ts) return now;

@@ -110,16 +110,17 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 - **The adversarial probe** tries to break the documented invariants against a live stack. It is the
   **merge gate** — a green unit suite is not evidence that an invariant holds.
 
-| Suite | Scope | Status (2026-10-15) |
+| Suite | Scope | Status (2026-10-21) |
 |---|---|---|
-| **Adversarial probe** (`services/api/scripts/qa-probe.mjs`) | family isolation, per-device identity, consent gate, revocation, token hygiene, alert coverage, input bounds, error hygiene | **73 passed · 0 failed · 3 targets** |
-| API vitest | routes, auth, token hygiene, blocklists, content | 205/205 |
-| Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568 | 94/94, analyze clean |
-| Android JVM tests | rule engine, counters, monitored apps, HMAC logic | 151/151 |
-| Desktop xunit | Windows agent services | 225/225 (2026-10-18) |
-| AI pytest | classifier + API smoke | 21 passed |
-| Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 50/50 |
-| Hardware (physical device) | first-run crash, FGS start, location upload, overlays | procedure in [`docs/TESTING.md`](docs/TESTING.md) §5 |
+| **Adversarial probe** (`services/api/scripts/qa-probe.mjs`) | family isolation, per-device identity, consent gate, revocation, token hygiene, alert coverage, input bounds, error hygiene | **151 passed · 0 failed · 0 targets · 0 notes** |
+| API vitest | routes, auth, token hygiene, blocklists, content, comms, telemetry | 452/452 (35 files) |
+| Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568, Arabic RTL | 257/257, analyze clean |
+| Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 515/515 per flavour (Play and Full) |
+| Desktop xunit | Windows agent services | 225/225 |
+| AI pytest | classifier, API smoke, evaluation harness | 39 passed |
+| Evaluation harness (`eval.banks`, `eval.generate --check`, `eval.run_eval`) | the labelled set and the published per-category scores | 7 banks validate · 1,179 rows · scores in [`services/ai-engine/EVAL.md`](services/ai-engine/EVAL.md) |
+| Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 71/71 |
+| Hardware (physical device) | first-run crash, FGS start, location upload, overlays, tamper rows | procedure in [`docs/TESTING.md`](docs/TESTING.md) §5 |
 
 ```bash
 pnpm --filter @familyshield/api test        # API unit suites
