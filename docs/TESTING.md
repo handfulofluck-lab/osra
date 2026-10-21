@@ -95,10 +95,12 @@ python -m pytest tests -q              # 39 passed at 2026-10-21 (20 before this
 python -m eval.banks                   # validate every template bank; must print the 7-row table
 python -m eval.generate --check        # fail if eval/dataset.jsonl is stale against the banks
 python -m eval.run_eval --scorer regex # publish-grade table; --write-md EVAL.md refreshes EVAL.md
+python -m eval.run_eval --scorer deepseek --limit-per-category 5   # plan 4.1, needs DEEPSEEK_API_KEY
 ```
 
 Four things to know before reading a failure:
 
+- **`--scorer deepseek`** is plan 4.1 and lives in `eval/deepseek_scorer.py`, evaluation only: the key comes from `DEEPSEEK_API_KEY`, results are cached by `(model, text)` in a gitignored file, and it is never imported by `model.py`. A missing key is one line, not a traceback. In CI it runs from `.github/workflows/ai-eval-deepseek.yml` on `workflow_dispatch` only — GitHub refuses to dispatch a workflow that is not on the default branch.
 - **`--scorer regex` measures the rules layer alone** (`eval/run_eval.py:score_regex`), which is what
   runs when no checkpoint is shipped. `--scorer model` uses `MODEL_PATH`; `--scorer deepseek` refuses
   to run by design until plan 4.1 exists and the key is a repository secret.

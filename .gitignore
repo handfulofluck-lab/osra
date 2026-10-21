@@ -43,6 +43,9 @@ pub/
 
 # Python
 __pycache__/
+# Plan 4.1: the hosted scorer's disk cache (paid results, keyed by content hash).
+services/ai-engine/eval/.deepseek-cache.json
+services/ai-engine/deepseek-result.json
 *.py[cod]
 .venv/
 .pytest_cache/

@@ -11,6 +11,27 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### AI — the hosted scorer for plan 4.1, evaluation-only (#274)
+- `services/ai-engine/eval/deepseek_scorer.py` scores text with DeepSeek through the OpenAI-compatible
+  chat-completions shape: a strict JSON object (`response_format: json_object`, temperature 0), values
+  clamped to 0..1, missing categories 0.0 with `safe` derived, code fences stripped, and three attempts
+  on 429/5xx only — a 401 or 400 fails fast with one sentence that names the cause instead of retrying
+  a problem that will not fix itself. A disk cache keyed by `(model, text)` sha256, flushed every 25
+  calls and at exit, means a re-run of an unchanged set bills nothing and a crash keeps what it paid for.
+- **It is imported by nothing in production.** It lives in `eval/` and `run_eval --scorer deepseek`
+  reaches it lazily. An evaluation sends synthetic messages; a production scorer would send a real
+  child's message to a third party, and that decision belongs to 4.1-vs-4.4, not to a configuration flag.
+- `python -m eval.run_eval --scorer deepseek` is real, replacing the placeholder that refused to run. A
+  missing or refused key is one line, not a traceback.
+- `.github/workflows/ai-eval-deepseek.yml` runs it on `workflow_dispatch` only: every run bills the
+  dataset and the answer changes only when the banks, the prompt or the model do. The secret is read
+  through `env:`, never `if:`.
+- Tests: 9 offline cases over `httpx.MockTransport` — the contract, the clamps, fences, the retry rule
+  (401 does not retry), the cache surviving a new process, a corrupt cache, and a transport error that
+  gives up.
+- **⚠️ not measured yet:** the numbers. `DEEPSEEK_API_KEY` is set as a repository secret, but GitHub will
+  not dispatch a workflow that is not on the default branch, so the first billed run follows the merge
+  and the table lands in `EVAL.md` — beside the rules layer's 0.00, which is the comparison 4.1 exists for.
 ### Comms — a text received with the clock set forward reaches the parent on the next flush (#264, F1)
 - A message dated beyond the clock skew is no longer skipped until the real date arrives (up to a year).
   It is imported **once** and its identity — `date|id|addressDigest` — is remembered in
