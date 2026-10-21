@@ -66,12 +66,12 @@ class LockActivity : ComponentActivity() {
         // before launching an unlock. Cleared in onStop: an activity that is no longer visible is
         // nothing an unlock can take down, and a blind launch would only recreate the blocked
         // activity record F2 describes.
-        isShowing = true
+        onStartedVisible()
     }
 
     override fun onStop() {
         super.onStop()
-        isShowing = false
+        onStoppedVisible()
     }
 
     override fun onResume() {
@@ -155,17 +155,26 @@ class LockActivity : ComponentActivity() {
         const val MODE_DISMISS: String = "dismiss"
 
         /**
-         * Whether an instance of this activity is started — visible enough that Android allows a
-         * background launch to it (`BAL_ALLOW_VISIBLE_WINDOW`). Set in `onStart`, cleared in
-         * `onStop`; read by `CommandDispatcher.unlock()` to decide whether an unlock launches at all.
+         * Counts visible instances, and derives [isShowing] from it (issue #241).
+         *
+         * A single boolean was wrong: if a visible instance finishes and a new one starts before the
+         * old one's `onStop`, the old `onStop` clears the flag while the new screen is up — a later
+         * `unlock` would then ack `not_showing` and leave that screen in place. The count cannot be
+         * misread that way.
          *
          * Process-scoped on purpose: it survives a configuration change (the instance stays started)
-         * and resets to false on process death, which is the right default — after a restart nothing
-         * of ours is on screen until a command or the accessibility service raises it again.
+         * and resets on process death, which is the right default — after a restart nothing of ours
+         * is on screen until a command or the accessibility service raises it again.
          */
-        @Volatile
-        var isShowing: Boolean = false
-            internal set
+        private val visible = VisibleScreens()
+
+        /** True while at least one instance of this activity is visible. */
+        val isShowing: Boolean
+            get() = visible.isShowing
+
+        internal fun onStartedVisible() = visible.started()
+
+        internal fun onStoppedVisible() = visible.stopped()
     }
 }
 
