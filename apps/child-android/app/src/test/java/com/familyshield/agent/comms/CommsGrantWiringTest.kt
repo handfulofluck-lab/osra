@@ -161,7 +161,7 @@ class CommsGrantWiringTest {
      * the SQL. The phone row is what proves the behaviour.
      */
     @Test
-    fun `the call harvest reads by id, with the grant time as a DATE floor`() {
+    fun `the call harvest reads by id and applies the floor per row`() {
         assertTrue(
             "the watermark must be an id: DATE is when a call started, not when its row appeared",
             logger.contains("KEY_CALL_ID_WATERMARK"),
@@ -172,17 +172,19 @@ class CommsGrantWiringTest {
                 logger.contains("\${CallLog.Calls._ID} ASC"),
         )
         assertTrue(
-            "the grant floor stays on DATE, so a re-grant still cannot read the paused window",
-            logger.contains("\${CallLog.Calls.DATE} >= ?") && logger.contains("dateFloor"),
+            "the floor is a per-row decision, because a clock set back gives an older DATE and a higher id",
+            logger.contains("CommsWatermarkPolicy.shouldReadCall(ts, duration, dateFloor)"),
         )
         assertFalse(
-            "the old DATE watermark is the bug: a long call that ends last has the older DATE",
-            logger.contains("\${CallLog.Calls.DATE} > ?"),
+            "a DATE predicate in the query is what lost the set-back call (#264 F2)",
+            logger.contains("\${CallLog.Calls.DATE} >= ?") || logger.contains("\${CallLog.Calls.DATE} > ?"),
         )
         assertTrue(
-            "the upgrade path anchors at what the old DATE watermark covered",
-            logger.contains("newestCallIdUpTo(") && logger.contains("CallLog.Calls.DATE} <= ?"),
+            "the anchor is the newest id whose call ENDED by the ceiling, not the newest DATE",
+            logger.contains("newestCallIdEndedBy(") &&
+                logger.contains("CallLog.Calls.DURATION") && logger.contains("endedAt <= ceilingEnd"),
         )
+        assertFalse("the DATE anchor is the bug it replaced", logger.contains("newestCallIdUpTo("))
     }
 
     @Test

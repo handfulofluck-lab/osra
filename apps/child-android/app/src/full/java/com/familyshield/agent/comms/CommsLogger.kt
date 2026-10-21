@@ -278,9 +278,11 @@ class CommsLogger @Inject constructor(
         val dateFloor = grantTime ?: 0L
         if (storedId == null) {
             // First harvest, and the one upgrade path from the old `DATE` watermark: anchor at the newest
-            // id at or before what the old watermark already covered, and read nothing this round.
+            // id whose call *ended* by the ceiling, and read nothing this round. Anchoring on `DATE`
+            // (#260) placed the watermark below any call that started earlier than it ended, which is how
+            // a clock set back slipped under the floor (#264 F2).
             val ceiling = maxOf(legacyDate ?: 0L, dateFloor)
-            dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, newestCallIdUpTo(ceiling)))
+            dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, newestCallIdEndedBy(ceiling)))
             dao.set(AgentStateEntity(KEY_CALL_WATERMARK, ceiling))
             if (grantTime == null) dao.set(AgentStateEntity(KEY_CALL_SINCE, now))
             return@withLock
@@ -299,8 +301,8 @@ class CommsLogger @Inject constructor(
                     CallLog.Calls.DATE,
                     CallLog.Calls.PHONE_ACCOUNT_COMPONENT_NAME,
                 ),
-                "${CallLog.Calls._ID} > ? AND ${CallLog.Calls.DATE} >= ?",
-                arrayOf(storedId.toString(), dateFloor.toString()),
+                "${CallLog.Calls._ID} > ?",
+                arrayOf(storedId.toString()),
                 "${CallLog.Calls._ID} ASC",
             )
             cursor?.use {
@@ -312,6 +314,10 @@ class CommsLogger @Inject constructor(
                     val type = it.getInt(3)
                     val ts = it.getLong(4)
                     val component = it.getString(5)
+                    // Issue #264 (F2): the floor is applied per row, not in the query, because a call
+                    // made with the clock set back has an older `DATE` and a *higher* id -- see
+                    // [CommsWatermarkPolicy.shouldReadCall] for which way each case goes.
+                    if (!CommsWatermarkPolicy.shouldReadCall(ts, duration, dateFloor)) continue
                     val identity = CommsRowPolicy.Identity(ts, type, duration, component)
                     if (!CommsRowPolicy.shouldImport(number, component, identity, seen)) continue
                     seen.add(identity)
@@ -338,22 +344,30 @@ class CommsLogger @Inject constructor(
     }
 
     /**
-     * Issue #260: the newest `CallLog._ID` at or before [ceilingDate], or 0 when there is none.
+     * Issue #264 (F2): the newest `CallLog._ID` whose call **ended** at or before [ceilingEnd], or 0.
      *
-     * Used by the first harvest after this version, to anchor at what the old `DATE` watermark already
-     * covered so the upgrade does not re-read history. A consent reset does not call it: a reset writes
-     * `0` into the id watermark and the stored `DATE` floor does the work.
+     * Used by the first harvest after an upgrade or a consent reset, to anchor at what the previous rule
+     * already covered so nothing is re-read. Anchoring on `DATE` (as #260 did) was wrong by one direction:
+     * rows are written when a call ends, so a call that started before the ceiling and ended after it has
+     * a *lower* `DATE` than its position suggests. Iterating ids downwards and stopping at the first row
+     * whose span ends by the ceiling puts the anchor where the window really closes.
      */
-    private fun newestCallIdUpTo(ceilingDate: Long): Long {
-        if (ceilingDate <= 0L) return 0L
+    private fun newestCallIdEndedBy(ceilingEnd: Long): Long {
+        if (ceilingEnd <= 0L) return 0L
         return try {
             context.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
-                arrayOf(CallLog.Calls._ID),
+                arrayOf(CallLog.Calls._ID, CallLog.Calls.DATE, CallLog.Calls.DURATION),
                 "${CallLog.Calls.DATE} <= ?",
-                arrayOf(ceilingDate.toString()),
+                arrayOf(ceilingEnd.toString()),
                 "${CallLog.Calls._ID} DESC",
-            )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val endedAt = cursor.getLong(1) + cursor.getLong(2) * 1000L
+                    if (endedAt <= ceilingEnd) return cursor.getLong(0)
+                }
+                0L
+            } ?: 0L
         } catch (e: SecurityException) {
             0L
         }
