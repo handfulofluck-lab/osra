@@ -1226,14 +1226,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get socialMessage => 'Social message';
 
   @override
-  String get callsAndTexts => 'Calls & texts';
+  String get callsAndTexts => 'Phone calls & texts';
 
   @override
   String get iosNoCallMonitoring =>
-      'iOS does not support call/text monitoring.';
+      'iOS does not support phone-call or text monitoring.';
 
   @override
-  String get noCallsOrTexts => 'No calls or texts yet';
+  String get noCallsOrTexts => 'No phone calls or texts yet';
 
   @override
   String get unknownNumber => 'Unknown number';
