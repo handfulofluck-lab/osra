@@ -246,17 +246,22 @@ class UsageReporter @Inject constructor(
      * side by side. Keeping the entry with the greatest `firstTimeStamp` (the bucket's start, per `UsageStats`) per package is what makes the
      * bucket identity below correct; `associate` would keep whichever came last.
      */
-    private fun usageStatsTotals(): Pair<Long, Map<String, Int>>? = try {
+    private fun usageStatsTotals(): Pair<Long, Map<String, Int>>? {
+        return try {
         val startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
             ?: emptyList()
+        // An empty result must not record a snapshot keyed 0 with no totals: the next upload would then
+        // have a snapshot with no baseline for any package and send whole totals — D2 through a side door.
+        if (stats.isEmpty()) return null
         val newestBegin = stats.maxOfOrNull { it.firstTimeStamp } ?: 0L
         val bucket = stats.filter { it.firstTimeStamp == newestBegin }
         newestBegin to bucket.associate { it.packageName to (it.totalTimeInForeground / 60_000L).toInt() }
-    } catch (t: Throwable) {
-        // Stats permission not granted (or OEM restriction) — event-based numbers only.
-        null
+        } catch (t: Throwable) {
+            // Stats permission not granted (or OEM restriction) — event-based numbers only.
+            null
+        }
     }
 
     /**
@@ -272,10 +277,12 @@ class UsageReporter @Inject constructor(
         val (bucketBegin, totals) = usageStatsTotals() ?: return
         val (storedBucket, lastSeen) = settings.usageStatsSnapshot()
         val hasSnapshot = storedBucket != null
-        val sameBucket = storedBucket == bucketBegin
+        // D3: a moved bucket key is not a rollover on its own — the counters decide, because a clock
+        // change shifts the key and leaves the totals alone.
+        val rollover = UsageStatsDelta.isRollover(storedBucket, bucketBegin, lastSeen, totals)
         for ((pkg, total) in totals) {
             if (perApp.containsKey(pkg)) continue // counted from this window's events already
-            val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], sameBucket, hasSnapshot)
+            val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }
         // Recorded for every package, including those the events covered: a later window without one of

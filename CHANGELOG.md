@@ -26,6 +26,16 @@ environment where it was written — see `docs/QA/` for the verification state.
   `INTERVAL_DAILY` bucket at a time it picks — measured at 20:07, not local midnight — so a date key
   re-sent up to four hours of the previous evening on every morning's first upload. The key is the
   bucket's `firstTimeStamp`, and a query that returns two buckets keeps only the newer one per package.
+- **A clock change no longer looks like a rollover** (#272 review). Android shifts every interval when the
+  wall clock moves — a network time correction above a couple of seconds does it too — so `firstTimeStamp`
+  changes while the counters stay put. Treating a moved key as a rollover re-sent every package's whole
+  total, which is this issue again, triggered by one clock change. `isRollover` now requires evidence from
+  the counters: a total below its snapshot, or a package with minutes that has vanished. The one case it
+  cannot tell apart — a real rollover where every app is already above yesterday's count before the first
+  upload — falls back to increments and under-counts by at most one upload window.
+- **An empty UsageStats query records nothing** (#272 review): storing a snapshot keyed `0` with no totals
+  gave the next upload a snapshot with no baseline, so it sent whole totals — the first-upload bug through
+  a side door.
 - **The first upload after a pairing adds nothing** (#272 review): with no snapshot the total reaches back
   before OSRA existed, so it records a baseline instead — #229's rule that collection starts at the grant.
   The cost is the tail of the last bucket before a rollover for apps the event stream missed: one window a

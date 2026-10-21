@@ -78,9 +78,15 @@ class UsageReporterConsentWiringTest {
         // #267: the whole-day totals are counters now, so an app absent from this window adds only its
         // increase. Adding the total is what over-counted every family with usage access.
         assertTrue(
-            "each package's increase is judged against the bucket it belongs to",
-            body.contains("UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], sameBucket, hasSnapshot)"),
+            "each package's increase is judged against the rollover decision",
+            body.contains("UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)"),
         )
+        // #272 review D3: a moved bucket key is not a rollover on its own -- a clock change shifts the
+        // key and leaves the counters alone, so the counters decide.
+        assertTrue("the rollover decision is the policy's", body.contains("UsageStatsDelta.isRollover(storedBucket, bucketBegin, lastSeen, totals)"))
+        // And an empty query must not record a snapshot keyed 0: that would baseline nothing and send
+        // whole totals on the next upload.
+        assertTrue("an empty query records nothing", body.contains("if (stats.isEmpty()) return null"))
         assertTrue("every package's total is recorded, not only the ones added", body.contains("settings.setUsageStatsSnapshot(bucketBegin, totals)"))
         // #272 review: the snapshot must be keyed by Android's own bucket, not the calendar date — the
         // phone rolls it at 20:07, so a date key re-sent up to four hours every morning.

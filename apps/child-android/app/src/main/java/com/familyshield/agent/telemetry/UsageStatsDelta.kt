@@ -36,27 +36,53 @@ object UsageStatsDelta {
     fun baseline(totals: Map<String, Int>): Map<String, Int> = totals.filterValues { it >= 0 }
 
     /**
-     * Issue #267 review (D1, D2): what to add for one package, given which bucket the totals belong to.
+     * Issue #267 review (D3): is this a real rollover, or a clock change that moved the bucket's key?
      *
-     * Android rolls its `INTERVAL_DAILY` bucket at a time the device picks — measured at 20:07 on the
-     * Flip4, not at local midnight — so a snapshot keyed by the calendar date re-sent up to four hours
-     * every morning. The bucket's own begin time is the key.
+     * Android shifts every interval when the wall clock moves — `firstTimeStamp` changes while the
+     * counters stay put, and the change is not confined to a child: a network time correction above a
+     * couple of seconds does it too. Treating a moved key as a rollover re-sent every package's whole
+     * total, which is #267 again triggered by one clock change.
      *
-     * And with **no snapshot at all** (a fresh pairing, or the first upload after install) the right
-     * answer is zero plus a baseline: that total reaches back before OSRA was paired, and #229's rule is
-     * that collection starts at the grant and never copies history. The event stream still covers the
-     * window between the grant and this upload.
+     * The counters are the evidence: inside one bucket they never go down, and a rollover restarts them.
+     * So a new key is a rollover only if some package's total dropped below its snapshot, or a package
+     * that had minutes in the snapshot is gone from the newest bucket. Otherwise the same bucket has
+     * moved and the increases are what is new.
      *
-     * @param sameBucket true when the snapshot was taken in the bucket these totals belong to
-     * @param hasSnapshot false when there is no snapshot for this device yet
+     * The one case this cannot tell apart — a real rollover where every app is already above yesterday's
+     * count before the first upload — falls back to increments. That under-counts by at most one upload
+     * window, which is the side to be wrong on.
      */
-    fun deltaForUpload(totalMinutes: Int, lastSeenMinutes: Int?, sameBucket: Boolean, hasSnapshot: Boolean): Int {
+    fun isRollover(
+        storedBucket: Long?,
+        bucketBegin: Long,
+        lastSeen: Map<String, Int>,
+        totals: Map<String, Int>,
+    ): Boolean {
+        if (storedBucket == null) return false // no snapshot: the caller records a baseline and adds nothing
+        if (storedBucket == bucketBegin) return false
+        val counterRestarted = totals.any { (pkg, total) ->
+            lastSeen[pkg]?.let { total < it } == true
+        }
+        val vanished = lastSeen.any { (pkg, seen) -> seen > 0 && !totals.containsKey(pkg) }
+        return counterRestarted || vanished
+    }
+
+    /**
+     * Issue #267 review (D1, D2): what to add for one package, given the bucket decision.
+     *
+     * With **no snapshot at all** (a fresh pairing, or the first upload after install) the right answer is
+     * zero plus a baseline: that total reaches back before OSRA was paired, and #229's rule is that
+     * collection starts at the grant and never copies history. The event stream still covers the window
+     * between the grant and this upload.
+     *
+     * @param rollover true when [isRollover] decided the counters restarted — a new bucket's totals are
+     *   all new, and the cost is the tail of the last bucket before the rollover for apps the event stream
+     *   missed: one window a day, on the under-counting side.
+     */
+    fun deltaForUpload(totalMinutes: Int, lastSeenMinutes: Int?, rollover: Boolean, hasSnapshot: Boolean): Int {
         if (totalMinutes <= 0) return 0
         if (!hasSnapshot) return 0
-        // A new bucket is all usage since the rollover, so the whole total is new. The cost is that the
-        // last upload before a rollover loses the tail of the previous bucket for apps the event stream
-        // missed — one window a day, on the under-counting side, which is the side to be wrong on.
-        if (!sameBucket) return totalMinutes
+        if (rollover) return totalMinutes
         return deltaMinutes(totalMinutes, lastSeenMinutes)
     }
 }
