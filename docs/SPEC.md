@@ -50,7 +50,12 @@ currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/
 
 - API paths must match the route TODOs below exactly.
 - WebSocket events use shape `{ type, payload, ts }` published to `family:${familyId}:events`. The
-  gateway sends `{ type: "ready", familyId, ts }` as the first frame on every socket, after it has
+  event types are `alert`, `location`, `live_activity` and `consent_revoked` (a client ignores an
+  unknown type). A `location` event carries `{ childId, ts }` and **no
+  coordinates**: it only tells an open screen that a ping was stored, and the screen refetches the
+  position through the authorised `GET /v1/location/:childId/latest`, so coordinates stay only in
+  `LocationPing` (#242). `consent_revoked` carries `{ childId, revokedBy, revokedAt, devicesNotified }`.
+  The gateway sends `{ type: "ready", familyId, ts }` as the first frame on every socket, after it has
   registered the socket for the family; no event frame precedes it (TR-05). Clients wait for it
   before treating the stream as live (e.g. to end a reconnect spinner).
 - Agent internal calls are signed v2 (ADR-0014): `X-FamilyShield-Timestamp` (unix s),

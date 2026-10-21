@@ -11,6 +11,14 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — an open map moves when a ping arrives, and a revoked consent refreshes (#253)
+- `POST /v1/location/ping` now publishes one `location` event per upload carrying only
+  `{ childId, ts }`, so a parent who keeps the map open sees the new position instead of the one from
+  when the screen opened; coordinates stay off the Redis bus and the app refetches through the
+  authorised `GET /v1/location/:childId/latest` (#242). The app also maps `consent_revoked` to a
+  family-overview and location refresh, so another parent's open app stops showing a revoked child as
+  consented. Both publishes are best-effort: a Redis failure never fails a stored upload.
+
 ### Parent app — a switch that promised a behaviour nobody implemented is gone (#245)
 - The create-geofence dialog offered **"Apply school routine when here"** and stored `routineId`.
   Nothing carried fence state to the agent — its school rule is time-only — so arriving at the fence
