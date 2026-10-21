@@ -237,6 +237,36 @@ class CommsGrantWiringTest {
         assertTrue("the stored watermark is clamped to now", logger.contains("CommsWatermarkPolicy.nextWatermark(newest, now)"))
     }
 
+    /**
+     * #264 F1: a future-dated text is imported once and remembered, and the set is pruned as the
+     * watermark passes. The pure rule is [CommsFutureSmsPolicyTest]; this pins that the harvest uses it.
+     */
+    @Test
+    fun `a future-dated text is imported once and remembered, not skipped until its date arrives`() {
+        val sms = logger.substringAfter("private suspend fun harvestSms()")
+        assertTrue("the row id is selected, because an id alone is reused", sms.contains("Telephony.Sms._ID,"))
+        assertTrue("the identity is recorded when the row is imported", sms.contains("CommsFutureSmsPolicy.entry("))
+        assertTrue("and consulted before importing again", sms.contains("CommsFutureSmsPolicy.isTracked("))
+        assertTrue("entries the watermark has passed are dropped", sms.contains("CommsFutureSmsPolicy.prune("))
+        assertTrue("the set is bounded", sms.contains("CommsFutureSmsPolicy.remember("))
+        assertTrue("and persisted after the rows are queued", sms.contains("settings.setFutureSmsSeen(futureSeen)"))
+        assertTrue("the watermark still does not move to a future date", sms.contains("if (CommsWatermarkPolicy.isFutureRow(ts, now))"))
+        assertFalse(
+            "the old behaviour was to skip the row entirely",
+            sms.contains("if (CommsWatermarkPolicy.isFutureRow(ts, now)) continue"),
+        )
+        // #264 review D1: the set is consulted in the normal branch too, or the row is imported again a
+        // year later when its date arrives.
+        assertTrue(
+            "a tracked row is skipped once its date is no longer in the future",
+            sms.contains("newest = maxOf(newest, ts)\n") && sms.contains("if (tracked) continue"),
+        )
+        // #264 review D2: an id floor separates "arrived after the window opened" from "was already there".
+        assertTrue("a future row above the floor is imported", sms.contains("CommsFutureSmsPolicy.shouldImportFuture(rowId, smsIdFloor)"))
+        assertTrue("the floor is resolved when unread", sms.contains("smsIdFloor = newestSmsId()"))
+        assertTrue("and recorded where the SMS window opens", logger.contains("KEY_SMS_ID_FLOOR, newestSmsId()"))
+    }
+
     @Test
     fun `a comms row is uploaded with its own time, not the flush time`() {
         assertTrue(

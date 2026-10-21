@@ -293,6 +293,27 @@ class AgentSettings @Inject constructor(
     }
 
     /**
+     * Issue #264 (F1): the future-dated texts already imported, so a row the clock ran ahead on is
+     * uploaded once instead of on every harvest until its date arrives.
+     *
+     * Stored as separate preferences values separated by `\u0000` rather than a Room table: the set is
+     * small (bounded by [CommsFutureSmsPolicy.MAX_TRACKED]), it is only read and written inside the
+     * comms mutex, and a schema change for it would migrate a table that carries nothing else. The
+     * entries are `date|id|addressDigest` — never the number itself.
+     */
+    suspend fun futureSmsSeen(): Set<String> =
+        read(KEY_FUTURE_SMS_SEEN)
+            ?.split('\u0000')
+            ?.filter { it.isNotBlank() }
+            ?.toSet()
+            ?: emptySet()
+
+    /** Replaces the future-dated-text set; [CommsFutureSmsPolicy] decides what it may contain. */
+    suspend fun setFutureSmsSeen(entries: Set<String>) {
+        store.edit { it[KEY_FUTURE_SMS_SEEN] = entries.joinToString("\u0000") }
+    }
+
+    /**
      * Issue #225: the last observation of whether the OSRA accessibility service was effectively
      * enabled, or null when it has never been observed. The tamper alert is raised only on a
      * recorded true -> false edge, so a fresh install that has not granted accessibility yet stays
@@ -367,5 +388,7 @@ class AgentSettings @Inject constructor(
         // Roadmap 3.4: change detection for the installed-app inventory upload.
         private val KEY_INSTALLED_APPS_HASH = stringPreferencesKey("installed_apps_hash")
         private val KEY_INSTALLED_APPS_REPORTED_AT = stringPreferencesKey("installed_apps_reported_at")
+        // Issue #264 (F1): future-dated texts already imported (`\u0000`-separated `date|id|digest`).
+        private val KEY_FUTURE_SMS_SEEN = stringPreferencesKey("comms_sms_future_seen")
     }
 }
