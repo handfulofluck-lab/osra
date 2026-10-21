@@ -79,6 +79,31 @@ class UsageReporter @Inject constructor(
         scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts)) }
     }
 
+    /**
+     * Records that the agent's own window is in front at [ts] (issue #284).
+     *
+     * `AccessibilityMonitorService` drops our own package on purpose — deciding from it is how the
+     * overlay ended up over the launcher (#165) — so before this nothing closed the blocked app's
+     * interval. The next recorded event charged the whole stay on "This app is blocked by your parent"
+     * to the app behind it, capped at 5 min per gap, in both counters a parent sees: the daily limits
+     * and the screen-time report. Measured on the Flip4: 103 s on a bedtime screen charged My Files
+     * 103 s, and a 1-minute limit fired 0.9 s after the app was opened, on minutes it never had.
+     *
+     * [lastPkg] and the unlock counter are deliberately untouched: the lock overlay's "what is open
+     * now" and the live-activity payload must keep naming the app behind the overlay. Only the
+     * accounting learns that the blocked app has stopped being used.
+     */
+    fun recordOwnWindow(ts: Long) {
+        // Same gate as [recordForeground]: a withdrawn window is not collected, and the counters are
+        // not advanced while paused (ADR-0008 §3, #266 review D1).
+        if (consent.isPaused()) return
+        rules.onForegroundEnded(ts)
+        val own = context.packageName
+        // The event is what closes the gap in the upload path: without a row there, the blocked app's
+        // next event would still own the whole stay in `computePerAppMinutes`.
+        scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = own, timestamp = ts)) }
+    }
+
     /** Aggregates the usage since the last successful run and uploads the delta; no-op without a device id. */
     suspend fun aggregateAndUpload() {
         val deviceId = settings.deviceId() ?: return
@@ -113,7 +138,7 @@ class UsageReporter @Inject constructor(
         val windowEnd = System.currentTimeMillis()
         val events = dao.since(watermark)
 
-        val window = computePerAppMinutes(events, windowEnd, settings.usageRemainderMs())
+        val window = computePerAppMinutes(events, windowEnd, ownPackage = context.packageName, carriedMs = settings.usageRemainderMs())
         val perApp = window.minutes.toMutableMap()
         backfillFromUsageStats(perApp, window.eventPackages)
 
@@ -294,7 +319,10 @@ class UsageReporter @Inject constructor(
             // backfill adding Android's increase on top of it reported 1.5x the real time for an app
             // used in short bursts. A package with only a carried remainder is not in the set: the
             // previous upload's snapshot covered that time, so Android's increase since is real.
-            if (pkg in eventPackages || perApp.containsKey(pkg)) continue
+            // #284: our own package is skipped by name, not by that set. Android counts the block
+            // screen as foreground time like any activity, and the parent's report is about the
+            // child's apps — its total is still recorded below, so the running counter stays right.
+            if (pkg == context.packageName || pkg in eventPackages || perApp.containsKey(pkg)) continue
             val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }

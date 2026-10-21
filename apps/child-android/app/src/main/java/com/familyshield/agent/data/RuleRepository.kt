@@ -145,6 +145,16 @@ class RuleRepository @Inject constructor(
         appScope.launch { persistCounters() }
     }
 
+    /**
+     * Ends the open usage interval because a window the accessibility stream does not record — our own
+     * block screen — is now in front (#284). Persisted like any other transition: the app behind the
+     * overlay must not be charged the stay, including after a restart.
+     */
+    fun onForegroundEnded(timestampMs: Long) {
+        counters.onForegroundEnded(timestampMs)
+        appScope.launch { persistCounters() }
+    }
+
     /** Clears the daily counters when the local date has changed (no-op otherwise). */
     suspend fun resetIfNewDay() {
         counters.resetIfNewDay()
@@ -171,7 +181,11 @@ class RuleRepository @Inject constructor(
             when (planUsageStartup(savedMs, savedDate, today, events.size).source) {
                 UsageStartupSource.SNAPSHOT -> counters.restore(savedMs ?: emptyMap(), today)
                 UsageStartupSource.ROOM_EVENTS ->
-                    counters.rebuildFromEvents(events.map { it.packageId to it.timestamp }, today)
+                    counters.rebuildFromEvents(
+                        events.map { it.packageId to it.timestamp },
+                        today,
+                        ownPackage = EssentialPackages.OWN_PACKAGE,
+                    )
                 UsageStartupSource.EMPTY -> counters.resetIfNewDay(today)
             }
         } finally {

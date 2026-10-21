@@ -61,6 +61,30 @@ class UsageReporterConsentWiringTest {
     }
 
     @Test
+    fun `our own window ends the interval without moving what is open`() {
+        // Issue #284: the block screen is a window this stream never records, so the blocked app's
+        // interval stayed open. The seam is the source text, not a fake DAO: UsageReporter needs an
+        // Android Context and the concrete Room database, so this class cannot be instantiated here
+        // (the reason this file exists at all). What a green run means: the interval is ended, the
+        // gap-closing event is written, and neither `lastPkg` nor the unlock count is touched -- the
+        // lock overlay's "what is open now" must keep naming the app behind the overlay.
+        val body = reporter.substringAfter("fun recordOwnWindow(").substringBefore("suspend fun aggregateAndUpload")
+        val pauseCheck = body.indexOf("if (consent.isPaused()) return")
+        val end = body.indexOf("rules.onForegroundEnded")
+        val insert = body.indexOf("db.usageEventDao().insert")
+        assertTrue("nothing is collected while consent is withdrawn", pauseCheck >= 0)
+        assertTrue("the daily counter is not advanced before the pause check", pauseCheck < end)
+        assertTrue("and neither is the telemetry event", pauseCheck < insert)
+        assertTrue("the gap closes for the counters", end >= 0)
+        assertTrue(
+            "the event names our own package, so the upload path sees the window too",
+            body.contains("UsageEventEntity(packageId = own, timestamp = ts)"),
+        )
+        assertFalse("the app in front is still the blocked app", body.contains("lastPkg ="))
+        assertFalse("waiting on a block screen is not a new session", body.contains("unlockCounter"))
+    }
+
+    @Test
     fun `a re-grant restarts the window at the moment the phone learned consent came back`() {
         assertTrue(
             "the reset decision is reused, not copied",
