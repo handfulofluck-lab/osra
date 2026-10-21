@@ -189,14 +189,6 @@ class CommsLogger @Inject constructor(
     }
 
     /**
-     * Issue #229: a consent withdrawal resets the collection window. A marker is stored while consent
-     * is paused; the first look after a re-grant clears both watermarks and grant times, so the next
-     * harvest starts at the re-grant time and rows from the paused window are never read. The marker
-     * survives a process restart, so a withdrawal observed before the process died still resets the
-     * window. A withdrawal and re-grant that both happen while no process is alive cannot be seen by
-     * the device; [CommsWatermarkPolicy.startFrom] then still floors the read at the stored grant time.
-     */
-    /**
      * Restarts the comms watermarks when a consent withdrawal has been observed (issue #257 review).
      *
      * The marker used to be written by *this* function, so a pause that began and ended between two

@@ -99,11 +99,14 @@ stored `*_since` floor keeps the *old* grant time, so rows from the paused windo
 afterwards. Closing that needs a consent window the server records and the device asks for, which is
 a larger contract than this amendment; it is recorded here rather than left in a code comment.
 
-**Measured 2026-10-21 (Claude's restart row on #257) — the limit is narrower than it reads.** With the
-agent process killed for the whole window and then restarted, the server delivers `consent_revoked` and
-then `consent_granted` to the reconnecting client within 3 ms, in that order, so the new process flips
-`ConsentState` twice before its first harvest runs and the epoch moves anyway. The persisted epoch is
-therefore a *second* line of defence, not the only one: it covers the case where the socket delivers
-neither frame (the server is unreachable at reconnect and the client has no snapshot yet). What remains
-open is only that case — a device that never sees either frame keeps the old floor and can still read the
-paused window.
+**Observed 2026-10-21 (Claude's restart row on #257): the limit is narrower than it reads.** The running
+agent saw the withdrawal; the process was then killed and restarted while consent was still withdrawn,
+and consent was given back afterwards. A paused agent's command poll is answered 428 and drains nothing,
+so `consent_revoked` and `consent_granted` both stayed queued and arrived together on the first successful
+poll after the re-grant: the new process flipped `ConsentState` paused and active again within 3 ms,
+before its first harvest, so the epoch moved anyway. The same delivery is expected when the process is
+dead for the whole window, because both commands stay queued until the first successful poll, but that
+case was not measured. The persisted epoch is therefore a second line of defence. What remains open is a
+device that makes no successful poll between the withdrawal and the re-grant and comes back more than 7
+days after the withdrawal: `consent_revoked` has expired by then (`COMMAND_TTL_SECONDS`), only
+`consent_granted` arrives, the state never flips, and the old floor can read the paused window.

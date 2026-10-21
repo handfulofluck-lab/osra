@@ -231,7 +231,6 @@ class AgentSettings @Inject constructor(
     /** Synchronous snapshot of pairing status (device token present). */
     fun isPairedSync(): Boolean = !deviceTokenSync().isNullOrBlank()
 
-    /** Persists the consent-pause flag (ADR-0008 §3) so a reboot while paused stays paused. */
     /**
      * Persists the pause flag with the withdrawal counter and the re-grant time (issue #257 review), so
      * a restart keeps the same epoch and the comms restart point survives a reboot.
@@ -249,10 +248,6 @@ class AgentSettings @Inject constructor(
 
     /** When consent was last re-granted, for [ConsentState]'s in-memory copy. */
     fun consentResumedAtSync(): Long = runBlocking { read(KEY_CONSENT_RESUMED_AT) }?.toLongOrNull() ?: 0L
-
-    suspend fun saveConsentPaused(paused: Boolean) {
-        store.edit { it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0" }
-    }
 
     /**
      * Issue #221 (D1 follow-up): the location grant the server was last told about. The expedited
