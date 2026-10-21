@@ -14,6 +14,7 @@ import random
 from typing import Dict, List
 
 from eval.banks import HARMFUL_CATEGORIES, SLOT_RE, Bank, load_banks
+from eval.split import split_of
 
 DEFAULT_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset.jsonl")
 
@@ -101,6 +102,7 @@ def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
                 "kind": "synthetic",
                 "bank": category,
                 "template_index": template_index,
+                "split": split_of(category, template_index),
                 "seed": seed,
             },
         })
@@ -122,6 +124,7 @@ def _rows(category: str, lang: str, texts: List[str], labels: List[str],
                 "kind": "synthetic",
                 "bank": bank,
                 "template_index": index,
+                "split": split_of(bank, index),
                 "seed": seed,
             },
         })

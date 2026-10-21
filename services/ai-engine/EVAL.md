@@ -92,8 +92,41 @@ Known limits, stated rather than discovered later:
   `child_age` without using it, so the set cannot yet show an age-dependent miss.
 - **The set is 74 % harmful while real messages are mostly safe**, so a precision number measured
   here will look better than what a parent sees. The safe side must grow with the positives.
-- **No dev/test split yet.** Before 4.1 tunes a prompt, a `split: dev|test` field per template is
-  needed, or the published set becomes the tuning set.
+- **The published numbers are not held out, even now that a split exists.** The dev/test split below
+  is what makes a held-out estimate possible; it does not retroactively hold out the tables above or
+  the hosted-scorer table. Those were measured on every row, including the ones the prompt was written
+  against.
+
+### The dev/test split
+
+Every generated row carries `provenance.split` — `dev` or `test`. The split is **per template, never
+per row**: all rows from one template land on the same side. Five rows share a template's wording, so a
+model that recognises one fill very likely recognises its siblings; a per-row draw would put a
+paraphrase of a test template into dev and the "held-out" number would be contaminated by exactly the
+overlap the five-row cap exists to limit. `eval/split.py` hashes `f"{bank}:{template_index}"` with
+sha256 and takes a bit of the digest. A hashed side rather than an alternating one matters because
+alternation is positional: inserting one template in the middle of a bank flips every later template's
+side, silently moving rows already measured from test into dev with no diff that shows it happened.
+The hash makes a template's side depend only on its identity, and `tests/test_eval_harness.py` pins
+three values so a change to the hash input is a failing test, not a quiet re-split.
+
+Counts in the committed set (2026-10-21):
+
+| split | rows | EN | AR |
+|---|---|---|---|
+| `dev` | 665 | 338 | 327 |
+| `test` | 514 | 250 | 264 |
+| `all` | 1,179 | 588 | 591 |
+
+Every bank, and both languages, has both sides non-empty — a bank that was 100 % dev would make its
+category unmeasurable in one direction.
+
+- **The tables in this file are `all` rows.** The split is a provenance field, not a filter applied to
+  them: `--scorer regex` above and the hosted-scorer table below both cover all 1,179 rows, and their
+  numbers are unchanged by this work.
+- **The held-out estimate is `python -m eval.run_eval --scorer deepseek --split test`.** It has **not
+  been run yet**; nothing in this file was measured on `test` alone. Until it is, the tables above
+  remain the only measurements, and they are not held out.
 
 ## Generated table
 
@@ -145,17 +178,18 @@ python -m eval.run_eval --scorer deepseek --limit-per-category 5   # a cheap smo
 
 Cost is per row and cached by `(model, text)` in `eval/.deepseek-cache.json` (gitignored), so re-running
 an unchanged set is free. The manual workflow `.github/workflows/ai-eval-deepseek.yml` does the same on
-CI; it is `workflow_dispatch` rather than push-triggered because every run bills the dataset and the
-answer only changes when the banks, the prompt or the model do. **GitHub will not dispatch a workflow
-that is not on the default branch**, so the first run happens after this lands.
+CI, with a `split` input (`all` / `dev` / `test`); it is `workflow_dispatch` rather than push-triggered
+because every run bills the dataset and the answer only changes when the banks, the prompt or the model
+do. **GitHub will not dispatch a workflow that is not on the default branch**, so the first run happens
+after this lands.
 
 **Measured 2026-10-21.** The first billed run — `ai-eval-deepseek` workflow `39628473359` on `main` —
 scored all 1,179 rows with `deepseek-chat` and no prompt tuning. The prompt was not tuned against any
 run's results and quotes no rows, but it is **not held out**: the same author wrote the prompt and the
 templates, and the prompt's category descriptions follow the templates' themes — its `self_harm` line,
 "hopelessness, goodbye messages, concealing injury, being a burden", is close to the design note at the
-top of `eval/banks/self_harm.py`. The `dev`/`test` split below is what would make this a held-out
-estimate:
+top of `eval/banks/self_harm.py`. The `dev`/`test` split (above, under *What the set is, and is not*)
+is what makes a held-out estimate possible; **this table is not it**:
 
 | | EN | AR |
 |---|---|---|
@@ -178,8 +212,8 @@ categories**.
 **What this does not say.** Four limits, in order of how much they could move the number:
 
 - **The rows come from template families.** Five rows share a template's wording, so a model that
-  recognises one may recognise its siblings. The `dev`/`test` split noted below is what would turn this
-  into a population estimate rather than a measure of this corpus.
+  recognises one may recognise its siblings. The `dev`/`test` split noted above is what turns this
+  into a population estimate rather than a measure of this corpus — once `--split test` is run.
 - **`cyberbullying` precision is poor (0.36 / 0.38)** because its rows are also flagged with the category
   they overlap. The recall of 1.00 is real; the precision is the cost of a coarse taxonomy.
 - **One model, one run, one threshold.** No variance estimate. A second model and a repeated run would
@@ -192,7 +226,7 @@ categories**.
 
 ## Reproducing a row
 
-Each row carries `provenance = {kind, bank, template_index, seed}`, so a surprising item can be
+Each row carries `provenance = {kind, bank, template_index, split, seed}`, so a surprising item can be
 traced to the exact template and the seed that filled its slots:
 
 ```bash

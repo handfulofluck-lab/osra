@@ -14,7 +14,7 @@ metrics cannot attribute, and `tests/test_eval_harness.py` fails on it.
   "text": "أحس الكل أحسن بدوني",
   "labels": ["self_harm"],
   "hard_negative_of": null,
-  "provenance": {"kind": "synthetic", "bank": "self_harm", "template_index": 3, "seed": 1234}
+  "provenance": {"kind": "synthetic", "bank": "self_harm", "template_index": 3, "split": "test", "seed": 1234}
 }
 ```
 
@@ -26,7 +26,7 @@ metrics cannot attribute, and `tests/test_eval_harness.py` fails on it.
 | `text` | string | The message as a child would type it. |
 | `labels` | `[string]` | Exactly one label: the harmful category, or `"safe"`. |
 | `hard_negative_of` | category \| `null` | Set when the text is benign but reuses that category's vocabulary. `null` for positives and for generic safe text. |
-| `provenance` | object | Where it came from: `kind` (`synthetic`, later `public`/`reported`), `bank`, `template_index` (index into that bank's `POSITIVES_<LANG>`), and the generator `seed`. |
+| `provenance` | object | Where it came from: `kind` (`synthetic`, later `public`/`reported`), `bank`, `template_index` (index into that bank's `POSITIVES_<LANG>`), `split` (`dev` or `test`, derived by `eval/split.py::split_of` from `bank` and `template_index` — never drawn per row), and the generator `seed`. |
 
 ## Labels
 
@@ -77,7 +77,9 @@ separable:
    in `provenance.source` and licence-checked), and `reported` (a parent-reported miss, with consent
    and no identifying data).
 2. A non-synthetic row carries `provenance.source` (corpus name or "parent report, date") and does not
-   carry `template_index`/`seed`.
+   carry `template_index`/`seed`/`split`: the split is a property of a template, so it belongs to the
+   synthetic set, and a separate source file is scored whole with `--dataset` (the default `--split
+   all`).
 3. Rows from a new source go in a separate file (`eval/public/<corpus>.jsonl`), and
    `python -m eval.run_eval --dataset <file>` scores it alone, so the published numbers keep naming
    the dataset they came from.

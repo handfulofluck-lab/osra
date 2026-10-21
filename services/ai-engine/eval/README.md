@@ -13,6 +13,7 @@ python -m eval.banks                    # validate every bank (the node CI job r
 python -m eval.generate                 # write eval/dataset.jsonl from the banks
 python -m eval.generate --check         # fail if the committed set is stale
 python -m eval.run_eval                 # score with the rules layer, print the table
+python -m eval.run_eval --split test    # score the held-out side of the template split
 python -m eval.run_eval --json out.json # same, machine-readable
 python -m eval.run_eval --write-md EVAL.md   # refresh the table inside EVAL.md
 python -m eval.run_eval --fail-under-recall 0.85 --fail-under-precision 0.6
@@ -38,6 +39,11 @@ committed, so a reviewer reads the pattern instead of 2,000 lines, and a row tra
 filling: one template filled 65 times is one item, not 65, and a recall interval computed from it is a
 fiction. The set grows through **new templates or new sources**, which is why plan 4.2's 2,000 +
 2,000 is an authoring target rather than a configuration value (Claude's ruling on #262).
+
+**The split is per template, never per row.** `split_of(bank, template_index)` in `split.py` hashes the
+template's identity to `dev` or `test`, and every row it generates carries that side in
+`provenance.split`; `run_eval --split test` is the held-out estimate. A per-row draw would leave
+paraphrases of a test template in dev, so the five rows that share a template always stay together.
 
 **A positive must be labelable from the message alone.** Naming the substance or the act is required;
 naming the *method* is forbidden. "We're vaping in the toilets at break, watch the door" is a

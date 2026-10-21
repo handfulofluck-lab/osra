@@ -16,6 +16,7 @@ import pytest
 import model
 from eval import generate, run_eval
 from eval.banks import HARMFUL_CATEGORIES, SLOT_RE, load_banks, validate_module
+from eval.split import SPLITS, split_of
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET = os.path.join(ROOT, "eval", "dataset.jsonl")
@@ -150,6 +151,63 @@ def test_dataset_meets_the_interim_language_floor():
 def test_committed_dataset_matches_the_banks(tmp_path, capsys):
     """A stale dataset under a fresh bank is a number nobody can reproduce."""
     assert generate.main(["--check"]) == 0
+
+
+def _dataset_rows():
+    with open(DATASET, encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def test_split_of_is_stable():
+    """The hash input *is* the split's identity: change it and the set is re-cut, so fail here first."""
+    assert split_of("self_harm", 0) == "test"
+    assert split_of("cyberbullying", 3) == "dev"
+    assert split_of("violence", 7) == "dev"
+
+
+def test_split_is_carried_by_generated_rows():
+    rows = generate.expand(["hi {n}", "bye {n}"], {"n": ["a", "b", "c"]}, 4, random.Random(2),
+                           "x", "en", 2)
+    for row in rows:
+        assert row["provenance"]["split"] == split_of("x", row["provenance"]["template_index"])
+
+
+def test_every_bank_and_language_has_both_sides():
+    """A bank that is all dev would make its category unmeasurable on the held-out side."""
+    by_bank, by_lang = {}, {}
+    for row in _dataset_rows():
+        prov = row["provenance"]
+        by_bank.setdefault(prov["bank"], set()).add(prov["split"])
+        by_lang.setdefault(row["lang"], set()).add(prov["split"])
+    for bank, sides in by_bank.items():
+        assert sides == set(SPLITS), f"{bank}: {sorted(sides)}"
+    for lang, sides in by_lang.items():
+        assert sides == set(SPLITS), f"{lang}: {sorted(sides)}"
+
+
+def test_committed_dataset_agrees_with_the_split_rule():
+    """The regression that matters: a dataset and a rule that drift apart make a held-out number a lie."""
+    for row in _dataset_rows():
+        prov = row["provenance"]
+        assert prov["split"] == split_of(prov["bank"], prov["template_index"]), row["id"]
+
+
+def test_rows_from_one_template_share_one_side():
+    """The anti-leak invariant: a paraphrase of a test template must not sit in dev."""
+    sides = {}
+    for row in _dataset_rows():
+        prov = row["provenance"]
+        sides.setdefault((prov["bank"], prov["template_index"]), set()).add(prov["split"])
+    leaked = {key: sorted(value) for key, value in sides.items() if len(value) > 1}
+    assert not leaked, leaked
+
+
+def test_split_filter_selects_only_that_side():
+    rows = _dataset_rows()
+    test_rows = run_eval.filter_rows(rows, "test")
+    assert test_rows and all(row["provenance"]["split"] == "test" for row in test_rows)
+    assert len(test_rows) < len(rows)
+    assert run_eval.filter_rows(rows, "all") == rows
 
 
 def _toy_dataset():
