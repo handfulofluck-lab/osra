@@ -14,24 +14,42 @@ environment where it was written — see `docs/QA/` for the verification state.
 ### API — a password-reset link works once, and a failed confirm can still be retried (#167)
 - `POST /v1/auth/reset/confirm` now consumes the link before doing any work: `/reset/request` mints
   the token with a `jti` and stores `reset:<jti>` → parent in Redis (`EX 900`), and the confirm
-  `GETDEL`s that record and answers `401 invalid_or_expired_token` when it is gone. A link replayed
+  consumes that record with the **Lua GET+DEL** script the pairing-code route already uses
+  (`devices.ts:217`) and answers `401 invalid_or_expired_token` when it is gone. A link replayed
   inside its 15-minute window no longer sets a second password — before this, whoever saw the mail
-  could take the account back after the parent had used it.
+  could take the account back after the parent had used it. Lua, not `GETDEL`: the shared test server
+  runs Redis 5.0.14, where `GETDEL` (6.2+) is `ERR unknown command`, so the first draft of this
+  change made every reset fail there. The shared `MockRedis.getdel` now throws that same error, so a
+  future `GETDEL` fails the suite instead of the server.
 - A second `/reset/request` supersedes the first: `reset:latest:<parentId>` names the only honoured
   `jti`, so the older link answers 401 even though it has not expired.
+- `/reset/request` is rate-limited per address by its own 60-second cooldown:
+  `SET reset:cooldown:<sha256(lowercased email)> 1 EX 60 NX`, claimed **before** the account lookup.
+  Inside the window the answer is the same `{ok:true}` with no new link and no email — so a stranger
+  can no longer keep superseding a parent's newest link or flood their inbox — and a Redis outage on
+  that write answers `503 reset_unavailable` for a known and an unknown address alike, because the
+  lookup is never reached.
 - The #162 retry contract is kept. If hashing, the password write or the session revocation fails
   after the consume, `reset:<jti>` is restored with the token's **remaining** lifetime (`exp − now`),
   so the client's retry with the same link succeeds; only a `200` has both stored the new password
-  and revoked every refresh token and access token. The reason for the restore is in a comment at
-  the route, so it is not deleted as dead code.
+  and revoked every refresh token and access token. Every post-consume failure replies explicitly —
+  `503 reset_unavailable` — rather than rethrowing, because `server.ts`'s global handler maps anything
+  Prisma-shaped to `400 invalid_input`, which no client retries.
+- A parent that no longer exists is a `404 account_not_found`, decided from the update's
+  `PrismaClientKnownRequestError` code `P2025` alone. The previous draft re-read the parent and used
+  `.catch(() => null)`, which turned "cannot reach the database" into "account gone", deleted the
+  link and broke the retry — the API-8 bug this change exists to fix, in its most common real cause.
 - Tokens issued before this change have no `jti` and are refused at confirm (one forced re-login),
   the same migration cost ADR-0025 accepted for legacy refresh records. ADR-0025 carries the
   amendment.
-- Author-run here: `services/api` `pnpm test` 440/440 and `pnpm run build` clean; the four new
-  tests were shown red on the pre-change route (replay 200, concurrent pair 200/200, older token 200,
-  no record restored after a failed revocation). Live `qa-probe`/`e2e` were **not** run in this
-  checkout; the probe's G19 expectation was updated because a hand-signed reset token (no store
-  record) is now refused at confirm.
+- The global error handler moved to `src/lib/errorHandler.ts` (`registerErrorHandler`), still called
+  by `server.ts` and now also by the test harness's `buildApp`, so a test sees the status production
+  sends.
+- Author-run here: `services/api` `pnpm test` 449/449 and `pnpm run build` clean; the new tests were
+  shown red on the reverted branches (a Prisma-shaped update failure rethrown → `400`; the re-read
+  during an outage → `404`). Live `qa-probe`/`e2e` were **not** run in this checkout, and the Lua
+  consume is therefore **not** proven against a real Redis 5 here — the probe's G19 expectation was
+  updated because a hand-signed reset token (no store record) is now refused at confirm.
 
 ### Parent app — an open map moves when a ping arrives, and a revoked consent refreshes (#253)
 - `POST /v1/location/ping` now publishes one `location` event per upload carrying only
