@@ -10,6 +10,12 @@ review). The other tells a detector can learn are all here and all tied to the
 gap: flattery ("you're so mature for 13"), isolation from friends, a gift with
 strings, a meeting alone, and a photo "just for me".
 
+The second author pass adds the slower moves of the same gap: a gift that turns
+into a debt, a game friend who wants the chat moved out of the server into DMs,
+an adult who "understands" better than the parents, money or a new phone, a fake
+profile age, a photo kept private from the family, the second meeting after a
+first one nobody saw, and a modelling approach with a scout attached.
+
 Everything stays at the pattern level. There is no sexual content, no method and
 no meeting instructions beyond "alone" and "quiet": a detector that only fires
 on explicit vocabulary misses the months of grooming that come before it.
@@ -50,6 +56,26 @@ POSITIVES_EN = [
     "{target_f} is meeting a guy from the game who's {age}, he told her not to tell her mum",
     "a man who's {age} added {target_m} from the game and told him to delete the chat",
     "a man who's {age} added {target_f} from the game and told her to delete the chat",
+    "i bought you {gift}, {target}, it wasn't cheap, so you owe me and i don't want to hear no, i'm {age}",
+    "the guy from the game moved his chat with {target_m} off the server into DMs, he's {age} and told him not to tell the clan",
+    "the guy from the game moved his chat with {target_f} off the server into DMs, he's {age} and told her not to tell the clan",
+    "the game chat is too public, {target}, i'd rather we talked in DMs, the mods ask too many questions, i'm {age}",
+    "your mum doesn't understand you like i do, {target}, you can tell me anything, i'm {age} and i won't judge you",
+    "{target_m} says his mum never listens and that the man from the game who's {age} is the only one who gets him",
+    "{target_f} says her mum never listens and that the man from the game who's {age} is the only one who gets her",
+    "keep the photo i sent you to yourself, {target}, don't show {friend} and don't leave it where your mum will see, i'm {age}",
+    "a man who's {age} sent {target_m} a photo and told him to keep it private, even from his mum",
+    "a man who's {age} sent {target_f} a photo and told her to keep it private, even from her mum",
+    "i'll send you {money} every week, {target}, your mum doesn't need to know where it comes from, i'm {age}",
+    "you want the new phone, don't you, {target}, i'll buy it, your mum can't afford it but i can, i'm {age}",
+    "{target}, drop {friend}, she's jealous of us and she'll ruin it, i'm {age} and you're 13, remember",
+    "the guy from the game who's {age} told {target_m} to drop {friend}, he said {friend} was getting in the way",
+    "the guy from the game who's {age} told {target_f} to drop {friend}, he said {friend} was getting in the way",
+    "i told you i was 17, {target}, really i'm {age}, but we already talk every night so it doesn't matter, right",
+    "last time was fine, {target}, nobody saw us, so we can meet again {time}, i'm {age}",
+    "you could model, {target}, you've got the look, i'm {age} and i know the right people, just keep it off your mum's radar for now",
+    "{target_m} says a scout who's {age} has been messaging him about modelling and told him not to tell his mum",
+    "{target_f} says a scout who's {age} has been messaging her about modelling and told her not to tell her mum",
 ]
 
 POSITIVES_AR = [
@@ -76,6 +102,26 @@ POSITIVES_AR = [
     "شاب من اللعبة عمره {age} يريد أن يقابلني ويطلب مني ألا أخبر أمي",
     "رجل أكبر مني من المول أخذ رقمي وطلب مني ألا أخبر أمي عنه",
     "شخص من اللعبة عمره {age} يريد أن يراني عندما تكون أمي خارج البيت",
+    "اشتريت لك {gift} يا {target_m}، مو رخيص، لا ترفض، صار عليك دين، عمري {age}",
+    "اشتريت لك {gift} يا {target_f}، مو رخيص، لا ترفضي، صار عليك دين، عمري {age}",
+    "الشاب اللي في اللعبة نقل محادثته مع {target_m} من السيرفر إلى الخاص، عمره {age} وقال له ألا يخبر الشلة",
+    "الشاب اللي في اللعبة نقل محادثته مع {target_f} من السيرفر إلى الخاص، عمره {age} وقال لها ألا تخبر الشلة",
+    "أمك ما تفهمك مثلي يا {target_m}، تقدر تقول لي أي شيء، عمري {age} وما أحكم عليك",
+    "أمك ما تفهمك مثلي يا {target_f}، تقدرين تقولي لي أي شيء، عمري {age} وما أحكم عليك",
+    "خلي الصورة اللي أرسلتها لك بيننا يا {target_m}، لا توريها {friend} ولا تتركها مكان تشوفه أمك، عمري {age}",
+    "خلي الصورة اللي أرسلتها لك بيننا يا {target_f}، لا توريها {friend} ولا تتركيها مكان تشوفه أمك، عمري {age}",
+    "بأرسل لك {money} كل أسبوع يا {target_m}، بس لا تخبر أمك من وين، عمري {age}",
+    "بأرسل لك {money} كل أسبوع يا {target_f}، بس لا تخبري أمك من وين، عمري {age}",
+    "تبي التلفون الجديد يا {target_m}؟ أنا أشتريه لك، أمك ما تقدر عليه، عمري {age}",
+    "تبين التلفون الجديد يا {target_f}؟ أنا أشتريه لك، أمك ما تقدر عليه، عمري {age}",
+    "{target_m}، اترك {friend}، إنها تغار منا وتخرب كل شيء، عمري {age} وعمرك ١٣",
+    "{target_f}، اتركي {friend}، إنها تغار منا وتخرب كل شيء، عمري {age} وعمرك ١٣",
+    "قلت لك عمري ١٧ يا {target_m}، الحقيقة عمري {age}، بس لا تخبر أحد، صرنا نتكلم كل ليلة فما يفرق",
+    "قلت لك عمري ١٧ يا {target_f}، الحقيقة عمري {age}، بس لا تخبري أحد، صرنا نتكلم كل ليلة فما يفرق",
+    "المرة الماضية كانت تمام يا {target_m}، محد شافنا، لا تخبر أحد، ونتقابل مرة ثانية {time}، عمري {age}",
+    "المرة الماضية كانت تمام يا {target_f}، محد شافنا، لا تخبري أحد، ونتقابل مرة ثانية {time}، عمري {age}",
+    "تقدر تكون عارض يا {target_m}، عندك الشكل، عمري {age} وأعرف ناس يوصلونك، بس لا تدري أمك",
+    "تقدرين تكونين عارضة يا {target_f}، عندك الشكل، عمري {age} وأعرف ناس يوصلونك، بس لا تدري أمك",
 ]
 
 SLOTS_EN = {
@@ -93,6 +139,8 @@ SLOTS_EN = {
               "at the end of the street"],
     "time": ["when your mum's out", "when your mum's at work", "after everyone's asleep",
              "at midnight", "late tonight", "when the house is empty"],
+    # The fill carries its own currency, so templates say "send you {money}", never "a {money}".
+    "money": ["20 pounds", "50 pounds", "100 pounds", "a hundred pounds", "two hundred pounds"],
 }
 
 SLOTS_AR = {
@@ -107,6 +155,7 @@ SLOTS_AR = {
               "عند بوابة المدرسة الخلفية", "في نهاية الشارع"],
     "time": ["عندما تكون أمك خارج البيت", "عندما تذهب أمك إلى العمل", "بعد أن ينام الجميع",
              "في منتصف الليل", "بعد المدرسة عندما يكون البيت فارغاً", "في وقت متأخر من الليل"],
+    "money": ["مئة ريال", "مئتي ريال", "خمس مئة ريال", "ألف ريال"],
 }
 
 # An adult asking a child for a photo of herself in her room is grooming *and* a
