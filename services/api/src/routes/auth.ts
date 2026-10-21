@@ -17,7 +17,7 @@ import {
   hashRecoveryCode,
   normaliseRecoveryCode,
 } from "../lib/mfaRecovery.js";
-import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, signParentToken } from "../lib/sessions.js";
+import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
 const RegisterSchema = z.object({
@@ -543,6 +543,33 @@ export async function authRoutes(app: FastifyInstance) {
     return { recoveryToken };
   });
 
+  // --- #167: a password-reset link is single-use ------------------------------------------------
+  // `reset:<jti>` is the record `GETDEL` consumes (the token's `jti` is its only identity);
+  // `reset:latest:<parentId>` names the one jti still honoured, so a second /reset/request kills the
+  // first. Both live 15 minutes, the token's own lifetime.
+  const RESET_TTL_SECONDS = 15 * 60;
+  const resetKey = (jti: string) => `reset:${jti}`;
+  const resetLatestKey = (parentId: string) => `reset:latest:${parentId}`;
+
+  /**
+   * Put a consumed `reset:<jti>` record back after a failure past the point of consumption.
+   *
+   * #162 made a 5xx from the counter bump retryable with the same token, and that is load-bearing:
+   * the client retries a failed reset instead of asking for a new link. Because the single-use
+   * consume runs *before* the work, the record must be restored here or the retry would answer 401.
+   * The TTL is the token's own remaining lifetime (`exp - now`), not a fresh 900 — a restored record
+   * must never outlive the signed token it stands for. If the token has already expired there is
+   * nothing to restore. Do not delete this as dead code.
+   */
+  const restoreResetToken = async (parentId: string, jti: string, exp: number | undefined, req: FastifyRequest): Promise<void> => {
+    if (typeof exp !== "number") return;
+    const remaining = exp - Math.floor(Date.now() / 1000);
+    if (remaining <= 0) return;
+    await getRedis().set(resetKey(jti), parentId, "EX", remaining).catch((err) => {
+      req.log.error({ err }, "[security] could not restore a consumed reset token; the client's retry will need a new link");
+    });
+  };
+
   /** Issue a 15-minute password-reset token (logged to console as the email stub). */
   // NOTE: email delivery is stubbed — production would send this token via a real email
   // provider; it is printed to the server log instead.
@@ -551,7 +578,14 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
     if (parent) {
-      const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset" }, { expiresIn: "15m" });
+      const jti = newJti();
+      const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset", jti }, { expiresIn: "15m" });
+      const redis = getRedis();
+      // Issuing a link that can never be redeemed is worse than a 5xx, so both writes are awaited
+      // before the email goes out. Superseding is the `latest` write alone: the older key stays until
+      // its TTL, but no confirm will honour it.
+      await redis.set(resetKey(jti), parent.id, "EX", RESET_TTL_SECONDS);
+      await redis.set(resetLatestKey(parent.id), jti, "EX", RESET_TTL_SECONDS);
       // Phase 2a: the live token goes only into the email (audit API-07: it used to be logged).
       const link = `${appPublicUrl()}/reset?token=${encodeURIComponent(token)}`;
       const result = await getEmailSender().send(passwordResetEmail(parent.email, link));
@@ -564,22 +598,67 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/reset/confirm", { config: RL }, async (req, reply) => {
     const parsed = z.object({ token: z.string().min(1), password: z.string().min(12) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    let payload: { sub: string; purpose?: string };
+    let payload: { sub: string; purpose?: string; jti?: string; exp?: number };
     try {
-      payload = app.jwt.verify<{ sub: string; purpose?: string }>(parsed.data.token);
+      payload = app.jwt.verify<{ sub: string; purpose?: string; jti?: string; exp?: number }>(parsed.data.token);
     } catch {
       return reply.code(401).send({ error: "invalid_or_expired_token" });
     }
-    if (payload.purpose !== "password_reset") return reply.code(401).send({ error: "invalid_or_expired_token" });
-    const passwordHash = await argon2.hash(parsed.data.password);
+    // A token minted before #167 has no `jti` and no store record: it is refused like a spent link,
+    // the same one-re-login migration cost ADR-0025 accepted for legacy refresh records.
+    if (payload.purpose !== "password_reset" || !payload.jti) {
+      return reply.code(401).send({ error: "invalid_or_expired_token" });
+    }
+    const redis = getRedis();
+    // Atomic single use, before the hash is computed: GETDEL returns the owner exactly once, so of
+    // two concurrent confirmations of the same link only one can proceed. A missing key is a spent,
+    // superseded or expired token.
+    let owner: string | null;
+    try {
+      owner = await redis.getdel(resetKey(payload.jti));
+    } catch (err) {
+      // Not a spent link but an unreachable store: report a 5xx, which the #162 retry contract
+      // already treats as transient, instead of telling the parent the link is dead.
+      req.log.error({ err }, "[security] reset-token store unreachable — refusing reset confirm");
+      throw err;
+    }
+    if (owner !== payload.sub) return reply.code(401).send({ error: "invalid_or_expired_token" });
+    // Superseded by a newer request (read after the consume: a request that lands between the two
+    // still wins, and the older token stays dead either way). A store error here is not "superseded":
+    // put the record back and fail as a 5xx, so the client's retry is not turned into a spent link.
+    let latest: string | null;
+    try {
+      latest = await redis.get(resetLatestKey(payload.sub));
+    } catch (err) {
+      await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
+      throw err;
+    }
+    if (latest !== payload.jti) return reply.code(401).send({ error: "invalid_or_expired_token" });
+
+    let passwordHash: string;
+    try {
+      passwordHash = await argon2.hash(parsed.data.password);
+    } catch (err) {
+      await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
+      throw err;
+    }
     try {
       await prisma.parent.update({ where: { id: payload.sub }, data: { passwordHash } });
     } catch {
-      // Parent deleted between token issuance and confirmation (review API-8).
+      // Parent deleted between token issuance and confirmation (review API-8). Put the record back
+      // as well: a transient database error must not turn a retry into "spent link".
+      await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
       return reply.code(404).send({ error: "account_not_found" });
     }
-    // Handoff item 3: a password change revokes every existing session.
-    await revokeAllRefreshTokens(payload.sub);
+    // Handoff item 3: a password change revokes every existing session. This must not be reported as
+    // success when it throws (#162/#135: a revocation that did not happen is a 5xx), and the restored
+    // token is what makes the client's retry succeed.
+    try {
+      await revokeAllRefreshTokens(payload.sub);
+    } catch (err) {
+      await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
+      throw err;
+    }
     return { ok: true };
   });
 

@@ -651,15 +651,17 @@ console.log("\n── G2. location & rules authorization ──");
       return signHs256Jwt({ sub: resetSub, purpose: "password_reset", iat: mintedAt, exp: mintedAt + 900 }, process.env.JWT_SECRET);
     };
     const resetNewPassword = "QaProbeResetPassw0rd!";
+    const forgedReset = mintReset();
+    // #167: a reset token is single-use and only exists if /reset/request stored its `jti`. This
+    // hand-signed token has no store record, so it is refused at confirm too — the old check
+    // expected 200 here and can no longer be produced by a probe that cannot read the emailed link.
     const confirmReset = resetSub
-      ? await call("POST", "/v1/auth/reset/confirm", { body: { token: mintReset(), password: resetNewPassword } })
+      ? await call("POST", "/v1/auth/reset/confirm", { body: { token: forgedReset, password: resetNewPassword } })
       : { status: 0 };
-    // Minted AFTER reset/confirm moved the sessions-invalid-before epoch, so only the purpose check
-    // can stop it — exactly the token the takeover used.
-    const liveResetToken = mintReset();
-    const resetEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: liveResetToken, body: { password: resetNewPassword } });
-    const resetLogoutAll = await call("POST", "/v1/auth/logout-all", { token: liveResetToken });
-    check("G19 password-reset purpose token refused as a bearer credential (/mfa/enroll and /logout-all -> 401)", resetReg.status === 201 && confirmReset.status === 200 && resetEnroll.status === 401 && resetLogoutAll.status === 401, `register=${resetReg.status} confirm=${confirmReset.status} enroll=${resetEnroll.status} logoutAll=${resetLogoutAll.status}`);
+    // The same shape must still be refused as a bearer credential: a reset token is never a session.
+    const resetEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: forgedReset, body: { password: resetNewPassword } });
+    const resetLogoutAll = await call("POST", "/v1/auth/logout-all", { token: forgedReset });
+    check("G19 a password-reset purpose token is refused as a reset (no store record) and as a bearer credential (/mfa/enroll and /logout-all -> 401)", resetReg.status === 201 && confirmReset.status === 401 && resetEnroll.status === 401 && resetLogoutAll.status === 401, `register=${resetReg.status} confirm=${confirmReset.status} enroll=${resetEnroll.status} logoutAll=${resetLogoutAll.status}`);
   } else {
     target("G18 password-reset purpose token rejected on /location/ping", "JWT_SECRET not present in the probe environment, so a reset-purpose token cannot be minted here");
   }

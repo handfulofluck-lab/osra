@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import type { FastifyInstance } from "fastify";
 import argon2 from "argon2";
 import { authRoutes } from "../src/routes/auth.js";
 import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
+import { setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
+import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -23,9 +27,101 @@ const registerBody = {
   region: "US",
 };
 
+class CaptureSender implements EmailSender {
+  readonly name = "capture";
+  sent: EmailMessage[] = [];
+  async send(message: EmailMessage) {
+    this.sent.push(message);
+    return { ok: true as const };
+  }
+}
+const capture = new CaptureSender();
+
+/** Back the mocked Redis with a Map (and its TTLs) so #167's record lifecycle behaves like a store. */
+function wireRedisStore() {
+  const redis = getRedis() as unknown as MockRedis;
+  const store = new Map<string, string>();
+  const ttls = new Map<string, number>();
+  const sets = new Map<string, Set<string>>();
+  redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
+  redis.set.mockImplementation(async (k: string, v: string, ...args: unknown[]) => {
+    store.set(k, String(v));
+    const ex = args.indexOf("EX");
+    if (ex !== -1 && typeof args[ex + 1] === "number") ttls.set(k, args[ex + 1] as number);
+    return "OK";
+  });
+  redis.getdel.mockImplementation(async (k: string) => {
+    const v = store.get(k) ?? null;
+    store.delete(k);
+    ttls.delete(k);
+    return v;
+  });
+  redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
+  redis.incrby.mockImplementation(async (k: string, n: number) => {
+    const next = Number(store.get(k) ?? 0) + n;
+    store.set(k, String(next));
+    return next;
+  });
+  redis.sadd.mockImplementation(async (k: string, ...members: string[]) => {
+    const set = sets.get(k) ?? new Set<string>();
+    for (const m of members) set.add(m);
+    sets.set(k, set);
+    return set.size;
+  });
+  redis.srem.mockImplementation(async (k: string, ...members: string[]) => {
+    const set = sets.get(k);
+    if (!set) return 0;
+    for (const m of members) set.delete(m);
+    return set.size;
+  });
+  redis.smembers.mockImplementation(async (k: string) => [...(sets.get(k) ?? [])]);
+  return { store, ttls, sets };
+}
+
+/**
+ * Ask for a reset link the way a parent does and return the token from the email. Minting through
+ * the route is what puts the #167 record in Redis; a hand-signed JWT has no record and must be
+ * refused, which the tests below rely on.
+ */
+async function requestResetToken(app: FastifyInstance): Promise<string> {
+  capture.sent = [];
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/auth/reset/request",
+    payload: { email: registerBody.email },
+  });
+  expect(res.statusCode).toBe(200);
+  const message = capture.sent.at(-1);
+  expect(message).toBeTruthy();
+  const match = message!.text.match(/reset\?token=([^\s"'<]+)/);
+  expect(match).toBeTruthy();
+  return decodeURIComponent(match![1]);
+}
+
+const confirmReset = (app: FastifyInstance, token: string, password = "NewCorrectHorse12!") =>
+  app.inject({ method: "POST", url: "/v1/auth/reset/confirm", payload: { token, password } });
+
 describe("auth routes", () => {
   beforeEach(() => {
     resetPrismaMock();
+    capture.sent = [];
+    setEmailSender(capture);
+    // The Redis instance is a module singleton in this file: give every test the empty-store
+    // defaults so an implementation from one test cannot leak into the next.
+    const redis = getRedis() as unknown as MockRedis;
+    redis.get.mockImplementation(async () => null);
+    redis.getdel.mockImplementation(async () => null);
+    redis.set.mockImplementation(async () => "OK");
+    redis.del.mockImplementation(async () => 0);
+    redis.incrby.mockImplementation(async () => 1);
+    redis.sadd.mockImplementation(async () => 1);
+    redis.srem.mockImplementation(async () => 1);
+    redis.smembers.mockImplementation(async () => []);
+    redis.expire.mockImplementation(async () => 1);
+  });
+
+  afterEach(() => {
+    setEmailSender(null);
   });
 
   it("registers a new parent (201) and returns a token", async () => {
@@ -350,14 +446,12 @@ describe("auth routes", () => {
     expect(bad.statusCode).toBe(401);
     expect(prismaMock.parent.update).not.toHaveBeenCalled();
 
-    // A purpose-scoped reset token sets the new password (argon2-hashed).
+    // A purpose-scoped reset token sets the new password (argon2-hashed). #167: it must be one the
+    // request issued, because confirmation now consumes the store record its `jti` names.
+    wireRedisStore();
     prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
-    const resetToken = app.jwt.sign({ sub: "parent-1", purpose: "password_reset" }, { expiresIn: "15m" });
-    const ok = await app.inject({
-      method: "POST",
-      url: "/v1/auth/reset/confirm",
-      payload: { token: resetToken, password: "NewCorrectHorse12!" },
-    });
+    const resetToken = await requestResetToken(app);
+    const ok = await confirmReset(app, resetToken);
     expect(ok.statusCode).toBe(200);
     const updateArg = prismaMock.parent.update.mock.calls[0][0] as { data: { passwordHash: string } };
     expect(updateArg.data.passwordHash).not.toContain("NewCorrectHorse12!");
@@ -370,6 +464,7 @@ describe("auth routes", () => {
   // and used it on /mfa/enroll with the password it just set — then replaced the second factor.
   it("#146: a password-reset token cannot re-key MFA after reset/confirm", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
+    wireRedisStore();
     const NEW_PASSWORD = "NewCorrectHorseBattery!";
     const oldSecret = "JBSWY3DPEHPK3PXP";
     const attackerSecret = "KRSXG5CTMVRXEZLU";
@@ -394,13 +489,10 @@ describe("auth routes", () => {
     // The account's own authenticator works before the attack.
     expect((await login(PASSWORD, totpAtCounter(oldSecret, counter))).statusCode).toBe(200);
 
-    // Attacker has email only: confirm a reset and choose a new password.
-    const firstReset = app.jwt.sign({ sub: parent.id, purpose: "password_reset" }, { expiresIn: "15m" });
-    const confirm = await app.inject({
-      method: "POST",
-      url: "/v1/auth/reset/confirm",
-      payload: { token: firstReset, password: NEW_PASSWORD },
-    });
+    // Attacker has email only: a real reset link (minted through the route, so #167's record exists)
+    // confirms, and the password changes.
+    const firstReset = await requestResetToken(app);
+    const confirm = await confirmReset(app, firstReset, NEW_PASSWORD);
     expect(confirm.statusCode).toBe(200);
     const updatesAfterReset = prismaMock.parent.update.mock.calls.length;
 
@@ -424,9 +516,10 @@ describe("auth routes", () => {
     expect(withPassword.statusCode).toBe(401);
     expect(prismaMock.parent.update).toHaveBeenCalledTimes(updatesAfterReset);
 
-    // The original authenticator still gets in; the attacker's does not.
-    expect((await login(NEW_PASSWORD, totpAtCounter(oldSecret, counter))).statusCode).toBe(200);
-    expect((await login(NEW_PASSWORD, totpAtCounter(attackerSecret, counter))).statusCode).toBe(401);
+    // The original authenticator still gets in; the attacker's does not. (A later counter: the
+    // store-backed Redis now actually records the first login's step, and replay is refused.)
+    expect((await login(NEW_PASSWORD, totpAtCounter(oldSecret, counter + 1))).statusCode).toBe(200);
+    expect((await login(NEW_PASSWORD, totpAtCounter(attackerSecret, counter + 1))).statusCode).toBe(401);
     await app.close();
   });
 
@@ -479,6 +572,117 @@ describe("auth routes", () => {
       });
       expect(res.statusCode).toBe(200);
     }
+    await app.close();
+  });
+
+  // #167: the link is single-use. The attack was a parent who used it, then someone who saw the
+  // mail replaying it inside the 15-minute window to set a password of their own.
+  it("#167: a reset token sets the password once; the replay is 401", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    wireRedisStore();
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
+
+    const token = await requestResetToken(app);
+    const first = await confirmReset(app, token);
+    expect(first.statusCode).toBe(200);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+
+    const replay = await confirmReset(app, token);
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().error).toBe("invalid_or_expired_token");
+    // Consumed before the hash/DB work: the replay changed nothing.
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  // Atomicity, not ordering: both confirmations run at once and the store decides. `GETDEL` returns
+  // the record to exactly one caller, so the loser has nothing to consume and cannot set a password.
+  it("#167: two concurrent confirmations of one link — exactly one wins", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    wireRedisStore();
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
+
+    const token = await requestResetToken(app);
+    const [a, b] = await Promise.all([confirmReset(app, token), confirmReset(app, token)]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 401]);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  // The second variant in the issue: two requests leave two live tokens, and the older one keeps
+  // working after the newer is used. Only the newest jti is honoured.
+  it("#167: a second reset request supersedes the first link", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    wireRedisStore();
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
+
+    const older = await requestResetToken(app);
+    const newer = await requestResetToken(app);
+
+    const oldAttempt = await confirmReset(app, older);
+    expect(oldAttempt.statusCode).toBe(401);
+    expect(oldAttempt.json().error).toBe("invalid_or_expired_token");
+    expect(prismaMock.parent.update).not.toHaveBeenCalled();
+
+    const newAttempt = await confirmReset(app, newer);
+    expect(newAttempt.statusCode).toBe(200);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    // Each request gets its own identity (before #167 two in the same second were the same JWT).
+    expect(older).not.toBe(newer);
+    await app.close();
+  });
+
+  // #162 made a 5xx from the counter bump retryable with the same token. The single-use consume
+  // runs first, so a failure after it must restore the record with its remaining lifetime.
+  it("#167: a failed session revocation is a 5xx, then the retry with the same token succeeds and old sessions are dead", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store, ttls } = wireRedisStore();
+    const passwordHash = await argon2.hash(PASSWORD);
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash });
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: registerBody.email, password: PASSWORD },
+    });
+    expect(login.statusCode).toBe(200);
+    const oldAccess = login.json().token as string;
+    const oldRefresh = login.json().refreshToken as string;
+
+    const token = await requestResetToken(app);
+    const claims = app.jwt.decode<{ jti: string; exp: number }>(token)!;
+
+    // Move the clock 60 s so the restored TTL is visibly the token's remaining life (840), not 900.
+    const realNow = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(realNow + 60_000);
+    const redis = getRedis() as unknown as MockRedis;
+    redis.incrby.mockRejectedValueOnce(new Error("redis unavailable"));
+    const failed = await confirmReset(app, token);
+    expect(failed.statusCode).toBe(500);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+
+    const key = `reset:${claims.jti}`;
+    expect(store.get(key)).toBe("parent-1");
+    expect(ttls.get(key)).toBe(claims.exp - Math.floor((realNow + 60_000) / 1000));
+    clock.mockRestore();
+
+    // The client retries the same link (what #162 promised), and this time the whole operation runs.
+    const retry = await confirmReset(app, token);
+    expect(retry.statusCode).toBe(200);
+    expect(prismaMock.parent.update).toHaveBeenCalledTimes(2);
+    // Both effects of an `ok`: the new hash is stored, every session is revoked.
+    const secondUpdate = prismaMock.parent.update.mock.calls[1][0] as { data: { passwordHash: string } };
+    expect(await argon2.verify(secondUpdate.data.passwordHash, "NewCorrectHorse12!")).toBe(true);
+    expect(store.get("auth:session-version:parent-1")).toBe("1");
+    expect(store.has(`refresh:${createHash("sha256").update(oldRefresh).digest("hex")}`)).toBe(false);
+    const oldAccessAfter = await app.inject({
+      method: "POST",
+      url: "/v1/auth/logout-all",
+      headers: { authorization: `Bearer ${oldAccess}` },
+    });
+    expect(oldAccessAfter.statusCode).toBe(401);
+    expect(oldAccessAfter.json().error).toBe("session_revoked");
     await app.close();
   });
 

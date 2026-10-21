@@ -27,6 +27,11 @@ function wireRedisStore() {
   const redis = getRedis() as unknown as MockRedis;
   redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
   redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
+  redis.getdel.mockImplementation(async (k: string) => {
+    const v = store.get(k) ?? null;
+    store.delete(k);
+    return v;
+  });
   redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
   const sets = new Map<string, Set<string>>();
   redis.sadd.mockImplementation(async (k: string, ...ms: string[]) => {
@@ -99,10 +104,16 @@ describe("token hygiene — refresh store with reuse detection (handoff item 1)"
 
   it("password reset and MFA enable revoke all sessions (handoff item 3)", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
+    const store = wireRedisStore();
     const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
     const rt = login.json().refreshToken;
 
-    const resetToken = app.jwt.sign({ sub: "p1", purpose: "password_reset" }, { expiresIn: "15m" });
+    // #167: a reset link is single-use and only the newest one is honoured, so the store must hold
+    // the record the confirm consumes and the parent's latest jti.
+    const resetJti = "reset-jti-1";
+    store.set(`reset:${resetJti}`, "p1");
+    store.set("reset:latest:p1", resetJti);
+    const resetToken = app.jwt.sign({ sub: "p1", purpose: "password_reset", jti: resetJti }, { expiresIn: "15m" });
     const reset = await app.inject({ method: "POST", url: "/v1/auth/reset/confirm", payload: { token: resetToken, password: "NewCorrectHorse!!" } });
     expect(reset.statusCode).toBe(200);
     expect((await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken: rt } })).statusCode).toBe(401);

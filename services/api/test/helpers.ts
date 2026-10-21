@@ -77,6 +77,7 @@ export class MockRedis {
   psubscribe = vi.fn(async (_pattern: string) => undefined);
   on = vi.fn();
   get = vi.fn(async (_key: string) => null as string | null);
+  getdel = vi.fn(async (_key: string) => null as string | null);
   set = vi.fn(async (..._args: unknown[]) => "OK");
   quit = vi.fn(async () => "OK");
   lpush = vi.fn(async (_key: string, _value: string) => 1);
