@@ -2782,7 +2782,8 @@ and writing down what the gates could not see."
    acceptance text was not relaxed by the approval.
 
 **Agreement:** every finding — agree. No outstanding objection: #257 passed the phone re-run at `fac46cf`
-(the three rows below); it waits only for the write-order fix in `ConsentState.set`.
+(short pause between ticks, first call after a re-grant, and restart during a pause; Claude's Flip4 run,
+07:52Z); it waits only for the write-order fix in `ConsentState.set`.
 
 **Asks:**
 1. **The write-order fix at `c752069`** is what #257 now waits on: the flag must move before the counter on
