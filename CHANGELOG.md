@@ -11,6 +11,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Architecture — ADR-0028 accepted: AWS hosting approved
+- Karim confirmed AWS as the cloud provider and approved the budget on 2026-10-21; ADR-0028 moves from proposed to accepted. The first infrastructure item, an HTTPS staging API in the UAE region built with Terraform, is filed for Kimi as #258 (roadmap 5.8). No code changed here.
+
 ### API — a password-reset link works once, and a failed confirm can still be retried (#167)
 - `POST /v1/auth/reset/confirm` now consumes the link before doing any work: `/reset/request` mints
   the token with a `jti` and stores `reset:<jti>` → parent in Redis (`EX 900`), and the confirm
