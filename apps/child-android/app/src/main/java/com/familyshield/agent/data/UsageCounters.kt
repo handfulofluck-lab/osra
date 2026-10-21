@@ -10,6 +10,9 @@ import java.time.LocalDate
  * each gap lost every second of the day. Counters are in-memory only and reset when the local
  * date changes (the midnight WorkManager worker calls [resetIfNewDay] and [snapshot]/
  * [onForegroundEvent] self-heal on date change). Thread-safe via a monitor lock.
+ *
+ * [onForegroundEnded] closes the open interval for a window this stream deliberately never records —
+ * the agent's own block screen (#284); without it the blocked app kept earning the whole stay.
  */
 class UsageCounters {
 
@@ -30,6 +33,29 @@ class UsageCounters {
             }
             currentPkg = packageId
             currentSinceMs = timestampMs
+        }
+    }
+
+    /**
+     * Ends the open foreground interval at [timestampMs]: credits its gap to the app that was in
+     * front, capped like any other gap, and leaves nothing open so [snapshotMs] credits no
+     * in-progress time.
+     *
+     * Issue #284: the accessibility stream drops the agent's own package on purpose, so our block
+     * screen never produced an event and the blocked app's interval stayed open for the whole stay —
+     * charged to that app by the next event (Home, another app), or capped at [MAX_GAP_MS] but
+     * charged all the same. Waiting on "This app is blocked by your parent" is not use of the app
+     * behind it: it spent the daily limit, and it spent a "Request access" bonus before the parent
+     * had granted it.
+     */
+    fun onForegroundEnded(timestampMs: Long, today: LocalDate = LocalDate.now()) {
+        synchronized(lock) {
+            resetIfNewDayLocked(today)
+            currentPkg?.let { prev ->
+                val add = gapMs(timestampMs - currentSinceMs)
+                if (add > 0) storedMs.merge(prev, add) { a, b -> a + b }
+            }
+            currentPkg = null
         }
     }
 
@@ -65,10 +91,16 @@ class UsageCounters {
     /**
      * Rebuilds the counter state from a chronological sequence of foreground transitions for [today].
      * Capped per-gap at [MAX_GAP_MS].
+     *
+     * [ownPackage] is replayed as an **interval end**, not as an app (#284): our own window never earns
+     * time, but its event does close the app behind it. Dropping those events instead would hand the
+     * overlay's whole stay to the blocked app — the bug this parameter exists to prevent, on the startup
+     * path rather than the live one.
      */
     fun rebuildFromEvents(
         events: List<Pair<String, Long>>,
         today: LocalDate = LocalDate.now(),
+        ownPackage: String? = null,
     ) {
         synchronized(lock) {
             resetIfNewDayLocked(today)
@@ -76,20 +108,27 @@ class UsageCounters {
             currentPkg = null
             currentSinceMs = 0L
             for ((pkg, ts) in events) {
-                onForegroundEvent(pkg, ts, today)
+                if (pkg == ownPackage) onForegroundEnded(ts, today) else onForegroundEvent(pkg, ts, today)
             }
         }
     }
 
-    /** Restores counters from a previously saved snapshot of per-app milliseconds for [today]. */
+    /**
+     * Restores counters from a previously saved snapshot of per-app milliseconds for [today].
+     *
+     * Merged rather than replacing: an accessibility event can arrive before the startup restore runs
+     * (#286), and clearing here would throw away the seconds it had already counted. A fresh counter is
+     * empty, so the merge is a plain copy on the normal path.
+     */
     fun restore(
         persistedMs: Map<String, Long>,
         today: LocalDate = LocalDate.now(),
     ) {
         synchronized(lock) {
             resetIfNewDayLocked(today)
-            storedMs.clear()
-            storedMs.putAll(persistedMs)
+            for ((pkg, ms) in persistedMs) {
+                if (ms > 0) storedMs.merge(pkg, ms) { a, b -> a + b }
+            }
             currentPkg = null
             currentSinceMs = 0L
         }

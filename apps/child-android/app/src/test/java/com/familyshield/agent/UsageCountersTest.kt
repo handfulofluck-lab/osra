@@ -20,6 +20,41 @@ class UsageCountersTest {
     private val day2: LocalDate = day1.plusDays(1)
 
     @Test
+    fun `a stay on our own block screen is credited to no app`() {
+        // Issue #284: measured on the Flip4 — 103 s on a bedtime block screen charged My Files 103 s,
+        // and a 1-minute limit then fired 0.9 s after the app was opened.
+        val c = UsageCounters()
+        c.onForegroundEvent("com.game", 0L, day1)
+        c.onForegroundEnded(3 * 60_000L, day1) // the block screen comes up
+        // Ten minutes pass on the block screen, then the child presses Home.
+        c.onForegroundEvent("com.launcher", 13 * 60_000L, day1)
+        assertEquals(mapOf("com.game" to 3), c.snapshot(13 * 60_000L, day1))
+        // Nothing is in progress either: the ended interval must not be credited a second time.
+        assertEquals(mapOf("com.game" to 180_000L), c.snapshotMs(13 * 60_000L, day1))
+    }
+
+    @Test
+    fun `ending a foreground interval with nothing open adds nothing`() {
+        val c = UsageCounters()
+        c.onForegroundEnded(3 * 60_000L, day1)
+        c.onForegroundEnded(5 * 60_000L, day1) // repeated events from the same block screen
+        assertTrue(c.snapshot(10 * 60_000L, day1).isEmpty())
+        // And the next real event is credited from its own mark, not from the first one.
+        c.onForegroundEvent("com.game", 20 * 60_000L, day1)
+        assertEquals(mapOf("com.game" to 2), c.snapshot(22 * 60_000L, day1))
+    }
+
+    @Test
+    fun `an interval ended by our own screen is capped like any other gap`() {
+        // The cap is about the unseen: a block screen left up for hours must not hand the app behind it
+        // more than the five minutes a screen-off gap is worth either (#284).
+        val c = UsageCounters()
+        c.onForegroundEvent("com.game", 0L, day1)
+        c.onForegroundEnded(60 * 60_000L, day1)
+        assertEquals(mapOf("com.game" to 5), c.snapshot(60 * 60_000L, day1))
+    }
+
+    @Test
     fun `elapsed minutes are credited to the previous package`() {
         val c = UsageCounters()
         c.onForegroundEvent("com.a", 0L, day1)
@@ -104,12 +139,39 @@ class UsageCountersTest {
     }
 
     @Test
+    fun `rebuildFromEvents treats our own window as an interval end, not an app`() {
+        // #284 on the startup path: dropping our own events would hand the overlay's whole stay to the
+        // blocked app; crediting them would charge OSRA. It ends the interval and earns nothing.
+        val c = UsageCounters()
+        val events = listOf(
+            "com.game" to 0L,
+            "com.familyshield.agent" to 2 * 60_000L,
+            "com.game" to 12 * 60_000L,
+        )
+        c.rebuildFromEvents(events, day1, ownPackage = "com.familyshield.agent")
+        val snap = c.snapshot(12 * 60_000L, day1)
+        // game: 0..2 min from the first interval; the 10 min after our own window belongs to no one.
+        assertEquals(mapOf("com.game" to 2), snap)
+    }
+
+    @Test
     fun `restore populates per-app minutes and respects day boundaries`() {
         val c = UsageCounters()
         c.restore(mapOf("com.game" to 2_700_000L, "com.youtube" to 1_800_000L), day1)
         assertEquals(mapOf("com.game" to 45, "com.youtube" to 30), c.snapshot(0L, day1))
         // Rolling over to next day resets the restored counters
         assertTrue(c.snapshot(0L, day2).isEmpty())
+    }
+
+    @Test
+    fun `restore keeps the seconds an early event already counted`() {
+        // #286: the accessibility service can deliver an event before the startup restore runs. Clearing
+        // the counters there would drop the seconds it had counted; the restore merges instead.
+        val c = UsageCounters()
+        c.onForegroundEvent("com.a", 0L, day1)
+        c.onForegroundEvent("com.b", 30_000L, day1) // com.a earns 30 s
+        c.restore(mapOf("com.a" to 90_000L), day1)
+        assertEquals(mapOf("com.a" to 2), c.snapshot(30_000L, day1))
     }
 
     @Test
