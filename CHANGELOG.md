@@ -25,8 +25,10 @@ environment where it was written — see `docs/QA/` for the verification state.
   template), so the `dev`/`test` split is what would make this a population estimate; `cyberbullying`
   precision is 0.36/0.38 because its rows overlap other categories; one model, one run, one threshold; and
   the scorer is **not in production** — that is the 4.1-versus-4.4 decision.
-- Cost of the run: about **US$0.10** of tokens at `deepseek-flash` rates (≈400 input + ≈40 output per row),
-  cached by `(model, text)` so re-running the same set is free.
+- Cost of the run: about **US$0.10**, estimated from token counts (≈400 input + ≈40 output per row);
+  Karim's DeepSeek balance is the real figure. **Each workflow run bills the whole set again** — the
+  workflow caches pip, not the scores — so "re-running is free" is true only for a *local* run, which
+  reuses `eval/.deepseek-cache.json`. Nobody has a local key today, so in practice every run costs.
 - `docs/ROADMAP.md` 4.1 moves to ✅ as *built and measured as an evaluation scorer*, with the production
   sentence kept verbatim, and the Phase 4 progress row now reads 4.1 measured / 4.3 done / 4.2 partial.
 

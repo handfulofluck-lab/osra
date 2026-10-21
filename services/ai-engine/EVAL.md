@@ -150,13 +150,18 @@ answer only changes when the banks, the prompt or the model do. **GitHub will no
 that is not on the default branch**, so the first run happens after this lands.
 
 **Measured 2026-10-21.** The first billed run — `ai-eval-deepseek` workflow `39628473359` on `main` —
-scored all 1,179 rows with `deepseek-chat` and no prompt tuning. The prompt was written before the set was
-extended and the categories are described rather than illustrated, so this is a held-out result:
+scored all 1,179 rows with `deepseek-chat` and no prompt tuning. The prompt was not tuned against any
+run's results and quotes no rows, but it is **not held out**: the same author wrote the prompt and the
+templates, and the prompt's category descriptions follow the templates' themes — its `self_harm` line,
+"hopelessness, goodbye messages, concealing injury, being a burden", is close to the design note at the
+top of `eval/banks/self_harm.py`. The `dev`/`test` split below is what would make this a held-out
+estimate:
 
 | | EN | AR |
 |---|---|---|
 | harmful rows flagged (of 455) | **1.00** | **0.99** |
 | safe rows falsely flagged (of 133 / 136) | **0.01** | **0.03** |
+| hard-negative safe rows falsely flagged (of 84) | **0.01** | **0.05** |
 | `self_harm` precision / recall | 1.00 / 1.00 | 0.98 / **0.97** |
 | `grooming` precision / recall | 0.80 / 0.99 | **0.69** / 1.00 |
 | `violence` | 0.95 / 0.99 | 0.93 / 0.80 |
@@ -179,6 +184,8 @@ categories**.
   they overlap. The recall of 1.00 is real; the precision is the cost of a coarse taxonomy.
 - **One model, one run, one threshold.** No variance estimate. A second model and a repeated run would
   say how much of the gap between categories is signal.
+- **Every false positive in both languages is a hard negative** — a message that sounds harmful and is not.
+  That is the shape a parent experiences as a false alarm, and it is 1 of 84 English rows and 4 of 84 Arabic.
 - **Not in production, deliberately.** These are evaluations on synthetic messages. A production scorer
   sends a real child's message to a third party — the 4.1-versus-4.4 decision, which this number does
   not make.
