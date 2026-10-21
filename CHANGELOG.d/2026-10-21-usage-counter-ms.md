@@ -28,5 +28,7 @@
   `UsageAggregationTest` (16 events 59.9 s apart read 15 with the remainder carried, two windows equal
   one, a sub-minute event package is "mentioned" while a carried-only package is not).
   `./gradlew testPlayDebugUnitTest testFullDebugUnitTest` green, 546 tests each flavour.
-- **⚠️ not verified here:** the fix on the handset — a 1-minute limit firing on the Flip4 — has not been
-  re-run; the measurement above is Claude's observation of the bug.
+- **Verified on the Flip4 by Claude (2026-10-21, Full debug build, fresh family):** Clock with a 1-minute
+  `time_limit` showed "Daily limit reached" 68.9 s after it opened, at the first status-bar event past 60 s.
+  Calculator used for 2 min 24 s uploaded as 2 minutes from events, with 24 s carried. A further 30 s of
+  Calculator uploaded nothing and grew the carry to 54 s.
