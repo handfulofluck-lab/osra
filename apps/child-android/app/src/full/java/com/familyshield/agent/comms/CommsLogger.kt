@@ -227,7 +227,9 @@ class CommsLogger @Inject constructor(
         ) ?: return false
         dao.set(AgentStateEntity(KEY_CONSENT_EPOCH, epoch))
         // Issue #260: the call stream is watermarked by `_ID`; a reset clears that key (0 = "set,
-        // nothing read yet") so the next harvest re-anchors at the re-grant instead of on a `DATE`.
+        // nothing read yet") and the next harvest anchors at the re-grant with `newestCallIdEndedBy`
+        // before it reads anything (#269 review: the old comment claimed the anchor branch handled
+        // this, but that branch needs a missing key, not a zero one).
         dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, 0L))
         for (key in listOf(KEY_CALL_WATERMARK, KEY_SMS_WATERMARK, KEY_CALL_SINCE, KEY_SMS_SINCE)) {
             dao.set(AgentStateEntity(key, from))
@@ -261,8 +263,9 @@ class CommsLogger @Inject constructor(
         // but the row is written when it *ends*, so a long call that ends after a shorter call answered
         // during it carries the older `DATE`: the short call raised the watermark past it and the long
         // call was never read. `_ID` is monotonic and never reused. `null` means "never set" (a fresh
-        // install or a consent reset) and `0` means "set, nothing read yet" -- the difference matters,
-        // because a zero id watermark with a real grant floor reads the first call and keeps logging.
+        // install, or an upgrade from a build with no id watermark); `0` means "set, nothing read yet",
+        // which a consent reset writes -- and either state must be anchored before any row is offered,
+        // because the query has no `DATE` predicate left to bound it (#269 review).
         val storedId: Long? = dao.get(KEY_CALL_ID_WATERMARK)
         val legacyDate = CommsWatermarkPolicy.normalize(dao.get(KEY_CALL_WATERMARK))
         var grantTime = CommsWatermarkPolicy.normalize(dao.get(KEY_CALL_SINCE))
@@ -277,18 +280,27 @@ class CommsLogger @Inject constructor(
         }
         val dateFloor = grantTime ?: 0L
         if (storedId == null) {
-            // First harvest, and the one upgrade path from the old `DATE` watermark: anchor at the newest
-            // id whose call *ended* by the ceiling, and read nothing this round. Anchoring on `DATE`
-            // (#260) placed the watermark below any call that started earlier than it ended, which is how
-            // a clock set back slipped under the floor (#264 F2).
-            val ceiling = maxOf(legacyDate ?: 0L, dateFloor)
+            // First harvest, and the one upgrade path from the `DATE` watermark. The ceiling is the grant
+            // when there is one and **now** on a fresh install: with no `DATE` predicate in the query, an
+            // anchor of 0 would offer the phone's whole call log to `shouldReadCall`, and every call that
+            // ended before the grant counts as "clock set back" and would be read (#269 review, D1).
+            val ceiling = maxOf(legacyDate ?: 0L, grantTime ?: now)
             dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, newestCallIdEndedBy(ceiling)))
             dao.set(AgentStateEntity(KEY_CALL_WATERMARK, ceiling))
             if (grantTime == null) dao.set(AgentStateEntity(KEY_CALL_SINCE, now))
             return@withLock
         }
+        // A consent reset writes `0` into the id watermark and keeps a real floor, and so does a phone
+        // that stored 0 under the old `DATE` predicate. With no predicate to stop it, `_ID > 0` is the
+        // whole log, so anchor at the floor first and then read in the same round — the call that
+        // triggered the harvest has to survive (#257).
+        var fromId = storedId
+        if (fromId == 0L && dateFloor > 0L) {
+            fromId = newestCallIdEndedBy(dateFloor)
+            dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, fromId))
+        }
         val events = mutableListOf<CommsEventEntity>()
-        var newest: Long = storedId
+        var newest: Long = fromId
         val seen = HashSet<CommsRowPolicy.Identity>()
         try {
             val cursor: Cursor? = context.contentResolver.query(
@@ -302,7 +314,7 @@ class CommsLogger @Inject constructor(
                     CallLog.Calls.PHONE_ACCOUNT_COMPONENT_NAME,
                 ),
                 "${CallLog.Calls._ID} > ?",
-                arrayOf(storedId.toString()),
+                arrayOf(fromId.toString()),
                 "${CallLog.Calls._ID} ASC",
             )
             cursor?.use {

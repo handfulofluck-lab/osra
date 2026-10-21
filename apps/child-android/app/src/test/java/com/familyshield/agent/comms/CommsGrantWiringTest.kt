@@ -187,6 +187,30 @@ class CommsGrantWiringTest {
         assertFalse("the DATE anchor is the bug it replaced", logger.contains("newestCallIdUpTo("))
     }
 
+    /**
+     * #269 review D1: with no `DATE` predicate left in the query, an id watermark of `0` offers the whole
+     * call log, and `shouldReadCall` calls every pre-grant call "clock set back" and reads it. Both a
+     * fresh install and a consent reset store `0`, so both paths must anchor before any row is offered.
+     */
+    @Test
+    fun `a zero id watermark is anchored at the floor before the query can offer the whole log`() {
+        assertTrue(
+            "a fresh install anchors at now, not at 0",
+            logger.contains("maxOf(legacyDate ?: 0L, grantTime ?: now)"),
+        )
+        assertTrue(
+            "a stored 0 with a real floor anchors at that floor first",
+            logger.contains("if (fromId == 0L && dateFloor > 0L)") &&
+                logger.contains("fromId = newestCallIdEndedBy(dateFloor)"),
+        )
+        assertTrue(
+            "and the query is bound to the anchored id, not to the stored one",
+            logger.contains("arrayOf(fromId.toString())") &&
+                !logger.contains("arrayOf(storedId.toString())"),
+        )
+        assertTrue("the round still reads what is left", logger.contains("var newest: Long = fromId"))
+    }
+
     @Test
     fun `a grant time in the future is repaired in both harvests, not clamped`() {
         // #263 review: clamping with min(since, now) never lets the row through, because now advances
