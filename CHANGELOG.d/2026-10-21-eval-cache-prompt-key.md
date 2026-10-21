@@ -1,4 +1,4 @@
-### AI engine — the eval cache is keyed on the prompt, not just the model and the text (#NNN)
+### AI engine — the eval cache is keyed on the prompt, not just the model and the text (#280)
 - The DeepSeek evaluation cache was keyed on `(model, text)`, so editing `SYSTEM_PROMPT` changed what
   every row should score while leaving every key valid. The next run served the previous prompt's answers
   as cache hits, and the table in `services/ai-engine/EVAL.md` would have described a prompt that no
