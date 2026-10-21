@@ -43,6 +43,44 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **⚠️ not verified here:** the numbers are the author's run on Python 3.13 / Windows; the committed
   dataset regenerates byte-identically in CI on Python 3.11 (`generate --check` passed there), but a
   second agent has not re-run the table yet.
+### Comms — calls reach the parent with the time they happened, and a clock set forward cannot switch logging off (#260)
+- **Every call and text was dated to the moment of the 5-minute flush.** `CommsLogger.flush()` built
+  `ActivityEventDto(type, payload)` with no `ts`, so the server fell back to `new Date()`: two calls
+  eight seconds apart arrived with the same timestamp, and a phone offline for hours dated all of its
+  calls to the moment it reconnected. The DTO now carries `ts`, `flush()` sends
+  `CommsEventTimestamps.isoUtc(e.timestamp)`, and the server keeps a reported time exactly — bounded
+  at both ends: a time more than five minutes **ahead** is clamped (a child can set the clock forward
+  once and pin a call to the top of the parent's list), and a time more than **seven days back** is
+  floored (`activityEventTs` in `services/api/src/routes/devices.ts`), because retention deletes
+  `ActivityEvent` by `ts` and an unbounded old timestamp is otherwise a deletion request against the
+  90-day sweep. A phone offline for over a week has its older calls placed at the seven-day mark:
+  misdated, but kept and visible.
+- **The call watermark is `CallLog._ID`, not `DATE`.** `DATE` is when a call *started* but the row is
+  written when it *ends*, so a 290-second call with a short call answered during it ends last and
+  carries the older `DATE`: the short call raised the watermark past it and the long call was never
+  read. `_ID` is monotonic and never reused, so the long call is simply the next id. The query is
+  `_ID > ? AND DATE >= ?` ordered by `_ID`, keeping ADR-0008's grant floor on `DATE`; the old `DATE`
+  watermark is converted once on upgrade (`newestCallIdUpTo`), and a consent reset clears the id
+  watermark so the next harvest re-anchors at the re-grant rather than importing the paused window.
+  **The upgrade anchor skips one call** — a long call still in progress across the last old-build
+  harvest — but the old rule had already lost it, so this is forward-looking rather than a regression.
+- **A stored grant time in the future is repaired, not clamped at read time.** `comms_call_since` /
+  `comms_sms_since` are the read floor; if a child sets the clock forward and is re-granted consent
+  there, clamping with `min(since, now)` keeps excluding every later call as `now` advances. The floor
+  is re-anchored to now once and stored, the same way the SMS watermark is.
+- **SMS keeps its `DATE` watermark but can no longer be stopped by the clock.** A stored watermark more
+  than five minutes ahead of now means the clock moved back: the watermark re-anchors to now, one
+  window is lost instead of every message after it, and a message dated beyond the skew is **not
+  imported and does not advance the watermark** — it is re-selected and skipped each harvest until its
+  date arrives (#264 files the remaining evasion).
+- **A withdrawn phone no longer logs a full `HTTP 428` stack every 60 seconds**
+  (`LocationService`); the transition is logged once, by `ConsentState`.
+- Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, clamped floor),
+  new `CommsEventTimestampsTest` (4), `CommsGrantWiringTest` +4 pinning the query, the `ts` field and
+  the 428 branch, and one API test asserting the reported time is preserved to the millisecond while a
+  far-future one is clamped.
+- **⚠️ not verified here:** the two phone rows — call waiting, and a clock set forward once — are
+  Claude's, on the Flip4. The JVM tests hold the rules; no JVM test can insert `CallLog` rows.
 
 ### Child agent — a later call/SMS grant takes effect without a reboot, and history is never imported (#229)
 - `CommsLogger` no longer sets one `started` flag before registering both `ContentObserver`s. Each
