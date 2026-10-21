@@ -22,7 +22,14 @@ environment where it was written — see `docs/QA/` for the verification state.
   increase since the last snapshot, and **every** package's total is recorded — including those the events
   covered, so a later window without one of them adds only its increase. A total below the snapshot means
   the day rolled over, and the whole total is new rather than a subtraction.
-- The snapshot is keyed by day (`usage_stats_last_seen`), so midnight starts clean.
+- **The snapshot is keyed by Android's own bucket, not the calendar date** (#272 review). The phone rolls its
+  `INTERVAL_DAILY` bucket at a time it picks — measured at 20:07, not local midnight — so a date key
+  re-sent up to four hours of the previous evening on every morning's first upload. The key is the
+  bucket's `firstTimeStamp`, and a query that returns two buckets keeps only the newer one per package.
+- **The first upload after a pairing adds nothing** (#272 review): with no snapshot the total reaches back
+  before OSRA existed, so it records a baseline instead — #229's rule that collection starts at the grant.
+  The cost is the tail of the last bucket before a rollover for apps the event stream missed: one window a
+  day, on the under-counting side.
 - **A re-grant now establishes a baseline instead of skipping the backfill** — #266's "skip on a re-grant
   day" is removed, because the baseline excludes the withdrawn window *and* the morning before the grant
   without losing the rest of the day. A re-grant therefore no longer costs the day's backfill.

@@ -54,4 +54,33 @@ class UsageStatsDeltaTest {
         // And a later increase is still counted.
         assertEquals(10, UsageStatsDelta.deltaMinutes(100, baseline["youtube"]))
     }
+
+    // ── #272 review: the bucket, and the first upload ────────────────────────────────────────────────
+
+    @Test
+    fun `the same bucket adds only the increase`() {
+        // Android rolls INTERVAL_DAILY at a time it picks, so "same bucket" is the only safe identity.
+        assertEquals(15, UsageStatsDelta.deltaForUpload(75, 60, sameBucket = true, hasSnapshot = true))
+        assertEquals(0, UsageStatsDelta.deltaForUpload(60, 60, sameBucket = true, hasSnapshot = true))
+    }
+
+    @Test
+    fun `a new bucket adds its whole totals once`() {
+        // The bucket began after the last upload, so everything in it is new. Yesterday's 60 minutes were
+        // already sent as increments while that bucket was current.
+        assertEquals(12, UsageStatsDelta.deltaForUpload(12, 60, sameBucket = false, hasSnapshot = true))
+    }
+
+    @Test
+    fun `with no snapshot nothing is added, and the baseline is recorded instead`() {
+        // A fresh pairing: this total reaches back before OSRA was installed, and #229 says collection
+        // starts at the grant. The event stream covers the window from the grant to this upload.
+        assertEquals(0, UsageStatsDelta.deltaForUpload(998, null, sameBucket = false, hasSnapshot = false))
+    }
+
+    @Test
+    fun `a rollover inside one bucket view never subtracts`() {
+        assertEquals(5, UsageStatsDelta.deltaForUpload(5, 120, sameBucket = true, hasSnapshot = true))
+        assertEquals(0, UsageStatsDelta.deltaForUpload(0, 120, sameBucket = true, hasSnapshot = true))
+    }
 }

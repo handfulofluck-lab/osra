@@ -34,4 +34,29 @@ object UsageStatsDelta {
 
     /** The baseline for a re-grant: everything Android has counted so far is excluded, not uploaded. */
     fun baseline(totals: Map<String, Int>): Map<String, Int> = totals.filterValues { it >= 0 }
+
+    /**
+     * Issue #267 review (D1, D2): what to add for one package, given which bucket the totals belong to.
+     *
+     * Android rolls its `INTERVAL_DAILY` bucket at a time the device picks — measured at 20:07 on the
+     * Flip4, not at local midnight — so a snapshot keyed by the calendar date re-sent up to four hours
+     * every morning. The bucket's own begin time is the key.
+     *
+     * And with **no snapshot at all** (a fresh pairing, or the first upload after install) the right
+     * answer is zero plus a baseline: that total reaches back before OSRA was paired, and #229's rule is
+     * that collection starts at the grant and never copies history. The event stream still covers the
+     * window between the grant and this upload.
+     *
+     * @param sameBucket true when the snapshot was taken in the bucket these totals belong to
+     * @param hasSnapshot false when there is no snapshot for this device yet
+     */
+    fun deltaForUpload(totalMinutes: Int, lastSeenMinutes: Int?, sameBucket: Boolean, hasSnapshot: Boolean): Int {
+        if (totalMinutes <= 0) return 0
+        if (!hasSnapshot) return 0
+        // A new bucket is all usage since the rollover, so the whole total is new. The cost is that the
+        // last upload before a rollover loses the tail of the previous bucket for apps the event stream
+        // missed — one window a day, on the under-counting side, which is the side to be wrong on.
+        if (!sameBucket) return totalMinutes
+        return deltaMinutes(totalMinutes, lastSeenMinutes)
+    }
 }

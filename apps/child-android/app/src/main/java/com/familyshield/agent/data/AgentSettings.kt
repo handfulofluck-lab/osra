@@ -262,16 +262,19 @@ class AgentSettings @Inject constructor(
     }
 
     /**
-     * Issue #267: the day and the per-package UsageStats totals at the last backfill.
+     * Issue #267 review: the **bucket** and the per-package UsageStats totals at the last backfill.
      *
-     * The totals are Android's whole-day counters, so the upload sends the increase since this snapshot
-     * rather than the total. Keyed by day: at midnight the snapshot belongs to yesterday and is ignored.
-     * Encoded as `day|pkg=minutes;pkg=minutes` — package names contain no `|`, `;` or `=`, so no escaping
-     * is needed and the whole thing stays one preference rather than a table for two numbers per app.
+     * Android rolls its `INTERVAL_DAILY` bucket at a time the device picks — measured at 20:07 on the
+     * Flip4 — so a snapshot keyed by the calendar date re-sent up to four hours every morning. The key
+     * is the bucket's own begin time, which is what makes "same bucket" mean the same thing Android does.
+     *
+     * Encoded as `bucketBegin|pkg=minutes;pkg=minutes` — package names contain no `|`, `;` or `=`, so no
+     * escaping is needed and the whole thing stays one preference rather than a table for two numbers per
+     * app. Returns `(null, empty)` on a device that has never backfilled.
      */
-    suspend fun usageStatsLastSeen(): Pair<String?, Map<String, Int>> {
-        val raw = read(KEY_USAGE_STATS_LAST_SEEN) ?: return null to emptyMap()
-        val day = raw.substringBefore('|').takeIf { '|' in raw }
+    suspend fun usageStatsSnapshot(): Pair<Long?, Map<String, Int>> {
+        val raw = read(KEY_USAGE_STATS_SNAPSHOT) ?: return null to emptyMap()
+        val bucket = raw.substringBefore('|').toLongOrNull()
         val totals = raw.substringAfter('|', "")
             .split(';')
             .mapNotNull { entry ->
@@ -280,13 +283,13 @@ class AgentSettings @Inject constructor(
                 if (name.isEmpty() || minutes == null) null else name to minutes
             }
             .toMap()
-        return day to totals
+        return bucket to totals
     }
 
     /** Records the snapshot a backfill covered, so the next upload sends only the increase. */
-    suspend fun setUsageStatsLastSeen(day: String, totals: Map<String, Int>) {
+    suspend fun setUsageStatsSnapshot(bucketBegin: Long, totals: Map<String, Int>) {
         val encoded = totals.entries.joinToString(";") { "${it.key}=${it.value}" }
-        store.edit { it[KEY_USAGE_STATS_LAST_SEEN] = "$day|$encoded" }
+        store.edit { it[KEY_USAGE_STATS_SNAPSHOT] = "$bucketBegin|$encoded" }
     }
 
     /**
@@ -355,8 +358,8 @@ class AgentSettings @Inject constructor(
         private val KEY_CONSENT_RESUMED_AT = stringPreferencesKey("consent_resumed_at")
         // Issue #221: the location grant the server was last told about (change detection).
         private val KEY_REPORTED_LOCATION_GRANT = stringPreferencesKey("reported_location_grant")
-        // Issue #267: the day and per-package UsageStats totals the last backfill covered.
-        private val KEY_USAGE_STATS_LAST_SEEN = stringPreferencesKey("usage_stats_last_seen")
+        // Issue #267: the bucket and per-package UsageStats totals the last backfill covered.
+        private val KEY_USAGE_STATS_SNAPSHOT = stringPreferencesKey("usage_stats_snapshot")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
         private val KEY_ACCESSIBILITY_WAS_ENABLED = stringPreferencesKey("accessibility_was_enabled")
         // Issue #225: the recorded "was granted" state for the overlay-revoked transition rule.

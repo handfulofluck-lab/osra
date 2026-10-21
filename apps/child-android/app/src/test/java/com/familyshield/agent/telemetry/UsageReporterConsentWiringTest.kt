@@ -77,9 +77,14 @@ class UsageReporterConsentWiringTest {
         val body = reporter.substringAfter("private fun backfillFromUsageStats").substringBefore("companion object")
         // #267: the whole-day totals are counters now, so an app absent from this window adds only its
         // increase. Adding the total is what over-counted every family with usage access.
-        assertTrue("each package's increase is added", body.contains("UsageStatsDelta.deltaMinutes(total, baseline[pkg])"))
-        assertTrue("every package's total is recorded, not only the ones added", body.contains("settings.setUsageStatsLastSeen(today, totals)"))
-        assertTrue("the snapshot is keyed by day", body.contains("val baseline = if (storedDay == today) lastSeen else emptyMap()"))
+        assertTrue(
+            "each package's increase is judged against the bucket it belongs to",
+            body.contains("UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], sameBucket, hasSnapshot)"),
+        )
+        assertTrue("every package's total is recorded, not only the ones added", body.contains("settings.setUsageStatsSnapshot(bucketBegin, totals)"))
+        // #272 review: the snapshot must be keyed by Android's own bucket, not the calendar date — the
+        // phone rolls it at 20:07, so a date key re-sent up to four hours every morning.
+        assertFalse("a calendar-date key is the bug", body.contains("LocalDate.now().toString()"))
         assertFalse(
             "the whole-day total is the bug: it was added on every upload",
             body.contains("perApp[s.packageName] = minutes"),
@@ -92,7 +97,7 @@ class UsageReporterConsentWiringTest {
         val reset = reporter.substringAfter("CommsConsentPolicy.resetTo(").substringBefore("if (consent.isPaused())")
         assertTrue(
             "a re-grant excludes what Android has already counted instead of uploading it",
-            reset.contains("usageStatsTotals()?.let { settings.setUsageStatsLastSeen(LocalDate.now().toString(), it) }"),
+            reset.contains("usageStatsTotals()?.let { (bucketBegin, totals) -> settings.setUsageStatsSnapshot(bucketBegin, totals) }"),
         )
     }
 

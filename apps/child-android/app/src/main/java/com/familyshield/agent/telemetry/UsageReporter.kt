@@ -102,7 +102,7 @@ class UsageReporter @Inject constructor(
             // Issue #267: a re-grant establishes a UsageStats baseline instead of adding anything, so the
             // withdrawn window and the morning before the grant are excluded rather than uploaded — this
             // replaces the "skip the backfill on a re-grant day" rule from #266.
-            usageStatsTotals()?.let { settings.setUsageStatsLastSeen(LocalDate.now().toString(), it) }
+            usageStatsTotals()?.let { (bucketBegin, totals) -> settings.setUsageStatsSnapshot(bucketBegin, totals) }
         }
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
         val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return
@@ -239,16 +239,21 @@ class UsageReporter @Inject constructor(
      * trade — an under-count a parent can see is better than a leak they cannot.
      */
     /**
-     * Issue #267: Android's whole-day per-package totals, or null when usage access is not granted.
+     * Issue #267: Android's per-package totals **for the current bucket**, or null without usage access.
      *
-     * One query feeds both the backfill delta and the re-grant baseline; `INTERVAL_DAILY` returns whole
-     * buckets, which is exactly why the callers treat these numbers as counters rather than as a window.
+     * `INTERVAL_DAILY` returns whole buckets and rolls them at a time the device picks — measured at
+     * 20:07 on the Flip4, not local midnight — so the query can return the old bucket and the new one
+     * side by side. Keeping the entry with the greatest `firstTimeStamp` (the bucket's start, per `UsageStats`) per package is what makes the
+     * bucket identity below correct; `associate` would keep whichever came last.
      */
-    private fun usageStatsTotals(): Map<String, Int>? = try {
+    private fun usageStatsTotals(): Pair<Long, Map<String, Int>>? = try {
         val startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        (usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis()) ?: emptyList())
-            .associate { it.packageName to (it.totalTimeInForeground / 60_000L).toInt() }
+        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
+            ?: emptyList()
+        val newestBegin = stats.maxOfOrNull { it.firstTimeStamp } ?: 0L
+        val bucket = stats.filter { it.firstTimeStamp == newestBegin }
+        newestBegin to bucket.associate { it.packageName to (it.totalTimeInForeground / 60_000L).toInt() }
     } catch (t: Throwable) {
         // Stats permission not granted (or OEM restriction) — event-based numbers only.
         null
@@ -264,18 +269,19 @@ class UsageReporter @Inject constructor(
      * increase. A total below the snapshot means the day rolled over, and the whole total is new.
      */
     private suspend fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
-        val totals = usageStatsTotals() ?: return
-        val today = LocalDate.now().toString()
-        val (storedDay, lastSeen) = settings.usageStatsLastSeen()
-        val baseline = if (storedDay == today) lastSeen else emptyMap()
+        val (bucketBegin, totals) = usageStatsTotals() ?: return
+        val (storedBucket, lastSeen) = settings.usageStatsSnapshot()
+        val hasSnapshot = storedBucket != null
+        val sameBucket = storedBucket == bucketBegin
         for ((pkg, total) in totals) {
             if (perApp.containsKey(pkg)) continue // counted from this window's events already
-            val delta = UsageStatsDelta.deltaMinutes(total, baseline[pkg])
+            val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], sameBucket, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }
         // Recorded for every package, including those the events covered: a later window without one of
-        // them must add only what Android saw after this upload.
-        settings.setUsageStatsLastSeen(today, totals)
+        // them must add only what Android saw after this upload. With no snapshot this is the baseline
+        // and nothing was added, which is #229's rule for the first upload after a pairing.
+        settings.setUsageStatsSnapshot(bucketBegin, totals)
     }
 
     companion object {
