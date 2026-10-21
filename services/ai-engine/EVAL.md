@@ -101,8 +101,8 @@ Known limits, stated rather than discovered later:
 
 Every generated row carries `provenance.split` — `dev` or `test` — and `provenance.pattern`, the id the
 side is cut on. The split is **per pattern, never per row**: a pattern is a template, its translation in
-the other language and its gender twin under one id (`PATTERN_EN` / `PATTERN_AR` and `LANGUAGE_ONLY` in
-each bank), and all rows from one pattern land on the same side. Five rows share a pattern's wording, so
+the other language, its gender twin and a retelling of it in another person under one id (`PATTERN_EN` /
+`PATTERN_AR` and `LANGUAGE_ONLY` in each bank), and all rows from one pattern land on the same side. Five rows share a pattern's wording, so
 a model that recognises one fill very likely recognises its siblings; a per-row draw would put a
 paraphrase of a test row into dev and the "held-out" number would be contaminated by exactly the overlap
 the five-row cap exists to limit.
@@ -123,12 +123,14 @@ dev with no diff that shows it happened. The hash makes a pattern's side depend 
 `tests/test_eval_harness.py` pins five values so a change to the hash input is a failing test, not a quiet
 re-split.
 
-Counts in the committed set (2026-10-21): 161 patterns, none of them on both sides.
+Counts in the committed set (2026-10-22): 156 distinct `(bank, pattern)` keys, none of them on both
+sides. (Three counts are easy to confuse and `eval/schema.md` defines each: 304 distinct
+`(bank, list, pattern)` ids, 156 distinct `(bank, pattern)` keys, and 155 positive patterns.)
 
 | split | rows | EN | AR |
 |---|---|---|---|
-| `dev` | 695 | 349 | 346 |
-| `test` | 484 | 239 | 245 |
+| `dev` | 694 | 348 | 346 |
+| `test` | 485 | 240 | 245 |
 | `all` | 1,179 | 588 | 591 |
 
 Per bank, dev / test rows:
@@ -136,16 +138,18 @@ Per bank, dev / test rows:
 | bank | dev / test | EN dev / test | AR dev / test |
 |---|---|---|---|
 | cyberbullying | 117 / 51 | 59 / 25 | 58 / 26 |
-| grooming | 92 / 71 | 46 / 34 | 46 / 37 |
+| grooming | 89 / 74 | 43 / 37 | 46 / 37 |
 | hate_speech | 88 / 82 | 44 / 41 | 44 / 41 |
-| self_harm | 78 / 92 | 38 / 47 | 40 / 45 |
+| self_harm | 80 / 90 | 40 / 45 | 40 / 45 |
 | sexual_content | 113 / 57 | 56 / 29 | 57 / 28 |
 | substance_use | 108 / 60 | 54 / 30 | 54 / 30 |
 | violence | 99 / 71 | 52 / 33 | 47 / 38 |
 
-On the `test` side an Arabic category has 22–34 rows, so a recall of 1.00 there only rules out a miss
-rate above about 9–14% (95%, rule of three: 3/n). `substance_use` is the thinnest at 22 and
-`violence` the widest at 34; read the per-category numbers with that width in mind.
+On the `test` side an Arabic category is covered by only 6–18 patterns, so a recall of 1.00 there only
+rules out a miss rate above about 16–50% (95%, rule of three: 3/n). Rows are not the unit — five rows of
+one pattern rise and fall together, which is the premise of the split — so the count is of distinct
+`(bank, pattern)` keys among the Arabic `test` rows labelled with the category: `substance_use` 6,
+`cyberbullying` 7, `violence` 7, `sexual_content` 8, `hate_speech` 10, `grooming` 12, `self_harm` 18.
 
 Every bank, and both languages, has both sides non-empty — a bank that was 100 % dev would make its
 category unmeasurable in one direction.
@@ -239,8 +243,10 @@ categories**.
 **What this does not say.** Four limits, in order of how much they could move the number:
 
 - **The rows come from template families.** Five rows share a template's wording, so a model that
-  recognises one may recognise its siblings. The `dev`/`test` split noted above is what turns this
-  into a population estimate rather than a measure of this corpus — once `--split test` is run.
+  recognises one may recognise its siblings. The `dev`/`test` split above holds `test` out from tuning,
+  so a `--split test` number is a held-out measurement — but not an independent one: the same author
+  wrote the prompt and every template, so it measures this corpus under a prompt written with its
+  themes in view.
 - **`cyberbullying` precision is poor (0.36 / 0.38)** because its rows are also flagged with the category
   they overlap. The recall of 1.00 is real; the precision is the cost of a coarse taxonomy.
 - **One model, one run, one threshold.** No variance estimate. A second model and a repeated run would

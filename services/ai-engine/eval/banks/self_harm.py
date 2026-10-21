@@ -136,15 +136,20 @@ POSITIVES_AR = [
 # The Arabic list inserts a twin wherever the verb, pronoun or possessive agrees with a named
 # person, so most ids cover one EN template and two AR ones (`{person}`, `{name}`, `{sibling}`), and
 # the EN m/f pairs of 12/13, 18/19, 21/22, 25/26 and 27/28 cover two EN templates each.
-# `LANGUAGE_ONLY` names the ids that exist in one language only: 21 and 31 are English with no
-# Arabic counterpart, 36 is AR 25 ("afraid to tell anyone") with none in English.
+#
+# A pattern also covers a retelling, not only a translation and a twin: EN 40 ("i got my {subject}
+# result back and it's bad") joined 34 ("the {subject} results came out and i failed"), taking its
+# Arabic translation (AR 45) with it, and AR 25 ("afraid to tell anyone ... they'll think i'm playing")
+# joined 1 ("i don't know how to say it to anyone"). Id 35 is retired with the merge.
+# `LANGUAGE_ONLY` names the ids that exist in one language only: 21 (EN 24, a note for whoever finds
+# it) and 31 (EN 36, the parent's long message) are English; every Arabic id is shared.
 PATTERN_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 15, 16, 17, 17, 18, 19, 19,
-              20, 21, 22, 22, 23, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
+              20, 21, 22, 22, 23, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 34]
 
 PATTERN_AR = [0, 1, 2, 3, 4, 5, 5, 6, 8, 7, 7, 9, 10, 10, 11, 12, 12, 13, 13, 14, 15, 16, 17, 17,
-              18, 36, 19, 19, 20, 20, 22, 22, 23, 23, 24, 25, 26, 27, 28, 29, 30, 30, 32, 33, 34, 35]
+              18, 1, 19, 19, 20, 20, 22, 22, 23, 23, 24, 25, 26, 27, 28, 29, 30, 30, 32, 33, 34, 34]
 
-LANGUAGE_ONLY = {"positives:21", "positives:31", "positives:36"}
+LANGUAGE_ONLY = {"positives:21", "positives:31"}
 
 # EN 14 and 20, AR 17, 18 and 24: the message is a child reporting that others
 # keep telling them to die, which is cyberbullying as well as self_harm. A scorer

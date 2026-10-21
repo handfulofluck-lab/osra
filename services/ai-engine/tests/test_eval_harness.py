@@ -23,6 +23,48 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET = os.path.join(ROOT, "eval", "dataset.jsonl")
 ARABIC = re.compile(r"[\u0600-\u06FF]")
 
+# One row per translation a reviewer can read in the two lists: (bank, list, EN index, AR indices).
+# Pinned rather than derived, because a test that re-derived the table from the mapping would only
+# restate it; these are the pairs the promise "a translation of a test sentence cannot sit in dev"
+# rests on (#282 review R1). Every bank appears at least once.
+TRANSLATIONS = [
+    ("cyberbullying", "positives", 0, (0, 1)),
+    ("cyberbullying", "positives", 5, (7, 8)),
+    ("cyberbullying", "hard_negatives", 0, (0,)),
+    ("grooming", "positives", 0, (0, 1)),
+    ("grooming", "positives", 5, (8, 9)),
+    ("grooming", "positives", 10, (20,)),
+    ("grooming", "positives", 24, (27, 28)),
+    ("hate_speech", "positives", 3, (3,)),
+    ("hate_speech", "positives", 13, (13,)),
+    ("self_harm", "positives", 5, (5, 6)),
+    ("self_harm", "positives", 7, (9, 10)),
+    ("self_harm", "positives", 12, (15, 16)),
+    ("self_harm", "positives", 21, (26, 27)),
+    ("sexual_content", "positives", 0, (0,)),
+    ("sexual_content", "positives", 14, (14, 15)),
+    ("substance_use", "positives", 1, (1, 2)),
+    ("substance_use", "positives", 14, (16, 17)),
+    ("substance_use", "hard_negatives", 5, (2,)),
+    ("violence", "positives", 0, (0,)),
+    ("violence", "positives", 10, (8, 9)),
+]
+
+# A retelling is the same sentence in another person, or with one detail changed: a prompt tuned on
+# one has read the other, so it takes its source's pattern (#282 review R2). (bank, list, lang,
+# retelling index, source index).
+RETELLINGS = [
+    ("grooming", "positives", "en", 16, 10),
+    ("grooming", "positives", "en", 17, 10),
+    ("grooming", "positives", "en", 25, 24),
+    ("grooming", "positives", "en", 26, 24),
+    ("grooming", "positives", "en", 28, 27),
+    ("grooming", "positives", "en", 29, 27),
+    ("self_harm", "positives", "en", 40, 39),
+    ("self_harm", "positives", "ar", 25, 1),
+    ("violence", "positives", "en", 5, 4),
+]
+
 
 @pytest.fixture(scope="module")
 def banks():
@@ -214,22 +256,46 @@ def _gendered_slots(template):
 
 
 def _gender_twins(templates):
-    """Adjacent templates that are one sentence with the gender changed.
+    """Every pair of templates that are one sentence with the gender changed — not just neighbours.
 
-    A twin keeps the slot shape — the same slots in the same order with `_m`/`_f` folded — and the
-    text is still the same sentence once the slots are masked. Shape alone is not enough
-    (`cyberbullying` AR 9 sits beside AR 8 with a matching shape but is a different line, 0.69), and
-    order is what separates a twin from the block next to it at 0.8 text identity.
+    Neighbours alone missed the pairs that matter most: `violence` lists its six masculine templates
+    and then the six feminine ones, so its twins are 10/16 ... 15/21 and a neighbour-only scan checked
+    none of them (#282 review R1). A twin keeps the slot shape — the same slots in the same order with
+    `_m`/`_f` folded — and is still the same sentence once the slots are masked, which is what
+    separates a twin from an unrelated line that happens to share its slots (0.19-0.69, against 0.92
+    or better for every real twin).
     """
-    for index in range(len(templates) - 1):
-        first, second = templates[index], templates[index + 1]
-        if _gender_shape(first) != _gender_shape(second):
-            continue
-        if _gendered_slots(first) == _gendered_slots(second):
-            continue
-        left, right = SLOT_RE.sub("<s>", first), SLOT_RE.sub("<s>", second)
-        if difflib.SequenceMatcher(None, left, right).ratio() >= 0.8:
-            yield index, index + 1
+    for first in range(len(templates)):
+        for second in range(first + 1, len(templates)):
+            if _gender_shape(templates[first]) != _gender_shape(templates[second]):
+                continue
+            if _gendered_slots(templates[first]) == _gendered_slots(templates[second]):
+                continue
+            left = SLOT_RE.sub("<s>", templates[first])
+            right = SLOT_RE.sub("<s>", templates[second])
+            if difflib.SequenceMatcher(None, left, right).ratio() >= 0.8:
+                yield first, second
+
+
+def test_a_translation_shares_its_source_pattern(banks):
+    """The promise of the split, for translations: the Arabic line of a test sentence is not in dev."""
+    for bank, list_name, en_index, ar_indices in TRANSLATIONS:
+        pattern = banks[bank].patterns(list_name, "en")[en_index]
+        for ar_index in ar_indices:
+            assert banks[bank].patterns(list_name, "ar")[ar_index] == pattern, (
+                f"{bank}/{list_name}: EN {en_index} is pattern {pattern} but its translation "
+                f"AR {ar_index} is pattern {banks[bank].patterns(list_name, 'ar')[ar_index]}")
+    assert {row[0] for row in TRANSLATIONS} == set(banks)
+
+
+def test_a_retelling_shares_its_source_pattern(banks):
+    """A retold sentence must not sit on the other side of the split from its source."""
+    for bank, list_name, lang, retelling, source in RETELLINGS:
+        patterns = banks[bank].patterns(list_name, lang)
+        assert patterns[retelling] == patterns[source], (
+            f"{bank}/{list_name}/{lang}: {retelling} retells {source} but carries pattern "
+            f"{patterns[retelling]} against {patterns[source]}")
+        assert split_of(bank, patterns[retelling]) == split_of(bank, patterns[source])
 
 
 def test_gender_twins_share_a_pattern_and_a_side(banks):
@@ -252,7 +318,7 @@ def test_gender_twins_share_a_pattern_and_a_side(banks):
                         f"but carry patterns {patterns[first]} and {patterns[second]}")
                     assert split_of(category, patterns[first]) == split_of(category, patterns[second])
     assert found == {"cyberbullying": 12, "grooming": 27, "self_harm": 15, "sexual_content": 2,
-                     "substance_use": 8, "violence": 6}, found
+                     "substance_use": 8, "violence": 12}, found
 
 
 def test_every_bank_and_language_has_both_sides():
