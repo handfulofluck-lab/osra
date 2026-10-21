@@ -88,3 +88,9 @@ start of processing, so events from before it are not "already collected" data t
 It also keeps old numbers out of the #27 unknown-contact alerts. Cost: calls and messages sent before
 the grant are unavailable to the parent timeline forever — deliberately, and the parent timeline
 says "phone calls" so app calls are not implied.
+
+**Known limit, accepted.** The reset-on-withdrawal runs only when the agent *observes* the
+withdrawal; a process dead for the whole withdrawal→re-grant window writes no pause marker, and the
+stored `*_since` floor keeps the *old* grant time, so rows from the paused window can be read
+afterwards. Closing that needs a consent window the server records and the device asks for, which is
+a larger contract than this amendment; it is recorded here rather than left in a code comment.
