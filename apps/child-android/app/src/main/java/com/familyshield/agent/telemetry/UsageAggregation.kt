@@ -18,6 +18,7 @@ internal data class PerAppUsage(
      * here (as a minute now or as a carry later), and adding Android's increase on top double-counts
      * (review R1 on #281). A package that has only a carried remainder is deliberately absent — the
      * previous upload's snapshot already covered it, so Android's increase since then is real time.
+     * The agent's own package is absent too (#284): its window credited nobody.
      */
     val eventPackages: Set<String>,
 )
@@ -32,22 +33,40 @@ internal data class PerAppUsage(
  * status bar sends an event every ~60 s, so flooring each ~59.9 s gap credited zero all day. The
  * leftover ms of every package is returned so the caller can carry it into the next window —
  * without it, 15 windows of 59 s each still lose a minute apiece.
+ *
+ * [ownPackage] is the agent's own package, which is never credited (#284). Its event still ends the
+ * previous app's gap, but the time it spends in front is the child waiting on a block screen, not
+ * use of the app behind it.
  */
 internal fun computePerAppMinutes(
     events: List<UsageEventEntity>,
     windowEnd: Long,
+    ownPackage: String,
     carriedMs: Map<String, Long> = emptyMap(),
 ): PerAppUsage {
     val perAppMs = HashMap<String, Long>()
     for (i in events.indices) {
         val next = if (i + 1 < events.size) events[i + 1].timestamp else windowEnd
         val gapMs = (next - events[i].timestamp).coerceIn(0L, MAX_GAP_MS)
-        if (gapMs > 0) perAppMs.merge(events[i].packageId, gapMs) { a, b -> a + b }
+        // #284: our own block screen is in front, not the blocked app. Ending the previous gap is all
+        // it does — before this, the blocked app was credited the whole stay, capped at five minutes.
+        if (gapMs > 0 && events[i].packageId != ownPackage) {
+            perAppMs.merge(events[i].packageId, gapMs) { a, b -> a + b }
+        }
     }
     // Taken before the carry is merged: the backfill's rule is "add only what this window's events did
     // not mention", and a carry is the previous window's time, already snapshotted once.
+    //
+    // #284: our own package is deliberately absent. This set only says "this window counted this app",
+    // and an own-window event counted nobody; keeping it out suppresses no real app, because the check
+    // is per package. The backfill instead skips our own package by name (UsageReporter), which also
+    // covers a window where the block screen never produced an event at all.
     val eventPackages = perAppMs.keys.toSet()
     for ((pkg, carried) in carriedMs) {
+        // #284: a snapshot written before the fix could carry our own package's time — the block screen
+        // was foreground time in UsageStats, so the backfill counted it. It is not the child's use
+        // either, so it is dropped rather than reported once more.
+        if (pkg == ownPackage) continue
         if (carried > 0) perAppMs.merge(pkg, carried) { a, b -> a + b }
     }
     val minutes = HashMap<String, Int>()
