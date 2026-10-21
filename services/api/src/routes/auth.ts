@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import argon2 from "argon2";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
@@ -544,12 +545,15 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // --- #167: a password-reset link is single-use ------------------------------------------------
-  // `reset:<jti>` is the record `GETDEL` consumes (the token's `jti` is its only identity);
+  // `reset:<jti>` is the record the Lua consume removes (the token's `jti` is its only identity);
   // `reset:latest:<parentId>` names the one jti still honoured, so a second /reset/request kills the
   // first. Both live 15 minutes, the token's own lifetime.
   const RESET_TTL_SECONDS = 15 * 60;
+  /** One link per address per minute — see the SET NX at the top of /reset/request. */
+  const RESET_COOLDOWN_SECONDS = 60;
   const resetKey = (jti: string) => `reset:${jti}`;
   const resetLatestKey = (parentId: string) => `reset:latest:${parentId}`;
+  const resetCooldownKey = (email: string) => `reset:cooldown:${createHash("sha256").update(email).digest("hex")}`;
 
   /**
    * Put a consumed `reset:<jti>` record back after a failure past the point of consumption.
@@ -576,11 +580,24 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/reset/request", { config: RL }, async (req, reply) => {
     const parsed = z.object({ email: z.string().email().transform((e) => e.trim().toLowerCase()) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const redis = getRedis();
+    // #167 review: one link per address per minute, claimed *before* the parent lookup. Two reasons:
+    // the cooldown stops a stranger from repeatedly superseding a parent's newest link (and flooding
+    // their inbox) — a lever the supersession rule creates; and because the claim runs first, a Redis
+    // outage answers the same 503 for a known and an unknown address alike.
+    let claimed: string | null;
+    try {
+      claimed = await redis.set(resetCooldownKey(parsed.data.email), "1", "EX", RESET_COOLDOWN_SECONDS, "NX");
+    } catch (err) {
+      req.log.error({ err }, "[security] reset cooldown store unreachable — refusing reset request");
+      return reply.code(503).send({ error: "reset_unavailable" });
+    }
+    // Inside the cooldown: the same `{ok:true}` as a fresh request, but no new link and no email.
+    if (claimed === null) return { ok: true };
     const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
     if (parent) {
       const jti = newJti();
       const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset", jti }, { expiresIn: "15m" });
-      const redis = getRedis();
       // Issuing a link that can never be redeemed is worse than a 5xx, so both writes are awaited
       // before the email goes out. Superseding is the `latest` write alone: the older key stays until
       // its TTL, but no confirm will honour it.
@@ -610,17 +627,23 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.code(401).send({ error: "invalid_or_expired_token" });
     }
     const redis = getRedis();
-    // Atomic single use, before the hash is computed: GETDEL returns the owner exactly once, so of
-    // two concurrent confirmations of the same link only one can proceed. A missing key is a spent,
-    // superseded or expired token.
+    // Atomic single use, before the hash is computed: the Lua GET+DEL returns the owner to exactly
+    // one caller, so of two concurrent confirmations of the same link only one can proceed. A missing
+    // key is a spent, superseded or expired token. Redis 5.0 has no GETDEL (the shared test server
+    // runs 5.0.14, and devices.ts:217 uses this same script for pairing codes).
     let owner: string | null;
     try {
-      owner = await redis.getdel(resetKey(payload.jti));
+      owner = (await redis.eval(
+        "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
+        1,
+        resetKey(payload.jti),
+      )) as string | null;
     } catch (err) {
       // Not a spent link but an unreachable store: report a 5xx, which the #162 retry contract
-      // already treats as transient, instead of telling the parent the link is dead.
+      // already treats as transient, instead of telling the parent the link is dead. A script that
+      // fails to run deletes nothing, so there is no record to restore.
       req.log.error({ err }, "[security] reset-token store unreachable — refusing reset confirm");
-      throw err;
+      return reply.code(503).send({ error: "reset_unavailable" });
     }
     if (owner !== payload.sub) return reply.code(401).send({ error: "invalid_or_expired_token" });
     // Superseded by a newer request (read after the consume: a request that lands between the two
@@ -631,7 +654,8 @@ export async function authRoutes(app: FastifyInstance) {
       latest = await redis.get(resetLatestKey(payload.sub));
     } catch (err) {
       await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
-      throw err;
+      req.log.error({ err }, "[security] reset-token store unreachable after the consume; restored for the retry");
+      return reply.code(503).send({ error: "reset_unavailable" });
     }
     if (latest !== payload.jti) return reply.code(401).send({ error: "invalid_or_expired_token" });
 
@@ -640,21 +664,23 @@ export async function authRoutes(app: FastifyInstance) {
       passwordHash = await argon2.hash(parsed.data.password);
     } catch (err) {
       await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
-      throw err;
+      req.log.error({ err }, "[security] password hashing failed after the reset token was consumed; restored for the retry");
+      return reply.code(503).send({ error: "reset_unavailable" });
     }
     try {
       await prisma.parent.update({ where: { id: payload.sub }, data: { passwordHash } });
     } catch (err) {
-      // Review API-8 answered 404 for "parent deleted between issuance and confirmation", and that
-      // answer is right for a *missing* parent — but it was used for every failure, so a transient
-      // database error told the client its account was gone and the retry #162 promised never came.
-      // Distinguish them by re-reading: gone -> 404 with the link left dead (there is nobody to
-      // restore it for); still there -> restore the record and fail 5xx, which is transient.
-      const stillExists = await prisma.parent.findUnique({ where: { id: payload.sub }, select: { id: true } }).catch(() => null);
-      if (!stillExists) return reply.code(404).send({ error: "account_not_found" });
+      // Review API-8 answered 404 for "parent deleted between issuance and confirmation", which is
+      // right for a *missing* parent but was used for every failure, so a transient database error
+      // told the client its account was gone and the retry #162 promised never came. Decide from the
+      // update error alone: P2025 is "record not found", everything else is transient. A re-read here
+      // turned "cannot reach the database" into "not found" (and killed the link), so there is none.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+        return reply.code(404).send({ error: "account_not_found" }); // really gone: link stays dead
+      }
       await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
-      req.log.error({ err }, "[security] password update failed after the reset token was consumed; the token was restored for the retry");
-      throw err;
+      req.log.error({ err }, "[security] password update failed after the reset token was consumed; restored for the retry");
+      return reply.code(503).send({ error: "reset_unavailable" });
     }
     // Handoff item 3: a password change revokes every existing session. This must not be reported as
     // success when it throws (#162/#135: a revocation that did not happen is a 5xx), and the restored
@@ -663,7 +689,8 @@ export async function authRoutes(app: FastifyInstance) {
       await revokeAllRefreshTokens(payload.sub);
     } catch (err) {
       await restoreResetToken(payload.sub, payload.jti, payload.exp, req);
-      throw err;
+      req.log.error({ err }, "[security] session revocation failed after the reset token was consumed; restored for the retry");
+      return reply.code(503).send({ error: "reset_unavailable" });
     }
     return { ok: true };
   });

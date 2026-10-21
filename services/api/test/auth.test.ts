@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import argon2 from "argon2";
+import { Prisma } from "@prisma/client";
 import { authRoutes } from "../src/routes/auth.js";
 import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
@@ -42,18 +43,40 @@ function wireRedisStore() {
   const redis = getRedis() as unknown as MockRedis;
   const store = new Map<string, string>();
   const ttls = new Map<string, number>();
+  const expiresAt = new Map<string, number>();
   const sets = new Map<string, Set<string>>();
-  redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
+  /** A key that has outlived its EX is absent, so a mocked clock can expire the cooldown. */
+  const live = (k: string): string | null => {
+    const deadline = expiresAt.get(k);
+    if (deadline !== undefined && deadline <= Date.now()) {
+      store.delete(k);
+      ttls.delete(k);
+      expiresAt.delete(k);
+    }
+    return store.get(k) ?? null;
+  };
+  redis.get.mockImplementation(async (k: string) => live(k));
   redis.set.mockImplementation(async (k: string, v: string, ...args: unknown[]) => {
-    store.set(k, String(v));
     const ex = args.indexOf("EX");
-    if (ex !== -1 && typeof args[ex + 1] === "number") ttls.set(k, args[ex + 1] as number);
+    const seconds = ex !== -1 && typeof args[ex + 1] === "number" ? (args[ex + 1] as number) : undefined;
+    if (args.includes("NX") && live(k) !== null) return null;
+    store.set(k, String(v));
+    ttls.delete(k);
+    expiresAt.delete(k);
+    if (seconds !== undefined) {
+      ttls.set(k, seconds);
+      expiresAt.set(k, Date.now() + seconds * 1000);
+    }
     return "OK";
   });
-  redis.getdel.mockImplementation(async (k: string) => {
-    const v = store.get(k) ?? null;
-    store.delete(k);
-    ttls.delete(k);
+  // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL).
+  redis.eval.mockImplementation(async (_script: string, _n: number, key: string) => {
+    const v = live(key);
+    if (v !== null) {
+      store.delete(key);
+      ttls.delete(key);
+      expiresAt.delete(key);
+    }
     return v;
   });
   redis.del.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
@@ -110,7 +133,7 @@ describe("auth routes", () => {
     // defaults so an implementation from one test cannot leak into the next.
     const redis = getRedis() as unknown as MockRedis;
     redis.get.mockImplementation(async () => null);
-    redis.getdel.mockImplementation(async () => null);
+    redis.eval.mockImplementation(async () => null);
     redis.set.mockImplementation(async () => "OK");
     redis.del.mockImplementation(async () => 0);
     redis.incrby.mockImplementation(async () => 1);
@@ -595,8 +618,9 @@ describe("auth routes", () => {
     await app.close();
   });
 
-  // Atomicity, not ordering: both confirmations run at once and the store decides. `GETDEL` returns
-  // the record to exactly one caller, so the loser has nothing to consume and cannot set a password.
+  // Atomicity, not ordering: both confirmations run at once and the store decides. The Lua GET+DEL
+  // returns the record to exactly one caller, so the loser has nothing to consume and cannot set a
+  // password.
   it("#167: two concurrent confirmations of one link — exactly one wins", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     wireRedisStore();
@@ -617,7 +641,12 @@ describe("auth routes", () => {
     prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
 
     const older = await requestResetToken(app);
+    // A second request inside the 60 s cooldown is answered without a new link (see the cooldown
+    // tests), so supersession is exercised where it can happen: after the cooldown has expired.
+    const realNow = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(realNow + 61_000);
     const newer = await requestResetToken(app);
+    clock.mockRestore();
 
     const oldAttempt = await confirmReset(app, older);
     expect(oldAttempt.statusCode).toBe(401);
@@ -632,9 +661,86 @@ describe("auth routes", () => {
     await app.close();
   });
 
+  // #167 review: the cooldown is what stops a stranger from repeatedly superseding a parent's newest
+  // link (and flooding their inbox) — a lever the supersession rule creates. One link per address per
+  // 60 s; inside the window the answer is the same `{ok:true}`, with no link and no email.
+  it("#167: a second reset request inside the 60 s cooldown sends no new link", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    const realNow = Date.now();
+    let now = realNow;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    try {
+      const first = await app.inject({
+        method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email },
+      });
+      expect(first.statusCode).toBe(200);
+      expect(capture.sent).toHaveLength(1);
+      const firstLatest = store.get("reset:latest:parent-1");
+      expect(firstLatest).toBeTruthy();
+      // The claim is per address, keyed by the sha256 of the normalised (trimmed, lowercased) email.
+      const cooldownKey = `reset:cooldown:${createHash("sha256").update(registerBody.email.toLowerCase()).digest("hex")}`;
+      expect(store.get(cooldownKey)).toBe("1");
+
+      capture.sent = [];
+      now += 59_000;
+      const during = await app.inject({
+        method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email.toUpperCase() },
+      });
+      expect(during.statusCode).toBe(200);
+      expect(during.json()).toEqual({ ok: true });
+      expect(capture.sent).toHaveLength(0);
+      // No new jti: the parent's newest link is untouched, so the earlier one stays the live one.
+      expect(store.get("reset:latest:parent-1")).toBe(firstLatest);
+
+      // After the cooldown, a request issues a new link and supersedes the old one.
+      now += 2_000;
+      const after = await app.inject({
+        method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email },
+      });
+      expect(after.statusCode).toBe(200);
+      expect(capture.sent).toHaveLength(1);
+      expect(store.get("reset:latest:parent-1")).not.toBe(firstLatest);
+    } finally {
+      clock.mockRestore();
+    }
+    await app.close();
+  });
+
+  // The cooldown write runs before the lookup, so a Redis outage answers the same 503 for a known and
+  // an unknown address — and the lookup is never reached, which is what makes the answers identical.
+  it("#167: a cooldown store outage is a 503 for a known and an unknown address alike", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    const redis = getRedis() as unknown as MockRedis;
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email });
+
+    redis.set.mockRejectedValueOnce(new Error("redis unavailable"));
+    const known = await app.inject({
+      method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email },
+    });
+    expect(known.statusCode).toBe(503);
+    expect(known.json().error).toBe("reset_unavailable");
+    expect(prismaMock.parent.findUnique).not.toHaveBeenCalled();
+
+    prismaMock.parent.findUnique.mockResolvedValue(null);
+    redis.set.mockRejectedValueOnce(new Error("redis unavailable"));
+    const unknown = await app.inject({
+      method: "POST", url: "/v1/auth/reset/request", payload: { email: "ghost@familyshield.dev" },
+    });
+    expect(unknown.statusCode).toBe(503);
+    expect(unknown.json()).toEqual(known.json());
+    expect(prismaMock.parent.findUnique).not.toHaveBeenCalled();
+    // Nothing sent, nothing claimed.
+    expect(capture.sent).toHaveLength(0);
+    expect([...store.keys()].some((k) => k.startsWith("reset:cooldown:"))).toBe(false);
+    await app.close();
+  });
+
   // #162 made a 5xx from the counter bump retryable with the same token. The single-use consume
   // runs first, so a failure after it must restore the record with its remaining lifetime.
-  it("#167: a transient update failure is a 5xx with the token restored, not a 404", async () => {
+  it("#167: a transient update failure is a 503 with the token restored, not a 404", async () => {
     // Review API-8 answered 404 for any parent-update failure, which told the client its account was
     // gone on a transient database error and stopped the retry #162 promised. Only a genuinely
     // missing parent is a 404 now.
@@ -644,20 +750,60 @@ describe("auth routes", () => {
 
     const token = await requestResetToken(app);
     const claims = app.jwt.decode<{ jti: string }>(token)!;
+    // The only findUnique so far is the one /reset/request used; the confirm must not re-read.
+    expect(prismaMock.parent.findUnique).toHaveBeenCalledTimes(1);
 
     prismaMock.parent.update.mockRejectedValueOnce(new Error("connection reset"));
-    // The re-read finds the parent: still there, so this was transient.
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ id: "parent-1" });
 
     const failed = await confirmReset(app, token);
-    expect(failed.statusCode).toBe(500);
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json().error).toBe("reset_unavailable");
+    expect(prismaMock.parent.findUnique).toHaveBeenCalledTimes(1);
     expect(store.get(`reset:${claims.jti}`)).toBe("parent-1");
 
     const retry = await confirmReset(app, token);
     expect(retry.statusCode).toBe(200);
   });
 
-  it("#167: a deleted parent is still a 404, and the link is dead", async () => {
+  // #167 review, blocker 2: a Prisma-shaped error from the update used to be rethrown, and server.ts's
+  // global handler maps anything matching /prisma|invocation/ to 400 invalid_input — a status no
+  // client following #162 retries. The route must answer 503 itself, and the handler must still be
+  // the one doing the mapping for anything that really does escape (asserted in the test below).
+  it("#167: a Prisma-shaped update failure is a 503, not the handler's 400 invalid_input", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash: await argon2.hash(PASSWORD) });
+
+    const token = await requestResetToken(app);
+    prismaMock.parent.update.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError(
+        "\nInvalid `prisma.parent.update()` invocation:\n\nCan't reach database server",
+        { code: "P1001", clientVersion: "5.14.0" },
+      ),
+    );
+
+    const failed = await confirmReset(app, token);
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json()).toEqual({ error: "reset_unavailable" });
+  });
+
+  it("buildApp installs the production error handler (a Prisma-shaped rethrow is 400)", async () => {
+    // Guards the pin above: without this, a 503 could pass because no handler is installed at all.
+    const app = await buildApp(async (a) => {
+      a.get("/boom", async () => {
+        throw new Prisma.PrismaClientKnownRequestError(
+          "\nInvalid `prisma.parent.update()` invocation:\n\nCan't reach database server",
+          { code: "P1001", clientVersion: "5.14.0" },
+        );
+      });
+    }, "/v1/test");
+    const res = await app.inject({ method: "GET", url: "/v1/test/boom" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("invalid_input");
+    await app.close();
+  });
+
+  it("#167: a deleted parent is a 404 decided from P2025, and the link is dead", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const { store } = wireRedisStore();
     prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash: await argon2.hash(PASSWORD) });
@@ -665,14 +811,108 @@ describe("auth routes", () => {
     const token = await requestResetToken(app);
     const claims = app.jwt.decode<{ jti: string }>(token)!;
 
-    prismaMock.parent.update.mockRejectedValueOnce(new Error("record not found"));
-    // The re-read finds nothing: the parent was deleted between issuance and confirmation.
-    prismaMock.parent.findUnique.mockResolvedValueOnce(null);
+    // What Prisma raises when the row an update targets no longer exists.
+    prismaMock.parent.update.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError(
+        "An operation failed because it depends on one or more records that were required but not found. Record to update not found.",
+        { code: "P2025", clientVersion: "5.14.0" },
+      ),
+    );
 
     const gone = await confirmReset(app, token);
     expect(gone.statusCode).toBe(404);
     expect(gone.json().error).toBe("account_not_found");
+    // Really gone: there is nobody to restore the record for.
     expect(store.has(`reset:${claims.jti}`)).toBe(false);
+  });
+
+  // #167 review, blocker 3: a database outage (the update and every later call fail) used to re-read
+  // the parent, get `null` from `.catch(() => null)`, and answer 404 account_not_found — turning
+  // "can't reach the database" into "account gone", deleting the link, and breaking the retry.
+  it("#167: a database outage is a 503 with the link restored, and the retry succeeds after recovery", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    const passwordHash = await argon2.hash(PASSWORD);
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash });
+
+    const token = await requestResetToken(app);
+    const claims = app.jwt.decode<{ jti: string }>(token)!;
+
+    const outage = () =>
+      new Prisma.PrismaClientKnownRequestError(
+        "\nInvalid `prisma.parent.update()` invocation:\n\nCan't reach database server at `localhost:5432`",
+        { code: "P1001", clientVersion: "5.14.0" },
+      );
+    prismaMock.parent.update.mockRejectedValueOnce(outage());
+    // "Any subsequent call rejects": if the route re-reads the parent to classify the error, that
+    // read fails too, and a `.catch(() => null)` would answer 404 here.
+    prismaMock.parent.findUnique.mockRejectedValue(outage());
+
+    const failed = await confirmReset(app, token);
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json().error).toBe("reset_unavailable");
+    expect(store.get(`reset:${claims.jti}`)).toBe("parent-1");
+
+    // Recovery: the same link works on the retry #162 promises.
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash });
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
+    const retry = await confirmReset(app, token);
+    expect(retry.statusCode).toBe(200);
+    const retried = prismaMock.parent.update.mock.calls.at(-1)![0] as { data: { passwordHash: string } };
+    expect(await argon2.verify(retried.data.passwordHash, "NewCorrectHorse12!")).toBe(true);
+    await app.close();
+  });
+
+  // The consume itself failing is not a spent link: it is an unreachable store, so 503 — with no raw
+  // Redis message in the body (it used to be a rethrow, and the handler leaked it as a 500 body).
+  it("#167: an unreachable store on the consume is a 503, not a spent link", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash: await argon2.hash(PASSWORD) });
+
+    const token = await requestResetToken(app);
+    const claims = app.jwt.decode<{ jti: string }>(token)!;
+    const redis = getRedis() as unknown as MockRedis;
+    redis.eval.mockRejectedValueOnce(new Error("ERR unknown command 'getdel'"));
+
+    const failed = await confirmReset(app, token);
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json()).toEqual({ error: "reset_unavailable" });
+    // The script never ran: nothing was consumed.
+    expect(store.get(`reset:${claims.jti}`)).toBe("parent-1");
+    await app.close();
+  });
+
+  // The remaining post-consume branches answer 503 explicitly too, so none of them depends on the
+  // global handler (which would turn a Prisma-shaped message into a 400).
+  it("#167: a store failure on the latest-jti read and a hashing failure are 503 with the link restored", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email, passwordHash: await argon2.hash(PASSWORD) });
+    prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
+    const redis = getRedis() as unknown as MockRedis;
+
+    const token = await requestResetToken(app);
+    const claims = app.jwt.decode<{ jti: string }>(token)!;
+
+    redis.get.mockRejectedValueOnce(new Error("redis unavailable"));
+    const latestFailed = await confirmReset(app, token);
+    expect(latestFailed.statusCode).toBe(503);
+    expect(latestFailed.json()).toEqual({ error: "reset_unavailable" });
+    expect(store.get(`reset:${claims.jti}`)).toBe("parent-1");
+
+    const hashSpy = vi.spyOn(argon2, "hash").mockRejectedValueOnce(new Error("argon2 unavailable"));
+    const hashFailed = await confirmReset(app, token);
+    hashSpy.mockRestore();
+    expect(hashFailed.statusCode).toBe(503);
+    expect(hashFailed.json()).toEqual({ error: "reset_unavailable" });
+    expect(store.get(`reset:${claims.jti}`)).toBe("parent-1");
+    expect(prismaMock.parent.update).not.toHaveBeenCalled();
+
+    // The restored link still works once the dependencies are back.
+    const retry = await confirmReset(app, token);
+    expect(retry.statusCode).toBe(200);
+    await app.close();
   });
 
   it("#167: a failed session revocation is a 5xx, then the retry with the same token succeeds and old sessions are dead", async () => {
@@ -700,7 +940,8 @@ describe("auth routes", () => {
     const redis = getRedis() as unknown as MockRedis;
     redis.incrby.mockRejectedValueOnce(new Error("redis unavailable"));
     const failed = await confirmReset(app, token);
-    expect(failed.statusCode).toBe(500);
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json().error).toBe("reset_unavailable");
     expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
 
     const key = `reset:${claims.jti}`;
