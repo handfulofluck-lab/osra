@@ -66,3 +66,25 @@ ADR-0002 established that creating a child without verifiable parental consent r
 - Routes: `services/api/src/routes/family.ts` (revoke, status, grant → `consent_granted`), `rules.ts`, `devices.ts`, `controls.ts`, `location.ts`, `social.ts`, `alerts.ts`, `content.ts`
 - Migration: `services/api/prisma/migrations/0009_consent_record_index`
 - Tests: `services/api/test/consent.test.ts` (20 cases), `services/api/scripts/qa-probe.mjs` checks `J3`, `J3b`, `J3c`, `J3d` — live run 2026-10-16: **77 passed · 0 failed · 2 targets**
+
+## Amendment 2026-10-21 — collection starts when it is allowed (#229)
+
+**Call and SMS logging covers events after the permission is granted; history is never imported.**
+
+Decision 2 says what may be processed while a consent record exists; this amendment fixes *when a
+stream starts*. `CommsLogger` used to fall back to a `0L` watermark, so the first harvest after
+`READ_CALL_LOG` was granted queried `DATE > 0` and imported the phone's whole call log — 1,986 rows
+back to 2026-01-23 in the TR-24 run on the Flip4, including calls made before the app was watching
+and before this consent record. The agent now stores `comms_call_since` / `comms_sms_since` and the
+matching watermark the first time each permission is seen granted, reads nothing on that harvest,
+and floors later reads at the grant time. A withdrawal the agent observes resets both keys, so a
+re-grant starts a new window at the re-grant time. The rule lives in `CommsWatermarkPolicy`
+(`apps/child-android/app/src/main/java/com/familyshield/agent/comms/CommsWatermarkPolicy.kt`) with
+the harness caveat recorded in `CHANGELOG.md`: the policy is JVM-tested, the permission-flip
+lifecycle is source-pinned only.
+
+This is a data-minimisation consequence of decision 1 (revocation stops processing): a grant is the
+start of processing, so events from before it are not "already collected" data the parent may see.
+It also keeps old numbers out of the #27 unknown-contact alerts. Cost: calls and messages sent before
+the grant are unavailable to the parent timeline forever — deliberately, and the parent timeline
+says "phone calls" so app calls are not implied.
