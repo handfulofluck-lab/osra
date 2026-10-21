@@ -11,6 +11,29 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Screen time — collection stops while consent is withdrawn, and the paused window is never uploaded (#265)
+- `UsageReporter.postLiveActivity()` had **no consent check** while every sibling call had one, so a
+  withdrawn phone kept posting the foreground app to `POST /v1/devices/:id/activity` every 60 s, the
+  server answered 428, and the stack was logged once a minute. It now returns on `consent.isPaused()`,
+  and a 428 that races the check is one silent line rather than a warning, the same rule the command
+  poll follows (#263).
+- `recordForeground()` keeps every transition for enforcement and for the lock overlay's "what is open
+  now", and stops *collecting*: no Room row, no unlock count, while consent is withdrawn.
+- `aggregateAndUpload()` reuses the comms epoch decision (`CommsConsentPolicy.resetTo`) instead of
+  copying it: at the first upload after a re-grant the watermark moves to the moment the phone learned
+  consent came back, older events are deleted, and the paused-window unlock count is dropped — so the
+  withdrawn window is not uploaded as today's screen time. The epoch lives under its own
+  `telemetry_consent_epoch` key, so a comms reset cannot clear it and vice versa.
+- `backfillFromUsageStats()` queries from `max(startOfDay, resumedAtMs)`: on a re-grant day the
+  start-of-day totals include usage from before the grant.
+- Tests: `UsageReporterConsentWiringTest` (6) pins each site — the pause check before the post, the
+  enforcement call before the pause check, the reset's four steps, the backfill's floor and the
+  separate epoch key. The decision table itself is `CommsConsentPolicyTest` (5 cases) from #257.
+- **⚠️ not verified here:** the phone row — withdraw consent, switch apps for a few minutes, re-grant,
+  then check the first upload contains none of those minutes and logcat shows no
+  `live activity post failed` stack — is Claude's, on the Flip4. No JVM test can withdraw consent from
+  a running accessibility stream.
+
 ### Comms — calls reach the parent with the time they happened, and a clock set forward cannot switch logging off (#260)
 - **Every call and text was dated to the moment of the 5-minute flush.** `CommsLogger.flush()` built
   `ActivityEventDto(type, payload)` with no `ts`, so the server fell back to `new Date()`: two calls
