@@ -11,6 +11,21 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Comms — a text received with the clock set forward reaches the parent on the next flush (#264, F1)
+- A message dated beyond the clock skew is no longer skipped until the real date arrives (up to a year).
+  It is imported **once** and its identity — `date|id|addressDigest` — is remembered in
+  `comms_sms_future_seen` until the watermark passes that date, so the next harvest does not upload it
+  again. The watermark still does not move to a future date, because that would hide every honest message
+  behind it; the server bounds the reported time (#263).
+- The id alone would not work as the identity: `Telephony.Sms._id` can be reused, because the table has no
+  AUTOINCREMENT. The address is stored as a truncated SHA-256, never as the number, so a parent's
+  preference file cannot be read as a contact list.
+- `CommsFutureSmsPolicy` holds the rule (identity, prune-by-watermark, cap of 200 keeping the newest
+  dates, digest) so the "import once across three harvests" case is a JVM test rather than a phone row
+  alone. `CommsGrantWiringTest` pins that `harvestSms` uses it and that the row id is selected.
+- **⚠️ not verified here:** the phone row — insert an SMS dated a year ahead, set the clock back inside the
+  five-minute window, and see it on the server once with `ts` clamped — is Claude's, on the Flip4.
+
 ### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
 - The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
   to before the grant had a higher id (it is a new row) and an older `DATE`: the floor excluded it forever

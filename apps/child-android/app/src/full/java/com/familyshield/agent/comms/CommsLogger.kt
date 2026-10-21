@@ -434,10 +434,16 @@ class CommsLogger @Inject constructor(
         }
         val events = mutableListOf<CommsEventEntity>()
         var newest: Long = from
+        // Issue #264 (F1): identities of future-dated rows already imported, pruned to those the
+        // watermark has not reached yet. Loaded once per harvest, written back only if it changed.
+        val loadedFutureSeen = settings.futureSmsSeen()
+        var futureSeen = CommsFutureSmsPolicy.prune(loadedFutureSeen, from)
+        var futureSeenChanged = futureSeen != loadedFutureSeen
         try {
             val cursor: Cursor? = context.contentResolver.query(
                 Telephony.Sms.CONTENT_URI,
                 arrayOf(
+                    Telephony.Sms._ID,
                     Telephony.Sms.ADDRESS,
                     Telephony.Sms.BODY,
                     Telephony.Sms.TYPE,
@@ -449,20 +455,37 @@ class CommsLogger @Inject constructor(
             )
             cursor?.use {
                 while (it.moveToNext()) {
-                    val ts = it.getLong(3)
-                    // A message dated beyond the skew is not imported and does not advance the watermark:
-                    // it is re-selected and skipped on every harvest until its date arrives, then read up
-                    // to a year late (#264 files the remaining evasion — set the clock forward, receive a
-                    // text, set it back inside five minutes). The watermark cannot absorb it instead,
-                    // because that would hide every honest message behind it.
-                    if (CommsWatermarkPolicy.isFutureRow(ts, now)) continue
+                    val rowId = it.getLong(0)
+                    val address = it.getString(1) ?: ""
+                    val ts = it.getLong(4)
+                    // Issue #264 (F1): a row dated beyond the skew is imported **once**, then remembered
+                    // by `date|id|digest` until the watermark passes its date. Before this it was skipped
+                    // on every harvest and reached the parent when the real date caught up — up to a
+                    // year. The watermark still does not move, because that would hide every honest
+                    // message behind it; the server bounds the reported time (#263).
+                    if (CommsWatermarkPolicy.isFutureRow(ts, now)) {
+                        val entry = CommsFutureSmsPolicy.entry(ts, rowId, CommsFutureSmsPolicy.digest(address))
+                        if (CommsFutureSmsPolicy.isTracked(futureSeen, entry)) continue
+                        futureSeen = CommsFutureSmsPolicy.remember(futureSeen, entry)
+                        futureSeenChanged = true
+                        events.add(
+                            CommsEventEntity(
+                                type = "sms",
+                                number = address,
+                                direction = smsDirection(it.getInt(3)),
+                                bodyPreview = (it.getString(2) ?: "").take(SMS_PREVIEW_CHARS),
+                                timestamp = ts,
+                            ),
+                        )
+                        continue
+                    }
                     newest = maxOf(newest, ts)
                     events.add(
                         CommsEventEntity(
                             type = "sms",
-                            number = it.getString(0) ?: "",
-                            direction = smsDirection(it.getInt(2)),
-                            bodyPreview = (it.getString(1) ?: "").take(SMS_PREVIEW_CHARS),
+                            number = address,
+                            direction = smsDirection(it.getInt(3)),
+                            bodyPreview = (it.getString(2) ?: "").take(SMS_PREVIEW_CHARS),
                             timestamp = ts,
                         ),
                     )
@@ -477,6 +500,10 @@ class CommsLogger @Inject constructor(
             return@withLock
         }
         persist(events, CommsWatermarkPolicy.nextWatermark(newest, now), KEY_SMS_WATERMARK, now)
+        // Issue #264 (F1): recording the identities is what makes "import once" true rather than "import
+        // every five minutes". It is written after the rows are queued so a crash between the two loses
+        // one duplicate at worst, never a message.
+        if (futureSeenChanged) settings.setFutureSmsSeen(futureSeen)
     }
 
     private suspend fun persist(events: List<CommsEventEntity>, newest: Long, watermarkKey: String, now: Long) {
