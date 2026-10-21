@@ -24,6 +24,7 @@ import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { isParentSessionLive } from "./lib/sessions.js";
 import { healthRoutes } from "./routes/health.js";
+import { registerErrorHandler } from "./lib/errorHandler.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -84,15 +85,9 @@ app.addHook("preHandler", async (req, reply) => {
   }
 });
 
-// Global error handler: sanitize database / Prisma internal errors to avoid leaking stack traces or schema internals
-app.setErrorHandler((error, req, reply) => {
-  const errStr = String(error?.message ?? "") + String(error?.stack ?? "");
-  if (/prisma|invocation|P2020|P2002|P2003/i.test(errStr) || error.name === "PrismaClientKnownRequestError") {
-    req.log.error(error);
-    return reply.code(400).send({ error: "invalid_input" });
-  }
-  return reply.send(error);
-});
+// Global error handler: sanitize database / Prisma internal errors to avoid leaking stack traces or
+// schema internals. Shared with the test harness so a route's status is the one production sends.
+registerErrorHandler(app);
 
 await app.register(healthRoutes);
 

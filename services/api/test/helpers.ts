@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyJwt from "@fastify/jwt";
+import { registerErrorHandler } from "../src/lib/errorHandler.js";
 
 /** Proxy-based auto-mock: every property access returns a stable vi.fn(). */
 const allMocks: Array<ReturnType<typeof vi.fn>> = [];
@@ -77,7 +78,15 @@ export class MockRedis {
   psubscribe = vi.fn(async (_pattern: string) => undefined);
   on = vi.fn();
   get = vi.fn(async (_key: string) => null as string | null);
-  set = vi.fn(async (..._args: unknown[]) => "OK");
+  /**
+   * The shared test server runs Redis 5.0.14, which has no GETDEL: calling it is an error there, and
+   * this mock says so instead of pretending. Production code must use the Lua GET+DEL consume
+   * (devices.ts:217, auth.ts /reset/confirm) and tests mock `eval` for the same job.
+   */
+  getdel = vi.fn(async (_key: string): Promise<string | null> => {
+    throw new Error("ERR unknown command 'getdel'");
+  });
+  set = vi.fn(async (..._args: unknown[]): Promise<string | null> => "OK");
   quit = vi.fn(async () => "OK");
   lpush = vi.fn(async (_key: string, _value: string) => 1);
   ltrim = vi.fn(async (..._args: unknown[]) => "OK");
@@ -94,13 +103,18 @@ export class MockRedis {
   }
 }
 
-/** Build a Fastify instance with jwt + the given route plugin mounted at prefix. */
+/**
+ * Build a Fastify instance with jwt + the given route plugin mounted at prefix, and the production
+ * error handler installed, so a route's status is what the server would send (a rethrow through the
+ * handler is a 400 for anything Prisma-shaped, which is exactly what #167 had to stop doing).
+ */
 export async function buildApp(
   routes: (app: FastifyInstance) => Promise<void>,
   prefix: string,
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(fastifyJwt, { secret: "test-secret" });
+  registerErrorHandler(app);
   await app.register(routes, { prefix });
   await app.ready();
   return app;

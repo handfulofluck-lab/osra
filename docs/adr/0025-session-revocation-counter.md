@@ -116,3 +116,45 @@ Revocation is a monotonic per-parent counter in the shared Redis.
   it can never mint, so this is storage, not security.
 - This amendment supersedes the “Race semantics” bullet’s second sentence and the “out of scope”
   conclusion for the refresh path. Everything else in the accepted decision stands.
+
+## Amendment 2026-10-21 — a password-reset link is single-use, and a failed confirm restores it (#167)
+
+- `/reset/request` mints a `jti` and stores `reset:<jti>` → `parentId` and
+  `reset:latest:<parentId>` → `jti`, both `EX 900`. `/reset/confirm` consumes `reset:<jti>` **before**
+  hashing and refuses a missing key — or a `jti` that is not the parent’s latest — with
+  `401 invalid_or_expired_token`; a second request therefore kills the first, and two concurrent
+  confirmations of one link cannot both win.
+  - The consume is the Lua `GET`+`DEL` script already used for pairing codes (`devices.ts:217`), not
+    Redis `GETDEL`: the shared test server runs 5.0.14, where `GETDEL` is `ERR unknown command`, and
+    the first draft of this amendment made every reset fail there. Same atomicity — the script runs as
+    one command.
+- `/reset/request` claims a 60-second per-address cooldown (`SET reset:cooldown:<sha256(email)> 1
+  EX 60 NX`) **before** the account lookup. It exists because the supersession rule above otherwise
+  hands a stranger a lever: request repeatedly and each new link kills the parent’s newest one and
+  sends another email. Inside the window the answer is the same `{ok:true}` with no link and no
+  email. Running the claim first also makes a Redis outage answer `503 reset_unavailable` for a known
+  and an unknown address alike — a nicety, since `/register` already answers `409 email_taken` and the
+  address is not a secret.
+  - A failure **after** the claim releases it (`DEL reset:cooldown:<hash>`) and answers
+    `503 reset_unavailable`, and a provider refusal releases it too. Without the release the parent's
+    retry inside the minute would be told `{ok:true}` while nothing was sent — the rule this cooldown
+    exists to protect. The release runs only on failure paths, and the lookup that can fail does so for
+    known and unknown addresses alike, so it reveals nothing.
+  - Known limit, accepted: a connection lost **after** the consume script has run leaves the link
+    spent. The client gets a 5xx and its retry a `401`, so the parent asks for a new link. Closing that
+    needs an idempotency record keyed to the request, which is a larger contract than this issue.
+- A failure after the consume (hash, password update, or this ADR’s counter bump) restores
+  `reset:<jti>` with the token’s own remaining lifetime (`exp − now`), never a fresh 900: that is what
+  keeps #162’s 5xx-then-retry contract, since the retry presents the same link. A `200` means the
+  password changed **and** `revokeAllRefreshTokens` completed.
+  - Every such branch replies `503 reset_unavailable` **explicitly**. Rethrowing is not equivalent: the
+    global handler in `server.ts` maps anything Prisma-shaped to `400 invalid_input`, and a client
+    following #162 retries a 5xx, not a 400. The handler is now `registerErrorHandler` in
+    `src/lib/errorHandler.ts`, installed by `server.ts` and by the test harness.
+- "The account is gone" is decided from the update error alone: `PrismaClientKnownRequestError` with
+  code `P2025` → `404 account_not_found`, link stays dead. A re-read to classify the error answers for
+  the wrong question — when the database is unreachable the re-read fails too, and `.catch(() => null)`
+  turned an outage into "account gone" and killed the link, which is API-8 itself. Any other update
+  error is an outage until proven otherwise: restore, `503`, retry.
+- Tokens minted before this change carry no `jti` and no record, so they are refused like a spent
+  link: one re-login per parent, the same migration cost accepted above for legacy refresh records.
