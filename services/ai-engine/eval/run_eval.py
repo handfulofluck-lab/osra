@@ -43,11 +43,15 @@ def score_model(text: str) -> Dict[str, float]:
 
 
 def score_deepseek(text: str) -> Dict[str, float]:
-    """Placeholder for plan 4.1 -- a hosted scorer cannot run without the key."""
-    raise SystemExit(
-        "scorer 'deepseek' is plan 4.1 and needs DEEPSEEK_API_KEY as a repository secret; "
-        "the rules layer and any shipped checkpoint are what run today"
-    )
+    """The hosted scorer from plan 4.1, evaluation only (`eval/deepseek_scorer.py`).
+
+    Imported lazily so the rules layer and the rest of the harness keep working without `httpx`, a key,
+    or a network — and so `--scorer regex` can never accidentally reach a paid API. A missing key is a
+    `DeepSeekUnavailable`, which `main` turns into a one-line refusal rather than a traceback.
+    """
+    from eval.deepseek_scorer import default_scorer
+
+    return default_scorer()(text)
 
 
 SCORERS: Dict[str, Callable[[str], Dict[str, float]]] = {
@@ -234,7 +238,16 @@ def main(argv=None) -> int:
 
     score_fn = SCORERS[args.scorer]
     rows = load_dataset(args.dataset, args.limit_per_category)
-    result = evaluate(rows, score_fn, args.threshold)
+    try:
+        result = evaluate(rows, score_fn, args.threshold)
+    except Exception as exc:  # DeepSeekUnavailable, or a transport error that survived the retries
+        from eval.deepseek_scorer import DeepSeekUnavailable
+
+        if isinstance(exc, DeepSeekUnavailable):
+            # One line, no traceback: a missing key or a refused key is an operator problem, and the
+            # message says which. The rows already scored are in the cache and were paid for.
+            raise SystemExit(f"deepseek scorer unavailable: {exc}") from None
+        raise
     print(render(result, args.scorer, len(rows)))
 
     if args.json_out:
