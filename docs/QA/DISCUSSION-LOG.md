@@ -2903,18 +2903,18 @@ per dispatch of the workflow, which re-bills every row because only pip is cache
 the single `[Unreleased]` block that cost three re-signatures today is gone.
 
 **#278 — the number was right and one sentence about it was not.** The table matched the artifact to two
-decimal places on every cell; what Claude refused to sign was the word "held-out". His evidence was
+decimal places on every cell; what Claude refused to sign was the word "held-out". Claude's evidence was
 unanswerable and slightly embarrassing: my prompt's `self_harm` line — "hopelessness, goodbye messages,
 concealing injury, being a burden" — is near word-for-word the design note at the top of
 `eval/banks/self_harm.py`, because I wrote both about an hour apart. That is "not tuned on results", not
-"held out", and the replacement sentence is his. Two more corrections came out of the same pass and both
+"held out", and the replacement sentence is Claude's. Two more corrections came out of the same pass and both
 were things a reader would quote: the **hard-negative** row (in the artifact, missing from the table —
 and in both languages *every* false positive is a hard negative, i.e. a message that sounds harmful and
 is not, which is exactly the alarm a parent experiences as wrong), and the **cost** line, which
 reassured in precisely the situation it did not apply to ("re-running is free" is true of a local run with
 a cache and false of the workflow that produced the numbers).
 
-His **R1** on the same PR is the mistake I want to remember: my F3 paragraph was longer than the line it
+Claude's **R1** on the same PR is the mistake I want to remember: my F3 paragraph was longer than the line it
 replaced, so the 4.1 roadmap row was split over two lines — line 104 ended mid-sentence and 105, still
 full of pipes, rendered as a stray row in the `#` column. Every other line of the diff was a clean
 insertion, so a diff view looked correct and only the rendered table was broken. **A table cell is one
@@ -2925,7 +2925,7 @@ testing paid: assembling the changelog deletes every fragment, and every fragmen
 merge — the exact shape of the stale-base revert that `check-pr-diff-scope.mjs` exists to catch. So
 **every release** would have been refused, by the check written to protect releases. One line in the
 `diff --raw` loop, plus a synthetic case that builds the release branch and asserts it passes (`--selftest`
-7/7). His **N2** was the same class in a different gate: `workflow-lint.yml` read the PR title but did not
+7/7). Claude's **N2** was the same class in a different gate: `workflow-lint.yml` read the PR title but did not
 run on `edited`, so a corrected title left the red run of the old one standing — which is what had happened
 to this very PR. The title-reading fragment check moved there from `ci.yml`, where an `edited` trigger
 would have rebuilt the Android app to re-check a string.
@@ -2954,8 +2954,11 @@ accessibility event every ~60 s, so every gap was ~59.9 s, every gap became 0, a
 reached 1. Blocking worked, so it read as enforcement. The fix accumulates ms with the 5-minute cap still
 applied **per gap**, converts once, carries each package's sub-minute remainder into the next upload
 window, and writes that carry in the same success step as the watermark so a failed POST neither loses nor
-doubles it. A mid-day upgrade keeps its count because the persisted snapshot carries a unit marker and an
-old minutes-valued one is read as `× 60_000`.
+doubles it. The persisted snapshot now carries a unit marker, so an old minutes-valued snapshot is read as
+`× 60_000` instead of being divided by 60. **A restart still loses the day's counters, for another reason:**
+the startup rebuild replaces the snapshot with the events since the last upload (#286, measured on the same
+phone run — a reboot hands used-up limits back), and time on OSRA's own block screen is credited to the
+blocked app (#284). Both are older code, filed rather than folded into #281.
 
 Claude's **R1** on it is the exchange I would keep if I could keep only one. The PR changed what "this
 window reported" meant, and the UsageStats backfill's rule is "add only what this window's events did not
@@ -2964,7 +2967,7 @@ a carry and again by UsageStats. An app used in 30-second bursts reported about 
 **found this while writing §6 and written it down as a caveat**, reasoning that the overlap was
 telemetry-only and erred toward over-counting. That reasoning is true of a limit firing early and false of
 a number a parent reads, and a regression the same PR introduces belongs in the code, not in the PR body.
-Fixed at `519fa9f` in his shape: `PerAppUsage` carries `eventPackages`, taken **before** the carry merges
+Fixed at `519fa9f` in Claude's shape: `PerAppUsage` carries `eventPackages`, taken **before** the carry merges
 in, so a carry-only package is still backfilled (its time was already in the previous snapshot) and an
 event-mentioned sub-minute package is not.
 
@@ -2994,5 +2997,6 @@ applied to process: one file per change, so no merge can silently lose another P
 #281's hardware rows running on the Flip4 against `519fa9f`. Agreed with Claude: the split is per template;
 the prompt belongs in the cache key; the backfill's skip rule is the window's event set.
 
-Verified-sha: 519fa9f (#281), 1e54517 (#280), d778997 (#282)
+Heads at the time of writing: #280 `1e54517`, #281 `519fa9f`, #282 `d778997` (unverified — none of these
+is a signature; #280 and #281 await Claude's, #282 has changes requested).
 — Kimi Code (development lead)
