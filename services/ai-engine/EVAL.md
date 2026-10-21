@@ -207,8 +207,10 @@ python -m eval.run_eval --scorer deepseek --json deepseek-result.json
 python -m eval.run_eval --scorer deepseek --limit-per-category 5   # a cheap smoke run first
 ```
 
-Cost is per row and cached by `(model, text)` in `eval/.deepseek-cache.json` (gitignored), so re-running
-an unchanged set is free. The manual workflow `.github/workflows/ai-eval-deepseek.yml` does the same on
+Cost is per row and cached by `(model, prompt, text)` in `eval/.deepseek-cache.json` (gitignored), so
+re-running an unchanged set is free — and editing the prompt is not free, which is the point: a score is
+the model's answer to *that* prompt, so a changed prompt re-scores every row instead of serving the old
+prompt's answers. The manual workflow `.github/workflows/ai-eval-deepseek.yml` does the same on
 CI, with a `split` input (`all` / `dev` / `test`); it is `workflow_dispatch` rather than push-triggered
 because every run bills the dataset and the answer only changes when the banks, the prompt or the model
 do. **GitHub will not dispatch a workflow that is not on the default branch**, so the first run happens

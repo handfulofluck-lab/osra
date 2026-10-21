@@ -14,6 +14,7 @@ import java.time.ZonedDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,6 +50,13 @@ class RuleRepository @Inject constructor(
     private val refreshMutex = Mutex()
     private val counters = UsageCounters()
 
+    /**
+     * Completed once [rebuildCounters] has decided what today's counters are (#286). Every persist waits
+     * on it, because an accessibility event arriving during startup would otherwise write the fresh,
+     * nearly empty counters over a good snapshot — the same bypass as the restart, one event earlier.
+     */
+    private val startupDone = CompletableDeferred<Unit>()
+
     @Volatile private var cached: RuleSetDto? = null
 
     // Pause-the-internet state (Feature #11): set by CommandDispatcher on pause_internet /
@@ -64,7 +72,10 @@ class RuleRepository @Inject constructor(
 
     init {
         appScope.launch {
-            cached = loadFromDisk()
+            // A DataStore read error must not kill this coroutine before the counters are rebuilt (#287
+            // review R1): the persist gate would stay shut for the life of the process, nothing would be
+            // saved, and the next restart would lose the day — the bypass this file now closes.
+            cached = runCatching { loadFromDisk() }.getOrNull()
             rebuildCounters()
             refresh()
         }
@@ -134,41 +145,69 @@ class RuleRepository @Inject constructor(
         appScope.launch { persistCounters() }
     }
 
+    /**
+     * Ends the open usage interval because a window the accessibility stream does not record — our own
+     * block screen — is now in front (#284). Persisted like any other transition: the app behind the
+     * overlay must not be charged the stay, including after a restart.
+     */
+    fun onForegroundEnded(timestampMs: Long) {
+        counters.onForegroundEnded(timestampMs)
+        appScope.launch { persistCounters() }
+    }
+
     /** Clears the daily counters when the local date has changed (no-op otherwise). */
     suspend fun resetIfNewDay() {
         counters.resetIfNewDay()
         persistCounters(LocalDate.now())
     }
 
-    /** Rebuilds daily counters on startup from persisted settings and Room usage_events (AND-02). */
-    suspend fun rebuildCounters(today: LocalDate = LocalDate.now()) {
-        val savedDate = settings.todayUsageDate()
-        if (savedDate == today.toString()) {
-            val json = settings.todayUsageJson()
-            if (!json.isNullOrBlank()) {
-                val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Int::class.javaObjectType)
-                val map = runCatching { moshi.adapter<Map<String, Int>>(mapType).fromJson(json) }.getOrNull()
-                if (map != null) {
-                    counters.restore(map, today)
-                }
-            }
-        }
-        usageDao?.let { dao ->
+    /**
+     * Decides what today's counters are at process start, then unblocks persists (#286).
+     *
+     * The snapshot is the day; Room's events are the fallback for when there is no snapshot. Running both
+     * in sequence — restore, then rebuild from the events left in Room — replaced the day with the last
+     * upload window and unlocked used-up limits on every restart.
+     */
+    private suspend fun rebuildCounters(today: LocalDate = LocalDate.now()) {
+        // Private on purpose (#287 review R2): `restore` merges, so a second call would add the snapshot
+        // on top of counters that already hold it, doubling the day and firing limits at half time.
+        if (startupDone.isCompleted) return
+        try {
+            val savedDate = settings.todayUsageDate()
+            val savedMs = savedUsageMs(today)
             val startOfDayMs = today.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            val events = runCatching { dao.since(startOfDayMs) }.getOrDefault(emptyList())
-            if (events.isNotEmpty()) {
-                val pairs = events.map { it.packageId to it.timestamp }
-                counters.rebuildFromEvents(pairs, today)
+            val events = usageDao?.let { dao -> runCatching { dao.since(startOfDayMs) }.getOrDefault(emptyList()) }
+                ?: emptyList()
+            when (planUsageStartup(savedMs, savedDate, today, events.size).source) {
+                UsageStartupSource.SNAPSHOT -> counters.restore(savedMs ?: emptyMap(), today)
+                UsageStartupSource.ROOM_EVENTS ->
+                    counters.rebuildFromEvents(
+                        events.map { it.packageId to it.timestamp },
+                        today,
+                        ownPackage = EssentialPackages.OWN_PACKAGE,
+                    )
+                UsageStartupSource.EMPTY -> counters.resetIfNewDay(today)
             }
+        } finally {
+            startupDone.complete(Unit)
         }
         persistCounters(today)
     }
 
-    /** Persists today's counters snapshot to AgentSettings (AND-02). */
+    /** Today's saved counters in ms, or null when there is no snapshot for [today] (#286). */
+    private suspend fun savedUsageMs(today: LocalDate): Map<String, Long>? {
+        if (settings.todayUsageDate() != today.toString()) return null
+        val json = settings.todayUsageJson() ?: return null
+        if (json.isBlank()) return null
+        val map = runCatching { moshi.adapter<Map<String, Long>>(LONG_MAP).fromJson(json) }.getOrNull() ?: return null
+        return persistedUsageMs(map, settings.todayUsageUnit())
+    }
+
+    /** Persists today's counters snapshot (milliseconds) to AgentSettings (AND-02, #276). */
     suspend fun persistCounters(today: LocalDate = LocalDate.now()) {
-        val snapshot = counters.snapshot(System.currentTimeMillis(), today)
-        val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Int::class.javaObjectType)
-        val json = moshi.adapter<Map<String, Int>>(mapType).toJson(snapshot)
+        startupDone.await()
+        val snapshot = counters.snapshotMs(System.currentTimeMillis(), today)
+        val json = moshi.adapter<Map<String, Long>>(LONG_MAP).toJson(snapshot)
         runCatching { settings.saveTodayUsage(today.toString(), json) }
     }
 
@@ -219,12 +258,23 @@ class RuleRepository @Inject constructor(
     }
 
     companion object {
+        private val LONG_MAP: java.lang.reflect.Type =
+            Types.newParameterizedType(Map::class.java, String::class.java, Long::class.javaObjectType)
+
         /**
          * The launcher, the system UI and the call surfaces are exempt from every block rule, not only
          * from fail-closed (issue #165). The list lives in [EssentialPackages] so the lock, the
          * decision path and the overlay guard cannot drift apart.
          */
         fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
+
+        /**
+         * #276: the persisted snapshot is milliseconds now, but a build before it wrote whole
+         * minutes and no unit. Read those as minutes × 60_000 — reading them as ms instead would
+         * leave a phone that updates mid-day with 1/60 of the count it had.
+         */
+        internal fun persistedUsageMs(values: Map<String, Long>, unit: String?): Map<String, Long> =
+            if (unit == AgentSettings.USAGE_UNIT_MS) values else values.mapValues { it.value * 60_000L }
 
         /**
          * Pure core of [evaluate] (JVM-tested, issue #165), in order: consent, then the essential

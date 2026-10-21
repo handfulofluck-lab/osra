@@ -14,6 +14,7 @@ from eval.deepseek_scorer import (
     CATEGORIES,
     DeepSeekScorer,
     DeepSeekUnavailable,
+    _cache_key,
     parse_categories,
 )
 
@@ -151,3 +152,58 @@ def test_a_transport_error_is_retried_and_then_reported(tmp_path):
     scorer = _scorer(handler, tmp_path)
     with pytest.raises(DeepSeekUnavailable, match="gave up after 3 attempts"):
         scorer("anything")
+
+
+# ── the cache key covers the prompt ──────────────────────────────────────────────────────────────
+# Before this, the key was `(model, text)`, so a prompt edit changed what every row should score while
+# leaving every key valid: the next run served the old prompt's answers as cache hits and the numbers in
+# `EVAL.md` described a prompt that no longer existed. A hit looks exactly like a cheap success, which is
+# why the bug would have been found by comparing numbers and not by watching the run.
+
+
+def test_a_changed_prompt_is_a_miss_not_a_reused_score(tmp_path):
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content)["messages"][0]["content"])
+        return httpx.Response(200, json=_reply({"grooming": 0.11 * len(calls)}))
+
+    first = _scorer(handler, tmp_path)
+    assert first("do you have snapchat")["grooming"] == pytest.approx(0.11)
+    first.save_cache()
+
+    # Same text, same model, same cache file — a reworded prompt, which is the whole point.
+    second = _scorer(handler, tmp_path, prompt="A different instruction, same contract.")
+    assert second("do you have snapchat")["grooming"] == pytest.approx(0.22)
+
+    assert len(calls) == 2, "a prompt change must re-ask; serving the old answer is a silent wrong number"
+    assert calls[1] == "A different instruction, same contract.", "the request must carry the prompt that was keyed"
+    assert second.hits == 0
+
+
+def test_the_same_prompt_still_hits_across_processes(tmp_path):
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(200, json=_reply({"self_harm": 0.4}))
+
+    scorer = _scorer(handler, tmp_path)
+    scorer("nobody would notice")
+    scorer.save_cache()
+
+    reopened = _scorer(handler, tmp_path)  # default prompt both times
+    assert reopened("nobody would notice")["self_harm"] == 0.4
+    assert len(calls) == 1, "the fix must add misses for a changed prompt, not turn every run into a paid one"
+
+
+def test_the_cache_key_separates_prompt_from_text(tmp_path):
+    # A key built by concatenating the two would let these collide; the prompt digest is what prevents it.
+    assert _cache_key("m", "z", prompt="x") != _cache_key("m", "z", prompt="x\x00y")
+    assert _cache_key("m", "y\x00z", prompt="x") != _cache_key("m", "z", prompt="x\x00y")
+    # And each of the three inputs alone changes the key, so none of them is silently ignored.
+    base = _cache_key("deepseek-chat", "text", prompt="prompt")
+    assert base != _cache_key("other-model", "text", prompt="prompt")
+    assert base != _cache_key("deepseek-chat", "other text", prompt="prompt")
+    assert base != _cache_key("deepseek-chat", "text", prompt="other prompt")
+    assert base == _cache_key("deepseek-chat", "text", prompt="prompt")

@@ -35,7 +35,8 @@ import kotlinx.coroutines.launch
 /**
  * Records foreground-app transitions (Room `usage_events`) and periodically aggregates
  * per-app minutes, total minutes and an unlock counter into POST /v1/devices/<id>/telemetry.
- * Minutes are computed from consecutive event gaps capped at 5 min. A UsageStatsManager
+ * Minutes are computed from consecutive event gaps accumulated in milliseconds, capped at 5 min
+ * per gap, with the sub-minute remainder carried into the next window (#276). A UsageStatsManager
  * backfill runs behind try/catch because the PACKAGE_USAGE_STATS permission is not guaranteed.
  * Also posts the Feature #29 live-activity app_usage event from the LocationService 60 s loop.
  */
@@ -78,6 +79,31 @@ class UsageReporter @Inject constructor(
         scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = pkg, timestamp = ts)) }
     }
 
+    /**
+     * Records that the agent's own window is in front at [ts] (issue #284).
+     *
+     * `AccessibilityMonitorService` drops our own package on purpose — deciding from it is how the
+     * overlay ended up over the launcher (#165) — so before this nothing closed the blocked app's
+     * interval. The next recorded event charged the whole stay on "This app is blocked by your parent"
+     * to the app behind it, capped at 5 min per gap, in both counters a parent sees: the daily limits
+     * and the screen-time report. Measured on the Flip4: 103 s on a bedtime screen charged My Files
+     * 103 s, and a 1-minute limit fired 0.9 s after the app was opened, on minutes it never had.
+     *
+     * [lastPkg] and the unlock counter are deliberately untouched: the lock overlay's "what is open
+     * now" and the live-activity payload must keep naming the app behind the overlay. Only the
+     * accounting learns that the blocked app has stopped being used.
+     */
+    fun recordOwnWindow(ts: Long) {
+        // Same gate as [recordForeground]: a withdrawn window is not collected, and the counters are
+        // not advanced while paused (ADR-0008 §3, #266 review D1).
+        if (consent.isPaused()) return
+        rules.onForegroundEnded(ts)
+        val own = context.packageName
+        // The event is what closes the gap in the upload path: without a row there, the blocked app's
+        // next event would still own the whole stay in `computePerAppMinutes`.
+        scope.launch { db.usageEventDao().insert(UsageEventEntity(packageId = own, timestamp = ts)) }
+    }
+
     /** Aggregates the usage since the last successful run and uploads the delta; no-op without a device id. */
     suspend fun aggregateAndUpload() {
         val deviceId = settings.deviceId() ?: return
@@ -103,14 +129,18 @@ class UsageReporter @Inject constructor(
             // withdrawn window and the morning before the grant are excluded rather than uploaded — this
             // replaces the "skip the backfill on a re-grant day" rule from #266.
             usageStatsTotals()?.let { (bucketBegin, totals) -> settings.setUsageStatsSnapshot(bucketBegin, totals) }
+            // Issue #276: the carry is the tail of the withdrawn window; dropped with its events so the
+            // re-grant cannot upload it as the first minute of the new one (#266's rule).
+            settings.setUsageRemainderMs(emptyMap())
         }
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
         val watermark = stateDao.get(KEY_WATERMARK) ?: dao.oldestTimestamp() ?: return
         val windowEnd = System.currentTimeMillis()
         val events = dao.since(watermark)
 
-        val perApp = computePerAppMinutes(events, windowEnd).toMutableMap()
-        backfillFromUsageStats(perApp)
+        val window = computePerAppMinutes(events, windowEnd, ownPackage = context.packageName, carriedMs = settings.usageRemainderMs())
+        val perApp = window.minutes.toMutableMap()
+        backfillFromUsageStats(perApp, window.eventPackages)
 
         val unlocks = unlockCounter.getAndSet(0)
         val total = perApp.values.sum()
@@ -129,6 +159,9 @@ class UsageReporter @Inject constructor(
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
             stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
+            // Issue #276: the sub-minute remainder moves in the same success step as the watermark, so
+            // a failed POST recomputes the same window from the same carry — neither lost nor doubled.
+            settings.setUsageRemainderMs(window.remainderMs)
         } catch (e: CancellationException) {
             unlockCounter.addAndGet(unlocks) // ...and the unlock counter is restored on failure
             throw e // NOTE: never swallow coroutine cancellation
@@ -273,7 +306,7 @@ class UsageReporter @Inject constructor(
      * last snapshot, and every package's total is recorded so a later window without it adds only its
      * increase. A total below the snapshot means the day rolled over, and the whole total is new.
      */
-    private suspend fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
+    private suspend fun backfillFromUsageStats(perApp: MutableMap<String, Int>, eventPackages: Set<String> = emptySet()) {
         val (bucketBegin, totals) = usageStatsTotals() ?: return
         val (storedBucket, lastSeen) = settings.usageStatsSnapshot()
         val hasSnapshot = storedBucket != null
@@ -281,7 +314,15 @@ class UsageReporter @Inject constructor(
         // change shifts the key and leaves the totals alone.
         val rollover = UsageStatsDelta.isRollover(storedBucket, bucketBegin, lastSeen, totals)
         for ((pkg, total) in totals) {
-            if (perApp.containsKey(pkg)) continue // counted from this window's events already
+            // R1 on #281: skip a package this window's events mentioned even when it produced no whole
+            // minute. Its time is counted here — as a minute now or as a carry next window — and the
+            // backfill adding Android's increase on top of it reported 1.5x the real time for an app
+            // used in short bursts. A package with only a carried remainder is not in the set: the
+            // previous upload's snapshot covered that time, so Android's increase since is real.
+            // #284: our own package is skipped by name, not by that set. Android counts the block
+            // screen as foreground time like any activity, and the parent's report is about the
+            // child's apps — its total is still recorded below, so the running counter stays right.
+            if (pkg == context.packageName || pkg in eventPackages || perApp.containsKey(pkg)) continue
             val delta = UsageStatsDelta.deltaForUpload(total, lastSeen[pkg], rollover, hasSnapshot)
             if (delta > 0) perApp[pkg] = (perApp[pkg] ?: 0) + delta
         }
