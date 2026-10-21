@@ -98,3 +98,12 @@ withdrawal; a process dead for the whole withdrawal→re-grant window writes no 
 stored `*_since` floor keeps the *old* grant time, so rows from the paused window can be read
 afterwards. Closing that needs a consent window the server records and the device asks for, which is
 a larger contract than this amendment; it is recorded here rather than left in a code comment.
+
+**Measured 2026-10-21 (Claude's restart row on #257) — the limit is narrower than it reads.** With the
+agent process killed for the whole window and then restarted, the server delivers `consent_revoked` and
+then `consent_granted` to the reconnecting client within 3 ms, in that order, so the new process flips
+`ConsentState` twice before its first harvest runs and the epoch moves anyway. The persisted epoch is
+therefore a *second* line of defence, not the only one: it covers the case where the socket delivers
+neither frame (the server is unreachable at reconnect and the client has no snapshot yet). What remains
+open is only that case — a device that never sees either frame keeps the old floor and can still read the
+paused window.
