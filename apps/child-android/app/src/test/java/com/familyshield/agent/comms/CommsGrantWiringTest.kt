@@ -153,6 +153,88 @@ class CommsGrantWiringTest {
         )
     }
 
+    /**
+     * Issue #260: calls are watermarked by `_ID`, and the warning here is about what a green run means.
+     * It does **not** mean a long call with a short waiting call is now read — no JVM test can insert
+     * CallLog rows. It means the query is asked for ids above the stored id, in id order, with the grant
+     * time still a `DATE` floor, so the case Claude measured on the phone can no longer be excluded by
+     * the SQL. The phone row is what proves the behaviour.
+     */
+    @Test
+    fun `the call harvest reads by id, with the grant time as a DATE floor`() {
+        assertTrue(
+            "the watermark must be an id: DATE is when a call started, not when its row appeared",
+            logger.contains("KEY_CALL_ID_WATERMARK"),
+        )
+        assertTrue(
+            "the query must select _ID and order by it",
+            logger.contains("CallLog.Calls._ID,") && logger.contains("\${CallLog.Calls._ID} > ?") &&
+                logger.contains("\${CallLog.Calls._ID} ASC"),
+        )
+        assertTrue(
+            "the grant floor stays on DATE, so a re-grant still cannot read the paused window",
+            logger.contains("\${CallLog.Calls.DATE} >= ?") && logger.contains("dateFloor"),
+        )
+        assertFalse(
+            "the old DATE watermark is the bug: a long call that ends last has the older DATE",
+            logger.contains("\${CallLog.Calls.DATE} > ?"),
+        )
+        assertTrue(
+            "the upgrade path anchors at what the old DATE watermark covered",
+            logger.contains("newestCallIdUpTo(") && logger.contains("CallLog.Calls.DATE} <= ?"),
+        )
+    }
+
+    @Test
+    fun `a grant time in the future is repaired in both harvests, not clamped`() {
+        // #263 review: clamping with min(since, now) never lets the row through, because now advances
+        // and the stored floor stays ahead of it. Both harvests must write now over the bad value.
+        assertTrue(
+            "calls: the stored floor is re-anchored",
+            logger.contains("isClockBack(grantTime, now)") && logger.contains("dao.set(AgentStateEntity(KEY_CALL_SINCE, now))"),
+        )
+        assertTrue(
+            "SMS: the stored floor is re-anchored",
+            logger.contains("dao.set(AgentStateEntity(KEY_SMS_SINCE, now))"),
+        )
+        assertFalse(
+            "read-time clamping is the bug, not the fix",
+            logger.contains("clampedFloor"),
+        )
+    }
+
+    @Test
+    fun `the SMS stream keeps DATE but cannot be stopped by a clock set forward`() {
+        assertTrue("SMS stays on its own watermark", logger.contains("KEY_SMS_WATERMARK"))
+        assertTrue("the clock-back guard runs before the read", logger.contains("CommsWatermarkPolicy.isClockBack(stored, now)"))
+        assertTrue("a future-dated message never advances the watermark", logger.contains("CommsWatermarkPolicy.isFutureRow(ts, now)"))
+        assertTrue("the stored watermark is clamped to now", logger.contains("CommsWatermarkPolicy.nextWatermark(newest, now)"))
+    }
+
+    @Test
+    fun `a comms row is uploaded with its own time, not the flush time`() {
+        assertTrue(
+            "the DTO must carry ts, or the server stamps every row with the moment of the flush",
+            logger.contains("ts = CommsEventTimestamps.isoUtc(e.timestamp)"),
+        )
+        val dto = sourceFile("app/src/main/java/com/familyshield/agent/network/dto/SocialDtos.kt")
+        assertTrue(dto.contains("val ts: String? = null"))
+    }
+
+    @Test
+    fun `a 428 on the command poll does not log a stack every minute`() {
+        val service = sourceFile("app/src/main/java/com/familyshield/agent/services/LocationService.kt")
+        val failure = service.substringAfter("consentState.onPollFailure(it)")
+        assertTrue(
+            "a withdrawal is the expected answer, not a warning",
+            failure.substringBefore("Log.w(TAG, \"command poll failed\"").contains("ConsentPolicy.httpStatusOf(it) == 428"),
+        )
+        assertTrue(
+            "every other failure still logs with its stack",
+            failure.contains("Log.w(TAG, \"command poll failed\", it)"),
+        )
+    }
+
     private fun sourceFile(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null) {

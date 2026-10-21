@@ -98,6 +98,41 @@ const ActivityBatchSchema = z.object({
     .max(500),
 });
 
+/** Five minutes: the most a device clock may legitimately drift ahead of the server (#260). */
+const ACTIVITY_CLOCK_SKEW_MS = 5 * 60_000;
+
+/**
+ * Seven days: how far back a reported event time is honoured.
+ *
+ * The floor is not about the clock, it is about retention. `applyRetention` deletes `ActivityEvent` by
+ * `ts < now - RETENTION_DAYS` (90 by default), so an unbounded old timestamp is a *deletion request*: a
+ * phone with its clock set back six months uploads a call dated six months ago and the next sweep
+ * removes it, and a shorter setback sinks it below the parent's recent list (#260 review). Clamping the
+ * floor means an honest phone that was offline for more than a week has its older calls placed at the
+ * seven-day mark instead — misdated, but kept, and the parent still sees that they happened.
+ */
+const ACTIVITY_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * Issue #260: the time an activity event happened, bounded on both sides.
+ *
+ * A device used to send no `ts` at all, so the server stamped `new Date()` and a whole batch of calls
+ * was dated to the moment of the 5-minute flush. Now the agent sends the row's own time and this keeps
+ * it — **except** when the device clock is ahead, which a child can arrange: one call dated a year in
+ * the future pinned itself to the top of the parent's list and hid every real call behind it. And not
+ * when it is older than the retention window, for the reason on [ACTIVITY_MAX_AGE_MS]: the sweep would
+ * delete it. Between those bounds the reported time is exact.
+ */
+function activityEventTs(ts: string | undefined, now: Date = new Date()): Date {
+  if (!ts) return now;
+  const parsed = new Date(ts);
+  const millis = parsed.getTime();
+  if (Number.isNaN(millis)) return now;
+  const earliest = now.getTime() - ACTIVITY_MAX_AGE_MS;
+  const latest = now.getTime() + ACTIVITY_CLOCK_SKEW_MS;
+  return new Date(Math.min(Math.max(millis, earliest), latest));
+}
+
 /**
  * Roadmap 3.4: the installed-launchable-app inventory contract.
  *
@@ -502,7 +537,7 @@ export async function deviceRoutes(app: FastifyInstance) {
         data: persistentEvents.map((e) => ({
           childId: device.childId,
           deviceId: id,
-          ts: e.ts ? new Date(e.ts) : new Date(),
+          ts: activityEventTs(e.ts),
           type: e.type,
           payload: e.payload as Prisma.InputJsonValue,
         })),

@@ -23,6 +23,7 @@ import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
 import com.familyshield.agent.commands.CommandDispatcher
 import com.familyshield.agent.commands.LocateFix
+import com.familyshield.agent.data.ConsentPolicy
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
@@ -340,6 +341,10 @@ class LocationService : Service() {
             }
         }.onFailure {
             consentState.onPollFailure(it) // ADR-0008 §3: 428 = consent withdrawn, pause collection
+            // Issue #260: a 428 is the *expected* answer while consent is withdrawn, and ConsentState
+            // already logs the transition once. Logging the whole HttpException stack every 60 seconds
+            // buried the lines that mattered in a phone log that was read during a real investigation.
+            if (ConsentPolicy.httpStatusOf(it) == 428) return@onFailure
             Log.w(TAG, "command poll failed", it)
         }
     }
