@@ -3175,6 +3175,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not load your child\'s name. Go back and try again.'**
   String get consentChildNameMissing;
+
+  /// No description provided for @refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get refresh;
+
+  /// No description provided for @searchSafetyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search safety'**
+  String get searchSafetyTitle;
+
+  /// No description provided for @searchSafetyLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load search activity: {error}'**
+  String searchSafetyLoadFailed(String error);
+
+  /// No description provided for @searchSafetyEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No flagged searches detected'**
+  String get searchSafetyEmptyTitle;
+
+  /// No description provided for @searchSafetyEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'SafeSearch enforcement and content inspection are active across all supported browsers and apps.'**
+  String get searchSafetyEmptyBody;
+
+  /// No description provided for @searchSafetyVaultNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Search queries are analysed for safety concerns. High-severity matches are logged to the encrypted family vault.'**
+  String get searchSafetyVaultNotice;
+
+  /// No description provided for @searchSafetyFlaggedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagged searches ({count})'**
+  String searchSafetyFlaggedCount(int count);
+
+  /// No description provided for @searchSafetyEngineFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get searchSafetyEngineFallback;
+
+  /// No description provided for @searchSafetyEmptyQuery.
+  ///
+  /// In en, this message translates to:
+  /// **'(Empty query)'**
+  String get searchSafetyEmptyQuery;
+
+  /// No description provided for @searchSafetyViewVault.
+  ///
+  /// In en, this message translates to:
+  /// **'View vault details'**
+  String get searchSafetyViewVault;
+
+  /// No description provided for @searchSafetyVaultTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search: \"{query}\"'**
+  String searchSafetyVaultTitle(String query);
 }
 
 class _AppLocalizationsDelegate

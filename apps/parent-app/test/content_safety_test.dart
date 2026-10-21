@@ -112,8 +112,10 @@ void main() {
       expect(find.text('dangerous stunt tutorial'), findsOneWidget);
       expect(find.text('drugs'), findsOneWidget);
       expect(find.text('violence'), findsOneWidget);
-      expect(find.text('WARNING'), findsOneWidget);
-      expect(find.text('CRITICAL'), findsOneWidget);
+      // The severity chip is translated now (#275): an Arabic screen showing CRITICAL in Latin
+      // capitals was the last English string on this page, so the assertion follows the l10n key.
+      expect(find.text('Warning'), findsOneWidget);
+      expect(find.text('Critical'), findsOneWidget);
     });
 
     testWidgets('shows empty state when no flagged searches exist', (tester) async {
