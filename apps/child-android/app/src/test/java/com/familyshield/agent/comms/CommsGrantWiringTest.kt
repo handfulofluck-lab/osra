@@ -161,7 +161,7 @@ class CommsGrantWiringTest {
      * the SQL. The phone row is what proves the behaviour.
      */
     @Test
-    fun `the call harvest reads by id, with the grant time as a DATE floor`() {
+    fun `the call harvest reads by id and applies the floor per row`() {
         assertTrue(
             "the watermark must be an id: DATE is when a call started, not when its row appeared",
             logger.contains("KEY_CALL_ID_WATERMARK"),
@@ -172,17 +172,43 @@ class CommsGrantWiringTest {
                 logger.contains("\${CallLog.Calls._ID} ASC"),
         )
         assertTrue(
-            "the grant floor stays on DATE, so a re-grant still cannot read the paused window",
-            logger.contains("\${CallLog.Calls.DATE} >= ?") && logger.contains("dateFloor"),
+            "the floor is a per-row decision, because a clock set back gives an older DATE and a higher id",
+            logger.contains("CommsWatermarkPolicy.shouldReadCall(ts, duration, dateFloor)"),
         )
         assertFalse(
-            "the old DATE watermark is the bug: a long call that ends last has the older DATE",
-            logger.contains("\${CallLog.Calls.DATE} > ?"),
+            "a DATE predicate in the query is what lost the set-back call (#264 F2)",
+            logger.contains("\${CallLog.Calls.DATE} >= ?") || logger.contains("\${CallLog.Calls.DATE} > ?"),
         )
         assertTrue(
-            "the upgrade path anchors at what the old DATE watermark covered",
-            logger.contains("newestCallIdUpTo(") && logger.contains("CallLog.Calls.DATE} <= ?"),
+            "the anchor is the newest id whose call ENDED by the ceiling, not the newest DATE",
+            logger.contains("newestCallIdEndedBy(") &&
+                logger.contains("CallLog.Calls.DURATION") && logger.contains("endedAt <= ceilingEnd"),
         )
+        assertFalse("the DATE anchor is the bug it replaced", logger.contains("newestCallIdUpTo("))
+    }
+
+    /**
+     * #269 review D1: with no `DATE` predicate left in the query, an id watermark of `0` offers the whole
+     * call log, and `shouldReadCall` calls every pre-grant call "clock set back" and reads it. Both a
+     * fresh install and a consent reset store `0`, so both paths must anchor before any row is offered.
+     */
+    @Test
+    fun `a zero id watermark is anchored at the floor before the query can offer the whole log`() {
+        assertTrue(
+            "a fresh install anchors at now, not at 0",
+            logger.contains("maxOf(legacyDate ?: 0L, grantTime ?: now)"),
+        )
+        assertTrue(
+            "a stored 0 with a real floor anchors at that floor first",
+            logger.contains("if (fromId == 0L && dateFloor > 0L)") &&
+                logger.contains("fromId = newestCallIdEndedBy(dateFloor)"),
+        )
+        assertTrue(
+            "and the query is bound to the anchored id, not to the stored one",
+            logger.contains("arrayOf(fromId.toString())") &&
+                !logger.contains("arrayOf(storedId.toString())"),
+        )
+        assertTrue("the round still reads what is left", logger.contains("var newest: Long = fromId"))
     }
 
     @Test

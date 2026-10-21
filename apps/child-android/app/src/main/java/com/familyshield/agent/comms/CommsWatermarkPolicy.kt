@@ -64,6 +64,27 @@ object CommsWatermarkPolicy {
     fun nextWatermark(newest: Long, now: Long): Long = minOf(newest, now)
 
     /**
+     * Issue #264 (F2): does a call row belong in the collection window?
+     *
+     * The `DATE` floor alone was wrong in one direction: a call made with the clock set *back* to before
+     * the grant has a higher `_ID` (it is a new row) and an older `DATE`, so `DATE >= floor` excluded it
+     * forever while the id watermark walked past it. Rows are written when a call **ends**, so with the
+     * anchor at "the newest id that ended by the floor", a higher id whose whole span is before the floor
+     * can only come from a clock set back — and it is read; the server bounds its time (#263).
+     *
+     * The other direction is ADR-0008's: a call that started before the floor and ended after it happened
+     * *through* the pause, so it stays out. That is the straddle, and the skew is the tolerance around the
+     * floor rather than a second window.
+     */
+    fun shouldReadCall(rowDate: Long, durationSec: Long, floor: Long): Boolean {
+        if (floor <= 0L) return true
+        if (rowDate >= floor) return true
+        val end = rowDate + durationSec * 1000L
+        if (end + CLOCK_SKEW_MS >= floor) return false
+        return true
+    }
+
+    /**
      * Issue #260: calls are watermarked by `CallLog._ID`, not `DATE`.
      *
      * `DATE` is when a call *started* but the row is written when it *ends*, so a 290-second call with a

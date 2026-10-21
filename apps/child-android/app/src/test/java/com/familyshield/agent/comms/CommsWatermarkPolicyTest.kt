@@ -125,4 +125,35 @@ class CommsWatermarkPolicyTest {
         assertFalse("an honest grant time is left alone", CommsWatermarkPolicy.isClockBack(now - 90L * 24 * 60 * 60 * 1000, now))
         assertFalse("no grant time is not a clock problem", CommsWatermarkPolicy.isClockBack(null, now))
     }
+
+    // ── Issue #264 (F2): the floor is a per-row decision ─────────────────────────────────────────
+
+    @Test
+    fun `a call that straddles the floor stays out, and one made with the clock set back is read`() {
+        val floor = 1_792_563_200_000L
+        // Normal: started after the grant.
+        assertTrue(CommsWatermarkPolicy.shouldReadCall(floor + 60_000L, 30, floor))
+        // Straddle: started before the floor, still running when consent came back -- it happened
+        // through the pause, so ADR-0008 keeps it out.
+        assertFalse(CommsWatermarkPolicy.shouldReadCall(floor - 60_000L, 300, floor))
+        // Clock set back: its whole span is before the floor, but its id is above the watermark, which
+        // only a set-back clock produces because rows are written when a call ends.
+        assertTrue(CommsWatermarkPolicy.shouldReadCall(floor - 30L * 24 * 60 * 60 * 1000, 120, floor))
+        // No floor (never granted through this build) reads everything the id watermark offers.
+        assertTrue(CommsWatermarkPolicy.shouldReadCall(floor - 1_000L, 10, 0L))
+    }
+
+    @Test
+    fun `the straddle tolerance is the clock skew, not a second window`() {
+        val floor = 1_792_563_200_000L
+        val durationSec = 60L
+        val durationMs = durationSec * 1000L
+        val skew = CommsWatermarkPolicy.CLOCK_SKEW_MS
+        // Ends exactly at the floor: still a straddle (the skew is inclusive).
+        assertFalse(CommsWatermarkPolicy.shouldReadCall(floor - durationMs, durationSec, floor))
+        // Ends one millisecond inside the skew: still a straddle.
+        assertFalse(CommsWatermarkPolicy.shouldReadCall(floor - durationMs - skew, durationSec, floor))
+        // Ends one millisecond beyond the skew: its whole span is before the floor, so it is read.
+        assertTrue(CommsWatermarkPolicy.shouldReadCall(floor - durationMs - skew - 1, durationSec, floor))
+    }
 }

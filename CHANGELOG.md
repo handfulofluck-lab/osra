@@ -34,6 +34,64 @@ environment where it was written — see `docs/QA/` for the verification state.
   the rules layer keys on nothing they contain.
 - **⚠️ not verified here:** the numbers are the author's run; a second agent has not re-run the table, and
   no native speaker has reviewed the new Arabic.
+### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
+- The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**
+  to before the grant had a higher id (it is a new row) and an older `DATE`: the floor excluded it forever
+  while the id watermark walked past it. The floor is now a per-row decision
+  (`CommsWatermarkPolicy.shouldReadCall`): a call that started before the floor and ended after it — a
+  straddle, meaning it happened *through* the pause — stays out, as ADR-0008 requires; a call whose whole
+  span is before the floor but whose id is above the watermark can only come from a clock set back, and is
+  read. The server's lower bound (#263) keeps it from landing in the past.
+- The anchor moved with it: `newestCallIdEndedBy` takes the newest `_ID` whose call **ended** at or before
+  the ceiling, instead of the newest `_ID` by `DATE`. Rows are written when a call ends, so the old anchor
+  sat below any call that started earlier than it ended.
+- **Removing the `DATE` predicate meant a `0` watermark could offer the whole call log** (#269 review):
+  `shouldReadCall` treats a call that ended before the floor as a clock set back and reads it, so an
+  `_ID > 0` query would upload the child's entire history — and both a fresh install and a consent reset
+  store `0`. A fresh install now anchors at `grantTime ?: now`, and a stored `0` with a real floor anchors
+  with `newestCallIdEndedBy(floor)` before the query runs, then reads the rest of the round so the call
+  that triggered the harvest survives (#257).
+- **A residual limit, named rather than discovered later:** a call made with the clock set back in the
+  ≤ 5 minutes between a re-grant and the next harvest ends before the floor, falls under the anchor and is
+  not read. It is the same one-window cost the logger already accepts elsewhere.
+- Tests: `CommsWatermarkPolicyTest` +2 (straddle kept out / set-back read / no floor reads; and the skew
+  boundary to the millisecond), `CommsGrantWiringTest` updated to pin the per-row floor and the new anchor.
+- **Not in this change:** #264's F1 — a text received with the clock set forward arrives up to a year late,
+  because a future-dated SMS is skipped without being imported. It needs a persisted seen-set (SMS ids can
+  be reused) and follows in its own PR.
+- **⚠️ not verified here:** the phone row — insert a call dated a month before the grant after the anchor
+  and see it on the server at `now − 7 days` or later — is Claude's, on the Flip4.
+### Screen time — collection stops while consent is withdrawn, and the paused window is never uploaded (#265)
+- `UsageReporter.postLiveActivity()` had **no consent check** while every sibling call had one, so a
+  withdrawn phone kept posting the foreground app to `POST /v1/devices/:id/activity` every 60 s, the
+  server answered 428, and the stack was logged once a minute. It now returns on `consent.isPaused()`,
+  and a 428 that races the check is one silent line rather than a warning, the same rule the command
+  poll follows (#263).
+- `recordForeground()` keeps tracking the open package (the lock overlay's "what is open now" and the
+  live-activity payload read it) and stops everything else while consent is withdrawn: no Room row, no
+  unlock count, and no call into `rules.onForegroundEvent` — which is **not** enforcement (the rule
+  engine returns `ALLOW` while paused) but the daily minute counter, so crediting it was what reported
+  the withdrawn window as today's total after a re-grant (#266 review). The largest remaining leak is
+  one open gap, capped at `UsageCounters.MAX_GAP_MINUTES` (5).
+- `aggregateAndUpload()` reuses the comms epoch decision (`CommsConsentPolicy.resetTo`) instead of
+  copying it: at the first upload after a re-grant the watermark moves to the moment the phone learned
+  consent came back, older events are deleted, and the paused-window unlock count is dropped — so the
+  withdrawn window is not uploaded as today's screen time. The epoch lives under its own
+  `telemetry_consent_epoch` key, so a comms reset cannot clear it and vice versa.
+- `backfillFromUsageStats()` is **skipped entirely on a re-grant day**. A floor inside the day does not
+  help: `queryUsageStats(INTERVAL_DAILY, start, now)` returns whole buckets, and because a paused
+  device writes no rows, an app used only during the withdrawal looks "missing from the stream" and had
+  its whole-day total added back (#266 review). Cost: apps the accessibility stream missed go
+  uncounted until the next day — an under-count a parent can see beats a leak they cannot. The
+  double-counting that remains on every 15-minute upload is **#267**, filed by Claude with the delta
+  design that replaces this skip.
+- Tests: `UsageReporterConsentWiringTest` (6) pins each site — the pause check before the minute
+  counter, the 428 branch, the reset's four steps, the re-grant-day skip and the separate epoch key. The
+  decision table itself is `CommsConsentPolicyTest` (5 cases) from #257.
+- **⚠️ not verified here:** the phone row — withdraw consent, switch apps for a few minutes, re-grant,
+  then check the first upload contains none of those minutes and logcat shows no
+  `live activity post failed` stack — is Claude's, on the Flip4. No JVM test can withdraw consent from
+  a running accessibility stream.
 
 ### AI — the labelled evaluation set and per-category, per-language scores (plan 4.2 + 4.3, WO-01)
 - `services/ai-engine/eval/` now holds the labelled set the scorer is measured against: seven
@@ -99,10 +157,11 @@ environment where it was written — see `docs/QA/` for the verification state.
   date arrives (#264 files the remaining evasion).
 - **A withdrawn phone no longer logs a full `HTTP 428` stack every 60 seconds**
   (`LocationService`); the transition is logged once, by `ConsentState`.
-- Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, clamped floor),
-  new `CommsEventTimestampsTest` (4), `CommsGrantWiringTest` +4 pinning the query, the `ts` field and
-  the 428 branch, and one API test asserting the reported time is preserved to the millisecond while a
-  far-future one is clamped.
+- Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, and the
+  grant-re-anchor case that replaced the read-time clamp), new `CommsEventTimestampsTest` (4),
+  `CommsGrantWiringTest` +5 pinning the `_ID` query, `ts`, the 428 branch and the grant re-anchor in
+  both harvests, and one API test asserting a reported time is preserved to the millisecond, a
+  far-future one is clamped to now + 5 min and a six-months-old one is floored to now − 7 days.
 - **⚠️ not verified here:** the two phone rows — call waiting, and a clock set forward once — are
   Claude's, on the Flip4. The JVM tests hold the rules; no JVM test can insert `CallLog` rows.
 
