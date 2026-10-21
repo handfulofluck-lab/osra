@@ -138,8 +138,70 @@ final familyInvitesProvider = FutureProvider<List<FamilyInvite>>((ref) async {
   return [for (final i in (raw as List? ?? const [])) FamilyInvite.fromJson(Map<String, dynamic>.from(i as Map))];
 });
 
+/// What one realtime message asks the app to do. The socket layer is only a
+/// transport: [applyRealtimeMessage] maps a decoded message onto this interface,
+/// so the mapping is testable without a server (issue #236).
+abstract class RealtimeEffects {
+  /// `RealtimeEffects` backed by Riverpod, as [wsProvider] uses it.
+  factory RealtimeEffects.fromRef(Ref ref) = RiverpodRealtimeEffects;
+
+  void invalidateAlerts();
+  void invalidateUnacknowledgedCount();
+  void invalidateFamily();
+  void invalidateLocation(String childId);
+  void updateLiveActivity(LiveActivity activity);
+}
+
+/// [RealtimeEffects] that invalidates the affected providers and writes the
+/// `live_activity` overlay the dashboard reads.
+class RiverpodRealtimeEffects implements RealtimeEffects {
+  RiverpodRealtimeEffects(this._ref);
+
+  final Ref _ref;
+
+  @override
+  void invalidateAlerts() => _ref.invalidate(alertsProvider);
+
+  @override
+  void invalidateUnacknowledgedCount() => _ref.invalidate(unacknowledgedCountProvider);
+
+  @override
+  void invalidateFamily() => _ref.invalidate(familyProvider);
+
+  @override
+  void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
+
+  @override
+  void updateLiveActivity(LiveActivity activity) =>
+      _ref.read(liveActivityProvider.notifier).update((m) => {...m, activity.childId: activity});
+}
+
+/// Maps one decoded `/v1/ws` message onto [effects]. Unknown types do nothing;
+/// a `location` message without a `childId` refreshes only the family overview,
+/// and a `live_activity` message without one is ignored (unchanged behaviour).
+void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
+  switch (msg['type']) {
+    case 'alert':
+      effects.invalidateAlerts();
+      effects.invalidateUnacknowledgedCount();
+      effects.invalidateFamily();
+    case 'location':
+      final payload = msg['payload'];
+      if (payload is Map && payload['childId'] != null) {
+        effects.invalidateLocation(payload['childId'] as String);
+      }
+      effects.invalidateFamily();
+    case 'live_activity':
+      final payload = msg['payload'];
+      if (payload is Map && payload['childId'] != null) {
+        final activity = LiveActivity.fromJson(Map<String, dynamic>.from(payload));
+        effects.updateLiveActivity(activity);
+      }
+  }
+}
+
 /// Live `/v1/ws` channel (http→ws scheme). Streams `{type, payload, ts}`
-/// events and invalidates affected providers on alert/location events.
+/// events and applies them through [applyRealtimeMessage].
 /// The URL derives from the runtime Dio base so a persisted server override
 /// (login screen) is honored without editing api/client.dart.
 ///
@@ -197,24 +259,7 @@ final wsProvider = FutureProvider<WebSocketChannel?>((ref) async {
     } catch (_) {
       return;
     }
-    switch (msg['type']) {
-      case 'alert':
-        ref.invalidate(alertsProvider);
-        ref.invalidate(unacknowledgedCountProvider);
-        ref.invalidate(familyProvider);
-      case 'location':
-        final payload = msg['payload'];
-        if (payload is Map && payload['childId'] != null) {
-          ref.invalidate(locationProvider(payload['childId'] as String));
-        }
-        ref.invalidate(familyProvider);
-      case 'live_activity':
-        final payload = msg['payload'];
-        if (payload is Map && payload['childId'] != null) {
-          final activity = LiveActivity.fromJson(Map<String, dynamic>.from(payload));
-          ref.read(liveActivityProvider.notifier).update((m) => {...m, activity.childId: activity});
-        }
-    }
+    applyRealtimeMessage(RealtimeEffects.fromRef(ref), msg);
   }, onError: (_) => scheduleReconnect(), onDone: scheduleReconnect);
   return channel;
 });
