@@ -1,4 +1,4 @@
-### Android — a restart no longer hands back used-up limits (#NNN, fixes #286)
+### Android — a restart no longer hands back used-up limits (#287, fixes #286)
 - **The bypass:** every telemetry upload deletes the events it sent, and the startup rebuild replaced the
   day's counters with whatever was left in Room — at most the last upload window. A reboot, an app update,
   or Android killing the process therefore reset the per-app and daily screen-time limits for the day. A
