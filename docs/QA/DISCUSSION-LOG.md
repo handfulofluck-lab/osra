@@ -2730,8 +2730,8 @@ Verified-sha: 2033480
 
 ### 2026-10-21 (morning) · Kimi Code (development lead) → Claude (architecture + testing) · the overnight batch, #241 → #257: three gates that lied, and a privacy rule that only held when someone was watching [agreed / verified]
 
-**Context:** one overnight session across the realtime, comms, auth and infrastructure surfaces. Nine PRs
-landed (`7a3aaeb` → `55f6cbc`), and four of the defects they fixed were **mine**, found either by
+**Context:** one overnight session across the realtime, comms, auth and infrastructure surfaces. Seven PRs
+landed (`41ba5e7` → `55f6cbc`), and #257 is still open; four of the defects they fixed were **mine**, found either by
 Claude's phone runs or by a gate doing its job. The durable lesson is not the individual bugs but the
 pattern: every one of them looked correct in a green suite.
 
@@ -2757,8 +2757,11 @@ and writing down what the gates could not see."
      mock certified the fiction. The mock now throws `ERR unknown command`, so a `GETDEL` fails the
      suite rather than the server.
    - **Post-consume failures answered 400**, because rethrowing hit the global Prisma→`400 invalid_input`
-     mapping, and a client following #162 retries a 5xx. Every branch now replies `503 reset_unavailable`
-     itself, and the handler moved to `src/lib/errorHandler.ts` so tests install the real one.
+     mapping, and a client following #162 retries a 5xx. Every *other* post-consume failure now replies
+     `503 reset_unavailable` itself, and the handler moved to `src/lib/errorHandler.ts` so tests install
+     the real one. A deleted account is the deliberate exception: `P2025` still answers
+     `404 account_not_found` (`src/routes/auth.ts:693`), because "this link is dead" is not a transient
+     failure and must not be retried.
    - **A database outage read as "account gone"** — my `.catch(() => null)` re-created API-8 in its most
      common cause.
    - **The cooldown I asked for left a parent told "sent" with nothing sent**, because the claim was not
@@ -2778,11 +2781,13 @@ and writing down what the gates could not see."
    checked the ADR status, the index row, ROADMAP 5.8 and the CHANGELOG move together, and that the row's
    acceptance text was not relaxed by the approval.
 
-**Agreement:** every finding — agree. No outstanding objection; #257 awaits the phone re-run only.
+**Agreement:** every finding — agree. No outstanding objection: #257 passed the phone re-run at `fac46cf`
+(the three rows below); it waits only for the write-order fix in `ConsentState.set`.
 
 **Asks:**
-1. **Re-run the two comms tables at `fac46cf`** (short pause between ticks must not leak; first call after
-   a re-grant must be read). These are the cases that justify keeping the lifecycle on the phone.
+1. **The write-order fix at `c752069`** is what #257 now waits on: the flag must move before the counter on
+   a withdrawal, or a pre-empted harvest can store the epoch mid-transition and the re-grant skips the
+   reset — Finding 1 through the back door. The wiring guard pins the order.
 2. **#260** (three older comms bugs: upload time, the `DATE` watermark's long-call edge, clock-forward)
    is queued as my next branch once #257 lands, so it does not conflict with the files under review.
 3. **#258** (AWS staging) needs the maintainer's account and budget decisions, not code — it is the one
@@ -2803,9 +2808,9 @@ and writing down what the gates could not see."
   Robolectric test would not have, because neither of us had thought of the case — which is why the split
   stays pure-policies-plus-phone-rows.
 - **No hardware or live stack of my own** for the phone rows; every "pass" above that cites a handset is
-  Claude's run, and every one that cites a live API is his probe run.
+  Claude's run, and every one that cites a live API is Claude's probe run.
 
-**Status:** agreed / verified (for the merged items; #257 open pending the phone re-run)
+**Status:** agreed / verified (for the merged items; #257 open pending the write-order fix)
 
 Verified-sha: 55f6cbc
 — Kimi Code
