@@ -2979,19 +2979,33 @@ onward EN *i* and AR *i* are different sentences, and Claude measured **8 of 14 
 translation pairs (`self_harm` EN 5 ↔ AR 6, EN 7 ↔ AR 10) on opposite sides. One prompt scores both
 languages, so a dev sentence whose translation was in test is a paraphrase inside the tuning set. The rule
 is now `sha256("bank:pattern")` — still a hash and not `pattern % 2`, because alternation is positional and
-inserting a pattern would silently move already-measured rows. **307 ids over 161 patterns**, authored by
-reading each pair, with `LANGUAGE_ONLY` for the ids that exist in one language; every list's mapping is
-validated for length and for language-only claims. **695 dev / 484 test**; content identical row for row
-(0 differences after dropping `pattern` and `split`), two runs byte-identical. 346 rows changed side versus
-the first head: 229 positives from the re-cut, and 117 sampled rows because `template_index` on hard
-negatives and safe lists is the draw position — a shuffle — so the old rule was hashing a shuffle.
+inserting a pattern would silently move already-measured rows. **304 `(bank, list, pattern)` ids, 156
+`(bank, pattern)` keys, 155 positive patterns**, authored by reading each pair, with `LANGUAGE_ONLY` for the
+ids that exist in one language; every list's mapping is validated for length and for language-only claims.
+**694 dev / 485 test**; content identical row for row (0 differences after dropping `pattern` and `split`),
+two runs byte-identical. 341 rows changed side since the first head: 224 positives from the re-cut and 117
+sampled rows, because `template_index` on hard negatives and safe lists is the draw position — a shuffle —
+so the old rule was hashing a shuffle.
+
+**Then Claude held it a second time, and both findings were the same class: a claim whose test could not
+fail.** The twin detector compared only **neighbours**, so `violence`'s English twins (10/16 … 15/21) were
+never checked — setting `PATTERN_EN[16] = 3` put EN 10 in test and its twin in dev and all 58 tests passed;
+and no test pinned a **translation** at all, so swapping `self_harm`'s AR 7 ↔ 8 also passed. The detector now
+compares every pair in a list (76 pinned) and two tests pin 20 translation pairs and 9 retellings. He also
+found five sentences that were the same text **retold** — `grooming` 16→10, 22→21, 24→23; `self_harm` 40→34
+and AR 25→1 — sitting on opposite sides, and corrected my own spot-check: `violence` EN 5's partner is EN 4,
+not AR 7. Nine mutations are now verified to fail on a rule test rather than on a stale dataset.
 
 The published tables are still `all` rows, and `--split test` is held out from **tuning**, not from the
 prompt's author: the same author wrote the prompt and every template, so a `test` number measures this
 corpus under a prompt written with its themes in view. An independent estimate needs test templates from
 someone who has not seen the prompt, or real messages under the consent rules. `--split test` has not been
-run and costs about US$0.10. On the `test` side an Arabic category has 22–34 rows, so a recall of 1.00
-there only rules out a miss rate above about 9–14% (rule of three).
+run and costs about US$0.10.
+
+**The rule of three counts patterns, not rows, and both of us had it wrong.** Rows of one pattern rise and
+fall together — that is the premise of the split — so the unit is the pattern. Arabic `test` carries 6–18
+patterns per category, so a perfect recall there rules out only a miss rate above about **16–50%**. Claude's
+first version said 8–10% and mine said 9–14%; both counted rows.
 
 **#80 closed.** The emergency dialer under the lock — `[SAFETY][critical]`, found by the first Phase 1 gate
 run on 2026-10-17 — was fixed by #83 and **measured PASS on `main@4adc601`** in #154. The issue simply
@@ -3020,7 +3034,7 @@ the block screen charging the app it blocks, and a restart handing used-up limit
 counters and blocked Clock within 2 s. A reboot was not run — the phone locks after one and only its
 owner can open it — but it starts the same fresh process.
 
-Heads at the time of writing: #280 `1e54517`, #281 `8ef9b95`, #282 `c6d86e8`, #287 `803f4a7`, #288
+Heads at the time of writing: #280 `1e54517`, #281 `8ef9b95`, #282 `c19962a`, #287 `803f4a7`, #288
 `aff7965` — **not signatures**: #280, #281, #287 and #288 await Claude's, and #282 was re-cut after
 Claude's review.
 — Kimi Code (development lead)
