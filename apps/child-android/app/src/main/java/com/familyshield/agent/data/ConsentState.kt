@@ -55,8 +55,31 @@ class ConsentState @Inject constructor(
 
     @Volatile private var paused: Boolean = settings.consentPausedSync()
 
+    /**
+     * Issue #257 review: a counter that rises once per observed withdrawal, and the wall-clock moment
+     * the phone learned consent came back.
+     *
+     * The comms watermark reset used to run at the first *harvest* after a re-grant. That missed a
+     * pause shorter than the 5-minute loop (nothing looked while paused, so the pause was never
+     * recorded — the paused-window rows leaked afterwards) and dropped the first call after a re-grant
+     * (the resetting harvest read nothing, including the call that triggered it).
+     *
+     * Recording the transition here — where the flag actually flips — fixes both: the epoch moves the
+     * instant the withdrawal is seen, and the restart point is when the phone learned of the re-grant,
+     * not when a later harvest noticed. In memory first, so a harvest that reads `isPaused() == false`
+     * also sees the new values without waiting for the DataStore write.
+     */
+    @Volatile private var pauseEpoch: Long = settings.consentPauseEpochSync()
+    @Volatile private var resumedAtMs: Long = settings.consentResumedAtSync()
+
     /** True while the parent has withdrawn consent; collection and enforcement must stop. */
     fun isPaused(): Boolean = paused
+
+    /** Counts observed withdrawals; unchanged since the last one is what tells a harvest to reset. */
+    fun pauseEpoch(): Long = pauseEpoch
+
+    /** When the phone learned consent was granted again; the watermarks restart from here. */
+    fun resumedAtMs(): Long = resumedAtMs
 
     /** Applies a queued device command; returns true when the command was a consent command. */
     fun onCommand(type: String): Boolean {
@@ -76,11 +99,32 @@ class ConsentState @Inject constructor(
         ConsentPolicy.httpStatusOf(error)?.let { onPollStatus(it) }
     }
 
+    /**
+     * Applies a transition. [Synchronized] because the command dispatcher and the poll/rules threads
+     * both call in, and the check-then-set below races otherwise.
+     *
+     * **The order of the two writes is load-bearing** (issue #257 review). A harvest reads
+     * `pauseEpoch()`, then Room, then `isPaused()`. If the counter moved before the flag, a harvest
+     * could see the new epoch while `paused` was still false, store the epoch as applied during the
+     * withdrawal, and the re-grant would then find `stored == epoch` and skip the reset — reading the
+     * paused window, which is Finding 1 all over again. So:
+     *  - withdrawal: the flag first, then the counter — a harvest that sees the new epoch also sees
+     *    `paused == true`, and refuses to reset into a paused window;
+     *  - re-grant: the time first, then the flag — a harvest that sees `paused == false` also sees the
+     *    new `resumedAtMs`, and restarts from it.
+     */
+    @Synchronized
     private fun set(next: Boolean, reason: String) {
         if (next == paused) return
-        paused = next
+        if (next) {
+            paused = true
+            pauseEpoch += 1 // after the flag: a harvest seeing the new epoch also sees paused == true
+        } else {
+            resumedAtMs = System.currentTimeMillis()
+            paused = false // after the time: a harvest seeing paused == false also sees the new resumedAtMs
+        }
         Log.i(TAG, if (next) "consent withdrawn — monitoring paused ($reason)" else "consent active — monitoring resumed ($reason)")
-        scope.launch { runCatching { settings.saveConsentPaused(next) } }
+        scope.launch { runCatching { settings.saveConsentState(next, pauseEpoch, resumedAtMs) } }
     }
 
     private companion object {

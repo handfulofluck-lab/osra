@@ -10,8 +10,9 @@ class FamilyShieldApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Feature #6: start the call/SMS content observers as early as possible (they no-op until
-        // READ_CALL_LOG/READ_SMS are granted, then pick up automatically).
+        // Feature #6: start the call/SMS content observers as early as possible. Issue #229: a stream
+        // whose permission is missing is not registered here; CommsCapture.onPermissionsChanged()
+        // retries the registration when the grant arrives, without a reboot.
         EntryPointAccessors.fromApplication(this, WorkerEntryPoint::class.java)
             .commsCapture()
             .start()

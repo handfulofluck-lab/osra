@@ -1266,13 +1266,14 @@ class AppLocalizationsAr extends AppLocalizations {
   String get socialMessage => 'رسالة اجتماعية';
 
   @override
-  String get callsAndTexts => 'المكالمات والرسائل';
+  String get callsAndTexts => 'المكالمات الهاتفية والرسائل';
 
   @override
-  String get iosNoCallMonitoring => 'لا يدعم iOS مراقبة المكالمات والرسائل.';
+  String get iosNoCallMonitoring =>
+      'لا يدعم iOS مراقبة المكالمات الهاتفية والرسائل.';
 
   @override
-  String get noCallsOrTexts => 'لا توجد مكالمات أو رسائل بعد';
+  String get noCallsOrTexts => 'لا توجد مكالمات هاتفية أو رسائل بعد';
 
   @override
   String get unknownNumber => 'رقم غير معروف';

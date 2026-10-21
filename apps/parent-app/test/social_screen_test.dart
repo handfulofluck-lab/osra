@@ -246,7 +246,7 @@ void main() {
     });
   });
 
-  group('Calls & texts timeline (#6)', () {
+  group('Phone calls & texts timeline (#6)', () {
     /// Seeds the timeline on [base]'s local calendar day: the recent call and
     /// the SMS sit on that day, the older call on the previous one, whatever
     /// [base]'s time of day. Built from calendar fields — never `base ±
@@ -306,9 +306,9 @@ void main() {
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
       await flushFakeHttp(tester);
 
-      await reveal(tester, find.text('No calls or texts yet'));
-      expect(find.text('No calls or texts yet'), findsOneWidget);
-      expect(find.text('iOS does not support call/text monitoring.'), findsOneWidget);
+      await reveal(tester, find.text('No phone calls or texts yet'));
+      expect(find.text('No phone calls or texts yet'), findsOneWidget);
+      expect(find.text('iOS does not support phone-call or text monitoring.'), findsOneWidget);
     });
 
     testWidgets('fetches type=call and type=sms and merges newest-first', (tester) async {
@@ -346,14 +346,14 @@ void main() {
       expect(find.text('Monitoring'), findsOneWidget);
       await reveal(tester, find.text('Concerns'));
       expect(find.text('Concerns'), findsOneWidget);
-      await reveal(tester, find.text('Calls & texts'));
-      expect(find.text('Calls & texts'), findsOneWidget);
+      await reveal(tester, find.text('Phone calls & texts'));
+      expect(find.text('Phone calls & texts'), findsOneWidget);
       await reveal(tester, find.text('Trusted contacts'));
       expect(find.text('Trusted contacts'), findsOneWidget);
       await reveal(tester, find.text('No concerns detected'));
       expect(find.text('No concerns detected'), findsOneWidget);
-      await reveal(tester, find.text('No calls or texts yet'));
-      expect(find.text('No calls or texts yet'), findsOneWidget);
+      await reveal(tester, find.text('No phone calls or texts yet'));
+      expect(find.text('No phone calls or texts yet'), findsOneWidget);
     });
   });
 }

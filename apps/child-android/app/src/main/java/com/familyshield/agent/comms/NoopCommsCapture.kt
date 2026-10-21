@@ -12,5 +12,8 @@ import javax.inject.Singleton
 class NoopCommsCapture @Inject constructor() : CommsCapture {
     override fun start() = Unit
 
+    /** Issue #229: the Play build has no comms permission to re-check. */
+    override fun onPermissionsChanged() = Unit
+
     override suspend fun flush() = Unit
 }

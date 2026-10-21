@@ -231,10 +231,23 @@ class AgentSettings @Inject constructor(
     /** Synchronous snapshot of pairing status (device token present). */
     fun isPairedSync(): Boolean = !deviceTokenSync().isNullOrBlank()
 
-    /** Persists the consent-pause flag (ADR-0008 §3) so a reboot while paused stays paused. */
-    suspend fun saveConsentPaused(paused: Boolean) {
-        store.edit { it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0" }
+    /**
+     * Persists the pause flag with the withdrawal counter and the re-grant time (issue #257 review), so
+     * a restart keeps the same epoch and the comms restart point survives a reboot.
+     */
+    suspend fun saveConsentState(paused: Boolean, pauseEpoch: Long, resumedAtMs: Long) {
+        store.edit {
+            it[KEY_CONSENT_PAUSED] = if (paused) "1" else "0"
+            it[KEY_CONSENT_PAUSE_EPOCH] = pauseEpoch.toString()
+            it[KEY_CONSENT_RESUMED_AT] = resumedAtMs.toString()
+        }
     }
+
+    /** Epoch of observed withdrawals, for [ConsentState]'s in-memory copy. */
+    fun consentPauseEpochSync(): Long = runBlocking { read(KEY_CONSENT_PAUSE_EPOCH) }?.toLongOrNull() ?: 0L
+
+    /** When consent was last re-granted, for [ConsentState]'s in-memory copy. */
+    fun consentResumedAtSync(): Long = runBlocking { read(KEY_CONSENT_RESUMED_AT) }?.toLongOrNull() ?: 0L
 
     /**
      * Issue #221 (D1 follow-up): the location grant the server was last told about. The expedited
@@ -308,6 +321,10 @@ class AgentSettings @Inject constructor(
         private val KEY_TODAY_USAGE_DATE = stringPreferencesKey("today_usage_date")
         private val KEY_TODAY_USAGE_JSON = stringPreferencesKey("today_usage_json")
         private val KEY_CONSENT_PAUSED = stringPreferencesKey("consent_paused")
+        // Issue #257 review: observed-withdrawal counter and the re-grant time, so the comms
+        // watermark restart does not depend on a harvest happening to run at the right moment.
+        private val KEY_CONSENT_PAUSE_EPOCH = stringPreferencesKey("consent_pause_epoch")
+        private val KEY_CONSENT_RESUMED_AT = stringPreferencesKey("consent_resumed_at")
         // Issue #221: the location grant the server was last told about (change detection).
         private val KEY_REPORTED_LOCATION_GRANT = stringPreferencesKey("reported_location_grant")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
