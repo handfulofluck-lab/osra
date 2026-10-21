@@ -102,7 +102,11 @@ class CommsGrantWiringTest {
         val consentState = sourceFile("app/src/main/java/com/familyshield/agent/data/ConsentState.kt")
         assertTrue(
             "the epoch must advance at the flip, or a pause shorter than the loop is never recorded",
-            consentState.contains("if (next) pauseEpoch += 1 else resumedAtMs = System.currentTimeMillis()"),
+            consentState.contains("pauseEpoch += 1"),
+        )
+        assertTrue(
+            "and the re-grant time must be stored at the flip too",
+            consentState.contains("resumedAtMs = System.currentTimeMillis()"),
         )
         assertTrue(consentState.contains("fun pauseEpoch(): Long"))
         assertTrue(consentState.contains("fun resumedAtMs(): Long"))
@@ -118,6 +122,34 @@ class CommsGrantWiringTest {
         assertFalse(
             "the harvest must no longer be the only writer of the pause marker",
             logger.contains("comms_consent_paused_seen"),
+        )
+    }
+
+    /**
+     * Issue #257 review: the two writes in `ConsentState.set` must happen in the safe order. A harvest
+     * reads the epoch, then Room, then the flag; if the counter moved first, it could store the epoch as
+     * applied during the withdrawal and the re-grant would skip the reset — the paused window leaks.
+     */
+    @Test
+    fun `the flag is written before the counter, so a harvest cannot see a half transition`() {
+        val consentState = sourceFile("app/src/main/java/com/familyshield/agent/data/ConsentState.kt")
+        val withdrawal = consentState.indexOf("paused = true")
+        val counter = consentState.indexOf("pauseEpoch += 1")
+        val resumedAt = consentState.indexOf("resumedAtMs = System.currentTimeMillis()")
+        val cleared = consentState.indexOf("paused = false")
+
+        assertTrue("both writes are present", withdrawal > 0 && counter > 0 && resumedAt > 0 && cleared > 0)
+        assertTrue(
+            "on a withdrawal the flag must move first, or a harvest can see the new epoch while still active",
+            withdrawal < counter,
+        )
+        assertTrue(
+            "on a re-grant the time must move first, or a harvest can see paused == false with the old time",
+            resumedAt < cleared,
+        )
+        assertTrue(
+            "the dispatcher and the poll/rules threads can race on the check-then-set",
+            consentState.contains("@Synchronized") && consentState.contains("private fun set("),
         )
     }
 

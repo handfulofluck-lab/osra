@@ -99,10 +99,30 @@ class ConsentState @Inject constructor(
         ConsentPolicy.httpStatusOf(error)?.let { onPollStatus(it) }
     }
 
+    /**
+     * Applies a transition. [Synchronized] because the command dispatcher and the poll/rules threads
+     * both call in, and the check-then-set below races otherwise.
+     *
+     * **The order of the two writes is load-bearing** (issue #257 review). A harvest reads
+     * `pauseEpoch()`, then Room, then `isPaused()`. If the counter moved before the flag, a harvest
+     * could see the new epoch while `paused` was still false, store the epoch as applied during the
+     * withdrawal, and the re-grant would then find `stored == epoch` and skip the reset — reading the
+     * paused window, which is Finding 1 all over again. So:
+     *  - withdrawal: the flag first, then the counter — a harvest that sees the new epoch also sees
+     *    `paused == true`, and refuses to reset into a paused window;
+     *  - re-grant: the time first, then the flag — a harvest that sees `paused == false` also sees the
+     *    new `resumedAtMs`, and restarts from it.
+     */
+    @Synchronized
     private fun set(next: Boolean, reason: String) {
         if (next == paused) return
-        if (next) pauseEpoch += 1 else resumedAtMs = System.currentTimeMillis()
-        paused = next
+        if (next) {
+            paused = true
+            pauseEpoch += 1 // after the flag: a harvest seeing the new epoch also sees paused == true
+        } else {
+            resumedAtMs = System.currentTimeMillis()
+            paused = false // after the time: a harvest seeing paused == false also sees the new resumedAtMs
+        }
         Log.i(TAG, if (next) "consent withdrawn — monitoring paused ($reason)" else "consent active — monitoring resumed ($reason)")
         scope.launch { runCatching { settings.saveConsentState(next, pauseEpoch, resumedAtMs) } }
     }
