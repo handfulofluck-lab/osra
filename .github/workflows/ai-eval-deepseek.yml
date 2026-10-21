@@ -1,0 +1,72 @@
+name: ai-eval-deepseek
+
+# Plan 4.1: the hosted scorer, measured against the labelled set.
+#
+# **Manual only, and deliberately so.** Every run bills the whole dataset, and the answer does not
+# change until the banks, the prompt or the model do — so a push-triggered job would spend money on
+# every commit to produce the same table. `workflow_dispatch` keeps the cost tied to a decision.
+#
+# The secret is read through `env:`, never through `if:` — `secrets` in a conditional is not a permitted
+# context and the workflow is rejected without a single job running (the trap recorded in
+# `docs/TESTING.md` §6 and enforced by `scripts/check-workflows.mjs`).
+on:
+  workflow_dispatch:
+    inputs:
+      limit_per_category:
+        description: "Rows per category per language; 0 uses the whole committed set"
+        required: false
+        default: "0"
+      model:
+        description: "DeepSeek model id"
+        required: false
+        default: "deepseek-chat"
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-engine
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DEEPSEEK_MODEL: ${{ inputs.model }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Test deps carry httpx, which the scorer uses; the heavy runtime deps stay out of this job.
+      - run: pip install -r requirements-dev.txt
+
+      - name: Refuse to run without a key
+        run: |
+          if [ -z "${DEEPSEEK_API_KEY}" ]; then
+            echo "::error::DEEPSEEK_API_KEY is not set as a repository secret — see docs/test-guides/CI-SECRETS.md"
+            exit 1
+          fi
+
+      # The scorer must never be the only thing that ran: a set that has drifted from its banks would
+      # make the numbers describe a dataset nobody can reproduce.
+      - name: The banks and the committed set agree
+        run: |
+          python -m eval.banks
+          python -m eval.generate --check
+
+      - name: Score with the hosted model
+        run: |
+          python -m eval.run_eval \
+            --scorer deepseek \
+            --limit-per-category "${{ inputs.limit_per_category }}" \
+            --json deepseek-result.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deepseek-eval-result
+          path: services/ai-engine/deepseek-result.json
+          if-no-files-found: error
