@@ -2069,19 +2069,19 @@ abstract class AppLocalizations {
   /// No description provided for @callsAndTexts.
   ///
   /// In en, this message translates to:
-  /// **'Calls & texts'**
+  /// **'Phone calls & texts'**
   String get callsAndTexts;
 
   /// No description provided for @iosNoCallMonitoring.
   ///
   /// In en, this message translates to:
-  /// **'iOS does not support call/text monitoring.'**
+  /// **'iOS does not support phone-call or text monitoring.'**
   String get iosNoCallMonitoring;
 
   /// No description provided for @noCallsOrTexts.
   ///
   /// In en, this message translates to:
-  /// **'No calls or texts yet'**
+  /// **'No phone calls or texts yet'**
   String get noCallsOrTexts;
 
   /// No description provided for @unknownNumber.

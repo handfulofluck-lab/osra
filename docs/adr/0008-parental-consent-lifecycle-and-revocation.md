@@ -66,3 +66,47 @@ ADR-0002 established that creating a child without verifiable parental consent r
 - Routes: `services/api/src/routes/family.ts` (revoke, status, grant → `consent_granted`), `rules.ts`, `devices.ts`, `controls.ts`, `location.ts`, `social.ts`, `alerts.ts`, `content.ts`
 - Migration: `services/api/prisma/migrations/0009_consent_record_index`
 - Tests: `services/api/test/consent.test.ts` (20 cases), `services/api/scripts/qa-probe.mjs` checks `J3`, `J3b`, `J3c`, `J3d` — live run 2026-10-16: **77 passed · 0 failed · 2 targets**
+
+## Amendment 2026-10-21 — collection starts when it is allowed (#229)
+
+**Call and SMS logging covers events after the permission is granted; history is never imported.**
+
+Decision 2 says what may be processed while a consent record exists; this amendment fixes *when a
+stream starts*. `CommsLogger` used to fall back to a `0L` watermark, so the first harvest after
+`READ_CALL_LOG` was granted queried `DATE > 0` and imported the phone's whole call log — 1,986 rows
+back to 2026-01-23 in the TR-24 run on the Flip4, including calls made before the app was watching
+and before this consent record. The agent now stores `comms_call_since` / `comms_sms_since` and the
+matching watermark the first time each permission is seen granted, reads nothing on that harvest,
+and floors later reads at the grant time. A withdrawal the agent observes resets both keys, so a
+re-grant starts a new window at the re-grant time. The transition is recorded **where the consent flag
+flips** (`ConsentState` counts withdrawals and stores the re-grant time), not at the first harvest after
+it: a pause shorter than the 5-minute comms loop would otherwise never be recorded, and the resetting
+harvest would read nothing — dropping the very row that triggered it. `CommsConsentPolicy.resetTo`
+decides when to reset and restarts from the re-grant time. The rule lives in `CommsWatermarkPolicy`
+(`apps/child-android/app/src/main/java/com/familyshield/agent/comms/CommsWatermarkPolicy.kt`) with
+the harness caveat recorded in `CHANGELOG.md`: the policy is JVM-tested, the permission-flip
+lifecycle is source-pinned only.
+
+This is a data-minimisation consequence of decision 1 (revocation stops processing): a grant is the
+start of processing, so events from before it are not "already collected" data the parent may see.
+It also keeps old numbers out of the #27 unknown-contact alerts. Cost: calls and messages sent before
+the grant are unavailable to the parent timeline forever — deliberately, and the parent timeline
+says "phone calls" so app calls are not implied.
+
+**Known limit, accepted.** The reset-on-withdrawal runs only when the agent *observes* the
+withdrawal; a process dead for the whole withdrawal→re-grant window writes no pause marker, and the
+stored `*_since` floor keeps the *old* grant time, so rows from the paused window can be read
+afterwards. Closing that needs a consent window the server records and the device asks for, which is
+a larger contract than this amendment; it is recorded here rather than left in a code comment.
+
+**Observed 2026-10-21 (Claude's restart row on #257): the limit is narrower than it reads.** The running
+agent saw the withdrawal; the process was then killed and restarted while consent was still withdrawn,
+and consent was given back afterwards. A paused agent's command poll is answered 428 and drains nothing,
+so `consent_revoked` and `consent_granted` both stayed queued and arrived together on the first successful
+poll after the re-grant: the new process flipped `ConsentState` paused and active again within 3 ms,
+before its first harvest, so the epoch moved anyway. The same delivery is expected when the process is
+dead for the whole window, because both commands stay queued until the first successful poll, but that
+case was not measured. The persisted epoch is therefore a second line of defence. What remains open is a
+device that makes no successful poll between the withdrawal and the re-grant and comes back more than 7
+days after the withdrawal: `consent_revoked` has expired by then (`COMMAND_TTL_SECONDS`), only
+`consent_granted` arrives, the state never flips, and the old floor can read the paused window.

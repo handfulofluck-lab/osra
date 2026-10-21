@@ -44,6 +44,32 @@ environment where it was written — see `docs/QA/` for the verification state.
   dataset regenerates byte-identically in CI on Python 3.11 (`generate --check` passed there), but a
   second agent has not re-run the table yet.
 
+### Child agent — a later call/SMS grant takes effect without a reboot, and history is never imported (#229)
+- `CommsLogger` no longer sets one `started` flag before registering both `ContentObserver`s. Each
+  stream has its own `callObserverRegistered` / `smsObserverRegistered` flag, and a stream is
+  registered only when its permission is granted (`CommsObserverPolicy.shouldRegister`). A
+  registration the provider refused without the permission (Samsung's call log) is now retried by
+  `CommsCapture.onPermissionsChanged()`, which is called from `PairingActivity`'s permission-result
+  callback, from `PairingActivity.onResume` and at the top of the 5-minute loop. A missing
+  permission logs one INFO line and no stack (the #91 rule, which the registration path missed) —
+  including the SMS `SecurityException` that used to log `W` with a stack.
+- The first harvest of a stream no longer reads the phone's entire history. With no watermark,
+  `harvestCalls()` / `harvestSms()` store `System.currentTimeMillis()` as both
+  `comms_call_since` / `comms_sms_since` and the watermark and return without querying
+  (`CommsWatermarkPolicy`). A withdrawal observed by the agent resets both keys, so a re-grant starts
+  a new window at the re-grant time; `startFrom()` also floors every read at the stored grant time.
+  ADR-0008 carries the sentence.
+- Call rows: a row with no number and a VoIP `subscription_component_name` (Google Meet) is skipped
+  rather than stored as an empty-number event, and a repeat of `(date, type, duration, component)`
+  inside one harvest is dropped (`CommsRowPolicy`). The parent timeline now says "phone calls" in
+  both languages, because app calls are not covered.
+- New JVM tests: `CommsObserverPolicyTest`, `CommsWatermarkPolicyTest`, `CommsRowPolicyTest`, and
+  `CommsGrantWiringTest` (the `CommandDispatcherAckTest` source-text shape) pinning the three
+  `onPermissionsChanged()` call sites. **Not covered by a test:** the lifecycle itself (permission
+  flip → observer registered → harvest). This suite is JUnit 4 with no Robolectric and no
+  `androidTest` source set; the wiring is guarded, not executed. Author-run here:
+  `./gradlew testPlayDebugUnitTest testFullDebugUnitTest` green; the watermark and row tests were
+  shown red by reverting each rule alone. The TR-24 hardware re-test was not re-run here.
 
 ### Architecture — ADR-0028 accepted: AWS hosting approved
 - Karim confirmed AWS as the cloud provider and approved the budget on 2026-10-21; ADR-0028 moves from proposed to accepted. The first infrastructure item, an HTTPS staging API in the UAE region built with Terraform, is filed for Kimi as #258 (roadmap 5.8). No code changed here.
