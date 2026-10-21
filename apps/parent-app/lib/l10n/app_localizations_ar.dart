@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1999,4 +1998,98 @@ class AppLocalizationsAr extends AppLocalizations {
   String searchSafetyVaultTitle(String query) {
     return 'بحث: \"$query\"';
   }
+
+  @override
+  String get digestPrefsTitle => 'تفضيلات الملخّص';
+
+  @override
+  String digestPrefsLoadFailed(String error) {
+    return 'تعذّر تحميل التفضيلات: $error';
+  }
+
+  @override
+  String get digestPrefsDailyTitle => 'ملخّص بريدي يومي';
+
+  @override
+  String get digestPrefsDailyBody => 'ملخّص قصير كل مساء';
+
+  @override
+  String get digestPrefsWeeklyTitle => 'ملخّص بريدي أسبوعي';
+
+  @override
+  String get digestPrefsWeeklyBody => 'ملخّص أوسع مرة كل أسبوع';
+
+  @override
+  String get digestPrefsPushTitle => 'الإشعارات الفورية';
+
+  @override
+  String get digestPrefsPushBody => 'التنبيهات الحرجة كرسائل فورية';
+
+  @override
+  String get digestPrefsEmailsLabel =>
+      'عناوين البريد للملخّص (افصل بينها بفاصلة)';
+
+  @override
+  String get digestPrefsTimezoneTitle =>
+      'المنطقة الزمنية للملخّص (ساعة الإرسال المحلية)';
+
+  @override
+  String get digestPrefsTimezoneLabel => 'المنطقة الزمنية';
+
+  @override
+  String get digestPrefsTimezoneLoading => 'جارٍ التحميل…';
+
+  @override
+  String get digestPrefsSendHour =>
+      'يُرسَل الملخّص الساعة 18:00 بتوقيتك المحلي';
+
+  @override
+  String get digestPrefsSavingSuffix => 'جارٍ الحفظ…';
+
+  @override
+  String get digestPrefsSaving => 'جارٍ الحفظ…';
+
+  @override
+  String get digestPrefsSave => 'حفظ التفضيلات';
+
+  @override
+  String get digestPrefsRendering => 'جارٍ التجهيز…';
+
+  @override
+  String get digestPrefsSendNow => 'إرسال ملخّص تجريبي الآن';
+
+  @override
+  String get digestPrefsSaved => 'تم حفظ تفضيلات الملخّص';
+
+  @override
+  String digestPrefsSaveFailed(String error) {
+    return 'تعذّر الحفظ: $error';
+  }
+
+  @override
+  String digestPrefsTimezoneSet(String zone) {
+    return 'تم ضبط المنطقة الزمنية للملخّص على $zone';
+  }
+
+  @override
+  String digestPrefsTimezoneFailed(String error) {
+    return 'لم تُحفَظ المنطقة الزمنية: $error';
+  }
+
+  @override
+  String get digestPrefsTestTitle => 'ملخّص تجريبي';
+
+  @override
+  String get digestPrefsClose => 'إغلاق';
+
+  @override
+  String digestPrefsSendFailed(String error) {
+    return 'تعذّر الإرسال: $error';
+  }
+
+  @override
+  String get digestPrefsNoDigests => 'لم يُنشأ أي ملخّص';
+
+  @override
+  String get digestPrefsChildFallback => 'طفل';
 }
