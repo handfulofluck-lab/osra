@@ -255,6 +255,16 @@ class CommsGrantWiringTest {
             "the old behaviour was to skip the row entirely",
             sms.contains("if (CommsWatermarkPolicy.isFutureRow(ts, now)) continue"),
         )
+        // #264 review D1: the set is consulted in the normal branch too, or the row is imported again a
+        // year later when its date arrives.
+        assertTrue(
+            "a tracked row is skipped once its date is no longer in the future",
+            sms.contains("newest = maxOf(newest, ts)\n") && sms.contains("if (tracked) continue"),
+        )
+        // #264 review D2: an id floor separates "arrived after the window opened" from "was already there".
+        assertTrue("a future row above the floor is imported", sms.contains("CommsFutureSmsPolicy.shouldImportFuture(rowId, smsIdFloor)"))
+        assertTrue("the floor is resolved when unread", sms.contains("smsIdFloor = newestSmsId()"))
+        assertTrue("and recorded where the SMS window opens", logger.contains("KEY_SMS_ID_FLOOR, newestSmsId()"))
     }
 
     @Test

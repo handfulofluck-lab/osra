@@ -231,6 +231,10 @@ class CommsLogger @Inject constructor(
         // before it reads anything (#269 review: the old comment claimed the anchor branch handled
         // this, but that branch needs a missing key, not a zero one).
         dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, 0L))
+        // Issue #264 review (D2): a withdrawal round trip also re-opens the SMS window, and the read
+        // floor is `resumedAtMs` — which can still be on the forward clock. Recording the newest id here
+        // is what stops a text that arrived during the withdrawal from being imported as "future".
+        dao.set(AgentStateEntity(KEY_SMS_ID_FLOOR, newestSmsId()))
         for (key in listOf(KEY_CALL_WATERMARK, KEY_SMS_WATERMARK, KEY_CALL_SINCE, KEY_SMS_SINCE)) {
             dao.set(AgentStateEntity(key, from))
         }
@@ -356,6 +360,28 @@ class CommsLogger @Inject constructor(
     }
 
     /**
+     * Issue #264 review (D2): the newest `Telephony.Sms._ID`, or -1 when it cannot be read.
+     *
+     * Recorded when the SMS read floor is set (first harvest, consent reset) so the future branch can
+     * tell a text that arrived after collection started from one that was already there. -1 is "not
+     * known yet" and the harvest resolves it before its first use; it is never treated as "no floor",
+     * because fail-open is what imported the withdrawn window.
+     */
+    private fun newestSmsId(): Long {
+        return try {
+            context.contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                arrayOf(Telephony.Sms._ID),
+                null,
+                null,
+                "${Telephony.Sms._ID} DESC",
+            )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: -1L
+        } catch (e: SecurityException) {
+            -1L
+        }
+    }
+
+    /**
      * Issue #264 (F2): the newest `CallLog._ID` whose call **ended** at or before [ceilingEnd], or 0.
      *
      * Used by the first harvest after an upgrade or a consent reset, to anchor at what the previous rule
@@ -430,6 +456,9 @@ class CommsLogger @Inject constructor(
         if (from == null) {
             dao.set(AgentStateEntity(KEY_SMS_WATERMARK, CommsWatermarkPolicy.initialWatermark(stored, now)))
             dao.set(AgentStateEntity(KEY_SMS_SINCE, now))
+            // Issue #264 review (D2): the window opens here, so the newest id at this moment is the
+            // boundary between "already there" and "arrived after collection was allowed".
+            dao.set(AgentStateEntity(KEY_SMS_ID_FLOOR, newestSmsId()))
             return@withLock
         }
         val events = mutableListOf<CommsEventEntity>()
@@ -439,6 +468,14 @@ class CommsLogger @Inject constructor(
         val loadedFutureSeen = settings.futureSmsSeen()
         var futureSeen = CommsFutureSmsPolicy.prune(loadedFutureSeen, from)
         var futureSeenChanged = futureSeen != loadedFutureSeen
+        // Issue #264 review (D2): the newest SMS id at the moment collection was allowed. -1 means it
+        // could not be read then, so it is resolved to the newest id visible now -- before the query,
+        // which is what keeps a text that predates the window from being imported.
+        var smsIdFloor: Long = dao.get(KEY_SMS_ID_FLOOR) ?: -1L
+        if (smsIdFloor < 0L) {
+            smsIdFloor = newestSmsId()
+            dao.set(AgentStateEntity(KEY_SMS_ID_FLOOR, smsIdFloor))
+        }
         try {
             val cursor: Cursor? = context.contentResolver.query(
                 Telephony.Sms.CONTENT_URI,
@@ -458,28 +495,39 @@ class CommsLogger @Inject constructor(
                     val rowId = it.getLong(0)
                     val address = it.getString(1) ?: ""
                     val ts = it.getLong(4)
+                    val entry = CommsFutureSmsPolicy.entry(ts, rowId, CommsFutureSmsPolicy.digest(address))
+                    val tracked = CommsFutureSmsPolicy.isTracked(futureSeen, entry)
                     // Issue #264 (F1): a row dated beyond the skew is imported **once**, then remembered
                     // by `date|id|digest` until the watermark passes its date. Before this it was skipped
                     // on every harvest and reached the parent when the real date caught up — up to a
                     // year. The watermark still does not move, because that would hide every honest
                     // message behind it; the server bounds the reported time (#263).
                     if (CommsWatermarkPolicy.isFutureRow(ts, now)) {
-                        val entry = CommsFutureSmsPolicy.entry(ts, rowId, CommsFutureSmsPolicy.digest(address))
-                        if (CommsFutureSmsPolicy.isTracked(futureSeen, entry)) continue
+                        if (tracked) continue
+                        // #264 review (D2): a row that existed before collection was allowed is not ours
+                        // to import, even though its future date passes the read floor. Remember it
+                        // without importing, so the tracked check below keeps it out when its date comes.
+                        if (CommsFutureSmsPolicy.shouldImportFuture(rowId, smsIdFloor)) {
+                            events.add(
+                                CommsEventEntity(
+                                    type = "sms",
+                                    number = address,
+                                    direction = smsDirection(it.getInt(3)),
+                                    bodyPreview = (it.getString(2) ?: "").take(SMS_PREVIEW_CHARS),
+                                    timestamp = ts,
+                                ),
+                            )
+                        }
                         futureSeen = CommsFutureSmsPolicy.remember(futureSeen, entry)
                         futureSeenChanged = true
-                        events.add(
-                            CommsEventEntity(
-                                type = "sms",
-                                number = address,
-                                direction = smsDirection(it.getInt(3)),
-                                bodyPreview = (it.getString(2) ?: "").take(SMS_PREVIEW_CHARS),
-                                timestamp = ts,
-                            ),
-                        )
                         continue
                     }
+                    // #264 review (D1): the set is consulted here too. Without this, a row imported while
+                    // its date was ahead was imported again when the real date arrived — a year later, and
+                    // `prune` could not prevent it because the watermark only reaches the date by reading
+                    // the row. The watermark still advances, so the entry is pruned on the next harvest.
                     newest = maxOf(newest, ts)
+                    if (tracked) continue
                     events.add(
                         CommsEventEntity(
                             type = "sms",
@@ -625,6 +673,9 @@ class CommsLogger @Inject constructor(
         /** Issue #229: when each stream was first allowed; a read never goes below this. */
         private const val KEY_CALL_SINCE = "comms_call_since"
         private const val KEY_SMS_SINCE = "comms_sms_since"
+
+        /** Issue #264 (F1/D2): the newest SMS id when the SMS window opened, and the future rows seen. */
+        private const val KEY_SMS_ID_FLOOR = "comms_sms_id_floor"
 
         /** Issue #229: a withdrawal was observed; the next grant restarts the window at the grant. */
         private const val KEY_CONSENT_EPOCH = "comms_consent_epoch"

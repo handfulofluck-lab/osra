@@ -14,17 +14,34 @@ environment where it was written — see `docs/QA/` for the verification state.
 ### Comms — a text received with the clock set forward reaches the parent on the next flush (#264, F1)
 - A message dated beyond the clock skew is no longer skipped until the real date arrives (up to a year).
   It is imported **once** and its identity — `date|id|addressDigest` — is remembered in
-  `comms_sms_future_seen` until the watermark passes that date, so the next harvest does not upload it
-  again. The watermark still does not move to a future date, because that would hide every honest message
-  behind it; the server bounds the reported time (#263).
+  `comms_sms_future_seen` until the watermark passes that date. The watermark still does not move to a
+  future date, because that would hide every honest message behind it; the server bounds the reported
+  time (#263).
+- **The identity is checked in both branches** (#264 review). It used to be consulted only while the
+  date was in the future, so when real time reached the date the row fell into the normal branch and was
+  imported again — a year later, with `prune` unable to prevent it because the watermark only reaches a
+  date by reading the row. The normal branch now advances the watermark and then skips a tracked row.
+- **A text that predates the window is never imported** (#264 review). The read floor is a `DATE`, and
+  a future-dated row passes it whatever its age, so a withdrawal round trip (floor = the re-grant, still
+  on the forward clock) or a fresh install imported text from before collection was allowed. An `_ID`
+  floor is recorded wherever the SMS window opens (`comms_sms_id_floor`, resolved on first use when it
+  could not be read then): a future row above it is imported and remembered, one at or below it is
+  remembered **without** importing, and the tracked check keeps it out when its date arrives. The floor
+  is applied to the future branch only — `Telephony.Sms` has no AUTOINCREMENT, so gating normal rows on
+  it would let a child hide later texts by deleting their latest one.
+- **Two residual costs, named:** an honest future-dated text that arrives between a re-grant and the next
+  harvest falls under the floor and is dropped (the same one-window cost the call stream accepts); and
+  after deleting the newest texts, a future-dated text can reuse an id under the floor and be dropped —
+  that needs both deletion and a clock set forward.
 - The id alone would not work as the identity: `Telephony.Sms._id` can be reused, because the table has no
   AUTOINCREMENT. The address is stored as a truncated SHA-256, never as the number, so a parent's
   preference file cannot be read as a contact list.
-- `CommsFutureSmsPolicy` holds the rule (identity, prune-by-watermark, cap of 200 keeping the newest
-  dates, digest) so the "import once across three harvests" case is a JVM test rather than a phone row
-  alone. `CommsGrantWiringTest` pins that `harvestSms` uses it and that the row id is selected.
-- **⚠️ not verified here:** the phone row — insert an SMS dated a year ahead, set the clock back inside the
-  five-minute window, and see it on the server once with `ts` clamped — is Claude's, on the Flip4.
+- `CommsFutureSmsPolicy` holds the rules (identity, `shouldImportFuture`, prune-by-watermark, cap of 200
+  keeping the newest dates, digest) so "import once across four harvests, including the one where the
+  date arrives" and "a row at the floor is never imported" are JVM tests rather than phone rows alone.
+- **⚠️ not verified here:** the phone rows — a text dated a year ahead reaches the server once with `ts`
+  clamped, and the same text inserted during a withdrawal never uploads — are Claude's, on the Flip4.
+
 
 ### Comms — a call made with the clock set back before the grant is no longer lost (#264, F2)
 - The call query was `_ID > watermark AND DATE >= grantFloor`, so a call made with the clock set **back**

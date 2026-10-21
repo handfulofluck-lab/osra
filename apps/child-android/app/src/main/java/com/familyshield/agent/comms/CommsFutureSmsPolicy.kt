@@ -56,6 +56,24 @@ object CommsFutureSmsPolicy {
     }
 
     /**
+     * Issue #264 review (D2): may a future-dated row be imported, or does it predate the window?
+     *
+     * The read floor for SMS is a `DATE`, and a row dated ahead passes it whatever its age. Two paths then
+     * imported text that belongs outside the window — a withdrawal round trip (the floor is the re-grant,
+     * which is still on the forward clock) and a fresh install (a text received before OSRA existed, still
+     * dated ahead). The `_ID` floor recorded when the read floor is set is what tells them apart: rows
+     * above it did not exist when collection started.
+     *
+     * Only the **future** branch may consult this. `Telephony.Sms` has no AUTOINCREMENT, so deleting the
+     * newest messages lets later ones reuse ids at or below the floor; gating normal rows on it would let a
+     * child hide every later text by deleting their latest one.
+     *
+     * @param idFloor the newest SMS id at the moment collection was allowed, or a negative value when it
+     *   could not be read then (the caller resolves it to the newest id it can see before the first use)
+     */
+    fun shouldImportFuture(rowId: Long, idFloor: Long): Boolean = idFloor < 0L || rowId > idFloor
+
+    /**
      * A short, stable digest of a phone number, so the persisted set cannot be read as a contact list.
      *
      * Not a secret and not meant to resist a determined reader of the preference file — it removes the
