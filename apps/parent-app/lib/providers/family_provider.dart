@@ -179,6 +179,8 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
 /// Maps one decoded `/v1/ws` message onto [effects]. Unknown types do nothing;
 /// a `location` message without a `childId` refreshes only the family overview,
 /// and a `live_activity` message without one is ignored (unchanged behaviour).
+/// A `consent_revoked` message refreshes the family overview and, when it names
+/// a child, that child's location (#253).
 void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
   switch (msg['type']) {
     case 'alert':
@@ -186,6 +188,12 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       effects.invalidateUnacknowledgedCount();
       effects.invalidateFamily();
     case 'location':
+      final payload = msg['payload'];
+      if (payload is Map && payload['childId'] != null) {
+        effects.invalidateLocation(payload['childId'] as String);
+      }
+      effects.invalidateFamily();
+    case 'consent_revoked':
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {
         effects.invalidateLocation(payload['childId'] as String);

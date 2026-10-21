@@ -79,6 +79,38 @@ void main() {
       expect(effects.unacknowledged, 0);
     });
 
+    test('a consent_revoked invalidates the family overview and that child\'s location', () {
+      final effects = RecordingEffects();
+      applyRealtimeMessage(effects, {
+        'type': 'consent_revoked',
+        'payload': {
+          'childId': 'child-1',
+          'revokedBy': 'parent-1',
+          'revokedAt': '2026-10-21T09:15:00.000Z',
+          'devicesNotified': 1,
+        },
+      });
+
+      expect(effects.family, 1);
+      expect(effects.locations, ['child-1']);
+      expect(effects.alerts, 0);
+      expect(effects.unacknowledged, 0);
+      expect(effects.activities, isEmpty);
+    });
+
+    test('a consent_revoked without childId only refreshes the family overview', () {
+      final effects = RecordingEffects();
+      applyRealtimeMessage(effects, {
+        'type': 'consent_revoked',
+        'payload': {'revokedBy': 'parent-1'},
+      });
+
+      expect(effects.family, 1);
+      expect(effects.locations, isEmpty);
+      expect(effects.alerts, 0);
+      expect(effects.unacknowledged, 0);
+    });
+
     test('a live_activity updates the overlay for that child', () {
       final effects = RecordingEffects();
       applyRealtimeMessage(effects, {
