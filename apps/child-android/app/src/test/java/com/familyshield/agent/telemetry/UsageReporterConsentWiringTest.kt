@@ -44,14 +44,19 @@ class UsageReporterConsentWiringTest {
     }
 
     @Test
-    fun `a foreground change stops collecting while paused but still reaches enforcement`() {
+    fun `a foreground change stops counting while paused but still tracks what is open`() {
         val body = reporter.substringAfter("fun recordForeground(").substringBefore("suspend fun aggregateAndUpload")
-        val enforcement = body.indexOf("rules.onForegroundEvent")
+        val tracks = body.indexOf("lastPkg = pkg")
         val pauseCheck = body.indexOf("if (consent.isPaused()) return")
+        val counters = body.indexOf("rules.onForegroundEvent")
         val insert = body.indexOf("usageEventDao().insert")
         val unlock = body.indexOf("unlockCounter.incrementAndGet()")
-        assertTrue("enforcement and the lock overlay still see every transition", enforcement in 0 until pauseCheck)
-        assertTrue("the pause check sits before the Room insert", pauseCheck < insert)
+        // #266 review D1: `rules.onForegroundEvent` is the daily minute counter, not enforcement -- the
+        // rule engine returns ALLOW while paused anyway. It must sit *after* the pause check, or the
+        // withdrawn window is credited to the open app and reported as today's total after the re-grant.
+        assertTrue("the open package is still tracked for the overlay", tracks in 0 until pauseCheck)
+        assertTrue("the pause check comes before the minute counter", pauseCheck < counters)
+        assertTrue("and before the Room insert", pauseCheck < insert)
         assertTrue("and before the unlock count", pauseCheck < unlock)
     }
 
@@ -68,10 +73,18 @@ class UsageReporterConsentWiringTest {
     }
 
     @Test
-    fun `the UsageStats backfill cannot reach back past the grant`() {
-        assertTrue(
-            "start-of-day totals include the paused window on a re-grant day",
-            reporter.contains("maxOf(startOfDay, consent.resumedAtMs())"),
+    fun `the UsageStats backfill is skipped on a re-grant day`() {
+        val body = reporter.substringAfter("private fun backfillFromUsageStats").substringBefore("companion object")
+        val startOfDay = body.indexOf("startOfDay =")
+        val skip = body.indexOf("if (consent.resumedAtMs() > startOfDay) return")
+        val query = body.indexOf("queryUsageStats")
+        // #266 review D2: queryUsageStats returns whole day buckets, and a paused device writes no rows,
+        // so an app used only during the withdrawal would be backfilled with its whole-day total.
+        assertTrue("the skip must exist", skip >= 0)
+        assertTrue("and run before the query", startOfDay < skip && skip < query)
+        assertFalse(
+            "a floor inside the day does not exclude the bucket, so it is not the fix",
+            body.contains("maxOf(startOfDay"),
         )
     }
 

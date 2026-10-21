@@ -60,13 +60,16 @@ class UsageReporter @Inject constructor(
         val prevTs = lastTs
         lastPkg = pkg
         lastTs = ts
-        // Enforcement and the parent's "what is open now" both still see every transition: the rule
-        // engine reads the consent flag itself, and `currentForeground()` is what the lock overlay and
-        // live activity use. Issue #265: what stops while consent is withdrawn is *collection* -- the
-        // Room row and the unlock count -- because ADR-0008 decision 3 pauses enforcement *and*
-        // collection, and #229's amendment says a re-grant starts a new window.
-        rules.onForegroundEvent(pkg, ts)
+        // Issue #265: the foreground package is still tracked while paused -- the lock overlay's "what
+        // is open now" and the live-activity payload read it, and that is not collection.
         if (consent.isPaused()) return
+        // `rules.onForegroundEvent` is NOT enforcement: `RuleRepository.decide` returns ALLOW while
+        // consent is paused, so it only feeds the daily minute counter (`UsageCounters`, which saves to
+        // settings). Calling it while paused credited the withdrawn window to the app that was open, and
+        // the first live-activity post after a re-grant then reported those minutes as today's total
+        // (#266 review, D1). The most that can still leak is one open gap, capped at
+        // `UsageCounters.MAX_GAP_MINUTES` (5).
+        rules.onForegroundEvent(pkg, ts)
         // NOTE: the accessibility stream has no screen-on/off events, so a "new session"
         // (counted as an unlock) is a package change or the first event after a >60 s gap.
         if (prevPkg == null || prevPkg != pkg || ts - prevTs > 60_000L) {
@@ -220,15 +223,23 @@ class UsageReporter @Inject constructor(
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-    /** Adds UsageStatsManager totals for packages missing from the event stream (best effort). */
+    /**
+     * Adds UsageStatsManager totals for packages missing from the event stream (best effort).
+     *
+     * Issue #266 review (D2): `queryUsageStats(INTERVAL_DAILY, start, now)` returns **whole buckets** —
+     * the platform includes the interval a timestamp falls in, so a floor in the middle of the day does
+     * not exclude the morning. And since a paused device writes no Room rows, an app used only during the
+     * withdrawal looks "missing from the event stream" and its whole-day total would be added back. Both
+     * are the withdrawn window reaching the parent, so the backfill is skipped entirely on a re-grant day.
+     * The cost: apps the accessibility stream missed go uncounted until the next day. That is the right
+     * trade — an under-count a parent can see is better than a leak they cannot.
+     */
     private fun backfillFromUsageStats(perApp: MutableMap<String, Int>) {
         try {
-            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            // Issue #265: on a re-grant day, start-of-day totals include usage from before the grant.
-            // The window starts where collection was allowed, whichever is later.
-            val start = maxOf(startOfDay, consent.resumedAtMs())
-            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, System.currentTimeMillis())
+            if (consent.resumedAtMs() > startOfDay) return
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
             for (s in stats ?: emptyList()) {
                 if (!perApp.containsKey(s.packageName)) {
                     val minutes = (s.totalTimeInForeground / 60_000L).toInt()

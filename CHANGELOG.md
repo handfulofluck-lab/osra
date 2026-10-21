@@ -17,18 +17,27 @@ environment where it was written — see `docs/QA/` for the verification state.
   server answered 428, and the stack was logged once a minute. It now returns on `consent.isPaused()`,
   and a 428 that races the check is one silent line rather than a warning, the same rule the command
   poll follows (#263).
-- `recordForeground()` keeps every transition for enforcement and for the lock overlay's "what is open
-  now", and stops *collecting*: no Room row, no unlock count, while consent is withdrawn.
+- `recordForeground()` keeps tracking the open package (the lock overlay's "what is open now" and the
+  live-activity payload read it) and stops everything else while consent is withdrawn: no Room row, no
+  unlock count, and no call into `rules.onForegroundEvent` — which is **not** enforcement (the rule
+  engine returns `ALLOW` while paused) but the daily minute counter, so crediting it was what reported
+  the withdrawn window as today's total after a re-grant (#266 review). The largest remaining leak is
+  one open gap, capped at `UsageCounters.MAX_GAP_MINUTES` (5).
 - `aggregateAndUpload()` reuses the comms epoch decision (`CommsConsentPolicy.resetTo`) instead of
   copying it: at the first upload after a re-grant the watermark moves to the moment the phone learned
   consent came back, older events are deleted, and the paused-window unlock count is dropped — so the
   withdrawn window is not uploaded as today's screen time. The epoch lives under its own
   `telemetry_consent_epoch` key, so a comms reset cannot clear it and vice versa.
-- `backfillFromUsageStats()` queries from `max(startOfDay, resumedAtMs)`: on a re-grant day the
-  start-of-day totals include usage from before the grant.
-- Tests: `UsageReporterConsentWiringTest` (6) pins each site — the pause check before the post, the
-  enforcement call before the pause check, the reset's four steps, the backfill's floor and the
-  separate epoch key. The decision table itself is `CommsConsentPolicyTest` (5 cases) from #257.
+- `backfillFromUsageStats()` is **skipped entirely on a re-grant day**. A floor inside the day does not
+  help: `queryUsageStats(INTERVAL_DAILY, start, now)` returns whole buckets, and because a paused
+  device writes no rows, an app used only during the withdrawal looks "missing from the stream" and had
+  its whole-day total added back (#266 review). Cost: apps the accessibility stream missed go
+  uncounted until the next day — an under-count a parent can see beats a leak they cannot. The
+  double-counting that remains on every 15-minute upload is **#267**, filed by Claude with the delta
+  design that replaces this skip.
+- Tests: `UsageReporterConsentWiringTest` (6) pins each site — the pause check before the minute
+  counter, the 428 branch, the reset's four steps, the re-grant-day skip and the separate epoch key. The
+  decision table itself is `CommsConsentPolicyTest` (5 cases) from #257.
 - **⚠️ not verified here:** the phone row — withdraw consent, switch apps for a few minutes, re-grant,
   then check the first upload contains none of those minutes and logcat shows no
   `live activity post failed` stack — is Claude's, on the Flip4. No JVM test can withdraw consent from
