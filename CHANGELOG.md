@@ -11,6 +11,19 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — the digest preferences screen speaks Arabic (#276)
+- 27 ARB keys cover every string on the screen: the three switches and their subtitles, the emails field,
+  the timezone section and its "sent at 18:00 your local time" line, the save and send buttons, the busy
+  labels, six snackbars, the test-digest dialog and its empty state, and the child-name fallback that is
+  written into the rendered digest, so a missing display name no longer prints an English word inside an
+  Arabic digest.
+- **The new Arabic test found a real layout defect**: the timezone `DropdownButtonFormField` overflowed by
+  75 px at 320 px in RTL once a long zone name was selected — the same trap the register and invite
+  dropdowns hit in #203. `isExpanded: true`, with the reason in a comment.
+- One Arabic test at 320×568 (title, two switches, the save button reached by scrolling, RTL confirmed,
+  no layout exception). `flutter test` **260 passed** (259 + 1), `flutter analyze` clean.
+- **⚠️ not verified here:** the Arabic is mine, not a native speaker's — the same standing gap as TR-54.
+
 ### Comms — a text received with the clock set forward reaches the parent on the next flush (#264, F1)
 - A message dated beyond the clock skew is no longer skipped until the real date arrives (up to a year).
   It is imported **once** and its identity — `date|id|addressDigest` — is remembered in

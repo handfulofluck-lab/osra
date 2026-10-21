@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -3241,6 +3241,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search: \"{query}\"'**
   String searchSafetyVaultTitle(String query);
+
+  /// No description provided for @digestPrefsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest preferences'**
+  String get digestPrefsTitle;
+
+  /// No description provided for @digestPrefsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load preferences: {error}'**
+  String digestPrefsLoadFailed(String error);
+
+  /// No description provided for @digestPrefsDailyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily email digest'**
+  String get digestPrefsDailyTitle;
+
+  /// No description provided for @digestPrefsDailyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A short summary every evening'**
+  String get digestPrefsDailyBody;
+
+  /// No description provided for @digestPrefsWeeklyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly email digest'**
+  String get digestPrefsWeeklyTitle;
+
+  /// No description provided for @digestPrefsWeeklyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A deeper summary once a week'**
+  String get digestPrefsWeeklyBody;
+
+  /// No description provided for @digestPrefsPushTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Push notifications'**
+  String get digestPrefsPushTitle;
+
+  /// No description provided for @digestPrefsPushBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Critical alerts as push messages'**
+  String get digestPrefsPushBody;
+
+  /// No description provided for @digestPrefsEmailsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest emails (comma separated)'**
+  String get digestPrefsEmailsLabel;
+
+  /// No description provided for @digestPrefsTimezoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest timezone (local send hour)'**
+  String get digestPrefsTimezoneTitle;
+
+  /// No description provided for @digestPrefsTimezoneLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Timezone'**
+  String get digestPrefsTimezoneLabel;
+
+  /// No description provided for @digestPrefsTimezoneLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get digestPrefsTimezoneLoading;
+
+  /// No description provided for @digestPrefsSendHour.
+  ///
+  /// In en, this message translates to:
+  /// **'The digest is sent at 18:00 your local time'**
+  String get digestPrefsSendHour;
+
+  /// No description provided for @digestPrefsSavingSuffix.
+  ///
+  /// In en, this message translates to:
+  /// **'saving…'**
+  String get digestPrefsSavingSuffix;
+
+  /// No description provided for @digestPrefsSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get digestPrefsSaving;
+
+  /// No description provided for @digestPrefsSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save preferences'**
+  String get digestPrefsSave;
+
+  /// No description provided for @digestPrefsRendering.
+  ///
+  /// In en, this message translates to:
+  /// **'Rendering…'**
+  String get digestPrefsRendering;
+
+  /// No description provided for @digestPrefsSendNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Send test digest now'**
+  String get digestPrefsSendNow;
+
+  /// No description provided for @digestPrefsSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest preferences saved'**
+  String get digestPrefsSaved;
+
+  /// No description provided for @digestPrefsSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Save failed: {error}'**
+  String digestPrefsSaveFailed(String error);
+
+  /// No description provided for @digestPrefsTimezoneSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest timezone set to {zone}'**
+  String digestPrefsTimezoneSet(String zone);
+
+  /// No description provided for @digestPrefsTimezoneFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Timezone not saved: {error}'**
+  String digestPrefsTimezoneFailed(String error);
+
+  /// No description provided for @digestPrefsTestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Test digest'**
+  String get digestPrefsTestTitle;
+
+  /// No description provided for @digestPrefsClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get digestPrefsClose;
+
+  /// No description provided for @digestPrefsSendFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Send failed: {error}'**
+  String digestPrefsSendFailed(String error);
+
+  /// No description provided for @digestPrefsNoDigests.
+  ///
+  /// In en, this message translates to:
+  /// **'No digests generated'**
+  String get digestPrefsNoDigests;
+
+  /// No description provided for @digestPrefsChildFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Child'**
+  String get digestPrefsChildFallback;
 }
 
 class _AppLocalizationsDelegate
@@ -3270,9 +3432,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }
