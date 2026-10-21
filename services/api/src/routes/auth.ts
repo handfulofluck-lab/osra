@@ -594,19 +594,33 @@ export async function authRoutes(app: FastifyInstance) {
     }
     // Inside the cooldown: the same `{ok:true}` as a fresh request, but no new link and no email.
     if (claimed === null) return { ok: true };
-    const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
-    if (parent) {
-      const jti = newJti();
-      const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset", jti }, { expiresIn: "15m" });
-      // Issuing a link that can never be redeemed is worse than a 5xx, so both writes are awaited
-      // before the email goes out. Superseding is the `latest` write alone: the older key stays until
-      // its TTL, but no confirm will honour it.
-      await redis.set(resetKey(jti), parent.id, "EX", RESET_TTL_SECONDS);
-      await redis.set(resetLatestKey(parent.id), jti, "EX", RESET_TTL_SECONDS);
-      // Phase 2a: the live token goes only into the email (audit API-07: it used to be logged).
-      const link = `${appPublicUrl()}/reset?token=${encodeURIComponent(token)}`;
-      const result = await getEmailSender().send(passwordResetEmail(parent.email, link));
-      if (!result.ok) req.log.error({ reason: result.reason }, "password reset email failed");
+    // A failure after the claim must release it, or the parent's retry inside the minute is told
+    // "sent" while nothing was sent — the rule the cooldown was built on. The release runs only on
+    // failure paths, and the lookup that can fail runs for known and unknown addresses alike, so it
+    // reveals nothing (and /register's 409 already publishes existence).
+    const releaseCooldown = () => redis.del(resetCooldownKey(parsed.data.email)).catch(() => 0);
+    try {
+      const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
+      if (parent) {
+        const jti = newJti();
+        const token = app.jwt.sign({ sub: parent.id, purpose: "password_reset", jti }, { expiresIn: "15m" });
+        // Issuing a link that can never be redeemed is worse than a 5xx, so both writes are awaited
+        // before the email goes out. Superseding is the `latest` write alone: the older key stays
+        // until its TTL, but no confirm will honour it.
+        await redis.set(resetKey(jti), parent.id, "EX", RESET_TTL_SECONDS);
+        await redis.set(resetLatestKey(parent.id), jti, "EX", RESET_TTL_SECONDS);
+        // Phase 2a: the live token goes only into the email (audit API-07: it used to be logged).
+        const link = `${appPublicUrl()}/reset?token=${encodeURIComponent(token)}`;
+        const result = await getEmailSender().send(passwordResetEmail(parent.email, link));
+        if (!result.ok) {
+          req.log.error({ reason: result.reason }, "password reset email failed");
+          await releaseCooldown(); // provider refused: let the parent's retry send again
+        }
+      }
+    } catch (err) {
+      await releaseCooldown();
+      req.log.error({ err }, "[security] reset request failed after the cooldown claim; released for the retry");
+      return reply.code(503).send({ error: "reset_unavailable" });
     }
     return { ok: true };
   });

@@ -31,7 +31,13 @@ const registerBody = {
 class CaptureSender implements EmailSender {
   readonly name = "capture";
   sent: EmailMessage[] = [];
+  /** #167 review: make the next send refuse, so the cooldown-release path can be exercised. */
+  failNext = false;
   async send(message: EmailMessage) {
+    if (this.failNext) {
+      this.failNext = false;
+      return { ok: false as const, reason: "provider_unavailable" };
+    }
     this.sent.push(message);
     return { ok: true as const };
   }
@@ -128,6 +134,7 @@ describe("auth routes", () => {
   beforeEach(() => {
     resetPrismaMock();
     capture.sent = [];
+    capture.failNext = false;
     setEmailSender(capture);
     // The Redis instance is a module singleton in this file: give every test the empty-store
     // defaults so an implementation from one test cannot leak into the next.
@@ -710,6 +717,53 @@ describe("auth routes", () => {
 
   // The cooldown write runs before the lookup, so a Redis outage answers the same 503 for a known and
   // an unknown address — and the lookup is never reached, which is what makes the answers identical.
+  // #167 review (G1/G2): a database blip after the claim used to answer 400 and leave the cooldown
+  // burning, so the parent's retry inside the minute was told "sent" while nothing was sent. The
+  // claim must be released on any failure past it.
+  it("#167: a lookup failure releases the cooldown and answers 503, so the retry sends a link", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    const cooldownKey = `reset:cooldown:${createHash("sha256").update(registerBody.email.toLowerCase()).digest("hex")}`;
+    capture.sent.length = 0;
+
+    prismaMock.parent.findUnique.mockRejectedValueOnce(new Error("connection reset"));
+    const failed = await app.inject({
+      method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email },
+    });
+    // The production handler maps Prisma-shaped errors to 400; this one is not Prisma-shaped, but the
+    // route must not depend on the handler for a contract status either way.
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json().error).toBe("reset_unavailable");
+    expect(store.has(cooldownKey)).toBe(false);
+    expect(capture.sent).toHaveLength(0);
+
+    // The retry inside the same minute is treated as a fresh request, not as "sent a moment ago".
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email });
+    const retry = await app.inject({
+      method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email },
+    });
+    expect(retry.statusCode).toBe(200);
+    expect(capture.sent).toHaveLength(1);
+    expect(store.get(cooldownKey)).toBe("1");
+    await app.close();
+  });
+
+  it("#167: a provider refusal answers ok but releases the cooldown for the retry", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const { store } = wireRedisStore();
+    const cooldownKey = `reset:cooldown:${createHash("sha256").update(registerBody.email.toLowerCase()).digest("hex")}`;
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "parent-1", familyId: "fam-1", email: registerBody.email });
+    capture.failNext = true;
+
+    const res = await app.inject({
+      method: "POST", url: "/v1/auth/reset/request", payload: { email: registerBody.email },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(store.has(cooldownKey)).toBe(false);
+    await app.close();
+  });
+
   it("#167: a cooldown store outage is a 503 for a known and an unknown address alike", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const { store } = wireRedisStore();
