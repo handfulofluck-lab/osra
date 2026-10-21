@@ -14,28 +14,35 @@ environment where it was written — see `docs/QA/` for the verification state.
 ### AI — the labelled evaluation set and per-category, per-language scores (plan 4.2 + 4.3, WO-01)
 - `services/ai-engine/eval/` now holds the labelled set the scorer is measured against: seven
   template banks (one per harmful category) in English and Arabic, expanded deterministically into
-  **1,181 rows — 591 EN / 590 AR** (`eval/dataset.jsonl`), each tracing to `(bank, template_index,
-  seed)`. Content rule, binding and written where a contributor will read it: banks describe the
-  *social pattern* (secrecy, coercion, isolation, threat, group targeting) in teen register and
-  carry no method, dosage, price, sourcing route, weapon construction or graphic description.
+  **1,179 rows — 588 EN / 591 AR** (`eval/dataset.jsonl`), each tracing to `(bank, template_index,
+  seed)`. **A positive must be labelable from the message alone**, which after Claude's #262 review
+  means naming the thing — the vape, the photo, the beating at the gate — while still never containing
+  method, dosage, price, sourcing route, weapon construction or graphic description. A true overlap
+  carries both labels (`ALSO_LABELS_EN`/`_AR`): an adult asking a child for a photo is `grooming` and
+  `sexual_content`, and a scorer answering either is right.
+- **The set grows through templates, not fills.** Five rows per template is the cap and
+  `--per-category` above `templates × 5` raises: one template filled 65 times is one item, not 65, and
+  the recall interval it produces is a fiction. Claude's ruling keeps plan 4.2's 2,000 + 2,000 floor
+  and puts the next author pass on `self_harm` and `grooming`, which carry the Phase 4 gate.
 - `eval/run_eval.py` scores any scorer function and prints precision/recall **per category and per
   language**, plus the flag-level rates a parent feels (harmful rows flagged, and the false-positive
-  rate split between generic safe text and hard negatives).
-- **The first numbers are the finding, not a regression:** Arabic recall is **0.00 in all seven
-  categories** and English flags **12 %** of harmful rows (`EVAL.md`, generated table, 2026-10-21).
-  The rules layer is a set of English regular expressions, so no Arabic string can match it; the
-  banks deliberately use paraphrase rather than the regexes' own vocabulary, so the number measures
-  the gap the hosted scorer (plan 4.1) must close. The lexical floor is pinned separately by
-  `tests/test_eval_harness.py::test_regex_floor_catches_its_own_vocabulary`, so a low recall cannot be
-  read as "the scorer is broken".
+  rate split between generic safe text and hard negatives). An undefined rate prints `n/a`, not
+  `0.00`: "nothing was flagged" is not "every flag was wrong".
+- **The published numbers are the finding, not a regression:** `EVAL.md` (generated table,
+  2026-10-21) shows Arabic recall **0.00 in all seven categories** and English flagging **33 %** of
+  harmful rows, with the English categories that name a distinctive thing caught well
+  (`sexual_content` 0.68, `substance_use` 0.62) and the ones phrased as intent missed
+  (`self_harm` 0.02, `violence` 0.13, `hate_speech` 0.00). The rules layer is a set of English regular
+  expressions; no Arabic string can match it. That is plan 4.1's premise, measured.
 - CI (`.github/workflows/ci.yml`, `ai-engine`) validates the banks, fails if the committed dataset has
   drifted from them (`python -m eval.generate --check`) and runs the scorer. It deliberately sets no
-  recall floor yet: a floor of 0 cannot fail, and the real floor arrives with 4.1.
+  recall floor yet: a floor the current scorer cannot meet would be red from the day it lands, and the
+  real floor arrives with 4.1.
 - New: `services/ai-engine/EVAL.md` (published numbers + how to read them), `eval/README.md`,
   `eval/schema.md` (row format and how to add a public or parent-reported source).
-- **⚠️ not verified here:** the numbers are the author's run on Python 3.13 / Windows; CI runs
-  Python 3.11 on ubuntu and regenerates the same dataset by construction (the generator is seeded),
-  but a second agent has not re-run them.
+- **⚠️ not verified here:** the numbers are the author's run on Python 3.13 / Windows; the committed
+  dataset regenerates byte-identically in CI on Python 3.11 (`generate --check` passed there), but a
+  second agent has not re-run the table yet.
 
 
 ### Architecture — ADR-0028 accepted: AWS hosting approved

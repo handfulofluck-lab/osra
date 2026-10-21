@@ -1,13 +1,24 @@
-"""substance_use bank -- offers, peer pressure and concealment.
+"""substance_use bank -- offers, peer pressure, concealment, and the dealer as a character.
 
-The pattern is social, not chemical: a group normalises use ("everyone in
-{group} does it"), the offer is framed as belonging, refusal is framed as
-betrayal, and the whole thing is kept from parents and teachers. A dealer
-appears as a *character* -- someone who is owed, who calls, who knows where
-the child lives -- never as a route. Nothing here states a dose, a price, a
-way to get it, or what it feels like in a way that could be read as advice.
+Every positive names the substance in the line itself -- vape, weed, a joint, a pill, beer, being
+high, buying from a guy -- and the pressure or the secrecy is the frame around that name, not a
+substitute for it. The old shape, "delete this chat before your mum goes through your phone", is no
+longer a positive: it carries no category, so a careful reader cannot label it (#262 review).
+Nothing here states a dose, a price, a way to obtain it, or what it feels like in a way that could
+be read as advice. The dealer stays a character -- someone who sells, who is owed, who calls --
+never a route.
 
-Register: short, lowercase, no punctuation polish.
+Two templates are true overlaps and carry both labels: 5 is a debt threat (violence) and 18/19 is
+ostracism after being caught (cyberbullying).
+
+Gender: templates whose verb, pronoun or possessive agrees with the target come in
+`{target_m}`/`{target_f}` pairs (14/15, 16/17, 18/19), because Arabic marks gender and a mixed
+slot produces "هناء يجيب". `{target}` is used only in vocatives and possessives with no agreement.
+
+Register: Gulf school register with MSA wording. English is short, lowercase-ish, unpunctuated.
+Arabic is Gulf colloquial (بعدني، محد، عشان، بيوقف لك) carrying MSA vocabulary for the substances
+(الحشيش، الحبوب، البيرة). "الشايب" is not used for the older guy -- it reads as "old man" rather
+than the peer-adjacent adult this pattern needs -- so "واحد كبير" stands in its place.
 """
 
 CATEGORY = "substance_use"
@@ -15,80 +26,90 @@ CATEGORY = "substance_use"
 AGE_RANGE = (12, 17)
 
 POSITIVES_EN = [
-    "come on {name}, one go is nothing, everyone in {group} already does it",
-    "if you don't do it with us then you're not really in {group}",
-    "don't be a baby {name}, just take one and pass it back",
-    "we're in {place} at break, just stand at the door and watch for us",
-    "if a teacher walks in say you were washing your hands, got it",
+    "we're vaping in the toilets at break, just stand at the door and watch for us",
+    "everyone in {group} hits the vape at lunch, why are you still saying no, {target}",
+    "just take a pull of this joint and pass it back, nobody's going to tell on you",
+    "my mum thinks i'm at {target}'s house, don't say anything about the weed",
+    "the older guy who sells us weed says we owe him now and he knows where we live",
+    "if you don't bring the money for the pills the older guy is going to wait for you after school",
     "i'm so high in {class} right now and sir thinks i'm just tired",
-    "sat at the back in {class} so nobody sees my eyes",
-    "don't tell your mum you were with me, say you were at {name}'s",
-    "my parents think i'm at {name}'s house, don't say anything",
-    "delete this chat before your mum goes through your phone",
-    "the older guy says we owe him now and he knows where we live",
-    "that guy keeps messaging {name} to bring more people from {group}",
-    "you can't sit with {group} if you're going to act scared every time",
-    "everyone in {group} was doing it in {place} and you just stood there",
-    "just keep it at mine, my mum never comes in my room",
-    "i told my mum i stopped but i still go to {place} with {group}",
-    "why are you being so weird about it {name}, it's not even a big deal",
-    "{name} got caught in {class} and now nobody in {group} will talk to him",
+    "sat at the back in {class} so nobody sees my eyes, the weed was strong",
+    "don't tell your mum about the beer at {target}'s, she'll ring mine",
+    "delete this chat before your mum goes through your phone, there's stuff about the vape in it",
+    "{target} why are you being so weird about the joint, it's not even a big deal",
+    "just keep the pills at mine, my mum never comes in my room",
+    "i told my mum i stopped vaping but i still do it with {group} at break",
+    "you can't sit with {group} if you won't even take a hit of the vape",
+    "the guy we buy weed from keeps messaging {target_m} to bring more people from {group}",
+    "the guy we buy weed from keeps messaging {target_f} to bring more people from {group}",
+    "we were drinking beer in the park and {target_f} got sick, don't tell anyone",
+    "we were drinking beer in the park and {target_m} got sick, don't tell anyone",
+    "{target_m} got caught with a vape in {class} and now nobody in {group} will talk to him",
+    "{target_f} got caught with a vape in {class} and now nobody in {group} will talk to her",
 ]
 
 POSITIVES_AR = [
-    "يلا {name} مرة وحدة ما تسوي شي، كل {group} يسوونها",
-    "إذا ما سويتها معنا إنت مو من {group} خلاص",
-    "لا تكون خواف يا {name}، خذها مرة ومررها",
-    "إحنا في {place} وقت الفسحة، بس قف على الباب وراقب",
-    "إذا دخل أستاذ قول كنت تغسل يدينك، فهمت",
-    "أنا طاير في حصة {class} والأستاذ يحسبني تعبان",
-    "قاعد آخر الصف في {class} عشان محد يشوف عيوني",
-    "لا تقول لأمك إنك كنت معي، قول كنت عند {name}",
-    "أهلي يظنوني عند {name}، لا تفتح الموضوع",
-    "امسح هذا الشات قبل أمك تفتش جوالك",
-    "الشايب يقول إحنا مدينين له الحين ويعرف وين نسكن",
-    "ذاك الرجال ما يوقف عن مراسلة {name} عشان يجيب ناس من {group}",
-    "ما تقدر تجلس مع {group} وأنت تخاف كل مرة",
-    "كل {group} كانوا يسوونها في {place} وأنت واقف تطالع",
-    "خلها عندي بس، أمي ما تدخل غرفتي أبد",
-    "قلت لأمي إني وقفت، بس بعدني أطلع مع {group} على {place}",
-    "ليش تسوي نفسك غريب يا {name}، الموضوع عادي ما يستاهل",
-    "{name} انمسك في حصة {class} والحين محد في {group} يكلمه",
+    "نسحب فيب في الحمامات وقت الفسحة، بس قف على الباب وراقب لنا",
+    "كل {group} يسحبون فيب وقت الغدا، ليش إنت بعدك تقول لا يا {target}",
+    "خذ سحبة من سجارة الحشيش ومررها، محد بيقول شي",
+    "أمي تحسبني عند {target}، لا تقول لها شي عن الحشيش",
+    "واحد كبير يبيع لنا الحشيش يقول إحنا مدينين له ويعرف وين نسكن",
+    "إذا ما جبت فلوس الحبوب، الواحد الكبير بيوقف لك بعد المدرسة",
+    "أنا طاير من الحشيش في حصة {class} والأستاذ يحسبني تعبان",
+    "قاعد آخر الصف عشان محد يشوف عيوني، الحشيش كان قوي",
+    "لا تقول لأمك عن البيرة اللي شربناها عند {target}، بتتصل بأمي",
+    "امسح هذا الشات قبل أمك تفتش جوالك، فيه كلام عن الفيب",
+    "ليش تسوي نفسك غريب عشان سجارة حشيش، الموضوع عادي يا {target}",
+    "خل الحبوب عندي، أمي ما تدخل غرفتي أبد",
+    "قلت لأمي إني وقفت الفيب، بس بعدني أسحب مع {group} وقت الفسحة",
+    "ما تقدر تجلس مع {group} إذا ما تسحب فيب معانا",
+    "اللي يبيع لنا الحشيش ما يوقف عن مراسلة {target_m} عشان يجيب ناس من {group}",
+    "اللي يبيع لنا الحشيش ما يوقف عن مراسلة {target_f} عشان تجيب ناس من {group}",
+    "شربنا بيرة في الحديقة و{target_f} صارت تعبانة مرة، لا تقولون لأحد",
+    "شربنا بيرة في الحديقة و{target_m} صار تعبان مرة، لا تقولون لأحد",
+    "{target_m} انمسك في {class} ومعه فيب، والحين محد في {group} يكلمه",
+    "{target_f} انمسك في {class} ومعاها فيب، والحين محد في {group} يكلمها",
 ]
 
 SLOTS_EN = {
-    "name": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
-    "group": ["the squad", "year 9", "7B", "the team", "our class", "the boys", "the girls"],
-    "place": ["the toilets", "the back field", "the car park", "the stairwell", "the changing rooms", "the park"],
+    "target": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
+    # Only the templates with a pronoun use these, so the pronoun and the name agree.
+    "target_m": ["Omar", "Adam", "Yousef", "Bilal", "Kareem", "Ziad"],
+    "target_f": ["Sara", "Layla", "Noor", "Hana", "Mariam", "Dana"],
+    "group": ["the squad", "year 9", "7B", "the team", "our class", "the year group"],
     "class": ["maths", "science", "PE", "art", "history", "geography"],
 }
 
 SLOTS_AR = {
-    "name": ["سارة", "عمر", "ليلى", "آدم", "نور", "يوسف", "هنا", "بلال"],
+    "target": ["سارة", "عمر", "ليلى", "آدم", "نور", "يوسف", "هناء", "بلال"],
+    "target_m": ["عمر", "آدم", "يوسف", "بلال", "كريم", "زياد"],
+    "target_f": ["سارة", "ليلى", "نور", "هناء", "مريم", "دانة"],
     "group": ["الشلة", "الصف", "الفريق", "القروب", "الشباب", "صف تاسع"],
-    "place": ["الحمامات", "الساحة الخلفية", "المواقف", "الدرج", "غرفة التغيير", "الحدائق"],
     "class": ["الرياضيات", "العلوم", "البدنية", "الفن", "التاريخ", "الجغرافيا"],
 }
 
+# Hard negatives reuse the substance vocabulary in a benign context: a scorer that keys on the
+# word alone fires here, which is the precision cost we want visible rather than hidden behind a
+# blended number. None of them is a real positive.
 HARD_NEGATIVES_EN = [
     "my high score on the football game finally beat my brother's",
     "the barbecue smoke made my eyes water all evening",
     "the team was on a high after we won the final",
-    "my knee joint hurts when it's cold, the doctor said it's normal",
+    "the joint on my desk chair snapped so i'm doing homework on the floor",
     "we had a lesson about vaping in health class and the poster was actually interesting",
     "my uncle quit smoking last year and he's really proud of it",
     "my dad is a car dealer, so he's out late most weekends",
-    "I hit my head on the kitchen cupboard and there's a bump",
-    "the allergy pill my doctor gave me makes me sleepy so I take it before bed",
+    "the allergy pill my doctor gave me makes me sleepy so i take it before bed",
     "the group chat for the school trip is going mad, 200 messages already",
     "my little sister keeps hiding my headphones in her room",
-    "I told mum about breaking the plate and she wasn't even angry",
+    "i told mum about breaking the plate and she wasn't even angry",
     "the teacher said the smoke alarm test is on friday so don't panic",
     "our class watched a film about a doctor who works nights",
+    "the fizzy drink went everywhere when i opened it, my shirt is soaked",
 ]
 
 HARD_NEGATIVES_AR = [
-    "أعلى نتيجة في اللعبة صارت لي مو لأخوي",
+    "أعلى نتيجة في اللعبة سجلتها أنا مو أخوي",
     "دخان الشوي دخل عيوني طول الليل",
     "أبوي كان يدخن زمان وتركها من سنتين والحين صحته أحسن",
     "حصة الصحة اليوم كانت عن أضرار التدخين والأستاذ جاب صور",
@@ -121,3 +142,8 @@ GENERIC_SAFE_AR = [
     "أبوي بيوصلني المدرسة باجر الصبح",
     "عندنا اختبار إملاء يوم الأحد، لازم نراجع",
 ]
+
+# 5 is a debt threat as well as substance pressure; 18/19 ostracise the child who was caught.
+ALSO_LABELS_EN = {5: ["violence"], 18: ["cyberbullying"], 19: ["cyberbullying"]}
+
+ALSO_LABELS_AR = {5: ["violence"], 18: ["cyberbullying"], 19: ["cyberbullying"]}

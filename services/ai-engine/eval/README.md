@@ -29,10 +29,25 @@ unaffected.
 ## Where the text comes from
 
 **Synthetic, from template banks.** Each of the seven categories is one module under `banks/`,
-written by hand: 16–21 positive templates per language, a slot dictionary that expands them to 65
-distinct messages, 11–14 hard negatives per language, and 7–8 generic safe messages. Everything is
+written by hand: 17–26 positive templates per language, a slot dictionary that expands them to 65
+distinct messages, 12–14 hard negatives per language, and 7–8 generic safe messages. Everything is
 committed, so a reviewer reads the pattern instead of 2,000 lines, and a row traces back to
 `(bank, template_index, seed)`.
+
+**The cap is five rows per template.** `--per-category` above `templates × 5` raises rather than
+filling: one template filled 65 times is one item, not 65, and a recall interval computed from it is a
+fiction. The set grows through **new templates or new sources**, which is why plan 4.2's 2,000 +
+2,000 is an authoring target rather than a configuration value (Claude's ruling on #262).
+
+**A positive must be labelable from the message alone.** Naming the substance or the act is required;
+naming the *method* is forbidden. "We're vaping in the toilets at break, watch the door" is a
+`substance_use` positive; "delete this chat before your mum sees it" is not a positive in any bank,
+because no reader — human or model — could tell which category it belongs to. Where a message truly
+belongs to two categories, the bank declares the overlap in `ALSO_LABELS_EN` / `ALSO_LABELS_AR`.
+
+**Slots that agree with a verb are gendered.** `{target_m}` and `{target_f}` exist because Arabic
+marks gender on the verb, the pronoun and the possessive; a mixed slot produces "هنا بكى" with a
+girl's name. English needs the pair only where a pronoun appears.
 
 **No real children's data.** Nothing in this set came from a device, a family, a school or a
 conversation. There is no scraping step and no uploaded corpus. If a public corpus or a
@@ -48,23 +63,32 @@ nothing trusted.
 ## The content rule
 
 Banks describe the **social pattern** a detector must catch — secrecy, coercion, isolation, threat,
-group targeting, pressure — in the register a school-age child actually types. They contain no
-method, means, dosage, price, sourcing route, weapon construction, injury detail or graphic sexual
+group targeting, pressure — in the register a school-age child actually types, and they **name the
+thing** the message is about (the vape, the photo, the beating at the gate). They contain no method,
+means, dosage, price, sourcing route, weapon construction, injury detail or graphic sexual
 description, in either language. The rule lives at the top of `banks/__init__.py` as well as here,
 because it is the one rule a future contributor is most likely to break in good faith: a set that
 teaches harm is not a safer set, and a detector that only fires on method text misses grooming
-entirely.
+entirely. The two halves are not in tension: naming the act keeps the row labelable, refusing the
+method keeps the repository safe.
 
 ## Adding or changing a bank
 
 1. Copy `banks/cyberbullying.py` — the reference. Same exports, no imports, no functions.
 2. Arabic must be real Arabic script in a natural register, not transliteration; the validator
-   rejects an Arabic array with no Arabic characters and an English array containing Arabic.
-3. Every `{slot}` must be declared in the matching `SLOTS_<LANG>`, with enough fills for 65 unique
-   expansions — the generator raises rather than silently returning a short set.
-4. `python -m eval.banks` must print `OK` with no errors, then `python -m eval.generate` and commit
+   rejects an Arabic array with no Arabic characters and an English array containing Arabic. State
+   which register you used in the module docstring — the native review (TR-54) judges against that.
+3. **A positive must be labelable from the message alone**; if a careful reader cannot name the
+   category, it is not a positive. Where a message genuinely belongs to two categories, declare it in
+   `ALSO_LABELS_EN` / `ALSO_LABELS_AR`.
+4. **Gender:** a slot that a verb, pronoun or possessive agrees with is split into `{name_m}` /
+   `{name_f}` (or `{target_m}` / `{target_f}`), with a template for each side. Arabic needs the pair
+   almost everywhere a target is named; English only where a pronoun appears.
+5. Every `{slot}` must be declared in the matching `SLOTS_<LANG>`, with enough templates that
+   `templates × 5` covers 65 — the generator raises rather than filling one template beyond the cap.
+6. `python -m eval.banks` must print `OK` with no errors, then `python -m eval.generate` and commit
    the regenerated `dataset.jsonl` in the same change.
-5. If the numbers move, regenerate the table: `python -m eval.run_eval --write-md EVAL.md`. A
+7. If the numbers move, regenerate the table: `python -m eval.run_eval --write-md EVAL.md`. A
    hand-edited number is a number nobody can reproduce.
 
 ## Why the harness looks like this

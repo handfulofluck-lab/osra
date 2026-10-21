@@ -12,6 +12,13 @@ A bank is a Python module in this package that exports exactly:
     GENERIC_SAFE_EN: [str]    ordinary child messages with no trigger at all
     GENERIC_SAFE_AR: [str]    the same in Arabic
     AGE_RANGE: (int, int)     the child ages this category is drawn from
+    ALSO_LABELS_EN: {int: [str]}  optional; template index -> extra labels for a true overlap
+    ALSO_LABELS_AR: {int: [str]}  the same in Arabic
+
+Slots that hold a person's name come in gendered pairs -- `name_m`/`name_f`,
+`target_m`/`target_f` -- because Arabic marks gender on the verb and the pronoun,
+so a mixed slot produces rows like "هنا بكى" (masculine verb, girl's name). A
+template uses one side of a pair, never the pair mixed.
 
 Why templates and not a flat list of examples: plan 4.2 wants a set that is
 regenerable and auditable. A bank of ~20 templates with slots expands
@@ -25,6 +32,18 @@ isolation, threats, intent. They never contain method, dosage, or graphic
 detail. An evaluation set is not a corpus of harm: a detector that only fires on
 method text is a detector that misses grooming, and a repository that carries
 method text is a repository that teaches it.
+
+**Name the thing, never the method.** The rule above forbids method, dose,
+price, source and graphic detail -- it does not forbid naming the substance or
+the act. A positive must be labelable from the message alone: "we're vaping in
+the toilets at break, watch the door" carries its category and teaches nothing,
+while "delete this chat before your mum sees it" carries no category at all and
+belongs in no bank (#262 review). A secrecy or pressure line with no category
+signal is not a positive, however much it sounds like one.
+
+True overlaps carry both labels (`ALSO_LABELS_EN` / `ALSO_LABELS_AR`): an adult
+asking a child for a photo is `grooming` *and* `sexual_content`, and a scorer
+that answers one of the two is not wrong.
 """
 
 import importlib
@@ -73,6 +92,24 @@ class Bank:
     generic_safe_en: List[str]
     generic_safe_ar: List[str]
     age_range: Tuple[int, int]
+    also_labels_en: Dict[int, List[str]]
+    also_labels_ar: Dict[int, List[str]]
+
+
+def _validate_also_labels(module_name, lang, also, positives, category):
+    """`ALSO_LABELS_<LANG> = {template_index: [extra category]}` for a true overlap."""
+    errors = []
+    for index, extras in also.items():
+        where = f"{module_name}.ALSO_LABELS_{lang.upper()}[{index}]"
+        if not isinstance(index, int) or not 0 <= index < len(positives):
+            errors.append(f"{where}: template index out of range (0..{len(positives) - 1})")
+            continue
+        for extra in extras:
+            if extra not in HARMFUL_CATEGORIES:
+                errors.append(f"{where}: unknown category {extra!r}")
+            elif extra == category:
+                errors.append(f"{where}: repeats the bank's own category {extra!r}")
+    return errors
 
 
 def _validate_language(module_name, lang, positives, slots, hard_negatives, generic_safe):
@@ -153,6 +190,10 @@ def validate_module(module) -> List[str]:
                                  module.HARD_NEGATIVES_EN, module.GENERIC_SAFE_EN)
     errors += _validate_language(name, "ar", module.POSITIVES_AR, module.SLOTS_AR,
                                  module.HARD_NEGATIVES_AR, module.GENERIC_SAFE_AR)
+    errors += _validate_also_labels(name, "en", getattr(module, "ALSO_LABELS_EN", {}),
+                                    module.POSITIVES_EN, category)
+    errors += _validate_also_labels(name, "ar", getattr(module, "ALSO_LABELS_AR", {}),
+                                    module.POSITIVES_AR, category)
     return errors
 
 
@@ -185,6 +226,8 @@ def load_banks() -> Dict[str, Bank]:
             generic_safe_en=list(getattr(module, "GENERIC_SAFE_EN", [])),
             generic_safe_ar=list(getattr(module, "GENERIC_SAFE_AR", [])),
             age_range=getattr(module, "AGE_RANGE", (0, 0)),
+            also_labels_en=dict(getattr(module, "ALSO_LABELS_EN", {})),
+            also_labels_ar=dict(getattr(module, "ALSO_LABELS_AR", {})),
         )
 
     missing = [c for c in HARMFUL_CATEGORIES if c not in banks]

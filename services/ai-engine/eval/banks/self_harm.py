@@ -1,16 +1,27 @@
-"""self_harm bank -- the social pattern, never the method.
+"""self_harm bank -- the act or the intent, named in the child's words, never the method.
 
-The pattern this bank encodes is the one a detector has to catch before a
-message ever names a means: hopelessness that has stopped being temporary,
-goodbye-shaped messages, a child asking someone to hide an injury, the belief
-that everyone would be better off without them, and the wish to disappear.
+The pattern: hopelessness that has stopped being temporary, goodbye-shaped
+messages, belongings given away, cuts kept hidden, and the belief that everyone
+would be better off without them. Every positive names the act or the intent in
+the message itself -- wanting to die, wanting to disappear for good, saying
+goodbye, hiding cuts, being a burden -- because a bare secrecy line ("don't tell
+anyone about this") carries no category at all and cannot be labelled blind
+(#262 review).
 
-There is no method, means, dose or injury detail here, deliberately. A scorer
-that only fires on method vocabulary is a scorer that arrives too late, and an
-evaluation set is not a place to keep harm text for its own sake.
+What is deliberately absent: method, means, plan, medication, injury detail.
+A scorer that only fires on method vocabulary arrives too late, and an
+evaluation set is not a place to keep harm text for its own sake. "hiding the
+cuts on my arm" names the act and teaches nothing; how they got there is not
+written down anywhere in this file.
 
-Register: short, lowercase, unpolished school-age messaging; Arabic is MSA with
-a Gulf school register in the slots.
+Register: short, lowercase, unpunctuated school-age messaging. Arabic is Gulf
+school register with MSA wording, and every template whose verb or possessive
+agrees with a named person is split into masculine and feminine twins
+({name_m}/{name_f}, {person_m}/{person_f}).
+
+Two message patterns are true overlaps: a child reporting that others keep
+telling them to die is cyberbullying as well as self_harm. The Arabic gender
+twins of the first pattern count as separate templates, so AR declares three.
 """
 
 CATEGORY = "self_harm"
@@ -18,82 +29,109 @@ CATEGORY = "self_harm"
 AGE_RANGE = (11, 17)
 
 POSITIVES_EN = [
-    "honestly what's the point, {person} would be better off if i wasn't around",
-    "i keep thinking {name} and everyone else would be happier without me",
-    "if i just disappeared {time} nobody would really notice",
-    "i'm so tired of being the problem for {person} every single day",
-    "thanks for everything {name}, you were the only one who ever got it",
-    "this is probably the last thing i'm sending you {name}, look after {person} for me",
-    "don't tell {person} about my arm ok, i'll say i fell in {place}",
-    "i'm wearing {cover} {time} so nobody asks about my wrist",
-    "promise you won't say anything to {person} about what i showed you {name}",
-    "i wish i could just switch off {time} and not wake up",
-    "sometimes i think everyone in {place} would be happier if i wasn't there",
-    "i'm only texting you {name} because i didn't know who else to say goodbye to",
-    "sorry for being such a burden to {person}, i'll be out of the way {time}",
-    "i don't want to be here anymore, i'm done pretending i'm fine",
-    "{name} can have my stuff when i'm gone, don't make it weird",
-    "been hiding in {place} {time} so {person} doesn't see me like this",
-    "don't come looking for me {time} {name}, i won't be around",
-    "you'd all be fine without me, honestly {name} would be better",
+    "honestly i don't want to be here anymore, i want to go to sleep and not wake up",
+    "i keep thinking about dying and i don't know how to say it to anyone",
+    "i want to disappear for good, not move away, just not be alive anymore",
+    "some nights i hope i just don't wake up",
+    "if i wasn't around anymore everyone would be better off, i actually believe that now",
+    "i'm so tired of being a burden to {person}, they'd be happier if i was gone",
+    "i've been hurting myself again and hiding it under {cover}",
+    "don't tell {person} about the cuts on my arm, i'll say i fell",
+    "i've got cuts on my legs i've been hiding from everyone",
+    "this is goodbye {name}, i'm not going to be around {time}",
+    "thanks for being the only one who got me {name}, i won't be here {time}",
+    "i'm giving {name} my stuff, i've decided i don't want to be alive anymore",
+    "i told {name_m} i wanted to die and he said i was being dramatic",
+    "i told {name_f} i wanted to die and she said i was being dramatic",
+    "{name} keeps telling me to kill myself and some days i think i should",
+    "i don't want to die but i don't want to be alive either",
+    "i keep hurting myself at night and nobody in this house knows",
+    "i wrote {name} a note to say sorry, i'm not going to be here {time}",
+    "{name_m} is the only one who knows i cut myself, he promised not to tell anyone",
+    "{name_f} is the only one who knows i cut myself, she promised not to tell anyone",
+    "everyone in {group} keeps telling me to go die and i'm starting to believe them",
 ]
 
 POSITIVES_AR = [
-    "بصراحة شنو الفايدة، {person} أحسن بدوني",
-    "أحس {name} وكل الناس بتصير حياتهم أسهل لو ما كنت موجود",
-    "لو اختفيت {time} محد راح ينتبه أصلاً",
-    "تعبت وأنا المشكلة عند {person} كل يوم",
-    "مشكور على كل شي يا {name}، إنت الوحيد اللي فهمني",
-    "يمكن هذا آخر شي أرسله لك يا {name}، اعتني بـ{person} عني",
-    "لا تخبر {person} عن إيدي، بقول طحت في {place}",
-    "ألبس {cover} {time} عشان محد يسأل عن ساعدي",
-    "وعدني ما تخبر {person} عن اللي وريتك إياه يا {name}",
-    "أتمنى أنام {time} وما أصحى",
-    "أحياناً أحس كل اللي في {place} راح يكونون أسعد لو ما كنت معهم",
-    "أرسل لك يا {name} بس لأني ما لقيت أحد أودعه غيرك",
-    "آسف يا {name} إني صرت ثقل على {person}، ما أبي أزعجكم أكثر",
-    "صدق يا {name} ما أبي أكون هنا خلاص، تعبت أمثل إني بخير",
-    "{name} يقدر ياخذ أغراضي بعد ما أروح، لا تسوون سالفة",
-    "قاعد أختبئ في {place} {time} عشان محد يشوفني بهالحالة",
-    "لا تدورون علي {time} يا {name}، ما راح أكون موجود",
-    "كلكم بتعيشون أحسن بدوني، صدق يا {name}",
+    "بصراحة ما أبي أكون هنا خلاص، أبي أنام وما أصحى",
+    "صار لي فترة أفكر في الموت وما أعرف كيف أتكلم عنه",
+    "أبي أختفي خلاص، مو أسافر، أختفي وما أرجع",
+    "بعض الليالي أتمنى أنام وما أصحى",
+    "لو ما كنت موجود كان الكل عايش أحسن، صدق أحس كذا الحين",
+    "تعبت وأنا ثقل على {person_f}، حياتها بتصير أحسن بدوني",
+    "تعبت وأنا ثقل على {person_m}، حياته بتصير أحسن بدوني",
+    "رجعت أجرح نفسي وأخبي الجروح تحت {cover}",
+    "عندي جروح في إيدي وأنا مخبيها عن الكل",
+    "أخبي الجروح في إيدي عن {person_f}، إذا سألت أقول طحت في {place}",
+    "أخبي الجروح في إيدي عن {person_m}، إذا سأل أقول طحت في {place}",
+    "هذا وداعي يا {name}، ما راح أكون موجود {time}",
+    "مشكور يا {name_m} إنك الوحيد اللي فهمني، ما راح تشوفني {time}",
+    "مشكورة يا {name_f} إنك الوحيدة اللي فهمتيني، ما راح تشوفينني {time}",
+    "عطيت {name} أغراضي، قررت إني ما راح أكمل حياتي",
+    "قلت ل{name_m} إني أبي أموت وقال لي إني أتدلع",
+    "قلت ل{name_f} إني أبي أموت وقالت لي إني أتدلع",
+    "{name_m} ما يوقف يقول لي اقتل نفسك، وبعض الأيام أحس إني لازم",
+    "{name_f} ما توقف تقول لي اقتل نفسك، وبعض الأيام أحس إني لازم",
+    "ما أبي أموت بس ما أبي أعيش بعد",
+    "أجرح نفسي بالليل ومحد في البيت يدري",
+    "كتبت ل{name} ورقة اعتذار، ما راح أكون موجود {time}",
+    "{name_m} هو الوحيد اللي يدري إني أجرح نفسي، ووعدني ما يقول لأحد",
+    "{name_f} هي الوحيدة اللي تدري إني أجرح نفسي، ووعدتني ما تقول لأحد",
+    "كل {group} يضحكون عليّ ويقولون لي روح مت، وأنا صرت أصدقهم",
+    "أخاف أقول لأحد إني أفكر أموت، بيحسبوني أتدلع",
 ]
+
+# EN 14 and 20, AR 17, 18 and 24: the message is a child reporting that others
+# keep telling them to die, which is cyberbullying as well as self_harm. A scorer
+# that answers either label has read the message correctly.
+ALSO_LABELS_EN = {14: ["cyberbullying"], 20: ["cyberbullying"]}
+
+ALSO_LABELS_AR = {17: ["cyberbullying"], 18: ["cyberbullying"], 24: ["cyberbullying"]}
 
 SLOTS_EN = {
     "name": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
-    "person": ["mum", "dad", "my sister", "my brother", "my cousin", "the counsellor",
-               "coach", "my aunt"],
-    "time": ["tonight", "this week", "tomorrow", "after practice", "this weekend",
-             "after exams", "next week", "in a few days"],
-    "cover": ["long sleeves", "my hoodie", "a wristband", "my jacket", "the brace", "my watch"],
-    "place": ["my room", "the roof", "the park", "the bus stop", "the stairs", "the back field"],
+    # Only the templates with a pronoun use these, so the pronoun and the name agree.
+    "name_m": ["Omar", "Adam", "Yousef", "Bilal", "Kareem", "Ziad"],
+    "name_f": ["Sara", "Layla", "Noor", "Hana", "Mariam", "Dana"],
+    "person": ["mum", "dad", "my sister", "my brother", "my aunt", "my cousin",
+               "the counsellor", "my coach"],
+    "cover": ["long sleeves", "my hoodie", "my jacket", "a wristband", "my jumper", "my coat"],
+    "group": ["the squad", "year 9", "7B", "the class", "the team", "the group"],
+    "time": ["tonight", "tomorrow", "this week", "this weekend", "next week",
+             "in a few days", "after practice", "before the holidays"],
 }
 
 SLOTS_AR = {
-    "name": ["سارة", "عمر", "ليلى", "آدم", "نور", "يوسف", "هنا", "بلال"],
-    "person": ["أمي", "أبوي", "أختي", "أخوي", "المعلمة", "المرشدة", "المدرب", "خالتي"],
-    "time": ["الليلة", "هذا الأسبوع", "باجر", "بعد التمرين", "نهاية الأسبوع",
-             "بعد الاختبارات", "الأسبوع الجاي", "بعد كم يوم"],
-    "cover": ["كم طويل", "الهودي", "سوار عريض", "الجاكيت", "الدعامة", "الساعة"],
-    "place": ["غرفتي", "السطح", "الحديقة", "موقف الباص", "الدرج", "الملعب الخلفي"],
+    "name": ["سارة", "عمر", "ليلى", "آدم", "نور", "يوسف", "هناء", "بلال"],
+    # Gendered pairs: the verb and the possessive agree with the name.
+    "name_m": ["عمر", "آدم", "يوسف", "بلال", "كريم", "زياد"],
+    "name_f": ["سارة", "ليلى", "نور", "هناء", "مريم", "دانة"],
+    # A relationship carries gender too, so it is split rather than mixed.
+    "person_m": ["أبوي", "أخوي", "المدرب", "جدي", "عمي", "خالي"],
+    "person_f": ["أمي", "أختي", "المعلمة", "المرشدة", "خالتي", "جدتي"],
+    "cover": ["الكم الطويل", "الهودي", "الجاكيت", "القميص الطويل", "الشال", "البلوزة الطويلة"],
+    "group": ["الصف", "الشلة", "القروب", "الفريق", "الشباب", "صفنا"],
+    "place": ["الحوش", "الحديقة", "الممر", "الملعب", "الدرج", "المدرسة"],
+    "time": ["الليلة", "باجر", "هذا الأسبوع", "نهاية الأسبوع", "الأسبوع الجاي",
+             "بعد كم يوم", "بعد التمرين", "قبل العطلة"],
 }
 
 # The trigger vocabulary -- hopeless, disappear, burden, goodbye, gone, tired of
-# this -- used in the ordinary way a school day produces it.
+# this, cut, hurt -- used in the ordinary way a school day produces it. A scorer
+# that keys on one word fires here, which is the precision cost we want visible.
 HARD_NEGATIVES_EN = [
     "this chemistry unit is hopeless, i got every question wrong",
     "my phone disappeared in the sofa for two days",
     "being class rep is such a burden, i have to carry all the folders",
     "we said goodbye to our teacher today, she's moving to another school",
     "i can't do this anymore, this essay is due at midnight",
-    "i gave up halfway through the cross country run, my legs were dead",
-    "i wish i wasn't in the school play, rehearsals take all my free time",
-    "my laptop is gone, i left it in the lab like an idiot",
+    "i cut my finger opening the paint tin, it's just a plaster",
+    "i fell off my bike and my arm hurts, mum put a bandage on it",
     "i'm so tired, i stayed up watching the whole season",
     "this game keeps kicking me out, i want to disappear from the leaderboard",
-    "the wifi is gone again, can you check the router",
     "my knee hurts from football practice, i'm icing it",
-    "everyone else got the joke and i was lost the whole time",
+    "the wifi is gone again, can you check the router",
+    "i slept until two and missed the bus, the whole day is gone",
 ]
 
 HARD_NEGATIVES_AR = [
@@ -102,14 +140,13 @@ HARD_NEGATIVES_AR = [
     "شغل ممثل الصف صار ثقل علي، كل الملفات عندي",
     "ودّعنا المعلمة اليوم، بتروح مدرسة ثانية",
     "ما أقدر أكمل كذا، البحث لازم أسلمه نص الليل",
-    "انسحبت من سباق الجري، رجولي ما تحملت",
-    "أتمنى ما كنت في مسرحية المدرسة، التدريبات تاخذ كل وقتي",
-    "لابتوبي راح، نسيته في المختبر مثل الأهبل",
+    "جرحت إصبعي وأنا أفتح علبة الطلاء، حطيت لزقة وبس",
+    "طحت من السيكل وإيدي تعورني، أمي ربطتها",
     "أنا تعبان مرة، سهرت أتابع الموسم كله",
     "اللعبة تفصلني كل شوي، أبي أختفي من قائمة المتصدرين",
+    "ركبتي تعورني من التمرين، أحط عليها ثلج",
     "الواي فاي اختفى مرة ثانية، شيك على الراوتر",
-    "ركبتي تعورني من التمرين، حاط عليها ثلج",
-    "الكل فهم النكتة وأنا ضعت طول الوقت",
+    "نمت لآخر النهار وفاتني الباص، ضاع نص اليوم",
 ]
 
 GENERIC_SAFE_EN = [
@@ -120,7 +157,7 @@ GENERIC_SAFE_EN = [
     "are you taking the bus tomorrow or is your dad driving",
     "the coach moved practice to six, don't be late",
     "can i borrow your history notes, i missed the last lesson",
-    "my little sister keeps hiding my headphones, it's annoying",
+    "my little sister keeps borrowing my headphones without asking, it's annoying",
 ]
 
 GENERIC_SAFE_AR = [
@@ -128,8 +165,8 @@ GENERIC_SAFE_AR = [
     "بنلعب كورة بعد المدرسة، جيب الكورة الزرقاء",
     "أمي سوت عيش ودجاج، تعال قبل ما يبرد",
     "يبت 78 في اختبار العلوم، أحسن من المرة الماضية",
-    "بتروح بالباص باجر ولا أبوك بيوديك",
+    "بتروح بالباص باجر ولا أبوك بيوصلّك",
     "المدرب نقل التمرين للساعة ست، لا تتأخر",
     "ممكن تعطيني ملاحظات التاريخ؟ غبت عن الحصة الأخيرة",
-    "أختي الصغيرة تخبئ سماعاتي، شيء يقهر",
+    "أختي الصغيرة تاخذ سماعاتي بدون ما تسأل، شيء يقهر",
 ]

@@ -70,7 +70,48 @@ def test_expansion_refuses_a_bank_too_thin_to_reach_the_ask():
                         random.Random(1), "x", "en", 1)
 
 
-def test_dataset_meets_the_plan_4_2_floor():
+def test_expansion_caps_rows_per_template():
+    """Claude's decision on #262: the count grows through templates, never through more fills."""
+    slot_map = {"name": ["a", "b", "c", "d", "e", "f", "g", "h"]}
+    templates = ["one {name}", "two {name}"]
+    assert len(generate.expand(templates, slot_map, 10, random.Random(1), "x", "en", 1)) == 10
+    with pytest.raises(ValueError, match="do not raise the count"):
+        generate.expand(templates, slot_map, 11, random.Random(1), "x", "en", 1)
+
+
+def test_a_true_overlap_carries_both_labels():
+    slot_map = {"name": ["a", "b"]}
+    rows = generate.expand(["photo {name}"], slot_map, 2, random.Random(1), "grooming", "en", 1,
+                           {0: ["sexual_content"]})
+    assert rows[0]["labels"] == ["grooming", "sexual_content"]
+
+
+def test_dataset_labels_start_with_the_banks_category():
+    with open(DATASET, encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            if row["hard_negative_of"] is not None or row["labels"] == ["safe"]:
+                assert row["labels"] == ["safe"], row["id"]
+                continue
+            assert row["labels"][0] == row["category"], row["id"]
+            for extra in row["labels"][1:]:
+                assert extra in HARMFUL_CATEGORIES and extra != row["category"], row["id"]
+
+
+def test_dataset_text_is_unique_within_a_language():
+    """Each bank used to repeat the same safe sentences, which skewed the safe false-positive rate."""
+    seen = {"en": {}, "ar": {}}
+    with open(DATASET, encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            bucket = seen[row["lang"]]
+            assert row["text"] not in bucket, f"{row['id']} duplicates {bucket.get(row['text'])}"
+            bucket[row["text"]] = row["id"]
+
+
+def test_dataset_meets_the_interim_language_floor():
+    """500 per language is the interim floor; the plan's 2,000 + 2,000 is a template-count problem
+    (#262 decision), so this test is named for what it actually holds."""
     with open(DATASET, encoding="utf-8") as handle:
         rows = [json.loads(line) for line in handle if line.strip()]
     by_lang = {"en": 0, "ar": 0}
@@ -78,15 +119,6 @@ def test_dataset_meets_the_plan_4_2_floor():
         by_lang[row["lang"]] += 1
         assert row["labels"], row["id"]
         assert row["category"] in HARMFUL_CATEGORIES
-        if row["hard_negative_of"] is not None:
-            # A hard negative is a *safe* row that reuses the category's
-            # vocabulary, so it is scored against that category's false positives.
-            assert row["labels"] == ["safe"], row["id"]
-            assert row["hard_negative_of"] in HARMFUL_CATEGORIES, row["id"]
-        elif row["labels"] == ["safe"]:
-            pass  # generic safe: no trigger at all
-        else:
-            assert row["labels"] == [row["category"]], row["id"]
         assert row["provenance"]["kind"] == "synthetic"
     assert by_lang["en"] >= 500, by_lang
     assert by_lang["ar"] >= 500, by_lang
@@ -136,8 +168,10 @@ def test_empty_support_does_not_divide_by_zero():
     rows = [row for row in _toy_dataset() if row["labels"] == ["safe"]]
     result = run_eval.evaluate(rows, _toy_scorer({}), 0.5)
     for category in HARMFUL_CATEGORIES:
-        assert result["langs"]["en"]["per_category"][category]["precision"] == 0.0
-        assert result["langs"]["en"]["per_category"][category]["recall"] == 0.0
+        # None, not 0.0: nothing was flagged, so precision and recall are undefined rather than bad.
+        assert result["langs"]["en"]["per_category"][category]["precision"] is None
+        assert result["langs"]["en"]["per_category"][category]["recall"] is None
+        assert result["langs"]["en"]["per_category"][category]["f1"] is None
 
 
 def test_regex_scorer_returns_every_category():

@@ -17,9 +17,12 @@ from eval.banks import HARMFUL_CATEGORIES, SLOT_RE, Bank, load_banks
 
 DEFAULT_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset.jsonl")
 
-# 65 positives per category per language is 455; with the minimum 8 hard
-# negatives per bank (56) and 20 generic safe rows that is 531 per language,
-# which clears plan 4.2's ">= 500 EN + 500 AR" with room for a thin bank.
+# Claude's architecture decision on #262: the floor stays at 2,000 + 2,000, and the count grows only
+# through new templates or new sources, never by filling one template more times. Five rows per
+# template is the cap: beyond that the rows are the same sentence with a different name, and a set like
+# that makes a recall interval look tighter than it is.
+MAX_ROWS_PER_TEMPLATE = 5
+
 DEFAULT_PER_CATEGORY = 65
 DEFAULT_HARD_NEGATIVES = 12
 DEFAULT_GENERIC_SAFE = 20
@@ -31,16 +34,25 @@ def fill(template: str, slots: Dict[str, List[str]], rng: random.Random) -> str:
 
 
 def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
-           rng: random.Random, category: str, lang: str, seed: int) -> List[dict]:
+           rng: random.Random, category: str, lang: str, seed: int,
+           also_labels: Dict[int, List[str]] = None) -> List[dict]:
     """Fill `count` unique snippets, cycling the templates so each is used.
 
-    A template that cannot produce a new snippet is skipped; if the bank cannot
-    reach `count` even after the retry budget, this raises -- a bank with too
-    few slots is a bank whose author needs to know, not a silently short set.
+    At most [MAX_ROWS_PER_TEMPLATE] rows come from one template. Beyond that the set is the same
+    sentence with a different slot fill, which inflates the sample without adding an independent item —
+    and the plan's gate is a recall interval, so independent items are the point.
     """
     if not templates:
         raise ValueError(f"{category}/{lang}: no positive templates")
+    if count > len(templates) * MAX_ROWS_PER_TEMPLATE:
+        raise ValueError(
+            f"{category}/{lang}: {count} rows requested from {len(templates)} templates, but the cap is "
+            f"{MAX_ROWS_PER_TEMPLATE} rows per template ({len(templates) * MAX_ROWS_PER_TEMPLATE} max). "
+            f"Add templates — do not raise the count."
+        )
 
+    also_labels = also_labels or {}
+    per_template: Dict[int, int] = {}
     seen = set()
     rows = []
     cursor = 0
@@ -55,16 +67,21 @@ def expand(templates: List[str], slots: Dict[str, List[str]], count: int,
             )
         template_index = cursor % len(templates)
         cursor += 1
+        if per_template.get(template_index, 0) >= MAX_ROWS_PER_TEMPLATE:
+            continue
         text = fill(templates[template_index], slots, rng).strip()
         if text in seen:
             continue
         seen.add(text)
+        per_template[template_index] = per_template.get(template_index, 0) + 1
         rows.append({
             "id": f"{category}-{lang}-{len(rows) + 1:04d}",
             "lang": lang,
             "category": category,
             "text": text,
-            "labels": [category],
+            # A true overlap (an adult asking a child for a photo is grooming *and* sexual content) is
+            # labelled with both; `run_eval` counts `category in row["labels"]`, so no metric changes.
+            "labels": [category] + list(also_labels.get(template_index, [])),
             "hard_negative_of": None,
             "provenance": {
                 "kind": "synthetic",
@@ -102,19 +119,30 @@ def build_dataset(per_category: int = DEFAULT_PER_CATEGORY,
                   generic_safe: int = DEFAULT_GENERIC_SAFE,
                   seed: int = 1234,
                   banks: Dict[str, Bank] = None) -> List[dict]:
-    """Build the full dataset: positives, hard negatives and generic safe rows."""
+    """Build the full dataset: positives, hard negatives and generic safe rows.
+
+    Text is unique within a language across *all* banks: each bank used to carry its own copy of the
+    same safe sentences, so the safe false-positive rate was computed over duplicates (#262 review).
+    """
     banks = banks if banks is not None else load_banks()
     rng = random.Random(seed)
     rows: List[dict] = []
+    seen_text: Dict[str, set] = {"en": set(), "ar": set()}
+
+    def keep(row: dict) -> bool:
+        if row["text"] in seen_text[row["lang"]]:
+            return False
+        seen_text[row["lang"]].add(row["text"])
+        return True
 
     for category in HARMFUL_CATEGORIES:
         bank = banks[category]
-        for lang, templates, slots in (
-            ("en", bank.positives_en, bank.slots_en),
-            ("ar", bank.positives_ar, bank.slots_ar),
+        for lang, templates, slots, also in (
+            ("en", bank.positives_en, bank.slots_en, bank.also_labels_en),
+            ("ar", bank.positives_ar, bank.slots_ar, bank.also_labels_ar),
         ):
-            positives = expand(templates, slots, per_category, rng, category, lang, seed)
-            rows += positives
+            positives = expand(templates, slots, per_category, rng, category, lang, seed, also)
+            rows += [row for row in positives if keep(row)]
 
         for lang, hard, generic in (
             ("en", bank.hard_negatives_en, bank.generic_safe_en),
@@ -125,12 +153,14 @@ def build_dataset(per_category: int = DEFAULT_PER_CATEGORY,
             sample = hard[:]
             rng.shuffle(sample)
             taken = sample[:hard_negatives]
-            rows += _rows(category, lang, taken, ["safe"], category, bank.module_name, seed)
+            rows += [row for row in _rows(category, lang, taken, ["safe"], category,
+                                          bank.module_name, seed) if keep(row)]
 
             safe_sample = generic[:]
             rng.shuffle(safe_sample)
             taken_safe = safe_sample[:generic_safe]
-            rows += _rows(category, lang, taken_safe, ["safe"], None, bank.module_name, seed)
+            rows += [row for row in _rows(category, lang, taken_safe, ["safe"], None,
+                                          bank.module_name, seed) if keep(row)]
 
     rows.sort(key=lambda r: (r["lang"], r["category"], r["labels"][0], r["id"]))
     return rows

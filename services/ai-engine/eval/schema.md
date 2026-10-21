@@ -42,9 +42,15 @@ Seven harmful categories plus `safe`, matching `model.CATEGORIES` in `services/a
 | `substance_use` | Offers, group pressure, concealment of use, a dealer as a character. |
 | `hate_speech` | Group-targeted slurs and dehumanising speech, extremist recruitment framing. |
 
-`labels` is a list with one element, not a bare string, because the API's response is multi-label
-and a future row may legitimately carry two. The current banks carry one; a row with two labels must
-be added with its own `provenance` note saying so.
+`labels` is a list. The first element is always the bank's own category; further elements are declared
+overlaps from `ALSO_LABELS_<LANG>`, where a message genuinely belongs to two categories — an adult
+asking a child for a photo is `grooming` *and* `sexual_content`, and a scorer that answers either has
+read it correctly. `run_eval` counts `category in row["labels"]`, so an overlap raises that category's
+`support` without changing the metric.
+
+Each row's text is unique within its language across all seven banks. The generator drops a duplicate
+rather than counting the same sentence twice: the safe false-positive rate is computed over these rows,
+and a repeated safe line would make a scorer look better than it is.
 
 ## Age context
 

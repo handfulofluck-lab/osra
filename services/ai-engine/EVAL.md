@@ -12,47 +12,68 @@ python -m eval.run_eval --scorer regex --write-md EVAL.md
 
 ## The headline
 
-**Arabic recall is 0.00 in all seven categories, and English flags 12 % of harmful text.** That is
-not a regression — it is plan 4.1's premise, measured for the first time instead of assumed. The
-rules layer in `model.py` is a set of English regular expressions; not one of them can match Arabic
-script, so Arabic text is "safe" by construction no matter what it says. Two of the seven English
-categories (`self_harm`, `violence`, `substance_use`, `hate_speech`) return 0.00 as well, because the
-banks describe the *social pattern* a real message uses and the regexes were written against a
-vocabulary — "kill yourself", "get high" — that the template text deliberately does not repeat.
+**Arabic recall is 0.00 in all seven categories, and English flags 33 % of harmful rows.** That is
+not a regression — it is plan 4.1's premise, measured instead of assumed. The rules layer in
+`model.py` is a set of English regular expressions; not one of them can match Arabic script, so
+Arabic text is "safe" by construction no matter what it says. On the English side the layer does what
+a keyword list can: it catches the categories whose vocabulary is distinctive (`sexual_content` 0.68,
+`substance_use` 0.62) and misses the ones phrased as intent (`self_harm` 0.02, `hate_speech` 0.00,
+`violence` 0.13), because those are said in sentences, not in words.
+
+`n/a` in the precision column means the scorer flagged **nothing** in that category, so precision is
+undefined rather than zero — printing 0.00 there would read as "every flag was wrong" when in fact
+none was raised.
 
 This is the number the hosted scorer (4.1) has to beat, and the reason the gate in `docs/ROADMAP.md`
 is written as recall ≥ 0.85 at precision ≥ 0.6 rather than "the tests pass".
 
 ## How to read these numbers
 
-- **`support`** is the number of rows labelled with that category: 65 per category per language,
-  which is the whole positive class for that row of the table.
+- **`support`** is the number of rows labelled with that category. It is 65 per category per language,
+  plus the rows another bank also labels with it: a true overlap carries both labels (an adult asking
+  a child for a photo is `grooming` *and* `sexual_content`), so `cyberbullying` in English has 86
+  rows — 65 of its own and 21 shared. A scorer that answers either label has read the row correctly.
 - **precision** is of the rows the scorer marked with that category, how many were truly that
   category. It moves when a false positive arrives from *another* category's text, which is how
   cross-category confusion shows up.
-- **recall** is of that category's 65 rows, how many the scorer caught.
+- **recall** is of that category's rows, how many the scorer caught.
 - **flagged (any category)** is the number a parent would feel: of 455 harmful rows per language, how
-  many raised any flag at all. Its companion is the false-positive rate on the safe rows — 136 in
-  English and 135 in Arabic, of which 84/83 are **hard negatives** (benign text that reuses the
-  category's vocabulary) and the rest generic safe text with no trigger at all. A scorer that trades
-  recall for precision by keying on single words shows up as a high hard-negative FP, not as a low
-  precision overall.
+  many raised any flag at all. Its companion is the false-positive rate on the safe rows — 133 in
+  English and 136 in Arabic, of which the **hard negatives** (benign text that reuses the category's
+  vocabulary: "the wifi is pathetic today", "my knife skills in cooking class") are the ones that
+  punish a scorer keying on single words. Text is unique within a language, so the safe rate is not
+  diluted by copies of the same sentence.
 - The **0.50 threshold** is arbitrary but fixed: the diagnostic endpoint flags at 0.60 and 0.85
   (`_severity` in `model.py`), and a category needs to be well clear of the threshold to count.
 
 ## What the set is, and is not
 
-The dataset is 1,181 rows (591 EN / 590 AR) generated deterministically from seven template banks.
-It contains the *social pattern* — secrecy, coercion, isolation, threat, group targeting, pressure —
-in teen register, and no method, dosage, price, sourcing route, weapon construction or graphic
-description. That boundary is deliberate and is written at the top of `eval/banks/__init__.py`: a
-detector that only fires on method text is a detector that misses grooming, and a repository that
-carries method text teaches it.
+The dataset is 1,179 rows (588 EN / 591 AR) generated deterministically from seven template banks —
+293 positive templates, 176 hard negatives and 106 generic safe messages across the two languages,
+from which the generator draws 455 positive rows, 84 hard negatives and 49/52 safe rows per language.
+It
+contains the *social pattern* — secrecy, coercion, isolation, threat, group targeting, pressure — in
+teen register, and **names the thing** the message is about. A positive that names nothing is not a
+positive: "delete this chat before your mum sees it" was labelled `substance_use` in the first draft
+and could not be told from grooming, so it was rewritten to name the vape (#262 review).
+
+The content boundary is deliberate and is written at the top of `eval/banks/__init__.py`: no method,
+dosage, price, sourcing route, weapon construction, injury detail or graphic description, in either
+language. **Name the thing, never the method.** A detector that only fires on method text is a
+detector that misses grooming, and a repository that carries method text teaches it.
 
 Consequence for reading the numbers: a metric computed from this set measures **paraphrase and
 register**, not the easy lexical cases. The rules layer does catch its own vocabulary — that floor is
 pinned by `tests/test_eval_harness.py::test_regex_floor_catches_its_own_vocabulary` — so a low recall
 here means the scorer missed real messages, not that the scorer is broken.
+
+**Size, and the decision behind it.** Plan 4.2 asks for 2,000 + 2,000 snippets. This set is ~590 per
+language, and it grows **through templates or new sources, never through more slot fills of the same
+template**: the generator caps each template at 5 rows, and `--per-category` above
+`templates × 5` raises rather than filling. Claude's ruling on #262: the floor stays as written, and
+the count grows through author passes (self_harm and grooming first, because they carry the Phase 4
+gate). One template filled 65 times is one item, not 65 — the recall interval it produces is a
+fiction.
 
 Known limits, stated rather than discovered later:
 
@@ -60,12 +81,16 @@ Known limits, stated rather than discovered later:
   author imagined. Public corpora and, eventually, parent-reported false negatives (with consent and
   no child identifying data) are the next source; `eval/schema.md` fixes the provenance field so they
   can be added without renumbering.
-- **Single label.** Each row carries exactly one harmful category, so the numbers do not show how a
-  real multi-label message ("I'll beat him up and he can kill himself") degrades.
-- **One register per bank.** The banks were written by several authors in one pass; there is no
-  second reviewer of register yet (TR-54 covers the same gap for the app's Arabic).
+- **Multi-label only where the overlap is real.** Each row carries its bank's category plus declared
+  extras (`ALSO_LABELS_EN` / `ALSO_LABELS_AR`); combinations no bank declares are not represented.
+- **Register has one author per bank.** No second reader has checked that the Arabic sounds like a
+  teenager rather than a translation — the same gap TR-54 names for the app's Arabic.
 - **No age-conditioned scoring.** `AGE_RANGE` is recorded per bank but `analyze_text` accepts
   `child_age` without using it, so the set cannot yet show an age-dependent miss.
+- **The set is 74 % harmful while real messages are mostly safe**, so a precision number measured
+  here will look better than what a parent sees. The safe side must grow with the positives.
+- **No dev/test split yet.** Before 4.1 tunes a prompt, a `split: dev|test` field per template is
+  needed, or the published set becomes the tuning set.
 
 ## Generated table
 
@@ -73,28 +98,28 @@ Everything between the markers below is written by `python -m eval.run_eval --wr
 Do not edit it by hand: a hand-edited number is a number nobody can reproduce.
 
 <!-- BEGIN EVAL TABLE -->
-_Generated by `python -m eval.run_eval --scorer regex --write-md EVAL.md` on 2026-10-21. 1181 items, threshold 0.50, dataset `eval/dataset.jsonl`._
+_Generated by `python -m eval.run_eval --scorer regex --write-md EVAL.md` on 2026-10-21. 1179 items, threshold 0.50, dataset `eval/dataset.jsonl`._
 
 | lang | category | support | precision | recall | f1 |
 |---|---|---|---|---|---|
-| en | cyberbullying | 65 | 0.67 | 0.25 | 0.36 |
-| en | self_harm | 65 | 0.00 | 0.00 | 0.00 |
-| en | grooming | 65 | 0.26 | 0.14 | 0.18 |
-| en | violence | 65 | 0.00 | 0.00 | 0.00 |
-| en | sexual_content | 65 | 0.88 | 0.11 | 0.19 |
-| en | substance_use | 65 | 0.00 | 0.00 | 0.00 |
-| en | hate_speech | 65 | 0.00 | 0.00 | 0.00 |
-| en | **flagged (any category)** | 455 | - | 0.12 | - |
-| en | _safe rows false-positive rate_ | 136 | - | - | 0.04 |
-| ar | cyberbullying | 65 | 0.00 | 0.00 | 0.00 |
-| ar | self_harm | 65 | 0.00 | 0.00 | 0.00 |
-| ar | grooming | 65 | 0.00 | 0.00 | 0.00 |
-| ar | violence | 65 | 0.00 | 0.00 | 0.00 |
-| ar | sexual_content | 65 | 0.00 | 0.00 | 0.00 |
-| ar | substance_use | 65 | 0.00 | 0.00 | 0.00 |
-| ar | hate_speech | 65 | 0.00 | 0.00 | 0.00 |
+| en | cyberbullying | 86 | 0.83 | 0.28 | 0.42 |
+| en | self_harm | 65 | 1.00 | 0.02 | 0.03 |
+| en | grooming | 75 | 0.39 | 0.23 | 0.29 |
+| en | violence | 69 | 0.82 | 0.13 | 0.23 |
+| en | sexual_content | 74 | 0.98 | 0.68 | 0.80 |
+| en | substance_use | 65 | 0.98 | 0.62 | 0.75 |
+| en | hate_speech | 65 | n/a | 0.00 | n/a |
+| en | **flagged (any category)** | 455 | - | 0.33 | - |
+| en | _safe rows false-positive rate_ | 133 | - | - | 0.08 |
+| ar | cyberbullying | 88 | n/a | 0.00 | n/a |
+| ar | self_harm | 65 | n/a | 0.00 | n/a |
+| ar | grooming | 74 | n/a | 0.00 | n/a |
+| ar | violence | 70 | n/a | 0.00 | n/a |
+| ar | sexual_content | 77 | n/a | 0.00 | n/a |
+| ar | substance_use | 65 | n/a | 0.00 | n/a |
+| ar | hate_speech | 65 | n/a | 0.00 | n/a |
 | ar | **flagged (any category)** | 455 | - | 0.00 | - |
-| ar | _safe rows false-positive rate_ | 135 | - | - | 0.00 |
+| ar | _safe rows false-positive rate_ | 136 | - | - | 0.00 |
 <!-- END EVAL TABLE -->
 
 ## Reproducing a row

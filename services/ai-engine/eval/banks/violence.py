@@ -1,17 +1,29 @@
 """violence bank -- threats aimed at a person, and the social machinery around them.
 
-The pattern chosen here is the *arranged* threat rather than the act: a named
-target, a place and a time, a group that has already agreed, and an instruction
-to keep it quiet. That is what a school-facing detector has to catch early, and
-it is the part a scorer keyed on slurs or on graphic words misses entirely.
+The pattern is the *arranged* threat, not the act: a named target, what is going to
+happen to them, the group that has already agreed, the place and the time, the weapon
+carried to school, the retaliation for telling a teacher. Each positive carries that
+in the message alone, so a reader can label it without the bank's heading (#262
+review): a bare "we're all going to the park, don't tell her" reads as a surprise
+party and is not a positive; "we're all going to the park tonight to jump her,
+nobody says a word" is.
 
-Scope is deliberately narrow. No injury description, no weapon construction, no
-step-by-step of any kind. The weapon-plan template names only that something is
-being carried to school, because the plan is the signal; the making is not.
+Scope stays narrow. No injury description, no weapon construction, no step-by-step of
+any kind. A knife or a bat is named as the thing being carried, because the plan is
+the signal; the making is not. The act is named ("beat up", "jump", "knock out"),
+never the damage it does.
 
-Register: short, lowercase-ish, Gulf school Arabic in the Arabic bank, no
-punctuation polish. Hard negatives reuse the trigger words (kill, hit, knife,
-weapon, fight, jump, تهديد, سلاح) in cooking class, sport, gaming and homework.
+Register: short, lowercase, unpunctuated English that a child would actually type.
+The Arabic bank is Gulf school register with MSA wording (spelling and word choice
+kept MSA so a native reviewer reads it as written school speech, not dialect
+transcription). Every Arabic template that names a target and inflects a verb,
+pronoun or possessive for that target comes as a masculine/feminine pair, so no row
+puts a girl's name on a masculine verb.
+
+Hard negatives reuse the trigger vocabulary (kill, hit, knife, weapon, fight, jump,
+تهديد, سلاح) in cooking class, sport, gaming and homework, and stay benign. One of
+them is a near-miss for the weapon template: the knife goes to school for cooking
+class, not for a person.
 """
 
 CATEGORY = "violence"
@@ -19,67 +31,92 @@ CATEGORY = "violence"
 AGE_RANGE = (10, 17)
 
 POSITIVES_EN = [
-    "{time} we're all at {place}, me and {group} are sorting {target} out",
-    "{group} are meeting {target} at {place} {time} and it's not to talk",
-    "if you say that again {target} i'll be waiting at {place} {time}",
-    "bring your boys to {place} {time}, {target} needs to learn",
-    "{target} is getting jumped after school and everyone already knows",
-    "we're all going to {place} {time}, don't tell {target} we're coming",
-    "you got {target} alone at {place}? tell me when and i'm coming",
-    "i'm bringing something in my bag {time}, {target} better not be at {place}",
-    "{group} are gonna do {target} at {place}, nobody says a word",
-    "say it to my face at {place} {time} and see what happens",
-    "if {target} shows up at {place} {time} we're all on them",
-    "you're done {target}, me and {group} will find you at {place}",
-    "don't go near {place} {time}, {target}, we'll be there",
-    "i'll put {target} on the floor if he looks at me like that again",
-    "{group} already decided, {target} gets it at {place} {time}",
-    "tell {target} not to come {time}, it gets ugly at {place}",
+    "{group} are waiting at {place} {time} to beat {target} up, and it's not a joke",
+    "we're all going to {place} {time} to jump {target}, nobody says a word",
+    "i'm bringing a knife to school {day} and {target} better stay home",
+    "{group} are getting {target} at {place} {time} for telling the teacher",
+    "everyone in {group} meet at {place} {time}, {target} is getting jumped on the way home",
+    "wait by {place} {time}, {group} are jumping {target} on the way home",
+    "{group} voted and {target} is getting beaten up {time} at {place}",
+    "i'm bringing a bat in my bag {day}, {target} needs to learn",
+    "anyone who talks to {target} gets hit too, that's from {group}",
+    "{group} are going to hurt {target} {time} at {place}, that's already decided",
+    "{group} are hanging around {place} {time} waiting to beat {target_m} up, he thinks we're joking",
+    "i'm going to knock {target_m} out if he looks at me like that again",
+    "{target_m} snitched on us, so {group} are getting him {time}",
+    "we're jumping {target_m} at {place} {time}, he's not getting away this time",
+    "{target_m} is getting beaten up {time}, and {group} already picked {place} for him",
+    "if {target_m} shows up at {place} {time} {group} are going to hurt him",
+    "{group} are hanging around {place} {time} waiting to beat {target_f} up, she thinks we're joking",
+    "i'm going to knock {target_f} out if she looks at me like that again",
+    "{target_f} snitched on us, so {group} are getting her {time}",
+    "we're jumping {target_f} at {place} {time}, she's not getting away this time",
+    "{target_f} is getting beaten up {time}, and {group} already picked {place} for her",
+    "if {target_f} shows up at {place} {time} {group} are going to hurt her",
 ]
 
 POSITIVES_AR = [
-    "{time} نتلاقى في {place}، بنخلص موضوع {target}",
-    "أنا و{group} بنقابل {target} في {place} والموضوع مو كلام",
-    "إذا قلت هالكلام مرة ثانية يا {target} والله أنتظرك عند {place}",
-    "{group} كلهم جايين {place} {time}، لازم نعطي {target} درس",
-    "{target} بينضرب بعد المدرسة والكل عارف",
-    "كلنا بنروح {place} {time}، لا تقولون لـ{target} إننا جايين",
-    "لقيت {target} في {place} بدون أحد؟ قول لي متى وأنا جاي",
-    "بجيب شي معاي {time}، وأي أحد يشوف {target} في {place} يقول لي",
-    "{group} بيكسرون {target} في {place}، محد يتكلم ولا كلمة",
-    "قولها في وجهي في {place} {time} وشوف شنو يصير",
-    "إذا شفنا {target} في {place} {time} كلنا عليه",
-    "ما فيه مخرج يا {target}، أنا و{group} بنلقاك في {place}",
-    "لا تقرب {place} {time} يا {target}، إحنا هناك",
-    "بضرب {target} إذا تمادى معاي مرة ثانية",
-    "{group} قرروا خلاص، {target} على القائمة في {place} {time}",
-    "{place} {time} مو مكان {target}، بيصير شي كبير",
+    "احنا كلنا عند {place} {time} والنية ضرب {target}",
+    "كلنا بنتلقى في {place} {time} عشان نضرب {target}، ولا كلمة لأحد",
+    "بجيب سكين معاي للمدرسة {day}، والسبب {target}",
+    "بنسوي كمين على {target} عند {place} {time}، وكل {group} جاي",
+    "بيصير ضرب {time} عند {place}، والسبب {target}",
+    "اللي يقرب من {target} بياخذ نفس الضرب، و{group} ما يمزحون",
+    "{group} صوّتوا، والضرب بيوصل {target} {time} عند {place}",
+    "بنجيب {target} عند {place} {time} بالغصب، وهناك بنتفاهم بالضرب",
+    "{group} يستنون {target_m} عند {place} {time} عشان يضربونه",
+    "{group} يستنون {target_f} عند {place} {time} عشان يضربونها",
+    "{target_m} بلّغ عنا، و{group} بيمسكونه {time}",
+    "{target_f} بلّغت عنا، و{group} بيمسكونها {time}",
+    "بكسر {target_m} إذا طالع فيني كذا مرة ثانية",
+    "بكسر {target_f} إذا طالعت فيني كذا مرة ثانية",
+    "لا تخلون {target_m} يوصل البيت {time}، {group} بيمسكونه عند {place}",
+    "لا تخلون {target_f} توصل البيت {time}، {group} بيمسكونها عند {place}",
+    "إذا مر {target_m} من {place} {time} كل {group} بيمسكونه",
+    "إذا مرت {target_f} من {place} {time} كل {group} بيمسكونها",
+    "{target_m} ضرب واحد من {group}، والرد بيصير {time} عند {place}",
+    "{target_f} ضربت واحد من {group}، والرد بيصير {time} عند {place}",
 ]
 
+# The isolation threat is genuinely two categories: the group is enforcing "nobody
+# talks to them", which is the bullying pattern, and the enforcement is a beating.
+ALSO_LABELS_EN = {8: ["cyberbullying"]}
+ALSO_LABELS_AR = {5: ["cyberbullying"]}
+
 SLOTS_EN = {
+    # Only the templates with a pronoun use the gendered pair, so the pronoun and the name agree.
     "target": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
+    "target_m": ["Omar", "Adam", "Yousef", "Bilal", "Kareem", "Ziad"],
+    "target_f": ["Sara", "Layla", "Noor", "Hana", "Mariam", "Dana"],
     "place": ["the back gate", "the field", "the bike shed", "the corner shop",
               "the bus stop", "the car park"],
-    "group": ["7B", "the squad", "my boys", "the team", "year 9", "our class"],
+    "group": ["7B", "the squad", "the team", "year 9", "our class", "the group"],
     "time": ["after school", "at break", "at lunch", "tonight", "on friday", "at six"],
+    "day": ["tomorrow", "on monday", "on friday", "next week", "after the weekend"],
 }
 
 SLOTS_AR = {
-    "target": ["سارة", "عمر", "ليلى", "آدم", "نور", "يوسف", "هنا", "بلال"],
+    "target": ["سارة", "عمر", "ليلى", "آدم", "نور", "يوسف", "هناء", "بلال"],
+    "target_m": ["عمر", "آدم", "يوسف", "بلال", "كريم", "زياد"],
+    "target_f": ["سارة", "ليلى", "نور", "هناء", "مريم", "دانة"],
     "place": ["ساحة المدرسة", "الباب الخلفي", "الزاوية ورا المبنى", "الملعب",
               "الحديقة", "الرصيف"],
     "group": ["الشلة", "الصف", "الفريق", "أصحابي", "شباب الحي", "الربع"],
     "time": ["بعد الحصة الأخيرة", "بعد المدرسة", "وقت الفسحة", "بالليل", "بعد المغرب",
              "بكرة الصبح"],
+    "day": ["باجر", "يوم الاثنين", "يوم الجمعة", "الأسبوع الجاي", "بعد الويكند"],
 }
 
+# Benign text that reuses the category's words. Every one is an ordinary school day;
+# none describes a threat, a plan or a person being harmed.
 HARD_NEGATIVES_EN = [
     "our team is gonna destroy them in the match on saturday",
     "i beat my brother at fifa five times in a row",
     "this homework is killing me, i've been on it for two hours",
     "my knife skills in cooking class got better this term",
+    "i'm bringing a knife to school tomorrow for cooking class, teacher said we need our own",
     "we learned about medieval weapons in history today",
-    "the boxing coach showed us how to throw a punch without hurting your wrist",
+    "the boxing coach said my jab is getting better, he moved me up a group",
     "i'm gonna jump on the trampoline after lunch",
     "my little sister hit me with a pillow and i fell off the sofa",
     "the movie had a big fight scene but it was obviously fake",
@@ -94,8 +131,9 @@ HARD_NEGATIVES_AR = [
     "غلبت أخوي في الفيفا خمس مرات ورا بعض",
     "هذا الواجب قاتلني، صار لي ساعتين عليه",
     "مهاراتي في السكين في حصة الطبخ تحسنت هالفصل",
+    "باجر حصة طبخ، لازم أجيب السكين معاي للمدرسة",
     "درسنا اليوم عن الأسلحة في العصور الوسطى في التاريخ",
-    "مدرب الملاكمة علمنا كيف نضرب بدون ما نأذي يدنا",
+    "مدرب الملاكمة قال مستواي تحسن وصعدني مجموعة",
     "بطلع أنط على الترامبولين بعد الغدا",
     "أختي الصغيرة ضربتني بمخدة وطحت عن الكنبة",
     "الفلم فيه مشهد عراك بس واضح إنه تمثيل",

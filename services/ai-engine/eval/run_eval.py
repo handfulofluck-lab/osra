@@ -77,8 +77,17 @@ def load_dataset(path: str = DATASET, limit_per_category: int = 0) -> List[dict]
     return rows
 
 
-def _ratio(num: int, den: int) -> float:
-    return (num / den) if den else 0.0
+def _ratio(num: int, den: int):
+    """A rate, or None when the denominator is zero.
+
+    None rather than 0.0: "Arabic precision 0.00" reads as "every flag was wrong", when the scorer in
+    fact flagged nothing at all and precision is undefined. The table prints `n/a` for None (#262 review).
+    """
+    return (num / den) if den else None
+
+
+def _fmt(value) -> str:
+    return "n/a" if value is None else f"{value:.2f}"
 
 
 def evaluate(rows: List[dict], score_fn: Callable[[str], Dict[str, float]],
@@ -109,10 +118,11 @@ def evaluate(rows: List[dict], score_fn: Callable[[str], Dict[str, float]],
                     fp += 1
             precision = _ratio(tp, tp + fp)
             recall = _ratio(tp, tp + fn)
+            f1 = (2 * precision * recall / (precision + recall)
+                  if precision is not None and recall is not None and (precision + recall) else None)
             per_category[category] = {
                 "support": support, "tp": tp, "fp": fp, "fn": fn,
-                "precision": precision, "recall": recall,
-                "f1": _ratio(2 * precision * recall, precision + recall),
+                "precision": precision, "recall": recall, "f1": f1,
             }
 
         def flagged(probs: Dict[str, float]) -> bool:
@@ -154,14 +164,14 @@ def render(result: dict, scorer: str, items: int) -> str:
         lines.append(f"{'category':18}{'support':>8}{'precision':>11}{'recall':>9}{'f1':>8}")
         for category in HARMFUL_CATEGORIES:
             row = block["per_category"][category]
-            lines.append(f"{category:18}{row['support']:8d}{row['precision']:11.2f}"
-                         f"{row['recall']:9.2f}{row['f1']:8.2f}")
+            lines.append(f"{category:18}{row['support']:8d}{_fmt(row['precision']):>11}"
+                         f"{_fmt(row['recall']):>9}{_fmt(row['f1']):>8}")
         flag = block["flag"]
         lines.append(
             f"{'flagged (any)':18}{flag['unsafe_support']:8d}"
-            f"{'-':>11}{flag['unsafe_recall']:9.2f}"
-            f"    safe FP {flag['safe_false_positive_rate']:.2f}"
-            f" (hard-negative FP {flag['hard_false_positive_rate']:.2f})"
+            f"{'-':>11}{_fmt(flag['unsafe_recall']):>9}"
+            f"    safe FP {_fmt(flag['safe_false_positive_rate'])}"
+            f" (hard-negative FP {_fmt(flag['hard_false_positive_rate'])})"
         )
         lines.append("")
     return "\n".join(lines)
@@ -180,13 +190,13 @@ def render_markdown(result: dict, scorer: str, items: int, dataset_note: str) ->
         block = result["langs"][lang]
         for category in HARMFUL_CATEGORIES:
             row = block["per_category"][category]
-            lines.append(f"| {lang} | {category} | {row['support']} | {row['precision']:.2f} "
-                         f"| {row['recall']:.2f} | {row['f1']:.2f} |")
+            lines.append(f"| {lang} | {category} | {row['support']} | {_fmt(row['precision'])} "
+                         f"| {_fmt(row['recall'])} | {_fmt(row['f1'])} |")
         flag = block["flag"]
         lines.append(f"| {lang} | **flagged (any category)** | {flag['unsafe_support']} | - "
-                     f"| {flag['unsafe_recall']:.2f} | - |")
+                     f"| {_fmt(flag['unsafe_recall'])} | - |")
         lines.append(f"| {lang} | _safe rows false-positive rate_ | {flag['safe_support']} | - "
-                     f"| - | {flag['safe_false_positive_rate']:.2f} |")
+                     f"| - | {_fmt(flag['safe_false_positive_rate'])} |")
     return "\n".join(lines)
 
 
@@ -244,12 +254,18 @@ def main(argv=None) -> int:
         for lang in LANGS:
             for category in gate:
                 row = result["langs"][lang]["per_category"][category]
-                if args.fail_under_recall is not None and row["recall"] < args.fail_under_recall:
-                    failures.append(f"{lang}/{category}: recall {row['recall']:.2f} "
-                                    f"< {args.fail_under_recall:.2f}")
-                if args.fail_under_precision is not None and row["precision"] < args.fail_under_precision:
-                    failures.append(f"{lang}/{category}: precision {row['precision']:.2f} "
-                                    f"< {args.fail_under_precision:.2f}")
+                if args.fail_under_recall is not None:
+                    if row["recall"] is None:
+                        failures.append(f"{lang}/{category}: recall undefined (nothing flagged)")
+                    elif row["recall"] < args.fail_under_recall:
+                        failures.append(f"{lang}/{category}: recall {row['recall']:.2f} "
+                                        f"< {args.fail_under_recall:.2f}")
+                if args.fail_under_precision is not None:
+                    if row["precision"] is None:
+                        failures.append(f"{lang}/{category}: precision undefined (nothing flagged)")
+                    elif row["precision"] < args.fail_under_precision:
+                        failures.append(f"{lang}/{category}: precision {row['precision']:.2f} "
+                                        f"< {args.fail_under_precision:.2f}")
         if failures:
             print("GATE FAILED")
             for failure in failures:
