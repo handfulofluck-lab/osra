@@ -11,6 +11,19 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — the digest preferences screen speaks Arabic (#277)
+- 27 ARB keys cover every string on the screen: the three switches and their subtitles, the emails field,
+  the timezone section and its "sent at 18:00 your local time" line, the save and send buttons, the busy
+  labels, six snackbars, the test-digest dialog and its empty state, and the child-name fallback that is
+  written into the rendered digest, so a missing display name no longer prints an English word inside an
+  Arabic digest.
+- **The new Arabic test found a real layout defect**: the timezone `DropdownButtonFormField` overflowed by
+  75 px at 320 px in RTL once a long zone name was selected — the same trap the register and invite
+  dropdowns hit in #203. `isExpanded: true`, with the reason in a comment.
+- One Arabic test at 320×568 (title, two switches, the save button reached by scrolling, RTL confirmed,
+  no layout exception). `flutter test` **260 passed** (259 + 1), `flutter analyze` clean.
+- **⚠️ not verified here:** the Arabic is mine, not a native speaker's — the same standing gap as TR-54.
+
 ### Screen time — the UsageStats backfill is a delta, so an app is no longer re-counted every upload (#267)
 - The 15-minute upload is a delta and the server adds each one to the day (issue #31), but
   `backfillFromUsageStats` added Android's **whole-day** total for every package this window's events did
@@ -100,7 +113,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   date arrives" and "a row at the floor is never imported" are JVM tests rather than phone rows alone.
 - **⚠️ not verified here:** the phone rows — a text dated a year ahead reaches the server once with `ts`
   clamped, and the same text inserted during a withdrawal never uploads — are Claude's, on the Flip4.
-
 
 ### AI — second author pass on the two banks that carry the Phase 4 gate (plan 4.2)
 - `self_harm` grows from 21/26 to **41/46** templates (EN/AR) and `grooming` from 20/23 to **40/43** —
@@ -364,7 +376,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   the fence is created without `routineId`, and `docs/SPEC.md` states that the field has no effect
   until location-conditioned routines exist. Existing fences keep their `routineId`; the API is
   unchanged.
-
 
 ### API — a geofence arrival after a dropped connection is reported, and a stale gap is named (#243)
 - **Missed arrival (found in review of the first cut):** the Android agent uploads fresh in-memory
@@ -2561,7 +2572,6 @@ environment where it was written — see `docs/QA/` for the verification state.
   against a table instead of a guess; the delete command is one copy-paste block inside it.
 - Also in this PR: the trap row for the failure I hit today — a background build that reports a *plausible but
   wrong* count after the working tree changed under it (`docs/TESTING.md` §6), with the sha check that catches it.
-
 
 ### Android — tamper protection wired: parent PIN at pairing, Device Admin, PIN gate over the OS removal screens (ADR-0010, plan 1.1/1.2)
 - **Pairing now ends with the parent setting a PIN** (4–8 digits, weak ones refused; PBKDF2 hash in
