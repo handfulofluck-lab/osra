@@ -314,9 +314,17 @@ export async function locationRoutes(app: FastifyInstance) {
     // position once) with the child id and the ping's timestamp only. Coordinates never travel on the
     // bus; the client reads them through the authorised `GET /:childId/latest` (#242). Best-effort:
     // the rows are already stored, so a Redis failure must not fail the upload.
+    //
+    // The payload timestamp is the FRESHEST ping in the upload, not the last one in the array: since
+    // #243 we know the agent sends fresh in-memory pings first and the older buffered ones after, so
+    // `last.timestamp` would advertise a stale time for a fresh position.
+    const freshest = createdPings.reduce(
+      (newest, ping) => (ping.timestamp > newest.timestamp ? ping : newest),
+      createdPings[0],
+    );
     await publishFamilyEvent(child.familyId, {
       type: "location",
-      payload: { childId: effectiveChildId, ts: last.timestamp },
+      payload: { childId: effectiveChildId, ts: freshest.timestamp },
       ts: new Date().toISOString(),
     }).catch(() => undefined);
 

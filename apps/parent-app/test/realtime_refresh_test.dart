@@ -14,6 +14,7 @@ class RecordingEffects implements RealtimeEffects {
   int unacknowledged = 0;
   int family = 0;
   final List<String> locations = [];
+  final List<String> consents = [];
   final List<LiveActivity> activities = [];
 
   @override
@@ -27,6 +28,9 @@ class RecordingEffects implements RealtimeEffects {
 
   @override
   void invalidateLocation(String childId) => locations.add(childId);
+
+  @override
+  void invalidateConsent(String childId) => consents.add(childId);
 
   @override
   void updateLiveActivity(LiveActivity activity) => activities.add(activity);
@@ -49,6 +53,7 @@ void main() {
       expect(effects.unacknowledged, 1);
       expect(effects.family, 1);
       expect(effects.locations, isEmpty);
+      expect(effects.consents, isEmpty);
       expect(effects.activities, isEmpty);
     });
 
@@ -60,6 +65,8 @@ void main() {
       });
 
       expect(effects.locations, ['child-1']);
+      // A location event must not touch consent: only a revocation does.
+      expect(effects.consents, isEmpty);
       expect(effects.family, 1);
       expect(effects.alerts, 0);
       expect(effects.unacknowledged, 0);
@@ -93,6 +100,9 @@ void main() {
 
       expect(effects.family, 1);
       expect(effects.locations, ['child-1']);
+      // Issue #253: an open consent screen watches its own provider, so revocation must invalidate it
+      // too — otherwise it keeps saying "consented" until a pull-to-refresh.
+      expect(effects.consents, ['child-1']);
       expect(effects.alerts, 0);
       expect(effects.unacknowledged, 0);
       expect(effects.activities, isEmpty);

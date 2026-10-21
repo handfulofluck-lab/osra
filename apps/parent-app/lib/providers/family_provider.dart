@@ -149,6 +149,10 @@ abstract class RealtimeEffects {
   void invalidateUnacknowledgedCount();
   void invalidateFamily();
   void invalidateLocation(String childId);
+
+  /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
+  /// refreshes. Revocation is exactly the moment that screen must stop saying "consented".
+  void invalidateConsent(String childId);
   void updateLiveActivity(LiveActivity activity);
 }
 
@@ -170,6 +174,9 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
 
   @override
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
+
+  @override
+  void invalidateConsent(String childId) => _ref.invalidate(consentStatusProvider(childId));
 
   @override
   void updateLiveActivity(LiveActivity activity) =>
@@ -196,7 +203,9 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
     case 'consent_revoked':
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {
-        effects.invalidateLocation(payload['childId'] as String);
+        final childId = payload['childId'] as String;
+        effects.invalidateLocation(childId);
+        effects.invalidateConsent(childId);
       }
       effects.invalidateFamily();
     case 'live_activity':

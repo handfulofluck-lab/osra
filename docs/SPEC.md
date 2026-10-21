@@ -54,7 +54,9 @@ currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/
   unknown type). A `location` event carries `{ childId, ts }` and **no
   coordinates**: it only tells an open screen that a ping was stored, and the screen refetches the
   position through the authorised `GET /v1/location/:childId/latest`, so coordinates stay only in
-  `LocationPing` (#242). `consent_revoked` carries `{ childId, revokedBy, revokedAt, devicesNotified }`.
+  `LocationPing` (#242). `consent_revoked` carries `{ childId, revokedBy, revokedAt, devicesNotified }`
+  and refreshes the family overview, that child's location and an open consent screen — a revocation
+  is precisely when that screen must stop saying "consented" (#253).
   The gateway sends `{ type: "ready", familyId, ts }` as the first frame on every socket, after it has
   registered the socket for the family; no event frame precedes it (TR-05). Clients wait for it
   before treating the stream as live (e.g. to end a reconnect spinner).
