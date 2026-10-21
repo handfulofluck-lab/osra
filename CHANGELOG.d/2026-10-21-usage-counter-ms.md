@@ -11,8 +11,13 @@
   the next upload window and written in the same success step as the watermark, so fifteen 59 s windows no
   longer lose a minute each: two consecutive windows sum to the same total as one window covering both.
   A re-grant drops the carry with the events it belongs to (#266's rule).
-- **A mid-day update keeps the count:** today's counters are persisted in ms under a unit key, and a
-  snapshot written by an older build is read as `minutes × 60_000` instead of being divided by 60.
+- **The persisted snapshot survives a version change:** it now carries a unit marker, so an old
+  minutes-valued snapshot is read as `minutes × 60_000` instead of being divided by 60.
+- **A restart still loses the day's counters, for another reason:** the startup rebuild replaces the
+  snapshot with the events since the last upload (#286, found on the same phone run — rebooting the phone
+  likewise hands back used-up limits). Older code, filed rather than folded in here.
+- **Time on OSRA's own block screen is credited to the blocked app** (#284), also found on the same run
+  and also filed separately.
 - **The UsageStats backfill no longer double-counts short use** (review R1). It skips a package the
   window's events mentioned even when that package produced no whole minute, because its time is counted
   here — as a minute now or as a carried remainder next window. An app used in 30-second bursts was
