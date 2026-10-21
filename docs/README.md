@@ -37,6 +37,8 @@ Start here. This page is the map: what each document is for, and which one to re
 |---|---|
 | [`TESTING.md`](TESTING.md) | Every suite and gate: how to run it, what it covers, how to read failures, the hardware procedure, environment traps |
 | [`LOCALIZATION.md`](LOCALIZATION.md) | English/Arabic UI: the ARB layout, how to add a string or a language, the RTL rules, and exactly which screens are translated |
+| [`../services/ai-engine/EVAL.md`](../services/ai-engine/EVAL.md) | The child-safety scorer measured per category and per language, with the generated table and how to read it (plan 4.3) |
+| [`../services/ai-engine/eval/README.md`](../services/ai-engine/eval/README.md) | The labelled evaluation set: where the text comes from, the content rule, how to run or add a bank (plan 4.2) |
 | [`test-guides/CI-SECRETS.md`](test-guides/CI-SECRETS.md) | Every secret CI and deployment read from the environment, and what happens when one is missing |
 | [`ROADMAP.md`](ROADMAP.md) | The KCL plan (Phases 0–5, five gates, 20 weeks) item by item with acceptance lines and current status; mirrored on issue #50 |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
