@@ -134,10 +134,11 @@ environment where it was written — see `docs/QA/` for the verification state.
   date arrives (#264 files the remaining evasion).
 - **A withdrawn phone no longer logs a full `HTTP 428` stack every 60 seconds**
   (`LocationService`); the transition is logged once, by `ConsentState`.
-- Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, clamped floor),
-  new `CommsEventTimestampsTest` (4), `CommsGrantWiringTest` +4 pinning the query, the `ts` field and
-  the 428 branch, and one API test asserting the reported time is preserved to the millisecond while a
-  far-future one is clamped.
+- Tests: `CommsWatermarkPolicyTest` +4 (call-waiting by id, clock-back, future row, and the
+  grant-re-anchor case that replaced the read-time clamp), new `CommsEventTimestampsTest` (4),
+  `CommsGrantWiringTest` +5 pinning the `_ID` query, `ts`, the 428 branch and the grant re-anchor in
+  both harvests, and one API test asserting a reported time is preserved to the millisecond, a
+  far-future one is clamped to now + 5 min and a six-months-old one is floored to now − 7 days.
 - **⚠️ not verified here:** the two phone rows — call waiting, and a clock set forward once — are
   Claude's, on the Flip4. The JVM tests hold the rules; no JVM test can insert `CallLog` rows.
 
