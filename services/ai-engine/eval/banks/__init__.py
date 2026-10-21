@@ -131,12 +131,21 @@ def _validate_language(module_name, lang, positives, slots, hard_negatives, gene
                 errors.append(f"{where}: English bank entry contains Arabic: {text!r}")
 
     for idx, text in enumerate(positives):
-        for slot in SLOT_RE.findall(text):
+        slots_used = SLOT_RE.findall(text)
+        for slot in slots_used:
             if slot not in slots:
                 errors.append(
                     f"{module_name}.POSITIVES_{lang.upper()}[{idx}]: unknown slot "
                     f"{{{slot}}} (declare it in SLOTS_{lang.upper()})"
                 )
+        # A template that names both a masculine and a feminine target contradicts itself: the
+        # generator picks one name per slot, so "{target_m} and {target_f}" produced two children in
+        # one message. Gendered pairs are separate templates (#262 review).
+        if any(s.endswith("_m") for s in slots_used) and any(s.endswith("_f") for s in slots_used):
+            errors.append(
+                f"{module_name}.POSITIVES_{lang.upper()}[{idx}]: mixes a _m slot with a _f slot; "
+                f"write one template per gender"
+            )
 
     for name, fills in slots.items():
         if not isinstance(fills, list) or not fills:

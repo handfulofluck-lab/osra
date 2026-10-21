@@ -109,6 +109,29 @@ def test_dataset_text_is_unique_within_a_language():
             bucket[row["text"]] = row["id"]
 
 
+def test_a_slot_used_twice_gets_one_fill():
+    """`{n} and {n}` must name one child, not two (#262 review)."""
+    rows = generate.expand(["{n} and {n} did it"], {"n": ["Sara", "Omar", "Layla"]}, 3,
+                           random.Random(3), "x", "en", 3)
+    for row in rows:
+        left, right = row["text"].split(" and ")[0], row["text"].split(" and ")[1].split(" did")[0]
+        assert left == right, row["text"]
+
+
+def test_no_english_row_glues_two_articles_together():
+    """"such a a joke", "the a loser one": an adjective slot used where a noun belongs.
+
+    The check is the whole class, not the eleven rows Claude found, because the next bank author will
+    repeat it with a different frame.
+    """
+    doubled = re.compile(r"\b(a|an|the) (a|an|the|so|such)\b", re.IGNORECASE)
+    with open(DATASET, encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            if row["lang"] == "en":
+                assert not doubled.search(row["text"]), row["text"]
+
+
 def test_dataset_meets_the_interim_language_floor():
     """500 per language is the interim floor; the plan's 2,000 + 2,000 is a template-count problem
     (#262 decision), so this test is named for what it actually holds."""

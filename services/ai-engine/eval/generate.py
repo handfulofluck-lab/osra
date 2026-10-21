@@ -29,8 +29,22 @@ DEFAULT_GENERIC_SAFE = 20
 
 
 def fill(template: str, slots: Dict[str, List[str]], rng: random.Random) -> str:
-    """Substitute every {slot} in a template with a random fill."""
-    return SLOT_RE.sub(lambda m: rng.choice(slots[m.group(1)]), template)
+    """Substitute every {slot} in a template, choosing each slot name **once**.
+
+    A slot that appears twice must get the same fill: `re.sub` with a per-match `rng.choice` produced
+    "we kicked Bilal out because Layla is stupid" on a template that names the target twice (#262
+    review). The pronoun-free rewrites made that common, so the rule is explicit here and pinned by a
+    test rather than left to each bank author's memory.
+    """
+    chosen: Dict[str, str] = {}
+
+    def pick(match: "re.Match[str]") -> str:
+        name = match.group(1)
+        if name not in chosen:
+            chosen[name] = rng.choice(slots[name])
+        return chosen[name]
+
+    return SLOT_RE.sub(pick, template)
 
 
 def expand(templates: List[str], slots: Dict[str, List[str]], count: int,

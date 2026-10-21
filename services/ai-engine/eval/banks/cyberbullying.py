@@ -15,29 +15,30 @@ CATEGORY = "cyberbullying"
 AGE_RANGE = (9, 15)
 
 POSITIVES_EN = [
-    "everyone in {group} says {target} is {insult} and nobody sits with {target}",
-    "{target} got laughed out of the {group} chat for being {insult}",
+    "everyone in {group} says {target} is {insult_noun} and nobody sits with {target}",
+    "{target} got laughed out of {group} for being {insult_noun}",
     "we made a group chat just to post {target}'s photos and laugh",
     "don't reply to {target}, we're all ignoring {target} today",
     "why is {target} even in this chat, nobody invited {target}",
     "{target} cried in class again because of what {group} posted",
-    "send {target}'s screenshot to everyone in {group} so they see how {insult} {target} is",
+    "send {target}'s screenshot to everyone in {group} so they see how {insult_adj} {target} is",
     "if anyone talks to {target} they're out of {group}",
     "{target} smells, tell {target} to sit at the back of the class",
     "{target} has no friends in {group} and never will",
-    "the whole of {group} voted and {target} is the {insult} one",
-    "stop trying to sit with us {target}, you're {insult} and everyone knows",
+    "the whole of {group} voted and everyone said {target} is {insult_noun}",
+    "stop trying to sit with us {target}, you're {insult_noun} and everyone knows",
     "{target} should just leave this school honestly",
-    "{target_m} is such a {insult}, no wonder nobody sits with him",
-    "{target_f} is such a {insult}, no wonder nobody sits with her",
-    "we all agreed {target_m} is {insult} and he can't sit with us",
-    "we all agreed {target_f} is {insult} and she can't sit with us",
+    "{target_m} is so {insult_adj}, no wonder nobody sits with him",
+    "{target_f} is so {insult_adj}, no wonder nobody sits with her",
+    "we all agreed {target_m} is {insult_noun} and he can't sit with us",
+    "we all agreed {target_f} is {insult_noun} and she can't sit with us",
 ]
 
 POSITIVES_AR = [
-    "كل {group} يقولون إن {target_m} {insult}، محد يقعد معاه",
-    "كل {group} يقولون إن {target_f} {insult}، محد يقعد معاها",
-    "طردنا {target} من قروب {group} لأن {target} {insult}",
+    "كل {group} يقولون إن {target_m} {insult_m}، محد يقعد معاه",
+    "كل {group} يقولون إن {target_f} {insult_f}، محد يقعد معاها",
+    "طردنا {target_m} من قروب {group} لأن {target_m} {insult_m}",
+    "طردنا {target_f} من قروب {group} لأن {target_f} {insult_f}",
     "سوينا قروب بس عشان ننزل صور {target} ونضحك",
     "لا تردون على {target}، اليوم كلنا نتجاهل {target}",
     "ليش {target} داخل الشات أصلاً؟ محد عزم {target}",
@@ -50,15 +51,16 @@ POSITIVES_AR = [
     "{target_f} ريحتها خايسة، قولوا لها تقعد آخر الصف",
     "{target_m} ما له أصدقاء في {group} ولن يكون له",
     "{target_f} ما لها أصدقاء في {group} ولن يكون لها",
-    "{group} كله صوّت و{target_m} هو {insult}",
-    "{group} كله صوّت و{target_f} هي {insult}",
-    "لا تحاول تقعد معنا يا {target}، إنت {insult} والكل يعرف",
+    "{group} كله صوّت و{target_m} هو {insult_m}",
+    "{group} كله صوّت و{target_f} هي {insult_f}",
+    "لا تحاول تقعد معنا يا {target_m}، إنت {insult_m} والكل يعرف",
+    "لا تحاول تقعد معنا يا {target_f}، إنتِ {insult_f} والكل يعرف",
     "{target_m} الأفضل ينتقل مدرسة ثانية بصراحة",
     "{target_f} الأفضل تنتقل مدرسة ثانية بصراحة",
-    "كلنا اتفقنا إن {target_m} {insult} وما يقعد معنا",
-    "كلنا اتفقنا إن {target_f} {insult} وما تقعد معنا",
-    "حتى {target_m} نفسه يعرف إنه {insult}",
-    "حتى {target_f} نفسها تعرف إنها {insult}",
+    "كلنا اتفقنا إن {target_m} {insult_m} وما يقعد معنا",
+    "كلنا اتفقنا إن {target_f} {insult_f} وما تقعد معنا",
+    "حتى {target_m} نفسه يعرف إنه {insult_m}",
+    "حتى {target_f} نفسها تعرف إنها {insult_f}",
 ]
 
 SLOTS_EN = {
@@ -67,7 +69,10 @@ SLOTS_EN = {
     "target_m": ["Omar", "Adam", "Yousef", "Bilal", "Kareem", "Ziad"],
     "target_f": ["Sara", "Layla", "Noor", "Hana", "Mariam", "Dana"],
     "group": ["7B", "the team", "our class", "the group", "the squad", "year 9"],
-    "insult": ["a joke", "pathetic", "so dumb", "a loser", "embarrassing", "a freak", "worthless"],
+    # Nouns take "a/an" ("Sara is a loser"); adjectives follow "is so" ("Sara is so dumb").
+    # Keeping them apart is what stops "Dana is such a a joke" (#262 review).
+    "insult_noun": ["a joke", "a loser", "a freak", "a waste of space", "a nobody"],
+    "insult_adj": ["pathetic", "dumb", "embarrassing", "worthless", "annoying"],
 }
 
 SLOTS_AR = {
@@ -75,7 +80,10 @@ SLOTS_AR = {
     "target_m": ["عمر", "آدم", "يوسف", "بلال", "كريم", "زياد"],
     "target_f": ["سارة", "ليلى", "نور", "هناء", "مريم", "دانة"],
     "group": ["الصف", "الفريق", "الشلة", "القروب", "صف سابع", "المدرسة"],
-    "insult": ["مهزلة", "غبي", "فاشل", "محرج", "مقرف", "ما يسوى شي"],
+    # Arabic adjectives agree with the name, so there are two lists. "مهزلة" is a noun and works
+    # for both, which is why it appears in each (#262 review).
+    "insult_m": ["غبي", "فاشل", "محرج", "مقرف", "ما يسوى شي", "مهزلة"],
+    "insult_f": ["غبية", "فاشلة", "محرجة", "مقرفة", "ما تسوى شي", "مهزلة"],
 }
 
 # Hard negatives reuse the insult vocabulary in a benign context: a scorer that

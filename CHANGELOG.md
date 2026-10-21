@@ -29,9 +29,9 @@ environment where it was written — see `docs/QA/` for the verification state.
   rate split between generic safe text and hard negatives). An undefined rate prints `n/a`, not
   `0.00`: "nothing was flagged" is not "every flag was wrong".
 - **The published numbers are the finding, not a regression:** `EVAL.md` (generated table,
-  2026-10-21) shows Arabic recall **0.00 in all seven categories** and English flagging **33 %** of
+  2026-10-21) shows Arabic recall **0.00 in all seven categories** and English flagging **32 %** of
   harmful rows, with the English categories that name a distinctive thing caught well
-  (`sexual_content` 0.68, `substance_use` 0.62) and the ones phrased as intent missed
+  (`sexual_content` 0.73, `substance_use` 0.58) and the ones phrased as intent missed
   (`self_harm` 0.02, `violence` 0.13, `hate_speech` 0.00). The rules layer is a set of English regular
   expressions; no Arabic string can match it. That is plan 4.1's premise, measured.
 - CI (`.github/workflows/ci.yml`, `ai-engine`) validates the banks, fails if the committed dataset has
