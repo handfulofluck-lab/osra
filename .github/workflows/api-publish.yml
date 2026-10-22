@@ -3,25 +3,19 @@ name: Publish API image
 # Publishing needs a credential. A long-lived AWS key is what ADR-0028 §8 rules out, so the job trades
 # a GitHub OIDC token for the `osra-staging-publish` role (infra/terraform/base/oidc.tf) and the only
 # credential that exists lasts for the run.
-# `workflow_dispatch` only: the role trusts `main` and the `staging-publish` environment, not a pull
-# request, so a publish is a deliberate act and nothing here can run on a PR.
+# `workflow_dispatch` only, and only from `main`: the role's trust names that one branch, so a publish
+# is a deliberate act and nothing here can run on a PR or from a feature branch.
+# It builds `github.sha` and nothing else. A `ref` input would be a way around the gate: the OIDC
+# subject comes from the branch the run was started on, not from what checkout fetches, so a run on
+# `main` could build unverified code from another branch and push it under a `main`-only role.
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Ref to build (branch, tag or SHA).
-        required: false
-        default: main
-      tag:
-        description: Image tag to push. Empty means the 12-character commit sha.
-        required: false
-        default: ""
 
 permissions:
   contents: read
   id-token: write
 
-# Two publishes would race on `:latest`; queue them instead of cancelling a push mid-upload.
+# Queue rather than cancel: a cancelled run can leave a half-uploaded layer.
 concurrency:
   group: api-publish
   cancel-in-progress: false
@@ -30,14 +24,12 @@ jobs:
   publish:
     name: Build linux/arm64 and push to ECR
     # Refuse to push from a fork: its copy of this file must not assume a role in this account.
-    if: github.repository == 'handfulofluck-lab/osra'
+    if: github.repository == 'handfulofluck-lab/osra' && github.ref == 'refs/heads/main'
     # GitHub's arm64 runner: no QEMU emulation, and Fargate runs ARM64 (ADR-0028).
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
 
       # Both values come from repository variables because Actions cannot read base's Terraform state.
       - name: Require the repository variables
@@ -70,16 +62,13 @@ jobs:
           aws ecr get-login-password --region me-central-1 \
             | docker login --username AWS --password-stdin "${AWS_ECR_REPOSITORY%%/*}"
 
+      # The tag is derived, never chosen: the repository is IMMUTABLE, so a tag always names one image.
+      # A re-run on the same commit fails at the push with "tag already exists", which is correct — the
+      # image for that commit is already there.
       - name: Resolve the tag
         id: tag
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "$INPUT_TAG" ]; then
-            TAG="$INPUT_TAG"
-          else
-            TAG="$(git rev-parse --short=12 HEAD)"
-          fi
+          TAG="$(git rev-parse --short=12 HEAD)"
           echo "Publishing $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -92,8 +81,8 @@ jobs:
           file: services/api/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: |
-            ${{ vars.AWS_ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
-            ${{ vars.AWS_ECR_REPOSITORY }}:latest
+          # No `:latest`: a mutable pointer in a task definition is how a "known good" deploy silently
+          # becomes a different image. `env/api_image` pins the sha tag this produces.
+          tags: ${{ vars.AWS_ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

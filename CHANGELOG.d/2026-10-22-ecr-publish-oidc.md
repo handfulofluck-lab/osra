@@ -1,6 +1,7 @@
 ### Infra — the API image is published to ECR over GitHub OIDC, with no long-lived AWS key
 - `.github/workflows/api-publish.yml` (`workflow_dispatch` only) builds the ARM64 image on GitHub's
-  arm64 runner and pushes `<repo>:<12-character commit sha>` and `<repo>:latest` to `osra-staging/api`.
+  arm64 runner and pushes `<repo>:<12-character commit sha>` to `osra-staging/api`. There is no `:latest`
+  and the repository is IMMUTABLE, so a tag always names exactly one image.
   No AWS credential is stored in Actions: the job exchanges a GitHub OIDC token for a role
   (`sts:AssumeRoleWithWebIdentity`), which is the deploy access ADR-0028 §8 asks for.
 - The role `osra-staging-publish` (`infra/terraform/base/oidc.tf`) trusts only the `main` branch and

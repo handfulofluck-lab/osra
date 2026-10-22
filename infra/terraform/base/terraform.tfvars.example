@@ -5,7 +5,12 @@ environment = "staging"
 region      = "me-central-1"
 
 # owner/repo allowed to push the API image over GitHub OIDC; empty creates no provider and no role.
-github_repo = ""
+# owner/repo, plus the numeric IDs of both: the IDs are what the OIDC subject pins, so a deleted and
+# re-registered owner or repository name cannot mint a matching token.
+#   gh api repos/OWNER/REPO --jq ".owner.id, .id"
+github_repo     = ""
+github_owner_id = ""
+github_repo_id  = ""
 
 # Non-release mode: no certificate, so env has no HTTPS listener and port 80 forwards. env then
 # refuses a 0.0.0.0/0 allowed_cidrs, and creates no DNS record.

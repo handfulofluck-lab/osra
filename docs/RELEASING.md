@@ -167,15 +167,15 @@ sh services/api/scripts/verify-image.sh                            # node, prism
 
 Publishing to ECR is the workflow, not a local `docker buildx … --push`.
 `.github/workflows/api-publish.yml` builds linux/arm64 on GitHub's arm64 runner and pushes
-`<repo>:<12-character sha>` and `<repo>:latest` through a role assumed over GitHub's OIDC token, so no
+`<repo>:<12-character sha>` through a role assumed over GitHub's OIDC token, so no
 AWS key lives in Actions ([`infra/terraform/README.md`](../infra/terraform/README.md#publishing-the-image),
 ADR-0028 §8). It is `workflow_dispatch` only and refuses to run outside `handfulofluck-lab/osra`:
 
 ```bash
-gh workflow run api-publish.yml -f ref=<release commit> -f tag=<version>
+gh workflow run api-publish.yml      # run from main; the image is tagged with that commit's sha
 ```
 
-Record the pushed digest in R5 and put `<repo>:<12-character sha>` — not `:latest` — into
+Record the pushed digest in R5 and put `<repo>:<12-character sha>` into
 `env/api_image`. **Docker is not installed on the maintainer's PC**, so the local `docker build` path is
 unverified there; the `API image` CI job is the build gate for both. The local command remains the
 fallback for a host with Docker and an AWS credential source:

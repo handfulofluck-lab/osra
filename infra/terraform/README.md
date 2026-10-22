@@ -129,7 +129,7 @@ line in `down.sh` covers the whole session rather than only the destroy. Set
 terraform -chdir=infra/terraform/base apply
 
 # 2. Publish the ARM64 API image for this commit — see "Publishing the image" below.
-gh workflow run api-publish.yml -f ref=main
+gh workflow run api-publish.yml
 
 #    Or, on a host with Docker and an AWS credential source, build and push it by hand:
 #    docker buildx build --platform linux/arm64 -f services/api/Dockerfile #      --tag "${REPO}:${SHA}" --push .
@@ -153,13 +153,14 @@ key is stored in Actions, which is what ADR-0028 §8 requires of deploy access. 
 `workflow_dispatch` only, so a publish is a deliberate act:
 
 ```bash
-gh workflow run api-publish.yml -f ref=main            # tag = the 12-character commit sha
-gh workflow run api-publish.yml -f ref=main -f tag=v0.3.0
+gh workflow run api-publish.yml      # from main; the tag is the 12-character commit sha, always
 ```
 
-It pushes `<repo>:<tag>` and `<repo>:latest`. `latest` is a convenience tag for a human pulling the
-newest image; `env/api_image` should pin the sha, because the task definition text is what makes ECS
-replace a task — a rebuild pushed to a moving tag changes nothing the apply can see. The workflow
+It pushes `<repo>:<sha>` only — the repository is IMMUTABLE and there is no `:latest`, because a mutable
+pointer in a task definition is how a "known good" deploy silently becomes a different image. A re-run
+on the same commit fails at the push with "tag already exists", which is correct. `env/api_image` pins
+the sha for the same reason: the task definition text is what makes ECS replace a task, so an image
+rebuilt under a moving tag changes nothing the apply can see. The workflow
 refuses to run in any repository other than `handfulofluck-lab/osra`, so a fork's copy cannot assume
 the role.
 

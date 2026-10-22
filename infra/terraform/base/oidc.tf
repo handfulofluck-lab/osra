@@ -3,14 +3,19 @@
 # Actions keeps working with an empty variable and no provider in the account.
 
 locals {
-  # `github_repo` is owner/repo; the immutable subject form inserts an ID after each name.
+  # `github_repo` is owner/repo; the immutable subject form inserts a numeric ID after each name.
   github_parts = var.github_repo != "" ? split("/", var.github_repo) : []
   github_owner = try(local.github_parts[0], "")
   github_name  = try(local.github_parts[1], "")
+  # All three are needed: a subject without the IDs would accept a re-registered owner or repository
+  # name, which is the whole protection the immutable form buys (review 1 on #295).
+  github_oidc_enabled = (
+    var.github_repo != "" && var.github_owner_id != "" && var.github_repo_id != ""
+  )
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
-  count = var.github_repo != "" ? 1 : 0
+  count = local.github_oidc_enabled ? 1 : 0
 
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
@@ -24,7 +29,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 data "aws_iam_policy_document" "publish_assume" {
-  count = var.github_repo != "" ? 1 : 0
+  count = local.github_oidc_enabled ? 1 : 0
 
   statement {
     sid     = "GitHubActionsWebIdentity"
@@ -41,18 +46,15 @@ data "aws_iam_policy_document" "publish_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # `ref:refs/heads/main` is what workflow_dispatch on main presents; `environment:staging-publish`
-    # is the tighter form a job pinned to that GitHub environment presents, so both are listed.
-    # Repositories created after 2026-07-15 put `@owner-id`/`@repo-id` in the subject, so both forms
-    # are listed — the ID wildcards still require the same owner and repository names.
+    # Exactly one subject, with the numeric IDs: `repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/main`.
+    # The name-only form can never match this repository (GitHub switched the default subject format on
+    # 2026-07-15 and this repository was created later), and an `@*` wildcard would let a deleted and
+    # re-registered owner mint a matching token.
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repo}:ref:refs/heads/main",
-        "repo:${var.github_repo}:environment:staging-publish",
-        "repo:${local.github_owner}@*/${local.github_name}@*:ref:refs/heads/main",
-        "repo:${local.github_owner}@*/${local.github_name}@*:environment:staging-publish",
+        "repo:${local.github_owner}@${var.github_owner_id}/${local.github_name}@${var.github_repo_id}:ref:refs/heads/main",
       ]
     }
   }
@@ -60,7 +62,7 @@ data "aws_iam_policy_document" "publish_assume" {
 
 # The only identity that may push images, and the policy below limits it to one repository.
 resource "aws_iam_role" "publish" {
-  count = var.github_repo != "" ? 1 : 0
+  count = local.github_oidc_enabled ? 1 : 0
 
   name               = "${local.name_prefix}-publish"
   assume_role_policy = data.aws_iam_policy_document.publish_assume[0].json
@@ -71,7 +73,7 @@ resource "aws_iam_role" "publish" {
 }
 
 data "aws_iam_policy_document" "publish_ecr" {
-  count = var.github_repo != "" ? 1 : 0
+  count = local.github_oidc_enabled ? 1 : 0
 
   # GetAuthorizationToken is account-wide by design and cannot be scoped to a repository.
   statement {
@@ -97,7 +99,7 @@ data "aws_iam_policy_document" "publish_ecr" {
 }
 
 resource "aws_iam_role_policy" "publish_ecr" {
-  count = var.github_repo != "" ? 1 : 0
+  count = local.github_oidc_enabled ? 1 : 0
 
   name   = "${local.name_prefix}-publish-ecr"
   role   = aws_iam_role.publish[0].id
