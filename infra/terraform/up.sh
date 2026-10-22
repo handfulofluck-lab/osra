@@ -73,7 +73,7 @@ task_arn=$(aws ecs run-task \
   --launch-type FARGATE \
   --started-by osra-up-seed \
   --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=DISABLED}" \
-  --overrides '{"containerOverrides":[{"name":"api","command":["sh","-lc","pnpm exec prisma migrate deploy && pnpm exec tsx scripts/seed.ts"]}]}' \
+  --overrides '{"containerOverrides":[{"name":"api","command":["sh","scripts/migrate-and-seed.sh"]}]}' \
   --query 'tasks[0].taskArn' --output text)
 
 echo "    seed task: $task_arn"

@@ -72,7 +72,13 @@ COPY --from=build --chown=osra:osra /app/services/api/dist ./services/api/dist
 COPY --from=build --chown=osra:osra /app/services/api/prisma ./services/api/prisma
 COPY --from=build --chown=osra:osra /app/services/api/data ./services/api/data
 # The seed is scripts/seed.ts, not a prisma/seed; tsx (installed above) runs it as written.
-COPY --from=build --chown=osra:osra /app/services/api/scripts/seed.ts ./services/api/scripts/seed.ts
+# seed-password.ts is imported by seed.ts (#293), and migrate-and-seed.sh is what up.sh and CI call —
+# a single-file COPY here is how the seed shipped without its import once already.
+COPY --from=build --chown=osra:osra \
+  /app/services/api/scripts/seed.ts \
+  /app/services/api/scripts/seed-password.ts \
+  /app/services/api/scripts/migrate-and-seed.sh \
+  ./services/api/scripts/
 
 USER osra
 WORKDIR /app/services/api

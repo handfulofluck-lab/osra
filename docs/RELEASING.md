@@ -165,8 +165,10 @@ docker build -f services/api/Dockerfile -t osra-api:<version> .    # context: re
 sh services/api/scripts/verify-image.sh                            # node, prisma CLI, entry file
 ```
 
-The local build is `linux/amd64`. The ARM image ECS Fargate runs is produced from this same Dockerfile by
-ECR on push ([ADR-0028](adr/0028-hosting-regions-and-scaling.md) names Fargate ARM). Docker is not
+The local build is `linux/amd64`. The ARM image ECS Fargate runs comes from this same Dockerfile, built
+on GitHub's arm64 runner by the `API image` workflow ([ADR-0028](adr/0028-hosting-regions-and-scaling.md)
+names Fargate ARM) — ECR stores images, it does not build them, so nothing publishes to ECR yet: the push
+step needs an OIDC role scoped to the one repository, tracked on #258. Docker is not
 installed on the maintainer's PC, so the local `docker build` path is unverified there — the CI job is the
 build gate.
 

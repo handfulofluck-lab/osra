@@ -31,11 +31,19 @@ their TypeScript sources were missing before `pnpm build`.
   `push: false` on `linux/amd64` and no credentials, then runs
   `services/api/scripts/verify-image.sh` with `SKIP_BUILD=1`, which asserts `node -v`,
   `npx prisma --version` and the entry file inside the image.
-- **The ARM image is not built here.** `linux/arm64` needs QEMU on the runner, so the PR job builds
-  `linux/amd64`; the ARM (Fargate, ADR-0028:29) image is built by ECR on push from the same Dockerfile.
+- **CI tests the architecture Fargate runs.** The job uses GitHub's arm64 runner (`ubuntu-24.04-arm`,
+  free for public repositories) and builds `linux/arm64` with no QEMU. ECR stores images rather than
+  building them — the earlier wording said otherwise and was wrong — so nothing publishes to ECR yet;
+  the push step is a follow-up needing an OIDC role scoped to that one repository (#258).
+- **CI then does what staging does:** it starts Postgres 16 and Redis 7, runs the seed twice through the
+  image and boots it against them, failing the PR unless `/health/deep` answers. A build that cannot
+  migrate or seed used to pass every check and fail at the first `up.sh`.
+- **One script owns migrate + seed** (`services/api/scripts/migrate-and-seed.sh`), called by both
+  `up.sh` and CI, using `node_modules/.bin/prisma` and `node_modules/.bin/tsx`. The runtime image has no
+  `pnpm`: corepack would fetch it at task start, from a private subnet with no route out.
 - **Not verified where this was written:** there is no Docker on the maintainer's host, so no image was
   built or run locally. Verified instead: `pnpm --filter @familyshield/api run build` (0 errors),
   `pnpm -r --filter "./packages/*" run build`, `node scripts/check-workflows.mjs --strict` (0/0),
-  `node scripts/check-docs-links.mjs`, and that `services/api/dist/server.js` is emitted. The image's own
-  layers, the pnpm symlinks surviving the cross-stage `COPY`, and the ARM build are proven only by CI
-  and by ECR, and are stated as such rather than as "fixed".
+  `node scripts/check-docs-links.mjs`, and that `services/api/dist/server.js` is emitted. The reviewer's
+  Docker run of an earlier head is what proved the two blockers this revision fixes (a seed that called
+  `pnpm`, and `seed-password.ts` missing from the image).
