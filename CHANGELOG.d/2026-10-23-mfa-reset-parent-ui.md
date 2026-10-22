@@ -15,7 +15,7 @@ app, wait out the 72-hour window, and finish into ADR-0023's re-enrolment.
   wait). Refusals map to their own copy: `mfa_not_enabled`, `no_witness` (ADR-0031 decision 6),
   `reset_already_pending` and `reset_limit_reached`; generic 429/400/network stay generic.
 - **Waiting state** (`mfa_reset_waiting_screen.dart`): the stage (mailbox / witness / window), the
-  deadline the server returned, the next action, the cancel path, and — once `windowEndsAt` has passed
+  deadline the server returned, the next action, how the request can be stopped, and — once `windowEndsAt` has passed
   — the `complete` step, which hands the 15-minute `mfa_recovery` token to the existing enrolment
   screen and never writes it to the session slot.
 - **Witness entry** (`mfa_reset_witness_screen.dart`): numeric keyboard, digits-only, eight digits.
@@ -28,11 +28,11 @@ app, wait out the 72-hour window, and finish into ADR-0023's re-enrolment.
 - **Entries:** the login screen's lost-authenticator recovery screen gains "No recovery code left?
   Request a reset", and Settings › Two-step verification gains the reset route plus a note beside the
   codes stating that a family witness is the only way back once both are gone (ADR-0031 decision 6).
-- **Copy:** 65 `mfaReset*` keys in `app_en.arb` and `app_ar.arb`, same keys and placeholders; the
+- **Copy:** 60 `mfaReset*` keys in `app_en.arb` and `app_ar.arb`, same keys and placeholders; the
   Arabic is written as Arabic (`إعادة تعيين التحقق بخطوتين`, `شاهد من العائلة`, `فترة الانتظار`), not
   a literal gloss.
 - **Tests:** `apps/parent-app/test/mfa_reset_screens_test.dart` (32 tests) — every surface, every
-  failure copy, the cancel path, the `window_open` refusal, and five Arabic + RTL runs at 320×568
+  failure copy, the absence of a requester cancel at all three stages, the `window_open` refusal, and five Arabic + RTL runs at 320×568
   asserting no layout exception. `flutter analyze` clean; `flutter test` 292 passed (32 of them new —
   main had 260).
 
@@ -42,12 +42,22 @@ app, wait out the 72-hour window, and finish into ADR-0023's re-enrolment.
   read-only audit route is unbuilt. The waiting screen therefore cannot be rebuilt after an app
   restart; it shows only what `request`/`witness`/`approve` returned in the same session, and nothing
   is persisted. That part of the waiting-state requirement is not met until the API exposes a read.
+  Decided on review: `POST /v1/auth/mfa/reset/status` `{email, password, requestId}`, which writes
+  nothing and is not a sign-in, in a separate API PR. The app will keep the request id and email in
+  secure storage, never the password.
 - **`/approve` takes only `{requestId}`.** It returns no requester identity, so the approval prompt
   cannot say who is asking; and decision 4's email/push templates are unbuilt, so no notification
   delivers the request id to a co-parent's app. The route exists for the future deep link.
-- **The subject cannot cancel from the app.** `/cancel` with a session refuses the request's own
-  parent (`403 forbidden`); cancellation for them is the emailed link or a successful sign-in. The
-  waiting screen surfaces that refusal with the link as the way out.
+  Decided on review: `GET /v1/auth/mfa/reset/pending` lists the family's open requests, with the
+  requester's `displayName`, for an `owner`/`co-parent`, in the same API PR.
+- **The parent being reset cannot cancel from the app, by design** (ADR-0031 amendment 2026-10-23,
+  item 3). They hold no session, so `/cancel` answers `401 unauthorized` (`session_revoked` once the
+  window starts; `403 forbidden` only for a parent still signed in somewhere). A password-only cancel
+  would let anyone holding just the password block a genuine reset. The waiting screen therefore has
+  no cancel button. At every stage it names the two ways that work: the cancel link in any email about
+  the request, and a sign-in with the authenticator. (The first version had a button whose tests
+  answered `200` and `403`; the real API answers a locked-out parent `401`, which showed "Your session
+  ended. Sign in again and retry.")
 
 Not verified: no live API was used — the routes were exercised through the app's fake transport, from
 the contract in `services/api/src/routes/auth.ts`. The Android `show_reset_code` screen (which draws

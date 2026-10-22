@@ -247,7 +247,7 @@ void main() {
       expect(find.textContaining('within 30 minutes'), findsOneWidget);
       expect(find.byKey(const ValueKey('mfaResetDeadline')), findsOneWidget);
       expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsOneWidget);
-      expect(find.byKey(const ValueKey('mfaResetCancel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetCancelHint')), findsOneWidget);
     });
 
     testWidgets('entering the child code moves the screen into the 72-hour window', (tester) async {
@@ -269,54 +269,26 @@ void main() {
       expect(api.calls('POST', '/v1/auth/mfa/reset/witness').single.body['requestId'], 'req-1');
     });
 
-    testWidgets('cancel confirms, posts the request id and reports the outcome', (tester) async {
-      final api = FakeApiClient(resetRoutes());
-      await pumpScreen(tester, MfaResetWaitingScreen(progress: mailboxStage()), api);
+    // The parent on this screen is the one being reset and has no session, so
+    // the real `/cancel` answers `401 unauthorized` (or `session_revoked` once
+    // the window starts). A cancel button here could only ever fail; the screen
+    // names the two ways that work instead (ADR-0031 amendment 2026-10-23).
+    for (final (name, progress) in [
+      ('awaiting the mailbox', mailboxStage()),
+      ('awaiting the witness', MfaResetProgress(requestId: 'req-1', stage: MfaResetStage.awaitingWitness)),
+      ('in the window', MfaResetProgress(requestId: 'req-1', stage: MfaResetStage.window, windowEndsAt: windowEnd)),
+    ]) {
+      testWidgets('$name: no cancel button, and the two real ways to stop the request are named', (tester) async {
+        final api = FakeApiClient(resetRoutes());
+        await pumpScreen(tester, MfaResetWaitingScreen(progress: progress), api);
 
-      await tester.tap(find.byKey(const ValueKey('mfaResetCancel')));
-      await tester.pumpAndSettle();
-      expect(find.text('Cancel this request?'), findsOneWidget);
-      expect(api.calls('POST', '/v1/auth/mfa/reset/cancel'), isEmpty);
-
-      await tester.tap(find.byKey(const ValueKey('mfaResetCancelConfirm')));
-      await flush(tester);
-      await tester.pumpAndSettle();
-
-      final call = api.calls('POST', '/v1/auth/mfa/reset/cancel').single;
-      expect(call.body['requestId'], 'req-1');
-      expect(call.body['token'], isNull);
-      expect(find.byKey(const ValueKey('mfaResetCancelled')), findsOneWidget);
-    });
-
-    testWidgets('keeping the dialog open cancels nothing', (tester) async {
-      final api = FakeApiClient(resetRoutes());
-      await pumpScreen(tester, MfaResetWaitingScreen(progress: mailboxStage()), api);
-
-      await tester.tap(find.byKey(const ValueKey('mfaResetCancel')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('mfaResetCancelKeep')));
-      await tester.pumpAndSettle();
-
-      expect(api.calls('POST', '/v1/auth/mfa/reset/cancel'), isEmpty);
-      expect(find.byKey(const ValueKey('mfaResetCancelled')), findsNothing);
-    });
-
-    testWidgets('a forbidden cancel points at the emailed link instead of pretending', (tester) async {
-      final api = FakeApiClient(resetRoutes(
-        cancel: (_) => const FakeHttpError(403, {'error': 'forbidden'}),
-      ));
-      await pumpScreen(tester, MfaResetWaitingScreen(progress: mailboxStage()), api);
-
-      await tester.tap(find.byKey(const ValueKey('mfaResetCancel')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('mfaResetCancelConfirm')));
-      await flush(tester);
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const ValueKey('mfaResetWaitingError')), findsOneWidget);
-      expect(find.textContaining('Only another owner or co-parent can cancel from the app'), findsOneWidget);
-      expect(find.byKey(const ValueKey('mfaResetCancelled')), findsNothing);
-    });
+        expect(find.byKey(const ValueKey('mfaResetCancel')), findsNothing);
+        expect(find.byKey(const ValueKey('mfaResetCancelHint')), findsOneWidget);
+        expect(find.textContaining('cancel link in any email about it'), findsOneWidget);
+        expect(find.textContaining('Signing in with your authenticator also cancels it'), findsOneWidget);
+        expect(api.calls('POST', '/v1/auth/mfa/reset/cancel'), isEmpty);
+      });
+    }
 
     testWidgets('before windowEndsAt there is no finish action', (tester) async {
       final api = FakeApiClient(resetRoutes());
@@ -597,7 +569,7 @@ void main() {
       );
       expect(find.text('إعادة التعيين قيد الانتظار'), findsOneWidget);
       expect(find.text('تحقّق من بريدك الإلكتروني'), findsOneWidget);
-      expect(find.text('إلغاء الطلب'), findsOneWidget);
+      expect(find.textContaining('افتح رابط الإلغاء في أي بريد وصلك بشأنه'), findsOneWidget);
       expectRtl(tester);
     });
 

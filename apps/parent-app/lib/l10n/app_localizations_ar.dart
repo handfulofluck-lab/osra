@@ -2156,8 +2156,8 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get mfaResetStageMailboxCancelHint =>
-      'لإيقاف الطلب، افتح رابط الإلغاء في ذلك البريد. كما أن تسجيل دخولك بتطبيق المصادقة يلغي الطلب.';
+  String get mfaResetCancelHint =>
+      'لإيقاف هذا الطلب، افتح رابط الإلغاء في أي بريد وصلك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.';
 
   @override
   String get mfaResetStageWitnessTitle => 'أدخل الرمز من هاتف طفلك';
@@ -2182,7 +2182,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetStageWindowBody =>
-      'ستُعاد تعيين المصادقة الثنائية عند انتهاء الانتظار، ما لم تسجّل الدخول بتطبيق المصادقة أو تُلغِ الطلب قبل ذلك. أي تسجيل دخول جديد لك يلغي هذا الطلب.';
+      'سيُعاد تعيين التحقق بخطوتين عند انتهاء الانتظار، ما لم يُلغَ الطلب قبل ذلك.';
 
   @override
   String mfaResetWindowEndsAt(String time) {
@@ -2197,23 +2197,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get mfaResetFinish => 'أكمل إعادة التعيين';
 
   @override
-  String get mfaResetCancel => 'إلغاء الطلب';
-
-  @override
-  String get mfaResetCancelTitle => 'إلغاء هذا الطلب؟';
-
-  @override
-  String get mfaResetCancelBody => 'لن يتغيّر شيء. يبقى التحقق بخطوتين كما هو.';
-
-  @override
   String get mfaResetCancelKeep => 'متابعة الانتظار';
-
-  @override
-  String get mfaResetCancelled => 'تم إلغاء الطلب.';
-
-  @override
-  String get mfaResetCancelForbidden =>
-      'لا يمكن إلا لمالك آخر أو والد مشارك إلغاء الطلب من التطبيق. استخدم رابط الإلغاء في البريد المرسل بشأن هذا الطلب.';
 
   @override
   String get mfaResetRequestNotFound => 'هذا الطلب لم يعد موجودًا.';
@@ -2250,7 +2234,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetFinishBody =>
-      'أدخل بريد هذا الحساب وكلمة مروره. ستُمسح المصادقة الثنائية وستُعدّ تطبيق مصادقة جديدًا.';
+      'أدخل بريد هذا الحساب وكلمة مروره. سيُمسح التحقق بخطوتين الحالي، ثم تُعِدّ تطبيق مصادقة جديدًا.';
 
   @override
   String get mfaResetFinishSubmit => 'إعادة تعيين التحقق بخطوتين';

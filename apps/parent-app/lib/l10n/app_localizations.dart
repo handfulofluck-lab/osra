@@ -3506,11 +3506,11 @@ abstract class AppLocalizations {
   /// **'The link is valid until {time}.'**
   String mfaResetMailboxExpires(String time);
 
-  /// No description provided for @mfaResetStageMailboxCancelHint.
+  /// No description provided for @mfaResetCancelHint.
   ///
   /// In en, this message translates to:
-  /// **'To stop the request, open the cancel link in that email. Signing in with your authenticator also cancels it.'**
-  String get mfaResetStageMailboxCancelHint;
+  /// **'To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.'**
+  String get mfaResetCancelHint;
 
   /// No description provided for @mfaResetStageWitnessTitle.
   ///
@@ -3551,7 +3551,7 @@ abstract class AppLocalizations {
   /// No description provided for @mfaResetStageWindowBody.
   ///
   /// In en, this message translates to:
-  /// **'Two-step verification will be reset when the wait ends, unless you sign in with your authenticator or cancel before then. Any new sign-in by you cancels this request.'**
+  /// **'Two-step verification will be reset when the wait ends, unless the request is cancelled before then.'**
   String get mfaResetStageWindowBody;
 
   /// No description provided for @mfaResetWindowEndsAt.
@@ -3572,41 +3572,11 @@ abstract class AppLocalizations {
   /// **'Finish the reset'**
   String get mfaResetFinish;
 
-  /// No description provided for @mfaResetCancel.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel request'**
-  String get mfaResetCancel;
-
-  /// No description provided for @mfaResetCancelTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel this request?'**
-  String get mfaResetCancelTitle;
-
-  /// No description provided for @mfaResetCancelBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Nothing will change. Two-step verification stays as it is.'**
-  String get mfaResetCancelBody;
-
   /// No description provided for @mfaResetCancelKeep.
   ///
   /// In en, this message translates to:
   /// **'Keep waiting'**
   String get mfaResetCancelKeep;
-
-  /// No description provided for @mfaResetCancelled.
-  ///
-  /// In en, this message translates to:
-  /// **'The request was cancelled.'**
-  String get mfaResetCancelled;
-
-  /// No description provided for @mfaResetCancelForbidden.
-  ///
-  /// In en, this message translates to:
-  /// **'Only another owner or co-parent can cancel from the app. Use the cancel link in the email sent about this request.'**
-  String get mfaResetCancelForbidden;
 
   /// No description provided for @mfaResetRequestNotFound.
   ///

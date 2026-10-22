@@ -2089,8 +2089,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get mfaResetStageMailboxCancelHint =>
-      'To stop the request, open the cancel link in that email. Signing in with your authenticator also cancels it.';
+  String get mfaResetCancelHint =>
+      'To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.';
 
   @override
   String get mfaResetStageWitnessTitle =>
@@ -2116,7 +2116,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mfaResetStageWindowBody =>
-      'Two-step verification will be reset when the wait ends, unless you sign in with your authenticator or cancel before then. Any new sign-in by you cancels this request.';
+      'Two-step verification will be reset when the wait ends, unless the request is cancelled before then.';
 
   @override
   String mfaResetWindowEndsAt(String time) {
@@ -2131,24 +2131,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mfaResetFinish => 'Finish the reset';
 
   @override
-  String get mfaResetCancel => 'Cancel request';
-
-  @override
-  String get mfaResetCancelTitle => 'Cancel this request?';
-
-  @override
-  String get mfaResetCancelBody =>
-      'Nothing will change. Two-step verification stays as it is.';
-
-  @override
   String get mfaResetCancelKeep => 'Keep waiting';
-
-  @override
-  String get mfaResetCancelled => 'The request was cancelled.';
-
-  @override
-  String get mfaResetCancelForbidden =>
-      'Only another owner or co-parent can cancel from the app. Use the cancel link in the email sent about this request.';
 
   @override
   String get mfaResetRequestNotFound => 'That request no longer exists.';

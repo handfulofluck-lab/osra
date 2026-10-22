@@ -9,9 +9,8 @@ import '../../l10n/l10n.dart';
 /// this says what was rejected, never which field or why. [attemptsRemaining]
 /// is used only when the server sent it.
 ///
-/// Screens that own a more specific sentence for one kind (the waiting screen
-/// for a cancellable-by-someone-else `forbidden`) check that kind first and
-/// fall back here for everything else.
+/// A screen that owns a more specific sentence for one kind checks that kind
+/// first and falls back here for everything else.
 String mfaResetFailureText(
   AppLocalizations l10n,
   MfaResetFailureKind kind, {

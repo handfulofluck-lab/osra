@@ -69,7 +69,15 @@ class MfaResetProgress {
 }
 
 /// The screen a parent comes back to while a reset is pending: the current
-/// stage, the next thing to do, and the one cancel path the API gives this app.
+/// stage, the next thing to do, and how the request can be stopped.
+///
+/// There is no cancel button here, deliberately. The parent on this screen is
+/// the one being reset, and the API gives them no in-app cancel: they hold no
+/// session (`/cancel` answers `401 unauthorized`, or `session_revoked` once the
+/// window has started), and a password-only cancel would let anyone holding
+/// just the password block a genuine reset (ADR-0031 amendment 2026-10-23,
+/// item 3). The screen names the two ways that work instead: the cancel link in
+/// any email about the request, and a sign-in with the authenticator.
 ///
 /// [onNow] is a test seam for the 72-hour boundary; production passes nothing.
 class MfaResetWaitingScreen extends ConsumerStatefulWidget {
@@ -84,9 +92,6 @@ class MfaResetWaitingScreen extends ConsumerStatefulWidget {
 
 class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
   late MfaResetProgress _progress = widget.progress;
-  bool _busy = false;
-  bool _cancelled = false;
-  MfaResetFailure? _failure;
 
   DateTime get _now => (widget.onNow ?? DateTime.now)();
 
@@ -95,71 +100,17 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
     return _progress.stage == MfaResetStage.window && ends != null && !ends.isAfter(_now);
   }
 
-  /// Only a signed-in owner/co-parent can cancel from the app; the subject's
-  /// own session is refused (403) by the API, which is why the copy for that
-  /// refusal names the emailed cancel link instead.
-  String _errorCopy(AppLocalizations l10n) {
-    final failure = _failure!;
-    if (failure.kind == MfaResetFailureKind.forbidden ||
-        failure.kind == MfaResetFailureKind.roleNotAllowed) {
-      return l10n.mfaResetCancelForbidden;
-    }
-    return mfaResetFailureText(l10n, failure.kind, attemptsRemaining: failure.attemptsRemaining);
-  }
-
   Future<void> _openWitness() async {
     final accepted = await Navigator.of(context).push<MfaResetWitnessAccepted>(MaterialPageRoute(
       builder: (_) => MfaResetWitnessScreen(requestId: _progress.requestId),
     ));
     if (accepted == null || !mounted) return;
     setState(() {
-      _failure = null;
       _progress = _progress.copyWith(
         stage: MfaResetStage.window,
         windowEndsAt: accepted.windowEndsAt,
       );
     });
-  }
-
-  Future<void> _cancel() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogContext.l10n.mfaResetCancelTitle),
-        content: Text(dialogContext.l10n.mfaResetCancelBody),
-        actions: [
-          TextButton(
-            key: const ValueKey('mfaResetCancelKeep'),
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(dialogContext.l10n.mfaResetCancelKeep),
-          ),
-          FilledButton(
-            key: const ValueKey('mfaResetCancelConfirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(dialogContext.l10n.mfaResetCancel),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() {
-      _busy = true;
-      _failure = null;
-    });
-    try {
-      await ref.read(mfaResetApiProvider).cancel(requestId: _progress.requestId);
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _cancelled = true;
-      });
-    } on MfaResetFailure catch (failure) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _failure = failure;
-      });
-    }
   }
 
   Future<void> _finish() async {
@@ -226,7 +177,7 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
             if (stage != MfaResetStage.window)
               FilledButton.icon(
                 key: const ValueKey('mfaResetHaveCode'),
-                onPressed: _cancelled || _busy ? null : _openWitness,
+                onPressed: _openWitness,
                 icon: const Icon(Icons.pin_outlined),
                 label: Text(stage == MfaResetStage.awaitingWitness ? l10n.mfaResetEnterCode : l10n.mfaResetHaveCode),
               ),
@@ -239,42 +190,16 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
               const SizedBox(height: AppSpace.sm),
               FilledButton.icon(
                 key: const ValueKey('mfaResetFinish'),
-                onPressed: _cancelled ? null : _finish,
+                onPressed: _finish,
                 icon: const Icon(Icons.check_circle_outline),
                 label: Text(l10n.mfaResetFinish),
               ),
             ],
-            if (stage != MfaResetStage.window) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                l10n.mfaResetStageMailboxCancelHint,
-                style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
-              ),
-            ],
-            if (_failure != null) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                _errorCopy(l10n),
-                key: const ValueKey('mfaResetWaitingError'),
-                style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
-              ),
-            ],
-            if (_cancelled) ...[
-              const SizedBox(height: AppSpace.md),
-              Text(
-                l10n.mfaResetCancelled,
-                key: const ValueKey('mfaResetCancelled'),
-                style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.ok),
-              ),
-            ],
-            const SizedBox(height: AppSpace.xl),
-            OutlinedButton.icon(
-              key: const ValueKey('mfaResetCancel'),
-              onPressed: _cancelled || _busy ? null : _cancel,
-              icon: _busy
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.close),
-              label: Text(l10n.mfaResetCancel),
+            const SizedBox(height: AppSpace.lg),
+            Text(
+              l10n.mfaResetCancelHint,
+              key: const ValueKey('mfaResetCancelHint'),
+              style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
             ),
           ],
         ),
