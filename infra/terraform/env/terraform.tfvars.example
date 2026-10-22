@@ -2,11 +2,11 @@
 
 project     = "osra"
 environment = "staging"
-region      = "me-central-1"
+region      = "eu-north-1"
 
 # Full image reference including tag. <account-id> is the staging account; the ECR URL is base's
 # `ecr_repository_url` output after the first base apply.
-api_image = "<account-id>.dkr.ecr.me-central-1.amazonaws.com/osra-staging/api:<git-sha>" # a new sha = a new task definition
+api_image = "<account-id>.dkr.ecr.eu-north-1.amazonaws.com/osra-staging/api:<git-sha>" # a new sha = a new task definition
 
 # Task size: 512 CPU units = 0.5 vCPU, 1024 MiB (ADR-0028's minimum).
 api_cpu    = 512

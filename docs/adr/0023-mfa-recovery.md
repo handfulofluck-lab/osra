@@ -1,6 +1,8 @@
 # ADR-0023 — MFA recovery: one-time recovery codes at enrolment, with a support break-glass for the cohort that has none
 
-- **Status:** accepted (technical half, 2026-10-19; support path still open)
+- **Status:** accepted (technical half, 2026-10-19); the support path is decided by
+  [ADR-0031](0031-mfa-reset-family-witness.md) (2026-10-22), which supersedes decision 6 and the
+  Option B verdict below
 - **Implementation note (2026-10-19):** the technical half landed on `feat/23-mfa-recovery-codes`. The
   issuing route is `POST /v1/auth/mfa/recovery-codes` — generation and regeneration are the same
   operation, because a batch exists only as hashes and there is nothing to re-read; the table is

@@ -1,7 +1,7 @@
 variable "region" {
   description = "AWS region for this regional stack (ADR-0028: one independent stack per market)."
   type        = string
-  default     = "me-central-1"
+  default     = "eu-north-1"
 }
 
 variable "project" {
@@ -17,7 +17,7 @@ variable "environment" {
 }
 
 variable "api_image" {
-  description = "Full API image reference including tag, e.g. <account>.dkr.ecr.me-central-1.amazonaws.com/osra-staging/api:staging. Deliberately has no default so a stack can never deploy an accidental image."
+  description = "Full API image reference including tag, e.g. <account>.dkr.ecr.eu-north-1.amazonaws.com/osra-staging/api:staging. Deliberately has no default so a stack can never deploy an accidental image."
   type        = string
 
   validation {
