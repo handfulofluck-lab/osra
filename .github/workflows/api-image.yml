@@ -1,0 +1,48 @@
+name: API image
+
+# The API image used to be built with `|| true` around the install and the build, so a broken image was
+# indistinguishable from a working one. This job builds it on every pull request — no push, no
+# credentials — so the next author cannot break it unnoticed.
+# Deliberately no `paths:` filter: a gate that skips itself on the PRs it deems unrelated reports green
+# by absence (the same reasoning `probe-integrity` records in ci.yml).
+on:
+  pull_request:
+
+concurrency:
+  group: api-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    name: Build the API image and check it inside
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # linux/amd64 only: building arm64 on this runner needs QEMU, which is not installed and would
+      # turn every PR into an emulated multi-minute build. The ARM (Fargate, ADR-0028) image is built
+      # by ECR on push from this same Dockerfile.
+      - name: Build the image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/api/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: osra-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The same assertions the next person runs locally; SKIP_BUILD reuses the image above.
+      - name: Verify node, the Prisma CLI and the entry file inside the image
+        env:
+          IMAGE: osra-api:ci
+          SKIP_BUILD: "1"
+        run: sh services/api/scripts/verify-image.sh

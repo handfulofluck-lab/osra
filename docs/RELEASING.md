@@ -153,15 +153,22 @@ The Gradle delete-and-rebuild is not superstition: this host has produced
 `Unable to delete directory …build…` and `AccessDenied` on intermediates, and the recovery is exactly that
 clean sequence (`test-guides/HANDOFF-FOR-TESTING.md`:24).
 
-For the backend, build outside the image first. `services/api/Dockerfile:5,7` end in `|| true`, so the
-image build succeeds even when `pnpm install` or `pnpm build` failed — the container then starts and
-dies at `CMD` (`:9`):
+For the backend, the image is built from the **repository root** — the API's `workspace:*` dependencies
+resolve only with the root lockfile and `pnpm-workspace.yaml`. This replaced a Dockerfile built from the
+`services/api` context whose install and build both ended in `|| true`, so a broken image reported success;
+there is no `|| true` in the current one, and CI builds the image on every pull request
+(`.github/workflows/api-image.yml`).
 
 ```bash
-pnpm --filter @familyshield/api run build            # must exit 0; the Dockerfile would not tell you
-docker build -t osra-api:<version> services/api
-docker run --rm --entrypoint ls osra-api:<version> dist/server.js
+pnpm --filter @familyshield/api run build                          # type-check the same command the image runs
+docker build -f services/api/Dockerfile -t osra-api:<version> .    # context: repo root
+sh services/api/scripts/verify-image.sh                            # node, prisma CLI, entry file
 ```
+
+The local build is `linux/amd64`. The ARM image ECS Fargate runs is produced from this same Dockerfile by
+ECR on push ([ADR-0028](adr/0028-hosting-regions-and-scaling.md) names Fargate ARM). Docker is not
+installed on the maintainer's PC, so the local `docker build` path is unverified there — the CI job is the
+build gate.
 
 Migrations move with the API, never before it and never by hand: apply `prisma migrate deploy` and run
 `prisma generate` as a separate step (a `migrate deploy` without `generate` is issue #47), then record the
