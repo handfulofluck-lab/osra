@@ -30,7 +30,10 @@ param(
     [string]$Adb = "adb",
     [int]$Port = 3023,
     [string]$StateFile = "",
-    [Parameter(Mandatory = $true)][string]$Pin,
+    # The app PIN. Not `Mandatory` on purpose: a mandatory parameter that is missing makes PowerShell
+    # prompt on an interactive host and *hang* a non-interactive run, which is what happened on
+    # 2026-10-20 (#151). It falls back to $env:OSRA_TEST_APP_PIN and otherwise exits 2 with a message.
+    [string]$Pin = "",
     [string]$Psql = "psql",
     [string]$DbUrl = "postgres://familyshield@127.0.0.1:5432/familyshield",
     [int]$SilenceMinutes = 30,
@@ -39,6 +42,15 @@ param(
     [switch]$CheckBuild
 )
 $ErrorActionPreference = "Continue"
+# #151: a missing PIN must fail fast, not prompt. PowerShell only prompts for a *Mandatory* parameter, so
+# the parameter is optional and the refusal lives here — exit 2 is "misused", distinct from a failed check
+# (1) so a caller can tell "you forgot the PIN" from "the phone failed the gate".
+if ([string]::IsNullOrWhiteSpace($Pin)) { $Pin = [string]$env:OSRA_TEST_APP_PIN }
+if ([string]::IsNullOrWhiteSpace($Pin)) {
+    Write-Error ("-Pin is required (or set OSRA_TEST_APP_PIN). The PIN is deliberately not in this repo " +
+        "(#151); it is the app PIN for the test family, not the phone's keyguard PIN.")
+    exit 2
+}
 $PKG = "com.familyshield.agent"; $BASE = "http://127.0.0.1:$Port"
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
 $LOG = Join-Path $Out "bypass-probe.log"; if (Test-Path $LOG) { Remove-Item $LOG }
