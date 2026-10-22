@@ -58,9 +58,16 @@ jobs:
         env:
           AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
         run: |
-          # The registry host is everything before the first `/` of the repository URL.
-          aws ecr get-login-password --region me-central-1 \
-            | docker login --username AWS --password-stdin "${AWS_ECR_REPOSITORY%%/*}"
+          set -eu
+          # The registry host is everything before the first `/` of the repository URL, and the region sits
+          # inside that host: ACCOUNT.dkr.ecr.REGION.amazonaws.com. Deriving it keeps the login tied to the
+          # registry the push goes to; a hardcoded region returned `400 Bad Request` from docker login the
+          # one time the variable pointed at another region, which reads like an auth failure.
+          HOST="${AWS_ECR_REPOSITORY%%/*}"
+          REGION="$(printf '%s' "$HOST" | cut -d. -f4)"
+          echo "registry $HOST (region $REGION)"
+          aws ecr get-login-password --region "$REGION" \
+            | docker login --username AWS --password-stdin "$HOST"
 
       # The tag is derived, never chosen: the repository is IMMUTABLE, so a tag always names one image.
       # A re-run on the same commit fails at the push with "tag already exists", which is correct — the
