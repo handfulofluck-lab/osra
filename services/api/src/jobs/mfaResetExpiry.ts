@@ -90,12 +90,18 @@ export function startMfaResetExpiryScheduler(env: NodeJS.ProcessEnv = process.en
   if (timer) return;
   const tick = () =>
     runMfaResetExpiry()
-      .then((run) =>
+      .then((run) => {
+        // Silent when the tick did nothing: this runs every 5 minutes, so an unconditional line is
+        // ~288 lines a day that say "nothing happened". A non-zero run is worth a line, because each
+        // count is a state transition somebody might later ask about.
+        const total =
+          run.witnessExpired + run.mailboxExpired + run.witnessPassedExpired + run.codesCleared + run.retentionDeleted;
+        if (total === 0) return;
         console.log(
           `[mfa-reset] expiry: ${run.witnessExpired} witness deadlines, ${run.mailboxExpired} unclicked links, ` +
             `${run.witnessPassedExpired} missed windows expired; ${run.codesCleared} codes cleared, ${run.retentionDeleted} rows deleted by retention`,
-        ),
-      )
+        );
+      })
       .catch((err) => console.error("[mfa-reset] expiry tick failed", err));
   timer = setInterval(tick, TICK_MS);
   timer.unref();
