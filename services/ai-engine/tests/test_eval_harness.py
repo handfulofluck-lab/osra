@@ -6,6 +6,7 @@ same sentence 65 times, a metric that reports 1.00 because the denominator was
 zero, and an Arabic file that is English with Arabic quotation marks around it.
 """
 
+import difflib
 import json
 import os
 import random
@@ -15,11 +16,54 @@ import pytest
 
 import model
 from eval import generate, run_eval
-from eval.banks import HARMFUL_CATEGORIES, SLOT_RE, load_banks, validate_module
+from eval.banks import HARMFUL_CATEGORIES, LISTS, SLOT_RE, load_banks, validate_module
+from eval.split import SPLITS, split_of
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET = os.path.join(ROOT, "eval", "dataset.jsonl")
 ARABIC = re.compile(r"[\u0600-\u06FF]")
+
+# One row per translation a reviewer can read in the two lists: (bank, list, EN index, AR indices).
+# Pinned rather than derived, because a test that re-derived the table from the mapping would only
+# restate it; these are the pairs the promise "a translation of a test sentence cannot sit in dev"
+# rests on (#282 review R1). Every bank appears at least once.
+TRANSLATIONS = [
+    ("cyberbullying", "positives", 0, (0, 1)),
+    ("cyberbullying", "positives", 5, (7, 8)),
+    ("cyberbullying", "hard_negatives", 0, (0,)),
+    ("grooming", "positives", 0, (0, 1)),
+    ("grooming", "positives", 5, (8, 9)),
+    ("grooming", "positives", 10, (20,)),
+    ("grooming", "positives", 24, (27, 28)),
+    ("hate_speech", "positives", 3, (3,)),
+    ("hate_speech", "positives", 13, (13,)),
+    ("self_harm", "positives", 5, (5, 6)),
+    ("self_harm", "positives", 7, (9, 10)),
+    ("self_harm", "positives", 12, (15, 16)),
+    ("self_harm", "positives", 21, (26, 27)),
+    ("sexual_content", "positives", 0, (0,)),
+    ("sexual_content", "positives", 14, (14, 15)),
+    ("substance_use", "positives", 1, (1, 2)),
+    ("substance_use", "positives", 14, (16, 17)),
+    ("substance_use", "hard_negatives", 5, (2,)),
+    ("violence", "positives", 0, (0,)),
+    ("violence", "positives", 10, (8, 9)),
+]
+
+# A retelling is the same sentence in another person, or with one detail changed: a prompt tuned on
+# one has read the other, so it takes its source's pattern (#282 review R2). (bank, list, lang,
+# retelling index, source index).
+RETELLINGS = [
+    ("grooming", "positives", "en", 16, 10),
+    ("grooming", "positives", "en", 17, 10),
+    ("grooming", "positives", "en", 25, 24),
+    ("grooming", "positives", "en", 26, 24),
+    ("grooming", "positives", "en", 28, 27),
+    ("grooming", "positives", "en", 29, 27),
+    ("self_harm", "positives", "en", 40, 39),
+    ("self_harm", "positives", "ar", 25, 1),
+    ("violence", "positives", "en", 5, 4),
+]
 
 
 @pytest.fixture(scope="module")
@@ -150,6 +194,177 @@ def test_dataset_meets_the_interim_language_floor():
 def test_committed_dataset_matches_the_banks(tmp_path, capsys):
     """A stale dataset under a fresh bank is a number nobody can reproduce."""
     assert generate.main(["--check"]) == 0
+
+
+def _dataset_rows():
+    with open(DATASET, encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def test_split_of_is_stable():
+    """The hash input *is* the split's identity: change it and the set is re-cut, so fail here first.
+
+    Pinned on **pattern** numbers, not on a template position, because the position is what the
+    reviewer showed does not identify a meaning across languages (`eval/split.py`).
+    """
+    assert split_of("self_harm", 0) == "test"
+    assert split_of("cyberbullying", 3) == "dev"
+    assert split_of("violence", 7) == "dev"
+    assert split_of("self_harm", 13) == "test"
+    assert split_of("self_harm", 14) == "dev"
+
+
+def test_split_is_carried_by_generated_rows():
+    rows = generate.expand(["hi {n}", "bye {n}"], {"n": ["a", "b", "c"]}, 4, random.Random(2),
+                           "x", "en", 2, None, [7, 7])
+    for row in rows:
+        assert row["provenance"]["pattern"] == 7
+        assert row["provenance"]["split"] == split_of("x", row["provenance"]["pattern"])
+
+
+def test_every_pattern_list_has_the_same_length_as_its_templates(banks):
+    """A pattern list one entry short silently shifts every id after the gap."""
+    for category, bank in banks.items():
+        for list_name in LISTS:
+            for lang in ("en", "ar"):
+                templates = bank.templates(list_name, lang)
+                patterns = bank.patterns(list_name, lang)
+                assert len(patterns) == len(templates), (
+                    f"{category}/{list_name}/{lang}: {len(patterns)} pattern ids for "
+                    f"{len(templates)} templates")
+                assert all(isinstance(p, int) and not isinstance(p, bool) and p >= 0 for p in patterns)
+                assert list(bank.pattern_map(list_name, lang).values()) == patterns
+
+
+def test_both_languages_use_the_same_patterns_outside_language_only(banks):
+    """One id must mean one meaning in both languages; `LANGUAGE_ONLY` is the only allowed gap."""
+    for category, bank in banks.items():
+        for list_name in LISTS:
+            only = {int(key.split(":")[1]) for key in bank.language_only
+                    if key.split(":")[0] == list_name}
+            en = set(bank.patterns(list_name, "en")) - only
+            ar = set(bank.patterns(list_name, "ar")) - only
+            assert en == ar, f"{category}/{list_name}: EN only {sorted(en - ar)}, AR only {sorted(ar - en)}"
+
+
+def _gender_shape(template):
+    return [slot[:-2] if slot.endswith(("_m", "_f")) else slot for slot in SLOT_RE.findall(template)]
+
+
+def _gendered_slots(template):
+    return [slot for slot in SLOT_RE.findall(template) if slot.endswith(("_m", "_f"))]
+
+
+def _gender_twins(templates):
+    """Every pair of templates that are one sentence with the gender changed — not just neighbours.
+
+    Neighbours alone missed the pairs that matter most: `violence` lists its six masculine templates
+    and then the six feminine ones, so its twins are 10/16 ... 15/21 and a neighbour-only scan checked
+    none of them (#282 review R1). A twin keeps the slot shape — the same slots in the same order with
+    `_m`/`_f` folded — and is still the same sentence once the slots are masked, which is what
+    separates a twin from an unrelated line that happens to share its slots (0.19-0.69, against 0.92
+    or better for every real twin).
+    """
+    for first in range(len(templates)):
+        for second in range(first + 1, len(templates)):
+            if _gender_shape(templates[first]) != _gender_shape(templates[second]):
+                continue
+            if _gendered_slots(templates[first]) == _gendered_slots(templates[second]):
+                continue
+            left = SLOT_RE.sub("<s>", templates[first])
+            right = SLOT_RE.sub("<s>", templates[second])
+            if difflib.SequenceMatcher(None, left, right).ratio() >= 0.8:
+                yield first, second
+
+
+def test_a_translation_shares_its_source_pattern(banks):
+    """The promise of the split, for translations: the Arabic line of a test sentence is not in dev."""
+    for bank, list_name, en_index, ar_indices in TRANSLATIONS:
+        pattern = banks[bank].patterns(list_name, "en")[en_index]
+        for ar_index in ar_indices:
+            assert banks[bank].patterns(list_name, "ar")[ar_index] == pattern, (
+                f"{bank}/{list_name}: EN {en_index} is pattern {pattern} but its translation "
+                f"AR {ar_index} is pattern {banks[bank].patterns(list_name, 'ar')[ar_index]}")
+    assert {row[0] for row in TRANSLATIONS} == set(banks)
+
+
+def test_a_retelling_shares_its_source_pattern(banks):
+    """A retold sentence must not sit on the other side of the split from its source."""
+    for bank, list_name, lang, retelling, source in RETELLINGS:
+        patterns = banks[bank].patterns(list_name, lang)
+        assert patterns[retelling] == patterns[source], (
+            f"{bank}/{list_name}/{lang}: {retelling} retells {source} but carries pattern "
+            f"{patterns[retelling]} against {patterns[source]}")
+        assert split_of(bank, patterns[retelling]) == split_of(bank, patterns[source])
+
+
+def test_gender_twins_share_a_pattern_and_a_side(banks):
+    """The leak the reviewer measured: 8 of 14 twin pairs sat on opposite sides of the split.
+
+    A twin is the same meaning in the other gender, so it must carry the same pattern — and the
+    pattern is what the split is cut on, so the side follows. The pair count is pinned so a change to
+    the twin detector cannot quietly shrink the guard to nothing.
+    """
+    found = {}
+    for category, bank in banks.items():
+        for list_name in LISTS:
+            for lang in ("en", "ar"):
+                templates = bank.templates(list_name, lang)
+                patterns = bank.patterns(list_name, lang)
+                for first, second in _gender_twins(templates):
+                    found[category] = found.get(category, 0) + 1
+                    assert patterns[first] == patterns[second], (
+                        f"{category}/{list_name}/{lang}: templates {first} and {second} are twins "
+                        f"but carry patterns {patterns[first]} and {patterns[second]}")
+                    assert split_of(category, patterns[first]) == split_of(category, patterns[second])
+    assert found == {"cyberbullying": 12, "grooming": 27, "self_harm": 15, "sexual_content": 2,
+                     "substance_use": 8, "violence": 12}, found
+
+
+def test_every_bank_and_language_has_both_sides():
+    """A bank that is all dev would make its category unmeasurable on the held-out side."""
+    by_bank, by_lang = {}, {}
+    for row in _dataset_rows():
+        prov = row["provenance"]
+        by_bank.setdefault(prov["bank"], set()).add(prov["split"])
+        by_lang.setdefault(row["lang"], set()).add(prov["split"])
+    for bank, sides in by_bank.items():
+        assert sides == set(SPLITS), f"{bank}: {sorted(sides)}"
+    for lang, sides in by_lang.items():
+        assert sides == set(SPLITS), f"{lang}: {sorted(sides)}"
+
+
+def test_committed_dataset_agrees_with_the_split_rule():
+    """The regression that matters: a dataset and a rule that drift apart make a held-out number a lie."""
+    for row in _dataset_rows():
+        prov = row["provenance"]
+        assert prov["split"] == split_of(prov["bank"], prov["pattern"]), row["id"]
+
+
+def test_rows_from_one_pattern_share_one_side():
+    """The anti-leak invariant: a paraphrase, a translation or a gender twin of a test row is not in dev."""
+    sides = {}
+    for row in _dataset_rows():
+        prov = row["provenance"]
+        sides.setdefault((prov["bank"], prov["pattern"]), set()).add(prov["split"])
+    leaked = {key: sorted(value) for key, value in sides.items() if len(value) > 1}
+    assert not leaked, leaked
+
+
+def test_split_filter_selects_only_that_side():
+    rows = _dataset_rows()
+    test_rows = run_eval.filter_rows(rows, "test")
+    assert test_rows and all(row["provenance"]["split"] == "test" for row in test_rows)
+    assert len(test_rows) < len(rows)
+    assert run_eval.filter_rows(rows, "all") == rows
+
+
+def test_a_dataset_without_a_split_is_refused():
+    """An old dataset would silently score as if every row were held out."""
+    stale = [{"id": "self_harm-en-0001", "lang": "en", "category": "self_harm", "text": "a",
+              "labels": ["self_harm"], "hard_negative_of": None, "provenance": {"bank": "self_harm"}}]
+    with pytest.raises(SystemExit, match="carry no dev/test split"):
+        run_eval.filter_rows(stale, "test")
 
 
 def _toy_dataset():

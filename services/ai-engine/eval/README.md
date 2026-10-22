@@ -13,6 +13,7 @@ python -m eval.banks                    # validate every bank (the node CI job r
 python -m eval.generate                 # write eval/dataset.jsonl from the banks
 python -m eval.generate --check         # fail if the committed set is stale
 python -m eval.run_eval                 # score with the rules layer, print the table
+python -m eval.run_eval --split test    # score the held-out side of the template split
 python -m eval.run_eval --json out.json # same, machine-readable
 python -m eval.run_eval --write-md EVAL.md   # refresh the table inside EVAL.md
 python -m eval.run_eval --fail-under-recall 0.85 --fail-under-precision 0.6
@@ -32,12 +33,22 @@ unaffected.
 written by hand: 17–26 positive templates per language, a slot dictionary that expands them to 65
 distinct messages, 12–14 hard negatives per language, and 7–8 generic safe messages. Everything is
 committed, so a reviewer reads the pattern instead of 2,000 lines, and a row traces back to
-`(bank, template_index, seed)`.
+`(bank, template_index, pattern, seed)`.
 
 **The cap is five rows per template.** `--per-category` above `templates × 5` raises rather than
 filling: one template filled 65 times is one item, not 65, and a recall interval computed from it is a
 fiction. The set grows through **new templates or new sources**, which is why plan 4.2's 2,000 +
 2,000 is an authoring target rather than a configuration value (Claude's ruling on #262).
+
+**The split is per pattern, never per row.** A pattern is a template, its translation in the other
+language, its gender twin and a retelling of it (in another person, or with one detail changed) under one id (`PATTERN_EN`/`PATTERN_AR`
+and `LANGUAGE_ONLY` in each bank); `split_of(bank, pattern)` in `split.py` hashes that identity to `dev` or
+`test`, and every row it generates carries both in `provenance`. `run_eval --split test` is the estimate
+held out from tuning — not from the prompt's author, who wrote every template, so it measures this corpus
+under a prompt written with its themes in view. A per-row draw would leave paraphrases of a test row in
+dev, so the five rows that share a pattern always stay together — and cutting on the template's *position*
+rather than its pattern put 8 of 14 gender twins, and translations like `self_harm` EN 5 ↔ AR 6, on
+opposite sides.
 
 **A positive must be labelable from the message alone.** Naming the substance or the act is required;
 naming the *method* is forbidden. "We're vaping in the toilets at break, watch the door" is a

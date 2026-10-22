@@ -22,7 +22,9 @@ environment where it was written — see `docs/QA/` for the verification state.
 - **The Phase 4 gate's measurement is met on this set**: `self_harm` and `grooming`, recall ≥ 0.85 at
   precision ≥ 0.6, in both languages — EN 1.00/1.00 and 0.99/0.80; AR 0.97/0.98 and 1.00/0.69.
 - **What it does not say**, in `EVAL.md` next to the table: the rows come from template families (five per
-  template), so the `dev`/`test` split is what would make this a population estimate; `cyberbullying`
+  template), so the `dev`/`test` split holds `test` out from tuning — not from the prompt's author, who
+  wrote every template, so it still measures this corpus under a prompt written with its themes in view;
+  `cyberbullying`
   precision is 0.36/0.38 because its rows overlap other categories; one model, one run, one threshold; and
   the scorer is **not in production** — that is the 4.1-versus-4.4 decision.
 - Cost of the run: about **US$0.10**, estimated from token counts (≈400 input + ≈40 output per row);

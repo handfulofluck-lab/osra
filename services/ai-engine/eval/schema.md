@@ -14,7 +14,7 @@ metrics cannot attribute, and `tests/test_eval_harness.py` fails on it.
   "text": "أحس الكل أحسن بدوني",
   "labels": ["self_harm"],
   "hard_negative_of": null,
-  "provenance": {"kind": "synthetic", "bank": "self_harm", "template_index": 3, "seed": 1234}
+  "provenance": {"kind": "synthetic", "bank": "self_harm", "template_index": 3, "pattern": 3, "split": "test", "seed": 1234}
 }
 ```
 
@@ -26,7 +26,21 @@ metrics cannot attribute, and `tests/test_eval_harness.py` fails on it.
 | `text` | string | The message as a child would type it. |
 | `labels` | `[string]` | Exactly one label: the harmful category, or `"safe"`. |
 | `hard_negative_of` | category \| `null` | Set when the text is benign but reuses that category's vocabulary. `null` for positives and for generic safe text. |
-| `provenance` | object | Where it came from: `kind` (`synthetic`, later `public`/`reported`), `bank`, `template_index` (index into that bank's `POSITIVES_<LANG>`), and the generator `seed`. |
+| `provenance` | object | Where it came from: `kind` (`synthetic`, later `public`/`reported`), `bank`, `template_index` (the reproduction key, not the split's input: the template's index in `POSITIVES_<LANG>` for a positive row, and the row's position in the shuffled draw for a sampled hard-negative or generic-safe row), `pattern` (the id the split is cut on — a template, its translation in the other language, its gender twin and a retelling of it (in another person, or with one detail changed) share one, so a pattern's rows cannot land on both sides), `split` (`dev` or `test`, derived by `eval/split.py::split_of` from `bank` and `pattern` — never drawn per row), and the generator `seed`. |
+
+Three counts follow from the pattern ids, and they are easy to confuse, so each is stated with its
+definition:
+
+- **304 distinct `(bank, list, pattern)` ids** — every id in every list of every bank: positives, hard
+  negatives and generic safe.
+- **156 distinct `(bank, pattern)` keys** — the same ids collapsed across the three lists. Ids are per
+  list, so positive pattern 3 and hard-negative pattern 3 of one bank are one key. 156 is what the
+  committed dataset carries and none of the keys is on both sides.
+- **155 positive patterns** — distinct `(bank, pattern)` keys among the positives lists, which is the
+  number to quote when counting independent items in a recall estimate.
+
+A retired id (one that merged into another pattern) is left unused rather than reissued: reusing the
+number would re-cut the rows that once carried it.
 
 ## Labels
 
@@ -77,7 +91,9 @@ separable:
    in `provenance.source` and licence-checked), and `reported` (a parent-reported miss, with consent
    and no identifying data).
 2. A non-synthetic row carries `provenance.source` (corpus name or "parent report, date") and does not
-   carry `template_index`/`seed`.
+   carry `template_index`/`pattern`/`seed`/`split`: the split is a property of a pattern, so it belongs to
+   the synthetic set, and a separate source file is scored whole with `--dataset` (the default `--split
+   all`).
 3. Rows from a new source go in a separate file (`eval/public/<corpus>.jsonl`), and
    `python -m eval.run_eval --dataset <file>` scores it alone, so the published numbers keep naming
    the dataset they came from.

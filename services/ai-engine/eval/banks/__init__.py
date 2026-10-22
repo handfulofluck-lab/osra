@@ -14,6 +14,17 @@ A bank is a Python module in this package that exports exactly:
     AGE_RANGE: (int, int)     the child ages this category is drawn from
     ALSO_LABELS_EN: {int: [str]}  optional; template index -> extra labels for a true overlap
     ALSO_LABELS_AR: {int: [str]}  the same in Arabic
+    PATTERN_EN: [int]      optional; pattern id per POSITIVES_EN entry
+    PATTERN_AR: [int]      the same for POSITIVES_AR
+    PATTERN_HARD_NEG_EN / PATTERN_HARD_NEG_AR   the same for HARD_NEGATIVES_<LANG>
+    PATTERN_SAFE_EN / PATTERN_SAFE_AR           the same for GENERIC_SAFE_<LANG>
+    LANGUAGE_ONLY: {str}   optional; "<list>:<pattern>" keys that only one language has
+
+A **pattern** is the unit of meaning the dev/test split is cut on (`eval/split.py`):
+a template, its translation in the other language and its gender twin all carry
+one id, so none of them can land on the other side of the split. A list with no
+`PATTERN_*` companion is index-as-pattern, which is correct for a list whose two
+languages are translations of each other in the same order.
 
 Slots that hold a person's name come in gendered pairs -- `name_m`/`name_f`,
 `target_m`/`target_f` -- because Arabic marks gender on the verb and the pronoun,
@@ -50,7 +61,7 @@ import importlib
 import pkgutil
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, FrozenSet, List, Tuple
 
 import model
 
@@ -62,6 +73,24 @@ HARMFUL_CATEGORIES: List[str] = [c for c in model.CATEGORIES if c != "safe"]
 MIN_POSITIVES = 12
 MIN_HARD_NEGATIVES = 8
 MIN_GENERIC_SAFE = 5
+
+# The three template lists of a bank, and the companion export that carries a pattern id per entry.
+# A missing companion means index-as-pattern.
+LISTS: Tuple[str, ...] = ("positives", "hard_negatives", "generic_safe")
+
+PATTERN_EXPORTS: Dict[str, Tuple[str, str]] = {
+    "positives": ("PATTERN_EN", "PATTERN_AR"),
+    "hard_negatives": ("PATTERN_HARD_NEG_EN", "PATTERN_HARD_NEG_AR"),
+    "generic_safe": ("PATTERN_SAFE_EN", "PATTERN_SAFE_AR"),
+}
+
+TEMPLATE_FIELDS: Dict[str, Tuple[str, str]] = {
+    "positives": ("positives_en", "positives_ar"),
+    "hard_negatives": ("hard_negatives_en", "hard_negatives_ar"),
+    "generic_safe": ("generic_safe_en", "generic_safe_ar"),
+}
+
+LANG_INDEX = {"en": 0, "ar": 1}
 
 REQUIRED_EXPORTS = (
     "CATEGORY",
@@ -94,6 +123,61 @@ class Bank:
     age_range: Tuple[int, int]
     also_labels_en: Dict[int, List[str]]
     also_labels_ar: Dict[int, List[str]]
+    # list name -> pattern id per template index
+    patterns_en: Dict[str, List[int]]
+    patterns_ar: Dict[str, List[int]]
+    language_only: FrozenSet[str]
+
+    def templates(self, list_name: str, lang: str) -> List[str]:
+        """The templates of one list in one language."""
+        return getattr(self, TEMPLATE_FIELDS[list_name][LANG_INDEX[lang]])
+
+    def patterns(self, list_name: str, lang: str) -> List[int]:
+        """The pattern id of every template in one list and language, in template order."""
+        return (self.patterns_en if lang == "en" else self.patterns_ar)[list_name]
+
+    def pattern_map(self, list_name: str, lang: str) -> Dict[int, int]:
+        """Template index -> pattern id for one list and language."""
+        return dict(enumerate(self.patterns(list_name, lang)))
+
+
+def _validate_patterns(module_name, export, patterns, templates, list_name, lang):
+    """A pattern list names one id per template; a second list would silently shift the split."""
+    if patterns is None:
+        return []
+    where = f"{module_name}.{export}"
+    if len(patterns) != len(templates):
+        return [f"{where}: {len(patterns)} ids for {len(templates)} templates "
+                f"({list_name}, {lang})"]
+    return [f"{where}[{index}]: pattern id must be a non-negative int, got {value!r}"
+            for index, value in enumerate(patterns)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0]
+
+
+def _validate_language_only(module_name, language_only, patterns):
+    """A `LANGUAGE_ONLY` key must name a pattern that exists on exactly one side."""
+    errors = []
+    for key in language_only:
+        where = f"{module_name}.LANGUAGE_ONLY[{key!r}]"
+        if not isinstance(key, str) or ":" not in key:
+            errors.append(f"{where}: expected '<list>:<pattern>'")
+            continue
+        list_name, _, raw = key.partition(":")
+        if list_name not in LISTS:
+            errors.append(f"{where}: unknown list {list_name!r} (expected one of {', '.join(LISTS)})")
+            continue
+        try:
+            pattern = int(raw)
+        except ValueError:
+            errors.append(f"{where}: pattern id must be an int")
+            continue
+        in_en = pattern in patterns["en"][list_name]
+        in_ar = pattern in patterns["ar"][list_name]
+        if in_en == in_ar:
+            errors.append(
+                f"{where}: not a one-language pattern — it is "
+                f"{'present in both lists' if in_en else 'in neither list'}")
+    return errors
 
 
 def _validate_also_labels(module_name, lang, also, positives, category):
@@ -203,7 +287,30 @@ def validate_module(module) -> List[str]:
                                     module.POSITIVES_EN, category)
     errors += _validate_also_labels(name, "ar", getattr(module, "ALSO_LABELS_AR", {}),
                                     module.POSITIVES_AR, category)
+    patterns = {lang: _module_patterns(module, lang) for lang in ("en", "ar")}
+    for list_name in LISTS:
+        for lang, index in (("en", 0), ("ar", 1)):
+            export = PATTERN_EXPORTS[list_name][index]
+            errors += _validate_patterns(name, export, getattr(module, export, None),
+                                         module_templates(module, list_name, lang), list_name, lang)
+    errors += _validate_language_only(name, getattr(module, "LANGUAGE_ONLY", frozenset()), patterns)
     return errors
+
+
+def module_templates(module, list_name: str, lang: str) -> List[str]:
+    """The templates of one list and language of a raw bank module."""
+    return list(getattr(module, TEMPLATE_FIELDS[list_name][LANG_INDEX[lang]].upper(), []))
+
+
+def _module_patterns(module, lang: str) -> Dict[str, List[int]]:
+    """Every list's pattern ids for one language; a missing companion is index-as-pattern."""
+    out: Dict[str, List[int]] = {}
+    for list_name in LISTS:
+        export = PATTERN_EXPORTS[list_name][LANG_INDEX[lang]]
+        templates = module_templates(module, list_name, lang)
+        raw = getattr(module, export, None)
+        out[list_name] = list(raw) if raw is not None else list(range(len(templates)))
+    return out
 
 
 def load_banks() -> Dict[str, Bank]:
@@ -237,6 +344,9 @@ def load_banks() -> Dict[str, Bank]:
             age_range=getattr(module, "AGE_RANGE", (0, 0)),
             also_labels_en=dict(getattr(module, "ALSO_LABELS_EN", {})),
             also_labels_ar=dict(getattr(module, "ALSO_LABELS_AR", {})),
+            patterns_en=_module_patterns(module, "en"),
+            patterns_ar=_module_patterns(module, "ar"),
+            language_only=frozenset(getattr(module, "LANGUAGE_ONLY", frozenset())),
         )
 
     missing = [c for c in HARMFUL_CATEGORIES if c not in banks]

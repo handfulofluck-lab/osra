@@ -74,6 +74,13 @@ POSITIVES_AR = [
     "عمرك ١٣؟ عادي، أرسل لي {pic} وأنا بأرسل لك {gift}",
 ]
 
+# Pattern ids for POSITIVES_EN/AR (`eval/split.py` cuts the dev/test split on these). EN 14 and 15
+# are the masculine and the feminine half of one sentence, so they share id 14 with AR 14/15. No id
+# is language-only.
+PATTERN_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 14, 15, 16, 17, 18]
+
+PATTERN_AR = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 14, 15, 16, 17, 18]
+
 SLOTS_EN = {
     "target": ["Sara", "Omar", "Layla", "Adam", "Noor", "Yousef", "Hana", "Bilal"],
     # Gendered sides are only used where a pronoun or a verb agrees with the target.
@@ -149,6 +156,15 @@ HARD_NEGATIVES_AR = [
     "الأستاذة قالت إن الصور الخاصة ما تنرسل حتى للأصحاب",
     "ولد خالتي أرسل صورة جرو جديد، مرة صغير",
 ]
+
+# Pattern ids for HARD_NEGATIVES_EN/AR. EN 10 (the nail polish shade called "nude") has no Arabic
+# line, and AR 10 (the teacher's rule about private photos) has none in English, so each keeps an id
+# outside the shared numbering.
+PATTERN_HARD_NEG_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12]
+
+PATTERN_HARD_NEG_AR = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+
+LANGUAGE_ONLY = {"hard_negatives:10", "hard_negatives:11"}
 
 # An image request that also carries a grooming tell is both categories: the
 # scorer that says grooming is not wrong, so it should not be marked wrong.

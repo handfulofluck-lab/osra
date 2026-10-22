@@ -78,6 +78,20 @@ POSITIVES_AR = [
     "{target_f} ضربت واحد من {group}، والرد بيصير {time} عند {place}",
 ]
 
+# Pattern ids for POSITIVES_EN/AR (`eval/split.py` cuts the dev/test split on these). Three English
+# ids have no Arabic template: 3 (getting the target for telling the teacher), 7 (the bat) and 14/20
+# (beaten up where the group already picked the place). EN 5 ("wait by {place}, {group} are jumping
+# {target} on the way home") retells EN 4, so it shares 4; AR 7 ("we'll drag {target} there by force
+# and settle it with fists") is not its translation and now stands alone as id 5, which is why 5 is
+# listed below. AR 18/19 (retaliation for hitting one of the group) has no English line. The English
+# list groups its six masculine templates and then the six feminine ones, so its twins are 10/16,
+# 11/17 ... 15/21 rather than neighbours.
+PATTERN_EN = [0, 1, 2, 3, 4, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 10, 11, 12, 13, 14, 15]
+
+PATTERN_AR = [0, 1, 2, 4, 9, 8, 6, 5, 10, 10, 12, 12, 11, 11, 13, 13, 15, 15, 16, 16]
+
+LANGUAGE_ONLY = {"positives:3", "positives:5", "positives:7", "positives:14", "positives:16"}
+
 # The isolation threat is genuinely two categories: the group is enforcing "nobody
 # talks to them", which is the bullying pattern, and the enforcement is a beating.
 ALSO_LABELS_EN = {8: ["cyberbullying"]}
