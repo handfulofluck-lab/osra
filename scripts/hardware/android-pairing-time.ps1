@@ -41,8 +41,9 @@ param(
   [switch]$StopAtAdmin
 )
 $ErrorActionPreference = "Continue"
-# #151: same rule as the bypass probe — refuse rather than prompt. Only the Machine set needs the PIN;
-# $Human is driven by an observer, and -SelfTest/-DryRun never type a credential.
+# #151: same rule as the bypass probe — refuse rather than prompt. Only the Machine set needs the PIN.
+# `-Human` (and `-Human -SelfTest`) needs none, because an observer drives it. `-DryRun` is a *machine*
+# run that stops after the first pass, so it does type the PIN and does need one (#306 review).
 if ($PSCmdlet.ParameterSetName -eq "Machine" -and [string]::IsNullOrWhiteSpace($Pin)) {
   $Pin = [string]$env:OSRA_TEST_APP_PIN
   if ([string]::IsNullOrWhiteSpace($Pin)) {

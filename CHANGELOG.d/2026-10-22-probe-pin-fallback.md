@@ -6,8 +6,8 @@
 - `scripts/hardware/android-bypass-probe.ps1` and `scripts/hardware/android-pairing-time.ps1` now take `-Pin`
   as optional, accept `$env:OSRA_TEST_APP_PIN` as a fallback, and **exit `2`** with a message naming the reason
   when neither is set. Exit `2` is "misused"; exit `1` stays "a check failed", so a caller can distinguish them.
-  The pairing-time script only requires it for the `Machine` set — `-Human`, `-SelfTest` and `-DryRun` never
-  type a credential.
+  The pairing-time script requires it only for the `Machine` set: `-Human` (and `-Human -SelfTest`) needs none,
+  because an observer drives it. `-DryRun` is a machine run that stops after the first pass, so it needs one.
 - Verified by running both with no PIN and no environment variable: each prints the message and returns `2`.
   With `OSRA_TEST_APP_PIN` set, the bypass probe passes the guard and reaches its next step (the state-file
   read, which needs a paired phone), so the fallback works rather than merely existing.
