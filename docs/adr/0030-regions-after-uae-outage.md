@@ -43,7 +43,11 @@
    | 4 | Americas | N. Virginia `us-east-1` | COPPA |
 
 5. Opening Frankfurt for production means adding `eu-central-1` to the account's region guardrails. That
-   happens when production's member account is created (ADR-0028 decision 8), not on the staging key.
+   happens when production's member account is created (ADR-0028 decision 8), with its own deploy
+   identity. The staging key stays limited to its current regions.
+6. **One staging run in Frankfurt before go-live.** Service versions and availability (Valkey,
+   instance types) can differ between Stockholm and Frankfurt. The release that opens production is
+   applied once to a short-lived stack in `eu-central-1` first.
 
 ## Reasoning
 
