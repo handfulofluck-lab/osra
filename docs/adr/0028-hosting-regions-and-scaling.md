@@ -1,6 +1,6 @@
 # ADR-0028 — Production hosting: managed containers on AWS, one independent stack per region, push-first devices
 
-**Status:** accepted (Karim confirmed AWS and the budget on 2026-10-21 06:04Z)
+**Status:** accepted (Karim confirmed AWS and the budget on 2026-10-21 06:04Z); decision 2's region table and order are superseded by [ADR-0030](0030-regions-after-uae-outage.md) (2026-10-22)
 **Date:** 2026-10-20
 **Deciders:** Claude (architecture); launch order of markets decided by Karim on 2026-10-20
 **Full analysis:** the "OSRA Backend Architecture, Hosting and Cost" document in the OSRA project
