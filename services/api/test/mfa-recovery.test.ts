@@ -78,8 +78,14 @@ async function setup(opts: { secret?: string | null; mfaEnabled?: boolean } = {}
     Object.assign(p, data);
     return { ...p };
   });
-  prismaMock.parentMfaRecoveryCode.findFirst.mockImplementation(async ({ where }: { where: { parentId: string; codeHash: string } }) =>
-    codeRows.find((r) => r.parentId === where.parentId && r.codeHash === where.codeHash) ?? null,
+  // #199: honour `usedAt: null`, because the recovery route relies on it to keep a spent code from
+  // reaching the (now earlier) revocation. Returning the spent row anyway would hide that.
+  prismaMock.parentMfaRecoveryCode.findFirst.mockImplementation(async ({ where }: { where: { parentId: string; codeHash: string; usedAt?: null } }) =>
+    codeRows.find((r) =>
+      r.parentId === where.parentId &&
+      r.codeHash === where.codeHash &&
+      (where.usedAt !== null || r.usedAt === null),
+    ) ?? null,
   );
   prismaMock.parentMfaRecoveryCode.updateMany.mockImplementation(async ({ where, data }: { where: { id: string; usedAt: null }; data: { usedAt: Date } }) => {
     let count = 0;
@@ -216,6 +222,57 @@ describe("MFA recovery codes (ADR-0023)", () => {
     expect(store.get("auth:session-version:parent-1")).toBe(String(1 + Number(revokedBefore)));
     // The token is a 15-minute Redis-backed credential, not a JWT the signature alone makes valid.
     expect(store.get(`mfa:recovery:${claims.jti}`)).toBe("parent-1");
+    await app.close();
+  });
+
+  it("#199: a failed session revocation answers 5xx and leaves the recovery code unspent", async () => {
+    const { app } = await setup();
+    const { verify } = await enrolAndVerify(app);
+    const codes: string[] = verify.json().recoveryCodes;
+    const { getRedis } = await import("../src/redis.js");
+    const redis = getRedis() as unknown as { incrby: ReturnType<typeof vi.fn> };
+
+    // The version bump is the authoritative revocation and is deliberately not best-effort
+    // (sessions.ts:113-114). Make it fail: the request must not answer with a token, and above all
+    // must not consume the code — that is the lockout this test exists for.
+    redis.incrby.mockRejectedValueOnce(new Error("redis unavailable"));
+    const failed = await recover(app, { email: EMAIL, password: PASSWORD, code: codes[2] });
+
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    expect(failed.statusCode).toBeLessThan(600);
+    expect(failed.json().recoveryToken).toBeUndefined();
+    // Nothing was spent: the whole batch is intact and the factor is still bound.
+    expect(codeRows).toHaveLength(10);
+    expect(codeRows.every((r) => r.usedAt === null)).toBe(true);
+    expect(parents[0].mfaSecret).not.toBeNull();
+
+    // The parent retries the same code once the session store is back; this time it recovers.
+    const retry = await recover(app, { email: EMAIL, password: PASSWORD, code: codes[2] });
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().recoveryToken).toBeTruthy();
+    expect(codeRows).toHaveLength(1);
+    expect(codeRows[0].usedAt).toBeInstanceOf(Date);
+    expect(codeRows[0].codeHash).toBe(hashRecoveryCode(codes[2]));
+    expect(parents[0].mfaSecret).toBeNull();
+    await app.close();
+  });
+
+  it("#199: replaying a spent code does not revoke the parent's sessions again", async () => {
+    const { app } = await setup();
+    const { verify } = await enrolAndVerify(app);
+    const code: string = verify.json().recoveryCodes[0];
+
+    const versionBefore = store.get("auth:session-version:parent-1") ?? "0";
+    expect((await recover(app, { email: EMAIL, password: PASSWORD, code })).statusCode).toBe(200);
+    const versionAfterRecovery = String(1 + Number(versionBefore));
+    expect(store.get("auth:session-version:parent-1")).toBe(versionAfterRecovery);
+
+    // The spent row is still there (it is the record of the batch being used), but it must not lead
+    // to the revocation that now runs before the claim: a 401 with no side effect.
+    const replay = await recover(app, { email: EMAIL, password: PASSWORD, code });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().error).toBe("invalid_recovery");
+    expect(store.get("auth:session-version:parent-1")).toBe(versionAfterRecovery);
     await app.close();
   });
 

@@ -501,10 +501,23 @@ export async function authRoutes(app: FastifyInstance) {
     if (normalised.length !== RECOVERY_CODE_LENGTH) {
       return reply.code(401).send({ error: "invalid_recovery" });
     }
+    // #199: only an unused row leads to revocation. A spent row still matches its hash, and without
+    // this filter a replay would reach the revocation below and answer 401 — a logout lever for
+    // anyone holding the password and a spent code.
     const candidate = await prisma.parentMfaRecoveryCode.findFirst({
-      where: { parentId: parent.id, codeHash: hashRecoveryCode(normalised) },
+      where: { parentId: parent.id, codeHash: hashRecoveryCode(normalised), usedAt: null },
     });
     if (!candidate) return reply.code(401).send({ error: "invalid_recovery" });
+
+    // #199: revoke *before* the code is consumed, not after the commit. `revokeAllRefreshTokens`
+    // bumps the sessions version, and that bump is deliberately not best-effort (sessions.ts:113-114):
+    // if Redis rejects it, this throws and the request answers 5xx with the code still unspent, so
+    // the parent retries instead of being locked out with the code gone. The other failure direction
+    // is the safe one: a revocation that succeeds and a transaction that then fails leaves every
+    // session dead and the code usable.
+    // A lost device must not keep a live session: revoking also bumps the sessions version, so
+    // access tokens die with the refresh tokens (ADR-0025).
+    await revokeAllRefreshTokens(parent.id);
 
     const usedAt = new Date();
     const consumed = await prisma.$transaction(async (tx) => {
@@ -526,10 +539,6 @@ export async function authRoutes(app: FastifyInstance) {
       return true;
     });
     if (!consumed) return reply.code(401).send({ error: "invalid_recovery" });
-
-    // A lost device must not keep a live session: revoking also bumps the sessions version, so
-    // access tokens die with the refresh tokens (ADR-0025).
-    await revokeAllRefreshTokens(parent.id);
 
     const jti = randomBytes(16).toString("hex");
     const recoveryToken = app.jwt.sign(
