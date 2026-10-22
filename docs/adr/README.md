@@ -31,7 +31,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0020](0020-family-timezone-setting.md) | The family timezone comes from the parent's device at signup/login and is a parent setting; `region` stays a market (B1) | accepted |
 | [0021](0021-play-policy-review-child-agent.md) | Play policy review: call-log/SMS and `QUERY_ALL_PACKAGES` leave the `play` build, `isMonitoringTool=child_monitoring` is declared, the listener stays Full-only | accepted |
 | [0022](0022-websocket-ticket-only.md) | WebSocket authentication is ticket-only; the legacy `?token=` handshake is removed (supersedes that clause of ADR-0004) | accepted |
-| [0023](0023-mfa-recovery.md) | MFA recovery: one-time recovery codes at enrolment, with a support break-glass for the cohort that has none (proposal for the KCL lead) | proposed |
+| [0023](0023-mfa-recovery.md) | MFA recovery: one-time recovery codes at enrolment, with a support break-glass for the cohort that has none (support path superseded by ADR-0031) | accepted (technical half) |
 | [0024](0024-digest-claim-failure-lifecycle.md) | A digest send claim outlives a permanent refusal (`DigestSend.failedReason`), not a transient one; the sender classifies `retryable` | accepted |
 | [0025](0025-session-revocation-counter.md) | Parent session revocation is a monotonic counter (`sv` claim), not a second-grained `iat` epoch; a token minted in the revocation second is dead (#117) | accepted |
 | [0026](0026-pip-split-overlay-coverage.md) | Multi-window coverage: judge every visible application window (PiP and split), expand the overlay with `resizeableActivity=false`, bound the re-raise; PiP itself cannot be closed by an accessibility service (#175) | accepted |
@@ -39,6 +39,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0028](0028-hosting-regions-and-scaling.md) | Production hosting: managed containers on AWS, one independent stack per region in launch order (regions superseded by ADR-0030), push-first device wake-ups, capability list and version gate, cost model 1k–1M families | accepted |
 | [0029](0029-repeated-remove-attempts-aggregate.md) | Repeated remove-protection attempts are one alert row per 5-minute window, updated in place with a count; the first attempt still pages immediately (#227) | proposed |
 | [0030](0030-regions-after-uae-outage.md) | Regions after the AWS UAE outage: production's first region is Frankfurt (serves the Middle East launch), staging in Stockholm, nothing built in `me-central-1`; supersedes ADR-0028's region table | accepted |
+| [0031](0031-mfa-reset-family-witness.md) | MFA reset when every recovery code is gone: password, mailbox, a family witness (a code on a paired child device or another parent's approval) and a 72-hour window that any sign-in cancels; no support operator; supersedes ADR-0023's open support path (#297) | accepted |
 
 ## Writing a new ADR
 
