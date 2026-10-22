@@ -1,7 +1,10 @@
-# OSRA staging infrastructure — AWS, UAE (`me-central-1`)
+# OSRA staging infrastructure — AWS, Stockholm (`eu-north-1`)
 
 Terraform for the staging deployment of the API service, one independent regional stack as
-[ADR-0028](../../docs/adr/0028-hosting-regions-and-scaling.md) requires.
+[ADR-0028](../../docs/adr/0028-hosting-regions-and-scaling.md) requires. The stack moved from the UAE
+(`me-central-1`) to Stockholm on 2026-10-22 because that region is damaged
+([ADR-0030](../../docs/adr/0030-regions-after-uae-outage.md)); production's first region is Frankfurt
+(`eu-central-1`), not this directory.
 
 **Scope:** `services/api` only. The parent app, child agents and the AI engine are not in these
 stacks. They do include ElastiCache because the API fail-closes parent sessions when the cache is
@@ -31,13 +34,37 @@ access blocked) and is not managed here.
 
 ## State
 
-Both stacks use `osra-terraform-state-222207908538-me-central-1`, encrypted, versioned, with native
-S3 locking (`use_lockfile = true`, Terraform >= 1.10). There is no DynamoDB table.
+Both stacks use `osra-terraform-state-222207908538-eu-north-1`, in the stack's own region (`eu-north-1`
+since the move to Stockholm on 2026-10-22, ADR-0030), encrypted, versioned, with native S3 locking
+(`use_lockfile = true`, Terraform >= 1.10). There is no DynamoDB table. The previous bucket,
+`osra-terraform-state-222207908538-me-central-1`, still exists; it belongs to the UAE base stack and is
+deleted with it, not reused.
 
 | Stack | Key |
 |---|---|
 | `base/` | `staging/base/terraform.tfstate` |
 | `env/` | `staging/env/terraform.tfstate` |
+
+### Moving from `me-central-1` (one-off, 2026-10-22)
+
+The region moved because AWS's UAE region lost an availability zone and refuses image pushes (ADR-0030).
+Four steps, **in this order** — the order is the part that fails if it is guessed:
+
+1. **Destroy the `me-central-1` base**, from a checkout whose backend and tfvars still say `me-central-1`
+   (`git` at `a9cf888` or earlier, or a worktree created before this change). After the move, `main`'s
+   backend points at the Stockholm bucket, so a destroy run from it would look for the regional resources in
+   `eu-north-1`, find none, drop them from state and leave them running — while still deleting the global IAM
+   ones.
+2. **Delete the hand-made empty repository** `osra-staging/api` in `eu-north-1`, so `base` can create its own
+   with the 14-day untagged-image lifecycle policy.
+3. **Merge the region change, then `plan` base** from a worktree whose backend is the Stockholm bucket.
+4. **Apply base**, then set the Actions variable `AWS_ECR_REPOSITORY` to the new `ecr_repository_url` output.
+
+Why the destroy comes first: `base` creates two IAM roles (`osra-staging-ecs-execution`,
+`osra-staging-publish`) and the `token.actions.githubusercontent.com` OIDC provider, all of which are
+**account-global** and already owned by the UAE stack. A base apply in `eu-north-1` while those exist fails
+partway with `EntityAlreadyExists`, and with the leftover repository, `RepositoryAlreadyExistsException`.
+`terraform plan` reports a clean apply in both cases; only the apply fails.
 
 Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `env/`.
 
@@ -70,7 +97,7 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 
 - Terraform >= 1.10 (validated and planned with 1.16.6).
 - AWS CLI v2 and any credential source for the staging account. **No profile name is committed**;
-  the scripts default to `AWS_PROFILE=osra-staging` and `AWS_REGION=me-central-1` if unset.
+  the scripts default to `AWS_PROFILE=osra-staging` and `AWS_REGION=eu-north-1` if unset.
 - Docker with `buildx` and ARM64 emulation only for the local publish fallback; the workflow builds on
   GitHub's arm64 runner (`Publishing the image` below).
 - A Route 53 hosted zone if release mode should create the certificate and publish the API record.
@@ -80,7 +107,7 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 cp infra/terraform/base/terraform.tfvars.example infra/terraform/base/terraform.tfvars
 cp infra/terraform/env/terraform.tfvars.example  infra/terraform/env/terraform.tfvars
 export AWS_PROFILE=osra-staging
-export AWS_REGION=me-central-1
+export AWS_REGION=eu-north-1
 ```
 
 Both `terraform.tfvars` files are gitignored. The examples use `<account-id>` placeholders, never
@@ -181,15 +208,16 @@ unset.
 
 ### What the role can and cannot do
 
-`osra-staging-publish` trusts only the `main` branch and the `staging-publish` environment of
-`handfulofluck-lab/osra`, with audience `sts.amazonaws.com` — in the plain subject form and in the
-`@owner-id`/`@repo-id` form GitHub uses for repositories created after 2026-07-15; any other
-repository, branch, tag or pull request is refused by STS. Its inline policy grants
+`osra-staging-publish` trusts exactly one subject — the `main` branch of `handfulofluck-lab/osra`, in the
+`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/main` form GitHub uses for repositories created after
+2026-07-15 — with audience `sts.amazonaws.com`; any other repository, branch, tag, environment or pull
+request is refused by STS. Its inline policy grants
 `ecr:GetAuthorizationToken` (account-wide, because ECR cannot scope the login token to a repository)
 and `BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`,
 `PutImage`, `BatchGetImage` and `DescribeImages` on the `osra-staging/api` repository only. It cannot
-read secrets, run tasks, deploy, or touch another repository or service. It can overwrite images in
-that one repository — that is what a push is, and why publishing stays a manual dispatch.
+read secrets, run tasks, deploy, or touch another repository or service. It can add a new tag to that one
+repository but cannot replace one: tags are `IMMUTABLE` (`base/ecr.tf`), so a published sha always names
+the image it was first pushed as.
 
 ### Local fallback
 
@@ -199,7 +227,7 @@ because the workflow builds the same Dockerfile for the same platform:
 ```bash
 REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
 SHA="$(git rev-parse --short=12 HEAD)"
-aws ecr get-login-password --region me-central-1 \
+aws ecr get-login-password --region eu-north-1 \
   | docker login --username AWS --password-stdin "${REPO%%/*}"
 docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
 ```
@@ -316,18 +344,27 @@ a non-release run put your own address there (for example `203.0.113.7/32`).
 
 `env/elasticache.tf` uses engine `redis`, version `7.1`, parameter family `redis7`.
 
-On 2026-10-22 `aws elasticache describe-cache-engine-versions --region me-central-1 --engine valkey`
+On 2026-10-22, in `me-central-1`, `aws elasticache describe-cache-engine-versions --engine valkey`
 returned `InternalFailure` on three consecutive attempts, while `--engine redis` listed 6.2, 7.0 and
-7.1. The API's ioredis client speaks the same protocol. **Production must recheck Valkey in
-`me-central-1` before it matters** (ADR-0028 names Valkey).
+7.1. The API's ioredis client speaks the same protocol. That observation is historical — staging ran
+in that region then and runs in `eu-north-1` now (ADR-0030). The lookup was repeated in Stockholm
+afterwards and lists valkey **7.2, 8.0, 8.1, 8.2, 9.0 and 9.1**, so `redis` 7.1 is valid there; the
+remaining reason to keep it is that staging should match production's family until production is proven.
+Switching staging to valkey is its own small change (`engine = "valkey"`, `engine_version = "8.2"`,
+family `valkey8`), and it costs nothing to try because `env` is destroyed and rebuilt every session.
+**Production must recheck Valkey in Frankfurt (`eu-central-1`) before it matters** (ADR-0028 names
+Valkey, ADR-0030 decision 6 asks for one staging run in Frankfurt before go-live).
 
 ## Cost
 
-Rough **US$0.19/hour** for `env` at the defaults, on-demand list prices in `me-central-1` — about
+Rough **US$0.19/hour** for `env` at the defaults, on-demand list prices in `eu-north-1` — about
 **US$1.55 for an 8-hour session** (the line items below add up to 0.194; `up.sh` prints 1.52 because
-it multiplies the rounded 0.19). `base` is roughly **US$2/month** (ECR, four secrets, the log group)
-and is always on. The certificate costs nothing while attached to the ALB. Excludes free-tier
-credits, AWS Support, taxes and unpredictable data transfer. **This is an estimate, not a quote.**
+it multiplies the rounded 0.19). The per-item figures were quoted from the previous region's price
+list before the move to Stockholm on 2026-10-22 and have not been re-quoted for `eu-north-1`, so read
+the total as an order of magnitude, not a Stockholm price. `base` is roughly **US$2/month** (ECR, four
+secrets, the log group) and is always on. The certificate costs nothing while attached to the ALB.
+Excludes free-tier credits, AWS Support, taxes and unpredictable data transfer. **This is an estimate,
+not a quote.**
 
 | Item | Basis | US$/hour |
 |---|---|---:|

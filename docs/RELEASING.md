@@ -182,7 +182,7 @@ fallback for a host with Docker and an AWS credential source:
 
 ```bash
 REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
-aws ecr get-login-password --region me-central-1   | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.me-central-1.amazonaws.com"
+aws ecr get-login-password --region eu-north-1   | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.eu-north-1.amazonaws.com"
 docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
 ```
 
