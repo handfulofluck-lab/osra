@@ -501,10 +501,32 @@ export async function authRoutes(app: FastifyInstance) {
     if (normalised.length !== RECOVERY_CODE_LENGTH) {
       return reply.code(401).send({ error: "invalid_recovery" });
     }
+    // #199: only an unused row leads to revocation. A spent row still matches its hash, and without
+    // this filter a replay would reach the revocation below and answer 401 — a logout lever for
+    // anyone holding the password and a spent code.
     const candidate = await prisma.parentMfaRecoveryCode.findFirst({
-      where: { parentId: parent.id, codeHash: hashRecoveryCode(normalised) },
+      where: { parentId: parent.id, codeHash: hashRecoveryCode(normalised), usedAt: null },
     });
     if (!candidate) return reply.code(401).send({ error: "invalid_recovery" });
+
+    // #199 item 3: the recovery token's Redis record is written *before* anything is spent, for the
+    // same reason the revocation below moved earlier. Registering it after the commit left an
+    // identical lockout: a Redis failure there answered 5xx with the code claimed, the siblings
+    // deleted, `mfaSecret` cleared and no token to show for it. Registering first costs one entry
+    // that a lost race deletes (below) and that expires on its own if the process dies.
+    // Signing happens after the commit because it does no I/O and must not exist for a rollback.
+    const jti = randomBytes(16).toString("hex");
+    await getRedis().set(recoveryKey(jti), parent.id, "EX", RECOVERY_TTL_SECONDS);
+
+    // #199: revoke *before* the code is consumed, not after the commit. `revokeAllRefreshTokens`
+    // bumps the sessions version, and that bump is deliberately not best-effort (sessions.ts:113-114):
+    // if Redis rejects it, this throws and the request answers 5xx with the code still unspent, so
+    // the parent retries instead of being locked out with the code gone. The other failure direction
+    // is the safe one: a revocation that succeeds and a transaction that then fails leaves every
+    // session dead and the code usable.
+    // A lost device must not keep a live session: revoking also bumps the sessions version, so
+    // access tokens die with the refresh tokens (ADR-0025).
+    await revokeAllRefreshTokens(parent.id);
 
     const usedAt = new Date();
     const consumed = await prisma.$transaction(async (tx) => {
@@ -525,18 +547,18 @@ export async function authRoutes(app: FastifyInstance) {
       await tx.parent.update({ where: { id: parent.id }, data: { mfaSecret: null } });
       return true;
     });
-    if (!consumed) return reply.code(401).send({ error: "invalid_recovery" });
+    if (!consumed) {
+      // Lost the race (or the batch vanished): the record registered above names no token, because
+      // none was signed, so deleting it is tidiness rather than correctness — and a failure here must
+      // not turn a 401 into a 5xx.
+      await getRedis().del(recoveryKey(jti)).catch(() => {});
+      return reply.code(401).send({ error: "invalid_recovery" });
+    }
 
-    // A lost device must not keep a live session: revoking also bumps the sessions version, so
-    // access tokens die with the refresh tokens (ADR-0025).
-    await revokeAllRefreshTokens(parent.id);
-
-    const jti = randomBytes(16).toString("hex");
     const recoveryToken = app.jwt.sign(
       { sub: parent.id, purpose: "mfa_recovery", jti },
       { expiresIn: `${RECOVERY_CODE_TTL_MINUTES}m` },
     );
-    await getRedis().set(recoveryKey(jti), parent.id, "EX", RECOVERY_TTL_SECONDS);
 
     const notice = await getEmailSender().send(mfaRecoveredEmail(parent.email));
     if (!notice.ok) req.log.error({ reason: notice.reason }, "MFA recovery notice email failed");
