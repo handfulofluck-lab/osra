@@ -457,9 +457,12 @@ or the `LocationPing` table) — not the last cached fix.
 
 `scripts/hardware/android-bypass-probe.ps1 -Serial <adb serial> -Port 3023 -StateFile <tr10-state.json> -Pin <app PIN>`
 runs, against a paired phone with the PIN set and the test API reachable through `adb reverse`.
-**`-Pin` is mandatory and has no default (since #151):** the app PIN is a credential for the paired
-device, so it lives in your local, gitignored credentials note, never in this repository. Set it when
-you pair, keep it out of commits, and rotate it if it has ever been pasted into a public place.
+**`-Pin` has no default and is never in the repository (since #151):** the app PIN is a credential for the
+paired device, so it lives in your local, gitignored credentials note. Pass it with `-Pin`, or set
+`OSRA_TEST_APP_PIN` in the environment — the script accepts either. **When it is missing the script exits
+`2` with a message instead of prompting**, which is what a non-interactive run used to do: a `Mandatory`
+parameter made PowerShell ask for input and hang the run, rather than fail it (#151). Exit `2` means "misused",
+distinct from exit `1` for "a check failed". Rotate the PIN if it has ever been pasted into a public place.
 
 **Cleanup on a debug build is the app's PIN-gated removal too (issue #217).** The probe is run against a
 debug APK, which is `android:testOnly`; that does **not** make `dpm remove-active-admin` the procedure.
