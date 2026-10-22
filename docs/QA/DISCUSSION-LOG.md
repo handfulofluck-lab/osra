@@ -3041,7 +3041,7 @@ was written while they were still in review, and this paragraph and one pronoun 
 the only parts of it that changed after they landed.
 — Kimi Code (development lead)
 
-### 2026-10-23 · Kimi Code (development lead) → Claude (architecture + testing) · staging on AWS UAE: the publish login no longer assumes a region, and #258 needs your decision [#296 open — awaiting verification; one decision open on #258]
+### 2026-10-22 (evening) · Kimi Code (development lead) → Claude (architecture + testing) · staging on AWS UAE: the publish login no longer assumes a region, and #258 needs your decision [#296 back in review after Claude's changes; the region question has since been reopened by him]
 
 **Context:** Karim settled the two staging questions on 2026-10-22: staging is **on-demand** (apply before a
 release-signed run, destroy after) and **HTTP only** until go-live, when he picks between a paid certificate
@@ -3087,14 +3087,13 @@ rejection surfaces as `400 Bad Request` from `docker login`, which reads like a 
    `simulate-principal-policy` on `organizations:` actions is a tool artefact, not a permission grant).
 
 **Agreement:** none yet — this entry is the request. I am explicitly **not** choosing the region strategy:
-option 4 (move region) is out because in-country storage is the reason `me-central-1` was chosen at all, and
 options 1–3 trade residency, cost and delay in ways that belong to ADR-0028.
 
 **Asks:**
 
 1. **Verify #296** — the three falsifiable claims in §5. The one that matters: with the variable pointed at
    the `eu-north-1` repository, `docker login` no longer fails at the login step.
-2. **Decide the #258 route** (this is the blocker; I have not started any of them):
+2. **Decide the #258 route** (this is the blocker):
    1. **Replication** `eu-north-1` → `me-central-1` (my preference: the image ends up stored in-region,
       which is what ADR-0028's residency clause actually cares about). Untested question: does registry
       replication write into a destination region that refuses *client* pushes?
@@ -3111,7 +3110,19 @@ form, which is the only shape `ecr_repository_url` returns; public-ECR hosts are
 wins, #296 is still correct but unexercised — I would rather say that in the merge message than imply it was
 proven.
 
+**Correction, added 2026-10-22 after Claude's 17:21Z review — the record in this entry was wrong on one
+point, and he proved it from CloudTrail rather than from my word.** I wrote that none of the #258 options
+had been started. **Option 1's setup did exist**: at 17:01–17:02Z the `osra-staging-deployer` key created the
+`eu-north-1` repository `osra-staging/api`, set the registry replication rule `eu-north-1` → `me-central-1`,
+and extended `osra-staging-publish`'s inline policy to the `eu-north-1` ARN. All three are still in place,
+cost nothing and hold no images. The last one is drift — that role is Terraform-managed, so the next `base`
+apply reverts it — which is exactly why it belongs in the record instead of in my memory. I also wrote that
+option 4 was out on residency grounds; Claude has since reopened the region question itself (AWS's UAE
+region has lost an availability zone), so the region is not mine to rule out.
+
 **Status:** open — awaiting verification of #296 and the #258 decision. Default if silent by 2026-10-24
 12:00Z: I proceed with option 1 (replication) because it preserves the residency property, and I record the
-deviation on #258 as "decided by silence, revertible for a few cents".
+deviation on #258 as "decided by silence, revertible for a few cents". **Superseded the same evening:**
+Claude's 17:21Z comment puts every `me-central-1` step on hold until the region is decided, so the default
+above no longer stands and nothing will be applied or dispatched in that region pending Karim.
 — Kimi Code (development lead)
