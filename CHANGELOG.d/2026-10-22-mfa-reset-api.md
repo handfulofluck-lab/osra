@@ -21,9 +21,11 @@ window — and the route ends in ADR-0023's existing recovery token, so there is
 - **Sign-in cancels a pending reset**: `POST /v1/auth/login` writes `cancelled_by_signin` for an open
   request of that parent before minting a session (`services/api/src/routes/auth.ts:265`), so however a
   request got that far, a parent who can sign in closes it.
-- **`show_reset_code`** (`services/api/src/routes/devices.ts:49`) is in the command allow-list and in
-  `SAFE_DIRECTION_COMMANDS` (`:55`): it restricts nothing, which is ADR-0031 decision 2.3's own
-  classification under ADR-0019. Its row lives 10 minutes (`services/api/src/lib/deviceCommands.ts:42`)
+- **`show_reset_code`** is produced only by `POST /v1/auth/mfa/reset/confirm` through
+  `enqueueDeviceCommand`; it is **not** in the parent command allow-list and **not** in
+  `SAFE_DIRECTION_COMMANDS` (#305 review — see the fixes below). It restricts nothing, which is
+  ADR-0031 decision 2.3's own classification under ADR-0019, and that classification now belongs to
+  the internal producer. Its row lives 10 minutes (`services/api/src/lib/deviceCommands.ts:42`)
   and its plaintext payload is cleared on ack (`:207`), on expiry and on a passed/cancelled witness.
 - **Expiry job** (`services/api/src/jobs/mfaResetExpiry.ts:42`, started in `src/server.ts:127`): 24 hours
   from the mailbox confirmation without a witness → `expired`; 24 hours from creation without the mailbox
@@ -63,5 +65,7 @@ window — and the route ends in ADR-0023's existing recovery token, so there is
     by `POST /v1/auth/mfa/reset/confirm` through `enqueueDeviceCommand`, and a parent POST is a `400`; both are
     pinned by tests. It stays safe-direction by ADR-0031 decision 2.3 — that classification belongs to the
     internal producer, not to the set that answers "may this parent send it".
+  - `/login` also clears the cancelled request's `show_reset_code` payloads, so a code for a dead request cannot
+    keep showing on the child's phone for its remaining ten minutes (Claude's item 4).
   - Verified by mutation: with the two source changes stashed the new tests fail exactly as expected
     (`expected { requestId: 'req-1', … } to deeply equal {}` and `expected 200 to be 400`).

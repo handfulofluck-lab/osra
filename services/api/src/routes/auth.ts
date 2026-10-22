@@ -260,10 +260,21 @@ export async function authRoutes(app: FastifyInstance) {
     // here, before any session is minted, and `complete` refuses a cancelled request. This covers a
     // request still waiting for its mailbox click as well as one inside the 72-hour window: a parent
     // who signs in has no reason to keep either alive.
+    // #305 review: a cancelled request must not keep a live code on the child's phone for its
+    // remaining 10 minutes. The ids are read first because `updateMany` does not return them.
+    const openBeforeSignIn = (await prisma.mfaResetRequest.findMany({
+      where: { parentId: parent.id, state: { in: [...OPEN_RESET_STATES] } },
+      select: { id: true },
+    })) ?? [];
     await prisma.mfaResetRequest.updateMany({
       where: { parentId: parent.id, state: { in: [...OPEN_RESET_STATES] } },
       data: { state: "cancelled_by_signin", cancelledReason: "signin", outcomeAt: new Date() },
     });
+    for (const open of openBeforeSignIn) {
+      await clearResetCodePayloads(open.id).catch((err) =>
+        req.log.warn({ err, requestId: open.id }, "[mfa-reset] could not clear the code of a cancelled request"),
+      );
+    }
     const { token, jti, sv } = await signParentToken(app, parent);
     return { token, refreshToken: await issueRefreshToken(parent.id, sv, jti) };
   });

@@ -176,6 +176,11 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
   prismaMock.mfaResetRequest.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
     resets.find((r) => r.id === where.id) ?? null,
   );
+  // #305 review item 4: `/login` reads the open ids before cancelling, so the code payloads can be
+  // cleared. The mock filters the same way `updateMany` does.
+  prismaMock.mfaResetRequest.findMany.mockImplementation(async ({ where }: { where: Record<string, any> }) =>
+    resets.filter((r) => matches(r, where ?? {})).map((r) => ({ id: r.id })),
+  );
   const matches = (r: ResetRow, where: Record<string, any>): boolean => {
     if (where.id && r.id !== where.id) return false;
     if (where.parentId && r.parentId !== where.parentId) return false;
@@ -809,6 +814,24 @@ describe("MFA reset — a sign-in cancels it (ADR-0031 claim 3)", () => {
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({ error: "request_cancelled" });
     expect(subject().mfaSecret).not.toBeNull();
+    await app.close();
+  });
+
+  it("#305 review 4: a sign-in cancels the request AND clears the code on the child's phone", async () => {
+    const { app } = await setup();
+    const { requestId } = await reachMailboxStep(app);
+    // The code is live at this point: the mailbox step is confirmed, the witness has not passed.
+    expect(commands.find((c) => c.type === "show_reset_code" && c.payload?.code)).toBeTruthy();
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: SUBJECT_EMAIL, password: PASSWORD, code: totpAtCounter(OLD_SECRET, currentCounter() + 1) },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(resets.find((r) => r.id === requestId)!.state).toBe("cancelled_by_signin");
+    // A cancelled request must not leave a code readable on the phone for its remaining 10 minutes.
+    expect(commands.filter((c) => c.type === "show_reset_code" && c.payload?.code)).toHaveLength(0);
     await app.close();
   });
 
