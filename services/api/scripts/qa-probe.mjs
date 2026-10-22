@@ -96,11 +96,28 @@ class RateLimitAbort extends Error {}
 /** Sockets opened in section L, so the abort path can close them and let the process exit. */
 const OPEN_SOCKETS = new Set();
 
+/** Stops the run from the top level without `process.exit()` — see the note in the handler below. */
+class StopRun extends Error {
+  constructor(code) {
+    super("stop");
+    this.code = code;
+  }
+}
+
 process.on("uncaughtException", (err) => {
   if (err instanceof RateLimitAbort) {
     for (const ws of OPEN_SOCKETS) { try { ws.close(); } catch { /* already closing */ } }
     process.exitCode = 2;
     return; // let the loop drain: process.exit() after several fetches trips a Node 24/Windows libuv assertion
+  }
+  // #309: the same assertion, on a different path. When a `setup:` check fails, the early exit used to
+  // call `process.exit(1)` while a `fetch` keep-alive socket was closing, and on Node 24/Windows the
+  // process died with 0xC0000409 instead of 1 — so the stub test in `test/qa-probe-rate-limit.test.ts`
+  // read a crash, not a FAIL. Setting the code and letting the loop drain is what the aborts do above.
+  if (err instanceof StopRun) {
+    for (const ws of OPEN_SOCKETS) { try { ws.close(); } catch { /* already closing */ } }
+    process.exitCode = err.code;
+    return;
   }
   console.error(err);
   process.exit(1);
@@ -113,6 +130,9 @@ const abortRateLimited = (why) => {
   process.exitCode = 2;
   throw new RateLimitAbort("rate limited by the API");
 };
+
+// 429s the API itself answers, as product decisions; every other 429 is throttling (see call()).
+const APP_429_ERRORS = new Set(["reset_limit_reached"]);
 
 /** Count one observed 429 and abort once the run is clearly being throttled. */
 const count429 = (where) => {
@@ -142,6 +162,13 @@ async function call(method, path, { token, body, hmac, secret, rawBody, headers 
     body: raw,
   });
   let res = await send();
+  // The API's own 429s are answers, not throttling: ADR-0031 decision 7 refuses a fourth reset request
+  // in 30 days with `429 reset_limit_reached`. Only the codes in APP_429_ERRORS go back to the check that
+  // asked; any other 429 (the rate limiter's "Too Many Requests", a proxy's) is throttling, as before (#112).
+  if (res.status === 429) {
+    const peek = await res.clone().json().catch(() => null);
+    if (APP_429_ERRORS.has(peek?.error)) return { status: 429, data: peek };
+  }
   if (res.status === 429) {
     count429(`${method} ${path}`);
     const waitMs = retryAfterMs(res);
@@ -179,7 +206,7 @@ const tokenB = regB.data?.token;
 check("setup: two families registered", regA.status === 201 && regB.status === 201, `${regA.status}/${regB.status}`);
 if (!tokenA || !tokenB) {
   console.log("cannot continue without two parent tokens");
-  process.exit(1);
+  throw new StopRun(1);
 }
 
 // Family A: child with inline consent, plus a device.
@@ -1130,6 +1157,178 @@ const afterRecovery = await call("POST", "/v1/auth/login", { body: { email: recE
 check("O13 the recovery token still re-enrols and re-verifies, and the account is back to a normal MFA account", enrollAgain.status === 200 && verifyAgain.status === 200 && Array.isArray(verifyAgain.data?.recoveryCodes) && verifyAgain.data.recoveryCodes.length === 10 && afterRecovery.status === 401 && afterRecovery.data?.error === "mfa_required", `enroll=${enrollAgain.status} verify=${verifyAgain.status} codes=${verifyAgain.data?.recoveryCodes?.length} login=${afterRecovery.status}/${afterRecovery.data?.error}`);
 
 
+// ── O (cont.). MFA reset with a family witness (ADR-0031) ───────────────────
+// The route for a parent who lost the authenticator AND every recovery code: password, the account's
+// mailbox, a family witness (a paired child device or another owner/co-parent), then a 72-hour window,
+// with no operator and no admin route (ADR-0031). `test/mfa-reset.test.ts` proves the state machine
+// against a mock; these checks pin the *live* contract, including the #305 review finding that
+// `GET /devices/:id/commands/history` handed the witness code itself to any parent of the family —
+// O18 fails if that comes back.
+//
+// The mailbox: the probe has no inbox. `POST /mfa/reset/confirm` takes the link's token, and
+// `/mfa/reset/request` echoes it as `confirmToken` only while no email provider is configured and
+// NODE_ENV is not production (`echoResetTokens` in `services/api/src/routes/auth.ts`). On a stack with
+// RESEND_API_KEY/EMAIL_FROM set, the witness half cannot be walked over HTTP; this block then reports
+// one `target` naming the checks it could not run, never a silent pass. The 7-day post-window expiry
+// (amendment 2026-10-22, gap 1) is a database clock the probe cannot wait for: it stays a unit test
+// (`mfa-reset-expiry.test.ts`) plus `src/jobs/mfaResetExpiry.ts`, and is deliberately not asserted here.
+//
+// Accounts are `qa-mfa-*@example.com`, so `scripts/cleanup-test-data.sql` removes their families —
+// `MfaResetRequest.parentId` cascades from `Parent`, so the reset rows go with them. No real account
+// is touched, and the probe itself has no database connection (docs/TESTING.md §6).
+console.log("\n── O (cont.). MFA reset with a family witness (ADR-0031) ──");
+const mrEmail = `qa-mfa-reset-${stamp}@example.com`;
+const mrGuardianEmail = `qa-mfa-guardian-${stamp}@example.com`;
+const mrOtherEmail = `qa-mfa-other-${stamp}@example.com`;
+const mrReg = await call("POST", "/v1/auth/register", {
+  body: { email: mrEmail, password: PASSWORD, displayName: "QA Reset Parent", familyName: "QA Reset Family", region: "US" },
+});
+let mrToken = mrReg.data?.token;
+// The guardian: invited into the reset parent's family and moved there, so it is a real same-family
+// parent whose role is deliberately partial (ADR-0031 claim 4).
+const mrGuardianReg = await call("POST", "/v1/auth/register", {
+  body: { email: mrGuardianEmail, password: PASSWORD, displayName: "QA Reset Guardian", familyName: "QA Guardian Family", region: "US" },
+});
+let mrGuardianToken = mrGuardianReg.data?.token;
+// A live owner of a *different* family: section N turns parent B into a co-parent of family A, so B's
+// registration token is no longer a cross-family credential by the time this block runs.
+const mrOtherReg = await call("POST", "/v1/auth/register", {
+  body: { email: mrOtherEmail, password: PASSWORD, displayName: "QA Other Owner", familyName: "QA Other Family", region: "US" },
+});
+const mrOtherToken = mrOtherReg.data?.token;
+
+const mrChild = await call("POST", "/v1/family/children", {
+  token: mrToken,
+  body: { displayName: `QA Reset Kid ${stamp}`, birthYear: 2015, consent: { method: "sms_plus", jurisdiction: "US" } },
+});
+const mrKid = mrChild.data?.child?.id;
+// Paired, not merely registered: the witness code has to be readable from a real device queue.
+const mrPair = mrKid ? await call("POST", "/v1/devices/pair", { token: mrToken, body: { childId: mrKid } }) : { status: 0 };
+const mrClaim = mrPair.data?.code
+  ? await call("POST", "/v1/devices/pair/claim", { body: { code: mrPair.data.code, platform: "android", model: "qa-mfa-reset-dev", osVersion: "14", deviceName: "qa-mfa-reset-dev" } })
+  : { status: 0 };
+const mrDeviceId = mrClaim.data?.device?.id ?? mrClaim.data?.deviceId;
+const mrDeviceToken = mrClaim.data?.token;
+
+// The guardian must join while the owner's registration session is still live: verifying an MFA
+// enrolment revokes every session of that parent (below), and the invite needs an owner.
+const mrInvite = mrToken
+  ? await call("POST", "/v1/family/invites", { token: mrToken, body: { email: mrGuardianEmail, role: "guardian", permissions: [] } })
+  : { status: 0 };
+const mrInviteId = mrInvite.data?.invite?.id ?? mrInvite.data?.acceptToken;
+const mrGuardianAccept = mrInviteId && mrGuardianToken
+  ? await call("POST", `/v1/family/invites/${mrInviteId}/accept`, { token: mrGuardianToken })
+  : { status: 0 };
+if (mrGuardianAccept.data?.token) mrGuardianToken = mrGuardianAccept.data.token;
+
+const mrEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: mrToken, body: {} });
+const mrSecret = mrEnroll.data?.secret ?? "";
+// One window back, so the login below can present a strictly newer counter (the replay guard refuses
+// a counter it has already seen).
+const mrVerify = await call("POST", "/v1/auth/mfa/verify", { token: mrToken, body: { code: mrSecret ? totpCode(mrSecret, Date.now() - 30_000) : "000000" } });
+// Verification revoked every session; this is the only session the block uses, and the witness step
+// kills it (claim 2). Every session-bearing read below therefore happens before the witness passes.
+const mrLogin = await call("POST", "/v1/auth/login", { body: { email: mrEmail, password: PASSWORD, code: mrSecret ? totpCode(mrSecret) : "000000" } });
+const mrSession = mrLogin.data?.token;
+check("setup: the MFA-reset family has MFA on, one paired device and a guardian (so the flow can be walked)", mrReg.status === 201 && mrVerify.status === 200 && mrLogin.status === 200 && !!mrKid && !!mrDeviceId && !!mrDeviceToken && mrGuardianAccept.status === 200, `register=${mrReg.status} enroll=${mrEnroll.status} verify=${mrVerify.status} login=${mrLogin.status} child=${!!mrKid} device=${!!mrDeviceId} guardian=${mrGuardianAccept.status}`);
+
+// ADR-0031 claim 1a / decision 2.1: the request route must not become a password oracle distinct from
+// `/login`. Both sides are compared — a shared wrong answer would otherwise also pass.
+const mrWrongLogin = await call("POST", "/v1/auth/login", { body: { email: mrEmail, password: "WrongPassw0rd!" } });
+const mrWrongRequest = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: mrEmail, password: "WrongPassw0rd!" } });
+const mrUnknownLogin = await call("POST", "/v1/auth/login", { body: { email: `nobody-mfa-reset-${stamp}@example.com`, password: PASSWORD } });
+const mrUnknownRequest = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: `nobody-mfa-reset-${stamp}@example.com`, password: PASSWORD } });
+check("O14 a wrong password and an unknown address get /login's own answer from /mfa/reset/request (same status, same body)", mrWrongLogin.status === 401 && mrWrongRequest.status === mrWrongLogin.status && JSON.stringify(mrWrongRequest.data) === JSON.stringify(mrWrongLogin.data) && mrUnknownRequest.status === mrUnknownLogin.status && JSON.stringify(mrUnknownRequest.data) === JSON.stringify(mrUnknownLogin.data), `wrongPw: login=${mrWrongLogin.status}/${JSON.stringify(mrWrongLogin.data)} request=${mrWrongRequest.status}/${JSON.stringify(mrWrongRequest.data)} unknown: login=${mrUnknownLogin.status}/${JSON.stringify(mrUnknownLogin.data)} request=${mrUnknownRequest.status}/${JSON.stringify(mrUnknownRequest.data)}`);
+
+// Claim 1b's other half / the #305 finding: `show_reset_code` has exactly one producer — the mailbox
+// confirmation. A parent-issueable command of that name would let any family parent put a fake reset
+// notice with a chosen code on a child's phone (`CommandSchema`, services/api/src/routes/devices.ts).
+const mrParentCmd = mrDeviceId && mrSession ? await call("POST", `/v1/devices/${mrDeviceId}/command`, { token: mrSession, body: { command: "show_reset_code" } }) : { status: 0, data: {} };
+const mrBaseline = mrDeviceId && mrSession ? await call("GET", `/v1/devices/${mrDeviceId}/commands/history?limit=100`, { token: mrSession }) : { status: 0, data: {} };
+const mrBaselineRows = mrBaseline.data?.items ?? [];
+check("O15 a parent cannot issue show_reset_code: refused 400 and nothing is queued (the reset flow is its only producer)", mrParentCmd.status === 400 && mrBaseline.status === 200 && mrBaselineRows.filter((c) => c.type === "show_reset_code").length === 0, `command=${mrParentCmd.status} history=${mrBaseline.status} queued=${JSON.stringify(mrBaselineRows.map((c) => c.type))}`);
+
+const mrRequest = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: mrEmail, password: PASSWORD } });
+const mrRequestId = mrRequest.data?.requestId;
+const mrConfirmToken = mrRequest.data?.confirmToken;
+if (typeof mrConfirmToken !== "string") {
+  target("O16-O22 the MFA reset witness half (mailbox link, show_reset_code, window, sign-in cancel)", `POST /mfa/reset/request answered ${mrRequest.status} without a confirmToken: the link is echoed only while no email provider is configured and NODE_ENV is not production (echoResetTokens, services/api/src/routes/auth.ts), so this probe cannot walk the mailbox step on this stack`);
+} else {
+  // Claim 1b: nothing is sent to a child device before the link is clicked.
+  const mrPreConfirm = await call("GET", `/v1/devices/${mrDeviceId}/commands/history?limit=100`, { token: mrSession });
+  const mrPreRows = mrPreConfirm.data?.items ?? [];
+  const mrConfirm = await call("POST", "/v1/auth/mfa/reset/confirm", { body: { token: mrConfirmToken } });
+  // The device's own drain — the only surface that may see the plaintext code (decision 2.3).
+  const mrDrain = mrDeviceToken ? await call("GET", `/v1/devices/${mrDeviceId}/commands?ack=1`, { token: mrDeviceToken }) : { status: 0, data: [] };
+  const mrDrainRows = Array.isArray(mrDrain.data) ? mrDrain.data : [];
+  const mrCodeRow = mrDrainRows.find((c) => c.type === "show_reset_code");
+  const mrDeviceCode = mrCodeRow?.payload?.code;
+  const mrCodeKnown = /^\d{8}$/.test(String(mrDeviceCode ?? ""));
+  const mrPostHistory = await call("GET", `/v1/devices/${mrDeviceId}/commands/history?limit=100`, { token: mrSession });
+  const mrPostRows = mrPostHistory.data?.items ?? [];
+  const mrPostCodeRows = mrPostRows.filter((c) => c.type === "show_reset_code");
+  const mrPostCode = mrPostCodeRows[0] ?? {};
+  const mrPostPayload = mrPostCode.payload ?? {};
+  const mrPostText = JSON.stringify(mrPostHistory.data ?? {});
+  const mrCodeLeak = mrCodeKnown && mrPostText.includes(String(mrDeviceCode));
+
+  check("O16 no show_reset_code reaches the family before the mailbox link is clicked, and exactly one is sent after", mrRequest.status === 200 && !!mrRequestId && mrConfirm.status === 200 && mrPreRows.filter((c) => c.type === "show_reset_code").length === 0 && mrPostCodeRows.length === 1, `request=${mrRequest.status} confirm=${mrConfirm.status}/${mrConfirm.data?.witness} before=[${mrPreRows.map((c) => c.type).join(",")}] after=${mrPostCodeRows.length} codeExpiresAt=${mrConfirm.data?.codeExpiresAt ?? "none"}`);
+  check("O17 the child's own device holds the 8-digit code, bound to this request — no parent surface does", mrDrain.status === 200 && mrCodeKnown && mrCodeRow?.payload?.requestId === mrRequestId, `drain=${mrDrain.status} rows=${JSON.stringify(mrDrainRows.map((c) => c.type))} digits=${mrCodeKnown ? 8 : 0} requestMatches=${mrCodeRow?.payload?.requestId === mrRequestId}`);
+  check("O18 the parent-facing command history never carries the plaintext show_reset_code, and still shows the row with its status and expiresAt", mrPostHistory.status === 200 && mrPostCodeRows.length === 1 && !("code" in mrPostPayload) && !mrCodeLeak && typeof mrPostCode.expiresAt === "string" && Date.parse(mrPostCode.expiresAt) > Date.now() && ["pending", "delivered", "acked", "failed"].includes(mrPostCode.status), `history=${mrPostHistory.status} rows=${mrPostCodeRows.length} payloadKeys=[${Object.keys(mrPostPayload).join(",")}] status=${mrPostCode.status} expiresAt=${mrPostCode.expiresAt ?? "none"} codeInBody=${mrCodeLeak}`);
+
+  // Claim 4: partial access is not approval. Both refusals land while the request is
+  // `mailbox_confirmed`, i.e. on a request a witness could actually pass right now.
+  const mrGuardianApprove = await call("POST", "/v1/auth/mfa/reset/approve", { token: mrGuardianToken, body: { requestId: mrRequestId } });
+  const mrOtherApprove = await call("POST", "/v1/auth/mfa/reset/approve", { token: mrOtherToken, body: { requestId: mrRequestId } });
+  check("O19 a guardian of the family and the owner of another family cannot approve a reset (403 role_not_allowed / 403 forbidden)", mrGuardianApprove.status === 403 && mrGuardianApprove.data?.error === "role_not_allowed" && mrOtherApprove.status === 403 && mrOtherApprove.data?.error === "forbidden", `guardian=${mrGuardianApprove.status}/${mrGuardianApprove.data?.error} otherFamily=${mrOtherApprove.status}/${mrOtherApprove.data?.error}`);
+
+  const mrWitness = mrCodeKnown ? await call("POST", "/v1/auth/mfa/reset/witness", { body: { requestId: mrRequestId, code: String(mrDeviceCode) } }) : { status: 0, data: {} };
+  // Claim 1d: before the window ends nothing changes at all. The factor is still bound — a password
+  // alone is answered `mfa_required`, not the `mfa_reenroll_required` an early completion would leave.
+  const mrEarlyComplete = await call("POST", "/v1/auth/mfa/reset/complete", { body: { email: mrEmail, password: PASSWORD, requestId: mrRequestId } });
+  const mrPasswordOnly = await call("POST", "/v1/auth/login", { body: { email: mrEmail, password: PASSWORD } });
+  check("O20 complete inside the 72-hour window is refused (409 window_open) and leaves the factor bound (password-only login still 401 mfa_required)", mrWitness.status === 200 && mrWitness.data?.state === "witness_passed" && mrEarlyComplete.status === 409 && mrEarlyComplete.data?.error === "window_open" && mrPasswordOnly.status === 401 && mrPasswordOnly.data?.error === "mfa_required", `witness=${mrWitness.status}/${mrWitness.data?.state} windowEndsAt=${mrWitness.data?.windowEndsAt ?? "none"} complete=${mrEarlyComplete.status}/${mrEarlyComplete.data?.error} passwordOnly=${mrPasswordOnly.status}/${mrPasswordOnly.data?.error}`);
+
+  // Amendment 2026-10-22, gap 3 / SPEC's state table: a window a witness has already passed is not
+  // restartable, even by the parent it belongs to.
+  const mrSecondRequest = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: mrEmail, password: PASSWORD } });
+  check("O21 a second request while the first is witness_passed is refused (409 reset_already_pending): the window is not restartable", mrSecondRequest.status === 409 && mrSecondRequest.data?.error === "reset_already_pending" && mrSecondRequest.data?.requestId === undefined, `got ${mrSecondRequest.status}/${mrSecondRequest.data?.error} newRequestId=${mrSecondRequest.data?.requestId ? "present" : "none"}`);
+
+  // ADR-0031 decision 3, the main defence: a parent who can sign in is not locked out, so the request
+  // was not theirs. `nextTotp` is the next step's code — one above the counter the login above used.
+  const mrCancelLogin = await call("POST", "/v1/auth/login", { body: { email: mrEmail, password: PASSWORD, code: mrSecret ? nextTotp(mrSecret) : "000000" } });
+  const mrLateComplete = await call("POST", "/v1/auth/mfa/reset/complete", { body: { email: mrEmail, password: PASSWORD, requestId: mrRequestId } });
+  check("O22 a successful /login by the parent during the window cancels the request: complete answers 409 request_cancelled", mrCancelLogin.status === 200 && !!mrCancelLogin.data?.token && mrLateComplete.status === 409 && mrLateComplete.data?.error === "request_cancelled", `login=${mrCancelLogin.status} complete=${mrLateComplete.status}/${mrLateComplete.data?.error}`);
+}
+
+// Decision 6 / claim 7: no witness, no reset — and the refusal must store nothing. A stored `requested`
+// row would be superseded by the second request and answer 200, so the second refusal is the proof.
+const nwEmail = `qa-mfa-nowitness-${stamp}@example.com`;
+const nwReg = await call("POST", "/v1/auth/register", {
+  body: { email: nwEmail, password: PASSWORD, displayName: "QA No Witness", familyName: "QA No Witness Family", region: "US" },
+});
+const nwEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: nwReg.data?.token, body: {} });
+const nwSecret = nwEnroll.data?.secret ?? "";
+const nwVerify = await call("POST", "/v1/auth/mfa/verify", { token: nwReg.data?.token, body: { code: nwSecret ? totpCode(nwSecret) : "000000" } });
+// A second refusal alone proves nothing: `no_witness` is answered before any row is read, so it would
+// come back the same even if the first refusal had stored one. Instead: three refusals, then give the
+// family a witness and ask once more. A stored row per refusal would now hit decision 7's three per
+// 30 days (`429 reset_limit_reached`); nothing stored means an ordinary `200` with a request id.
+const nwRefusals = [];
+for (let i = 0; i < 3; i++) nwRefusals.push(await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } }));
+const nwLogin = await call("POST", "/v1/auth/login", { body: { email: nwEmail, password: PASSWORD, code: nwSecret ? nextTotp(nwSecret) : "000000" } });
+const nwToken = nwLogin.data?.token;
+const nwChild = nwToken
+  ? await call("POST", "/v1/family/children", { token: nwToken, body: { displayName: `QA No Witness Kid ${stamp}`, birthYear: 2015, consent: { method: "sms_plus", jurisdiction: "US" } } })
+  : { status: 0, data: {} };
+const nwPair = nwChild.data?.child?.id ? await call("POST", "/v1/devices/pair", { token: nwToken, body: { childId: nwChild.data.child.id } }) : { status: 0, data: {} };
+const nwClaim = nwPair.data?.code
+  ? await call("POST", "/v1/devices/pair/claim", { body: { code: nwPair.data.code, platform: "android", model: "qa-mfa-nowitness-dev", osVersion: "14", deviceName: "qa-mfa-nowitness-dev" } })
+  : { status: 0, data: {} };
+const nwAfter = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } });
+check("O23 a family with no paired device and no other owner/co-parent is refused 409 no_witness, and the refusals store nothing (after three refusals and a newly paired device, the next request is an ordinary 200, not 429)", nwVerify.status === 200 && nwRefusals.every((r) => r.status === 409 && r.data?.error === "no_witness" && r.data?.requestId === undefined) && !!nwClaim.data?.token && nwAfter.status === 200 && !!nwAfter.data?.requestId, `verify=${nwVerify.status} refusals=${nwRefusals.map((r) => `${r.status}/${r.data?.error}`).join(",")} login=${nwLogin.status} claim=${nwClaim.status} after=${nwAfter.status}/${nwAfter.data?.error ?? "ok"}`);
+
+
 console.log("\n── H. surface ──");
 const unknownRoute = await call("GET", `/v1/does-not-exist-${stamp}`);
 check("H1 unknown route -> 404 JSON", unknownRoute.status === 404, `got ${unknownRoute.status}`);
@@ -1143,4 +1342,4 @@ if (rateLimited429) console.log(`RATE LIMIT: ${rateLimited429} x 429 observed; e
 if (FAIL.length) console.log("FAILURES (must fix to make this gate green):\n- " + FAIL.join("\n- "));
 if (TARGETS.length) console.log("TARGETS (tracked, need a design decision, not gating):\n- " + TARGETS.join("\n- "));
 if (NOTE.length) console.log("NOTES:\n- " + NOTE.join("\n- "));
-process.exit(FAIL.length ? 1 : 0);
+process.exitCode = FAIL.length ? 1 : 0;
