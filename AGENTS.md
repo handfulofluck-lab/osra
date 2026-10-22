@@ -18,6 +18,16 @@ principle survives every re-cut, enforced at the merge (§6.5).
 | **Antigravity** | **Inactive from 2026-10-19** (maintainer), once the Group 1 hardware re-runs and TR-52 in flight at that time are filed. A silent member until the maintainer says otherwise: takes no new testing tasks and is not assigned any | Finish the rows already in flight; read | Take new rows; merge |
 | Human maintainer | Product and security trade-offs; anything that needs an account or money | Everything; final call on scope | — |
 
+**Routing (maintainer, 2026-10-22):** at 17:58Z, on #297, *"seems like an architecture decision let claude decide
+on that please"*; at 18:29Z, on the #258 destroy, *"ask claude about the decision above, all technical questions go to
+claude please"* (spelling corrected, words unchanged). So a technical or
+operational decision — including one that reaches AWS, an apply, a destroy, or a test strategy — is put to
+**Claude**, who owns architecture (§12), and never queued behind the human. The human's queue is narrow and
+stays his: money, legal and residency positions, store accounts, entitlements, signing keys, and product scope.
+An agent that cannot tell which side a question falls on asks Claude first; Claude escalates to the human only the
+part that is genuinely his. A destructive step still needs an explicit yes from whichever lane owns it — silence
+on a destroy is never consent, unlike the usual silence default.
+
 **The principle: the author of a change is never its only verifier.** With one agent authoring and
 merging, the separation moves from who holds the keyboard to who holds the evidence: Kimi may merge
 their own work, but only against a verification record produced by another agent (§6.5). Where no other
