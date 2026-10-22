@@ -142,6 +142,13 @@ async function call(method, path, { token, body, hmac, secret, rawBody, headers 
     body: raw,
   });
   let res = await send();
+  // The API's own 429s are answers, not throttling: ADR-0031 decision 7 refuses a fourth reset request
+  // in 30 days with `429 reset_limit_reached`. Only @fastify/rate-limit's body ("Too Many Requests")
+  // means "slow down"; anything else is returned to the check that asked.
+  if (res.status === 429) {
+    const peek = await res.clone().json().catch(() => null);
+    if (peek && typeof peek.error === "string" && peek.error !== "Too Many Requests") return { status: 429, data: peek };
+  }
   if (res.status === 429) {
     count429(`${method} ${path}`);
     const waitMs = retryAfterMs(res);
@@ -1283,9 +1290,23 @@ const nwReg = await call("POST", "/v1/auth/register", {
 const nwEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: nwReg.data?.token, body: {} });
 const nwSecret = nwEnroll.data?.secret ?? "";
 const nwVerify = await call("POST", "/v1/auth/mfa/verify", { token: nwReg.data?.token, body: { code: nwSecret ? totpCode(nwSecret) : "000000" } });
-const nwFirst = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } });
-const nwSecond = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } });
-check("O23 a family with no paired device and no other owner/co-parent is refused 409 no_witness, and the refusal stores nothing (a second request is refused the same way, not superseded)", nwVerify.status === 200 && nwFirst.status === 409 && nwFirst.data?.error === "no_witness" && nwSecond.status === 409 && nwSecond.data?.error === "no_witness" && nwSecond.data?.requestId === undefined, `verify=${nwVerify.status} first=${nwFirst.status}/${nwFirst.data?.error} second=${nwSecond.status}/${nwSecond.data?.error}`);
+// A second refusal alone proves nothing: `no_witness` is answered before any row is read, so it would
+// come back the same even if the first refusal had stored one. Instead: three refusals, then give the
+// family a witness and ask once more. A stored row per refusal would now hit decision 7's three per
+// 30 days (`429 reset_limit_reached`); nothing stored means an ordinary `200` with a request id.
+const nwRefusals = [];
+for (let i = 0; i < 3; i++) nwRefusals.push(await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } }));
+const nwLogin = await call("POST", "/v1/auth/login", { body: { email: nwEmail, password: PASSWORD, code: nwSecret ? nextTotp(nwSecret) : "000000" } });
+const nwToken = nwLogin.data?.token;
+const nwChild = nwToken
+  ? await call("POST", "/v1/family/children", { token: nwToken, body: { displayName: `QA No Witness Kid ${stamp}`, birthYear: 2015, consent: { method: "sms_plus", jurisdiction: "US" } } })
+  : { status: 0, data: {} };
+const nwPair = nwChild.data?.child?.id ? await call("POST", "/v1/devices/pair", { token: nwToken, body: { childId: nwChild.data.child.id } }) : { status: 0, data: {} };
+const nwClaim = nwPair.data?.code
+  ? await call("POST", "/v1/devices/pair/claim", { body: { code: nwPair.data.code, platform: "android", model: "qa-mfa-nowitness-dev", osVersion: "14", deviceName: "qa-mfa-nowitness-dev" } })
+  : { status: 0, data: {} };
+const nwAfter = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } });
+check("O23 a family with no paired device and no other owner/co-parent is refused 409 no_witness, and the refusals store nothing (after three refusals and a newly paired device, the next request is an ordinary 200, not 429)", nwVerify.status === 200 && nwRefusals.every((r) => r.status === 409 && r.data?.error === "no_witness" && r.data?.requestId === undefined) && !!nwClaim.data?.token && nwAfter.status === 200 && !!nwAfter.data?.requestId, `verify=${nwVerify.status} refusals=${nwRefusals.map((r) => `${r.status}/${r.data?.error}`).join(",")} login=${nwLogin.status} claim=${nwClaim.status} after=${nwAfter.status}/${nwAfter.data?.error ?? "ok"}`);
 
 
 console.log("\n── H. surface ──");

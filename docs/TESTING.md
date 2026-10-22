@@ -88,7 +88,7 @@ plaintext code (the #305 review finding); `O19` a guardian and another family's 
 `O20` `complete` inside the window is `409 window_open` and the factor stays bound; `O21` a
 `witness_passed` request cannot be restarted (`409 reset_already_pending`); `O22` a successful `/login`
 during the window cancels it (`409 request_cancelled`); `O23` a family with no witness gets
-`409 no_witness` with nothing stored. `O16`–`O22` walk the mailbox step through the `confirmToken` that
+`409 no_witness` with nothing stored (proved by a fourth request after pairing answering `200`, not `429`). `O16`–`O22` walk the mailbox step through the `confirmToken` that
 `/mfa/reset/request` echoes **only** while no email provider is configured and `NODE_ENV` is not
 production; on a stack with `RESEND_API_KEY`/`EMAIL_FROM` set they cannot be walked over HTTP and the run
 prints one `target` naming them instead of a pass. The seven-day post-window expiry is a database clock

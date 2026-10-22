@@ -22,9 +22,11 @@ family they need — every one gating. Nothing is mocked; the flow is walked aga
   the window is not restartable.
 - **`O22`** a successful `/login` by the parent during the window cancels the request, and `complete`
   then answers `409 request_cancelled`.
-- **`O23`** a family with no paired device and no other `owner`/`co-parent` answers `409 no_witness`, and
-  a second request is refused the same way — a stored `requested` row would have been superseded and
-  answered `200`, so the second refusal is the proof that nothing was stored.
+- **`O23`** a family with no paired device and no other `owner`/`co-parent` answers `409 no_witness` three
+  times; after a device is paired, the next request is an ordinary `200`. A stored row per refusal would
+  have hit decision 7's limit (`429 reset_limit_reached`) instead. (`no_witness` is answered before any row
+  is read, so a second refusal alone would prove nothing — Claude's review found exactly that: a mutant
+  that stored a row per refusal still passed the earlier version of this check.)
 
 **Obtaining the mailbox link:** `O16`–`O22` need the `confirm` token. The probe has no inbox, so it uses
 the `confirmToken` that `/mfa/reset/request` echoes while no email provider is configured and `NODE_ENV`
@@ -41,10 +43,14 @@ removes their families, and `MfaResetRequest.parentId` cascades from `Parent`; t
 family ends up empty and the script's orphan rule removes it. The probe has no database connection, so it
 cannot delete rows itself.
 
-**Not verified here:** the probe was not run — no live stack in this environment. `node --check` is clean
-and `scripts/check-probe-integrity.mjs` reports 11 added, 0 removed or demoted, but the checks themselves
-are unexercised until a verifier runs `node scripts/qa-probe.mjs`. One thing that live run should check
-first: `/login` now takes **19** calls per run (14 before) against a `max: 20` per-minute route limit. They
-are spread over the run — two 30-second TOTP waits separate the MFA sections, and roughly six fall in the
-tightest minute — so the budget should hold, but nothing in this change measured it, and a `429` burst
-aborts the run with exit `2` rather than recording a false failure (issue #112).
+**Measured live (Claude, 2026-10-22 22:30Z):** `162 passed, 0 failed` against a real API, with **20**
+`/login` calls per run against the route's `max: 20` and **0 × 429** in every run. `O18` was confirmed to
+catch the history leak: with the payload un-redacted the check fails, and it is the only thing that would.
+
+**One fix the live run forced.** `call()` treated *every* `429` as `@fastify/rate-limit` throttling —
+retried, then aborted with `ABORT: rate limited by the API … wait 60 s and re-run`, exit `2`. But decision
+7's limit refusal is also a `429` (`{"error":"reset_limit_reached"}`), so a genuine regression there would
+have read as "slow down and try again" and a verifier would have re-run instead of filing a bug. `call()`
+now inspects the body: only `{"error":"Too Many Requests"}` means throttling; any other `429` is handed back
+to the check that asked for it. With that change, a mutant that stores a row per refusal produces a clean
+`FAIL O23` instead of an abort.
