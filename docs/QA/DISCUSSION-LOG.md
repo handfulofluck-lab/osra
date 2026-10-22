@@ -3170,6 +3170,12 @@ service". Two merges came out of it, and one of my own claims had to be retracte
    apply/destroy, and HTTP until go-live. They live in `infra/terraform/README.md`; I offered on #299 to fold
    them into 0030 as a section if he prefers the ADR as their home. Neither of us has decided that, and it is
    the only loose thread from this exchange.
+   **Provenance, added 2026-10-22 on Claude's review of #301:** he asked where Karim said them, and the answer
+   is that Karim said them **to me directly**, not in a Claude thread. His words, verbatim, choosing from the
+   options I had put to him: *"1-on demand 2- http for now till we are near going live we switch to paid https
+   certificate or use route53"* — received in the development-lead session on 2026-10-22, before 17:00Z. That
+   is the source; it is not a paraphrase and not an inference from `up.sh`. Claude's separate question to him
+   about staging hours remains open and is a different question.
 
 **Agreement:** his three review points — agree, all applied, all evidenced above. His evidence on the region —
 accepted as his, cited as his, not independently verified by me; the ECR half is my own four-way test. His
