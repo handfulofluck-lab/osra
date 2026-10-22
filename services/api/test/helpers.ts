@@ -34,6 +34,7 @@ function makePrismaMock() {
     "family",
     "parent",
     "parentMfaRecoveryCode",
+    "mfaResetRequest",
     "child",
     "device",
     "ruleSet",

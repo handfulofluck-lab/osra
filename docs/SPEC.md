@@ -145,8 +145,10 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
 - src/realtime/gateway.ts — DONE: WS auth via ?token= JWT, psubscribe `family:*:events`,
   exports `publishFamilyEvent(familyId, event)`.
 - src/routes/auth.ts — DONE. `POST /register`, `/login`, `/logout`, `/logout-all`, `/token/refresh`,
-  `/reset/request`, `/reset/confirm`, `/mfa/enroll`, `/mfa/verify`, and (ADR-0023) `/mfa/recovery-codes`
-  and `/mfa/recover`. See "MFA and account recovery" below for the second-factor contract.
+  `/reset/request`, `/reset/confirm`, `/mfa/enroll`, `/mfa/verify`, (ADR-0023) `/mfa/recovery-codes`
+  and `/mfa/recover`, and (ADR-0031) `/mfa/reset/request`, `/mfa/reset/confirm`, `/mfa/reset/witness`,
+  `/mfa/reset/approve`, `/mfa/reset/cancel`, `/mfa/reset/complete`. See "MFA and account recovery"
+  below for the second-factor contract.
 - src/routes/family.ts — GENERATE THIS:
     GET /me; POST /children (428 without active consent); GET/PATCH/DELETE /children/:id
     (DELETE = GDPR erasure cascade — ADR-0013: every child-scoped table in one transaction,
@@ -252,14 +254,58 @@ Code format: 16 Crockford base32 characters (80 bits), no `I`, `L`, `O`, `U`, di
 plaintext is never stored, logged or returned a second time. One-time use is the
 `updateMany({where:{id, usedAt:null}})` count, so two concurrent requests cannot both spend a code;
 a successful recovery deletes the remaining rows. A parent who loses the codes and the authenticator
-is still locked out until the support path (Option B) is decided — the API offers no other route, and
-`/reset/confirm` deliberately does **not** clear MFA.
+uses the witness reset below (ADR-0031); `/reset/confirm` deliberately does **not** clear MFA, and no
+route other than `/mfa/recover` and `/mfa/reset/complete` can.
 
 The recovery token is not a session: `{sub, purpose:"mfa_recovery", jti}`, 15 minutes, backed by
 Redis `mfa:recovery:<jti>` → parentId (deleted on a successful verify), no `familyId` and no `role`.
 `requireJwt` still rejects every `purpose` token (#146/#147); only the two enrolment routes use
 `requireParentOrMfaRecovery`. The parent app has no MFA screen yet, so the codes are reachable only
 through the API today — the Flutter work is a follow-up, not part of this contract.
+
+### MFA reset with a family witness (ADR-0031)
+
+For a parent who has lost the authenticator **and** every recovery code. Four factors, in order:
+the account password, the account's mailbox (a single-use 30-minute link), a family witness, then a
+72-hour window. There is no operator, no admin route and no support role — nobody can clear a second
+factor by hand.
+
+| State | Event | Next state |
+|---|---|---|
+| — | `POST /mfa/reset/request` (password, a witness exists) | `requested` |
+| — | `request` with no paired device and no other owner/co-parent | refused `409 no_witness`, nothing stored |
+| `requested` | `POST /mfa/reset/confirm` (the mailbox link, single use) | `mailbox_confirmed` (and only now a `show_reset_code` command per paired device) |
+| `requested` / `mailbox_confirmed` / `witness_passed` | a successful `POST /login` by that parent | `cancelled_by_signin` |
+| any of those three | the cancel link | `cancelled_by_link` |
+| any of those three | another `owner`/`co-parent` cancels from their app | `cancelled_by_parent` |
+| `mailbox_confirmed` | 8-digit code accepted, or an owner/co-parent approves | `witness_passed` (every session revoked; `windowEndsAt` = now + 72 h) |
+| `mailbox_confirmed` | five wrong codes | `too_many_attempts` |
+| `mailbox_confirmed` | 24 h after the mailbox confirmation without a witness | `expired` |
+| `requested` | 24 h without the mailbox click | `expired` |
+| `witness_passed` | `POST /mfa/reset/complete` before `windowEndsAt` | refused `409 window_open`, nothing changes |
+| `witness_passed` | `POST /mfa/reset/complete` after `windowEndsAt` | `completed` and the ADR-0023 recovery token |
+
+| Surface | What it does | What it refuses |
+|---|---|---|
+| `POST /v1/auth/mfa/reset/request` | `{email, password}`; same rate limit and the same `401 invalid_credentials` as `/login`; one open request per parent and three per 30 days | `409 mfa_not_enabled` (nothing to reset), `409 no_witness` (claim 7), `409 reset_already_pending`, `429 reset_limit_reached` |
+| `POST /v1/auth/mfa/reset/confirm` | `{token}` from the mailbox; single use, 30 minutes; sends `show_reset_code` to every paired device of the family, one 8-digit code valid 10 minutes, stored only as SHA-256 | `401 invalid_or_expired_token` (spent/unknown/wrong purpose), `409 request_not_open` |
+| `POST /v1/auth/mfa/reset/witness` | `{requestId, code}`, no session needed; passing revokes the parent's sessions (session version +1) | `401 invalid_witness`, `401 too_many_attempts` on the fifth wrong code, `409 request_not_open` |
+| `POST /v1/auth/mfa/reset/approve` | `{requestId}` from another `owner`/`co-parent` of the same family; same revocation and window as the device code | `403 role_not_allowed` (guardian), `403 forbidden` (another family, or the subject), `409 request_not_open` |
+| `POST /v1/auth/mfa/reset/cancel` | `{token}` (the link, no sign-in) or `{requestId}` with a session from another `owner`/`co-parent`; idempotent | `401 invalid_or_expired_token`, `401 unauthorized`, `403` for a guardian/stranger |
+| `POST /v1/auth/mfa/reset/complete` | `{email, password, requestId}` after `windowEndsAt`; runs ADR-0023's sequence (recovery-token record, revoke all, one transaction that clears `mfaSecret` and deletes the codes, sign the 15-minute token) and returns `{recoveryToken}` | `409 window_open`, `409 witness_required`, `409 request_cancelled`, `409 request_expired`, `409 too_many_attempts`, `409 request_completed`, `404 request_not_found`, `401 invalid_credentials` |
+
+`MfaResetRequest` holds one row per request: `parentId`, `familyId`, `state`, `createdAt`,
+`emailConfirmedAt`, `witnessKind` (`device` | `parent`), `witnessRef`, `witnessAt`, `windowEndsAt`,
+`failedCodeAttempts`, `codeHash` (SHA-256 only), `codeExpiresAt`, `completedAt`, `cancelledReason`,
+`outcomeAt`. No IP address, user agent or free text; timestamps are written once and the outcome is
+written once. `src/jobs/mfaResetExpiry.ts` expires the two 24-hour deadlines, clears the plaintext
+from expired `show_reset_code` payloads, and deletes rows 12 months after `outcomeAt`.
+
+Not built in the API change that introduced this: the email and push templates (the send points are
+`[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
+`show_reset_code` screen. There is also no read-only audit route yet (ADR-0031 decision 8), and a
+`witness_passed` request that is never completed has no expiry of its own — the ADR sets a deadline
+only for the witness step.
 
 ## §4 AI Engine (`services/ai-engine`)
 

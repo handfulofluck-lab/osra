@@ -672,3 +672,80 @@ describe("device enrollment & management", () => {
   });
 });
 
+
+describe("#305 review: the witness code is a device credential, not a parent one", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  it("the command history never returns a show_reset_code payload", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    const now = new Date();
+    const later = new Date(Date.now() + 10 * 60_000);
+    // Claude's finding: the history returned the plaintext code, so a guardian — or the parent being
+    // reset — could read the witness out of the parent app and the step proved nothing. He passed the
+    // witness live with a code read this way.
+    prismaMock.deviceCommand.findMany.mockResolvedValue([
+      {
+        id: "cmd-reset",
+        deviceId: "dev-1",
+        type: "show_reset_code",
+        payload: { requestId: "req-1", parentName: "Alex's parent", code: "12345678", expiresAt: later.toISOString() },
+        status: "pending",
+        requestedBy: "system",
+        createdAt: now,
+        expiresAt: later,
+        deliveredAt: null,
+        ackedAt: null,
+        result: null,
+        attempts: 0,
+      },
+      {
+        id: "cmd-ring",
+        deviceId: "dev-1",
+        type: "ring",
+        payload: { source: "parent" },
+        status: "acked",
+        requestedBy: "parent-2",
+        createdAt: now,
+        expiresAt: later,
+        deliveredAt: now,
+        ackedAt: now,
+        result: { ok: true },
+        attempts: 1,
+      },
+    ]);
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands/history", headers: authHeader(app) });
+
+    expect(res.statusCode).toBe(200);
+    const items = res.json().items as Array<{ type: string; payload: unknown; status: string }>;
+    const reset = items.find((i) => i.type === "show_reset_code")!;
+    // The row still proves the command was queued, and what happened to it — only the payload goes.
+    expect(reset.status).toBe("pending");
+    expect(reset.payload).toEqual({});
+    expect(res.body).not.toContain("12345678");
+    // Other commands are untouched: the redaction is by type, not a blanket removal.
+    expect(items.find((i) => i.type === "ring")!.payload).toEqual({ source: "parent" });
+    await app.close();
+  });
+
+  it("a parent cannot send show_reset_code: only the reset flow produces it", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    // A parent-issueable command of this name would let any family parent — a guardian, or the parent
+    // being reset — put a reset notice with a code of their choosing on the child's phone.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app),
+      payload: { command: "show_reset_code", payload: { code: "12345678" } },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+});

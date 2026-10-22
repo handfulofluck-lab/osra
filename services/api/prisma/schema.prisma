@@ -58,6 +58,7 @@ model Parent {
   consents     ConsentRecord[]
   pushTokens   ParentPushToken[]
   mfaRecoveryCodes ParentMfaRecoveryCode[]
+  mfaResetRequests MfaResetRequest[]
 }
 
 /// ADR-0023 Option A: one-time MFA recovery codes. Only the SHA-256 hash of the normalised code is
@@ -72,6 +73,47 @@ model ParentMfaRecoveryCode {
   parent    Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
 
   @@index([parentId, usedAt])
+}
+
+/// ADR-0031: one row per MFA-reset request, the audit record and the state machine.
+///
+/// `state` is the ADR's vocabulary: `requested` → `mailbox_confirmed` → `witness_passed` →
+/// `completed`, with `cancelled_by_signin` / `cancelled_by_link` / `cancelled_by_parent` / `expired` /
+/// `too_many_attempts` as terminal alternatives. `no_witness` is the request-time refusal (claim 7)
+/// and is deliberately never written: nothing is stored for it. `cancelledReason` repeats which of the
+/// three paths closed the request, because that is what an operator looks for first.
+///
+/// No IP address, user agent or free text is stored, timestamps are filled once, and the outcome is
+/// written once (decision 8). `codeHash` is the SHA-256 of the 8-digit device code; the plaintext only
+/// ever exists in the `show_reset_code` command payload (claim 6). Rows are deleted 12 months after
+/// `outcomeAt` by src/jobs/mfaResetExpiry.ts.
+model MfaResetRequest {
+  id                 String    @id @default(uuid())
+  parentId           String
+  /// Denormalised from Parent for the audit read; no FK, like DigestSend.familyId.
+  familyId           String
+  state              String    @default("requested")
+  createdAt          DateTime  @default(now())
+  emailConfirmedAt   DateTime?
+  /// `device` | `parent`; for a device witness `witnessRef` stays null because the one code is shown
+  /// on every paired device, so no single device can be named as the witness.
+  witnessKind        String?
+  witnessRef         String?
+  witnessAt          DateTime?
+  /// `witnessAt` + 72 h. `complete` is refused before this instant (claim 1d).
+  windowEndsAt       DateTime?
+  failedCodeAttempts Int       @default(0)
+  codeHash           String?
+  codeExpiresAt      DateTime?
+  completedAt        DateTime?
+  cancelledReason    String?
+  outcomeAt          DateTime?
+  parent             Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId, state])
+  @@index([state, emailConfirmedAt])
+  @@index([state, createdAt])
+  @@index([outcomeAt])
 }
 
 /// A parent device registered for push delivery of alerts (Phase 2a). One row per app install;
