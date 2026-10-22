@@ -403,3 +403,48 @@ specified in a separate ADR because the identity policy is the decision, not the
   new authenticator then signs in; a normal MFA account and an account without MFA behave exactly as
   before. Unit: `services/api/test/mfa-recovery.test.ts` (the `#183:` cases). Live: probe `O12`
   (password-only login in the recovered state) and `O13` (the token still completes the flow).
+
+## Amendment 2026-10-22 — #199 item 3: the recovery order, so a failure cannot spend what it cannot deliver
+
+- **Context.** Issue #199 item 3 (originally #183 finding 2) found `/mfa/recover` committing the
+  expensive, irreversible half first and doing the fallible half second. The transaction claimed the
+  code, deleted its siblings and cleared `mfaSecret`; `revokeAllRefreshTokens` ran *after* the commit,
+  and the sessions-version bump inside it is deliberately **not** best-effort
+  (`services/api/src/lib/sessions.ts:113-114` — a failed bump must surface as 5xx). A Redis failure
+  therefore answered 5xx with the code spent, the batch gone and no `recoveryToken`: the parent was
+  locked out with nothing to show for the attempt. The failure mode is the opposite of what recovery
+  should be.
+- **Decision (amends the `/mfa/recover` row of the endpoint table above; that row shows the original
+  order and is left as written).** The route now runs, in this order:
+  1. find an **unused** matching code (`usedAt: null`);
+  2. register the recovery token's `mfa:recovery:<jti>` record;
+  3. `revokeAllRefreshTokens` (the session-version bump);
+  4. one transaction: claim the code, delete its siblings, clear `mfaSecret`;
+  5. sign the token — after the commit, because signing does no I/O;
+  6. the notification email, which stays best-effort and logged.
+
+  Every fallible step now runs **before** anything is spent, and every step after the irreversible
+  commit is either local (signing) or best-effort (the email). A failed `set` or a failed bump answers
+  5xx with the whole batch intact and the factor still bound, so the same code can be retried once the
+  store is back. The other direction is the safe one: revocation and registration that succeed with a
+  transaction that then rolls back leave every session dead, the code unspent and a `mfa:recovery:`
+  record that names no token; the losing branch of the claim deletes it.
+- **Why the order rather than an idempotent marker inside the transaction.** Redis cannot join a
+  Postgres transaction: a bump that succeeds inside the callback and then rolls back is exactly the
+  "revoked early" case above, only harder to read. And the early revocation is harmless — it happens
+  only when a later step fails during a recovery the parent is performing because the device is lost,
+  which is when ending every session is what they want anyway.
+- **The filter is load-bearing, not tidying.** A spent row still matches its hash, so with the
+  revocation moved earlier a replay of a spent code would have logged the parent out and then answered
+  401 — a logout lever for anyone holding the password and an old code. `usedAt: null` keeps that at a
+  bare 401 with no side effect, and a test pins it (removing the filter turns the session version from
+  2 into 3).
+- **Falsifiable claims.** With the store rejecting the version bump: 5xx, no `recoveryToken`, all ten
+  rows unspent, `mfaSecret` bound, and the same code then recovers. With the store rejecting the
+  `mfa:recovery:` write: the same, with no `mfa:recovery:` key left behind. Replaying a spent code:
+  401 and an unchanged session version. Unit: `services/api/test/mfa-recovery.test.ts` (`#199:` cases,
+  19 tests in the file, 456 in the suite at the time of writing).
+- **Still open, and named rather than implied fixed.** Issue #199 items 1, 2 and 4 are untouched. The
+  remaining self-service lockout is #199 item 2 (a parent who loses the 15-minute token before
+  `/mfa/verify`), and ADR-0023's Option B — a support-assisted path — is still the maintainer's
+  decision (issue #297).
