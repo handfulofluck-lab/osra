@@ -17,8 +17,10 @@
   and `AWS_PUBLISH_ROLE_ARN`, read from base's `ecr_repository_url` and `publish_role_arn` outputs,
   because Actions cannot read Terraform state. The workflow's first step prints the exact
   `gh variable set` command when either is unset.
-- `latest` is a convenience tag; `env/api_image` should pin the sha, because a rebuild pushed to a
-  moving tag changes nothing the ECS task definition can see.
+- There is no `latest` and the repository is IMMUTABLE: the tag is the 12-character commit sha, so a
+  re-run on the same commit fails with "tag already exists" rather than replacing the image that sha
+  names. `env/api_image` pins that sha, because a rebuild under a moving tag changes nothing the ECS
+  task definition can see.
 - Not verified here: no `terraform apply` was run, so the OIDC provider, the role and a first
   end-to-end publish are unexercised. `terraform fmt` and `validate` pass on `base`; the workflow was
   parsed as YAML and accepted by `scripts/check-workflows.mjs --strict`.

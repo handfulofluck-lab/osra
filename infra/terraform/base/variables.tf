@@ -56,6 +56,12 @@ variable "github_owner_id" {
     condition     = var.github_owner_id == "" || can(regex("^[0-9]+$", var.github_owner_id))
     error_message = "github_owner_id must be numeric."
   }
+
+  # A half-filled pair would quietly create no role; fail with the command that fills it instead.
+  validation {
+    condition     = (var.github_repo == "") == (var.github_owner_id == "")
+    error_message = "Set github_repo, github_owner_id and github_repo_id together (gh api repos/OWNER/REPO --jq '.owner.id, .id')."
+  }
 }
 
 variable "github_repo_id" {
@@ -66,6 +72,11 @@ variable "github_repo_id" {
   validation {
     condition     = var.github_repo_id == "" || can(regex("^[0-9]+$", var.github_repo_id))
     error_message = "github_repo_id must be numeric."
+  }
+
+  validation {
+    condition     = (var.github_repo == "") == (var.github_repo_id == "")
+    error_message = "Set github_repo, github_owner_id and github_repo_id together (gh api repos/OWNER/REPO --jq '.owner.id, .id')."
   }
 }
 

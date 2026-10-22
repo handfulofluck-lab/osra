@@ -29,8 +29,10 @@ output "execution_role_arn" {
 }
 
 output "publish_role_arn" {
-  description = "Role GitHub Actions assumes over OIDC to push the API image (empty when github_repo is unset)."
-  value       = var.github_repo != "" ? aws_iam_role.publish[0].arn : ""
+  description = "Role GitHub Actions assumes over OIDC to push the API image (empty unless the OIDC role exists)."
+  # The same condition the resources use: github_repo alone is not enough now that the subject needs the
+  # numeric IDs, and indexing [0] while count is 0 fails the plan with "Invalid index".
+  value = local.github_oidc_enabled ? aws_iam_role.publish[0].arn : ""
 }
 
 output "certificate_arn" {
