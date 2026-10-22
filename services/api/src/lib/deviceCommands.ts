@@ -208,6 +208,18 @@ export async function ackDeviceCommand(
   return prisma.deviceCommand.findUnique({ where: { id: commandId } });
 }
 
+/**
+ * Command types whose payload is a credential and which no parent surface may read back.
+ *
+ * #305 review (Claude): `GET /v1/devices/:id/commands/history` returned the plaintext 8-digit
+ * `show_reset_code`, so any family parent — the guardian, or the parent being reset — could read the
+ * witness code straight out of the history and the whole step proved nothing. He demonstrated it by
+ * passing the witness live with a code a guardian read. The payload is a device credential: the API
+ * writes it, the child's phone displays it, and the parent-facing view shows only that the command
+ * existed.
+ */
+const DEVICE_ONLY_PAYLOAD_TYPES = new Set(["show_reset_code"]);
+
 /** Parent-facing, non-destructive view: newest first, with status so the UI can say delivered/pending/failed. */
 export async function listDeviceCommands(deviceId: string, limit = 20) {
   const rows = await prisma.deviceCommand.findMany({
@@ -219,6 +231,8 @@ export async function listDeviceCommands(deviceId: string, limit = 20) {
   // Report expiry even before a drain has swept the row.
   return rows.map((r) => ({
     ...r,
+    // The row still proves the command was queued and what happened to it; the payload does not travel.
+    payload: DEVICE_ONLY_PAYLOAD_TYPES.has(r.type) ? {} : r.payload,
     status: r.status === "pending" && r.expiresAt.getTime() <= now ? "expired" : r.status,
   }));
 }

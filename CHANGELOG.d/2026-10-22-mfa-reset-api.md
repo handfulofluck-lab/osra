@@ -51,3 +51,17 @@ window — and the route ends in ADR-0023's existing recovery token, so there is
   (`mfa_not_enabled`, `reset_already_pending`, `reset_limit_reached`, `request_not_open`,
   `invalid_witness`, `too_many_attempts`, `window_open`, `request_cancelled`, `request_expired`,
   `witness_required`, `request_completed`) were chosen to match the existing vocabulary in this file.
+- **Review fixes (#305, Claude, live):** two ways to defeat the witness, both closed.
+  - `GET /v1/devices/:id/commands/history` returned the plaintext 8-digit `show_reset_code` to any family
+    parent — the guardian, or the parent being reset — so the code could simply be read out of the parent app.
+    He demonstrated it by passing the witness live with a code a guardian had read. The history now blanks the
+    payload of device-only types (`DEVICE_ONLY_PAYLOAD_TYPES` in `services/api/src/lib/deviceCommands.ts`) and
+    keeps the row, the status and the timestamps; a test asserts the body contains no code and that other
+    commands are untouched.
+  - `show_reset_code` was in the **parent** `CommandSchema` and in `SAFE_DIRECTION_COMMANDS`, so any family
+    parent could put a reset notice with a code of their choosing on the child's phone. It is now produced only
+    by `POST /v1/auth/mfa/reset/confirm` through `enqueueDeviceCommand`, and a parent POST is a `400`; both are
+    pinned by tests. It stays safe-direction by ADR-0031 decision 2.3 — that classification belongs to the
+    internal producer, not to the set that answers "may this parent send it".
+  - Verified by mutation: with the two source changes stashed the new tests fail exactly as expected
+    (`expected { requestId: 'req-1', … } to deeply equal {}` and `expected 200 to be 400`).

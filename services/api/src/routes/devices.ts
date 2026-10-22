@@ -42,17 +42,22 @@ const CommandSchema = z.object({
     // Plan 1.7: a fresh high-accuracy fix on demand, and the parent-side stop for a ring.
     "locate_now",
     "stop_ring",
-    // ADR-0031 decision 2.3: the family witness — the child's phone shows an 8-digit code for the
-    // parent who is locked out of their second factor. It restricts nothing (safe-direction,
-    // ADR-0019/ADR-0031), and the normal producer is `POST /v1/auth/mfa/reset/confirm`, which sends
-    // it to every paired device of the family once the mailbox step is confirmed.
-    "show_reset_code",
+    // `show_reset_code` is deliberately NOT here (#305 review, Claude): a parent-issueable command of
+    // this name would let any family parent — including a guardian, or the parent being reset — make a
+    // child's phone display a fake reset notice with a code they chose. The type is produced only by
+    // `POST /v1/auth/mfa/reset/confirm`, through `enqueueDeviceCommand` server-side.
   ]),
   payload: z.record(z.unknown()).optional(),
 });
 
-/** Commands that reduce restriction on the child and therefore never require active consent. */
-const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear", "stop_ring", "show_reset_code"]);
+/**
+ * Commands a parent may issue that reduce restriction on the child, so they never require active consent.
+ *
+ * `show_reset_code` is not in this set for the same reason it is not in the schema above: it is not
+ * parent-issueable. It is safe-direction by ADR-0031 decision 2.3 (it restricts nothing), but that
+ * classification belongs to the internal producer, not to a set that answers "may this parent send it".
+ */
+const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear", "stop_ring"]);
 
 const AckSchema = z.object({
   status: z.enum(["ok", "failed"]),

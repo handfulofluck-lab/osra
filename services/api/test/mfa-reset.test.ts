@@ -875,20 +875,21 @@ describe("MFA reset — claim 6: the plaintext code is never stored", () => {
 describe("MFA reset — the show_reset_code command (ADR-0019, ADR-0031 decision 2.3)", () => {
   beforeEach(() => resetPrismaMock());
 
-  it("is accepted by the parent command route and needs no active consent", async () => {
+  it("is NOT parent-issueable: the reset flow is its only producer (#305 review)", async () => {
     await setup();
     const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
     const res = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/command",
       headers: authHeader(app),
       payload: { command: "show_reset_code", payload: { requestId: "req-1", code: "12345678" } },
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().published).toBe(true);
-    expect(commands[0].type).toBe("show_reset_code");
-    expect(commands[0].payload).toEqual({ requestId: "req-1", code: "12345678" });
-    // Safe-direction: the consent gate answered 428 for every other command in this suite, but not here.
+    // Claude's finding: a parent-issueable command of this name lets a guardian — or the parent being
+    // reset — put a reset notice with a chosen code on the child's phone. The schema refuses it before
+    // any consent or device lookup, and nothing is queued.
+    expect(res.statusCode).toBe(400);
+    expect(commands).toHaveLength(0);
     expect(prismaMock.consentRecord.findFirst).not.toHaveBeenCalled();
     await app.close();
   });
