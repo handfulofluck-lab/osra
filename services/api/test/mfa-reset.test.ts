@@ -177,9 +177,17 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
     resets.find((r) => r.id === where.id) ?? null,
   );
   // #305 review item 4: `/login` reads the open ids before cancelling, so the code payloads can be
-  // cleared. The mock filters the same way `updateMany` does.
-  prismaMock.mfaResetRequest.findMany.mockImplementation(async ({ where }: { where: Record<string, any> }) =>
-    resets.filter((r) => matches(r, where ?? {})).map((r) => ({ id: r.id })),
+  // cleared; `request` reads the open states before superseding. The mock filters the same way
+  // `updateMany` does and honours `select`, as Prisma does — a caller that asks only for `id` must not
+  // be handed a `state` the real query would not return.
+  prismaMock.mfaResetRequest.findMany.mockImplementation(async ({ where, select }: { where: Record<string, any>; select?: Record<string, boolean> }) =>
+    resets
+      .filter((r) => matches(r, where ?? {}))
+      .map((r) =>
+        select
+          ? Object.fromEntries(Object.keys(select).filter((key) => select[key]).map((key) => [key, (r as unknown as Record<string, unknown>)[key]]))
+          : { ...r },
+      ),
   );
   const matches = (r: ResetRow, where: Record<string, any>): boolean => {
     if (where.id && r.id !== where.id) return false;
@@ -421,19 +429,81 @@ describe("MFA reset — request (ADR-0031 claim 1a, 7)", () => {
   it("limits: one open request per parent, and three requests per 30 days", async () => {
     const { app } = await setup();
     expect((await request(app)).statusCode).toBe(200);
-    const second = await request(app);
-    expect(second.statusCode).toBe(409);
-    expect(second.json()).toEqual({ error: "reset_already_pending" });
+    // Amendment 2026-10-22 (gap 3): a second request supersedes the parent's own open request instead
+    // of being refused, and the superseded attempt still counts toward the three per 30 days.
+    expect((await request(app)).statusCode).toBe(200);
+    const open = resets.filter((r) => r.parentId === "parent-1" && ["requested", "mailbox_confirmed", "witness_passed"].includes(r.state));
+    expect(open).toHaveLength(1);
+    expect(resets.filter((r) => r.parentId === "parent-1")).toHaveLength(2);
 
-    // Age the open request out of the open set: two more are allowed, the fourth inside 30 days is not.
-    resets[0].state = "expired";
     expect((await request(app)).statusCode).toBe(200);
-    resets[1].state = "expired";
-    expect((await request(app)).statusCode).toBe(200);
-    resets[2].state = "expired";
     const fourth = await request(app);
     expect(fourth.statusCode).toBe(429);
     expect(fourth.json()).toEqual({ error: "reset_limit_reached" });
+    // Three rows, three attempts: the limit counts superseded requests too, so superseding grants none.
+    expect(resets.filter((r) => r.parentId === "parent-1")).toHaveLength(3);
+    // A refused request must not supersede the open one it could not replace.
+    expect(resets.filter((r) => r.parentId === "parent-1" && ["requested", "mailbox_confirmed", "witness_passed"].includes(r.state))).toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe("MFA reset — a new request supersedes the parent's own open one (amendment 2026-10-22)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("while the first is mailbox_confirmed: the second succeeds, the first expires, and its code is cleared", async () => {
+    const { app } = await setup();
+    const first = await reachMailboxStep(app);
+    expect(first.row.state).toBe("mailbox_confirmed");
+    const live = () => commands.filter((c) => c.type === "show_reset_code" && c.payload?.requestId === first.requestId && typeof c.payload?.code === "string");
+    expect(live()).toHaveLength(2);
+
+    const second = await request(app);
+    expect(second.statusCode).toBe(200);
+    const secondId = second.json().requestId as string;
+    expect(secondId).not.toBe(first.requestId);
+    expect(first.row.state).toBe("expired");
+    expect(first.row.outcomeAt).toBeInstanceOf(Date);
+    // The dead request's code must not keep showing on the child's phones for its remaining 10 minutes.
+    expect(live()).toHaveLength(0);
+    // Still exactly one open request — the new one.
+    expect(resets.filter((r) => r.state !== "expired").map((r) => r.id)).toEqual([secondId]);
+
+    // And the superseded request is closed for good: its own confirm link is spent for nothing.
+    store.set("mfa:reset:confirm:stale", `${first.requestId}|parent-1`);
+    const staleConfirm = await confirm(app, app.jwt.sign({ sub: "parent-1", purpose: "mfa_reset_confirm", jti: "stale" }, { expiresIn: "30m" }));
+    expect(staleConfirm.statusCode).toBe(409);
+    expect(staleConfirm.json()).toEqual({ error: "request_not_open" });
+    expect(commands.filter((c) => c.payload?.requestId === first.requestId && typeof c.payload?.code === "string")).toHaveLength(0);
+    await app.close();
+  });
+
+  it("while the first is requested: the second succeeds and the first expires", async () => {
+    const { app } = await setup();
+    expect((await request(app)).statusCode).toBe(200);
+    expect(resets[0].state).toBe("requested");
+
+    const second = await request(app);
+    expect(second.statusCode).toBe(200);
+    expect(resets[0].state).toBe("expired");
+    expect(resets[0].outcomeAt).toBeInstanceOf(Date);
+    expect(resets[1].state).toBe("requested");
+    await app.close();
+  });
+
+  it("while the first is witness_passed: still 409 reset_already_pending, and nothing is touched", async () => {
+    const { app } = await setup();
+    const { requestId } = await reachWindow(app);
+    const row = resets.find((r) => r.id === requestId)!;
+
+    const second = await request(app);
+    expect(second.statusCode).toBe(409);
+    expect(second.json()).toEqual({ error: "reset_already_pending" });
+    // A passed witness opened a window nobody may overwrite: the row is untouched and still the only one.
+    expect(row.state).toBe("witness_passed");
+    expect(row.outcomeAt).toBeNull();
+    expect(new Date(row.windowEndsAt!).getTime()).toBeGreaterThan(Date.now());
+    expect(resets.filter((r) => r.parentId === "parent-1")).toHaveLength(1);
     await app.close();
   });
 });

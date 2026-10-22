@@ -7,8 +7,11 @@ import { prisma } from "../db.js";
  * ```
  *   requested ──confirm──▶ mailbox_confirmed ──witness/approve──▶ witness_passed ──complete──▶ completed
  *       │                        │                                    │
- *       │                        └──24 h without a witness──▶ expired  └──window open, complete refused
+ *       │                        │                                    ├──window open, complete refused
+ *       │                        │                                    └──7 days after windowEndsAt──▶ expired
+ *       │                        └──24 h without a witness──▶ expired
  *       └──24 h without a click──▶ expired
+ *   requested / mailbox_confirmed ──a new request from the same parent (amendment 2026-10-22)──▶ expired
  *   from requested / mailbox_confirmed / witness_passed:
  *       a successful /login ─▶ cancelled_by_signin · cancel link ─▶ cancelled_by_link
  *       another owner/co-parent ─▶ cancelled_by_parent
@@ -50,6 +53,13 @@ export const MFA_RESET_WITNESS_DEADLINE_MS = 24 * 60 * 60 * 1000;
 
 /** The window that starts when the witness passes (decision 2.4). */
 export const MFA_RESET_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * How long a `witness_passed` request outlives its own window before it expires (amendment 2026-10-22,
+ * gap 1). Seven days covers a week away after the window; after that the parent starts again with a
+ * fresh witness.
+ */
+export const MFA_RESET_WINDOW_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** The device code's life (decision 2.3). */
 export const MFA_RESET_CODE_LENGTH = 8;

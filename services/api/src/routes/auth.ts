@@ -656,6 +656,9 @@ export async function authRoutes(app: FastifyInstance) {
    *
    * Nothing is sent to a child device here — not even a wake-up — because the mailbox step has not
    * happened yet (claim 1b). Nothing is written for a family with no witness (claim 7).
+   *
+   * A `requested` or `mailbox_confirmed` request of the same parent is superseded rather than answered
+   * with `reset_already_pending` (amendment 2026-10-22, gap 3); a `witness_passed` one still blocks.
    */
   app.post("/mfa/reset/request", { config: RL }, async (req, reply) => {
     const parsed = z
@@ -680,14 +683,41 @@ export async function authRoutes(app: FastifyInstance) {
     // no command. Only the route's own rate-limit counter is touched.
     if (!witnesses.any) return reply.code(409).send({ error: "no_witness" });
 
-    const open = await prisma.mfaResetRequest.count({
+    const open: Array<{ id: string; state: string }> = await prisma.mfaResetRequest.findMany({
       where: { parentId: parent.id, state: { in: [...OPEN_RESET_STATES] } },
+      select: { id: true, state: true },
     });
-    if (open > 0) return reply.code(409).send({ error: "reset_already_pending" });
+    // A request whose witness already passed holds a 72-hour window nobody may overwrite: replacing it
+    // would let a second `request` restart a clock a co-parent has already approved.
+    if (open.some((request) => request.state === "witness_passed")) {
+      return reply.code(409).send({ error: "reset_already_pending" });
+    }
+    // The limit is counted before anything is superseded: a request that is about to be refused as the
+    // fourth in 30 days must not first expire the open one it then cannot replace. Rows are never
+    // deleted by a supersede, so a superseded attempt still counts (decision 7, three per 30 days).
     const recent = await prisma.mfaResetRequest.count({
       where: { parentId: parent.id, createdAt: { gt: new Date(Date.now() - MFA_RESET_REQUEST_WINDOW_MS) } },
     });
     if (recent >= MFA_RESET_MAX_PER_WINDOW) return reply.code(429).send({ error: "reset_limit_reached" });
+
+    // Amendment 2026-10-22, gap 3: a request the parent cannot finish is replaceable, not a dead end.
+    // Reaching a child's phone with the code inside its 10 minutes can fail; the row used to sit in
+    // `mailbox_confirmed` answering `reset_already_pending` until the 24-hour sweep, having already
+    // spent one of the three attempts. It is superseded here — `expired`, `outcomeAt` now, its code
+    // cleared from the child's phone — and the attempt keeps counting.
+    const superseded = open.filter((request) => request.state === "requested" || request.state === "mailbox_confirmed");
+    if (superseded.length > 0) {
+      await prisma.mfaResetRequest.updateMany({
+        where: { parentId: parent.id, state: { in: ["requested", "mailbox_confirmed"] } },
+        data: { state: "expired", outcomeAt: new Date() },
+      });
+      // A superseded request must not keep a live code on the child's phone for its remaining minutes.
+      for (const request of superseded) {
+        await clearResetCodePayloads(request.id).catch((err) =>
+          req.log.warn({ err, requestId: request.id }, "[mfa-reset] could not clear the code of a superseded request"),
+        );
+      }
+    }
 
     const row = await prisma.mfaResetRequest.create({
       data: { parentId: parent.id, familyId: parent.familyId, state: "requested" },

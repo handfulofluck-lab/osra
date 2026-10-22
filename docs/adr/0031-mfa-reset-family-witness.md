@@ -222,3 +222,103 @@ commands), ADR-0023 (MFA recovery), ADR-0025 (session revocation counter); issue
 - **Until it ships,** the parent app's MFA setup must keep saying that the codes are the only way back.
   ADR-0023's rule that the recovery email promises no support channel still holds, because there is
   none.
+
+## Amendment 2026-10-22 — Claude, on #305 review: the three gaps
+
+**Status:** accepted (2026-10-22), in review of PR #305 (`feat/297-mfa-reset-api`, head `384a188`).
+**Scope:** amends decisions 7 and 8 and adds one expiry clock. The decision text above is left as it was
+accepted; this section is the record of what changed and why (`AGENTS.md` §8: never edit an accepted
+decision, supersede it).
+
+### Context
+
+The API half of this ADR was built in #305 and reviewed. Three gaps survived it, all in the seam between
+"the parent asked" and "the parent finished or gave up", plus one thing the code already does that the
+record did not say:
+
+- **A `witness_passed` request had no end.** Decision 3 sets a deadline for the witness step (24 hours
+  after the mailbox confirmation) and decision 2.4 sets the 72-hour window, but nothing closed a request
+  whose window had long passed and whose parent never completed. Decision 3's "expiry" covers only the
+  witness step, so the row stayed in the open set, kept `complete` reachable for ever, and — with
+  decision 7's one-open-request rule — stopped that parent from ever asking again.
+- **`witnessRef` could not be filled for the device witness.** Decision 8 defines `witnessRef` as "the
+  device id or the approving parent's id". One `show_reset_code` code goes to *every* paired device of
+  the family (decision 2.3), so no single device is the witness; the implementation stores `null` and
+  decision 8 as written says otherwise.
+- **A parent whose request could not be completed on the device side hit a dead end.** Reaching the
+  child's phone inside the code's 10 minutes can fail — the phone is at school, the child is asleep, the
+  app is not showing the notice. The request then sat in `mailbox_confirmed` and `request` answered
+  `409 reset_already_pending` until the 24-hour sweep closed it. The parent had already spent one of
+  decision 7's three attempts per 30 days and had to wait most of a day to spend a second one.
+- **Already true in the code, unrecorded here:** `/login` cancelling an open request also clears that
+  request's `show_reset_code` payloads (merged in #305 at `384a188`,
+  `services/api/src/routes/auth.ts:275`). A code for a dead request must not keep showing on the child's
+  phone for its remaining minutes.
+
+### Decision
+
+1. **A `witness_passed` request that is never completed expires seven days after `windowEndsAt`.** The
+   expiry job (`services/api/src/jobs/mfaResetExpiry.ts`) sweeps `state = 'witness_passed' AND
+   windowEndsAt <= now - 7 days` to `state = 'expired'` with `outcomeAt = now`. Seven days covers a week
+   away after the window; after that the parent starts again with a fresh witness.
+2. **`witnessRef` stays `null` for a device witness.** This amends decision 8: `witnessRef` is the
+   approving parent's id for a `parent` witness, and `null` for a `device` witness, because one code goes
+   to every paired device and no single device can be named. `witnessKind` is what distinguishes the two.
+3. **`request` supersedes the parent's own open request when it is `requested` or `mailbox_confirmed`.**
+   The old row is marked `expired` with `outcomeAt = now`, and its `show_reset_code` payloads are cleared
+   through `clearResetCodePayloads(requestId)`, and the new request is created as normal. A
+   `witness_passed` request still blocks with `409 reset_already_pending`: a window a co-parent has
+   already approved is not restartable. The three-requests-per-30-days count of decision 7 is unchanged —
+   superseded rows still count, so this grants no extra attempts. A request that the limit is about to
+   refuse does not supersede anything first.
+4. **Recorded, not changed:** `/login` cancelling a request clears that request's `show_reset_code`
+   payloads (#305, `384a188`).
+
+### Why
+
+- **Seven days, not the 72 hours.** The window is the wait the parent owes the real parent to notice;
+  the grace is the wait the *routine* owes the parent who was travelling, ill or simply did not come
+  back. Expiring at `windowEndsAt` would punish an ordinary week away for no security gain — the
+  witness step is still required, and the sign-in cancel still kills a live request. Expiring never
+  would leave decision 7's open-request rule with no way out but support, which this ADR does not have.
+- **`witnessRef` null for a device witness is the honest value.** Naming one of several devices would
+  be a false record for an audit row that only exists so a parent and the family's owner can read what
+  happened.
+- **Supersede, not a longer refusal.** The parent cannot complete the request because the child's phone
+  is not reachable, which is exactly the case decision 2.3's 10-minute code does not survive. Answering
+  `reset_already_pending` for the remaining 23 hours turns one failed attempt into a day of lockout, and
+  the parent has no way to cancel from their side: they cannot sign in (that is why they are here) and
+  the cancel link is in an email they may not have opened. Superseding keeps the accounting honest: the
+  attempt is still counted, and the visible record shows the abandoned request as `expired`.
+- **`witness_passed` staying closed is the safety half.** A passed witness revoked every session and
+  opened a window that every other parent was told about. Letting a second `request` quietly replace it
+  would let an attacker who lost the race restart the clock without the family noticing.
+
+### Falsifiable claims
+
+1. **The 7-day expiry exists and is bounded.** After the expiry job runs with `now` such that a
+   `witness_passed` row's `windowEndsAt` is 8 days old, that row is `expired` with `outcomeAt` set; at 6
+   days it is still `witness_passed` with `outcomeAt` null. `complete` on the expired row answers
+   `409 request_expired`.
+2. **A device witness stores no device id.** A request passed with the child device's code has
+   `witnessKind = 'device'` and `witnessRef = null`; one approved by a co-parent has `witnessKind =
+   'parent'` and `witnessRef` equal to that parent's id.
+3. **A `mailbox_confirmed` request can be replaced.** A second `request` for the same parent answers
+   `200`, the first row is `expired` with `outcomeAt` set, no `show_reset_code` row for the first request
+   keeps a `code` in its payload, and the first request's confirm link no longer opens it.
+4. **A `witness_passed` request cannot be replaced.** A second `request` answers `409
+   reset_already_pending`, and the `witness_passed` row's state, `outcomeAt` and `windowEndsAt` are
+   unchanged.
+5. **A supersede grants no extra attempts.** Three requests inside 30 days, superseded or not, leave the
+   fourth answering `429 reset_limit_reached`, with three rows for that parent and no row superseded by
+   the refused request.
+6. **A cancelled request keeps no live code.** After a successful `/login` cancels an open request, no
+   `show_reset_code` payload for it carries a `code`.
+
+### What this amendment does not do
+
+- It does not touch decision 2's factors, decision 3's 24-hour witness deadline, decision 5's recovery
+  sequence, decision 6's `no_witness` refusal or decision 7's three-per-30-days ceiling.
+- It does not add the read-only audit route (decision 8) or the notification templates (decision 4).
+  Those remain unbuilt, as the changelog fragment for #305 states.
+
