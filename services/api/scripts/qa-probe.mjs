@@ -1180,6 +1180,7 @@ console.log("\n── O (cont.). MFA reset with a family witness (ADR-0031) ─�
 const mrEmail = `qa-mfa-reset-${stamp}@example.com`;
 const mrGuardianEmail = `qa-mfa-guardian-${stamp}@example.com`;
 const mrOtherEmail = `qa-mfa-other-${stamp}@example.com`;
+const mrCoParentEmail = `qa-mfa-coparent-${stamp}@example.com`;
 const mrReg = await call("POST", "/v1/auth/register", {
   body: { email: mrEmail, password: PASSWORD, displayName: "QA Reset Parent", familyName: "QA Reset Family", region: "US" },
 });
@@ -1196,6 +1197,14 @@ const mrOtherReg = await call("POST", "/v1/auth/register", {
   body: { email: mrOtherEmail, password: PASSWORD, displayName: "QA Other Owner", familyName: "QA Other Family", region: "US" },
 });
 const mrOtherToken = mrOtherReg.data?.token;
+// The co-parent: a real `co-parent` of the reset family with an open request of their own, because
+// `pending` must both list the requester's request for them and leave their own out (amendment
+// 2026-10-23, claim 4). Registration and the invite happen before the requester's MFA verification,
+// which revokes the owner's session the invite needs.
+const mrCoParentReg = await call("POST", "/v1/auth/register", {
+  body: { email: mrCoParentEmail, password: PASSWORD, displayName: "QA Reset Co-Parent", familyName: "QA Co-Parent Family", region: "US" },
+});
+let mrCoParentToken = mrCoParentReg.data?.token;
 
 const mrChild = await call("POST", "/v1/family/children", {
   token: mrToken,
@@ -1220,6 +1229,24 @@ const mrGuardianAccept = mrInviteId && mrGuardianToken
   ? await call("POST", `/v1/family/invites/${mrInviteId}/accept`, { token: mrGuardianToken })
   : { status: 0 };
 if (mrGuardianAccept.data?.token) mrGuardianToken = mrGuardianAccept.data.token;
+
+// The co-parent joins the same way, as a `co-parent` — the other role `/approve` and `pending` accept.
+const mrCoParentInvite = mrToken
+  ? await call("POST", "/v1/family/invites", { token: mrToken, body: { email: mrCoParentEmail, role: "co-parent", permissions: [] } })
+  : { status: 0 };
+const mrCoParentInviteId = mrCoParentInvite.data?.invite?.id ?? mrCoParentInvite.data?.acceptToken;
+const mrCoParentAccept = mrCoParentInviteId && mrCoParentToken
+  ? await call("POST", `/v1/family/invites/${mrCoParentInviteId}/accept`, { token: mrCoParentToken })
+  : { status: 0 };
+if (mrCoParentAccept.data?.token) mrCoParentToken = mrCoParentAccept.data.token;
+// Their own second factor: a `request` for an account without one is refused `mfa_not_enabled`, and
+// the open request is what proves `pending` leaves the caller's own request out.
+const mrCoParentEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: mrCoParentToken, body: {} });
+const mrCoParentSecret = mrCoParentEnroll.data?.secret ?? "";
+// One window back, so the later login can present a strictly newer counter (the replay guard).
+const mrCoParentVerify = mrCoParentSecret
+  ? await call("POST", "/v1/auth/mfa/verify", { token: mrCoParentToken, body: { code: totpCode(mrCoParentSecret, Date.now() - 30_000) } })
+  : { status: 0 };
 
 const mrEnroll = await call("POST", "/v1/auth/mfa/enroll", { token: mrToken, body: {} });
 const mrSecret = mrEnroll.data?.secret ?? "";
@@ -1281,6 +1308,95 @@ if (typeof mrConfirmToken !== "string") {
   const mrGuardianApprove = await call("POST", "/v1/auth/mfa/reset/approve", { token: mrGuardianToken, body: { requestId: mrRequestId } });
   const mrOtherApprove = await call("POST", "/v1/auth/mfa/reset/approve", { token: mrOtherToken, body: { requestId: mrRequestId } });
   check("O19 a guardian of the family and the owner of another family cannot approve a reset (403 role_not_allowed / 403 forbidden)", mrGuardianApprove.status === 403 && mrGuardianApprove.data?.error === "role_not_allowed" && mrOtherApprove.status === 403 && mrOtherApprove.data?.error === "forbidden", `guardian=${mrGuardianApprove.status}/${mrGuardianApprove.data?.error} otherFamily=${mrOtherApprove.status}/${mrOtherApprove.data?.error}`);
+
+  // ── ADR-0031 amendment 2026-10-23 (item 1, item 2): the two read routes #311 needed ────────────
+  // `POST /mfa/reset/status` is the requester's own read — they have no session — and `GET
+  // /mfa/reset/pending` is another owner/co-parent's. Both are reads, and every check below names the
+  // mutant that breaks it: a check that cannot fail is not a check (AGENTS.md §4).
+  //
+  // The co-parent's own open request is what makes "never the caller's own request" observable. The
+  // login here is a fresh one — their MFA verification revoked the session the invite accept minted —
+  // and the order is login → request → confirm, because a login cancels an open request of that parent.
+  const mrCoParentLogin = mrCoParentSecret
+    ? await call("POST", "/v1/auth/login", { body: { email: mrCoParentEmail, password: PASSWORD, code: nextTotp(mrCoParentSecret) } })
+    : { status: 0, data: {} };
+  if (mrCoParentLogin.data?.token) mrCoParentToken = mrCoParentLogin.data.token;
+  const mrCoParentRequest = mrCoParentToken
+    ? await call("POST", "/v1/auth/mfa/reset/request", { body: { email: mrCoParentEmail, password: PASSWORD } })
+    : { status: 0, data: {} };
+  const mrCoParentRequestId = mrCoParentRequest.data?.requestId;
+  // Confirmed last: its `show_reset_code` must not widen O16–O18's command counts, which are already
+  // asserted above.
+  const mrCoParentConfirm = mrCoParentRequest.data?.confirmToken
+    ? await call("POST", "/v1/auth/mfa/reset/confirm", { body: { token: mrCoParentRequest.data.confirmToken } })
+    : { status: 0, data: {} };
+
+  // Claim 1 (probe half): `status` writes nothing. Over HTTP that shows through four doors — the
+  // request's own stage and attempt count, the parent-facing command history, `complete`'s refusal
+  // (`witness_required` while the request still waits for its witness; `request_cancelled` if `status`
+  // had treated itself as a sign-in) and another parent's live session (a revocation).
+  // Mutants this kills: cancel/mark the row on read → complete answers request_cancelled or the stage
+  // changes; `clearResetCodePayloads` or an ack/enqueue on read → the history bodies differ; a session
+  // bump → the family read fails. The DB-level "rows byte-identical" half is the unit test's claim 1,
+  // because the probe deliberately has no database connection (docs/TESTING.md §6).
+  const mrStatusHistoryBefore = mrSession
+    ? await call("GET", `/v1/devices/${mrDeviceId}/commands/history?limit=100`, { token: mrSession })
+    : { status: 0, data: {} };
+  const mrStatus1 = await call("POST", "/v1/auth/mfa/reset/status", { body: { email: mrEmail, password: PASSWORD, requestId: mrRequestId } });
+  const mrStatus2 = await call("POST", "/v1/auth/mfa/reset/status", { body: { email: mrEmail, password: PASSWORD, requestId: mrRequestId } });
+  const mrStatusHistoryAfter = mrSession
+    ? await call("GET", `/v1/devices/${mrDeviceId}/commands/history?limit=100`, { token: mrSession })
+    : { status: 0, data: {} };
+  const mrCompleteAfterStatus = await call("POST", "/v1/auth/mfa/reset/complete", { body: { email: mrEmail, password: PASSWORD, requestId: mrRequestId } });
+  const mrGuardianSessionAfter = await call("GET", "/v1/family/me", { token: mrGuardianToken });
+  const mrStatusStable = mrStatus1.status === 200 && JSON.stringify(mrStatus2.data) === JSON.stringify(mrStatus1.data);
+  const mrStatusHistoryStable = mrStatusHistoryBefore.status === 200 && mrStatusHistoryAfter.status === 200 && JSON.stringify(mrStatusHistoryAfter.data) === JSON.stringify(mrStatusHistoryBefore.data);
+  check("O24 status writes nothing: the request stays mailbox_confirmed with five attempts, the device command history is unchanged, another parent's session still works and complete still answers witness_required", mrStatusStable && mrStatus1.data?.state === "mailbox_confirmed" && mrStatus1.data?.attemptsRemaining === 5 && typeof mrStatus1.data?.witnessDeadline === "string" && typeof mrStatus1.data?.codeExpiresAt === "string" && mrStatus1.data?.mailboxLinkExpiresAt === null && mrStatusHistoryStable && mrCompleteAfterStatus.status === 409 && mrCompleteAfterStatus.data?.error === "witness_required" && mrGuardianSessionAfter.status === 200, `status=${mrStatus1.status}/${mrStatus1.data?.state}/attempts=${mrStatus1.data?.attemptsRemaining} stable=${mrStatusStable} historyUnchanged=${mrStatusHistoryStable} complete=${mrCompleteAfterStatus.status}/${mrCompleteAfterStatus.data?.error} guardianSession=${mrGuardianSessionAfter.status}`);
+
+  // Claim 3: another parent's valid `requestId` with the caller's own credentials is `404
+  // request_not_found`, byte-identical to an id that does not exist.
+  // Mutants this kills: drop `request.parentId !== parent.id` (answers 200 with the other parent's
+  // request — the oracle), answer 403 instead (distinguishable from "no such id"), or echo a field of
+  // the other parent's request into the 404 body.
+  const mrStatusOtherId = await call("POST", "/v1/auth/mfa/reset/status", { body: { email: mrEmail, password: PASSWORD, requestId: mrCoParentRequestId } });
+  const mrStatusNoSuchId = await call("POST", "/v1/auth/mfa/reset/status", { body: { email: mrEmail, password: PASSWORD, requestId: randomUUID() } });
+  check("O25 status on another parent's valid requestId answers 404 request_not_found, identical to an unknown id (not an oracle)", mrStatusOtherId.status === 404 && mrStatusOtherId.data?.error === "request_not_found" && mrStatusNoSuchId.status === mrStatusOtherId.status && JSON.stringify(mrStatusNoSuchId.data) === JSON.stringify(mrStatusOtherId.data) && Object.keys(mrStatusOtherId.data ?? {}).join(",") === "error", `otherId=${mrStatusOtherId.status}/${JSON.stringify(mrStatusOtherId.data)} unknownId=${mrStatusNoSuchId.status}/${JSON.stringify(mrStatusNoSuchId.data)}`);
+
+  // Claim 4: the list is the family's, someone else's, and only what waits for a witness.
+  // Mutants this kills: drop `parentId: { not: caller.id }` → the caller's own request is listed;
+  // drop `familyId` → the foreign owner sees this family's request; list with no requester lookup →
+  // the name and role are empty, and the prompt cannot say who is asking.
+  const mrPendingAsCoParent = mrCoParentToken
+    ? await call("GET", "/v1/auth/mfa/reset/pending", { token: mrCoParentToken })
+    : { status: 0, data: {} };
+  const mrPendingAsOwner = mrSession
+    ? await call("GET", "/v1/auth/mfa/reset/pending", { token: mrSession })
+    : { status: 0, data: {} };
+  const mrPendingAsOtherFamily = await call("GET", "/v1/auth/mfa/reset/pending", { token: mrOtherToken });
+  const mrPendingCoParentIds = (mrPendingAsCoParent.data?.requests ?? []).map((r) => r.requestId);
+  const mrPendingOwnerIds = (mrPendingAsOwner.data?.requests ?? []).map((r) => r.requestId);
+  const mrPendingOtherIds = (mrPendingAsOtherFamily.data?.requests ?? []).map((r) => r.requestId);
+  const mrPendingEntry = (mrPendingAsCoParent.data?.requests ?? [])[0] ?? {};
+  const mrPendingOwnerEntry = (mrPendingAsOwner.data?.requests ?? [])[0] ?? {};
+  check("O26 pending lists the other parent's open request — never the caller's own, never another family's — with the requester's name and role", mrPendingAsCoParent.status === 200 && JSON.stringify(mrPendingCoParentIds) === JSON.stringify([mrRequestId]) && mrPendingEntry.state === "mailbox_confirmed" && mrPendingEntry.requester?.displayName === "QA Reset Parent" && mrPendingEntry.requester?.role === "owner" && typeof mrPendingEntry.requester?.parentId === "string" && typeof mrPendingEntry.witnessDeadline === "string" && mrPendingEntry.windowEndsAt === null && mrPendingAsOwner.status === 200 && JSON.stringify(mrPendingOwnerIds) === JSON.stringify([mrCoParentRequestId]) && mrPendingOwnerEntry.requester?.displayName === "QA Reset Co-Parent" && mrPendingOwnerEntry.requester?.role === "co-parent" && mrPendingAsOtherFamily.status === 200 && mrPendingOtherIds.length === 0, `coParent=${mrPendingAsCoParent.status}/[${mrPendingCoParentIds.join(",")}] requester=${mrPendingEntry.requester?.displayName}/${mrPendingEntry.requester?.role} deadline=${mrPendingEntry.witnessDeadline ?? "none"} owner=${mrPendingAsOwner.status}/[${mrPendingOwnerIds.join(",")}] otherFamily=${mrPendingAsOtherFamily.status}/[${mrPendingOtherIds.join(",")}] setup(coParentVerify=${mrCoParentVerify.status}, login=${mrCoParentLogin.status}, request=${mrCoParentRequest.status}, confirm=${mrCoParentConfirm.status})`);
+
+  // Claim 4, the refusal: a `guardian` is refused exactly as on `/approve`, and the list needs a
+  // session at all. Mutants this kills: allow the guardian (200 with the family's requests), or drop
+  // `preHandler: requireJwt` (an anonymous read of who is resetting their second factor).
+  const mrPendingAsGuardian = await call("GET", "/v1/auth/mfa/reset/pending", { token: mrGuardianToken });
+  const mrPendingAnonymous = await call("GET", "/v1/auth/mfa/reset/pending");
+  check("O27 pending refuses a guardian (403 role_not_allowed) and an unauthenticated caller (401)", mrPendingAsGuardian.status === 403 && mrPendingAsGuardian.data?.error === "role_not_allowed" && mrPendingAnonymous.status === 401, `guardian=${mrPendingAsGuardian.status}/${mrPendingAsGuardian.data?.error} anonymous=${mrPendingAnonymous.status}/${mrPendingAnonymous.data?.error}`);
+
+  // Claim 5: neither read carries a credential or another parent's data — the field lists are the
+  // amendment's, exactly. Mutants this kills: return the row (`...request` → `codeHash` and
+  // `witnessRef` appear, and the key list grows), return the plaintext code, or return the
+  // requester's email address instead of their name.
+  const mrStatusKeyList = Object.keys(mrStatus1.data ?? {}).sort().join(",");
+  const mrPendingKeyList = Object.keys(mrPendingEntry).sort().join(",");
+  const mrRequesterKeyList = Object.keys(mrPendingEntry.requester ?? {}).sort().join(",");
+  const mrReadText = JSON.stringify(mrStatus1.data ?? {}) + JSON.stringify(mrPendingAsCoParent.data ?? {});
+  const mrReadLeak = ["codeHash", "witnessRef", "failedCodeAttempts"].filter((key) => mrReadText.includes(key));
+  check("O28 neither read carries codeHash, witnessRef, the plaintext code or the requester's email, and both bodies are exactly the documented field list", mrStatusKeyList === "attemptsRemaining,codeExpiresAt,createdAt,emailConfirmedAt,mailboxLinkExpiresAt,outcomeAt,requestId,state,windowEndsAt,witnessAt,witnessDeadline,witnessKind" && mrPendingKeyList === "createdAt,emailConfirmedAt,requestId,requester,state,windowEndsAt,witnessDeadline" && mrRequesterKeyList === "displayName,parentId,role" && mrReadLeak.length === 0 && mrCodeKnown && !mrReadText.includes(String(mrDeviceCode)) && !mrReadText.includes(mrEmail), `statusKeys=[${mrStatusKeyList}] pendingKeys=[${mrPendingKeyList}] requesterKeys=[${mrRequesterKeyList}] leaked=[${mrReadLeak.join(",")}] codeInBody=${mrCodeKnown ? mrReadText.includes(String(mrDeviceCode)) : "unknown"} emailInBody=${mrReadText.includes(mrEmail)}`);
 
   const mrWitness = mrCodeKnown ? await call("POST", "/v1/auth/mfa/reset/witness", { body: { requestId: mrRequestId, code: String(mrDeviceCode) } }) : { status: 0, data: {} };
   // Claim 1d: before the window ends nothing changes at all. The factor is still bound — a password

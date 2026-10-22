@@ -152,6 +152,18 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
       (!where.role?.in || where.role.in.includes(p.role)),
     ).length,
   );
+  // `pending` names the requester from one `findMany` over the parents it found, never one lookup per
+  // request. The default `parent.findMany` (helpers.ts) answers `[]`, which would make every display name
+  // an empty string — so the filter and `select` are modelled here as Prisma applies them.
+  prismaMock.parent.findMany.mockImplementation(async ({ where, select }: { where?: { id?: { in: string[] } }; select?: Record<string, boolean> } = {}) =>
+    parents
+      .filter((p) => !where?.id?.in || where.id.in.includes(p.id))
+      .map((p) =>
+        select
+          ? Object.fromEntries(Object.keys(select).filter((key) => select[key]).map((key) => [key, (p as unknown as Record<string, unknown>)[key]]))
+          : { ...p },
+      ),
+  );
   prismaMock.device.count.mockImplementation(async ({ where }: { where: { child: { familyId: string } } }) =>
     devices.filter((d) => d.familyId === where.child.familyId).length,
   );
@@ -191,7 +203,12 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
   );
   const matches = (r: ResetRow, where: Record<string, any>): boolean => {
     if (where.id && r.id !== where.id) return false;
-    if (where.parentId && r.parentId !== where.parentId) return false;
+    if (where.parentId) {
+      if (typeof where.parentId === "string") {
+        if (r.parentId !== where.parentId) return false;
+      } else if (where.parentId.not && r.parentId === where.parentId.not) return false;
+    }
+    if (where.familyId && r.familyId !== where.familyId) return false;
     if (where.state === undefined) return true;
     if (typeof where.state === "string") return r.state === where.state;
     return Array.isArray(where.state.in) && where.state.in.includes(r.state);
@@ -343,6 +360,29 @@ const complete = (app: Awaited<ReturnType<typeof setup>>["app"], requestId: stri
     url: "/v1/auth/mfa/reset/complete",
     payload: { email: SUBJECT_EMAIL, password: PASSWORD, requestId, ...body },
   });
+
+const status = (app: Awaited<ReturnType<typeof setup>>["app"], requestId: string, body: Record<string, unknown> = {}) =>
+  app.inject({
+    method: "POST",
+    url: "/v1/auth/mfa/reset/status",
+    payload: { email: SUBJECT_EMAIL, password: PASSWORD, requestId, ...body },
+  });
+
+const pending = (app: Awaited<ReturnType<typeof setup>>["app"], headers: Record<string, string> = {}) =>
+  app.inject({ method: "GET", url: "/v1/auth/mfa/reset/pending", headers });
+
+/**
+ * The exact body of `POST /mfa/reset/status` (ADR-0031 amendment 2026-10-23, item 1), sorted. A field
+ * outside this list is a contract break — that is how `codeHash`, `witnessRef` or a device id would
+ * arrive — so the list is written out here rather than read from the implementation.
+ */
+const STATUS_FIELDS = [
+  "attemptsRemaining", "codeExpiresAt", "createdAt", "emailConfirmedAt", "mailboxLinkExpiresAt",
+  "outcomeAt", "requestId", "state", "windowEndsAt", "witnessAt", "witnessDeadline", "witnessKind",
+];
+
+/** The exact keys of one entry of `GET /mfa/reset/pending`, sorted. */
+const PENDING_FIELDS = ["createdAt", "emailConfirmedAt", "requestId", "requester", "state", "windowEndsAt", "witnessDeadline"];
 
 /** Request → confirm, returning the request row and the plaintext 8-digit code the devices received. */
 async function reachMailboxStep(app: Awaited<ReturnType<typeof setup>>["app"]) {
@@ -999,6 +1039,318 @@ describe("MFA reset — recovery codes that survive (sanity)", () => {
     // Recovery clears the batch; the plaintext codes are issued only by the existing verify route.
     expect(codeRows).toHaveLength(0);
     expect(prismaMock.parentMfaRecoveryCode.createMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// ADR-0031 amendment 2026-10-23 (`docs/adr/0031-mfa-reset-family-witness.md`): the two reads #311's
+// parent app could not do — the requester re-reading their own request with no session, and a
+// co-parent's approval prompt finding a request and naming its requester.
+// ---------------------------------------------------------------------------------------------------
+
+describe("MFA reset — the requester reads their own request (amendment 2026-10-23, claims 1, 2)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  /**
+   * Every write the reset routes can make, by call count: a read must move none of them. `$executeRaw`
+   * is `clearResetCodePayloads` (the device code), which is the one write a "read" would plausibly
+   * sneak in.
+   */
+  const writeCounts = () => ({
+    resetState: prismaMock.mfaResetRequest.updateMany.mock.calls.length,
+    resetCreate: prismaMock.mfaResetRequest.create.mock.calls.length,
+    resetDelete: prismaMock.mfaResetRequest.deleteMany.mock.calls.length,
+    commandCreate: prismaMock.deviceCommand.create.mock.calls.length,
+    commandUpdate: prismaMock.deviceCommand.updateMany.mock.calls.length,
+    parentUpdate: prismaMock.parent.update.mock.calls.length,
+    rawSql: prismaMock.$executeRaw.mock.calls.length,
+  });
+
+  it("claim 1: status changes no row — MfaResetRequest, DeviceCommand and the session version are byte-identical before and after, in every open state", async () => {
+    const { app } = await setup();
+    const requested = await request(app);
+    const requestId = requested.json().requestId as string;
+
+    /** Read the request, and prove the read moved nothing — rows, commands, session version and writes. */
+    const readAndCompare = async (label: string) => {
+      const rows = JSON.stringify(resets);
+      const commandRows = JSON.stringify(commands);
+      const version = sessionVersion();
+      const writes = writeCounts();
+      const res = await status(app, requestId);
+      expect({ label, status: res.statusCode }).toEqual({ label, status: 200 });
+      expect({ label, rows: JSON.stringify(resets) }).toEqual({ label, rows });
+      expect({ label, commands: JSON.stringify(commands) }).toEqual({ label, commands: commandRows });
+      expect({ label, sessionVersion: sessionVersion() }).toEqual({ label, sessionVersion: version });
+      expect({ label, writes: writeCounts() }).toEqual({ label, writes });
+      return res.json();
+    };
+
+    expect((await readAndCompare("requested")).state).toBe("requested");
+    expect((await confirm(app, confirmTokenFor(app, requested))).statusCode).toBe(200);
+    expect((await readAndCompare("mailbox_confirmed")).state).toBe("mailbox_confirmed");
+    const code = commands.find((c) => c.type === "show_reset_code" && c.payload.requestId === requestId)!
+      .payload.code as string;
+    expect((await witness(app, requestId, code)).statusCode).toBe(200);
+    expect((await readAndCompare("witness_passed")).state).toBe("witness_passed");
+    await app.close();
+  });
+
+  it("claim 2: status is not a sign-in — after windowEndsAt it still answers witness_passed and complete still completes", async () => {
+    const { app } = await setup();
+    const { requestId } = await reachWindow(app);
+    const row = resets.find((r) => r.id === requestId)!;
+
+    const inWindow = await status(app, requestId);
+    expect(inWindow.statusCode).toBe(200);
+    expect(inWindow.json()).toMatchObject({ state: "witness_passed", windowEndsAt: row.windowEndsAt!.toISOString() });
+
+    // The window passes; refreshing the screen is the only thing `status` is for. If it cancelled the
+    // request the way a `/login` does, `complete` below would answer 409 request_cancelled.
+    row.windowEndsAt = new Date(Date.now() - 1000);
+    const afterWindow = await status(app, requestId);
+    expect(afterWindow.statusCode).toBe(200);
+    expect(afterWindow.json().state).toBe("witness_passed");
+    expect(afterWindow.json().outcomeAt).toBeNull();
+
+    const res = await complete(app, requestId);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().recoveryToken).toBeTruthy();
+    expect(row.state).toBe("completed");
+
+    // And it reads back the recorded outcome, not a request still pretending to be open.
+    const done = await status(app, requestId);
+    expect(done.json()).toMatchObject({ state: "completed", attemptsRemaining: null, witnessDeadline: null });
+    expect(done.json().outcomeAt).toBe(row.outcomeAt!.toISOString());
+    await app.close();
+  });
+
+  it("the status body names only the current state's deadline, and never a stale one", async () => {
+    const { app } = await setup();
+    const requested = await request(app);
+    const requestId = requested.json().requestId as string;
+
+    // `requested`: the mailbox link is the only clock, 30 minutes from creation.
+    const atRequest = (await status(app, requestId)).json();
+    const createdRow = resets.find((r) => r.id === requestId)!;
+    expect(Object.keys(atRequest).sort()).toEqual(STATUS_FIELDS);
+    expect(atRequest.requestId).toBe(requestId);
+    expect(atRequest.createdAt).toBe(createdRow.createdAt.toISOString());
+    expect(atRequest.mailboxLinkExpiresAt).toBe(new Date(createdRow.createdAt.getTime() + 30 * 60 * 1000).toISOString());
+    expect(atRequest).toMatchObject({
+      emailConfirmedAt: null, witnessDeadline: null, codeExpiresAt: null, attemptsRemaining: null,
+      witnessKind: null, witnessAt: null, windowEndsAt: null, outcomeAt: null,
+    });
+
+    expect((await confirm(app, confirmTokenFor(app, requested))).statusCode).toBe(200);
+    // One wrong code, so the count the parent reads is the live one: five minus what is spent.
+    expect((await witness(app, requestId, "00000000")).statusCode).toBe(401);
+    const atMailbox = (await status(app, requestId)).json();
+    const confirmedRow = resets.find((r) => r.id === requestId)!;
+    expect(atMailbox.mailboxLinkExpiresAt).toBeNull();
+    expect(atMailbox.witnessDeadline).toBe(
+      new Date(confirmedRow.emailConfirmedAt!.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    );
+    expect(atMailbox.codeExpiresAt).toBe(confirmedRow.codeExpiresAt!.toISOString());
+    expect(atMailbox.attemptsRemaining).toBe(4);
+
+    const code = commands.find((c) => c.type === "show_reset_code" && c.payload.requestId === requestId)!
+      .payload.code as string;
+    expect((await witness(app, requestId, code)).statusCode).toBe(200);
+    const atWindow = (await status(app, requestId)).json();
+    const windowRow = resets.find((r) => r.id === requestId)!;
+    expect(atWindow).toMatchObject({
+      state: "witness_passed", witnessKind: "device", mailboxLinkExpiresAt: null,
+      witnessDeadline: null, attemptsRemaining: null,
+    });
+    expect(atWindow.witnessAt).toBe(windowRow.witnessAt!.toISOString());
+    expect(atWindow.windowEndsAt).toBe(windowRow.windowEndsAt!.toISOString());
+    // The code is spent when the witness passes: a deadline for it would be a stale field.
+    expect(atWindow.codeExpiresAt).toBeNull();
+    // `witnessRef` is stored for the approving-parent witness; `status` never returns it at all.
+    expect(atWindow).not.toHaveProperty("witnessRef");
+    await app.close();
+  });
+});
+
+describe("MFA reset — status is not an oracle (claim 3)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("claim 3: another parent's valid requestId with the caller's own credentials answers 404 request_not_found", async () => {
+    const { app } = await setup();
+    const mine = await reachMailboxStep(app);
+    // A second, valid request in the same family: the id exists, it is simply not the caller's.
+    parents.find((p) => p.id === "parent-2")!.mfaEnabled = true;
+    const theirs = await request(app, { email: CO_PARENT_EMAIL });
+    expect(theirs.statusCode).toBe(200);
+    const theirsId = theirs.json().requestId as string;
+    expect(theirsId).not.toBe(mine.requestId);
+
+    const otherIdOwnCredentials = await status(app, theirsId);
+    expect(otherIdOwnCredentials.statusCode).toBe(404);
+    expect(otherIdOwnCredentials.json()).toEqual({ error: "request_not_found" });
+    // ...and the mirror: the caller's own id with the other parent's credentials.
+    const ownIdOtherCredentials = await status(app, mine.requestId, { email: CO_PARENT_EMAIL });
+    expect(ownIdOtherCredentials.statusCode).toBe(404);
+    expect(ownIdOtherCredentials.json()).toEqual({ error: "request_not_found" });
+    // "No such id" is the same answer as "someone else's id", with nothing else in the body.
+    const noSuchId = await status(app, "no-such-request");
+    expect(noSuchId.statusCode).toBe(404);
+    expect(noSuchId.json()).toEqual({ error: "request_not_found" });
+
+    // The front door is `/complete`'s: a wrong password and an unknown address are one 401.
+    const wrongPassword = await status(app, mine.requestId, { password: "WrongHorseBatteryStaple!" });
+    expect(wrongPassword.statusCode).toBe(401);
+    expect(wrongPassword.json()).toEqual({ error: "invalid_credentials" });
+    const unknownEmail = await status(app, mine.requestId, { email: `nobody-${Date.now()}@example.com` });
+    expect(unknownEmail.statusCode).toBe(401);
+    expect(unknownEmail.json()).toEqual({ error: "invalid_credentials" });
+
+    // None of it moved the request it was asking about.
+    expect(mine.row.state).toBe("mailbox_confirmed");
+    expect(JSON.stringify(commands)).toContain(mine.code!);
+    await app.close();
+  });
+});
+
+describe("MFA reset — the co-parent's read (amendment 2026-10-23, claims 4, 5)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  const openForeignRequest = () => {
+    parents.push({
+      id: "parent-5", familyId: "fam-2", email: "foreign-coparent@example.com",
+      passwordHash: "unused", displayName: "Foreign Co Parent", role: "co-parent",
+      permissions: [], mfaEnabled: false, mfaSecret: null,
+    });
+    resets.push({
+      id: "req-foreign", parentId: "parent-5", familyId: "fam-2", state: "mailbox_confirmed",
+      createdAt: new Date(), emailConfirmedAt: new Date(), witnessKind: null, witnessRef: null,
+      witnessAt: null, windowEndsAt: null, failedCodeAttempts: 0, codeHash: null, codeExpiresAt: null,
+      completedAt: null, cancelledReason: null, outcomeAt: null,
+    });
+  };
+
+  it("claim 4: pending lists neither the caller's own request nor another family's; a guardian gets 403 role_not_allowed", async () => {
+    const { app } = await setup();
+    // parent-1's request (the requester the co-parent must see), still at the mailbox step.
+    const mine = await reachMailboxStep(app);
+    // parent-2's own request, same family: it must not appear in parent-2's own list.
+    parents.find((p) => p.id === "parent-2")!.mfaEnabled = true;
+    const theirs = await request(app, { email: CO_PARENT_EMAIL });
+    expect(theirs.statusCode).toBe(200);
+    const theirsId = theirs.json().requestId as string;
+    expect((await confirm(app, confirmTokenFor(app, theirs))).statusCode).toBe(200);
+    // A `requested` row and another family's open row: neither belongs in fam-1's list.
+    resets.push({
+      id: "req-not-confirmed", parentId: "parent-3", familyId: "fam-1", state: "requested",
+      createdAt: new Date(), emailConfirmedAt: null, witnessKind: null, witnessRef: null,
+      witnessAt: null, windowEndsAt: null, failedCodeAttempts: 0, codeHash: null, codeExpiresAt: null,
+      completedAt: null, cancelledReason: null, outcomeAt: null,
+    });
+    openForeignRequest();
+
+    const asCoParent = await pending(app, authHeader(app, "fam-1", "parent-2"));
+    expect(asCoParent.statusCode).toBe(200);
+    const list = asCoParent.json().requests as Array<Record<string, any>>;
+    expect(list.map((r) => r.requestId)).toEqual([mine.requestId]);
+    expect(Object.keys(list[0]).sort()).toEqual(PENDING_FIELDS);
+    expect(list[0]).toMatchObject({
+      state: "mailbox_confirmed",
+      requester: { parentId: "parent-1", displayName: "Subject Parent", role: "owner" },
+      windowEndsAt: null,
+    });
+    expect(list[0].witnessDeadline).toBe(
+      new Date(mine.row.emailConfirmedAt!.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    );
+    // The prompt names the requester; the address stays out of it.
+    expect(JSON.stringify(list)).not.toContain(SUBJECT_EMAIL);
+    // A request still waiting for its mailbox click is not open to approval, so it is not listed.
+    expect(list.some((r) => r.requestId === "req-not-confirmed")).toBe(false);
+
+    // The owner's own request is excluded too — the list is for acting on someone else's.
+    const asOwner = await pending(app, authHeader(app, "fam-1", "parent-1"));
+    expect(asOwner.statusCode).toBe(200);
+    expect((asOwner.json().requests as Array<{ requestId: string }>).map((r) => r.requestId)).toEqual([theirsId]);
+
+    // A `witness_passed` request is listed, with the window and without the witness deadline.
+    const theirCode = commands.find((c) => c.type === "show_reset_code" && c.payload.requestId === theirsId)!
+      .payload.code as string;
+    expect((await witness(app, theirsId, theirCode)).statusCode).toBe(200);
+    const afterWitness = await pending(app, authHeader(app, "fam-1", "parent-1"));
+    const passed = afterWitness.json().requests as Array<Record<string, any>>;
+    expect(passed.map((r) => r.requestId)).toEqual([theirsId]);
+    expect(passed[0]).toMatchObject({ state: "witness_passed", witnessDeadline: null });
+    expect(typeof passed[0].windowEndsAt).toBe("string");
+    expect(afterWitness.json().requests[0]).not.toHaveProperty("witnessRef");
+
+    // Another family's owner sees their own family's open request and never fam-1's.
+    const foreign = await pending(app, authHeader(app, "fam-2", "parent-4"));
+    expect(foreign.statusCode).toBe(200);
+    expect((foreign.json().requests as Array<{ requestId: string; state: string }>).map((r) => r.requestId)).toEqual(["req-foreign"]);
+
+    // The rule `/approve` uses: partial access is not approval.
+    const guardian = await pending(app, authHeader(app, "fam-1", "parent-3"));
+    expect(guardian.statusCode).toBe(403);
+    expect(guardian.json()).toEqual({ error: "role_not_allowed" });
+    const anonymous = await pending(app);
+    expect(anonymous.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("claim 5: neither response carries codeHash, the plaintext code or witnessRef", async () => {
+    const { app } = await setup();
+    const { requestId, row, code } = await reachMailboxStep(app);
+    expect(row.codeHash).toBe(createHash("sha256").update(code!).digest("hex"));
+
+    const seen = await status(app, requestId);
+    expect(Object.keys(seen.json()).sort()).toEqual(STATUS_FIELDS);
+    const seenText = JSON.stringify(seen.json());
+    expect(seenText).not.toContain(row.codeHash!);
+    expect(seenText).not.toContain(String(code));
+    expect(seen.json()).not.toHaveProperty("codeHash");
+    expect(seen.json()).not.toHaveProperty("code");
+    expect(seen.json()).not.toHaveProperty("witnessRef");
+
+    const familyView = await pending(app, authHeader(app, "fam-1", "parent-2"));
+    const viewText = JSON.stringify(familyView.json());
+    expect(viewText).not.toContain(row.codeHash!);
+    expect(viewText).not.toContain(String(code));
+    expect(viewText).not.toContain(SUBJECT_EMAIL);
+    expect(viewText).not.toContain("codeHash");
+    expect(viewText).not.toContain("witnessRef");
+    await app.close();
+  });
+
+  it("claim 5, parent witness: the approving parent's id is stored as witnessRef and is still not returned", async () => {
+    // No paired device, so the witness is another parent and `witnessRef` holds their id.
+    const { app } = await setup({ familyDevices: 0 });
+    const requested = await request(app);
+    const requestId = requested.json().requestId as string;
+    expect((await confirm(app, confirmTokenFor(app, requested))).statusCode).toBe(200);
+    const approved = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/reset/approve",
+      headers: authHeader(app, "fam-1", "parent-2"),
+      payload: { requestId },
+    });
+    expect(approved.statusCode).toBe(200);
+    const row = resets.find((r) => r.id === requestId)!;
+    expect(row.witnessKind).toBe("parent");
+    expect(row.witnessRef).toBe("parent-2");
+
+    const seen = await status(app, requestId);
+    expect(seen.statusCode).toBe(200);
+    expect(seen.json()).toMatchObject({ state: "witness_passed", witnessKind: "parent" });
+    expect(seen.json()).not.toHaveProperty("witnessRef");
+    // The approver's id is the whole value of `witnessRef`; it must not travel in any field of either
+    // read — and the approver is exactly the caller who sees this request in their own list.
+    expect(JSON.stringify(seen.json())).not.toContain("parent-2");
+
+    const familyView = await pending(app, authHeader(app, "fam-1", "parent-2"));
+    expect(familyView.statusCode).toBe(200);
+    expect((familyView.json().requests as Array<{ requestId: string }>).map((r) => r.requestId)).toEqual([requestId]);
+    expect(JSON.stringify(familyView.json())).not.toContain("parent-2");
     await app.close();
   });
 });
