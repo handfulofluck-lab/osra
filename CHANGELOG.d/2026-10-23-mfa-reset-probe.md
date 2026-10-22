@@ -28,6 +28,14 @@ family they need — every one gating. Nothing is mocked; the flow is walked aga
   is read, so a second refusal alone would prove nothing — Claude's review found exactly that: a mutant
   that stored a row per refusal still passed the earlier version of this check.)
 
+**A Windows-only crash on the early-exit path, found by running the stub test here.** With the `call()`
+change, a failing `setup:` check reaches `process.exit(1)` while a `fetch` keep-alive socket is closing, and
+on Node 24/Windows the process dies with `0xC0000409` (libuv: `Assertion failed: !(handle->flags &
+UV_HANDLE_CLOSING)`) instead of exiting `1` — so the stub test read a crash rather than a FAIL. The early
+exit now sets `process.exitCode` through a `StopRun` sentinel and lets the loop drain, which is what the
+rate-limit aborts already did for the same reason (`scripts/qa-probe.mjs:103`). Measured: manual stub run
+`exit=1` with the FAIL printed, and `test/qa-probe-rate-limit.test.ts` 4/4.
+
 **Obtaining the mailbox link:** `O16`–`O22` need the `confirm` token. The probe has no inbox, so it uses
 the `confirmToken` that `/mfa/reset/request` echoes while no email provider is configured and `NODE_ENV`
 is not production (`echoResetTokens`, `services/api/src/routes/auth.ts`). On a stack with
@@ -51,6 +59,11 @@ catch the history leak: with the payload un-redacted the check fails, and it is 
 retried, then aborted with `ABORT: rate limited by the API … wait 60 s and re-run`, exit `2`. But decision
 7's limit refusal is also a `429` (`{"error":"reset_limit_reached"}`), so a genuine regression there would
 have read as "slow down and try again" and a verifier would have re-run instead of filing a bug. `call()`
-now inspects the body: only `{"error":"Too Many Requests"}` means throttling; any other `429` is handed back
-to the check that asked for it. With that change, a mutant that stores a row per refusal produces a clean
-`FAIL O23` instead of an abort.
+now inspects the body: a `429` whose `error` is one the API answers itself (`APP_429_ERRORS`, today only
+`reset_limit_reached`) is handed back to the check that asked for it; every other `429` (the limiter's
+`Too Many Requests`, a proxy's, the `rate_limited` stub in `test/qa-probe-rate-limit.test.ts`) is
+throttling, as #112 requires. The first version of this change turned it round (anything but `Too Many
+Requests` was an answer) and broke #112's two stub tests in CI; `qa-probe-rate-limit.test.ts` now also
+pins the limiter's real body as throttling and `reset_limit_reached` as an answer (exit `1` with a `FAIL`,
+no `ABORT`). With that change, a mutant that stores a row per refusal produces a clean `FAIL O23` instead
+of an abort.

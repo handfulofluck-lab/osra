@@ -96,11 +96,28 @@ class RateLimitAbort extends Error {}
 /** Sockets opened in section L, so the abort path can close them and let the process exit. */
 const OPEN_SOCKETS = new Set();
 
+/** Stops the run from the top level without `process.exit()` — see the note in the handler below. */
+class StopRun extends Error {
+  constructor(code) {
+    super("stop");
+    this.code = code;
+  }
+}
+
 process.on("uncaughtException", (err) => {
   if (err instanceof RateLimitAbort) {
     for (const ws of OPEN_SOCKETS) { try { ws.close(); } catch { /* already closing */ } }
     process.exitCode = 2;
     return; // let the loop drain: process.exit() after several fetches trips a Node 24/Windows libuv assertion
+  }
+  // #309: the same assertion, on a different path. When a `setup:` check fails, the early exit used to
+  // call `process.exit(1)` while a `fetch` keep-alive socket was closing, and on Node 24/Windows the
+  // process died with 0xC0000409 instead of 1 — so the stub test in `test/qa-probe-rate-limit.test.ts`
+  // read a crash, not a FAIL. Setting the code and letting the loop drain is what the aborts do above.
+  if (err instanceof StopRun) {
+    for (const ws of OPEN_SOCKETS) { try { ws.close(); } catch { /* already closing */ } }
+    process.exitCode = err.code;
+    return;
   }
   console.error(err);
   process.exit(1);
@@ -113,6 +130,9 @@ const abortRateLimited = (why) => {
   process.exitCode = 2;
   throw new RateLimitAbort("rate limited by the API");
 };
+
+// 429s the API itself answers, as product decisions; every other 429 is throttling (see call()).
+const APP_429_ERRORS = new Set(["reset_limit_reached"]);
 
 /** Count one observed 429 and abort once the run is clearly being throttled. */
 const count429 = (where) => {
@@ -143,11 +163,11 @@ async function call(method, path, { token, body, hmac, secret, rawBody, headers 
   });
   let res = await send();
   // The API's own 429s are answers, not throttling: ADR-0031 decision 7 refuses a fourth reset request
-  // in 30 days with `429 reset_limit_reached`. Only @fastify/rate-limit's body ("Too Many Requests")
-  // means "slow down"; anything else is returned to the check that asked.
+  // in 30 days with `429 reset_limit_reached`. Only the codes in APP_429_ERRORS go back to the check that
+  // asked; any other 429 (the rate limiter's "Too Many Requests", a proxy's) is throttling, as before (#112).
   if (res.status === 429) {
     const peek = await res.clone().json().catch(() => null);
-    if (peek && typeof peek.error === "string" && peek.error !== "Too Many Requests") return { status: 429, data: peek };
+    if (APP_429_ERRORS.has(peek?.error)) return { status: 429, data: peek };
   }
   if (res.status === 429) {
     count429(`${method} ${path}`);
@@ -186,7 +206,7 @@ const tokenB = regB.data?.token;
 check("setup: two families registered", regA.status === 201 && regB.status === 201, `${regA.status}/${regB.status}`);
 if (!tokenA || !tokenB) {
   console.log("cannot continue without two parent tokens");
-  process.exit(1);
+  throw new StopRun(1);
 }
 
 // Family A: child with inline consent, plus a device.
@@ -1322,4 +1342,4 @@ if (rateLimited429) console.log(`RATE LIMIT: ${rateLimited429} x 429 observed; e
 if (FAIL.length) console.log("FAILURES (must fix to make this gate green):\n- " + FAIL.join("\n- "));
 if (TARGETS.length) console.log("TARGETS (tracked, need a design decision, not gating):\n- " + TARGETS.join("\n- "));
 if (NOTE.length) console.log("NOTES:\n- " + NOTE.join("\n- "));
-process.exit(FAIL.length ? 1 : 0);
+process.exitCode = FAIL.length ? 1 : 0;
