@@ -132,7 +132,7 @@ REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
 SHA="$(git rev-parse --short HEAD)"
 aws ecr get-login-password --region me-central-1 \
   | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.me-central-1.amazonaws.com"
-docker buildx build --platform linux/arm64 --tag "${REPO}:${SHA}" --push services/api
+docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
 
 # 3. Put "${REPO}:${SHA}" into env/terraform.tfvars, then run the routine path.
 ./infra/terraform/up.sh
@@ -155,7 +155,7 @@ first env pass (which deliberately creates no ECS service — see *Everyday use*
 ```bash
 aws ecs run-task --cluster "$cluster" --task-definition "$taskdef" --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=DISABLED}" \
-  --overrides '{"containerOverrides":[{"name":"api","command":["sh","-lc","pnpm exec prisma migrate deploy && pnpm exec tsx scripts/seed.ts"]}]}'
+  --overrides '{"containerOverrides":[{"name":"api","command":["sh","scripts/migrate-and-seed.sh"]}]}'
 ```
 
 then waits for it to stop and fails `up.sh` if the container exits non-zero.
@@ -192,7 +192,7 @@ its install and build end in `|| true` — a broken install still produces an im
 `CMD` (`docs/RELEASING.md` says the same). Check once per release:
 
 ```bash
-docker run --rm --entrypoint sh <image> -c 'pnpm exec prisma --version && pnpm exec tsx --version'
+docker run --rm --network none --workdir /app/services/api <image> \n  node_modules/.bin/prisma --version && node_modules/.bin/tsx --version
 ```
 
 ## HTTPS: release mode vs non-release mode

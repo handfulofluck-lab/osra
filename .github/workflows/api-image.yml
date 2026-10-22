@@ -1,0 +1,85 @@
+name: API image
+
+# The API image used to be built with `|| true` around the install and the build, so a broken image was
+# indistinguishable from a working one. This job builds it on every pull request — no push, no
+# credentials — and then runs the two things staging runs: migrate + seed (twice, for idempotency) and a
+# boot that answers /health/deep. A build that cannot migrate or seed is a build that fails at the first
+# `up.sh`, which is exactly where we do not want to find out.
+# Deliberately no `paths:` filter: a gate that skips itself on the PRs it deems unrelated reports green
+# by absence (the same reasoning `probe-integrity` records in ci.yml).
+on:
+  pull_request:
+
+concurrency:
+  group: api-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    name: Build the API image and check it inside
+    # GitHub's free arm64 runner for public repositories: Fargate runs ARM64 (ADR-0028), so CI tests the
+    # architecture that is actually deployed, with no QEMU emulation. ECR stores images, it does not
+    # build them, so this is the only place the image is produced today.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 2s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/api/Dockerfile
+          platforms: linux/arm64
+          push: false
+          load: true
+          tags: osra-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The same assertions the next person runs locally; SKIP_BUILD reuses the image above.
+      - name: Verify node, the Prisma CLI, tsx and the entry file inside the image
+        env:
+          IMAGE: osra-api:ci
+          SKIP_BUILD: "1"
+        run: sh services/api/scripts/verify-image.sh
+
+      # What staging does, in the image staging runs. Two seeds prove the seed is idempotent; the boot
+      # proves migrations and seeds landed, with /health/deep requiring both Postgres and Redis.
+      # No password is committed: Postgres trusts the runner's loopback and every other value is
+      # generated per run.
+      - name: Migrate, seed twice and boot, the way staging does
+        run: |
+          set -eu
+          DB=postgresql://postgres@127.0.0.1:5432/postgres
+          SEED=$(openssl rand -hex 16)
+          for i in 1 2; do
+            echo "==> migrate + seed, run $i"
+            docker run --rm --network host \
+              -e NODE_ENV=production -e DATABASE_URL="$DB" -e SEED_DEMO_PASSWORD="$SEED" \
+              osra-api:ci sh scripts/migrate-and-seed.sh
+          done
+          echo "==> boot"
+          docker run -d --name api --network host \
+            -e NODE_ENV=production -e PORT=3000 \
+            -e DATABASE_URL="$DB" -e REDIS_URL=redis://127.0.0.1:6379 \
+            -e JWT_SECRET="$(openssl rand -hex 32)" -e VAULT_KEY="$(openssl rand -base64 32)" \
+            osra-api:ci
+          curl -fsS --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:3000/health/deep \
+            || { echo "boot failed; container logs:"; docker logs api; exit 1; }
+          docker rm -f api

@@ -17,7 +17,10 @@ services:
     environment:
       MODEL_PATH: /models/distilbert-child-safety
   api:
-    build: ./services/api
+    # Root context: the API's workspace dependencies resolve only with the root lockfile/workspace file.
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
     ports: ["3000:3000"]
     depends_on: [postgres, redis, ai-engine]
     environment:

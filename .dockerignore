@@ -1,0 +1,37 @@
+# The API image is built with the repository root as its context (its workspace dependencies resolve
+# only there), so every excluded path is upload the daemon does not receive. Keep this list in step with
+# what services/api/Dockerfile COPYs: only packages/ and services/api/ are read.
+
+# Windows/macOS installs and build output would land in a Linux image — never send them.
+node_modules
+**/node_modules
+dist
+**/dist
+**/*.tsbuildinfo
+
+# Version control and CI metadata: nothing in the image reads them.
+.git
+.github
+
+# Logs from a local run.
+**/*.log
+
+# Flutter/Android build trees (the explicit line the review asked for; apps/ is excluded wholesale below).
+apps/parent-app/build
+
+# Terraform state, plans and provider caches.
+**/.terraform*
+
+# Real environment files carry secrets; the committed example stays for tooling that reads it.
+**/.env*
+!**/.env.example
+
+# Separate deliverables the image never reads — together they are most of the repository's size.
+apps/
+docs/
+infra/
+services/ai-engine/
+
+# The API's own vitest suite and scratch MCP server dirs are not shipped.
+services/api/test
+mcp-*
