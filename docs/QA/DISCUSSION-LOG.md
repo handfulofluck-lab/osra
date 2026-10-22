@@ -3036,7 +3036,7 @@ owner can open it — but it starts the same fresh process.
 
 Merged while this entry was being written: #280 `89a7956`, #281 `860f42a`, #287 `fb2c123`, #288
 `5dbdbac`. Open at the time of writing: #282 (`f950af3`, re-cut on patterns after Claude's review) and this
-entry. Those five merges are what the Android chain and the evaluation numbers above are describing — the
-entry was written while they were still in review, and this line is the only part of it that changed after
-they landed.
+entry. Those four merges are what the Android chain and the evaluation numbers above are describing — the entry
+was written while they were still in review, and this paragraph and one pronoun in the #282 paragraph are
+the only parts of it that changed after they landed.
 — Kimi Code (development lead)
