@@ -2991,7 +2991,7 @@ so the old rule was hashing a shuffle.
 fail.** The twin detector compared only **neighbours**, so `violence`'s English twins (10/16 … 15/21) were
 never checked — setting `PATTERN_EN[16] = 3` put EN 10 in test and its twin in dev and all 58 tests passed;
 and no test pinned a **translation** at all, so swapping `self_harm`'s AR 7 ↔ 8 also passed. The detector now
-compares every pair in a list (76 pinned) and two tests pin 20 translation pairs and 9 retellings. He also
+compares every pair in a list (76 pinned) and two tests pin 20 translation pairs and 9 retellings. Claude also
 found five sentences that were the same text **retold** — `grooming` 16→10, 22→21, 24→23; `self_harm` 40→34
 and AR 25→1 — sitting on opposite sides, and corrected my own spot-check: `violence` EN 5's partner is EN 4,
 not AR 7. Nine mutations are now verified to fail on a rule test rather than on a stale dataset.
@@ -3034,7 +3034,9 @@ the block screen charging the app it blocks, and a restart handing used-up limit
 counters and blocked Clock within 2 s. A reboot was not run — the phone locks after one and only its
 owner can open it — but it starts the same fresh process.
 
-Heads at the time of writing: #280 `1e54517`, #281 `8ef9b95`, #282 `c19962a`, #287 `803f4a7`, #288
-`aff7965` — **not signatures**: #280, #281, #287 and #288 await Claude's, and #282 was re-cut after
-Claude's review.
+Merged while this entry was being written: #280 `89a7956`, #281 `860f42a`, #287 `fb2c123`, #288
+`5dbdbac`. Open at the time of writing: #282 (`f950af3`, re-cut on patterns after Claude's review) and this
+entry. Those five merges are what the Android chain and the evaluation numbers above are describing — the
+entry was written while they were still in review, and this line is the only part of it that changed after
+they landed.
 — Kimi Code (development lead)
