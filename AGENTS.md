@@ -20,12 +20,11 @@ principle survives every re-cut, enforced at the merge (§6.5).
 
 **Routing (maintainer, 2026-10-22):** at 17:58Z, on #297, *"seems like an architecture decision let claude decide
 on that please"*; at 18:29Z, on the #258 destroy, *"ask claude about the decision above, all technical questions go to
-claude please"* (spelling corrected, words unchanged). He had already said on 2026-10-21 that process questions go to
-Claude rather than to him. So a technical or
+claude please"* (spelling corrected, words unchanged). So a technical or
 operational decision — including one that reaches AWS, an apply, a destroy, or a test strategy — is put to
 **Claude**, who owns architecture (§12), and never queued behind the human. The human's queue is narrow and
 stays his: money, legal and residency positions, store accounts, entitlements, signing keys, and product scope.
-An agent that cannot tell which side a question falls on asks Claude first; he escalates to the human only the
+An agent that cannot tell which side a question falls on asks Claude first; Claude escalates to the human only the
 part that is genuinely his. A destructive step still needs an explicit yes from whichever lane owns it — silence
 on a destroy is never consent, unlike the usual silence default.
 
