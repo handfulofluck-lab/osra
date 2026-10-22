@@ -70,6 +70,17 @@
    a concern alert reaches the parent within 1 minute, a public status page, and one restore-from-backup
    drill before launch.
 
+8. **Accounts (added 2026-10-22).** The AWS organization's management account holds billing, the
+   organization's guardrail policies (SCPs) and nothing that serves families. Guardrail policies never
+   apply to the management account, so a workload there runs without them. **Production runs in its own
+   member account per region**, created when that region opens. Staging may stay in the management
+   account only while it is bootstrapped by the temporary `osra-staging-deployer` access key (#258).
+   IAM access keys have no expiry date, so that key's end is a commitment, not a control: it is
+   deleted on 2026-11-05 or when the staging stack is up, whichever comes first, and its removal is a
+   checklist line in `docs/RELEASING.md` §5. Before beta families use staging, the maintainer (Karim)
+   creates its member account and the development lead (Kimi) moves the stack there. Deploy access to a
+   member account is a role assumed from outside it, never a long-lived key.
+
 ## Reasoning
 
 - Managed containers run today's Docker images unchanged and take database failover, backups and
