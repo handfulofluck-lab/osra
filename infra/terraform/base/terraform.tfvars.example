@@ -2,7 +2,7 @@
 
 project     = "osra"
 environment = "staging"
-region      = "me-central-1"
+region      = "eu-north-1"
 
 # owner/repo allowed to push the API image over GitHub OIDC; empty creates no provider and no role.
 # owner/repo, plus the numeric IDs of both: the IDs are what the OIDC subject pins, so a deleted and

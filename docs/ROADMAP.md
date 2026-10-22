@@ -118,7 +118,7 @@ warning accepted). Both flavors land with 1.8.
 | 5.5 | iOS: Xcode project with App Group + three extension targets, FamilyActivityPicker selection, rule sync + APNs, CoreLocation | builds on the GitHub macOS runner | ⬜ |
 | 5.6 | TestFlight build | installs on a parent's phone | ⬜ |
 | 5.7 | Store listing copy EN/AR, screenshots | — | ⬜ |
-| 5.8 | Production hosting per ADR-0028 and ADR-0030: HTTPS staging (Stockholm `eu-north-1`), then the Frankfurt (`eu-central-1`) production stack; push-first device wake-ups, capability list and version gate before launch | release build passes TR-73 against HTTPS staging; idle child phone ≤ 3 requests per 10 min with lock still ≤ 5 s | ⬜ AWS and budget approved by Karim 2026-10-21; UAE region unusable after the 2026 strikes, Frankfurt chosen 2026-10-22 (ADR-0030); staging moving to Stockholm (#258) |
+| 5.8 | Production hosting per ADR-0028 and ADR-0030: HTTPS staging (Stockholm `eu-north-1`), then the Frankfurt (`eu-central-1`) production stack; push-first device wake-ups, capability list and version gate before launch | release build passes TR-73 against HTTPS staging; idle child phone ≤ 3 requests per 10 min with lock still ≤ 5 s | ⬜ AWS and budget approved by Karim 2026-10-21; UAE region unusable after the 2026 strikes, Frankfurt chosen 2026-10-22 (ADR-0030); staging moving to Stockholm (#258) — every hard-coded region and state coordinate is `eu-north-1` in code as of 2026-10-22, but no bucket exists there, nothing is applied and the `me-central-1` base is not yet destroyed |
 
 ## Needs the maintainer (open)
 

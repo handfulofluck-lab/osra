@@ -1,7 +1,7 @@
 variable "region" {
   description = "AWS region for this regional stack (ADR-0028: one independent stack per market)."
   type        = string
-  default     = "me-central-1"
+  default     = "eu-north-1"
 }
 
 variable "project" {

@@ -10,7 +10,7 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
 : "${AWS_PROFILE:=osra-staging}"
-: "${AWS_REGION:=me-central-1}"
+: "${AWS_REGION:=eu-north-1}"
 export AWS_PROFILE AWS_REGION
 
 command -v terraform >/dev/null 2>&1 || { echo "terraform is not on PATH" >&2; exit 1; }
