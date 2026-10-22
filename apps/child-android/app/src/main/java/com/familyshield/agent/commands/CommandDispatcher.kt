@@ -22,6 +22,7 @@ import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import com.familyshield.agent.sos.SosActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -34,8 +35,8 @@ import kotlinx.coroutines.launch
 /**
  * Dispatches parent commands delivered over FCM: lock, unlock, ring, sos_clear,
  * rules_updated (forces a rule refresh), locate_now (immediate location ping),
- * pause_internet/resume_internet (Feature #11), bonus_time (Feature #10) and
- * wind_down (Feature #22).
+ * pause_internet/resume_internet (Feature #11), bonus_time (Feature #10),
+ * wind_down (Feature #22) and show_reset_code (ADR-0031's family witness).
  */
 @Singleton
 class CommandDispatcher @Inject constructor(
@@ -119,6 +120,8 @@ class CommandDispatcher @Inject constructor(
             // is posted and the timer armed, not that the lock has fired — the parent asked for the
             // warning, and waiting minutes for the timer would leave the row `delivered` meanwhile.
             "wind_down" -> dispatchMinutes(data) { windDown(it) }
+            // ADR-0031: the family witness. Deferred, not acked at display: see [showResetCode].
+            "show_reset_code" -> showResetCode(data, commandId)
             // Issue #231 review: a type this agent does not know must not stay `delivered` forever.
             // `unsupported_command` lets the parent say "update OSRA on the child's phone".
             else -> {
@@ -141,6 +144,51 @@ class CommandDispatcher @Inject constructor(
         }
         action(minutes)
         return CommandOutcome.Applied()
+    }
+
+    /**
+     * ADR-0031: show the 8-digit family-witness code, and keep it clearable.
+     *
+     * - **Empty payload** is the API's withdrawal (`clearResetCodePayloads` writes `payload = {}`):
+     *   clear the notice if it is the same command row and ack `ok` with `screen=withdrawn`. This
+     *   is why the row is *not* acked at display: an ack clears the payload, and then there is no
+     *   redelivery left to carry the withdrawal.
+     * - **Malformed or expired payload** is a `failed` ack with the parser's reason; nothing is
+     *   shown. Acking clears a credential that could not be used anyway.
+     * - **Valid payload with no background-launch path** (overlay app-op off and accessibility
+     *   unbound) is refused `reset_code_screen_unavailable` instead of leaving a silent row. The
+     *   overlay or the bound accessibility service is what exempts the `startActivity` below from
+     *   Android's background-activity-launch rule, exactly as for [lock]/[pause].
+     * - **Valid payload** enters [ResetCodeState] and [ResetCodeActivity] is started; the outcome is
+     *   [CommandOutcome.Deferred] and the notice acks when it ends.
+     *
+     * The payload is never logged: it is the only place the plaintext code exists on this device.
+     */
+    private fun showResetCode(data: Map<String, String>, commandId: String?): CommandOutcome {
+        val canShowScreen = Settings.canDrawOverlays(context) || AccessibilityMonitorService.isRunning
+        return when (val decision = ResetCodePolicy.decide(data, commandId, Instant.now(), canShowScreen)) {
+            is ResetCodeDecision.Refuse -> {
+                Log.w(TAG, "show_reset_code refused: ${decision.reason}")
+                CommandOutcome.Refused(decision.reason)
+            }
+            is ResetCodeDecision.Withdraw -> {
+                ResetCodeState.clearIfCommand(decision.commandId)
+                CommandOutcome.Applied(mapOf("screen" to ResetCodeEnd.WITHDRAWN.wire))
+            }
+            is ResetCodeDecision.Show -> {
+                val previous = ResetCodeState.show(decision.notice)
+                if (previous != null && previous.commandId != decision.notice.commandId) {
+                    // Only one code is on screen. The replaced row is acked so it does not sit
+                    // delivered; acking also clears its plaintext, which nothing is showing now.
+                    reportOutcome(previous.commandId, CommandOutcome.Applied(mapOf("superseded" to "true")))
+                }
+                context.startActivity(
+                    Intent(context, ResetCodeActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                CommandOutcome.Deferred
+            }
+        }
     }
 
     /** Sends at most one ack for [outcome]; a blank id (the FCM path) has no durable row. */

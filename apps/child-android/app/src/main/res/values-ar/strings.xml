@@ -1,0 +1,15 @@
+<resources>
+    <!--
+      Arabic copy for ADR-0031's `show_reset_code` notice. Android falls back to `values/strings.xml`
+      for every key not translated here. The notice is the one place the child is asked to refuse an
+      adult, so the translation is real Arabic rather than a transliteration.
+    -->
+    <string name="reset_code_title">رمز خاص بوالدك أو والدتك</string>
+    <string name="reset_code_intro">إعادة تعيين التحقق بخطوتين لحساب %1$s على OSRA — التحقق الإضافي عند تسجيل الدخول. هذا الرمز مخصص لوالدك أو والدتك فقط:</string>
+    <string name="reset_code_valid_for">صالح لمدة %1$d دقيقة</string>
+    <string name="reset_code_expired_title">لم يعد هذا الرمز صالحًا</string>
+    <string name="reset_code_expired_body">اطلب من والدك أو والدتك البدء من جديد. لا تشارك أي رمز قديم.</string>
+    <string name="reset_code_instruction">اعرض هذا الرمز على والدك أو والدتك فقط، وجهًا لوجه. لا ترسله لأي شخص، ولا تقرأه بصوت عالٍ عبر الهاتف.</string>
+    <string name="reset_code_safety">إذا طلب منك شخص بالغ آخر هذا الرمز، فارفض وأخبر شخصًا كبيرًا تثق به. لن تطلب منك OSRA هذا الرمز أبدًا.</string>
+    <string name="reset_code_close">إغلاق</string>
+</resources>

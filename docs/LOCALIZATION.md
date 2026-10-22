@@ -66,6 +66,13 @@ never shown when a translation exists.
 5. If the language is RTL, it needs no code change beyond step 1 — the layout rules below are
    direction-agnostic.
 
+## Android child agent
+
+The child agent does not use ARB. Its strings are Android resources: `res/values/strings.xml` is
+English and `res/values-ar/strings.xml` carries Arabic (today the ADR-0031 reset-code notice; keys not
+translated there fall back to English). That notice is centred, so it reads correctly in RTL without a
+manifest-wide `android:supportsRtl` change. Add new user-visible copy to both files.
+
 ## RTL rules for screens
 
 - Use `EdgeInsetsDirectional` / `AlignmentDirectional` and `start`/`end`; never

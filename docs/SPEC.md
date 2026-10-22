@@ -308,8 +308,11 @@ seven-day post-window deadline, clears the plaintext from expired `show_reset_co
 deletes rows 12 months after `outcomeAt`.
 
 Not built in the API change that introduced this: the email and push templates (the send points are
-`[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
-`show_reset_code` screen. There is also no read-only audit route yet (ADR-0031 decision 8).
+`[mfa-reset] ... hook` log lines), the 24-hour reminder and the parent-app screens. The Android
+`show_reset_code` screen ships in `apps/child-android` (`commands/ResetCodeActivity.kt`): a
+safe-direction full-screen notice naming the parent, the 8-digit code grouped `1234 5678`, the
+payload's own `expiresAt` on screen, and an ack deferred until the notice ends so a withdrawal can
+still reach the device. There is also no read-only audit route yet (ADR-0031 decision 8).
 
 ## §4 AI Engine (`services/ai-engine`)
 
@@ -589,6 +592,17 @@ and are deleted explicitly in the GDPR erasure cascade.
     paused state is persisted and applies once the filter is set up.
   - `unsupported_command` — a command type this agent version does not implement.
   - `invalid_payload` — `bonus_time`/`wind_down` without parseable finite `minutes` in 1..240.
+  - ADR-0031 `show_reset_code`: a safe-direction full-screen notice (`commands/ResetCodeActivity.kt`)
+    names the payload's `parentName`, shows the 8-digit `code` grouped `1234 5678`, and reads its
+    validity from the payload's `expiresAt`. Rejections are `missing_request_id`,
+    `missing_parent_name`, `missing_code`, `malformed_code`, `missing_expires_at`,
+    `malformed_expires_at`, `reset_code_expired` (an `expiresAt` at or before now) and
+    `reset_code_screen_unavailable` (neither the overlay app-op nor the accessibility service can
+    exempt the background launch). The ack is **deferred** while the notice is up — the row stays
+    `delivered` so the API's payload clear (`payload = {}`) still arrives on the 120-second
+    redelivery and withdraws the code — and ends `ok` with `detail.screen = expired|dismissed`, or
+    `withdrawn` when the dispatcher clears it. Acking at display would clear the plaintext before
+    the parent read it and stop the withdrawal signal; the API's ack semantics are unchanged.
 - Signing: sign the release build with the debug key so the APK is installable:
   `signingConfig = signingConfigs.getByName("debug")` in the release build type.
 - Build artifact: `gradlew :app:assembleRelease` → copy
