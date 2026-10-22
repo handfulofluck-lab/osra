@@ -38,9 +38,9 @@ resource "aws_db_instance" "main" {
   # the apply. Production MUST set db_multi_az = true (ADR-0028 requires a standby).
   multi_az = var.db_multi_az
 
-  # One day is the smallest retention RDS allows; enough for the pre-launch restore drill.
-  backup_retention_period = 1
-  backup_window           = "03:00-04:00"
+  # No automated backups: the database is thrown away with this stack every session, so retention
+  # would only pay for snapshots nothing restores. Production MUST set this above 0.
+  backup_retention_period = 0
 
   # On-demand staging: `down` must be one command, and the database does not survive it anyway.
   # Production stacks must turn both on.

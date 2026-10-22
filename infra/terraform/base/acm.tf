@@ -17,8 +17,10 @@ resource "aws_acm_certificate" "api" {
   }
 }
 
+# Looked up whenever a zone is named: env needs its id for the API alias record even when the
+# certificate is supplied rather than created here (base/outputs.tf).
 data "aws_route53_zone" "main" {
-  count = local.create_certificate ? 1 : 0
+  count = var.hosted_zone_name != "" ? 1 : 0
 
   name         = var.hosted_zone_name
   private_zone = false

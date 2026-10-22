@@ -12,7 +12,7 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
   }
 }
 
-# Pulls the image and writes container logs; the inline policy below adds the three API secrets.
+# Pulls the image and writes container logs; the inline policy below adds the four API secrets.
 resource "aws_iam_role" "execution" {
   name               = "${local.name_prefix}-ecs-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
@@ -35,6 +35,7 @@ data "aws_iam_policy_document" "execution_secrets" {
       aws_secretsmanager_secret.database_url.arn,
       aws_secretsmanager_secret.jwt_secret.arn,
       aws_secretsmanager_secret.vault_key.arn,
+      aws_secretsmanager_secret.demo_password.arn,
     ]
   }
 }

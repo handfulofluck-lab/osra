@@ -20,8 +20,8 @@ teardown path.
 
 | Stack | Lifetime | Contains |
 |---|---|---|
-| `base/` | created once, effectively never destroyed | ECR repository + lifecycle policy; the three Secrets Manager entries (and the `JWT_SECRET` / `VAULT_KEY` values); the ACM certificate and its Route 53 validation records; the ECS task execution role and its policies; the CloudWatch log group |
-| `env/` | created and destroyed per session | VPC, subnets, IGW, NAT, route tables, security groups; ALB, listeners, target group; ECS cluster, service, task definition and autoscaling; RDS; ElastiCache; the per-session `DATABASE_URL` secret version |
+| `base/` | created once, effectively never destroyed | ECR repository + lifecycle policy; the four Secrets Manager entries (and the `JWT_SECRET` / `VAULT_KEY` / demo-password values); the ACM certificate and its Route 53 validation records; the ECS task execution role and its policies; the CloudWatch log group |
+| `env/` | created and destroyed per session | VPC, subnets, IGW, NAT, route tables, security groups; ALB, listeners, target group; the Route 53 alias record for the API hostname (release mode); ECS cluster, service, task definition and autoscaling; RDS; ElastiCache; the per-session `DATABASE_URL` secret version |
 
 `env/` reads `base/` through a `terraform_remote_state` data source (`env/remote_state.tf`), so
 **base must be applied before env can even plan**. `env/` never creates a `base/` resource.
@@ -45,21 +45,22 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 
 | File | Contents |
 |---|---|
-| `up.sh` | base apply → env apply (no service) → migrate + seed → env apply (service) → prints the API URL, start time and cost |
+| `up.sh` | base apply → env apply (no service) → migrate + seed → env apply (service) → prints the API URL, start time and cost; on a re-run in the same session it applies only the task definition first, then migrates + seeds, then applies fully |
 | `down.sh` | env destroy only; prints elapsed time and estimated spend |
 | `base/versions.tf` | Terraform/provider constraints and the base backend |
 | `base/ecr.tf` | ECR repository and the 14-day untagged-image lifecycle policy |
-| `base/secrets.tf` | Three secret containers; `JWT_SECRET` and `VAULT_KEY` values |
-| `base/acm.tf` | Optional ACM certificate, DNS validation records and validation |
+| `base/secrets.tf` | Four secret containers; `JWT_SECRET`, `VAULT_KEY` and demo-password values |
+| `base/acm.tf` | Optional ACM certificate, DNS validation records and validation; the Route 53 zone lookup |
 | `base/iam.tf` | ECS task execution role, managed attachment, read-the-secrets policy |
 | `base/logs.tf` | CloudWatch log group `/ecs/osra-staging-api` |
-| `base/outputs.tf` | ECR URL, secret ARNs, execution role, certificate ARN, log group |
+| `base/outputs.tf` | ECR URL, secret ARNs, execution role, certificate ARN, `domain_name`, `hosted_zone_id`, log group |
 | `env/versions.tf` | Terraform/provider constraints and the env backend |
 | `env/remote_state.tf` | Reads `base/`'s outputs |
 | `env/network.tf` | VPC, subnets, IGW, single NAT, route tables, security groups |
-| `env/rds.tf` | PostgreSQL 16, `db.t4g.micro`, single-AZ by default, encrypted |
+| `env/rds.tf` | PostgreSQL 16, `db.t4g.micro`, single-AZ by default, encrypted, no automated backups |
 | `env/elasticache.tf` | One cache node (see *Cache engine* below) |
-| `env/ecs.tf` | Cluster, task definition, ALB/listeners, service (gated for the seed), autoscaling |
+| `env/ecs.tf` | Cluster, task definition, ALB/listeners (with the cleartext precondition), service, autoscaling |
+| `env/dns.tf` | Route 53 alias from the API hostname to this session's ALB (release mode only) |
 | `env/secrets.tf` | Per-session `DATABASE_URL` version (RDS endpoint + password) |
 | `env/outputs.tf` | ALB DNS, `api_url`, cluster/service, seed-task inputs, RDS/cache hosts |
 | `*/terraform.tfvars.example` | Every value a human supplies |
@@ -70,7 +71,7 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 - AWS CLI v2 and any credential source for the staging account. **No profile name is committed**;
   the scripts default to `AWS_PROFILE=osra-staging` and `AWS_REGION=me-central-1` if unset.
 - Docker with `buildx` and ARM64 emulation, or an ARM build runner, to publish the image.
-- A Route 53 hosted zone only if base should create the certificate (release mode).
+- A Route 53 hosted zone if release mode should create the certificate and publish the API record.
 
 ```bash
 # Run from the repository root.
@@ -95,8 +96,16 @@ session applies `env` **twice** — the first pass builds the network, database 
 ECS service, the seed runs against the migrated schema, then the second pass creates the service.
 That order is not cosmetic: the API exits at boot when the Prisma client and the database disagree,
 and Terraform waits for a new ECS service to become stable, so applying the service before the seed
-would fail after ~20 minutes. On a re-run in the same session the service already exists and a
-single apply is used.
+would fail after ~20 minutes.
+
+A re-run in the same session follows the same shape with one difference: the service already exists,
+so the first apply is `-target=aws_ecs_task_definition.api` — it registers the new revision (a new
+image sha, a changed environment or secret list) without touching the running service, the seed and
+migration then run against that revision, and the final apply rolls the service onto it. `terraform`
+prints a warning that a `-target` apply is not a complete run; that warning is expected here, because
+moving the service before the migration is exactly what must not happen. The service has
+`wait_for_steady_state = true`, so the final apply fails loudly if the tasks do not come up instead of
+printing a URL for a crash-looping deployment.
 
 Extra arguments (for example `-auto-approve`) are passed to the applies; a `-var-file` path would
 have to be valid in both stacks, so prefer each stack's own `terraform.tfvars`.
@@ -117,16 +126,23 @@ line in `down.sh` covers the whole session rather than only the destroy. Set
 # 1. Base only: repository, secrets, IAM, log group, certificate.
 terraform -chdir=infra/terraform/base apply
 
-# 2. Build and push the ARM64 API image.
+# 2. Build and push the ARM64 API image, tagged with the commit it was built from.
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
+SHA="$(git rev-parse --short HEAD)"
 aws ecr get-login-password --region me-central-1 \
   | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.me-central-1.amazonaws.com"
-docker buildx build --platform linux/arm64 --tag "${REPO}:staging" --push services/api
+docker buildx build --platform linux/arm64 --tag "${REPO}:${SHA}" --push services/api
 
-# 3. Put "${REPO}:staging" into env/terraform.tfvars, then run the routine path.
+# 3. Put "${REPO}:${SHA}" into env/terraform.tfvars, then run the routine path.
 ./infra/terraform/up.sh
 ```
+
+Tag by git sha rather than with a moving `:staging` tag: the task definition text is what makes ECS
+replace a task, so a rebuild pushed to the same tag changes nothing that the apply can see. A new sha
+is a new task-definition revision, which is what the re-run path (*Everyday use* above) registers.
+
+Building and pushing the image is a manual step; automating it in the pipeline is tracked in #258.
 
 On later sessions only `up.sh` is needed: base already has the repository, secrets and certificate.
 
@@ -156,6 +172,20 @@ that can already reach the private endpoint.
 The seed is idempotent (`services/api/scripts/seed.ts` upserts the demo family), so a second `up.sh`
 in the same session is harmless and re-runs it against the existing database.
 
+**The demo parent's password is not in this repository.** The seed refuses to run when
+`NODE_ENV=production` and `SEED_DEMO_PASSWORD` is unset (`services/api/scripts/seed-password.ts`,
+covered by `services/api/test/seed-demo-password.test.ts`). The task definition injects it from
+`osra-staging/demo-password`, a `random_password` in base, so the demo login is the same for the life
+of base rather than per session. Read it when a manual login against staging is needed:
+
+```bash
+aws secretsmanager get-secret-value --secret-id osra-staging/demo-password \
+  --query SecretString --output text
+```
+
+Only outside production does the seed fall back to the old default, for a local `db:seed` against
+docker-compose (which is why the test guides still print it).
+
 The seed task uses the API image, so that image must carry `prisma`, `tsx` and `scripts/seed.ts`.
 `services/api/Dockerfile` installs devDependencies (`--prod=false`) and copies the service, but both
 its install and build end in `|| true` — a broken install still produces an image that only fails at
@@ -172,22 +202,35 @@ docker run --rm --entrypoint sh <image> -c 'pnpm exec prisma --version && pnpm e
 | Setting | Result |
 |---|---|
 | `domain_name = ""`, `certificate_arn = ""` | **Non-release mode.** No certificate exists, so `env` creates **no HTTPS listener** — there is no 443 target at all. The port-80 listener forwards to the API over plain HTTP, and `api_url` is `http://<alb-dns>.` |
-| `domain_name` set, `hosted_zone_name` set | release mode: base creates an ACM certificate, publishes its DNS validation records in Route 53, waits for validation, and outputs the ARN |
-| `certificate_arn` set | release mode with a certificate you issued elsewhere |
+| `domain_name` set, `hosted_zone_name` set | release mode: base creates an ACM certificate, publishes its DNS validation records in Route 53, waits for validation, and outputs the ARN **and the zone id** |
+| `certificate_arn` set, `hosted_zone_name` set | release mode with a certificate you issued elsewhere; the zone id is still read, so the API record is created |
+| `certificate_arn` set, `hosted_zone_name = ""` | HTTPS works on the ALB's own DNS name, but no record is created and `api_url` stays on that name |
 
 Whenever a certificate exists, the port-80 listener is a **301 redirect to HTTPS** and the 443
-listener forwards to the target group. Non-release mode is stated plainly above because a release
-build that refuses cleartext cannot be exercised against it.
+listener forwards to the target group.
+
+In release mode `env/dns.tf` creates an **A record alias** from `domain_name` to this session's ALB.
+That is what makes the printed `api_url` resolve: every `up` produces a new ALB DNS name, so without
+the alias the hostname pointed at nothing. The record lives in `env` because the ALB it targets is
+per-session; the name and the zone id come from `base`'s outputs, so the two stacks cannot disagree
+about the hostname the certificate was issued for (`env` has no `domain_name` variable of its own).
+
+**Non-release mode requires a narrowed `allowed_cidrs`.** `env` refuses to plan a port-80 forward to
+the whole internet: `aws_lb_listener.http` carries a `precondition` that fails unless a certificate
+exists or `0.0.0.0/0` is absent from `allowed_cidrs` — otherwise the API would be served in cleartext
+to anyone. The default `allowed_cidrs = ["0.0.0.0/0"]` is therefore only usable in release mode; for
+a non-release run put your own address there (for example `203.0.113.7/32`).
 
 ## What each stack creates
 
 `base`:
 
 - ECR repository `osra-staging/api` with scan-on-push and a 14-day untagged-image lifecycle.
-- Three Secrets Manager entries (`osra-staging/database-url`, `-jwt-secret`, `-vault-key`), with
-  `JWT_SECRET` and `VAULT_KEY` values generated here and kept across sessions.
+- Four Secrets Manager entries (`osra-staging/database-url`, `-jwt-secret`, `-vault-key`,
+  `-demo-password`), with `JWT_SECRET`, `VAULT_KEY` and the demo password generated here and kept
+  across sessions.
 - Optional ACM certificate + Route 53 validation records (release mode).
-- IAM task execution role: ECR pull, logs, and read those three secrets.
+- IAM task execution role: ECR pull, logs, and read those four secrets.
 - CloudWatch log group `/ecs/osra-staging-api`, 14-day retention.
 
 `env`:
@@ -197,13 +240,16 @@ build that refuses cleartext cannot be exercised against it.
 - Four security groups: ALB (80, and 443 only with a certificate), API (3000 from the ALB only),
   PostgreSQL (5432 from the API only), cache (6379 from the API only). The database has no
   `0.0.0.0/0` rule anywhere.
-- RDS PostgreSQL 16, `db.t4g.micro`, 20 GB gp3, **single-AZ** by default, 1-day automated backups,
+- RDS PostgreSQL 16, `db.t4g.micro`, 20 GB gp3, **single-AZ** by default, **no automated backups**,
   encrypted, not publicly accessible, no final snapshot.
 - ElastiCache, one `cache.t4g.micro` node, no snapshots.
 - ECS cluster, ARM64 Fargate task (512 CPU / 1024 MiB), service with 2 tasks (created after the
-  seed), autoscaling 2–4 on average CPU and ALB requests per target, circuit breaker with rollback.
+  seed, and waited on to steady state), autoscaling 2–4 on average CPU and ALB requests per target,
+  circuit breaker with rollback.
 - ALB, target group on `/health`, HTTP listener (plus HTTPS when base has a certificate, with the
   HTTP→HTTPS 301).
+- A Route 53 alias from `base`'s `domain_name` to the ALB, when `base` knows both the name and the
+  zone. Without it the hostname has no record and `api_url` prints the ALB's own DNS name instead.
 - The `DATABASE_URL` secret version for this session.
 
 ## Cache engine — Redis 7.1, not Valkey
@@ -217,9 +263,10 @@ returned `InternalFailure` on three consecutive attempts, while `--engine redis`
 
 ## Cost
 
-Rough **US$0.18/hour** for `env` at the defaults, on-demand list prices in `me-central-1` — about
-**US$1.44 for an 8-hour session**. `base` is roughly **US$2/month** (ECR, three secrets, the log
-group) and is always on. The certificate costs nothing while attached to the ALB. Excludes free-tier
+Rough **US$0.19/hour** for `env` at the defaults, on-demand list prices in `me-central-1` — about
+**US$1.55 for an 8-hour session** (the line items below add up to 0.194; `up.sh` prints 1.52 because
+it multiplies the rounded 0.19). `base` is roughly **US$2/month** (ECR, four secrets, the log group)
+and is always on. The certificate costs nothing while attached to the ALB. Excludes free-tier
 credits, AWS Support, taxes and unpredictable data transfer. **This is an estimate, not a quote.**
 
 | Item | Basis | US$/hour |
@@ -229,8 +276,9 @@ credits, AWS Support, taxes and unpredictable data transfer. **This is an estima
 | RDS storage | 20 GB gp3, single-AZ | ~0.003 |
 | NAT gateway | 1 gateway + light data processing | ~0.053 |
 | Application load balancer | hourly + light LCU usage | ~0.030 |
+| Public IPv4 addresses | 2 ALB + 1 NAT EIP × ~0.005 | ~0.015 |
 | ElastiCache | 1 × `cache.t4g.micro` | ~0.018 |
-| **Total (`env`)** | | **~0.18** |
+| **Total (`env`)** | | **~0.19** (0.194) |
 
 Cost levers, in order of size: Multi-AZ RDS adds ~US$0.019/h and is off because a test run gains
 nothing from a standby; a second NAT would add ~US$0.053/h; Fargate Spot would cut compute ~70% but
@@ -254,6 +302,9 @@ not needed for routine staging.
 
 ## Operational notes and deviations
 
+- **`env` reads `domain_name` and `hosted_zone_id` from base's state**, so a base applied before that
+  output existed must be re-applied before `env` can even plan — `up.sh` applies base first, which is
+  why the routine path needs no extra step.
 - **Single NAT and a single cache node** trade availability for cost. ADR-0028's 99.9% target applies
   to production; a production per-region stack should use one NAT per AZ and a cache replica.
 - **Multi-AZ is off** (`db_multi_az = false`). Production **must** set it true; ADR-0028 requires a
@@ -283,13 +334,20 @@ not needed for routine staging.
 
 ```bash
 terraform -chdir=infra/terraform/base fmt -check -recursive
-terraform -chdir=infra/terraform/base init && terraform -chdir=infra/terraform/base validate
+terraform -chdir=infra/terraform/base init -backend=false
+terraform -chdir=infra/terraform/base validate
 terraform -chdir=infra/terraform/env  fmt -check -recursive
-terraform -chdir=infra/terraform/env  init && terraform -chdir=infra/terraform/env  validate
+terraform -chdir=infra/terraform/env  init -backend=false
+terraform -chdir=infra/terraform/env  validate
 terraform -chdir=infra/terraform/base plan
 terraform -chdir=infra/terraform/env  plan   # needs base applied: env reads its outputs
 ```
 
-`fmt` and `validate` need no credentials; both `init` calls and `plan` do. `env plan` fails with
+The first six lines are what `.github/workflows/terraform.yml` runs on every pull request that
+touches `infra/terraform/**`: `fmt -check -recursive`, then `init -backend=false` and `validate` in
+each stack, with no AWS credentials and no `plan`. `init -backend=false` reads neither the S3 state
+nor the remote-state outputs, so the check is the same on a laptop and on a runner.
+
+`fmt` and `validate` need no credentials; a plain `init` and `plan` do. `env plan` fails with
 `Unable to find remote state` until base has been applied at least once — that is the split working
 as designed, not a fault in env.

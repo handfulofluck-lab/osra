@@ -45,5 +45,24 @@ resource "aws_secretsmanager_secret_version" "vault_key" {
   secret_string = random_id.vault_key.b64_std
 }
 
+# The demo parent's password is generated here so the seed never carries a password that is published
+# in this repository; no specials keeps it typeable on a phone keyboard.
+resource "random_password" "demo" {
+  length  = 24
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "demo_password" {
+  name                    = "${local.name_prefix}/demo-password"
+  description             = "Password of the seeded demo parent; env injects it as SEED_DEMO_PASSWORD"
+  recovery_window_in_days = 0 # staging: see database_url above
+}
+
+# Kept across sessions like the other two values, so the demo login survives `down` and a re-seed.
+resource "aws_secretsmanager_secret_version" "demo_password" {
+  secret_id     = aws_secretsmanager_secret.demo_password.id
+  secret_string = random_password.demo.result
+}
+
 # DATABASE_URL is deliberately NOT written here: it embeds the per-session RDS endpoint and
 # password, so env owns that version (env/secrets.tf) against this container's ARN.

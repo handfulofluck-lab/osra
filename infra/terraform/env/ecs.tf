@@ -60,6 +60,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DATABASE_URL", valueFrom = data.terraform_remote_state.base.outputs.database_url_secret_arn },
         { name = "JWT_SECRET", valueFrom = data.terraform_remote_state.base.outputs.jwt_secret_arn },
         { name = "VAULT_KEY", valueFrom = data.terraform_remote_state.base.outputs.vault_key_secret_arn },
+        # The seed refuses to run in production without it, and the image must not carry a default.
+        { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
       ]
 
       logConfiguration = {
@@ -156,6 +158,14 @@ resource "aws_lb_listener" "http" {
       }
     }
   }
+
+  # Non-release mode forwards the API in cleartext over the internet, so require a narrowed range.
+  lifecycle {
+    precondition {
+      condition     = local.https_enabled || !contains(var.allowed_cidrs, "0.0.0.0/0")
+      error_message = "No certificate in base, so port 80 would serve the API in cleartext to the whole internet. Narrow allowed_cidrs (for example your own address/32) or use release mode."
+    }
+  }
 }
 
 # No certificate in base means no HTTPS listener at all, not a broken one.
@@ -189,6 +199,9 @@ resource "aws_ecs_service" "api" {
   # ADR-0028's minimum: two copies so one task can die without an outage.
   desired_count = 2
   launch_type   = "FARGATE"
+
+  # `up` must fail here rather than print a URL for a service whose tasks are crash-looping.
+  wait_for_steady_state = true
 
   platform_version = "1.4.0"
 

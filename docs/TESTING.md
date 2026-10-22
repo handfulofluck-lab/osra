@@ -165,6 +165,7 @@ explicitly, in its own commit, with the reasoning in the PR.
 | `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended) |
 | `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
 | `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job |
+| `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
 Local equivalents of the two lint gates (the workflow lint is also installed as a pre-push hook by
@@ -175,6 +176,18 @@ node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
 ```
+
+Local equivalent of the Terraform gate (from the repository root; no credentials, no state):
+
+```bash
+terraform -chdir=infra/terraform fmt -check -recursive
+terraform -chdir=infra/terraform/base init -backend=false && terraform -chdir=infra/terraform/base validate
+terraform -chdir=infra/terraform/env  init -backend=false && terraform -chdir=infra/terraform/env  validate
+```
+
+Delete a working copy's `.terraform/terraform.tfstate` first if `init -backend=false` complains about
+S3 credentials: that file records a previous, real backend initialisation and makes Terraform try to
+reach it even with `-backend=false`. A fresh checkout has no such file, which is what CI runs.
 
 ## 5. Hardware verification (physical device)
 

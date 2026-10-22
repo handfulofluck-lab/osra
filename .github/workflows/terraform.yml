@@ -1,0 +1,38 @@
+name: terraform
+
+# `infra/terraform/README.md` tells a reader to run `fmt -check` and `validate` before a PR; until this
+# file existed nothing ran them, so a stack could land that does not even parse. No `plan` and no
+# `apply`: `plan` needs credentials and base's state, and creating infrastructure is a human step.
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+
+jobs:
+  validate:
+    name: terraform validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned by full SHA (v3) so a moved tag cannot change what runs against this repo.
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: 1.13.4
+
+      - name: terraform fmt -check -recursive
+        run: terraform fmt -check -recursive
+
+      # -backend=false skips the S3 backend, so this needs no AWS credentials and no base state.
+      - name: base — init (no backend) and validate
+        run: |
+          terraform -chdir=base init -backend=false -input=false
+          terraform -chdir=base validate
+
+      - name: env — init (no backend) and validate
+        run: |
+          terraform -chdir=env init -backend=false -input=false
+          terraform -chdir=env validate

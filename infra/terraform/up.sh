@@ -13,8 +13,8 @@ set -euo pipefail
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # USD per hour for env at the defaults (db_multi_az = false, 2 Fargate tasks, 1 NAT, 1 ALB,
-# 1 cache node). Derived from README.md's monthly table / 730 h; keep the two in sync.
-HOURLY_COST_USD="${HOURLY_COST_USD:-0.18}"
+# 1 cache node, 3 public IPv4 addresses). Derived from README.md's table / 730 h; keep the two in sync.
+HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
 : "${AWS_PROFILE:=osra-staging}"
 : "${AWS_REGION:=me-central-1}"
@@ -42,15 +42,17 @@ terraform -chdir="$HERE/env" init -input=false
 
 # The API exits at boot when the database has no schema, and Terraform waits for a new ECS service
 # to stabilise — so a fresh session creates everything except the service, seeds, then starts it.
-# A re-run in the same session leaves the running service alone.
+# A re-run in the same session registers the new task definition first, so the migration runs
+# against the new revision before the service is rolled onto it.
 service_state=$(terraform -chdir="$HERE/env" state list 2>/dev/null || true)
 case "$service_state" in
   *aws_ecs_service.api*)
-    service_pending=no
-    terraform -chdir="$HERE/env" apply "$@"
+    echo "    (service exists; registering the task definition before the migration)"
+    # -target warns that this is not a complete apply; that is deliberate, the service must not move
+    # until the migration below has run.
+    terraform -chdir="$HERE/env" apply -target=aws_ecs_task_definition.api "$@"
     ;;
   *)
-    service_pending=yes
     echo "    (service deferred until after the seed)"
     terraform -chdir="$HERE/env" apply -var api_service_enabled=false "$@"
     ;;
@@ -87,10 +89,8 @@ if [ "$exit_code" != "0" ]; then
   exit 1
 fi
 
-if [ "$service_pending" = yes ]; then
-  echo "==> env (API service; the schema now matches)"
-  terraform -chdir="$HERE/env" apply "$@"
-fi
+echo "==> env (service: created on a fresh session, rolled onto the new image otherwise)"
+terraform -chdir="$HERE/env" apply "$@"
 
 echo
 echo "API URL:        $(terraform -chdir="$HERE/env" output -raw api_url)"

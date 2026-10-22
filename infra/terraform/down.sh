@@ -6,8 +6,8 @@ set -euo pipefail
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-# Must match up.sh; both derive from README.md's monthly table / 730 h.
-HOURLY_COST_USD="${HOURLY_COST_USD:-0.18}"
+# Must match up.sh; both derive from README.md's table / 730 h.
+HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
 : "${AWS_PROFILE:=osra-staging}"
 : "${AWS_REGION:=me-central-1}"

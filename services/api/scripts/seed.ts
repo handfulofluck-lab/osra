@@ -1,16 +1,19 @@
 import { PrismaClient } from "@prisma/client";
 import { DEFAULT_BLOCKED_CATEGORIES } from "@familyshield/shared-types";
 import argon2 from "argon2";
+import { resolveDemoPassword } from "./seed-password.js";
 
 const prisma = new PrismaClient();
 
 /** Idempotent seed per spec §3: running twice must not duplicate rows. */
 async function main() {
+  // Resolved first: in production the seed must fail before it writes anything without a password.
+  const passwordHash = await argon2.hash(resolveDemoPassword());
+
   const family =
     (await prisma.family.findFirst({ where: { name: "Demo Family" } })) ??
     (await prisma.family.create({ data: { name: "Demo Family", region: "US" } }));
 
-  const passwordHash = await argon2.hash("CorrectHorseBatteryStaple!");
   const parent = await prisma.parent.upsert({
     where: { email: "demo@familyshield.dev" },
     update: {},

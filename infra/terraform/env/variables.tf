@@ -72,14 +72,8 @@ variable "redis_node_type" {
   default     = "cache.t4g.micro"
 }
 
-variable "domain_name" {
-  description = "Optional public hostname for the API. Only used to print a friendly api_url output; DNS and the certificate belong to base."
-  type        = string
-  default     = ""
-}
-
 variable "allowed_cidrs" {
-  description = "CIDR ranges allowed to reach the ALB. Default is public because staging serves test builds; narrow it to office/VPN ranges where possible."
+  description = "CIDR ranges allowed to reach the ALB. Default is public because release-mode staging serves test builds; in non-release mode 0.0.0.0/0 is refused because port 80 would carry the API in cleartext."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 

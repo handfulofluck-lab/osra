@@ -4,8 +4,8 @@ output "alb_dns_name" {
 }
 
 output "api_url" {
-  description = "Base URL to reach the API. HTTPS only when base has a certificate and domain_name is set."
-  value       = local.https_enabled && var.domain_name != "" ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+  description = "Base URL to reach the API: the release-mode hostname once a DNS record points at the ALB, otherwise the ALB's own DNS name."
+  value       = local.https_enabled && local.dns_record_enabled ? "https://${local.domain_name}" : "http://${aws_lb.main.dns_name}"
 }
 
 output "cluster_name" {
