@@ -37,6 +37,9 @@ export const COMMAND_TTL_SECONDS: Record<string, number> = {
   // before the single remaining poll ran; 20 covers the worst-case gap between two ticks.
   locate_now: 20 * 60,
   sos_clear: 60 * 60,
+  // ADR-0031: the row carries the plaintext 8-digit code, so the row's life is the code's life (10
+  // minutes). The expiry sweep clears the payload when it ends (src/jobs/mfaResetExpiry.ts).
+  show_reset_code: 10 * 60,
   rules_updated: 24 * 3600,
   consent_granted: 7 * 24 * 3600,
   consent_revoked: 7 * 24 * 3600,
@@ -198,8 +201,24 @@ export async function ackDeviceCommand(
     },
   });
   if (result.count === 0) return null;
+  // ADR-0031 claim 6: a `show_reset_code` row holds the plaintext 8-digit code, and the acknowledgement
+  // is one of the two moments it must stop existing (the other is expiry, swept by the job). Clearing
+  // is unconditional on the outcome and leaves the status/ack fields above untouched.
+  await prisma.deviceCommand.updateMany({ where: { id: commandId, type: "show_reset_code" }, data: { payload: {} } });
   return prisma.deviceCommand.findUnique({ where: { id: commandId } });
 }
+
+/**
+ * Command types whose payload is a credential and which no parent surface may read back.
+ *
+ * #305 review (Claude): `GET /v1/devices/:id/commands/history` returned the plaintext 8-digit
+ * `show_reset_code`, so any family parent — the guardian, or the parent being reset — could read the
+ * witness code straight out of the history and the whole step proved nothing. He demonstrated it by
+ * passing the witness live with a code a guardian read. The payload is a device credential: the API
+ * writes it, the child's phone displays it, and the parent-facing view shows only that the command
+ * existed.
+ */
+const DEVICE_ONLY_PAYLOAD_TYPES = new Set(["show_reset_code"]);
 
 /** Parent-facing, non-destructive view: newest first, with status so the UI can say delivered/pending/failed. */
 export async function listDeviceCommands(deviceId: string, limit = 20) {
@@ -212,6 +231,8 @@ export async function listDeviceCommands(deviceId: string, limit = 20) {
   // Report expiry even before a drain has swept the row.
   return rows.map((r) => ({
     ...r,
+    // The row still proves the command was queued and what happened to it; the payload does not travel.
+    payload: DEVICE_ONLY_PAYLOAD_TYPES.has(r.type) ? {} : r.payload,
     status: r.status === "pending" && r.expiresAt.getTime() <= now ? "expired" : r.status,
   }));
 }

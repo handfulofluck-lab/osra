@@ -22,6 +22,7 @@ import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
 import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
+import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { isParentSessionLive } from "./lib/sessions.js";
 import { healthRoutes } from "./routes/health.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
@@ -122,3 +123,5 @@ startDigestScheduler();
 startUsageRollupScheduler();
 // Plan 1.9 finding: a wiped or removed agent cannot alert; the server notices the silence instead.
 startDeviceSilenceScheduler();
+// ADR-0031: the 24-hour witness deadline and the 12-month retention of MFA reset rows.
+startMfaResetExpiryScheduler();

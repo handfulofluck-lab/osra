@@ -261,6 +261,16 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
       headers: authHeader(app, "fam-1"),
       payload: { command: "stop_ring" },
     });
+    // ADR-0031 decision 2.3: show_reset_code restricts nothing, so the *internal producer* needs no
+    // consent. It is deliberately not parent-issueable (#305 review): a parent command of that name
+    // would let a guardian, or the parent being reset, show a reset notice with a chosen code. So the
+    // consent question here is answered at the schema — 400, not 428 and not 200.
+    const showResetCode = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app, "fam-1"),
+      payload: { command: "show_reset_code", payload: { requestId: "req-1", code: "12345678" } },
+    });
     const locate = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/command",
@@ -271,6 +281,7 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
     expect(lock.statusCode).toBe(428);
     expect(unlock.statusCode).toBe(200);
     expect(stopRing.statusCode).toBe(200);
+    expect(showResetCode.statusCode).toBe(400);
     expect(locate.statusCode).toBe(428);
     await app.close();
   });

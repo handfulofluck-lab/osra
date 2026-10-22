@@ -4,8 +4,22 @@ import argon2 from "argon2";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
+import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
 import { mfaRecoveredEmail, passwordResetEmail } from "../lib/email/templates.js";
+import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
+import {
+  MFA_RESET_CODE_TTL_SECONDS,
+  MFA_RESET_MAILBOX_TTL_SECONDS,
+  MFA_RESET_MAX_CODE_ATTEMPTS,
+  MFA_RESET_MAX_PER_WINDOW,
+  MFA_RESET_REQUEST_WINDOW_MS,
+  OPEN_RESET_STATES,
+  clearResetCodePayloads,
+  generateResetCode,
+  hashResetCode,
+  resetCodeMatches,
+  resetWindowEndsAt,
+} from "../lib/mfaReset.js";
 import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
@@ -240,6 +254,26 @@ export async function authRoutes(app: FastifyInstance) {
         where: { id: parent.familyId, timezoneSource: "default" },
         data: { timezone: zone, timezoneSource: "device" },
       }).catch((err) => req.log.warn({ err }, "timezone fill failed"));
+    }
+    // ADR-0031 decision 3: a successful sign-in by the parent is the main defence of a pending MFA
+    // reset — whoever can sign in is not locked out, so the request was not theirs. It is cancelled
+    // here, before any session is minted, and `complete` refuses a cancelled request. This covers a
+    // request still waiting for its mailbox click as well as one inside the 72-hour window: a parent
+    // who signs in has no reason to keep either alive.
+    // #305 review: a cancelled request must not keep a live code on the child's phone for its
+    // remaining 10 minutes. The ids are read first because `updateMany` does not return them.
+    const openBeforeSignIn = (await prisma.mfaResetRequest.findMany({
+      where: { parentId: parent.id, state: { in: [...OPEN_RESET_STATES] } },
+      select: { id: true },
+    })) ?? [];
+    await prisma.mfaResetRequest.updateMany({
+      where: { parentId: parent.id, state: { in: [...OPEN_RESET_STATES] } },
+      data: { state: "cancelled_by_signin", cancelledReason: "signin", outcomeAt: new Date() },
+    });
+    for (const open of openBeforeSignIn) {
+      await clearResetCodePayloads(open.id).catch((err) =>
+        req.log.warn({ err, requestId: open.id }, "[mfa-reset] could not clear the code of a cancelled request"),
+      );
     }
     const { token, jti, sv } = await signParentToken(app, parent);
     return { token, refreshToken: await issueRefreshToken(parent.id, sv, jti) };
@@ -563,6 +597,436 @@ export async function authRoutes(app: FastifyInstance) {
     const notice = await getEmailSender().send(mfaRecoveredEmail(parent.email));
     if (!notice.ok) req.log.error({ reason: notice.reason }, "MFA recovery notice email failed");
 
+    return { recoveryToken };
+  });
+
+  // --- ADR-0031: MFA reset with a family witness and a 72-hour window ----------------------------
+  // The route for a parent who has lost the authenticator AND every recovery code. It ends in the
+  // same purpose-scoped `mfa_recovery` token `/mfa/recover` issues (decision 5), so there is exactly
+  // one path to "MFA cleared" and one forced re-enrolment after it. Four factors in order: password,
+  // mailbox, a family witness (a paired child device or another owner/co-parent), then a 72-hour
+  // window. Nothing here reads, stores or logs the plaintext device code except the `show_reset_code`
+  // payload itself, which the device command queue clears (claim 6).
+  //
+  // Email and push templates are deliberately not built with this API half: the send points are
+  // `[mfa-reset] ... hook` log lines, and the 24-hour reminder has no sender at all (the expiry job
+  // says so). The parent-app and Android screens are out of scope too.
+  const resetConfirmKey = (jti: string) => `mfa:reset:confirm:${jti}`;
+  const echoResetTokens = !emailConfigured() && process.env.NODE_ENV !== "production";
+
+  /** The two witnesses decision 6 asks about, counted for a family before anything is written. */
+  const familyWitnesses = async (familyId: string, parentId: string) => {
+    const [devices, parents] = await Promise.all([
+      prisma.device.count({ where: { child: { familyId } } }),
+      prisma.parent.count({ where: { familyId, id: { not: parentId }, role: { in: ["owner", "co-parent"] } } }),
+    ]);
+    return { devices, parents, any: devices > 0 || parents > 0 };
+  };
+
+  /**
+   * The shared second half of the witness step: whichever witness passed, every session of the parent
+   * being reset dies and the 72-hour window opens (claim 2).
+   *
+   * The revocation runs before the state write and is not best-effort — the same ordering and reasoning
+   * as `/mfa/recover` (#199): if it throws, the request stays where it was and the parent retries,
+   * instead of a window opening with a live session still signed in.
+   */
+  const passWitness = async (
+    request: { id: string; parentId: string },
+    witness: { kind: "device" | "parent"; ref: string | null },
+    req: FastifyRequest,
+  ): Promise<Date | null> => {
+    await revokeAllRefreshTokens(request.parentId);
+    const witnessAt = new Date();
+    const windowEndsAt = resetWindowEndsAt(witnessAt);
+    const claimed = await prisma.mfaResetRequest.updateMany({
+      where: { id: request.id, state: "mailbox_confirmed" },
+      data: { state: "witness_passed", witnessKind: witness.kind, witnessRef: witness.ref, witnessAt, windowEndsAt },
+    });
+    if (claimed.count !== 1) return null;
+    // The code has done its job; nothing in the command queue may keep it.
+    await clearResetCodePayloads(request.id).catch((err) =>
+      req.log.warn({ err }, "[mfa-reset] could not clear the device code payload after the witness"),
+    );
+    return windowEndsAt;
+  };
+
+  /**
+   * Ask for a reset: `{email, password}`, with `/login`'s rate limit and `/login`'s refusal (claim 1a).
+   *
+   * Nothing is sent to a child device here — not even a wake-up — because the mailbox step has not
+   * happened yet (claim 1b). Nothing is written for a family with no witness (claim 7).
+   */
+  app.post("/mfa/reset/request", { config: RL }, async (req, reply) => {
+    const parsed = z
+      .object({
+        email: z.string().email().transform((e) => e.trim().toLowerCase()),
+        password: z.string().min(1).max(256),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
+    // The same unknown-address handling as /login: verify against a dummy hash so timing does not
+    // distinguish the two, and answer one refusal.
+    const passwordHash = parent?.passwordHash ?? (await unknownParentPasswordHash());
+    const passwordOk = await argon2.verify(passwordHash, parsed.data.password).catch(() => false);
+    if (!parent || !passwordOk) return reply.code(401).send({ error: "invalid_credentials" });
+    // Nothing to reset: /login already works for an account without a second factor, and this route
+    // must not become a way to clear one that is off.
+    if (!parent.mfaEnabled) return reply.code(409).send({ error: "mfa_not_enabled" });
+
+    const witnesses = await familyWitnesses(parent.familyId, parent.id);
+    // Decision 6 / claim 7: refuse before the first write, so the refusal leaves no row, no email and
+    // no command. Only the route's own rate-limit counter is touched.
+    if (!witnesses.any) return reply.code(409).send({ error: "no_witness" });
+
+    const open = await prisma.mfaResetRequest.count({
+      where: { parentId: parent.id, state: { in: [...OPEN_RESET_STATES] } },
+    });
+    if (open > 0) return reply.code(409).send({ error: "reset_already_pending" });
+    const recent = await prisma.mfaResetRequest.count({
+      where: { parentId: parent.id, createdAt: { gt: new Date(Date.now() - MFA_RESET_REQUEST_WINDOW_MS) } },
+    });
+    if (recent >= MFA_RESET_MAX_PER_WINDOW) return reply.code(429).send({ error: "reset_limit_reached" });
+
+    const row = await prisma.mfaResetRequest.create({
+      data: { parentId: parent.id, familyId: parent.familyId, state: "requested" },
+    });
+    // The mailbox link: a JWT naming this request, plus the Redis record that makes it single-use and
+    // 30 minutes long. It is not a session and no route accepts it as one (#146's rule).
+    const jti = newJti();
+    const token = app.jwt.sign(
+      { sub: parent.id, purpose: "mfa_reset_confirm", jti },
+      { expiresIn: `${MFA_RESET_MAILBOX_TTL_SECONDS / 60}m` },
+    );
+    await getRedis().set(resetConfirmKey(jti), `${row.id}|${parent.id}`, "EX", MFA_RESET_MAILBOX_TTL_SECONDS);
+    const cancelToken = app.jwt.sign(
+      { sub: parent.id, purpose: "mfa_reset_cancel", requestId: row.id },
+      { expiresIn: "7d" },
+    );
+    const linkBase = `${appPublicUrl()}/mfa/reset`;
+    const link = `${linkBase}/confirm?token=${encodeURIComponent(token)}`;
+    const cancelLink = `${linkBase}/cancel?token=${encodeURIComponent(cancelToken)}`;
+    // Email hook, templates deferred (see CHANGELOG.d/2026-10-22-mfa-reset-api.md). In dev and test the
+    // link is logged so the flow can be walked by hand; in production only the request id is logged,
+    // because a live single-use link belongs in the mailbox and nowhere else.
+    if (process.env.NODE_ENV !== "production") {
+      req.log.info({ email: parent.email, requestId: row.id, link, cancelLink }, "[mfa-reset] email hook: confirm + cancel (templates deferred)");
+    } else {
+      req.log.info({ requestId: row.id }, "[mfa-reset] email hook: confirm + cancel not sent (templates deferred)");
+    }
+    return {
+      ok: true,
+      requestId: row.id,
+      expiresAt: new Date(Date.now() + MFA_RESET_MAILBOX_TTL_SECONDS * 1000).toISOString(),
+      ...(echoResetTokens ? { confirmToken: token } : {}),
+    };
+  });
+
+  /**
+   * The mailbox step: consume the 30-minute single-use link, mark the request `mailbox_confirmed`,
+   * and only now tell the family's paired devices to show the code (claim 1b).
+   *
+   * A family whose only witness is a second parent gets no code and no command; the approving parent
+   * is the witness.
+   */
+  app.post("/mfa/reset/confirm", { config: RL }, async (req, reply) => {
+    const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    let payload: { sub: string; purpose?: string; jti?: string };
+    try {
+      payload = app.jwt.verify(parsed.data.token);
+    } catch {
+      return reply.code(401).send({ error: "invalid_or_expired_token" });
+    }
+    if (payload.purpose !== "mfa_reset_confirm" || !payload.jti) {
+      return reply.code(401).send({ error: "invalid_or_expired_token" });
+    }
+    // Atomic single use, the same Lua GET+DEL `/reset/confirm` uses (Redis 5.0 has no GETDEL).
+    let record: string | null;
+    try {
+      record = (await getRedis().eval(
+        "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
+        1,
+        resetConfirmKey(payload.jti),
+      )) as string | null;
+    } catch (err) {
+      req.log.error({ err }, "[security] MFA reset link store unreachable — refusing confirm");
+      return reply.code(503).send({ error: "reset_unavailable" });
+    }
+    if (!record) return reply.code(401).send({ error: "invalid_or_expired_token" });
+    const [requestId, parentId] = record.split("|");
+    if (!requestId || parentId !== payload.sub) return reply.code(401).send({ error: "invalid_or_expired_token" });
+    const request = await prisma.mfaResetRequest.findUnique({ where: { id: requestId } });
+    if (!request) return reply.code(401).send({ error: "invalid_or_expired_token" });
+    if (request.state !== "requested") return reply.code(409).send({ error: "request_not_open" });
+
+    const [parent, devices] = await Promise.all([
+      prisma.parent.findUnique({ where: { id: request.parentId }, select: { displayName: true } }),
+      prisma.device.findMany({ where: { child: { familyId: request.familyId } }, select: { id: true } }),
+    ]);
+    const code = devices.length > 0 ? generateResetCode() : null;
+    const confirmedAt = new Date();
+    const codeExpiresAt = code ? new Date(confirmedAt.getTime() + MFA_RESET_CODE_TTL_SECONDS * 1000) : null;
+    const claimed = await prisma.mfaResetRequest.updateMany({
+      where: { id: request.id, state: "requested" },
+      data: {
+        state: "mailbox_confirmed",
+        emailConfirmedAt: confirmedAt,
+        ...(code && codeExpiresAt ? { codeHash: hashResetCode(code), codeExpiresAt } : {}),
+      },
+    });
+    if (claimed.count !== 1) return reply.code(409).send({ error: "request_not_open" });
+
+    if (code && codeExpiresAt) {
+      try {
+        for (const device of devices) {
+          await enqueueDeviceCommand(
+            device.id,
+            "show_reset_code",
+            {
+              requestId: request.id,
+              parentName: parent?.displayName ?? "",
+              code,
+              expiresAt: codeExpiresAt.toISOString(),
+            },
+            // The command lives exactly as long as the code it carries.
+            { ttlSeconds: MFA_RESET_CODE_TTL_SECONDS },
+          );
+        }
+      } catch (err) {
+        // Fail closed and say so: the mailbox step is spent, no phone can show the code, and the
+        // 24-hour expiry ends the request. Answering 200 would promise a code nobody received.
+        req.log.error({ err, requestId: request.id }, "[mfa-reset] witness dispatch failed");
+        return reply.code(503).send({ error: "witness_dispatch_failed", requestId: request.id });
+      }
+    }
+    return {
+      ok: true,
+      requestId: request.id,
+      witness: code ? "device" : "parent",
+      ...(codeExpiresAt ? { codeExpiresAt: codeExpiresAt.toISOString() } : {}),
+    };
+  });
+
+  /**
+   * Submit the 8-digit code shown on a paired device. Unauthenticated by construction: the parent
+   * being reset cannot hold a session — `/login` needs the authenticator they lost — so the request id
+   * (a 122-bit uuid, returned only to whoever passed the password and mailbox steps) and the code are
+   * the whole proof. Five wrong codes end the request (claim 1c).
+   */
+  app.post("/mfa/reset/witness", { config: RL }, async (req, reply) => {
+    const parsed = z
+      .object({ requestId: z.string().min(1).max(64), code: z.string().regex(/^\d{8}$/) })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const request = await prisma.mfaResetRequest.findUnique({ where: { id: parsed.data.requestId } });
+    if (!request) return reply.code(401).send({ error: "invalid_witness" });
+    if (request.state !== "mailbox_confirmed") return reply.code(409).send({ error: "request_not_open" });
+    // An expired code spends no attempt: a guess against it cannot win, so the counter would only
+    // burn the request for a parent who needs a fresh link.
+    if (!request.codeHash || !request.codeExpiresAt || request.codeExpiresAt.getTime() <= Date.now()) {
+      return reply.code(401).send({ error: "invalid_witness" });
+    }
+    if (!resetCodeMatches(parsed.data.code, request.codeHash)) {
+      // One atomic increment with RETURNING, so two concurrent guesses cannot both read "4".
+      const rows = await prisma.$queryRaw<Array<{ failedCodeAttempts: number }>>`
+        UPDATE "MfaResetRequest"
+        SET "failedCodeAttempts" = "failedCodeAttempts" + 1
+        WHERE "id" = ${request.id} AND "state" = 'mailbox_confirmed'
+        RETURNING "failedCodeAttempts"`;
+      if (!rows[0]) return reply.code(409).send({ error: "request_not_open" });
+      const attempts = rows[0].failedCodeAttempts;
+      if (attempts >= MFA_RESET_MAX_CODE_ATTEMPTS) {
+        await prisma.mfaResetRequest.updateMany({
+          where: { id: request.id, state: "mailbox_confirmed" },
+          data: { state: "too_many_attempts", outcomeAt: new Date() },
+        });
+        await clearResetCodePayloads(request.id).catch(() => 0);
+        return reply.code(401).send({ error: "too_many_attempts" });
+      }
+      return reply.code(401).send({ error: "invalid_witness", attemptsRemaining: MFA_RESET_MAX_CODE_ATTEMPTS - attempts });
+    }
+    const windowEndsAt = await passWitness(request, { kind: "device", ref: null }, req);
+    if (!windowEndsAt) return reply.code(409).send({ error: "request_not_open" });
+    return { ok: true, state: "witness_passed", windowEndsAt: windowEndsAt.toISOString() };
+  });
+
+  /**
+   * The other witness: another `owner` or `co-parent` of the same family approves from their own
+   * signed-in app (claim 4). A `guardian` cannot — that access is deliberately partial — and a parent
+   * of another family cannot, even an owner of one.
+   *
+   * The scope is the *request's* family, not the token's snapshot, so the check cannot be borrowed.
+   */
+  app.post("/mfa/reset/approve", { preHandler: requireJwt, config: RL }, async (req, reply) => {
+    const parsed = z.object({ requestId: z.string().min(1).max(64) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const user = req.user as { sub: string };
+    const caller = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!caller) return reply.code(404).send({ error: "parent_not_found" });
+    const request = await prisma.mfaResetRequest.findUnique({ where: { id: parsed.data.requestId } });
+    if (!request) return reply.code(404).send({ error: "not_found" });
+    if (request.familyId !== caller.familyId) return reply.code(403).send({ error: "forbidden" });
+    if (request.parentId === caller.id) return reply.code(403).send({ error: "forbidden" });
+    if (caller.role !== "owner" && caller.role !== "co-parent") return reply.code(403).send({ error: "role_not_allowed" });
+    if (request.state !== "mailbox_confirmed") return reply.code(409).send({ error: "request_not_open" });
+
+    const windowEndsAt = await passWitness(request, { kind: "parent", ref: caller.id }, req);
+    if (!windowEndsAt) return reply.code(409).send({ error: "request_not_open" });
+    return { ok: true, state: "witness_passed", windowEndsAt: windowEndsAt.toISOString() };
+  });
+
+  /**
+   * Cancel a request. Two callers, one outcome, and neither needs anything the other has:
+   *
+   *  - the cancel link, one click, no sign-in — cancelling can only keep things as they are;
+   *  - another owner or co-parent of the family, signed in, from their app.
+   *
+   * Cancelling is idempotent: a request that has already left the open set answers with its state.
+   */
+  app.post("/mfa/reset/cancel", { config: RL }, async (req, reply) => {
+    const parsed = z
+      .object({ token: z.string().min(1).optional(), requestId: z.string().min(1).max(64).optional() })
+      .safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    const finish = async (requestId: string, state: "cancelled_by_link" | "cancelled_by_parent", reason: "link" | "parent") => {
+      const updated = await prisma.mfaResetRequest.updateMany({
+        where: { id: requestId, state: { in: [...OPEN_RESET_STATES] } },
+        data: { state, cancelledReason: reason, outcomeAt: new Date() },
+      });
+      if (updated.count === 1) {
+        await clearResetCodePayloads(requestId).catch((err) =>
+          req.log.warn({ err }, "[mfa-reset] could not clear the device code payload after cancellation"),
+        );
+      }
+      const fresh = await prisma.mfaResetRequest.findUnique({ where: { id: requestId } });
+      return reply.send({ ok: true, state: fresh?.state ?? state });
+    };
+
+    if (parsed.data.token) {
+      let payload: { sub?: string; purpose?: string; requestId?: string };
+      try {
+        payload = app.jwt.verify(parsed.data.token);
+      } catch {
+        return reply.code(401).send({ error: "invalid_or_expired_token" });
+      }
+      if (payload.purpose !== "mfa_reset_cancel" || !payload.requestId || !payload.sub) {
+        return reply.code(401).send({ error: "invalid_or_expired_token" });
+      }
+      const request = await prisma.mfaResetRequest.findUnique({ where: { id: payload.requestId } });
+      // The link names one request and one parent; anything else is a stale or forged link.
+      if (!request || request.parentId !== payload.sub) {
+        return reply.code(401).send({ error: "invalid_or_expired_token" });
+      }
+      return finish(request.id, "cancelled_by_link", "link");
+    }
+
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const user = req.user as { sub?: string; role?: string; purpose?: string; jti?: string; iat?: number; sv?: number };
+    if (!isBearerSession(user) || user.role !== "parent" || !user.sub) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    if (!(await isParentSessionLive(user))) return reply.code(401).send({ error: "session_revoked" });
+    if (!parsed.data.requestId) return reply.code(400).send({ error: "request_id_required" });
+    const caller = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!caller) return reply.code(404).send({ error: "parent_not_found" });
+    const request = await prisma.mfaResetRequest.findUnique({ where: { id: parsed.data.requestId } });
+    if (!request) return reply.code(404).send({ error: "not_found" });
+    if (request.familyId !== caller.familyId) return reply.code(403).send({ error: "forbidden" });
+    if (request.parentId === caller.id) return reply.code(403).send({ error: "forbidden" });
+    if (caller.role !== "owner" && caller.role !== "co-parent") return reply.code(403).send({ error: "role_not_allowed" });
+    return finish(request.id, "cancelled_by_parent", "parent");
+  });
+
+  /**
+   * The end of the wait: `{email, password, requestId}`, refused until `windowEndsAt` (claim 1d) and
+   * for any request that is not `witness_passed`.
+   *
+   * On success it runs ADR-0023's recovery sequence exactly as amended on 2026-10-22 (decision 5):
+   * register the recovery token's record, revoke every session, one transaction that clears
+   * `mfaSecret`, deletes any remaining codes and records the outcome, then sign the 15-minute
+   * `purpose: "mfa_recovery"` token. `mfaEnabled` stays true, so the account still demands a second
+   * factor and `/login` answers `mfa_reenroll_required` until the parent enrols again (claim 5).
+   *
+   * There is no second "MFA cleared" path in this file, and this one refuses everything except a
+   * request that passed its witness and waited out its window.
+   */
+  app.post("/mfa/reset/complete", { config: RL }, async (req, reply) => {
+    const parsed = z
+      .object({
+        email: z.string().email().transform((e) => e.trim().toLowerCase()),
+        password: z.string().min(1).max(256),
+        requestId: z.string().min(1).max(64),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
+    const passwordHash = parent?.passwordHash ?? (await unknownParentPasswordHash());
+    const passwordOk = await argon2.verify(passwordHash, parsed.data.password).catch(() => false);
+    if (!parent || !passwordOk) return reply.code(401).send({ error: "invalid_credentials" });
+
+    const request = await prisma.mfaResetRequest.findUnique({ where: { id: parsed.data.requestId } });
+    // "No such request" and "another parent's request" are one answer: this route is not an oracle
+    // for other accounts' request ids.
+    if (!request || request.parentId !== parent.id) return reply.code(404).send({ error: "request_not_found" });
+
+    const refusals: Record<string, string> = {
+      requested: "witness_required",
+      mailbox_confirmed: "witness_required",
+      cancelled_by_signin: "request_cancelled",
+      cancelled_by_link: "request_cancelled",
+      cancelled_by_parent: "request_cancelled",
+      expired: "request_expired",
+      too_many_attempts: "too_many_attempts",
+      completed: "request_completed",
+    };
+    const refusal = refusals[request.state];
+    if (refusal) return reply.code(409).send({ error: refusal });
+    if (request.state !== "witness_passed") return reply.code(409).send({ error: "request_not_open" });
+
+    // Claim 1d: before the window ends nothing changes at all — no token, no revocation, no write.
+    const windowEndsAt = request.windowEndsAt;
+    if (!windowEndsAt || windowEndsAt.getTime() > Date.now()) return reply.code(409).send({ error: "window_open" });
+
+    // ADR-0023 step 1: the token's record first, so a failure after the commit cannot leave the
+    // parent recovered with no token (#199's lockout, one path across).
+    const jti = randomBytes(16).toString("hex");
+    await getRedis().set(recoveryKey(jti), parent.id, "EX", RECOVERY_TTL_SECONDS);
+    // Step 2: every session, not best-effort (#199): if this throws the request stays open.
+    await revokeAllRefreshTokens(parent.id);
+
+    // Step 3: one transaction — the factor goes, the remaining codes go, the outcome is recorded once.
+    const completedAt = new Date();
+    const consumed = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.mfaResetRequest.updateMany({
+        where: { id: request.id, state: "witness_passed" },
+        data: { state: "completed", completedAt, outcomeAt: completedAt },
+      });
+      if (claimed.count !== 1) return false;
+      await tx.parentMfaRecoveryCode.deleteMany({ where: { parentId: parent.id } });
+      // #183: only the factor goes; the policy stays on, exactly as `/mfa/recover` leaves it.
+      await tx.parent.update({ where: { id: parent.id }, data: { mfaEnabled: true, mfaSecret: null } });
+      return true;
+    });
+    if (!consumed) {
+      await getRedis().del(recoveryKey(jti)).catch(() => {});
+      return reply.code(409).send({ error: "request_not_open" });
+    }
+    await clearResetCodePayloads(request.id).catch(() => 0);
+
+    // Step 4: the same 15-minute purpose-scoped token `/mfa/recover` signs. No new token type.
+    const recoveryToken = app.jwt.sign(
+      { sub: parent.id, purpose: "mfa_recovery", jti },
+      { expiresIn: `${RECOVERY_CODE_TTL_MINUTES}m` },
+    );
+    // Completion notice hook, templates deferred (ADR-0031 decision 4).
+    req.log.info({ requestId: request.id }, "[mfa-reset] completion notice hook: email + push not sent (templates deferred)");
     return { recoveryToken };
   });
 
