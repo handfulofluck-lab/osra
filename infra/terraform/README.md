@@ -148,23 +148,29 @@ scheduled task, `bash up.sh < /dev/null`) the prompt gets `EOF` and the run abor
 applied. Nothing is left half-built, but the message does not say the flag was missing. Use
 `up.sh -auto-approve` / `down.sh -auto-approve`.
 
-**2. `allowed_cidrs` must be taken from the current session, not copied from the last one.** The
-examples narrow this to the operator's own address, which is correct for a staging API — but a home or
-mobile ISP lease changes, and the ALB then refuses every request from the machine that just built it.
-The symptom is **not** an obvious auth error: `curl` reports `(28) timed out` with status `000`, and
-`Test-NetConnection` can succeed against one ALB node and fail against the other, because the security
-group's deny is per-source rather than per-target. Check the address first, then plan:
+**2. In release mode, leave `allowed_cidrs` at its default `["0.0.0.0/0"]`.** Narrowing is only
+required in non-release mode (see "Non-release mode requires a narrowed `allowed_cidrs`" below). If you
+do narrow it, first check that your connection has **one** stable public address: on 2026-10-23 the
+maintainer's connection left from several different addresses, varying per connection, so a `/32` pin
+passed some requests and timed out on others. The symptom is `curl: (28)` / `000` on some requests and
+not on others, which reads like a network fault. Check before planning:
 
 ```bash
-curl -s https://api.ipify.org            # e.g. 41.40.103.58
-# put that value in infra/terraform/env/terraform.tfvars: allowed_cidrs = ["41.40.103.58/32"]
+for i in $(seq 10); do curl -s https://api.ipify.org; echo; done | sort -u
+# one line  → pinning is safe: allowed_cidrs = ["203.0.113.7/32"]  (documentation range shown)
+# many lines → do not pin; keep the default ["0.0.0.0/0"] in release mode
 ```
 
-Ruling out the real suspects takes three reads, all cheap, and all were fine on 2026-10-23 when the
-pin was the cause: `aws route53 test-dns-answer` (DNS answered `NOERROR` with both ALB addresses),
-`aws elbv2 describe-load-balancers` (`internet-facing`), and the two public subnets' route tables
-(`0.0.0.0/0 → igw-…`). Narrowing the security group is one `terraform apply` of `env`, not a rebuild.
+What the 2026-10-23 session got wrong first, recorded so the next reader skips it: the cause looked
+like "the deny is per-source rather than per-target", because `Test-NetConnection` succeeded on one ALB
+node and failed on the other. A security group applies the same rule on both nodes. What varied was the
+**source address of each new connection**, so some matched the `/32` and some did not, and which node
+answered was coincidence.
 
+Ruling out the real suspects takes three reads, all cheap, and all were fine on 2026-10-23 when the pin
+was the cause: `aws route53 test-dns-answer` (DNS answered `NOERROR` with both ALB addresses),
+`aws elbv2 describe-load-balancers` (`internet-facing`), and the two public subnets' route tables
+(`0.0.0.0/0 → igw-…`). Widening or removing the pin is one `terraform apply` of `env`, not a rebuild.
 
 Neither script ever runs `apply` or `destroy` against `base/` except `up.sh`'s base apply, which is
 the one time base is meant to change. `down.sh` destroys `env/` and nothing else, and refuses to run
