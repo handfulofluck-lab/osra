@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Never commit real values.
+
+project     = "osra"
+environment = "staging"
+region      = "me-central-1"
+
+# Non-release mode: no certificate, so env has no HTTPS listener and port 80 forwards.
+domain_name       = ""
+hosted_zone_name  = ""
+certificate_arn   = ""
+
+# Release mode instead sets the two below (base then creates and validates the certificate):
+# domain_name      = "api.staging.example.com"
+# hosted_zone_name = "example.com"
