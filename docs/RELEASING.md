@@ -355,6 +355,11 @@ build (`docs/ROADMAP.md` 5.1, 5.6). A release note that implies otherwise is a d
   listing. Before the first upload, the keystore and its passwords exist in at least two offline copies
   held by the maintainer. A secret that lives only in GitHub Actions is one lost account away from being
   gone.
+- **AWS deploy key (temporary).** The `osra-staging-deployer` IAM access key (ADR-0028 §8, #258) lives
+  only in `~/.aws/credentials` on the maintainer's PC under the `osra-staging` profile. IAM keys do not
+  expire on their own: **delete it on 2026-11-05 or when the staging stack is up, whichever is first**
+  (`aws iam list-access-keys --user-name osra-staging-deployer` must then return none). No release that
+  deploys to AWS is cut while this key still exists past that date.
 - **Who may touch what.** Accounts, entitlements, key purchases and API keys are the maintainer's
   (`AGENTS.md` §1). The release owner prepares the artifact and the instructions; the human authorises
   and performs the account action.
