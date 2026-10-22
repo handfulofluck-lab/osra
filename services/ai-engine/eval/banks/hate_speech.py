@@ -74,6 +74,14 @@ POSITIVES_AR = [
     "قانون جديد في قروبنا: لا أحد يجيب {group}، كلهم {slur}",
 ]
 
+# Pattern ids for POSITIVES_EN/AR (`eval/split.py` cuts the dev/test split on these). The two lists
+# are translations of each other in the same order, no template names a person, so no id is split by
+# gender and none is language-only. Written out rather than left to the index default so this bank is
+# covered by the same tests as the rest.
+PATTERN_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+PATTERN_AR = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
 # Indices are 0-based positions in POSITIVES_<LANG>. "teach them a lesson" is a
 # group-targeted threat as well as group contempt, so both labels are honest.
 ALSO_LABELS_EN = {3: ["violence"]}

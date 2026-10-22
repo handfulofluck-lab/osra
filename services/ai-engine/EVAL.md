@@ -51,7 +51,7 @@ is written as recall ≥ 0.85 at precision ≥ 0.6 rather than "the tests pass".
 The dataset is 1,179 rows (588 EN / 591 AR) generated deterministically from seven template banks —
 377 positive templates, 176 hard negatives and 106 generic safe messages across the two languages,
 from which the generator draws 455 positive rows, 84 hard negatives and 49/52 safe rows per language. The
-template count is the number that matters for the gate's interval, and it is what the second author pass
+pattern count is the number that matters for the gate's interval, and it is what the second author pass
 on `self_harm` (21/26 -> 41/46) and `grooming` (20/23 -> 40/43) moved: at a fixed 65 rows per category the
 sample now draws from nearly twice as many independent patterns.
 It
@@ -92,8 +92,72 @@ Known limits, stated rather than discovered later:
   `child_age` without using it, so the set cannot yet show an age-dependent miss.
 - **The set is 74 % harmful while real messages are mostly safe**, so a precision number measured
   here will look better than what a parent sees. The safe side must grow with the positives.
-- **No dev/test split yet.** Before 4.1 tunes a prompt, a `split: dev|test` field per template is
-  needed, or the published set becomes the tuning set.
+- **The published numbers are not held out, even now that a split exists.** The dev/test split below
+  is what makes a held-out estimate possible; it does not retroactively hold out the tables above or
+  the hosted-scorer table. Those were measured on every row, including the ones the prompt was written
+  against.
+
+### The dev/test split
+
+Every generated row carries `provenance.split` — `dev` or `test` — and `provenance.pattern`, the id the
+side is cut on. The split is **per pattern, never per row**: a pattern is a template, its translation in
+the other language, its gender twin and a retelling of it (in another person, or with one detail changed) under one id (`PATTERN_EN` /
+`PATTERN_AR` and `LANGUAGE_ONLY` in each bank), and all rows from one pattern land on the same side. Five rows share a pattern's wording, so
+a model that recognises one fill very likely recognises its siblings; a per-row draw would put a
+paraphrase of a test row into dev and the "held-out" number would be contaminated by exactly the overlap
+the five-row cap exists to limit.
+
+The first cut of this split hashed the template's **position** in its list, and that leaked. The Arabic
+banks translate the English ones with gender twins inserted (`{name_m}`/`{name_f}`,
+`{person_m}`/`{person_f}`, `{target_m}`/`{target_f}`), so from the first twin onward EN *i* and AR *i*
+are different sentences and a translation sits at another index with an independent coin flip: **8 of 14
+adjacent twin pairs landed on opposite sides**, and translation pairs such as `self_harm` EN 5 ↔ AR 6 and
+EN 7 ↔ AR 10 did too. One prompt scores both languages, so a dev sentence whose translation or whose
+other-gender twin was in test is a paraphrase inside the tuning set — the leak this split exists to
+prevent. The unit that identifies a meaning is therefore the pattern, not the position.
+
+`eval/split.py` hashes `f"{bank}:{pattern}"` with sha256 and takes a bit of the digest. A hashed side
+rather than an alternating one matters because alternation is positional: inserting one pattern in the
+middle of a list flips every later pattern's side, silently moving rows already measured from test into
+dev with no diff that shows it happened. The hash makes a pattern's side depend only on its identity, and
+`tests/test_eval_harness.py` pins five values so a change to the hash input is a failing test, not a quiet
+re-split.
+
+Counts in the committed set (2026-10-22): 156 distinct `(bank, pattern)` keys, none of them on both
+sides. (Three counts are easy to confuse and `eval/schema.md` defines each: 304 distinct
+`(bank, list, pattern)` ids, 156 distinct `(bank, pattern)` keys, and 155 positive patterns.)
+
+| split | rows | EN | AR |
+|---|---|---|---|
+| `dev` | 694 | 348 | 346 |
+| `test` | 485 | 240 | 245 |
+| `all` | 1,179 | 588 | 591 |
+
+Per bank, dev / test rows:
+
+| bank | dev / test | EN dev / test | AR dev / test |
+|---|---|---|---|
+| cyberbullying | 117 / 51 | 59 / 25 | 58 / 26 |
+| grooming | 89 / 74 | 43 / 37 | 46 / 37 |
+| hate_speech | 88 / 82 | 44 / 41 | 44 / 41 |
+| self_harm | 80 / 90 | 40 / 45 | 40 / 45 |
+| sexual_content | 113 / 57 | 56 / 29 | 57 / 28 |
+| substance_use | 108 / 60 | 54 / 30 | 54 / 30 |
+| violence | 99 / 71 | 52 / 33 | 47 / 38 |
+
+On the `test` side an Arabic category is covered by only 6–18 patterns, so a recall of 1.00 there only
+rules out a miss rate above about 16–50% (95%, rule of three: 3/n). Rows are not the unit — five rows of
+one pattern rise and fall together, which is the premise of the split — so the count is of distinct
+`(bank, pattern)` keys among the Arabic `test` rows labelled with the category: `substance_use` 6,
+`cyberbullying` 7, `violence` 7, `sexual_content` 8, `hate_speech` 10, `grooming` 12, `self_harm` 18.
+
+Every bank, and both languages, has both sides non-empty — a bank that was 100 % dev would make its
+category unmeasurable in one direction.
+
+- **The tables in this file are `all` rows.** The split is a provenance field, not a filter applied to
+  them: `--scorer regex` above and the hosted-scorer table below both cover all 1,179 rows, and their
+  numbers are unchanged by this work.
+- **What `--split test` measures.** From this split on, the prompt may be changed only on `dev` results, so `test` is held out from tuning. It is not independent of the prompt's author: the prompt and every template, test included, were written by the same author, and the prompt's category descriptions follow the templates' themes. A `test` number therefore measures this corpus under a prompt written with its themes in view. It has **not been run yet**. An independent estimate needs test templates written by someone who has not seen the prompt (the native Arabic reviewer on the open-items list is the obvious first), or real messages under the consent rules.
 
 ## Generated table
 
@@ -147,17 +211,18 @@ Cost is per row and cached by `(model, prompt, text)` in `eval/.deepseek-cache.j
 re-running an unchanged set is free — and editing the prompt is not free, which is the point: a score is
 the model's answer to *that* prompt, so a changed prompt re-scores every row instead of serving the old
 prompt's answers. The manual workflow `.github/workflows/ai-eval-deepseek.yml` does the same on
-CI; it is `workflow_dispatch` rather than push-triggered because every run bills the dataset and the
-answer only changes when the banks, the prompt or the model do. **GitHub will not dispatch a workflow
-that is not on the default branch**, so the first run happens after this lands.
+CI, with a `split` input (`all` / `dev` / `test`); it is `workflow_dispatch` rather than push-triggered
+because every run bills the dataset and the answer only changes when the banks, the prompt or the model
+do. **GitHub will not dispatch a workflow that is not on the default branch**, so the first run happens
+after this lands.
 
 **Measured 2026-10-21.** The first billed run — `ai-eval-deepseek` workflow `39628473359` on `main` —
 scored all 1,179 rows with `deepseek-chat` and no prompt tuning. The prompt was not tuned against any
 run's results and quotes no rows, but it is **not held out**: the same author wrote the prompt and the
 templates, and the prompt's category descriptions follow the templates' themes — its `self_harm` line,
 "hopelessness, goodbye messages, concealing injury, being a burden", is close to the design note at the
-top of `eval/banks/self_harm.py`. The `dev`/`test` split below is what would make this a held-out
-estimate:
+top of `eval/banks/self_harm.py`. The `dev`/`test` split (above, under *What the set is, and is not*)
+is what makes a held-out estimate possible; **this table is not it**:
 
 | | EN | AR |
 |---|---|---|
@@ -180,8 +245,10 @@ categories**.
 **What this does not say.** Four limits, in order of how much they could move the number:
 
 - **The rows come from template families.** Five rows share a template's wording, so a model that
-  recognises one may recognise its siblings. The `dev`/`test` split noted below is what would turn this
-  into a population estimate rather than a measure of this corpus.
+  recognises one may recognise its siblings. The `dev`/`test` split above holds `test` out from tuning,
+  so a `--split test` number is a held-out measurement — but not an independent one: the same author
+  wrote the prompt and every template, so it measures this corpus under a prompt written with its
+  themes in view.
 - **`cyberbullying` precision is poor (0.36 / 0.38)** because its rows are also flagged with the category
   they overlap. The recall of 1.00 is real; the precision is the cost of a coarse taxonomy.
 - **One model, one run, one threshold.** No variance estimate. A second model and a repeated run would
@@ -194,8 +261,10 @@ categories**.
 
 ## Reproducing a row
 
-Each row carries `provenance = {kind, bank, template_index, seed}`, so a surprising item can be
-traced to the exact template and the seed that filled its slots:
+Each row carries `provenance = {kind, bank, template_index, pattern, split, seed}`, so a surprising item
+can be traced to the exact template and the seed that filled its slots. `template_index` is the
+reproduction key; `pattern` is the id the split is cut on (a template, its translation and its gender twin
+share one), which is why a row's side can be explained from `pattern` alone:
 
 ```bash
 cd services/ai-engine

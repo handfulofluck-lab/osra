@@ -124,6 +124,26 @@ POSITIVES_AR = [
     "تقدرين تكونين عارضة يا {target_f}، عندك الشكل، عمري {age} وأعرف ناس يوصلونك، بس لا تدري أمك",
 ]
 
+# Pattern ids for POSITIVES_EN/AR (`eval/split.py` cuts the dev/test split on these). A pattern is
+# anything a prompt tuned on one sentence would also have seen: its translation, its gender twin and a
+# retelling in another person. Three retellings joined their source, so 16/17 ("{target_m} is meeting a
+# guy from the game") are 10, 25/26 ("his mum never listens") are 21, and 28/29 ("a man sent him a
+# photo") are 23. Ids 16, 22 and 24 are retired with those merges and are not reused — reusing a
+# number would re-cut that number's rows.
+#
+# Seven English ids have no Arabic template: 2 (age is just a number), 7 (your friends are all 13), 15
+# (the third photo push), 17 (a man added him from the game), 20 (the game chat is too public), 28
+# (told him to drop a friend), 32 (the scout). Every Arabic id is shared, and the second-person English
+# lines have two Arabic templates each (m and f).
+PATTERN_EN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 10, 10, 17, 17, 18, 19, 19,
+              20, 21, 21, 21, 23, 23, 23, 25, 26, 27, 28, 28, 29, 30, 31, 32, 32]
+
+PATTERN_AR = [0, 0, 1, 1, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 13, 13, 14, 14, 9, 9, 10, 11, 12, 18, 18, 19,
+              19, 21, 21, 23, 23, 25, 25, 26, 26, 27, 27, 29, 29, 30, 30, 31, 31]
+
+LANGUAGE_ONLY = {"positives:2", "positives:7", "positives:15", "positives:17", "positives:20",
+                 "positives:28", "positives:32"}
+
 SLOTS_EN = {
     "target": ["Sara", "Layla", "Hana", "Noor", "Mariam", "Dana", "Omar", "Adam"],
     # Only templates that refer to the child in the third person use the gendered pair.
