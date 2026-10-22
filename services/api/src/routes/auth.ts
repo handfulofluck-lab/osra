@@ -509,6 +509,15 @@ export async function authRoutes(app: FastifyInstance) {
     });
     if (!candidate) return reply.code(401).send({ error: "invalid_recovery" });
 
+    // #199 item 3: the recovery token's Redis record is written *before* anything is spent, for the
+    // same reason the revocation below moved earlier. Registering it after the commit left an
+    // identical lockout: a Redis failure there answered 5xx with the code claimed, the siblings
+    // deleted, `mfaSecret` cleared and no token to show for it. Registering first costs one entry
+    // that a lost race deletes (below) and that expires on its own if the process dies.
+    // Signing happens after the commit because it does no I/O and must not exist for a rollback.
+    const jti = randomBytes(16).toString("hex");
+    await getRedis().set(recoveryKey(jti), parent.id, "EX", RECOVERY_TTL_SECONDS);
+
     // #199: revoke *before* the code is consumed, not after the commit. `revokeAllRefreshTokens`
     // bumps the sessions version, and that bump is deliberately not best-effort (sessions.ts:113-114):
     // if Redis rejects it, this throws and the request answers 5xx with the code still unspent, so
@@ -538,14 +547,18 @@ export async function authRoutes(app: FastifyInstance) {
       await tx.parent.update({ where: { id: parent.id }, data: { mfaSecret: null } });
       return true;
     });
-    if (!consumed) return reply.code(401).send({ error: "invalid_recovery" });
+    if (!consumed) {
+      // Lost the race (or the batch vanished): the record registered above names no token, because
+      // none was signed, so deleting it is tidiness rather than correctness — and a failure here must
+      // not turn a 401 into a 5xx.
+      await getRedis().del(recoveryKey(jti)).catch(() => {});
+      return reply.code(401).send({ error: "invalid_recovery" });
+    }
 
-    const jti = randomBytes(16).toString("hex");
     const recoveryToken = app.jwt.sign(
       { sub: parent.id, purpose: "mfa_recovery", jti },
       { expiresIn: `${RECOVERY_CODE_TTL_MINUTES}m` },
     );
-    await getRedis().set(recoveryKey(jti), parent.id, "EX", RECOVERY_TTL_SECONDS);
 
     const notice = await getEmailSender().send(mfaRecoveredEmail(parent.email));
     if (!notice.ok) req.log.error({ reason: notice.reason }, "MFA recovery notice email failed");

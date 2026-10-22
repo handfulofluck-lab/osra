@@ -257,6 +257,44 @@ describe("MFA recovery codes (ADR-0023)", () => {
     await app.close();
   });
 
+  it("#199: a failed recovery-token write leaves the code unspent", async () => {
+    const { app } = await setup();
+    const { verify } = await enrolAndVerify(app);
+    const codes: string[] = verify.json().recoveryCodes;
+    const { getRedis } = await import("../src/redis.js");
+    const redis = getRedis() as unknown as { set: ReturnType<typeof vi.fn> };
+
+    // The token's record is registered before anything is spent, for the same reason as the
+    // revocation: a Redis failure after the commit used to answer 5xx with the code claimed, the
+    // siblings deleted, the factor cleared and no token — the same lockout, one step later.
+    //
+    // Target the `mfa:recovery:` write specifically. A blanket `mockRejectedValueOnce` is consumed by
+    // whichever `set` the flow reaches first, and that call's own failure is best-effort — so the
+    // mutation run returned 200 and the test would have failed for the wrong reason.
+    const realSet = redis.set.getMockImplementation()!;
+    redis.set.mockImplementation(async (key: string, ...rest: unknown[]) => {
+      if (String(key).startsWith("mfa:recovery:")) throw new Error("redis unavailable");
+      return realSet(key, ...rest);
+    });
+    const failed = await recover(app, { email: EMAIL, password: PASSWORD, code: codes[2] });
+    redis.set.mockImplementation(realSet);
+
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    expect(failed.statusCode).toBeLessThan(600);
+    expect(failed.json().recoveryToken).toBeUndefined();
+    expect(codeRows).toHaveLength(10);
+    expect(codeRows.every((r) => r.usedAt === null)).toBe(true);
+    expect(parents[0].mfaSecret).not.toBeNull();
+    // No dangling credential either: the failed attempt registered nothing that could be presented.
+    expect([...store.keys()].some((k) => k.startsWith("mfa:recovery:"))).toBe(false);
+
+    const retry = await recover(app, { email: EMAIL, password: PASSWORD, code: codes[2] });
+    expect(retry.statusCode).toBe(200);
+    expect(codeRows).toHaveLength(1);
+    expect(parents[0].mfaSecret).toBeNull();
+    await app.close();
+  });
+
   it("#199: replaying a spent code does not revoke the parent's sessions again", async () => {
     const { app } = await setup();
     const { verify } = await enrolAndVerify(app);
