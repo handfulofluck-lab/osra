@@ -1,0 +1,88 @@
+name: Publish API image
+
+# Publishing needs a credential. A long-lived AWS key is what ADR-0028 §8 rules out, so the job trades
+# a GitHub OIDC token for the `osra-staging-publish` role (infra/terraform/base/oidc.tf) and the only
+# credential that exists lasts for the run.
+# `workflow_dispatch` only, and only from `main`: the role's trust names that one branch, so a publish
+# is a deliberate act and nothing here can run on a PR or from a feature branch.
+# It builds `github.sha` and nothing else. A `ref` input would be a way around the gate: the OIDC
+# subject comes from the branch the run was started on, not from what checkout fetches, so a run on
+# `main` could build unverified code from another branch and push it under a `main`-only role.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Queue rather than cancel: a cancelled run can leave a half-uploaded layer.
+concurrency:
+  group: api-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build linux/arm64 and push to ECR
+    # Refuse to push from a fork: its copy of this file must not assume a role in this account.
+    if: github.repository == 'handfulofluck-lab/osra' && github.ref == 'refs/heads/main'
+    # GitHub's arm64 runner: no QEMU emulation, and Fargate runs ARM64 (ADR-0028).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both values come from repository variables because Actions cannot read base's Terraform state.
+      - name: Require the repository variables
+        env:
+          AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+          AWS_PUBLISH_ROLE_ARN: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+        run: |
+          set -eu
+          if [ -z "$AWS_ECR_REPOSITORY" ]; then
+            echo "::error::AWS_ECR_REPOSITORY is unset. After base is applied: gh variable set AWS_ECR_REPOSITORY --body \"\$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)\""
+            exit 1
+          fi
+          if [ -z "$AWS_PUBLISH_ROLE_ARN" ]; then
+            echo "::error::AWS_PUBLISH_ROLE_ARN is unset. After base is applied: gh variable set AWS_PUBLISH_ROLE_ARN --body \"\$(terraform -chdir=infra/terraform/base output -raw publish_role_arn)\""
+            exit 1
+          fi
+
+      # Pinned by full SHA (v4) so a moved tag cannot change what receives the OIDC token.
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: me-central-1
+          role-session-name: ${{ github.run_id }}
+
+      - name: Log in to ECR
+        env:
+          AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+        run: |
+          # The registry host is everything before the first `/` of the repository URL.
+          aws ecr get-login-password --region me-central-1 \
+            | docker login --username AWS --password-stdin "${AWS_ECR_REPOSITORY%%/*}"
+
+      # The tag is derived, never chosen: the repository is IMMUTABLE, so a tag always names one image.
+      # A re-run on the same commit fails at the push with "tag already exists", which is correct — the
+      # image for that commit is already there.
+      - name: Resolve the tag
+        id: tag
+        run: |
+          TAG="$(git rev-parse --short=12 HEAD)"
+          echo "Publishing $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f   # v3
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8   # v6
+        with:
+          context: .
+          file: services/api/Dockerfile
+          platforms: linux/arm64
+          push: true
+          # No `:latest`: a mutable pointer in a task definition is how a "known good" deploy silently
+          # becomes a different image. `env/api_image` pins the sha tag this produces.
+          tags: ${{ vars.AWS_ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

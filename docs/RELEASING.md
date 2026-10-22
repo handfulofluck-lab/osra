@@ -165,12 +165,26 @@ docker build -f services/api/Dockerfile -t osra-api:<version> .    # context: re
 sh services/api/scripts/verify-image.sh                            # node, prisma CLI, entry file
 ```
 
-The local build is `linux/amd64`. The ARM image ECS Fargate runs comes from this same Dockerfile, built
-on GitHub's arm64 runner by the `API image` workflow ([ADR-0028](adr/0028-hosting-regions-and-scaling.md)
-names Fargate ARM) — ECR stores images, it does not build them, so nothing publishes to ECR yet: the push
-step needs an OIDC role scoped to the one repository, tracked on #258. Docker is not
-installed on the maintainer's PC, so the local `docker build` path is unverified there — the CI job is the
-build gate.
+Publishing to ECR is the workflow, not a local `docker buildx … --push`.
+`.github/workflows/api-publish.yml` builds linux/arm64 on GitHub's arm64 runner and pushes
+`<repo>:<12-character sha>` through a role assumed over GitHub's OIDC token, so no
+AWS key lives in Actions ([`infra/terraform/README.md`](../infra/terraform/README.md#publishing-the-image),
+ADR-0028 §8). It is `workflow_dispatch` only and refuses to run outside `handfulofluck-lab/osra`:
+
+```bash
+gh workflow run api-publish.yml      # run from main; the image is tagged with that commit's sha
+```
+
+Record the pushed digest in R5 and put `<repo>:<12-character sha>` into
+`env/api_image`. **Docker is not installed on the maintainer's PC**, so the local `docker build` path is
+unverified there; the `API image` CI job is the build gate for both. The local command remains the
+fallback for a host with Docker and an AWS credential source:
+
+```bash
+REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
+aws ecr get-login-password --region me-central-1   | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.me-central-1.amazonaws.com"
+docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
+```
 
 Migrations move with the API, never before it and never by hand: apply `prisma migrate deploy` and run
 `prisma generate` as a separate step (a `migrate deploy` without `generate` is issue #47), then record the

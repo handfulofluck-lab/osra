@@ -49,11 +49,12 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 | `down.sh` | env destroy only; prints elapsed time and estimated spend |
 | `base/versions.tf` | Terraform/provider constraints and the base backend |
 | `base/ecr.tf` | ECR repository and the 14-day untagged-image lifecycle policy |
+| `base/oidc.tf` | GitHub OIDC provider and the `osra-staging-publish` role that pushes the API image |
 | `base/secrets.tf` | Four secret containers; `JWT_SECRET`, `VAULT_KEY` and demo-password values |
 | `base/acm.tf` | Optional ACM certificate, DNS validation records and validation; the Route 53 zone lookup |
 | `base/iam.tf` | ECS task execution role, managed attachment, read-the-secrets policy |
 | `base/logs.tf` | CloudWatch log group `/ecs/osra-staging-api` |
-| `base/outputs.tf` | ECR URL, secret ARNs, execution role, certificate ARN, `domain_name`, `hosted_zone_id`, log group |
+| `base/outputs.tf` | ECR URL, publish role ARN, secret ARNs, execution role, certificate ARN, `domain_name`, `hosted_zone_id`, log group |
 | `env/versions.tf` | Terraform/provider constraints and the env backend |
 | `env/remote_state.tf` | Reads `base/`'s outputs |
 | `env/network.tf` | VPC, subnets, IGW, single NAT, route tables, security groups |
@@ -70,7 +71,8 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 - Terraform >= 1.10 (validated and planned with 1.16.6).
 - AWS CLI v2 and any credential source for the staging account. **No profile name is committed**;
   the scripts default to `AWS_PROFILE=osra-staging` and `AWS_REGION=me-central-1` if unset.
-- Docker with `buildx` and ARM64 emulation, or an ARM build runner, to publish the image.
+- Docker with `buildx` and ARM64 emulation only for the local publish fallback; the workflow builds on
+  GitHub's arm64 runner (`Publishing the image` below).
 - A Route 53 hosted zone if release mode should create the certificate and publish the API record.
 
 ```bash
@@ -126,15 +128,14 @@ line in `down.sh` covers the whole session rather than only the destroy. Set
 # 1. Base only: repository, secrets, IAM, log group, certificate.
 terraform -chdir=infra/terraform/base apply
 
-# 2. Build and push the ARM64 API image, tagged with the commit it was built from.
-ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
-SHA="$(git rev-parse --short HEAD)"
-aws ecr get-login-password --region me-central-1 \
-  | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.me-central-1.amazonaws.com"
-docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
+# 2. Publish the ARM64 API image for this commit — see "Publishing the image" below.
+gh workflow run api-publish.yml
 
-# 3. Put "${REPO}:${SHA}" into env/terraform.tfvars, then run the routine path.
+#    Or, on a host with Docker and an AWS credential source, build and push it by hand:
+#    docker buildx build --platform linux/arm64 -f services/api/Dockerfile #      --tag "${REPO}:${SHA}" --push .
+
+# 3. Put "<repository URL>:<12-character sha>" (printed by the run) into env/api_image in
+#    env/terraform.tfvars, then run:
 ./infra/terraform/up.sh
 ```
 
@@ -142,9 +143,66 @@ Tag by git sha rather than with a moving `:staging` tag: the task definition tex
 replace a task, so a rebuild pushed to the same tag changes nothing that the apply can see. A new sha
 is a new task-definition revision, which is what the re-run path (*Everyday use* above) registers.
 
-Building and pushing the image is a manual step; automating it in the pipeline is tracked in #258.
-
 On later sessions only `up.sh` is needed: base already has the repository, secrets and certificate.
+
+## Publishing the image
+
+ECR stores images; it does not build them. `.github/workflows/api-publish.yml` builds the ARM64 image
+on GitHub's arm64 runner and pushes it, using a role assumed with GitHub's OIDC token — no AWS access
+key is stored in Actions, which is what ADR-0028 §8 requires of deploy access. It runs from
+`workflow_dispatch` only, so a publish is a deliberate act:
+
+```bash
+gh workflow run api-publish.yml      # from main; the tag is the 12-character commit sha, always
+```
+
+It pushes `<repo>:<sha>` only — the repository is IMMUTABLE and there is no `:latest`, because a mutable
+pointer in a task definition is how a "known good" deploy silently becomes a different image. A re-run
+on the same commit fails at the push with "tag already exists", which is correct. `env/api_image` pins
+the sha for the same reason: the task definition text is what makes ECS replace a task, so an image
+rebuilt under a moving tag changes nothing the apply can see. The workflow
+refuses to run in any repository other than `handfulofluck-lab/osra`, so a fork's copy cannot assume
+the role.
+
+### Two repository variables, set once after `base` is applied
+
+Actions cannot read Terraform state, and the workflow is given no credential that could. Both values
+come from repository variables:
+
+```bash
+gh variable set AWS_ECR_REPOSITORY   --body "$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
+gh variable set AWS_PUBLISH_ROLE_ARN --body "$(terraform -chdir=infra/terraform/base output -raw publish_role_arn)"
+```
+
+`base` creates neither the OIDC provider nor the role until `github_repo` names the repository — for
+this one, `github_repo = "handfulofluck-lab/osra"` in `base/terraform.tfvars` — and both outputs are
+empty until then. The workflow's first step fails with the command to run when either variable is
+unset.
+
+### What the role can and cannot do
+
+`osra-staging-publish` trusts only the `main` branch and the `staging-publish` environment of
+`handfulofluck-lab/osra`, with audience `sts.amazonaws.com` — in the plain subject form and in the
+`@owner-id`/`@repo-id` form GitHub uses for repositories created after 2026-07-15; any other
+repository, branch, tag or pull request is refused by STS. Its inline policy grants
+`ecr:GetAuthorizationToken` (account-wide, because ECR cannot scope the login token to a repository)
+and `BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`,
+`PutImage`, `BatchGetImage` and `DescribeImages` on the `osra-staging/api` repository only. It cannot
+read secrets, run tasks, deploy, or touch another repository or service. It can overwrite images in
+that one repository — that is what a push is, and why publishing stays a manual dispatch.
+
+### Local fallback
+
+A host with Docker and an AWS credential source can still publish by hand. It produces the same image,
+because the workflow builds the same Dockerfile for the same platform:
+
+```bash
+REPO="$(terraform -chdir=infra/terraform/base output -raw ecr_repository_url)"
+SHA="$(git rev-parse --short=12 HEAD)"
+aws ecr get-login-password --region me-central-1 \
+  | docker login --username AWS --password-stdin "${REPO%%/*}"
+docker buildx build --platform linux/arm64 -f services/api/Dockerfile --tag "${REPO}:${SHA}" --push .
+```
 
 ## Seed data is part of `up`, and mandatory
 
@@ -231,6 +289,8 @@ a non-release run put your own address there (for example `203.0.113.7/32`).
   across sessions.
 - Optional ACM certificate + Route 53 validation records (release mode).
 - IAM task execution role: ECR pull, logs, and read those four secrets.
+- When `github_repo` is set: a GitHub OIDC provider and the `osra-staging-publish` role, limited to
+  pushing images to that one repository (`Publishing the image` above).
 - CloudWatch log group `/ecs/osra-staging-api`, 14-day retention.
 
 `env`:

@@ -5,8 +5,8 @@
 resource "aws_ecr_repository" "api" {
   name = "${local.name_prefix}/api"
 
-  # Staging reuses a moving tag (for example :staging); production should switch to IMMUTABLE.
-  image_tag_mutability = "MUTABLE"
+  # Immutable: a tag must always name one image, so `env/api_image` pinning a sha means what it says.
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true

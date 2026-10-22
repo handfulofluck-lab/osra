@@ -34,6 +34,52 @@ variable "hosted_zone_name" {
   }
 }
 
+variable "github_repo" {
+  description = "GitHub repository allowed to publish the API image over OIDC, as owner/repo. Empty disables the OIDC provider and role."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.github_repo == "" || can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repo))
+    error_message = "github_repo must be empty or owner/repo."
+  }
+}
+
+// The numeric IDs are what make the OIDC subject immutable: without them a deleted and re-registered
+// owner or repository name can mint a token that matches. Values do not change for the life of the repo.
+variable "github_owner_id" {
+  description = "Numeric GitHub owner ID for the immutable OIDC subject (gh api repos/OWNER/REPO --jq .owner.id)."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.github_owner_id == "" || can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must be numeric."
+  }
+
+  # A half-filled pair would quietly create no role; fail with the command that fills it instead.
+  validation {
+    condition     = (var.github_repo == "") == (var.github_owner_id == "")
+    error_message = "Set github_repo, github_owner_id and github_repo_id together (gh api repos/OWNER/REPO --jq '.owner.id, .id')."
+  }
+}
+
+variable "github_repo_id" {
+  description = "Numeric GitHub repository ID for the immutable OIDC subject (gh api repos/OWNER/REPO --jq .id)."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.github_repo_id == "" || can(regex("^[0-9]+$", var.github_repo_id))
+    error_message = "github_repo_id must be numeric."
+  }
+
+  validation {
+    condition     = (var.github_repo == "") == (var.github_repo_id == "")
+    error_message = "Set github_repo, github_owner_id and github_repo_id together (gh api repos/OWNER/REPO --jq '.owner.id, .id')."
+  }
+}
+
 variable "certificate_arn" {
   description = "Bring-your-own ACM certificate ARN (must be issued in the same region). Empty means: create and validate one when domain_name is set, otherwise HTTP only."
   type        = string
