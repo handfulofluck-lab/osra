@@ -166,6 +166,7 @@ explicitly, in its own commit, with the reasoning in the PR.
 | `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
 | `api-image.yml` | Builds `services/api/Dockerfile` from the repo root on every pull request (`docker/build-push-action`, `push: false`, `linux/amd64`) and runs `services/api/scripts/verify-image.sh` inside the result. The Dockerfile has no `|| true`, so a failed install or build fails the PR. The arm64 image Fargate runs is built by ECR on push |
 | `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job |
+| `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
 Local equivalents of the two lint gates (the workflow lint is also installed as a pre-push hook by
@@ -176,6 +177,18 @@ node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
 ```
+
+Local equivalent of the Terraform gate (from the repository root; no credentials, no state):
+
+```bash
+terraform -chdir=infra/terraform fmt -check -recursive
+terraform -chdir=infra/terraform/base init -backend=false && terraform -chdir=infra/terraform/base validate
+terraform -chdir=infra/terraform/env  init -backend=false && terraform -chdir=infra/terraform/env  validate
+```
+
+Delete a working copy's `.terraform/terraform.tfstate` first if `init -backend=false` complains about
+S3 credentials: that file records a previous, real backend initialisation and makes Terraform try to
+reach it even with `-backend=false`. A fresh checkout has no such file, which is what CI runs.
 
 ## 5. Hardware verification (physical device)
 
@@ -733,6 +746,7 @@ Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 | A reviewer asks why `qa-probe` does not prove the **device-silence alert fires** | The watch is an in-process 5-minute tick (`src/jobs/deviceSilence.ts`) with no HTTP trigger, and the probe connects over HTTP only (`API_BASE` + `INTERNAL_HMAC_SECRET`; it has no `DATABASE_URL`). Making a device silent needs a backdated `Device.lastSeen`, then either a ≤5-minute wait or an in-process job call — and a real `runDeviceSilenceCheck()` on the shared stack would also alert on unrelated stale rows | Do not "fix" this by adding `DATABASE_URL` to the probe. The gate asserts the half that is reachable: a real telemetry POST reads back `status:"online"` — the value the watch matches, not `active` (probe `G22`), and no writer produced a status outside the shared vocabulary (`G23`). The alert-per-episode half stays a unit test (`test/device-silence.test.ts`), which drives the route's status into `runDeviceSilenceCheck(now, env)` with a backdated row |
 | In a **fresh worktree** set up per the brief (`pnpm install --filter "@familyshield/api..."`), `e2e.mjs` with `DATABASE_URL` set dies at the final row-count step with `Cannot find module '@prisma/client/runtime/library.js'` (exit 1, **no summary line**) | `prisma generate` writes the client to the workspace root `node_modules/.prisma/client`, whose `index.js` requires `@prisma/client/runtime/library.js`; the filtered install puts `@prisma/client` only in `services/api/node_modules`, so that lookup fails from the root | Link the package where the generated client expects it (environment-only, `node_modules` is gitignored): `node -e "require('fs').symlinkSync(require('path').resolve('node_modules/.pnpm/@prisma+client@<version>/node_modules/@prisma/client'), require('path').resolve('node_modules/@prisma/client'), 'junction')"`. Without `DATABASE_URL` the same run only prints a `NOTE` and skips the check — that skip is not a pass. Measured 2026-10-18 in `wt-p124probe`: before the link the run lost its summary after 68 passes; after it, **69 passed, 0 failed** with the zero-rows count |
 | `e2e` stops with `ABORT: rate limited by the API (n x 429) - wait 60 s and re-run` and exit **2** | The same shared limiter as the probe, one minute later in the same sitting. Before #126 e2e recorded the throttled `/me` calls as two `FAIL`s and then crashed at `e2e.mjs:89` with `TypeError: Cannot read properties of undefined (reading 'find')`, so the remaining ~60 checks never ran and no summary printed (measured 2026-10-18 on `main@7435592`) | The **tool working**, with the probe's contract: exit 2 = rate limited, exit 1 = a real assertion failed. Wait 60 s and run e2e alone. Since #126 `call()` counts every 429, retries once only when `Retry-After` ≤ 3 s, and aborts above 5 without a `FAIL`; a missing `/me` envelope prints the response body and the `=== E2E: n passed, m failed ===` summary and exits 1. Verified in `test/e2e-rate-limit.test.ts` (all-429 stub and a `/me` stub without `children`) |
+| `aws sts get-caller-identity` answers `InvalidClientTokenId` and every command says the access key is wrong | The key is fine; an **opt-in region that is `DISABLED`** for the account makes STS reject the call, and the error text is identical to a bad key | Run `aws account get-region-opt-status --region-name <region>` before concluding a key is wrong (optionally `aws account enable-region --region-name <region>`); only then debug the credentials |
 
 | `check-workflows.mjs` is green but GitHub runs a workflow with **0 s, no jobs** | The linter matches text; it cannot tell that a comment lost its `#` and became a bare line, or any other YAML error. GitHub then rejects the whole file and the run has no jobs, which looks like a cancelled workflow (2026-10-19: `verified-gate.yml`) | `workflow-lint` now runs `yaml.safe_load` over every workflow file. Locally: `python3 -c "import yaml,glob; [yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')]"` |
 
