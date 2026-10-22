@@ -77,6 +77,23 @@ node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count g
 node scripts/qa-probe.mjs   # 151 passed / 0 failed / 0 targets at 2026-10-21 — any failure exits 1
 ```
 
+`O14`–`O23` are the ADR-0031 MFA-reset group (ten checks, plus a `setup:` check that builds the family
+they need; the dated counts above are the last measured run, not a prediction): `O14`
+`/mfa/reset/request` refuses a wrong password and an unknown
+address with `/login`'s own status and body; `O15` a parent cannot issue `show_reset_code` (`400`, and
+nothing queued); `O16` no `show_reset_code` reaches the family before the mailbox link is clicked and
+exactly one is sent after; `O17` only the child's own device — never a parent surface — holds the 8-digit
+code; `O18` the parent-facing command history shows the row's status and `expiresAt` but never the
+plaintext code (the #305 review finding); `O19` a guardian and another family's owner cannot approve;
+`O20` `complete` inside the window is `409 window_open` and the factor stays bound; `O21` a
+`witness_passed` request cannot be restarted (`409 reset_already_pending`); `O22` a successful `/login`
+during the window cancels it (`409 request_cancelled`); `O23` a family with no witness gets
+`409 no_witness` with nothing stored. `O16`–`O22` walk the mailbox step through the `confirmToken` that
+`/mfa/reset/request` echoes **only** while no email provider is configured and `NODE_ENV` is not
+production; on a stack with `RESEND_API_KEY`/`EMAIL_FROM` set they cannot be walked over HTTP and the run
+prints one `target` naming them instead of a pass. The seven-day post-window expiry is a database clock
+the probe cannot wait for and stays with `test/mfa-reset-expiry.test.ts` and `src/jobs/mfaResetExpiry.ts`.
+
 `VAULT_KEY` is **its own** value, not the HMAC secret: the launcher sets a 44-character base64 key that
 differs from the 64-character `INTERNAL_HMAC_SECRET` (measured on this host, 2026-10-18). The earlier
 wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and fails two e2e checks with
