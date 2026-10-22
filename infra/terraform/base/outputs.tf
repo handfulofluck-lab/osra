@@ -28,6 +28,11 @@ output "execution_role_arn" {
   value       = aws_iam_role.execution.arn
 }
 
+output "publish_role_arn" {
+  description = "Role GitHub Actions assumes over OIDC to push the API image (empty when github_repo is unset)."
+  value       = var.github_repo != "" ? aws_iam_role.publish[0].arn : ""
+}
+
 output "certificate_arn" {
   description = "ACM certificate for the ALB, or empty in non-release (HTTP-only) mode."
   value       = local.certificate_arn

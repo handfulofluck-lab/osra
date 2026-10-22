@@ -34,6 +34,17 @@ variable "hosted_zone_name" {
   }
 }
 
+variable "github_repo" {
+  description = "GitHub repository allowed to publish the API image over OIDC, as owner/repo. Empty disables the OIDC provider and role."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.github_repo == "" || can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repo))
+    error_message = "github_repo must be empty or owner/repo."
+  }
+}
+
 variable "certificate_arn" {
   description = "Bring-your-own ACM certificate ARN (must be issued in the same region). Empty means: create and validate one when domain_name is set, otherwise HTTP only."
   type        = string
