@@ -1,0 +1,30 @@
+# Terraform local state and variable files — never commit these.
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
+
+# Provider/plugin cache.
+.terraform/
+
+# Crash logs.
+crash.log
+crash.*.log
+
+# Per-stack subtrees (base/ and env/): same rules spelled out for a plain `git status --ignored`.
+base/*.tfstate
+base/*.tfstate.*
+base/*.tfvars
+base/*.tfplan
+base/.terraform/
+env/*.tfstate
+env/*.tfstate.*
+env/*.tfvars
+env/*.tfplan
+env/.terraform/
+
+# up.sh writes the session start here; down.sh removes it.
+.session-start
+
+# Note: .terraform.lock.hcl is intentionally NOT ignored; it pins provider versions.

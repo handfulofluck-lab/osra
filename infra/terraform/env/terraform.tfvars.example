@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Never commit real values.
+
+project     = "osra"
+environment = "staging"
+region      = "me-central-1"
+
+# Full image reference including tag. <account-id> is the staging account; the ECR URL is base's
+# `ecr_repository_url` output after the first base apply.
+api_image = "<account-id>.dkr.ecr.me-central-1.amazonaws.com/osra-staging/api:<git-sha>" # a new sha = a new task definition
+
+# Task size: 512 CPU units = 0.5 vCPU, 1024 MiB (ADR-0028's minimum).
+api_cpu    = 512
+api_memory = 1024
+
+db_instance_class = "db.t4g.micro"
+db_multi_az       = false # production must be true
+redis_node_type   = "cache.t4g.micro"
+
+# up.sh applies with this false before the seed and true afterwards; leave it out in normal use.
+# api_service_enabled = true
+
+# The hostname is not set here: base/terraform.tfvars owns domain_name and the Route 53 zone, and
+# env reads both from base's state so the two stacks cannot disagree.
+
+# Default is public staging. In non-release mode (base has no certificate) a 0.0.0.0/0 entry is
+# refused by a precondition, because port 80 would then serve the API in cleartext; narrow it to
+# your own address (for example "203.0.113.7/32") or use release mode.
+allowed_cidrs = ["0.0.0.0/0"]
+
+# Optional CORS allowlist for browser callers; empty keeps the API's permissive staging default.
+cors_origin = ""
