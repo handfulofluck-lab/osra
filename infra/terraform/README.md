@@ -139,6 +139,33 @@ printing a URL for a crash-looping deployment.
 Extra arguments (for example `-auto-approve`) are passed to the applies; a `-var-file` path would
 have to be valid in both stacks, so prefer each stack's own `terraform.tfvars`.
 
+### Two traps that cost a real session time on 2026-10-23
+
+**1. `-auto-approve` is mandatory when nothing is on stdin.** `up.sh` forwards its arguments to every
+apply, and without this flag Terraform asks for confirmation. In a non-interactive shell (an agent, a
+scheduled task, `bash up.sh < /dev/null`) the prompt gets `EOF` and the run aborts with
+`error asking for approval: EOF` **before creating anything** — a 39-resource plan, zero resources
+applied. Nothing is left half-built, but the message does not say the flag was missing. Use
+`up.sh -auto-approve` / `down.sh -auto-approve`.
+
+**2. `allowed_cidrs` must be taken from the current session, not copied from the last one.** The
+examples narrow this to the operator's own address, which is correct for a staging API — but a home or
+mobile ISP lease changes, and the ALB then refuses every request from the machine that just built it.
+The symptom is **not** an obvious auth error: `curl` reports `(28) timed out` with status `000`, and
+`Test-NetConnection` can succeed against one ALB node and fail against the other, because the security
+group's deny is per-source rather than per-target. Check the address first, then plan:
+
+```bash
+curl -s https://api.ipify.org            # e.g. 41.40.103.58
+# put that value in infra/terraform/env/terraform.tfvars: allowed_cidrs = ["41.40.103.58/32"]
+```
+
+Ruling out the real suspects takes three reads, all cheap, and all were fine on 2026-10-23 when the
+pin was the cause: `aws route53 test-dns-answer` (DNS answered `NOERROR` with both ALB addresses),
+`aws elbv2 describe-load-balancers` (`internet-facing`), and the two public subnets' route tables
+(`0.0.0.0/0 → igw-…`). Narrowing the security group is one `terraform apply` of `env`, not a rebuild.
+
+
 Neither script ever runs `apply` or `destroy` against `base/` except `up.sh`'s base apply, which is
 the one time base is meant to change. `down.sh` destroys `env/` and nothing else, and refuses to run
 when `env/` has never been applied.
