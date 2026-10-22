@@ -70,6 +70,14 @@
    a concern alert reaches the parent within 1 minute, a public status page, and one restore-from-backup
    drill before launch.
 
+8. **Accounts (added 2026-10-22).** The AWS organization's management account holds billing, the
+   organization's guardrail policies (SCPs) and nothing that serves families. Guardrail policies never
+   apply to the management account, so a workload there runs without them. **Production runs in its own
+   member account per region**, created when that region opens. Staging may stay in the management
+   account only while it is bootstrapped by the temporary `osra-staging-deployer` key (expires
+   2026-11-05 or when the stack is up, #258); it moves to its own member account before beta families
+   use it. Deploy access to a member account is a role assumed from outside it, never a long-lived key.
+
 ## Reasoning
 
 - Managed containers run today's Docker images unchanged and take database failover, backups and
