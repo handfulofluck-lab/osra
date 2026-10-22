@@ -101,7 +101,7 @@ Known limits, stated rather than discovered later:
 
 Every generated row carries `provenance.split` — `dev` or `test` — and `provenance.pattern`, the id the
 side is cut on. The split is **per pattern, never per row**: a pattern is a template, its translation in
-the other language, its gender twin and a retelling of it in another person under one id (`PATTERN_EN` /
+the other language, its gender twin and a retelling of it (in another person, or with one detail changed) under one id (`PATTERN_EN` /
 `PATTERN_AR` and `LANGUAGE_ONLY` in each bank), and all rows from one pattern land on the same side. Five rows share a pattern's wording, so
 a model that recognises one fill very likely recognises its siblings; a per-row draw would put a
 paraphrase of a test row into dev and the "held-out" number would be contaminated by exactly the overlap

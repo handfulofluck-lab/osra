@@ -5,7 +5,7 @@
   follows its identity and not its position — inserting a pattern into a bank cannot silently move every
   later one between the sides, which is what an alternating rule would do.
 - **The split is per pattern, never per row, and not per template position either.** A pattern is a
-  template, its translation in the other language, its gender twin and a retelling of it in another person
+  template, its translation in the other language, its gender twin and a retelling of it (in another person, or with one detail changed)
   under one id (`PATTERN_EN` / `PATTERN_AR`, the hard-negative and generic-safe companions, and
   `LANGUAGE_ONLY` in each bank). Five rows share one pattern's wording, so a per-row draw would put a
   paraphrase of a test row in dev and contaminate the held-out number.
@@ -17,8 +17,9 @@
   sentence whose translation or twin was in test is a paraphrase in the tuning set. The split is now cut
   on the pattern, and the review of the first re-cut closed the two gaps it left: the twin test compares
   every pair rather than neighbours — 76 pairs, so `violence`, which lists its six masculine templates and
-  then its six feminine ones, is covered — and five retellings in another person now share their source's
-  id (grooming 16/17, 25/26, 28/29; `self_harm` EN 40 and AR 25; `violence` EN 5).
+  then its six feminine ones, is covered — and six retellings (in another person, or with one detail
+  changed) now share their source's id (grooming 16/17, 25/26, 28/29; `self_harm` EN 40 and AR 25;
+  `violence` EN 5).
 - Hard-negative and generic-safe rows now point at the bank template (`provenance.pattern`) instead of
   their position in the generator's shuffled draw, which is what `template_index` records for those
   lists; 117 of them changed side as a result. Freezing the old sides would only have postponed the

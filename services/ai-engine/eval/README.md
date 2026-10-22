@@ -41,7 +41,7 @@ fiction. The set grows through **new templates or new sources**, which is why pl
 2,000 is an authoring target rather than a configuration value (Claude's ruling on #262).
 
 **The split is per pattern, never per row.** A pattern is a template, its translation in the other
-language, its gender twin and a retelling of it in another person under one id (`PATTERN_EN`/`PATTERN_AR`
+language, its gender twin and a retelling of it (in another person, or with one detail changed) under one id (`PATTERN_EN`/`PATTERN_AR`
 and `LANGUAGE_ONLY` in each bank); `split_of(bank, pattern)` in `split.py` hashes that identity to `dev` or
 `test`, and every row it generates carries both in `provenance`. `run_eval --split test` is the estimate
 held out from tuning — not from the prompt's author, who wrote every template, so it measures this corpus

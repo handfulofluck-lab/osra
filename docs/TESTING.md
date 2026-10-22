@@ -117,7 +117,7 @@ Six things to know before reading a failure:
   reproduce. `eval/schema.md` carries the row format and the rule for adding a public or
   parent-reported source.
 - **The split is per pattern, not per row.** A pattern is a template, its translation, its gender twin and
-  a retelling of it in another person under one id, so none of them can sit on the other side of the
+  a retelling of it (in another person, or with one detail changed) under one id, so none of them can sit on the other side of the
   split. `--split {all,dev,test}` filters before scoring; `all` is the published table, and `test` is held
   out from tuning — not from the prompt's author, who wrote every template (`EVAL.md` §The dev/test
   split). A row whose `provenance.split` has drifted from `eval/split.py::split_of(bank, pattern)` fails
