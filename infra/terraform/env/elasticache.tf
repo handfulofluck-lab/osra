@@ -7,7 +7,8 @@ resource "aws_elasticache_subnet_group" "main" {
   }
 }
 
-# Redis 7 parameter-group family: ElastiCache does not offer a Valkey family in this account.
+# Redis 7 parameter-group family: the Valkey engine could not be listed at the time of writing — see
+# the note on the replication group below.
 resource "aws_elasticache_parameter_group" "cache" {
   name        = "${local.name_prefix}-redis7"
   family      = "redis7"
@@ -22,10 +23,15 @@ resource "aws_elasticache_parameter_group" "cache" {
 # sessions when Redis is unreachable; a second node would double the bill for a cache that is
 # rebuildable. Staging accepts the restart risk.
 #
-# Engine is redis 7.1, not valkey: `aws elasticache describe-cache-engine-versions --region
-# me-central-1 --engine valkey` returns InternalFailure here (2026-10-22, three attempts), while
-# `--engine redis` lists 6.2/7.0/7.1. The API's ioredis client speaks the same protocol.
-# Production MUST recheck Valkey in me-central-1 before it matters.
+# Engine is redis 7.1, not valkey: on 2026-10-22, in me-central-1, `aws elasticache
+# describe-cache-engine-versions --engine valkey` returned InternalFailure (three attempts) while
+# `--engine redis` listed 6.2/7.0/7.1. The API's ioredis client speaks the same protocol.
+#
+# That observation is dated, and staging no longer runs in that region: it moved to eu-north-1 on
+# 2026-10-22 (ADR-0030). The lookup was not repeated in eu-north-1 as part of the move, so redis 7.1
+# here is unverified in the region staging now uses, not a finding about it.
+# Production MUST recheck Valkey in Frankfurt (eu-central-1) before it matters (ADR-0030 decision 6
+# also asks for one staging run there before go-live).
 resource "aws_elasticache_replication_group" "main" {
   replication_group_id = "${local.name_prefix}-redis"
   description          = "OSRA staging cache for fan-out and revocation flags"

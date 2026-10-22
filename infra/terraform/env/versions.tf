@@ -14,10 +14,11 @@ terraform {
   }
 
   # Separate key from base: `down` destroys this stack and must leave base's state untouched.
+  # Same bucket and region as base (both moved to eu-north-1 on 2026-10-22, ADR-0030).
   backend "s3" {
-    bucket       = "osra-terraform-state-222207908538-me-central-1"
+    bucket       = "osra-terraform-state-222207908538-eu-north-1"
     key          = "staging/env/terraform.tfstate"
-    region       = "me-central-1"
+    region       = "eu-north-1"
     encrypt      = true
     use_lockfile = true # S3-native locking; no DynamoDB table to pay for or maintain
   }
