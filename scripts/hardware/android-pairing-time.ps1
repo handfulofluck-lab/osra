@@ -24,7 +24,9 @@
 # note that cites these numbers can say what is mechanical and what is the app's own latency.
 [CmdletBinding(DefaultParameterSetName = "Machine")]
 param(
-  [Parameter(Mandatory = $true, ParameterSetName = "Machine")][string]$Pin,
+  # Not `Mandatory` (#151): a missing mandatory parameter prompts on an interactive host and *hangs* a
+  # non-interactive run. It falls back to $env:OSRA_TEST_APP_PIN and otherwise exits 2 with a message.
+  [Parameter(ParameterSetName = "Machine")][string]$Pin = "",
   [Parameter(Mandatory = $true, ParameterSetName = "Human")][switch]$Human,
   [Parameter(ParameterSetName = "Human")][string]$Observer = "",
   [Parameter(ParameterSetName = "Human")][string]$MarkerFile = "",
@@ -39,6 +41,18 @@ param(
   [switch]$StopAtAdmin
 )
 $ErrorActionPreference = "Continue"
+# #151: same rule as the bypass probe — refuse rather than prompt. Only the Machine set needs the PIN.
+# `-Human` (and `-Human -SelfTest`) needs none, because an observer drives it. `-DryRun` is a *machine*
+# run that stops after the first pass, so it does type the PIN and does need one (#306 review).
+if ($PSCmdlet.ParameterSetName -eq "Machine" -and [string]::IsNullOrWhiteSpace($Pin)) {
+  $Pin = [string]$env:OSRA_TEST_APP_PIN
+  if ([string]::IsNullOrWhiteSpace($Pin)) {
+    Write-Error ("-Pin is required for a machine run (or set OSRA_TEST_APP_PIN). The PIN is deliberately " +
+      "not in this repo (#151).")
+    exit 2
+  }
+}
+
 
 # ---------------------------------------------------------------------------------------------------
 # Human mode (TR-51/52/53). Defined before any adb/API code so this branch can exit without touching
