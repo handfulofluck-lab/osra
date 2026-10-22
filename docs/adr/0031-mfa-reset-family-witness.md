@@ -317,8 +317,8 @@ record did not say:
 
 ### What this amendment does not do
 
-- It does not touch decision 2's factors, decision 5's recovery sequence, decision 6's `no_witness`
-  refusal or decision 7's 24-hour witness deadline and three-per-30-days ceiling.
+- It does not touch decision 2's factors, decision 3's 24-hour witness deadline, decision 5's recovery
+  sequence, decision 6's `no_witness` refusal or decision 7's three-per-30-days ceiling.
 - It does not add the read-only audit route (decision 8) or the notification templates (decision 4).
   Those remain unbuilt, as the changelog fragment for #305 states.
 
