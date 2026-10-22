@@ -2024,4 +2024,239 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get digestPrefsChildFallback => 'Child';
+
+  @override
+  String get mfaResetTitle => 'Reset two-step verification';
+
+  @override
+  String get mfaResetIntro =>
+      'Use this only if you have lost your authenticator and every recovery code. You will need your account password and access to this account\'s email, and one of these: a code shown on your child\'s phone, or another owner or co-parent who approves from their app. Then there is a 72-hour wait before two-step verification is reset.';
+
+  @override
+  String get mfaResetSubmit => 'Request a reset';
+
+  @override
+  String get mfaResetFieldsRequired => 'Fill in your email and password.';
+
+  @override
+  String get mfaResetInvalidCredentials =>
+      'The email or password is incorrect.';
+
+  @override
+  String get mfaResetMfaNotEnabled =>
+      'Two-step verification is off for this account, so there is nothing to reset. Sign in with your password.';
+
+  @override
+  String get mfaResetNoWitness =>
+      'This account has no family witness: no paired child device and no other owner or co-parent. Without one, two-step verification cannot be reset. If the child\'s phone is no longer paired, you can create a new account with another email address.';
+
+  @override
+  String get mfaResetAlreadyPending =>
+      'A reset for this account is already in its 72-hour wait and cannot be replaced. Finish that one, or cancel it with the link in its email.';
+
+  @override
+  String get mfaResetLimitReached =>
+      'You can request at most three resets in 30 days. This account has used them all for now.';
+
+  @override
+  String get mfaResetLinkExpired =>
+      'That link has expired or was already used.';
+
+  @override
+  String get mfaResetEntry => 'No recovery code left? Request a reset';
+
+  @override
+  String get mfaResetSettingsEntry =>
+      'Lost your authenticator and recovery codes?';
+
+  @override
+  String get mfaResetSetupNote =>
+      'If you lose the authenticator and every one of these codes, you can only get back in with a family witness: a paired child device or another owner or co-parent.';
+
+  @override
+  String get mfaResetWaitingTitle => 'Reset in progress';
+
+  @override
+  String get mfaResetStageMailboxTitle => 'Check your email';
+
+  @override
+  String get mfaResetStageMailboxBody =>
+      'Open the reset link sent to this account\'s email within 30 minutes. Opening the link puts an 8-digit code on your child\'s phone. If another parent is going to approve instead, they must do it from their app.';
+
+  @override
+  String mfaResetMailboxExpires(String time) {
+    return 'The link is valid until $time.';
+  }
+
+  @override
+  String get mfaResetStageMailboxCancelHint =>
+      'To stop the request, open the cancel link in that email. Signing in with your authenticator also cancels it.';
+
+  @override
+  String get mfaResetStageWitnessTitle =>
+      'Enter the code from your child\'s phone';
+
+  @override
+  String get mfaResetStageWitnessBody =>
+      'The code is 8 digits and is valid for 10 minutes.';
+
+  @override
+  String mfaResetCodeExpires(String time) {
+    return 'The code is valid until $time.';
+  }
+
+  @override
+  String get mfaResetHaveCode => 'I have the code';
+
+  @override
+  String get mfaResetEnterCode => 'Enter the code';
+
+  @override
+  String get mfaResetStageWindowTitle => 'The 72-hour wait has started';
+
+  @override
+  String get mfaResetStageWindowBody =>
+      'Two-step verification will be reset when the wait ends, unless you sign in with your authenticator or cancel before then. Any new sign-in by you cancels this request.';
+
+  @override
+  String mfaResetWindowEndsAt(String time) {
+    return 'The wait ends at $time.';
+  }
+
+  @override
+  String get mfaResetWindowDue =>
+      'The wait is over. You can finish the reset now.';
+
+  @override
+  String get mfaResetFinish => 'Finish the reset';
+
+  @override
+  String get mfaResetCancel => 'Cancel request';
+
+  @override
+  String get mfaResetCancelTitle => 'Cancel this request?';
+
+  @override
+  String get mfaResetCancelBody =>
+      'Nothing will change. Two-step verification stays as it is.';
+
+  @override
+  String get mfaResetCancelKeep => 'Keep waiting';
+
+  @override
+  String get mfaResetCancelled => 'The request was cancelled.';
+
+  @override
+  String get mfaResetCancelForbidden =>
+      'Only another owner or co-parent can cancel from the app. Use the cancel link in the email sent about this request.';
+
+  @override
+  String get mfaResetRequestNotFound => 'That request no longer exists.';
+
+  @override
+  String get mfaResetRequestNotOpen =>
+      'This request is no longer open. Start again from the beginning.';
+
+  @override
+  String get mfaResetRequestExpired =>
+      'This request has expired. Start again from the beginning.';
+
+  @override
+  String get mfaResetRequestCompleted =>
+      'This request has already been completed.';
+
+  @override
+  String get mfaResetRequestCancelled => 'This request was cancelled.';
+
+  @override
+  String get mfaResetWitnessRequired => 'Enter the 8-digit code.';
+
+  @override
+  String get mfaResetWindowOpen =>
+      'The wait is not over yet. Nothing has changed.';
+
+  @override
+  String get mfaResetWitnessDispatchFailed =>
+      'The code could not be sent to your child\'s phone. Request a reset again in a moment.';
+
+  @override
+  String get mfaResetUnavailable =>
+      'The reset service is unavailable right now. Try again in a moment.';
+
+  @override
+  String get mfaResetFinishTitle => 'Finish the reset';
+
+  @override
+  String get mfaResetFinishBody =>
+      'Enter this account\'s email and password. Two-step verification will be cleared and you will set up a new authenticator.';
+
+  @override
+  String get mfaResetFinishSubmit => 'Reset two-step verification';
+
+  @override
+  String get mfaResetWitnessTitle => 'Enter the reset code';
+
+  @override
+  String get mfaResetWitnessIntro =>
+      'Type the 8-digit code shown on your child\'s phone. It is valid for 10 minutes, and five wrong codes end this request.';
+
+  @override
+  String get mfaResetWitnessLabel => '8-digit code';
+
+  @override
+  String get mfaResetWitnessSubmit => 'Check code';
+
+  @override
+  String get mfaResetWitnessInvalid =>
+      'That code was not accepted or has expired. Check the code on your child\'s phone and try again.';
+
+  @override
+  String mfaResetWitnessAttemptsLeft(int count) {
+    return 'That code was not accepted. Attempts left: $count.';
+  }
+
+  @override
+  String get mfaResetWitnessTooMany =>
+      'Too many wrong codes. This request has ended; start again from the beginning.';
+
+  @override
+  String get mfaResetApproveTitle => 'Approve a reset request';
+
+  @override
+  String get mfaResetApproveIntro =>
+      'Another parent in your family asked to reset their two-step verification after losing their authenticator and recovery codes. Approving starts a 72-hour wait. A sign-in by that parent during the wait cancels the request.';
+
+  @override
+  String get mfaResetApproveAction => 'Approve';
+
+  @override
+  String get mfaResetDeclineAction => 'Decline';
+
+  @override
+  String get mfaResetDeclineTitle => 'Decline this request?';
+
+  @override
+  String get mfaResetDeclineBody =>
+      'The reset will not happen and two-step verification stays as it is.';
+
+  @override
+  String get mfaResetDeclineConfirm => 'Decline request';
+
+  @override
+  String get mfaResetApproved => 'Approved. The 72-hour wait has started.';
+
+  @override
+  String get mfaResetDeclined => 'Declined. The request was cancelled.';
+
+  @override
+  String get mfaResetApproveRole =>
+      'Only an owner or co-parent can approve or decline a reset request.';
+
+  @override
+  String get mfaResetApproveForbidden =>
+      'You cannot approve or decline this request.';
+
+  @override
+  String get mfaResetApproveNeedsId =>
+      'Open this screen from the notification about the request.';
 }
