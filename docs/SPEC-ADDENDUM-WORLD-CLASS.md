@@ -11,6 +11,7 @@ interpretations, consent gate 428, requireFamily 403, HMAC agent calls, family i
 | pause_internet / resume_internet | `{}` | sinkhole all traffic except always-allowed (Feature #11) |
 | bonus_time | `{minutes: number}` | add N minutes of screen time today only (#10) |
 | wind_down | `{minutes: number}` | bedtime-style soft warning then lock (#22) |
+| show_reset_code | `{requestId, parentName, code, expiresAt}` | ADR-0031: the child's phone shows an 8-digit code for a locked-out parent. Restricts nothing — safe-direction, no consent gate. Sent only by `POST /v1/auth/mfa/reset/confirm`, to every paired device of the family, once the mailbox step is confirmed; the row lives 10 minutes and its payload is cleared on ack, on expiry and on a passed witness |
 | (existing) lock/unlock/pause/resume/ring/sos_clear/rules_updated/locate_now | | unchanged |
 
 Command enum lives in `services/api/src/routes/devices.ts` CommandSchema.

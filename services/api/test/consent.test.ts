@@ -261,6 +261,14 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
       headers: authHeader(app, "fam-1"),
       payload: { command: "stop_ring" },
     });
+    // ADR-0031 decision 2.3 / ADR-0019 rule 1: show_reset_code restricts nothing, so it is
+    // safe-direction and needs no active consent either.
+    const showResetCode = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/command",
+      headers: authHeader(app, "fam-1"),
+      payload: { command: "show_reset_code", payload: { requestId: "req-1", code: "12345678" } },
+    });
     const locate = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/command",
@@ -271,6 +279,7 @@ describe("parental consent revocation and gate enforcement (spec §12.5, ADR-000
     expect(lock.statusCode).toBe(428);
     expect(unlock.statusCode).toBe(200);
     expect(stopRing.statusCode).toBe(200);
+    expect(showResetCode.statusCode).toBe(200);
     expect(locate.statusCode).toBe(428);
     await app.close();
   });

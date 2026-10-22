@@ -42,12 +42,17 @@ const CommandSchema = z.object({
     // Plan 1.7: a fresh high-accuracy fix on demand, and the parent-side stop for a ring.
     "locate_now",
     "stop_ring",
+    // ADR-0031 decision 2.3: the family witness — the child's phone shows an 8-digit code for the
+    // parent who is locked out of their second factor. It restricts nothing (safe-direction,
+    // ADR-0019/ADR-0031), and the normal producer is `POST /v1/auth/mfa/reset/confirm`, which sends
+    // it to every paired device of the family once the mailbox step is confirmed.
+    "show_reset_code",
   ]),
   payload: z.record(z.unknown()).optional(),
 });
 
 /** Commands that reduce restriction on the child and therefore never require active consent. */
-const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear", "stop_ring"]);
+const SAFE_DIRECTION_COMMANDS = new Set(["unlock", "resume", "resume_internet", "sos_clear", "stop_ring", "show_reset_code"]);
 
 const AckSchema = z.object({
   status: z.enum(["ok", "failed"]),

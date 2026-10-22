@@ -37,6 +37,9 @@ export const COMMAND_TTL_SECONDS: Record<string, number> = {
   // before the single remaining poll ran; 20 covers the worst-case gap between two ticks.
   locate_now: 20 * 60,
   sos_clear: 60 * 60,
+  // ADR-0031: the row carries the plaintext 8-digit code, so the row's life is the code's life (10
+  // minutes). The expiry sweep clears the payload when it ends (src/jobs/mfaResetExpiry.ts).
+  show_reset_code: 10 * 60,
   rules_updated: 24 * 3600,
   consent_granted: 7 * 24 * 3600,
   consent_revoked: 7 * 24 * 3600,
@@ -198,6 +201,10 @@ export async function ackDeviceCommand(
     },
   });
   if (result.count === 0) return null;
+  // ADR-0031 claim 6: a `show_reset_code` row holds the plaintext 8-digit code, and the acknowledgement
+  // is one of the two moments it must stop existing (the other is expiry, swept by the job). Clearing
+  // is unconditional on the outcome and leaves the status/ack fields above untouched.
+  await prisma.deviceCommand.updateMany({ where: { id: commandId, type: "show_reset_code" }, data: { payload: {} } });
   return prisma.deviceCommand.findUnique({ where: { id: commandId } });
 }
 
