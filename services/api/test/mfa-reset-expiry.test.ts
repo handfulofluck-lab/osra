@@ -52,6 +52,7 @@ function install() {
       if (row.state !== where.state) continue;
       if (where.emailConfirmedAt?.lte && !(row.emailConfirmedAt && row.emailConfirmedAt <= where.emailConfirmedAt.lte)) continue;
       if (where.createdAt?.lte && !(row.createdAt <= where.createdAt.lte)) continue;
+      if (where.windowEndsAt?.lte && !(row.windowEndsAt && row.windowEndsAt <= where.windowEndsAt.lte)) continue;
       Object.assign(row, data);
       count += 1;
     }
@@ -118,6 +119,21 @@ describe("MFA reset expiry job (ADR-0031 decision 3 'expiry', decision 8 retenti
     expect(run.witnessExpired).toBe(0);
     expect(run.mailboxExpired).toBe(0);
     expect(rows.map((r) => r.state)).toEqual(["witness_passed", "witness_passed"]);
+  });
+
+  it("expires a passed witness seven days after its window ended, and not a day earlier", async () => {
+    // ADR-0031 amendment 2026-10-22, gap 1: a request that passed its witness and was never completed
+    // ends seven days after `windowEndsAt`. Before that it stays open, so a parent who comes back
+    // inside the week still has the request the ADR promised them.
+    rows.push(row({ id: "week-past", state: "witness_passed", windowEndsAt: new Date(NOW.getTime() - 8 * DAY) }));
+    rows.push(row({ id: "six-days", state: "witness_passed", windowEndsAt: new Date(NOW.getTime() - 6 * DAY) }));
+
+    const run = await runMfaResetExpiry(NOW);
+    expect(run.witnessPassedExpired).toBe(1);
+    expect(rows.find((r) => r.id === "week-past")!.state).toBe("expired");
+    expect(rows.find((r) => r.id === "week-past")!.outcomeAt).toEqual(NOW);
+    expect(rows.find((r) => r.id === "six-days")!.state).toBe("witness_passed");
+    expect(rows.find((r) => r.id === "six-days")!.outcomeAt).toBeNull();
   });
 
   it("clears the plaintext reset code from every show_reset_code payload at its expiry (claim 6)", async () => {

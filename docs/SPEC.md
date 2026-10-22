@@ -275,7 +275,9 @@ factor by hand.
 | — | `POST /mfa/reset/request` (password, a witness exists) | `requested` |
 | — | `request` with no paired device and no other owner/co-parent | refused `409 no_witness`, nothing stored |
 | `requested` | `POST /mfa/reset/confirm` (the mailbox link, single use) | `mailbox_confirmed` (and only now a `show_reset_code` command per paired device) |
-| `requested` / `mailbox_confirmed` / `witness_passed` | a successful `POST /login` by that parent | `cancelled_by_signin` |
+| `requested` / `mailbox_confirmed` | a new `request` from the same parent | the old row `expired` (`outcomeAt` = now, its code payloads cleared) and a new `requested` row; the superseded attempt still counts |
+| `witness_passed` | a new `request` from the same parent | refused `409 reset_already_pending` |
+| `requested` / `mailbox_confirmed` / `witness_passed` | a successful `POST /login` by that parent | `cancelled_by_signin` (its code payloads cleared) |
 | any of those three | the cancel link | `cancelled_by_link` |
 | any of those three | another `owner`/`co-parent` cancels from their app | `cancelled_by_parent` |
 | `mailbox_confirmed` | 8-digit code accepted, or an owner/co-parent approves | `witness_passed` (every session revoked; `windowEndsAt` = now + 72 h) |
@@ -284,10 +286,11 @@ factor by hand.
 | `requested` | 24 h without the mailbox click | `expired` |
 | `witness_passed` | `POST /mfa/reset/complete` before `windowEndsAt` | refused `409 window_open`, nothing changes |
 | `witness_passed` | `POST /mfa/reset/complete` after `windowEndsAt` | `completed` and the ADR-0023 recovery token |
+| `witness_passed` | seven days after `windowEndsAt` without `complete` | `expired` |
 
 | Surface | What it does | What it refuses |
 |---|---|---|
-| `POST /v1/auth/mfa/reset/request` | `{email, password}`; same rate limit and the same `401 invalid_credentials` as `/login`; one open request per parent and three per 30 days | `409 mfa_not_enabled` (nothing to reset), `409 no_witness` (claim 7), `409 reset_already_pending`, `429 reset_limit_reached` |
+| `POST /v1/auth/mfa/reset/request` | `{email, password}`; same rate limit and the same `401 invalid_credentials` as `/login`; three per 30 days, counted over every row including superseded ones; supersedes this parent's own `requested`/`mailbox_confirmed` request | `409 mfa_not_enabled` (nothing to reset), `409 no_witness` (claim 7), `409 reset_already_pending` (a `witness_passed` request), `429 reset_limit_reached` |
 | `POST /v1/auth/mfa/reset/confirm` | `{token}` from the mailbox; single use, 30 minutes; sends `show_reset_code` to every paired device of the family, one 8-digit code valid 10 minutes, stored only as SHA-256 | `401 invalid_or_expired_token` (spent/unknown/wrong purpose), `409 request_not_open` |
 | `POST /v1/auth/mfa/reset/witness` | `{requestId, code}`, no session needed; passing revokes the parent's sessions (session version +1) | `401 invalid_witness`, `401 too_many_attempts` on the fifth wrong code, `409 request_not_open` |
 | `POST /v1/auth/mfa/reset/approve` | `{requestId}` from another `owner`/`co-parent` of the same family; same revocation and window as the device code | `403 role_not_allowed` (guardian), `403 forbidden` (another family, or the subject), `409 request_not_open` |
@@ -297,15 +300,16 @@ factor by hand.
 `MfaResetRequest` holds one row per request: `parentId`, `familyId`, `state`, `createdAt`,
 `emailConfirmedAt`, `witnessKind` (`device` | `parent`), `witnessRef`, `witnessAt`, `windowEndsAt`,
 `failedCodeAttempts`, `codeHash` (SHA-256 only), `codeExpiresAt`, `completedAt`, `cancelledReason`,
-`outcomeAt`. No IP address, user agent or free text; timestamps are written once and the outcome is
-written once. `src/jobs/mfaResetExpiry.ts` expires the two 24-hour deadlines, clears the plaintext
-from expired `show_reset_code` payloads, and deletes rows 12 months after `outcomeAt`.
+`outcomeAt`. `witnessRef` is the approving parent's id for a `parent` witness and `null` for a
+`device` witness, because one code goes to every paired device and no single device can be named
+(ADR-0031 amendment 2026-10-22). No IP address, user agent or free text; timestamps are written once
+and the outcome is written once. `src/jobs/mfaResetExpiry.ts` expires the two 24-hour deadlines and the
+seven-day post-window deadline, clears the plaintext from expired `show_reset_code` payloads, and
+deletes rows 12 months after `outcomeAt`.
 
 Not built in the API change that introduced this: the email and push templates (the send points are
 `[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
-`show_reset_code` screen. There is also no read-only audit route yet (ADR-0031 decision 8), and a
-`witness_passed` request that is never completed has no expiry of its own — the ADR sets a deadline
-only for the witness step.
+`show_reset_code` screen. There is also no read-only audit route yet (ADR-0031 decision 8).
 
 ## §4 AI Engine (`services/ai-engine`)
 
