@@ -28,8 +28,11 @@ resource "aws_elasticache_parameter_group" "cache" {
 # `--engine redis` listed 6.2/7.0/7.1. The API's ioredis client speaks the same protocol.
 #
 # That observation is dated, and staging no longer runs in that region: it moved to eu-north-1 on
-# 2026-10-22 (ADR-0030). The lookup was not repeated in eu-north-1 as part of the move, so redis 7.1
-# here is unverified in the region staging now uses, not a finding about it.
+# 2026-10-22 (ADR-0030). The lookup was repeated there afterwards (Claude, read-only) and lists valkey
+# 7.2, 8.0, 8.1, 8.2, 9.0 and 9.1, so this engine choice is valid in Stockholm too — the reason it is
+# still `redis` is the production family, not a regional gap. Switching staging to valkey belongs in
+# its own change (`engine = "valkey"`, family valkey8); it costs nothing to try because `env` is rebuilt
+# every session.
 # Production MUST recheck Valkey in Frankfurt (eu-central-1) before it matters (ADR-0030 decision 6
 # also asks for one staging run there before go-live).
 resource "aws_elasticache_replication_group" "main" {

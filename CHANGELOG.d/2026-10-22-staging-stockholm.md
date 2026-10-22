@@ -21,10 +21,14 @@
 - The cost figures are **not** re-quoted: the per-item prices were taken from the previous region's list
   prices and Stockholm's differ, so `infra/terraform/README.md` says so rather than presenting 0.19/h as a
   Stockholm price.
-- **Not done here, deliberately:** no state bucket exists in `eu-north-1` yet (it is created and hardened
-  outside Terraform, per that README), nothing has been planned or applied, and the `me-central-1` base
-  stack has not been destroyed — the order in ADR-0030 decision 2 is: create the bucket, apply base in
-  `eu-north-1`, then destroy the old base. The Valkey engine lookup has not been repeated in `eu-north-1`
-  either, so `redis` 7.1 is unverified in the region staging now uses. No Terraform resource changed
+- **Not done here, deliberately:** nothing has been planned or applied from this branch, and the
+  `me-central-1` base stack still stands. The order in ADR-0030 decision 2 is: **destroy the `me-central-1`
+  base, create the bucket, merge this change, then apply base in `eu-north-1`.** The order matters because
+  `base` creates two IAM roles and the GitHub OIDC provider, which are global and still owned by the UAE base,
+  and the hand-made `osra-staging/api` repository in `eu-north-1` must be deleted first — a base apply before
+  the destroy fails partway with `EntityAlreadyExists` / `RepositoryAlreadyExistsException`, and a plan does not
+  catch either. The state bucket now exists (created and hardened outside Terraform, verified by reading its
+  settings back), and the Valkey lookup has since been run in `eu-north-1`: it lists 7.2 through 9.1, so
+  `redis` 7.1 as configured is valid there. No Terraform resource changed
   semantics; `terraform fmt -check -recursive` and `validate` in both stacks are the only checks run, and
   the first real proof is the first `up.sh` against `eu-north-1`.

@@ -45,6 +45,27 @@ deleted with it, not reused.
 | `base/` | `staging/base/terraform.tfstate` |
 | `env/` | `staging/env/terraform.tfstate` |
 
+### Moving from `me-central-1` (one-off, 2026-10-22)
+
+The region moved because AWS's UAE region lost an availability zone and refuses image pushes (ADR-0030).
+Four steps, **in this order** — the order is the part that fails if it is guessed:
+
+1. **Destroy the `me-central-1` base**, from a checkout whose backend and tfvars still say `me-central-1`
+   (`git` at `a9cf888` or earlier, or a worktree created before this change). After the move, `main`'s
+   backend points at the Stockholm bucket, so a destroy run from it would look for the regional resources in
+   `eu-north-1`, find none, drop them from state and leave them running — while still deleting the global IAM
+   ones.
+2. **Delete the hand-made empty repository** `osra-staging/api` in `eu-north-1`, so `base` can create its own
+   with the 14-day untagged-image lifecycle policy.
+3. **Merge the region change, then `plan` base** from a worktree whose backend is the Stockholm bucket.
+4. **Apply base**, then set the Actions variable `AWS_ECR_REPOSITORY` to the new `ecr_repository_url` output.
+
+Why the destroy comes first: `base` creates two IAM roles (`osra-staging-ecs-execution`,
+`osra-staging-publish`) and the `token.actions.githubusercontent.com` OIDC provider, all of which are
+**account-global** and already owned by the UAE stack. A base apply in `eu-north-1` while those exist fails
+partway with `EntityAlreadyExists`, and with the leftover repository, `RepositoryAlreadyExistsException`.
+`terraform plan` reports a clean apply in both cases; only the apply fails.
+
 Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `env/`.
 
 ## Layout
@@ -187,15 +208,16 @@ unset.
 
 ### What the role can and cannot do
 
-`osra-staging-publish` trusts only the `main` branch and the `staging-publish` environment of
-`handfulofluck-lab/osra`, with audience `sts.amazonaws.com` — in the plain subject form and in the
-`@owner-id`/`@repo-id` form GitHub uses for repositories created after 2026-07-15; any other
-repository, branch, tag or pull request is refused by STS. Its inline policy grants
+`osra-staging-publish` trusts exactly one subject — the `main` branch of `handfulofluck-lab/osra`, in the
+`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/main` form GitHub uses for repositories created after
+2026-07-15 — with audience `sts.amazonaws.com`; any other repository, branch, tag, environment or pull
+request is refused by STS. Its inline policy grants
 `ecr:GetAuthorizationToken` (account-wide, because ECR cannot scope the login token to a repository)
 and `BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`,
 `PutImage`, `BatchGetImage` and `DescribeImages` on the `osra-staging/api` repository only. It cannot
-read secrets, run tasks, deploy, or touch another repository or service. It can overwrite images in
-that one repository — that is what a push is, and why publishing stays a manual dispatch.
+read secrets, run tasks, deploy, or touch another repository or service. It can add a new tag to that one
+repository but cannot replace one: tags are `IMMUTABLE` (`base/ecr.tf`), so a published sha always names
+the image it was first pushed as.
 
 ### Local fallback
 
@@ -325,10 +347,13 @@ a non-release run put your own address there (for example `203.0.113.7/32`).
 On 2026-10-22, in `me-central-1`, `aws elasticache describe-cache-engine-versions --engine valkey`
 returned `InternalFailure` on three consecutive attempts, while `--engine redis` listed 6.2, 7.0 and
 7.1. The API's ioredis client speaks the same protocol. That observation is historical — staging ran
-in that region then and runs in `eu-north-1` now (ADR-0030), and the lookup was **not** repeated in
-Stockholm as part of the move, so `redis` 7.1 there is untested rather than a finding. **Production
-must recheck Valkey in Frankfurt (`eu-central-1`) before it matters** (ADR-0028 names Valkey,
-ADR-0030 decision 6 asks for one staging run in Frankfurt before go-live).
+in that region then and runs in `eu-north-1` now (ADR-0030). The lookup was repeated in Stockholm
+afterwards and lists valkey **7.2, 8.0, 8.1, 8.2, 9.0 and 9.1**, so `redis` 7.1 is valid there; the
+remaining reason to keep it is that staging should match production's family until production is proven.
+Switching staging to valkey is its own small change (`engine = "valkey"`, `engine_version = "8.2"`,
+family `valkey8`), and it costs nothing to try because `env` is destroyed and rebuilt every session.
+**Production must recheck Valkey in Frankfurt (`eu-central-1`) before it matters** (ADR-0028 names
+Valkey, ADR-0030 decision 6 asks for one staging run in Frankfurt before go-live).
 
 ## Cost
 
