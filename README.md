@@ -115,9 +115,9 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 | **Adversarial probe** (`services/api/scripts/qa-probe.mjs`) | family isolation, per-device identity, consent gate, revocation, token hygiene, alert coverage, input bounds, error hygiene | **151 passed · 0 failed · 0 targets · 0 notes** |
 | API vitest | routes, auth, token hygiene, blocklists, content, comms, telemetry | 452/452 (35 files) |
 | Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568, Arabic RTL | 257/257, analyze clean |
-| Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 515/515 per flavour (Play and Full) |
+| Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 559/559 per flavour (Play and Full) |
 | Desktop xunit | Windows agent services | 225/225 |
-| AI pytest | classifier, API smoke, evaluation harness | 39 passed |
+| AI pytest | classifier, API smoke, evaluation harness | 63 passed |
 | Evaluation harness (`eval.banks`, `eval.generate --check`, `eval.run_eval`) | the labelled set and the published per-category scores | 7 banks validate · 1,179 rows · scores in [`services/ai-engine/EVAL.md`](services/ai-engine/EVAL.md) |
 | Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 71/71 |
 | Hardware (physical device) | first-run crash, FGS start, location upload, overlays, tamper rows | procedure in [`docs/TESTING.md`](docs/TESTING.md) §5 |
