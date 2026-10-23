@@ -180,6 +180,19 @@ never the one who decides it is correct.
 `ahmed/<roadmap-item>-<topic>` (Ahmed; if his environment only pushes a branch it names itself, he uses that one
 and names it in the PR, because CI reads the PR title, not the branch).
 
+**Your branch is deleted when your PR merges — by the repository, with this rule as the backstop** (roadmap 0.5,
+2026-10-23). GitHub's *Automatically delete head branches* setting (`delete_branch_on_merge`) is **on** as of
+2026-10-23, so a merge through the web UI or the API removes the head branch itself. It was **off** until then, which is
+how the branch list drifted: **220 remote heads against a handful of live lanes**, each one turning "which branch is
+this" into a scan. The maintainer approved deleting the **212** whose tips were already ancestors of `main`; the record
+of every one (`name sha`, restorable with `git push origin <sha>:refs/heads/<name>`) is in
+`docs/QA/DISCUSSION-LOG.md`, and roadmap 0.5 stays 🔵 because five branches holding work that is **not** in `main` were
+rightly kept.
+
+The rule below is therefore a **backstop**, not the mechanism: it covers a merge done outside GitHub (a local
+`git merge` then push, a script, a fork), and it is how you check that the setting is still doing its job. Deleting an
+**unmerged** branch is a different act and needs the maintainer, not this rule.
+
 ### 6.1 A PR is a discussion, not an announcement
 
 Fill in `.github/PULL_REQUEST_TEMPLATE.md`. It requires, in order:
@@ -296,6 +309,11 @@ than a rule that was forgotten.
 
 Merging is not approval of the other agent's competence — it is a claim that the evidence in the PR
 justifies the change.
+
+**The last step of a merge is checking the head branch is gone** (§6): with `delete_branch_on_merge` on, GitHub removes
+it during the merge. Confirm it (`gh api repos/OWNER/REPO -q .delete_branch_on_merge`, then `git ls-remote --heads
+origin`), and delete it by hand only if it survived because the merge happened outside GitHub. Never leave a review open
+on the strength of a "will tidy up later" — and never delete an unmerged branch to tidy a list.
 
 ## 7. Device and environment hygiene (standing rule, human-mandated 2026-10-11)
 
