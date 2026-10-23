@@ -36,9 +36,23 @@
   100 are wrong, and it renders the alerts feed with all 13 categories in Arabic for the maintainer's
   review image. Acceptance for roadmap 3.1 is Karim's sign-off on the re-rendered screens, not this
   suite.
-- Known gap, not covered here: the alert tile's *subtitle* (`l10n.dart`'s `alertCategory`,
-  `alerts_screen.dart:98`, `child_detail_screen.dart:806`) still maps the same two invented keys and
-  shows the raw category (`web_threat`) for the other 11. The review asked for the titles; the short
-  category labels need the maintainer's wording before they can be added.
+- Third review round, the category label under the title: `alertCategory` (`l10n.dart`) now maps the
+  same 13 names `InternalAlertSchema` accepts, in both ARB files, with the raw key still the fallback
+  for a value newer than the app. The invented `web_filter`/`screen_time`/`social_concern`/`location`/
+  `device`/`safety` keys are gone, so no screen can reach the old vocabulary again. The wording is the
+  reviewer's short-label table (e.g. "موقع محظور", "تطبيق محظور", "الأماكن", "تنمّر", "الحماية",
+  "جهة غير معروفة"), with `sos` and `install_request` keeping the labels they had; Karim has the final
+  word on it. Both places that render it — the tile subtitle (`child_detail_screen.dart:819`, shared by
+  the alerts feed and the child-detail list) and the alert dialog (`alerts_screen.dart:98`) — read the
+  mapping.
+- The drift test now covers the label too: for every category from `InternalAlertSchema`, in both
+  locales, the label *and* the title must differ from the raw key, and an unknown category still falls
+  back to the key. Dropping one case (`tamper`) fails the test in both locales. The all-13 Arabic feed
+  render also asserts the label under each title, so the review's screenshot cannot regress silently.
+- Third review round, review render 03: the child-detail app bar clipped "تعديل القواعد" at the left
+  edge at 320 px. Below 360 px the rules action is now an `IconButton` with the label as its tooltip —
+  the shape the other two actions already use — and at 360, 375 and 411 px it stays the labelled
+  `TextButton.icon` with the same route. A 320×568 test taps it and lands on the rules editor; the
+  wider-width tests do the same with the label visible.
 - The lone "120" on the reports screen was the fl_chart left axis drawing bare minute numbers; it now
   renders `minutesShort`, so the tick is self-describing.

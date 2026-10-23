@@ -1160,17 +1160,17 @@ abstract class AppLocalizations {
   /// **'Info'**
   String get severityInfo;
 
-  /// No description provided for @alertCategorySos.
+  /// No description provided for @alertCategoryWebThreat.
   ///
   /// In en, this message translates to:
-  /// **'SOS'**
-  String get alertCategorySos;
+  /// **'Blocked site'**
+  String get alertCategoryWebThreat;
 
-  /// No description provided for @alertCategoryWebFilter.
+  /// No description provided for @alertCategoryAppBlocked.
   ///
   /// In en, this message translates to:
-  /// **'Web filter'**
-  String get alertCategoryWebFilter;
+  /// **'Blocked app'**
+  String get alertCategoryAppBlocked;
 
   /// No description provided for @alertCategoryScreenTime.
   ///
@@ -1178,35 +1178,65 @@ abstract class AppLocalizations {
   /// **'Screen time'**
   String get alertCategoryScreenTime;
 
+  /// No description provided for @alertCategoryGeofence.
+  ///
+  /// In en, this message translates to:
+  /// **'Places'**
+  String get alertCategoryGeofence;
+
+  /// No description provided for @alertCategorySos.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS'**
+  String get alertCategorySos;
+
+  /// No description provided for @alertCategoryAiConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning content'**
+  String get alertCategoryAiConcern;
+
+  /// No description provided for @alertCategoryCyberbullying.
+  ///
+  /// In en, this message translates to:
+  /// **'Bullying'**
+  String get alertCategoryCyberbullying;
+
+  /// No description provided for @alertCategorySelfHarm.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-harm'**
+  String get alertCategorySelfHarm;
+
+  /// No description provided for @alertCategoryGrooming.
+  ///
+  /// In en, this message translates to:
+  /// **'Grooming'**
+  String get alertCategoryGrooming;
+
+  /// No description provided for @alertCategoryTamper.
+  ///
+  /// In en, this message translates to:
+  /// **'Protection'**
+  String get alertCategoryTamper;
+
+  /// No description provided for @alertCategoryVpnDetected.
+  ///
+  /// In en, this message translates to:
+  /// **'VPN'**
+  String get alertCategoryVpnDetected;
+
   /// No description provided for @alertCategoryInstallRequest.
   ///
   /// In en, this message translates to:
   /// **'App install request'**
   String get alertCategoryInstallRequest;
 
-  /// No description provided for @alertCategorySocialConcern.
+  /// No description provided for @alertCategoryUnknownContact.
   ///
   /// In en, this message translates to:
-  /// **'Social concern'**
-  String get alertCategorySocialConcern;
-
-  /// No description provided for @alertCategoryLocation.
-  ///
-  /// In en, this message translates to:
-  /// **'Location'**
-  String get alertCategoryLocation;
-
-  /// No description provided for @alertCategoryDevice.
-  ///
-  /// In en, this message translates to:
-  /// **'Device'**
-  String get alertCategoryDevice;
-
-  /// No description provided for @alertCategorySafety.
-  ///
-  /// In en, this message translates to:
-  /// **'Safety'**
-  String get alertCategorySafety;
+  /// **'Unknown contact'**
+  String get alertCategoryUnknownContact;
 
   /// No description provided for @tabScreenTime.
   ///

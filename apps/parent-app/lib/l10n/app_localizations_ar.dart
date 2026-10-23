@@ -657,28 +657,43 @@ class AppLocalizationsAr extends AppLocalizations {
   String get severityInfo => 'معلومة';
 
   @override
-  String get alertCategorySos => 'استغاثة';
+  String get alertCategoryWebThreat => 'موقع محظور';
 
   @override
-  String get alertCategoryWebFilter => 'تصفية الويب';
+  String get alertCategoryAppBlocked => 'تطبيق محظور';
 
   @override
   String get alertCategoryScreenTime => 'وقت الشاشة';
 
   @override
+  String get alertCategoryGeofence => 'الأماكن';
+
+  @override
+  String get alertCategorySos => 'استغاثة';
+
+  @override
+  String get alertCategoryAiConcern => 'محتوى مثير للقلق';
+
+  @override
+  String get alertCategoryCyberbullying => 'تنمّر';
+
+  @override
+  String get alertCategorySelfHarm => 'إيذاء النفس';
+
+  @override
+  String get alertCategoryGrooming => 'استدراج';
+
+  @override
+  String get alertCategoryTamper => 'الحماية';
+
+  @override
+  String get alertCategoryVpnDetected => 'VPN';
+
+  @override
   String get alertCategoryInstallRequest => 'طلب تثبيت تطبيق';
 
   @override
-  String get alertCategorySocialConcern => 'مخاوف اجتماعية';
-
-  @override
-  String get alertCategoryLocation => 'الموقع';
-
-  @override
-  String get alertCategoryDevice => 'الجهاز';
-
-  @override
-  String get alertCategorySafety => 'السلامة';
+  String get alertCategoryUnknownContact => 'جهة غير معروفة';
 
   @override
   String get tabScreenTime => 'وقت الشاشة';

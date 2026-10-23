@@ -54,15 +54,28 @@ class ChildDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.saved_search_outlined),
               onPressed: () => context.push('/child/$childId/searches'),
             ),
-            TextButton.icon(
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                visualDensity: VisualDensity.compact,
+            // NOTE: the label clips at the left edge under about 360px (review
+            // render 03, 320px Arabic), so the narrow bar keeps the same action
+            // as a tooltipped icon -- the shape the other two actions use.
+            // The key stays on both so a test reaches the action at any width.
+            if (MediaQuery.sizeOf(context).width < 360)
+              IconButton(
+                key: const ValueKey('editRulesButton'),
+                tooltip: l10n.editRules,
+                icon: const Icon(Icons.rule),
+                onPressed: () => context.push('/child/$childId/rules'),
+              )
+            else
+              TextButton.icon(
+                key: const ValueKey('editRulesButton'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => context.push('/child/$childId/rules'),
+                icon: const Icon(Icons.rule, size: 18),
+                label: Text(l10n.editRules),
               ),
-              onPressed: () => context.push('/child/$childId/rules'),
-              icon: const Icon(Icons.rule, size: 18),
-              label: Text(l10n.editRules),
-            ),
           ],
         ),
         body: TabBarView(

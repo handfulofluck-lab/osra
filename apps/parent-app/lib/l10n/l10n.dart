@@ -75,15 +75,25 @@ extension AppLocalizationsLabels on AppLocalizations {
         _ => category,
       };
 
+  /// The short label under an alert's title, by **type** — the same 13
+  /// categories as [serverAlertCategories], never a vocabulary of its own. A
+  /// value the app does not know yet falls back to the raw key, so a new server
+  /// category shows up as itself instead of a blank line, and the drift test
+  /// fails before one ships.
   String alertCategory(String category) => switch (category) {
+        'web_threat' => alertCategoryWebThreat,
+        'app_blocked' => alertCategoryAppBlocked,
+        'screen_time_exceeded' => alertCategoryScreenTime,
+        'geofence' => alertCategoryGeofence,
         'sos' => alertCategorySos,
-        'web_filter' => alertCategoryWebFilter,
-        'screen_time' => alertCategoryScreenTime,
+        'ai_concern' => alertCategoryAiConcern,
+        'cyberbullying' => alertCategoryCyberbullying,
+        'self_harm' => alertCategorySelfHarm,
+        'grooming' => alertCategoryGrooming,
+        'tamper' => alertCategoryTamper,
+        'vpn_detected' => alertCategoryVpnDetected,
         'install_request' => alertCategoryInstallRequest,
-        'social_concern' => alertCategorySocialConcern,
-        'location' => alertCategoryLocation,
-        'device' => alertCategoryDevice,
-        'safety' => alertCategorySafety,
+        'unknown_contact' => alertCategoryUnknownContact,
         _ => category,
       };
 

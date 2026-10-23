@@ -631,28 +631,43 @@ class AppLocalizationsEn extends AppLocalizations {
   String get severityInfo => 'Info';
 
   @override
-  String get alertCategorySos => 'SOS';
+  String get alertCategoryWebThreat => 'Blocked site';
 
   @override
-  String get alertCategoryWebFilter => 'Web filter';
+  String get alertCategoryAppBlocked => 'Blocked app';
 
   @override
   String get alertCategoryScreenTime => 'Screen time';
 
   @override
+  String get alertCategoryGeofence => 'Places';
+
+  @override
+  String get alertCategorySos => 'SOS';
+
+  @override
+  String get alertCategoryAiConcern => 'Concerning content';
+
+  @override
+  String get alertCategoryCyberbullying => 'Bullying';
+
+  @override
+  String get alertCategorySelfHarm => 'Self-harm';
+
+  @override
+  String get alertCategoryGrooming => 'Grooming';
+
+  @override
+  String get alertCategoryTamper => 'Protection';
+
+  @override
+  String get alertCategoryVpnDetected => 'VPN';
+
+  @override
   String get alertCategoryInstallRequest => 'App install request';
 
   @override
-  String get alertCategorySocialConcern => 'Social concern';
-
-  @override
-  String get alertCategoryLocation => 'Location';
-
-  @override
-  String get alertCategoryDevice => 'Device';
-
-  @override
-  String get alertCategorySafety => 'Safety';
+  String get alertCategoryUnknownContact => 'Unknown contact';
 
   @override
   String get tabScreenTime => 'Screen time';

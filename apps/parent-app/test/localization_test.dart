@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
@@ -346,7 +347,7 @@ void main() {
       });
     }
 
-    testWidgets('every category renders its own Arabic title', (tester) async {
+    testWidgets('every category renders its own Arabic title and label', (tester) async {
       await pumpArabic(tester, const AlertsScreen(), allCategoriesApi());
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
@@ -356,6 +357,15 @@ void main() {
       for (final category in serverAlertCategories) {
         final title = ar.alertTitleFor(category, 'SERVER TITLE $category', isEnglish: false);
         expect(title, isNot(ar.alertTitleGeneric), reason: '"$category" fell through to the generic title');
+        // The line under the title is the short label, through the same mapping
+        // as the dialog -- render 03's finding was these 11 raw keys.
+        final label = ar.alertCategory(category);
+        expect(label, isNot(category), reason: '"$category" still renders the raw key');
+        expect(
+          find.textContaining(RegExp('^${RegExp.escape(label)} · ')),
+          findsWidgets,
+          reason: '"$category" shows no "$label" label under its title',
+        );
         // Every tile is laid out in the feed's single day column, so the finder
         // sees all 13; a frame of 568 px holds only the first five, hence the
         // scroll before the geometry check. That is what makes this the render
@@ -559,8 +569,14 @@ void main() {
     });
 
     /// `serverAlertCategories` is a copy of the server's enum, so it is checked
-    /// against the server rather than trusted.
-    test('the category list matches InternalAlertSchema', () {
+    /// against the server rather than trusted — and every category it names must
+    /// reach its own copy twice over: the title above and the short label below
+    /// (the review found 11 of 13 labels still printing the raw key). A case
+    /// dropped from `alertCategory` or `alertTitleFor` fails here in both
+    /// locales before it reaches a screen.
+    test('the category list matches InternalAlertSchema', () async {
+      final ar = await arabic();
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
       final source = File('../../services/api/src/routes/alerts.ts').readAsStringSync();
       final enumBody = RegExp(r'category: z\.enum\(\[(.*?)\]\)', dotAll: true).firstMatch(source);
       expect(enumBody, isNotNull, reason: 'InternalAlertSchema category enum moved or changed shape');
@@ -569,6 +585,24 @@ void main() {
           .map((m) => m.group(1)!)
           .toList();
       expect(fromServer, serverAlertCategories);
+      for (final category in fromServer) {
+        expect(en.alertCategory(category), isNot(category), reason: 'en label "$category" fell back to the raw key');
+        expect(ar.alertCategory(category), isNot(category), reason: 'ar label "$category" fell back to the raw key');
+        expect(
+          en.alertTitleFor(category, 'SERVER TITLE', isEnglish: true),
+          isNot(category),
+          reason: 'en title "$category" fell back to the raw key',
+        );
+        expect(
+          ar.alertTitleFor(category, 'SERVER TITLE', isEnglish: false),
+          isNot(category),
+          reason: 'ar title "$category" fell back to the raw key',
+        );
+      }
+      // The fallback is still the raw key, so a category newer than the app
+      // reads as itself instead of an empty label.
+      expect(en.alertCategory('not_a_category'), 'not_a_category');
+      expect(ar.alertCategory('not_a_category'), 'not_a_category');
     });
 
     test('search risk tags are localized, with the raw key only as a fallback', () async {
@@ -580,5 +614,81 @@ void main() {
       expect(en.searchRiskCategory('substance_use'), 'Substance use');
       expect(en.searchRiskCategory('late_night'), 'late_night');
     });
+  });
+
+  /// Review render 03: at 320px the child-detail app bar clipped "تعديل القواعد"
+  /// at the left edge. The action is the same route at every width; only its
+  /// shape changes, so this group taps it and lands on the rules editor.
+  group('child detail app bar — the rules action at narrow widths', () {
+    Future<void> pumpChildDetail(WidgetTester tester, double width) async {
+      tester.view.physicalSize = Size(width, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final router = GoRouter(
+        initialLocation: '/child/child-1',
+        routes: [
+          GoRoute(path: '/child/:id', builder: (_, s) => ChildDetailScreen(childId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/child/:id/rules',
+            builder: (_, s) => RulesEditorScreen(childId: s.pathParameters['id']!),
+          ),
+        ],
+      );
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(arabicApi())],
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('ar'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+        ),
+      ));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+    }
+
+    /// The action is painted inside the bar, not clipped by its edge.
+    void expectInsideAppBar(WidgetTester tester, Finder action) {
+      final rect = tester.getRect(action);
+      final bar = tester.getRect(find.byType(AppBar).first);
+      expect(rect.left, greaterThanOrEqualTo(bar.left), reason: 'the rules action is clipped at the left edge');
+      expect(rect.right, lessThanOrEqualTo(bar.right), reason: 'the rules action is clipped at the right edge');
+      expect(rect.width, greaterThan(0));
+    }
+
+    testWidgets('320x568: the action is a tooltipped icon and still opens the rules editor', (tester) async {
+      await pumpChildDetail(tester, 320);
+      final action = find.byKey(const ValueKey('editRulesButton'));
+      expect(action, findsOneWidget);
+      // The compact shape: an icon with the label as its tooltip, not a text
+      // button that runs out of room.
+      expect(tester.widget<IconButton>(action).tooltip, 'تعديل القواعد');
+      expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsNothing);
+      expectInsideAppBar(tester, action);
+      expect(drainExceptions(tester), isEmpty);
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(find.byType(RulesEditorScreen), findsOneWidget);
+    });
+
+    for (final width in <double>[360, 375, 411]) {
+      testWidgets('${width.toInt()}px: the label shows in full and opens the rules editor', (tester) async {
+        await pumpChildDetail(tester, width);
+        final action = find.byKey(const ValueKey('editRulesButton'));
+        expect(action, findsOneWidget);
+        expect(find.widgetWithText(TextButton, 'تعديل القواعد'), findsOneWidget);
+        expectInsideAppBar(tester, action);
+        expect(drainExceptions(tester), isEmpty);
+
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(find.byType(RulesEditorScreen), findsOneWidget);
+      });
+    }
   });
 }
