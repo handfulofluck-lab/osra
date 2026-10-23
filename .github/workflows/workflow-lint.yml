@@ -102,6 +102,13 @@ jobs:
           node scripts/check-no-conflict-markers.mjs --selftest
           node scripts/check-no-conflict-markers.mjs
 
+      - name: No Google service-account or PEM key material in any tracked file
+        # Name rules miss a renamed file (.gitignore covers google-services*.json and friends, not
+        # backup/service.json), and a credential in a public repo stays in every clone and fork.
+        run: |
+          node scripts/check-no-service-account-keys.mjs --selftest
+          node scripts/check-no-service-account-keys.mjs
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.

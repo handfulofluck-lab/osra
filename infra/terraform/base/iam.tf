@@ -36,6 +36,10 @@ data "aws_iam_policy_document" "execution_secrets" {
       aws_secretsmanager_secret.jwt_secret.arn,
       aws_secretsmanager_secret.vault_key.arn,
       aws_secretsmanager_secret.demo_password.arn,
+      # Unconditional: read access to a container that holds no value grants nothing, and the task needs
+      # this the moment push_enabled maps it. Without it ECS fails at start with
+      # ResourceInitializationError (AccessDenied on the secret) (#318 review).
+      aws_secretsmanager_secret.fcm_service_account.arn,
     ]
   }
 }

@@ -54,3 +54,8 @@ output "log_group_name" {
   description = "CloudWatch log group the API container writes to."
   value       = aws_cloudwatch_log_group.api.name
 }
+
+output "fcm_service_account_secret_arn" {
+  description = "Secret holding the FCM service account JSON; its value is written out of band, never by Terraform."
+  value       = aws_secretsmanager_secret.fcm_service_account.arn
+}

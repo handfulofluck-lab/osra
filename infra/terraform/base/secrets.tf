@@ -66,3 +66,16 @@ resource "aws_secretsmanager_secret_version" "demo_password" {
 
 # DATABASE_URL is deliberately NOT written here: it embeds the per-session RDS endpoint and
 # password, so env owns that version (env/secrets.tf) against this container's ARN.
+
+# FCM service account (roadmap 1.5). The container is Terraform's; the JSON value is not: it is a
+# Google-issued credential, so it is written out of band and never appears in state —
+#   aws secretsmanager put-secret-value --region <region> \
+#     --secret-id <arn> \
+#     --secret-string file://<path outside every checkout>
+# The API reads it as FCM_SERVICE_ACCOUNT_JSON (services/api/src/lib/push/fcm.ts). A container with
+# no value is harmless: nothing maps it into a task until env's push_enabled is true.
+resource "aws_secretsmanager_secret" "fcm_service_account" {
+  name                    = "${local.name_prefix}/fcm-service-account"
+  description             = "Firebase Cloud Messaging service account JSON for the OSRA staging API"
+  recovery_window_in_days = 0 # staging: see database_url above
+}
