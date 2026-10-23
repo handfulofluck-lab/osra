@@ -2089,6 +2089,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String mfaResetMailboxLinkGrace(String time) {
+    return 'The link expired at $time. If you opened it before then, enter the code now: it works for 10 minutes after the link was opened.';
+  }
+
+  @override
   String get mfaResetCancelHint =>
       'To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.';
 

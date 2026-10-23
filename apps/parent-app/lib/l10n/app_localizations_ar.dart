@@ -2156,6 +2156,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String mfaResetMailboxLinkGrace(String time) {
+    return 'انتهت صلاحية الرابط في $time. إذا فتحته قبل ذلك، فأدخل الرمز الآن: فهو صالح لمدة 10 دقائق من لحظة فتح الرابط.';
+  }
+
+  @override
   String get mfaResetCancelHint =>
       'لإيقاف هذا الطلب، افتح رابط الإلغاء في أي بريد وصلك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.';
 

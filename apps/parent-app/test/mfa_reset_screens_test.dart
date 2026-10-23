@@ -582,6 +582,8 @@ void main() {
       expect(find.byKey(const ValueKey('mfaResetDeadlinePassed')), findsOneWidget);
       expect(find.text('This link or code has run out. A new request replaces this one.'), findsOneWidget);
       expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsNothing);
+      // Past the 10-minute grace the stage is over, so the "enter the code now" line must be gone.
+      expect(find.textContaining('enter the code now'), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('mfaResetStartAgain')));
       await tester.pumpAndSettle();
@@ -610,6 +612,23 @@ void main() {
       expect(find.byKey(const ValueKey('mfaResetDeadlinePassed')), findsNothing);
       expect(find.byKey(const ValueKey('mfaResetStartAgain')), findsNothing);
       expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsOneWidget);
+      final deadline = tester.widget<Text>(find.byKey(const ValueKey('mfaResetDeadline')));
+      expect(deadline.data, startsWith('The link expired at'));
+      expect(deadline.data, contains('enter the code now'));
+      expect(find.textContaining('The link is valid until'), findsNothing);
+    });
+
+    testWidgets('a restored mailbox stage keeps the plain link deadline', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(
+        status: (_) => statusPayload(state: 'requested'),
+      ));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      final deadline = tester.widget<Text>(find.byKey(const ValueKey('mfaResetDeadline')));
+      expect(deadline.data, startsWith('The link is valid until'));
+      expect(find.textContaining('The link expired at'), findsNothing);
     });
 
     testWidgets('with no device code, a past 24-hour approval deadline offers a new request', (tester) async {
@@ -1112,6 +1131,28 @@ void main() {
       expect(Directionality.of(tester.element(scaffold.first)), TextDirection.rtl);
       expectNoOverflow(tester);
     }
+
+    testWidgets('the mailbox grace line renders in Arabic after the link expires', (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        MfaResetStore.requestIdKey: 'req-1',
+        MfaResetStore.emailKey: 'qa@familyshield.dev',
+      });
+      final api = FakeApiClient(resetRoutes(
+        status: (_) => statusPayload(
+          state: 'requested',
+          mailboxLinkExpiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 5)),
+        ),
+      ));
+      await pumpArabic(tester, const MfaResetWaitingScreen(), api);
+      await tester.enterText(find.byKey(const ValueKey('mfaResetResumePassword')), 'good-password');
+      await tester.tap(find.byKey(const ValueKey('mfaResetResumeSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+
+      final deadline = tester.widget<Text>(find.byKey(const ValueKey('mfaResetDeadline')));
+      expect(deadline.data, startsWith('انتهت صلاحية الرابط في'));
+      expectRtl(tester);
+    });
 
     testWidgets('request', (tester) async {
       await pumpArabic(tester, const MfaResetRequestScreen(), FakeApiClient(resetRoutes()));

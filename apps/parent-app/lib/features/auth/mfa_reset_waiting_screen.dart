@@ -447,10 +447,15 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
           : (l10n.mfaResetStageWitnessTitle, l10n.mfaResetStageWitnessBody),
       MfaResetStage.window => (l10n.mfaResetStageWindowTitle, l10n.mfaResetStageWindowBody),
     };
+    final deadlinePassedEarly = _deadlinePassed;
     final deadline = switch (stage) {
+      // Inside the 10-minute grace the link is dead but a last-second code may still work, so the line
+      // states the rule instead of printing a past "valid until" (#314 review).
       MfaResetStage.awaitingMailbox => progress.mailboxExpiresAt == null
           ? null
-          : l10n.mfaResetMailboxExpires(_format(context, progress.mailboxExpiresAt!)),
+          : (!progress.mailboxExpiresAt!.isAfter(_now) && !deadlinePassedEarly)
+              ? l10n.mfaResetMailboxLinkGrace(_format(context, progress.mailboxExpiresAt!))
+              : l10n.mfaResetMailboxExpires(_format(context, progress.mailboxExpiresAt!)),
       MfaResetStage.awaitingWitness => progress.codeExpiresAt == null
           ? null
           : l10n.mfaResetCodeExpires(_format(context, progress.codeExpiresAt!)),
@@ -458,7 +463,7 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
           ? null
           : l10n.mfaResetWindowEndsAt(_format(context, progress.windowEndsAt!)),
     };
-    final deadlinePassed = _deadlinePassed;
+    final deadlinePassed = deadlinePassedEarly;
     // No device code means no code exists to type: only another owner or
     // co-parent can witness, and the screen says when that must happen.
     final coParentOnly = stage == MfaResetStage.awaitingWitness && !progress.deviceCode;

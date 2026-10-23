@@ -658,6 +658,8 @@
   "mfaResetStageMailboxTitle": "تحقّق من بريدك الإلكتروني",
   "mfaResetStageMailboxBody": "افتح رابط إعادة التعيين المرسل إلى بريد هذا الحساب خلال 30 دقيقة. فتح الرابط يُظهر رمزًا من 8 أرقام على هاتف طفلك. وإذا كان والد آخر هو من سيوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه.",
   "mfaResetMailboxExpires": "الرابط صالح حتى {time}.",
+  "mfaResetMailboxLinkGrace": "انتهت صلاحية الرابط في {time}. إذا فتحته قبل ذلك، فأدخل الرمز الآن: فهو صالح لمدة 10 دقائق من لحظة فتح الرابط.",
+  "@mfaResetMailboxLinkGrace": {"placeholders": {"time": {"type": "String"}}},
   "mfaResetCancelHint": "لإيقاف هذا الطلب، افتح رابط الإلغاء في أي بريد وصلك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.",
   "mfaResetStageWitnessTitle": "أدخل الرمز من هاتف طفلك",
   "mfaResetStageWitnessBody": "الرمز مكوّن من 8 أرقام وصلاحيته 10 دقائق.",

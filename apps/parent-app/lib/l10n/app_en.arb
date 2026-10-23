@@ -1017,6 +1017,8 @@
   "mfaResetStageMailboxBody": "Open the reset link sent to this account's email within 30 minutes. Opening the link puts an 8-digit code on your child's phone. If another parent is going to approve instead, they must do it from their app.",
   "mfaResetMailboxExpires": "The link is valid until {time}.",
   "@mfaResetMailboxExpires": {"placeholders": {"time": {"type": "String"}}},
+  "mfaResetMailboxLinkGrace": "The link expired at {time}. If you opened it before then, enter the code now: it works for 10 minutes after the link was opened.",
+  "@mfaResetMailboxLinkGrace": {"placeholders": {"time": {"type": "String"}}},
   "mfaResetCancelHint": "To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.",
   "mfaResetStageWitnessTitle": "Enter the code from your child's phone",
   "mfaResetStageWitnessBody": "The code is 8 digits and is valid for 10 minutes.",

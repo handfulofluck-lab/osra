@@ -3506,6 +3506,12 @@ abstract class AppLocalizations {
   /// **'The link is valid until {time}.'**
   String mfaResetMailboxExpires(String time);
 
+  /// No description provided for @mfaResetMailboxLinkGrace.
+  ///
+  /// In en, this message translates to:
+  /// **'The link expired at {time}. If you opened it before then, enter the code now: it works for 10 minutes after the link was opened.'**
+  String mfaResetMailboxLinkGrace(String time);
+
   /// No description provided for @mfaResetCancelHint.
   ///
   /// In en, this message translates to:

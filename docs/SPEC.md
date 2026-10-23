@@ -355,7 +355,9 @@ minutes a last-second code can still live), the device code, or, with no paired 
 approval deadline — also replaces the code entry with "start a new request",
 because the API keeps the row in `requested`/`mailbox_confirmed` until the 24-hour sweep and a new
 request supersedes it; the 72-hour window never offers that, since `/request` answers
-`409 reset_already_pending` there (review of #314). The dashboard and Settings read `/pending`, so
+`409 reset_already_pending` there (review of #314). Inside those 10 minutes the deadline line says when the
+link expired and that a code from a link opened before then works for 10 minutes after it was opened,
+instead of a past "valid until" (review of #314). The dashboard and Settings read `/pending`, so
 the approval prompt names the requester with `displayName` and role and no longer depends on a deep
 link; the deep link itself carries only `requestId` and looks name, role and state up in `/pending`,
 so a crafted URL cannot name the requester or pass `witness_passed` to hide Approve; a guardian's
@@ -365,8 +367,8 @@ had no paired device, a co-parent is the only remaining witness, and the screen 
 (it names the 24-hour approval deadline instead); with a code, both witnesses stay possible and the
 wording keeps both; and **no notification carries the request id to a co-parent's app yet**
 (decision 4's templates are unbuilt), so the banner and the settings entry are how they find out. The
-Android `show_reset_code` screen, the templates, the 24-hour reminder and the audit route remain
-unbuilt.
+templates, the 24-hour reminder and the audit route remain unbuilt; the Android `show_reset_code`
+screen is built (the paragraph above).
 
 ## §4 AI Engine (`services/ai-engine`)
 
