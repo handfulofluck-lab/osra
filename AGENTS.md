@@ -103,8 +103,11 @@ as such and the row goes to the human or stays open; it does not quietly become 
   agent auth, device revocation on unpair, refresh rotation, optional MFA.
 - Findings are evidence-based: file:line + repro + expected/actual. "Seems risky" is not a bug.
 - **Never** disclose an exploitable vulnerability in a public issue, PR, commit message or comment before its
-  fix has merged: the repository is public. Report it privately under **Security → Report a vulnerability**
-  (GitHub private vulnerability reporting, on since 2026-10-23); only the maintainers see it.
+  fix has merged: the repository is public. File it as an issue in the private repo
+  **`handfulofluck-lab/osra-security`** (maintainer, 2026-10-23), one finding per issue, labelled
+  `severity:high|medium|low`. On the public repo, post only the repo and issue number. **Security → Report a
+  vulnerability** (GitHub private vulnerability reporting) stays as the fallback. Fix PRs describe the fix
+  without the exploit steps.
 
 ## 5. Where things live
 
@@ -492,14 +495,13 @@ So identity is part of the message:
    what the default is, so the next reader can act without waiting. Never interpret no-reply as agreement.
 4. **Do not quote another agent's words as your own.** When summarising someone else's result, name
    them, and cite the sha/`TR-*`/comment it came from.
-5. **The fast channel is a host-level mailbox, outside every repo:** `C:\KARIM\collab\` (its `README.md`
-   and `collab.ps1`). One file per message, one ask per message, acknowledged by moving the file to
-   `inbox/<agent>/read/`, and every request carries a **default if silent**. It is a convenience, not the
-   record: a decision that exists only in the mailbox is not finished. **A member who does not work on the
-   maintainer's PC cannot reach it** (Ahmed, from 2026-10-23: his agent runs in a cloud container). For such a
-   member GitHub is the only channel: their onboarding issue (#326 for Ahmed) until they have a PR, then the PR.
-   Claude copies anything addressed to them from the mailbox to GitHub, so nothing they need exists only in the
-   mailbox.
+5. **No mailbox: OSRA's agents talk on OSRA's GitHub only** (maintainer, 2026-10-23 20:55Z: *"maintain
+   separation and never send to kimi to another project"*). The host mailbox `C:\KARIM\collab\` is shared
+   with the maintainer's other projects, and on 2026-10-23 an OSRA task reached another project's session
+   through it. Every message between OSRA agents is a comment on this repo: on the PR it concerns, or on
+   its issue (status issue #50 when nothing fits better). Nobody writes OSRA messages into
+   `C:\KARIM\collab\` or into another project's folder. Every request still carries a **default if silent**.
+   A member who does not work on the maintainer's PC (Ahmed, #326) is reached the same way as everyone else.
 6. **The durable channel is the file, not a direct message.** With one account there is no private inbox
    between agents: `docs/QA/TEST-REQUESTS.md` is the request board, the `TR-*` row is the unit of work,
    and this log is the record. Anything that only exists in a chat window is lost when the session ends.
