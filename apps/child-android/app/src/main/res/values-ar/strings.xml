@@ -1,0 +1,25 @@
+<resources>
+    <!--
+      Arabic copy for ADR-0031's `show_reset_code` notice. Android falls back to `values/strings.xml`
+      for every key not translated here. The notice is the one place the child is asked to refuse an
+      adult, so the translation is real Arabic rather than a transliteration.
+    -->
+    <string name="reset_code_title">رمز خاص بوالدك أو والدتك</string>
+    <string name="reset_code_intro">هذا الرمز مطلوب لاستعادة دخول %1$s إلى حساب OSRA.</string>
+    <string name="reset_code_intro_unnamed">هذا الرمز مطلوب لاستعادة دخول والدك أو والدتك إلى حساب OSRA.</string>
+    <!-- Arabic needs the plural forms: "10 دقيقة" is ungrammatical for 3–10. -->
+    <plurals name="reset_code_valid_for">
+        <item quantity="zero">صالح لمدة %1$d دقيقة</item>
+        <item quantity="one">صالح لمدة دقيقة واحدة</item>
+        <item quantity="two">صالح لمدة دقيقتين</item>
+        <item quantity="few">صالح لمدة %1$d دقائق</item>
+        <item quantity="many">صالح لمدة %1$d دقيقة</item>
+        <item quantity="other">صالح لمدة %1$d دقيقة</item>
+    </plurals>
+    <string name="reset_code_expired_title">لم يعد هذا الرمز صالحًا</string>
+    <string name="reset_code_expired_body">اطلب من والدك أو والدتك البدء من جديد. لا تشارك أي رمز قديم.</string>
+    <string name="reset_code_instruction">اعرضه على والدك أو والدتك وجهًا لوجه فقط. لا ترسله، ولا تقرأه في مكالمة.</string>
+    <string name="reset_code_safety">إذا طلبه منك أي شخص آخر، فارفض وأخبر شخصًا كبيرًا تثق به. لن تطلب منك OSRA هذا الرمز أبدًا.</string>
+    <string name="reset_code_notification_text">اضغط لعرض الرمز، واعرضه على والدك أو والدتك فقط.</string>
+    <string name="reset_code_close">إغلاق</string>
+</resources>
