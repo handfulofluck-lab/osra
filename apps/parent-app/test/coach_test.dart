@@ -126,7 +126,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'critical', 'self_harm', 'Possible self-harm detected', now),
       ]));
-      await openDetail(tester, api, 'Possible self-harm detected');
+      await openDetail(tester, api, 'Possible self-harm risk');
 
       expect(find.text('How to talk about this'), findsOneWidget);
       await expandCoachSection(tester);
@@ -141,7 +141,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'critical', 'self_harm', 'Possible self-harm detected', now),
       ]));
-      await openDetail(tester, api, 'Possible self-harm detected');
+      await openDetail(tester, api, 'Possible self-harm risk');
       await expandCoachSection(tester);
 
       // The expanded card is taller than the dialog viewport — scroll the
@@ -163,7 +163,7 @@ void main() {
     testWidgets('a screen_time alert shows the collaboration card', (tester) async {
       final now = DateTime.now();
       final api = FakeApiClient(standardRoutes(alerts: [
-        alertJson('c1', 'info', 'screen_time', 'Daily limit reached', now),
+        alertJson('c1', 'info', 'screen_time_exceeded', 'Daily limit reached', now),
       ]));
       await openDetail(tester, api, 'Daily limit reached');
       await expandCoachSection(tester);
@@ -177,6 +177,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
       ]));
+      // An unknown category: English keeps the server's own title (#344 review).
       await openDetail(tester, api, 'Something unusual');
       await expandCoachSection(tester);
 

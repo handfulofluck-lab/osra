@@ -188,8 +188,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get screenTime => 'Screen time';
 
   @override
-  String screenTimeValue(int minutes, String limit) {
-    return '$minutes / $limit min';
+  String screenTimeValue(int minutes, int limit) {
+    String _temp0 = intl.Intl.pluralLogic(
+      limit,
+      locale: localeName,
+      other: '$limit min',
+      zero: '— min',
+    );
+    return '$minutes / $_temp0';
   }
 
   @override
@@ -647,28 +653,43 @@ class AppLocalizationsEn extends AppLocalizations {
   String get severityInfo => 'Info';
 
   @override
-  String get alertCategorySos => 'SOS';
+  String get alertCategoryWebThreat => 'Blocked site';
 
   @override
-  String get alertCategoryWebFilter => 'Web filter';
+  String get alertCategoryAppBlocked => 'Blocked app';
 
   @override
   String get alertCategoryScreenTime => 'Screen time';
 
   @override
+  String get alertCategoryGeofence => 'Places';
+
+  @override
+  String get alertCategorySos => 'SOS';
+
+  @override
+  String get alertCategoryAiConcern => 'Concerning content';
+
+  @override
+  String get alertCategoryCyberbullying => 'Bullying';
+
+  @override
+  String get alertCategorySelfHarm => 'Self-harm';
+
+  @override
+  String get alertCategoryGrooming => 'Grooming';
+
+  @override
+  String get alertCategoryTamper => 'Protection';
+
+  @override
+  String get alertCategoryVpnDetected => 'VPN';
+
+  @override
   String get alertCategoryInstallRequest => 'App install request';
 
   @override
-  String get alertCategorySocialConcern => 'Social concern';
-
-  @override
-  String get alertCategoryLocation => 'Location';
-
-  @override
-  String get alertCategoryDevice => 'Device';
-
-  @override
-  String get alertCategorySafety => 'Safety';
+  String get alertCategoryUnknownContact => 'Unknown contact';
 
   @override
   String get tabScreenTime => 'Screen time';
@@ -1855,7 +1876,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get consentRevokeDataRetention =>
-      'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
+      'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days.\n\nUsage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
 
   @override
   String get consentRevokeDataErase =>
@@ -1982,7 +2003,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsPushBody => 'Critical alerts as push messages';
 
   @override
-  String get digestPrefsEmailsLabel => 'Digest emails (comma separated)';
+  String get digestPrefsEmailsLabel => 'Digest emails';
+
+  @override
+  String get digestPrefsEmailsHelper =>
+      'For the digest summary (separate addresses with commas)';
 
   @override
   String get digestPrefsTimezoneTitle => 'Digest timezone (local send hour)';
@@ -1995,7 +2020,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get digestPrefsSendHour =>
-      'The digest is sent at 18:00 your local time';
+      'The digest is sent at the hour shown below, in your local time zone.';
 
   @override
   String get digestPrefsSavingSuffix => 'saving…';
@@ -2379,4 +2404,79 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mfaResetStageWitnessBodyResumed =>
       'If an 8-digit code is shown on your child\'s phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.';
+
+  @override
+  String get digestPrefsSendHourLabel => 'Send hour';
+
+  @override
+  String get alertTitleSos => 'SOS pressed';
+
+  @override
+  String get alertTitleBlockedSite => 'Blocked site attempted';
+
+  @override
+  String get alertTitleDailyLimit => 'Daily limit reached';
+
+  @override
+  String get alertTitleAppBlocked => 'App blocked';
+
+  @override
+  String get alertTitleGeofence => 'Place alert';
+
+  @override
+  String get alertTitleAiConcern => 'Concerning content';
+
+  @override
+  String get alertTitleCyberbullying => 'Possible cyberbullying';
+
+  @override
+  String get alertTitleSelfHarm => 'Possible self-harm risk';
+
+  @override
+  String get alertTitleGrooming => 'Possible grooming';
+
+  @override
+  String get alertTitleTamper => 'Protection tampered with';
+
+  @override
+  String get alertTitleVpnDetected => 'VPN detected';
+
+  @override
+  String get alertTitleInstallRequest => 'App install request';
+
+  @override
+  String get alertTitleUnknownContact => 'Unknown contact';
+
+  @override
+  String get alertTitleGeneric => 'Alert';
+
+  @override
+  String get riskSelfHarm => 'Self-harm';
+
+  @override
+  String get riskSubstanceUse => 'Substance use';
+
+  @override
+  String get riskSubstanceAbuse => 'Substance abuse';
+
+  @override
+  String get riskAdultContent => 'Adult content';
+
+  @override
+  String get riskSexualContent => 'Sexual content';
+
+  @override
+  String get riskCyberbullying => 'Cyberbullying';
+
+  @override
+  String get riskGrooming => 'Grooming';
+
+  @override
+  String get riskViolence => 'Violence';
+
+  @override
+  String get riskHateSpeech => 'Hate speech';
+
+  @override
+  String get riskAiConcern => 'Concerning content';
 }

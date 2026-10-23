@@ -233,7 +233,7 @@ void main() {
 
       // The zone is loaded from /v1/family/me and shown as the current value.
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
-      expect(find.textContaining('sent at 18:00 your local time'), findsOneWidget);
+      expect(find.text('18:00'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();
@@ -268,7 +268,7 @@ void main() {
         find.byKey(const ValueKey('digestTimezone')),
       );
       expect(dropdown.initialValue, 'Asia/Tokyo');
-      expect(find.textContaining('sent at 18:00 your local time'), findsOneWidget);
+      expect(find.text('18:00'), findsOneWidget);
       // The displayed value matches the server: no PATCH was needed to correct it.
       expect(api.calls('PATCH', '/v1/family/me'), isEmpty);
     });
@@ -286,6 +286,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(weekly).value, isTrue);
 
+      // The email field now carries a helper line (#344 review), so Save sits
+      // just below the 600 px default surface.
+      await tester.ensureVisible(find.text('Save preferences'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Save preferences'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
@@ -306,6 +310,10 @@ void main() {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
 
+      // The timezone section now has its own card, so the send-now button sits
+      // below the fold and the lazy ListView builds it only after scrolling.
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Send test digest now'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();

@@ -44,12 +44,15 @@ Settings → Appearance can pin English or Arabic. The choice is written to
 4. Use `context.l10n.yourKey` in the widget. For dates use
    `DateFormat.yMMMd(context.localeName)`, not the process default.
 5. Run `flutter test test/localization_test.dart`. It fails if the Arabic key is missing,
-   empty, has different placeholders, or if any translated screen overflows at 320×568 in RTL.
+   empty, has different placeholders, if a category in the server's `InternalAlertSchema` has no
+   title in either locale, or if any translated screen overflows at 320×568 in RTL.
 
-Do not add a user-visible literal to a screen. Values that arrive from the API (alert titles,
-app names, child names) stay as the server sent them; enum-like values (web-filter categories,
-alert categories, command types, severities) are mapped through `l10n.dart` so the raw value is
-never shown when a translation exists.
+Do not add a user-visible literal to a screen. Values that arrive from the API (app names, child
+names) stay as the server sent them; enum-like values (web-filter categories, alert categories and
+titles, search risk tags, command types, severities) are mapped through `l10n.dart` so the raw value
+is never shown when a translation exists. The one deliberate exception is an alert category the app
+does not know yet: English shows the server's own title, any other locale shows the translated
+generic, so server English never reaches an Arabic screen.
 
 ## Add a language
 
@@ -107,8 +110,10 @@ and defaults to the app locale.
 - Family members, family map, search & web safety, and digest preferences screens.
 - The verifiable parental consent notice (`consentNotice`) is intentionally left in English:
   legal wording needs a product/legal decision, tracked in issue #159.
-- Server-provided alert titles/bodies and AI coach content are displayed as supplied; the
-  coach content itself already has an Arabic version authored separately.
+- Alert bodies, and the title of a category the app does not know yet in English, are displayed as
+  the server sent them; titles for the server's 13 categories come from the mapping in `l10n.dart`.
+  AI coach content is displayed as supplied; the coach content itself already has an Arabic version
+  authored separately.
 
 Native-speaker review of the Arabic screenshots is the acceptance for roadmap item 3.1 and
 is tracked in issue #159.

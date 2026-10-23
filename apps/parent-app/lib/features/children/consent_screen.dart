@@ -384,13 +384,24 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Aligned label/value pair: the label stays on the start side and the
+    // value wraps on the end side instead of truncating at narrow widths.
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpace.sm),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-          Text(value, style: Theme.of(context).textTheme.bodyMedium),
+          Expanded(
+            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.end,
+            ),
+          ),
         ],
       ),
     );
