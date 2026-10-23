@@ -144,6 +144,22 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     expect([...store.keys()].some((k) => k.startsWith("ws:ticket:"))).toBe(false);
   });
 
+  // Plan 2.7 F5 (Claude, #329): the ticket opens the family's live socket, so ws-ticket checks the
+  // parent's sessions version itself — this harness registers no global hook. Before F5 the stale token
+  // got a ticket (200). Mutant: delete the isParentSessionLive check in gateway.ts -> 200.
+  it("refuses a parent whose session was revoked (401 session_revoked) and mints no ticket", async () => {
+    store.set("auth:session-version:parent-1", "2");
+    const stale = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", jti: "c".repeat(32), sv: 1 });
+    const res = await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${stale}` } });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: "session_revoked" });
+    expect([...store.keys()].some((k) => k.startsWith("ws:ticket:"))).toBe(false);
+
+    const current = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", jti: "d".repeat(32), sv: 2 });
+    const ok = await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${current}` } });
+    expect(ok.statusCode).toBe(200);
+  });
+
   it("refuses a handshake with no ticket with HTTP 401 ticket_required", async () => {
     const res = await app.inject({ method: "GET", url: "/v1/ws" });
     expect(res.statusCode).toBe(401);

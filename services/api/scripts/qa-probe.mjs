@@ -1635,13 +1635,15 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
   if (badGuardian) {
     check("Q6 a guardian with no permissions is refused on every permission-, owner- and device-only route", badGuardian.length === 0, badGuardian.slice(0, 8).join("; ") + (badGuardian.length > 8 ? ` … +${badGuardian.length - 8}` : ""));
   } else {
-    target("Q6 a guardian with no permissions is refused on every permission-, owner- and device-only route", "the O-section guardian has no live session here");
+    // A target never shares a check's exact name: check-probe-integrity keys names per severity, so a
+    // shared name reads as both promoted and demoted and fails the gate on every PR (found on #338).
+    target("Q6 a guardian with no permissions is refused (no live guardian session)", "the O-section guardian has no live session here");
   }
   const badCoParent = await roleWalk(mrCoParentToken);
   if (badCoParent) {
     check("Q6b a co-parent with no permissions is refused on every permission-, owner- and device-only route", badCoParent.length === 0, badCoParent.slice(0, 8).join("; ") + (badCoParent.length > 8 ? ` … +${badCoParent.length - 8}` : ""));
   } else {
-    target("Q6b a co-parent with no permissions is refused on every permission-, owner- and device-only route", "the O-section co-parent has no live session here");
+    target("Q6b a co-parent with no permissions is refused (no live co-parent session)", "the O-section co-parent has no live session here");
   }
 
   // Q7: a live device token on every parent-only route is 403 parent_role_required (requireParent, or
