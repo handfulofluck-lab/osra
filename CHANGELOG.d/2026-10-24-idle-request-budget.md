@@ -1,4 +1,4 @@
-### API — the idle-request rate is counted, so 5.8's second half can become a number (roadmap 5.8)
+### API — the idle-request rate is counted, so 5.8's second half can become a number (#346, roadmap 5.8)
 - **What the row asks and what was missing.** 5.8's acceptance is *release build passes TR-73 against HTTPS staging; idle child
   phone ≤ 3 requests per 10 min with lock still ≤ 5 s*. 1.5 measured the lock (1.0 s); **nobody ever counted the idle rate**, so
   "≤ 3 per 10 min" was a sentence with no instrument behind it.
