@@ -15,11 +15,14 @@
  *
  * What it will NEVER delete, and why:
  *   revoked:device:<deviceId>       - security state. Device JWTs are minted with a 10-year life
- *                                     (routes/devices.ts:181) and the Device row is deleted in the
- *                                     same request that writes this key (devices.ts:344-348), so this
- *                                     key is the ONLY thing that still answers 401 device_revoked.
- *                                     Deleting it re-enables a revoked token; see issue #56 (the
- *                                     correct fix is a TTL bound in the unpair path, not a reap).
+ *                                     (routes/devices.ts:181). Since ADR-0032 the Device row's absence
+ *                                     is the record for an unpaired device and this key is its cache:
+ *                                     deleting it costs one primary-key lookup, not a resurrection.
+ *                                     It is still never reaped here, because the cheaper answer is
+ *                                     the one the API gives and nothing else in a test run needs it.
+ *   device:live:<deviceId>          - the positive cache of that lookup (5-minute TTL, ADR-0032).
+ *                                     Deleting it is always safe — it is re-read from the row — so it
+ *                                     is reported with the TTLs rather than kept.
  *
  * Keys with a TTL are reported and left alone - they expire on their own.
  */
@@ -60,7 +63,11 @@ for (const key of keys) {
   if (key.startsWith("revoked:device:")) {
     const id = key.slice("revoked:device:".length);
     // Never deleted, live device or not: see the header.
-    keptControls.push({ key, ttl, note: live.all.has(id) ? "live device" : "device row gone — still a control (#56)" });
+    keptControls.push({ key, ttl, note: live.all.has(id) ? "live device" : "device row gone — the tombstone of a pending revocation (ADR-0032)" });
+  } else if (key.startsWith("device:live:")) {
+    // The positive cache of the row lookup (ADR-0032). Deleting it is always safe, so it is reported
+    // with the other self-expiring keys rather than kept — including when its device row is gone.
+    expiring.push({ key, ttl, note: "positive device cache — safe to delete (ADR-0032)" });
   } else if (sessionVersionMatch) {
     if (live.parents.has(sessionVersionMatch[1])) {
       keptControls.push({ key, ttl, note: "live parent — persistent by design (ADR-0025)" });

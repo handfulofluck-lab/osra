@@ -130,6 +130,27 @@ async function requestResetToken(app: FastifyInstance): Promise<string> {
 const confirmReset = (app: FastifyInstance, token: string, password = "NewCorrectHorse12!") =>
   app.inject({ method: "POST", url: "/v1/auth/reset/confirm", payload: { token, password } });
 
+/**
+ * The `Parent` column writes a route performs, selected by the field it sets, and the count of the
+ * sessions-version bumps among them.
+ *
+ * By field, not by count: since ADR-0032 `invalidateSessionsBefore` increments
+ * `Parent.sessionVersion` through the same `prisma.parent.update`, so "how many times was a parent
+ * updated" stopped being one fact — `/reset/confirm` writes the password *and* the counter, and
+ * `/mfa/enroll` writes the secret *and* the counter. The assertions below are about the first write,
+ * so they select it and count it; a bare `toHaveBeenCalledTimes(1)` would be counting two different
+ * facts and could pass or fail for the wrong reason.
+ */
+const parentWritesOf = (field: "passwordHash" | "mfaSecret") =>
+  prismaMock.parent.update.mock.calls
+    .map((call) => call[0] as { data?: Record<string, unknown> })
+    .filter((arg) => arg?.data !== undefined && arg.data[field] !== undefined);
+
+const sessionVersionWrites = () =>
+  prismaMock.parent.update.mock.calls
+    .map((call) => call[0] as { data?: Record<string, unknown> })
+    .filter((arg) => arg?.data !== undefined && arg.data.sessionVersion !== undefined).length;
+
 describe("auth routes", () => {
   beforeEach(() => {
     resetPrismaMock();
@@ -304,7 +325,7 @@ describe("auth routes", () => {
       payload: { code: totpAtCounter(oldSecret, counter) },
     });
     expect(byCode.statusCode).toBe(200);
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    expect(parentWritesOf("mfaSecret")).toHaveLength(1);
     await app.close();
   });
 
@@ -615,13 +636,13 @@ describe("auth routes", () => {
     const token = await requestResetToken(app);
     const first = await confirmReset(app, token);
     expect(first.statusCode).toBe(200);
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    expect(parentWritesOf("passwordHash")).toHaveLength(1);
 
     const replay = await confirmReset(app, token);
     expect(replay.statusCode).toBe(401);
     expect(replay.json().error).toBe("invalid_or_expired_token");
     // Consumed before the hash/DB work: the replay changed nothing.
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    expect(parentWritesOf("passwordHash")).toHaveLength(1);
     await app.close();
   });
 
@@ -636,7 +657,7 @@ describe("auth routes", () => {
     const token = await requestResetToken(app);
     const [a, b] = await Promise.all([confirmReset(app, token), confirmReset(app, token)]);
     expect([a.statusCode, b.statusCode].sort()).toEqual([200, 401]);
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    expect(parentWritesOf("passwordHash")).toHaveLength(1);
     await app.close();
   });
 
@@ -662,7 +683,7 @@ describe("auth routes", () => {
 
     const newAttempt = await confirmReset(app, newer);
     expect(newAttempt.statusCode).toBe(200);
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    expect(parentWritesOf("passwordHash")).toHaveLength(1);
     // Each request gets its own identity (before #167 two in the same second were the same JWT).
     expect(older).not.toBe(newer);
     await app.close();
@@ -912,7 +933,7 @@ describe("auth routes", () => {
     prismaMock.parent.update.mockResolvedValue({ id: "parent-1" });
     const retry = await confirmReset(app, token);
     expect(retry.statusCode).toBe(200);
-    const retried = prismaMock.parent.update.mock.calls.at(-1)![0] as { data: { passwordHash: string } };
+    const retried = parentWritesOf("passwordHash").at(-1) as { data: { passwordHash: string } };
     expect(await argon2.verify(retried.data.passwordHash, "NewCorrectHorse12!")).toBe(true);
     await app.close();
   });
@@ -996,7 +1017,10 @@ describe("auth routes", () => {
     const failed = await confirmReset(app, token);
     expect(failed.statusCode).toBe(503);
     expect(failed.json().error).toBe("reset_unavailable");
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(1);
+    // The password write landed and so did the counter's column bump; the failure was the cache write
+    // after them. Both are real writes, so both are asserted instead of one collapsed count.
+    expect(parentWritesOf("passwordHash")).toHaveLength(1);
+    expect(sessionVersionWrites()).toBe(1);
 
     const key = `reset:${claims.jti}`;
     expect(store.get(key)).toBe("parent-1");
@@ -1006,9 +1030,10 @@ describe("auth routes", () => {
     // The client retries the same link (what #162 promised), and this time the whole operation runs.
     const retry = await confirmReset(app, token);
     expect(retry.statusCode).toBe(200);
-    expect(prismaMock.parent.update).toHaveBeenCalledTimes(2);
+    expect(parentWritesOf("passwordHash")).toHaveLength(2);
+    expect(sessionVersionWrites()).toBe(2);
     // Both effects of an `ok`: the new hash is stored, every session is revoked.
-    const secondUpdate = prismaMock.parent.update.mock.calls[1][0] as { data: { passwordHash: string } };
+    const secondUpdate = parentWritesOf("passwordHash")[1] as { data: { passwordHash: string } };
     expect(await argon2.verify(secondUpdate.data.passwordHash, "NewCorrectHorse12!")).toBe(true);
     expect(store.get("auth:session-version:parent-1")).toBe("1");
     expect(store.has(`refresh:${createHash("sha256").update(oldRefresh).digest("hex")}`)).toBe(false);

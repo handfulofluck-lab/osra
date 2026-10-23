@@ -139,3 +139,15 @@ jobs:
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.
         run: node scripts/check-docs-links.mjs
+
+      - name: Redis can lose revocation state — the ElastiCache settings that prevent it (ADR-0032)
+        # The API stores every revocation in Postgres and treats Redis as a cache, but two provider
+        # defaults still decide whether a key survives: `maxmemory-policy` (default allkeys-lru evicts
+        # the version/token/device revocation keys, and an evicted key reads as "nothing was revoked")
+        # and `snapshot_retention_limit` (default 0, so a restart returns an empty cache). This reads
+        # infra/terraform/env/elasticache.tf with comments stripped, so a sentence about the policy
+        # cannot stand in for the setting. Mutants, one per rule: drop the parameter block, switch it
+        # to allkeys-lru, or set retention back to 0 — each fails a named fixture in the self-test.
+        run: |
+          node scripts/check-redis-durability.mjs --selftest
+          node scripts/check-redis-durability.mjs
