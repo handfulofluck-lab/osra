@@ -70,3 +70,14 @@ pgdata/
 # Redis snapshots written by a locally started redis-server (never commit)
 *.rdb
 dump.rdb
+
+# ── Firebase / FCM credentials ───────────────────────────────────────────────
+# The repo is public and these are per-project credentials, not templates.
+# The service-account key lives outside the repo (C:/karim/osra-secrets/firebase/)
+# and reaches the API through Secrets Manager, never through git.
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+*firebase-adminsdk*.json
+**/*firebase-adminsdk*.json

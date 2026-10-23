@@ -143,6 +143,23 @@ what you verified and where; keep the *why* next to the *what*; and never delete
 state — supersede it. A reviewer may ask for documentation changes the same way they ask for code
 changes.
 
+## 5a. Resolving a conflicted merge (the half a marker gate cannot catch)
+
+On 2026-10-23 three separate merge resolutions kept the markers out and still lost another PR's work:
+`docs/ROADMAP.md` row 3.3 dropped #312's Android paragraph, and `docs/SPEC.md` went back to calling that screen
+unbuilt. Every suite was green, because no test reads prose. `scripts/check-no-conflict-markers.mjs` catches the
+markers; nothing catches a resolution that is marker-free and wrong.
+
+So, for **every** file a merge reported as conflicted, before staging anything:
+
+1. `git grep -n '<<<<<<<' -- <file>` — empty.
+2. **`git diff --word-diff origin/main -- <file>`** — the output must show *only your own change*. Anything else
+   appearing as removed is another PR's work that the resolution just deleted; put it back.
+3. Read the file's region around the conflict once, with both sides in mind, and say in the commit message what
+   each side contributed.
+
+The third step is what fails quietly: a row that is one 6,400-character line looks resolved when it is half a row.
+
 ## 6. Landing changes — `main` is protected, no direct pushes
 
 **Every change reaches `main` through a pull request**, including docs, QA reports and one-line
