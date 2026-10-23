@@ -94,6 +94,14 @@ jobs:
       - name: Diff-scope self-test
         run: node scripts/check-pr-diff-scope.mjs --selftest
 
+      - name: No conflict markers in any tracked file
+        # A conflicted merge that is staged and committed leaves `<<<<<<<` in the tree, and no test reads
+        # documentation, so every suite stays green. The self-test proves the rule fires on a real pair
+        # and stays quiet on a setext heading or prose about merges.
+        run: |
+          node scripts/check-no-conflict-markers.mjs --selftest
+          node scripts/check-no-conflict-markers.mjs
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.
