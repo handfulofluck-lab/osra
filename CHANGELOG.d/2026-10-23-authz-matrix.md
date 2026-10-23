@@ -11,3 +11,7 @@
   profile. `/v1/ws-ticket` answers a purpose token with 403 rather than 401.
 - **⚠️ Not verified yet:** this is the expected half only. The statuses are read from the code, not observed
   against a stack. Coverage citations and the probe checks for the gaps come in the next push.
+- **One finding (F1, not exploitable):** probe checks B7 and B9 call routes that were never registered
+  (`GET /v1/insights/:childId`, `PUT /v1/digests`). The router's 404 satisfies their `[403, 404]`
+  acceptance even with no token, so they can't fail. Measured on a local stack; the redefinition is
+  proposed in the matrix, §5.

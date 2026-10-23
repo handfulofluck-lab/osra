@@ -238,7 +238,9 @@ These are things the code does that the matrix records as-is. They aren't findin
   telemetry, activity and app inventory (`devices.ts:392`, `:525`, `:571`). That's because
   `requireOwnDevice` lets every parent token through (`requireFamily.ts:248`). Is a parent-side write
   intended on these three agent routes? If not, the fix is the `requireDeviceRole` gate that `/push-token`
-  already uses (`devices.ts:507`).
+  already uses (`devices.ts:507`). The current behaviour is pinned on purpose for two of the three:
+  `test/devices.test.ts:631-633` (telemetry) and `:677-679` (activity) assert a parent's `202` ("parents stay
+  family-scoped"). So answering "no" means changing a pinned test, and the reason has to be recorded.
 - **Q2.** `PATCH /v1/family/children/:id` (`family.ts:174`) names no permission and no owner check, so a
   guardian with no permissions can rename a child or change their birth year. Every other child-shaping
   write names `rules`, `location` or owner.
@@ -250,7 +252,52 @@ These are things the code does that the matrix records as-is. They aren't findin
   `401` every other route gives (`gateway.ts:22-37`; no `isBearerSession` check). It's still refused, so
   this is consistency, not exposure.
 
-## 5. What comes next
+## 5. Findings (not exploitable)
+
+### F1. Probe checks B7 and B9 call routes that don't exist, so they can't fail
+
+Both checks accept `403` or `404`, and both call a path the API never registered, so the router answers
+`404` before any guard runs:
+
+- `services/api/scripts/qa-probe.mjs:304-305`: B7 calls `GET /v1/insights/${kidA}`. The only insights route is
+  `GET /v1/insights/apps` (`routes/insights.ts:33`).
+- `qa-probe.mjs:313-314`: B9 calls `PUT /v1/digests`. The digest routes are `/v1/digests/prefs` and
+  `/v1/digests/send-now` (`routes/digests.ts:48`, `:54`, `:71`).
+
+What I ran (local stack, `main@bbda837`) and what it printed. The last call has **no token at all**:
+
+```
+GET /v1/insights/<id>:
+{"message":"Route GET:/v1/insights/some-child-id not found","error":"Not Found","statusCode":404} [404]
+PUT /v1/digests:
+{"message":"Route PUT:/v1/digests not found","error":"Not Found","statusCode":404} [404]
+same, no token at all:
+{"message":"Route GET:/v1/insights/some-child-id not found","error":"Not Found","statusCode":404} [404]
+```
+
+So B7 and B9 pass whatever the guards do. It's the `AGENTS.md` §3 class of a check that cannot fail. A
+sweep of all 262 `call(...)` sites in the probe against the 89 registered routes found no others, apart from
+H1, whose 404 is deliberate:
+
+```
+calls: 262 routes: 89
+line 304 GET /v1/insights/${kidA}
+line 313 PUT /v1/digests
+line 1449 GET /v1/does-not-exist-${stamp}
+```
+
+- **Cause:** the routes these checks named were renamed or never shipped. Insights has no child-scoped route
+  at all.
+- **Fix (proposed; it's Claude's call because it renames probe checks):**
+  - Redefine B7 as the cross-family check for a child-scoped read the B group doesn't cover yet:
+    `GET /v1/content/searches?childId=<kidA>` with `tokenB` must be `403 forbidden`.
+  - Redefine B9 the same way for `GET /v1/social/events?childId=<kidA>`.
+  - Both assert the exact status and the `error` body, not `[403, 404]`.
+  - Record the two redefinitions in `scripts/probe-gate-acks.json` as supersessions, not removals.
+- **The test that fails before the fix and passes after:** the redefined B7 and B9 fail when the
+  `requireFamily` preHandler is removed from `content.ts:266` or `social.ts:166`. They both pass with it in.
+
+## 6. What comes next
 
 1. **Coverage.** Replace each code above with `probe:<check>` or `test:<file>:<line>` where it's already
    pinned, or **GAP** where it isn't.
