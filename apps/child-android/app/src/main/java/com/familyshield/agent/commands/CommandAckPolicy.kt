@@ -17,7 +17,13 @@ import com.familyshield.agent.network.dto.CommandAckDto
  *   and `failed` with `location_unavailable` when there was none;
  * - `wind_down` acks when the warning notification is posted and the timer is armed, not when the
  *   lock fires minutes later; `rules_updated` acks when the refresh has been accepted (`refresh()`
- *   falls back to the cached set on a network error, so it has no failure signal to report).
+ *   falls back to the cached set on a network error, so it has no failure signal to report);
+ * - `show_reset_code` returns [CommandOutcome.Deferred] while the notice is up: a display-time ack
+ *   would clear the plaintext payload server-side before the parent read it and would stop the
+ *   120-second redelivery that carries a withdrawal. `ResetCodeActivity` acks `ok` through
+ *   `CommandDispatcher.ackResetCode` when the notice ends (`detail.screen = expired|dismissed`); the
+ *   dispatcher acks `withdrawn` when the API clears the payload and `superseded` when a newer code
+ *   replaces this one.
  *
  * A handler that throws is a `failed` ack with `detail.reason = "command_failed"`. An unknown type
  * is `failed` with `unsupported_command` and an unparseable `bonus_time`/`wind_down` minutes payload

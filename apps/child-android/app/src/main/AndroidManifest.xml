@@ -191,5 +191,20 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
+
+        <!-- ADR-0031: the family-witness reset-code notice. Safe-direction (it restricts nothing), so
+             it is not a gate: Back/Close leave, and nothing is drawn over the keyguard (issue #87).
+             CommandDispatcher starts it with FLAG_ACTIVITY_NEW_TASK from a poll/FCM context; the
+             app's overlay app-op or bound accessibility service is what exempts that background
+             launch, and the same check decides whether the command can be shown at all. -->
+        <activity android:name=".commands.ResetCodeActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="false"
+            android:supportsPictureInPicture="false"
+            android:turnScreenOn="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
     </application>
 </manifest>
