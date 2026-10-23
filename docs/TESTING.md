@@ -652,6 +652,29 @@ camera-ready state and the denial fallback, and the typed path was paired end-to
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
 
+## 5j. Push wake on hardware (roadmap 1.5)
+
+Prerequisite: a build that carries `google-services.json`. Without it the gms plugin is skipped,
+`FirebaseApp` never initialises and `onNewToken` never fires — the device gets **no token**, and the row
+reads as "push is broken" when it is only the build. This is the trap that makes the row easy to
+mis-measure.
+
+1. Pair the agent, then **confirm the device row holds a token before timing anything**:
+   `POST /v1/devices/<id>/push-token` must have answered `204` (device-only route, #319/#320) and the
+   parent view must show a token. A null token makes every later timing meaningless.
+2. Background the app, then send `lock` from the parent API, and measure to the overlay:
+   `command → fetch`, `fetch → ack`, and `POST answered → screen off`. Measured 2026-10-23 (Flip4, main
+   `bbda837`): 1.0 s to fetch, 1.3 s to ack, screen off 1.00 s after the POST answered.
+3. Repeat with the device dozing: `adb shell dumpsys deviceidle force-idle` and screen off. It must still
+   wake (measured 1.0 s). `adb shell dumpsys deviceidle unforce` afterwards.
+4. **Re-pair moves the token.** Re-pair, then check that the *new* row receives a token within a second of
+   the claim and that a command to the new row wakes the phone while a command to the **previous** row wakes
+   nothing. This is #332: before it, the token stayed on the old row until the next ~15-minute poll, because
+   the periodic poll is enqueued with `KEEP`.
+5. Read the API log to tell the failure modes apart: `[push] device wake failed` is a provider problem, a
+   device with a null token is the agent never publishing, and a wake that arrives whose command never runs
+   is the agent's own fetch being blocked. They do not share a fix.
+
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 
 `scripts/hardware/android-pairing-time.ps1 -Pin <app PIN> [-Runs 3] [-Base http://127.0.0.1:3000]

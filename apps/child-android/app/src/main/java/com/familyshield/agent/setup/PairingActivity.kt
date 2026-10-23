@@ -20,6 +20,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.familyshield.agent.commands.CommandPollWorker
 import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
@@ -913,11 +914,20 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
-    /** Starts LocationService (if permitted) and schedules all periodic workers plus an immediate rules sync. */
+    /**
+     * Starts LocationService (if permitted), schedules all periodic workers, and runs an immediate rules
+     * sync and command poll.
+     *
+     * The poll is what moves the push token to the new device row (`CommandPoller` uploads it). The
+     * periodic poll is `KEEP`, so on a re-pair it keeps its old schedule and does not run now; without
+     * this fetch the token stayed on the old row, and the new row got no wake, until the next periodic
+     * poll (Claude's #322 phone row, 2026-10-23).
+     */
     private fun startAgent() {
         startLocationServiceIfPermitted()
         WorkScheduler.scheduleAll(this)
         WorkScheduler.syncNow(this)
+        CommandPollWorker.requestFetchNow(this)
     }
 
     // ---- view helpers ----
