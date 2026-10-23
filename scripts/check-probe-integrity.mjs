@@ -156,6 +156,14 @@ function compare(a, b, acks) {
   // Demotions: a gating check that survives only as an advisory severity is a weakening even though the
   // name is still present — the exact change a rename would disguise.
   for (const name of a.found.check.keys()) {
+    // A name that is STILL a gating check in head was not demoted, whatever else it also appears as.
+    // This is not a corner case: a probe that writes
+    //     if (precondition) check("Q6 …"); else target("Q6 …");
+    // puts one title in both kinds by design, and the pass used to read its own target line as a
+    // demotion of its own check line — reporting "DEMOTED check -> target" with base and head
+    // identical. It made every branch carrying such a probe red, including `main` against itself
+    // (measured 2026-10-23: `--base origin/main --head HEAD` on `origin/main` reported 2 demotions).
+    if (b.found.check.has(name)) continue;
     for (const weaker of ["target", "note"]) {
       if (b.found[weaker].has(name)) {
         if (acked("check", name)) infos.push(`acked-demoted check -> ${weaker}: ${name}`);
@@ -164,12 +172,13 @@ function compare(a, b, acks) {
     }
   }
   for (const name of a.found.target.keys()) {
+    if (b.found.target.has(name)) continue; // still a target: no demotion to note
     if (b.found.note.has(name)) {
       if (acked("target", name)) infos.push(`acked-demoted target -> note: ${name}`);
       else problems.push(`DEMOTED target -> note: ${name}`);
     }
   }
-  for (const name of a.found.target.keys()) if (b.found.check.has(name)) infos.push(`promoted target -> check: ${name}`);
+  for (const name of a.found.target.keys()) if (b.found.check.has(name) && !a.found.check.has(name)) infos.push(`promoted target -> check: ${name}`);
   for (const name of a.found.note.keys()) if (b.found.check.has(name)) infos.push(`promoted note -> check: ${name}`);
 
   return { problems, infos };
@@ -248,6 +257,25 @@ if (argv.includes("--selftest")) {
     "check -> target is still a DEMOTED",
     demoted.problems.includes("DEMOTED check -> target: Z1 demoted"),
     `problems=${JSON.stringify(demoted.problems)}`,
+  );
+
+  // The if/else degradation pattern: ONE title written as both a check and a target, which is what a
+  // probe does when a precondition can be unavailable. Base and head identical => no finding. The pass
+  // used to read the target line as a demotion of the check line and made every such branch red,
+  // including `main` against itself (issue: found on 2026-10-23 while #339 sat red for a change that
+  // touched only infra).
+  const bothKinds = [
+    "if (ok) {",
+    '  check("Q6 same title", ok);',
+    "} else {",
+    '  target("Q6 same title", "unavailable");',
+    "}",
+  ].join("\n");
+  const ifElse = compare(assertions(bothKinds), assertions(bothKinds), []);
+  expect(
+    "a title that is both a check and a target is not a DEMOTED when the check survives",
+    ifElse.problems.length === 0,
+    `problems=${JSON.stringify(ifElse.problems)}`,
   );
 
   const acked = compare(assertions("check(\"R1 renamed\", ok);"), assertions(""), [
