@@ -197,11 +197,17 @@ type AuthedUser = { sub: string; familyId: string; role?: string; deviceId?: str
  * sends inline (`device_role_required`), lifted out because the push-token route needs it as a
  * preHandler: `requireOwnDevice()` deliberately lets parent tokens through (family scoping is the
  * whole rule for a parent), so the role gate has to come from somewhere else.
+ *
+ * Plan 2.7 F2 (Claude, #329, 2026-10-23): telemetry, activity and the app inventory compose it too.
+ * Data the child's phone reports must come from the phone — a parent token (any family role, any
+ * permission) could otherwise forge the app list that feeds app blocking, the calls and texts in the
+ * activity log, and the usage minutes. Do not drop it from those routes as redundant with
+ * `requireOwnDevice()`, for the reason above.
  */
 async function requireDeviceRole(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const user = req.user as { role?: string } | undefined;
   if (user?.role !== "device") {
-    await reply.code(403).send({ error: "device_role_required", hint: "the push token belongs to the device itself" });
+    await reply.code(403).send({ error: "device_role_required", hint: "this route accepts only the device's own token" });
   }
 }
 
@@ -381,7 +387,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    *
    * Agent write composed exactly like `/telemetry` and `/activity`: `requireFamily` proves the
    * device belongs to the caller's family and `requireOwnDevice` proves the caller *is* that device,
-   * so device A cannot write sibling B (parent tokens stay family-scoped). Device-JWT auth, not the
+   * so device A cannot write sibling B; `requireDeviceRole` refuses every parent token (plan 2.7 F2). Device-JWT auth, not the
    * `/internal` HMAC contract — this is an agent surface route, and the HMAC helper is for service
    * and alert writes. Consent withdrawal stops the upload (`assertProcessingAllowed`, 428).
    *
@@ -389,7 +395,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    * list clears the inventory. That is the honest model for "what is installed now"; a merge would
    * accumulate ghosts forever.
    */
-  app.post("/:id/apps", { preHandler: [requireFamily({ model: "device" }), requireOwnDevice()] }, async (req, reply) => {
+  app.post("/:id/apps", { preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = InstalledAppsSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -520,9 +526,9 @@ export async function deviceRoutes(app: FastifyInstance) {
 
   /** Store the latest device telemetry payload in Redis (UsageReporter / TelemetryUploader). */
   // Audit finding 5: `requireOwnDevice` closes the family-scoping gap — device A used to be able to
-  // post telemetry for sibling B (refreshing B's lastSeen, battery and day totals). Parent tokens
-  // stay family-scoped, and the shared preHandler means a future agent-write route composes it too.
-  app.post("/:id/telemetry", { preHandler: [requireFamily({ model: "device" }), requireOwnDevice()] }, async (req, reply) => {
+  // post telemetry for sibling B (refreshing B's lastSeen, battery and day totals). Plan 2.7 F2: a
+  // parent token is refused too (`requireDeviceRole`); a future agent-write route composes both.
+  app.post("/:id/telemetry", { preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = TelemetrySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -567,8 +573,8 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Ingest a batch of activity events (urls, app usage, calls, SMS) from a device agent (#4). */
-  // Same `requireOwnDevice` rule as /telemetry: device tokens write only their own row.
-  app.post("/:id/activity", { preHandler: [requireFamily({ model: "device" }), requireOwnDevice()] }, async (req, reply) => {
+  // Same rule as /telemetry: device tokens only (plan 2.7 F2), and only their own row.
+  app.post("/:id/activity", { preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = ActivityBatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

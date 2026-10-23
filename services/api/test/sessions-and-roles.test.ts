@@ -327,6 +327,27 @@ describe("family roles — co-parent tokens work, permissions are enforced (ADR-
     await app.close();
   });
 
+  // Plan 2.7 F3 (Claude, #329, 2026-10-23): birthYear sets the age risk scoring uses, so editing a
+  // child's profile is a rules decision. Before the fix the guardian below got 200 and changed it.
+  it("a guardian without the 'rules' permission cannot edit a child's profile (403 permission_required); with it 200", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.child.update.mockResolvedValue({ id: "child-1", birthYear: 2008 });
+    const h = authHeader(app, "fam-1", "p-g");
+
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-g", familyId: "fam-1", role: "guardian", permissions: ["alerts"] });
+    const refused = await app.inject({ method: "PATCH", url: "/v1/family/children/child-1", headers: h, payload: { birthYear: 2008 } });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: "permission_required", permission: "rules" });
+    expect(prismaMock.child.update).not.toHaveBeenCalled();
+
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-g", familyId: "fam-1", role: "guardian", permissions: ["rules"] });
+    const allowed = await app.inject({ method: "PATCH", url: "/v1/family/children/child-1", headers: h, payload: { birthYear: 2008 } });
+    expect(allowed.statusCode).toBe(200);
+    expect(prismaMock.child.update).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
   it("a co-parent WITH the 'alerts' permission can acknowledge an alert; without it 403", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     prismaMock.alert.findUnique.mockResolvedValue({ id: "al-1", childId: "child-1", child: { familyId: "fam-1" } });

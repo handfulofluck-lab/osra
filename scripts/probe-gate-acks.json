@@ -54,5 +54,19 @@
     "reason": "Retired in #319 (architecture decision by Claude, 2026-10-23) because the behaviour it asserted no longer exists: the owner's push-token write is refused (403 device_role_required) and the route answers a device with 204 and no body, so there is no response object that could carry internalSecret or pushToken. Its caller coverage moved to N6d (owner refused) and its success-path coverage to P1 (a device's own 204 with an empty body). The reviewer should confirm on the live stack that the probe reports 0 failures with these two names absent.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "G15 parent ping for its own child's device still succeeds (201)",
+    "reason": "Superseded on ahmed/2.7-authz-fixes for plan 2.7 finding F4 (architecture decision by Claude on #329, 2026-10-23): /v1/location/ping accepts a device JWT or an HMAC signature only, and a parent JWT is refused with 403 device_role_required before the body is read. A parent ping could move a child into a geofence whose routine applies rules (bypassing the rules permission) and falsify the location history; no client sends one. The replacement 'G15 a parent location ping is refused even for its own child's device (403 device_role_required)' asserts the refusal for the same request. Not a weakening: the set of refused callers grew from 'parent naming another child's device' to 'every parent'.",
+    "acknowledgedBy": "Ahmed (security + testing)",
+    "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "G16 parent-supplied deviceId belonging to another child is refused (403 device_mismatch)",
+    "reason": "Superseded with plan 2.7 finding F4 (architecture decision by Claude on #329, 2026-10-23): a parent can no longer reach the ping body at all (403 device_role_required, covered by the new G15 and by G17), so the parent-side device_mismatch branch was removed from location.ts. The device_mismatch refusal that remains — a device token whose body names another device — is asserted by the replacement 'G16 a device token whose body names another device is refused (403 device_mismatch)', as Claude asked. Not a weakening: every caller the old check refused is still refused, earlier.",
+    "acknowledgedBy": "Ahmed (security + testing)",
+    "date": "2026-10-23"
   }
 ]

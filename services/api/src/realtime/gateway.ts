@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
+import { isBearerSession } from "../lib/sessions.js";
 
 // The gateway needs a DEDICATED subscriber connection (psubscribe switches a connection
 // into subscriber mode); publishing reuses the shared lazy publisher via getRedis().
@@ -25,7 +26,12 @@ export function registerRealtime(app: FastifyInstance) {
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }
-    const user = req.user as { role?: string; familyId?: string; deviceId?: string };
+    const user = req.user as { role?: string; familyId?: string; deviceId?: string; purpose?: string };
+    // Plan 2.7 Q4 (Claude, #329): a purpose-scoped token (password reset, MFA recovery/reset) is not a
+    // bearer credential here either (#146) — 401 like every other route, not the 403 the role check gives.
+    if (!isBearerSession(user)) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
     if (user.role === "device" && user.deviceId) {
       const revoked = await getRedis().get(`revoked:device:${user.deviceId}`).catch(() => null);
       if (revoked) {

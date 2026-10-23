@@ -52,11 +52,15 @@ const HistoryQuerySchema = z.object({
 type AuthedUser = { familyId: string; sub?: string; role?: string; deviceId?: string; childId?: string };
 
 /**
- * preHandler for POST /ping: accepts only a parent JWT (`role: "parent"` with its family), a device
- * JWT (`role: "device"` with its device/child claims, revocation-checked), or a valid HMAC request.
- * A verified signature alone proves who signed the token, not that the bearer may write location
- * data: a password-reset token or a token with no role must be 401, not fall through to the ping
- * handler (where a missing familyId used to skip the family check).
+ * preHandler for POST /ping: accepts only a device JWT (`role: "device"` with its device/child claims,
+ * revocation-checked) or a valid HMAC request. A verified signature alone proves who signed the token,
+ * not that the bearer may write location data: a password-reset token or a token with no role must be
+ * 401, not fall through to the ping handler (where a missing familyId used to skip the family check).
+ *
+ * Plan 2.7 F4 (Claude, #329, 2026-10-23): a parent JWT is refused with `403 device_role_required`,
+ * the refusal the other device-only routes send. A parent ping could move a child into a geofence
+ * whose routine applies rules (bypassing the `rules` permission) and falsify the location history;
+ * no client sends one (the parent app never calls this route, and e2e signs with HMAC).
  */
 async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   let jwtVerified = false;
@@ -68,7 +72,10 @@ async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void>
   }
   if (jwtVerified) {
     const user = req.user as AuthedUser | undefined;
-    if (user?.role === "parent" && user.familyId) return;
+    if (user?.role === "parent") {
+      await reply.code(403).send({ error: "device_role_required", hint: "location pings come from the child's device" });
+      return;
+    }
     if (user?.role === "device" && user.deviceId && user.childId && user.familyId) {
       const redis = getRedis();
       const revoked = await redis.get(`revoked:device:${user.deviceId}`).catch(() => null);
@@ -229,18 +236,6 @@ export async function locationRoutes(app: FastifyInstance) {
     // device-identity checks below.
     if (user && child.familyId !== user.familyId) {
       return reply.code(403).send({ error: "forbidden" });
-    }
-
-    // A parent may report on a device's behalf, but only for a device row of the named child.
-    // The body's deviceId is not free-form metadata: accepting a sibling's device id would file
-    // this child's location into another child's device timeline.
-    if (user?.role === "parent") {
-      const device = await prisma.device.findUnique({ where: { id: effectiveDeviceId } });
-      // A missing row keeps the route's existing convention (FK failure -> 401 device_revoked).
-      if (!device) return reply.code(401).send({ error: "device_revoked" });
-      if (device.childId !== effectiveChildId) {
-        return reply.code(403).send({ error: "device_mismatch" });
-      }
     }
 
     // Verify token identity claims vs body
