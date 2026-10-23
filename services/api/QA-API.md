@@ -39,7 +39,7 @@ QA pass against `docs/SPEC.md` §3, §12, §14. Suite: `pnpm vitest run` (vitest
 | GET /:id | ✓ 200 telemetry merged from Redis | · | (mw) | ✓ | |
 | POST /:id/command | ✓ 200 publish + queue | ✓ unknown command | ✓ 403 foreign | (mw) | `{type, payload}` shape ✓ |
 | GET /:id/commands | ✓ 200 drains queue | · | (mw) | (mw) | |
-| POST /:id/push-token | ✓ 200 parent | ✓ empty token | ✓ 403 device token | (mw) | parent-only per §14.1 tightening |
+| POST /:id/push-token | ✓ 204 (device JWT) | ✓ token under 20 or over 4096 characters | ✓ 403 parent (owner or co-parent, `device_role_required`) · ✓ 403 sibling device (`forbidden`) | (mw) | device-only since #319 — body `{token}`, one token per device |
 | POST /:id/telemetry | ✓ 202 (device JWT) | ✓ battery 150 / −1 / string, bad appUsage, bad urls | ✓ 403 foreign device | (mw) | refreshes lastSeen/status |
 | DELETE /:id | ✓ 200 | · | ✓ 403 device token | ✓ | |
 

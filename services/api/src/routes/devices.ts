@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -64,7 +64,12 @@ const AckSchema = z.object({
   detail: z.record(z.unknown()).optional(),
 });
 
-const PushTokenSchema = z.object({ pushToken: z.string().min(1) });
+/**
+ * The body of `POST /:id/push-token` — the same field and bounds `POST /v1/me/push-token` accepts
+ * (#319). A registration token is not a free-form string we want bounded only by the body limit:
+ * FCM/APNs tokens are long, and a short one is a bug in the caller, not a token.
+ */
+const PushTokenSchema = z.object({ token: z.string().min(20).max(4096) });
 
 const PairSchema = z.object({ childId: z.string().min(1) });
 
@@ -187,6 +192,19 @@ function normalizeInstalledApps(
 
 type AuthedUser = { sub: string; familyId: string; role?: string; deviceId?: string; childId?: string };
 
+/**
+ * preHandler (after `requireFamily`): only a device JWT may pass — the refusal `GET /:id/commands`
+ * sends inline (`device_role_required`), lifted out because the push-token route needs it as a
+ * preHandler: `requireOwnDevice()` deliberately lets parent tokens through (family scoping is the
+ * whole rule for a parent), so the role gate has to come from somewhere else.
+ */
+async function requireDeviceRole(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const user = req.user as { role?: string } | undefined;
+  if (user?.role !== "device") {
+    await reply.code(403).send({ error: "device_role_required", hint: "the push token belongs to the device itself" });
+  }
+}
+
 /** Generate a 6-digit pairing code and store its payload with a 600 s TTL, retrying on SET NX collision. */
 async function createPairingCode(payload: { childId: string; familyId: string }): Promise<{ code: string; expiresAt: string }> {
   for (let attempt = 0; attempt < PAIR_MAX_ATTEMPTS; attempt++) {
@@ -202,7 +220,8 @@ export async function deviceRoutes(app: FastifyInstance) {
   /**
    * Enroll a new device for a child of the authenticated family.
    * Issue #138: enrollment issues device credentials, so it sits inside the `devices` permission
-   * surface (ADR-0014, amendment 2026-10-18) — the same gate as command, push-token and unpair.
+   * surface (ADR-0014, amendment 2026-10-18) — the same gate as command and unpair. (The push-token
+   * route is no longer parent-side at all: #319 made it device-only — see the route below.)
    * The response is sanitized: `internalSecret` (minted at pair/claim) and `pushToken` must never
    * leave the API through the parent-facing enrollment route.
    */
@@ -462,25 +481,42 @@ export async function deviceRoutes(app: FastifyInstance) {
     return { items };
   });
 
-  /** Update the device push token (FCM/APNs registration). */
-  // NOTE: tightened to parent-only per the §14.1 role tightening even though §14.1 also lists
-  // this route among device-JWT endpoints; FCM-free test agents never register push tokens.
-  // Audit finding 6: `requirePermission("devices")` matches the other parent-side device mutations
-  // (command, unpair) — a co-parent admitted without the `devices` tag may not repoint a child's
-  // notifications. The response is an explicit allowlist (`select`) and then `sanitizeDevice`, so the
-  // per-device HMAC secret and the push token cannot leave the server, and a future secret column is
-  // not returned just because it exists.
-  app.post("/:id/push-token", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {
-    const parsed = PushTokenSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { id } = req.params as { id: string };
-    const device = await prisma.device.update({
-      where: { id },
-      data: { pushToken: parsed.data.pushToken },
-      select: { id: true, childId: true, platform: true, model: true, osVersion: true, status: true, batteryPct: true, lastSeen: true },
-    });
-    return { device: sanitizeDevice(device) };
-  });
+  /**
+   * The device's own push-token registration (FCM/APNs) — roadmap 1.5, #319. Device JWT only.
+   *
+   * The parent capability this path used to carry (`requireParent` + `requirePermission("devices")`,
+   * audit finding 6 / #124) was **removed on purpose** — Claude, 2026-10-23, issue #319: a parent
+   * writing a child's notification token has no legitimate caller, and leaving it there would keep a
+   * capability nobody can use while the Android client points at the path it is refused. Do not
+   * "restore" the parent shape, and do not drop the role gate as redundant: `requireOwnDevice()`
+   * lets every parent token through, because for a parent token the family scope is the whole rule.
+   * The role gate is `requireDeviceRole`, the same `403 device_role_required` refusal
+   * `GET /:id/commands` sends inline.
+   *
+   * **One token, one device.** Push delivery addresses a registration token, not a row, so the token
+   * is first cleared from any other device in the same transaction that this row adopts it. A phone
+   * that is unpaired and paired again — possibly into another family — otherwise leaves its old row
+   * waking a phone that now belongs to someone else.
+   *
+   * No consent gate: stop-ring stays allowed after consent is withdrawn (an earlier decision), and a
+   * registration token is not the child's data. The response is `204` with no device object and no
+   * token — nothing here is safe to echo, and a parent route no longer exists to shape it for.
+   */
+  app.post(
+    "/:id/push-token",
+    { preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] },
+    async (req, reply) => {
+      const parsed = PushTokenSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+      const { id } = req.params as { id: string };
+      const { token } = parsed.data;
+      await prisma.$transaction([
+        prisma.device.updateMany({ where: { pushToken: token, id: { not: id } }, data: { pushToken: null } }),
+        prisma.device.update({ where: { id }, data: { pushToken: token } }),
+      ]);
+      return reply.code(204).send();
+    },
+  );
 
   /** Store the latest device telemetry payload in Redis (UsageReporter / TelemetryUploader). */
   // Audit finding 5: `requireOwnDevice` closes the family-scoping gap — device A used to be able to

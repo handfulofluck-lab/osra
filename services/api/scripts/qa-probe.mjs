@@ -652,6 +652,20 @@ console.log("\n── G2. location & rules authorization ──");
   const appsAfterClear = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
   check("G29 installed apps: a later report replaces the list and an empty report clears it", appsReplace.status === 202 && appsAfterReplace.data?.count === 1 && appsAfterReplace.data?.apps?.[0]?.packageId === "com.example.only" && appsClear.status === 202 && appsAfterClear.data?.count === 0, `replace=${appsReplace.status} count=${appsAfterReplace.data?.count} clear=${appsClear.status} after=${appsAfterClear.data?.count}`);
 
+  // #319 (roadmap 1.5). `POST /:id/push-token` is the device's own registration path and nothing
+  // else: Claude's decision (2026-10-23) keeps the path the Android client already calls and makes it
+  // device-only — `requireFamily` + role `device` + `requireOwnDevice` — so the parent capability that
+  // used to sit on it is gone. P1 proves the route actually accepts the caller it exists for (so the
+  // two refusals below cannot pass by refusing everyone); P2/P3 are the half a later "let parents do
+  // it again" edit would relax, and the parent-write case is also pinned at N6d in its permission
+  // shape.
+  const selfPush = await call("POST", `/v1/devices/${d2.deviceId}/push-token`, { token: d2.token, body: { token: `fcm-self-${stamp}-device-token` } });
+  check("P1 a device registers its own push token (204 with no body)", selfPush.status === 204 && selfPush.data === null, `got ${selfPush.status} ${JSON.stringify(selfPush.data)}`);
+  const siblingPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: d2.token, body: { token: `fcm-sibling-${stamp}-device-token` } });
+  check("P2 a device cannot set a sibling device's push token (403 forbidden)", siblingPush.status === 403 && siblingPush.data?.error === "forbidden", `got ${siblingPush.status} ${JSON.stringify(siblingPush.data)}`);
+  const parentPush = await call("POST", `/v1/devices/${d2.deviceId}/push-token`, { token: tokenA, body: { token: `fcm-parent-${stamp}-device-token` } });
+  check("P3 a parent cannot set a device's push token (403 device_role_required)", parentPush.status === 403 && parentPush.data?.error === "device_role_required", `got ${parentPush.status} ${JSON.stringify(parentPush.data)}`);
+
   if (process.env.JWT_SECRET) {
     const parentId = JSON.parse(Buffer.from(tokenA.split(".")[1], "base64url").toString()).sub;
     const now = Math.floor(Date.now() / 1000);
@@ -999,20 +1013,23 @@ console.log("\n── N. sessions & roles ──");
     check("N6b co-parent without 'devices' cannot register a device (403 permission_required)", coRegister.status === 403 && coRegister.data?.error === "permission_required" && coRegister.data?.permission === "devices", `got ${coRegister.status} ${JSON.stringify(coRegister.data)}`);
     const coPair = await call("POST", "/v1/devices/pair", { token: coTok, body: { childId: kidA } });
     check("N6c co-parent without 'devices' cannot mint a pairing code (403 permission_required)", coPair.status === 403 && coPair.data?.error === "permission_required" && coPair.data?.permission === "devices", `got ${coPair.status} ${JSON.stringify(coPair.data)}`);
-    // #124 (audit finding 6): push-token is a parent-side device mutation, so it names the same
-    // `devices` permission as command, unpair and enrollment. Without it, a co-parent admitted for
-    // `alerts` could repoint the child's notifications to a device they control.
-    const coPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: coTok, body: { pushToken: `co-probe-${stamp}` } });
-    check("N6d co-parent without 'devices' cannot set a device push token (403 permission_required)", coPush.status === 403 && coPush.data?.error === "permission_required" && coPush.data?.permission === "devices", `got ${coPush.status} ${JSON.stringify(coPush.data)}`);
+    // #124 (audit finding 6) pinned that a co-parent without `devices` could not set a push token.
+    // #319 (Claude, 2026-10-23) redefined the route as device-only, so the assertion is now stronger:
+    // NO parent may set one, permission or not. The owner is the all-permissions caller, and both get
+    // the same refusal. The old `403 permission_required` shape cannot occur any more —
+    // `requirePermission("devices")` is no longer in the chain — so asserting it would assert a route
+    // that does not exist. Superseded assertion, not a weakened one; acknowledged in
+    // scripts/probe-gate-acks.json.
+    const coPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: coTok, body: { token: `co-probe-${stamp}-device-token` } });
+    const ownerPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: tokenA3, body: { token: `fcm-probe-${stamp}-device-token` } });
+    check("N6d no parent may set a device push token, permission or not: the co-parent and the owner are both refused (403 device_role_required)", coPush.status === 403 && coPush.data?.error === "device_role_required" && ownerPush.status === 403 && ownerPush.data?.error === "device_role_required", `co=${coPush.status} ${JSON.stringify(coPush.data)} owner=${ownerPush.status} ${JSON.stringify(ownerPush.data)}`);
     // Roadmap 3.4: the installed-app inventory is a `rules` surface (it feeds the Rules editor).
     const coApps = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: coTok });
     check("N6f co-parent without 'rules' cannot read the installed-app inventory (403 permission_required)", coApps.status === 403 && coApps.data?.error === "permission_required" && coApps.data?.permission === "rules", `got ${coApps.status} ${JSON.stringify(coApps.data)}`);
-    // ...and the owner's success response is an allowlist, not the raw Prisma row: `internalSecret` is
-    // the device's signing key and `pushToken` is another user's FCM handle, so neither may leave the
-    // server (the pre-fix response carried both).
-    const ownerPush = await call("POST", `/v1/devices/${deviceIdA}/push-token`, { token: tokenA3, body: { pushToken: `fcm-probe-${stamp}` } });
-    const ownerPushBody = JSON.stringify(ownerPush.data ?? {});
-    check("N6e owner push-token update (200) returns neither internalSecret nor pushToken", ownerPush.status === 200 && ownerPush.data?.device?.id === deviceIdA && !ownerPushBody.includes("internalSecret") && !ownerPushBody.includes("pushToken"), `got ${ownerPush.status} ${ownerPushBody.slice(0, 200)}`);
+    // N6e ("owner push-token update (200) returns neither internalSecret nor pushToken") is retired by
+    // the same decision: the owner's write is now refused, and a `204` with no body has no device
+    // object that could carry `internalSecret` or `pushToken`. Both callers are covered by N6d above
+    // and the device's own `204` by P1. Acknowledged in scripts/probe-gate-acks.json.
     // N7: the permission the invite DID grant works — ack an alert of family A.
     const alertsA = await call("GET", "/v1/alerts?limit=1", { token: coTok });
     const alertId = alertsA.data?.items?.[0]?.id ?? alertsA.data?.alerts?.[0]?.id;

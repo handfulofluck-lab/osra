@@ -40,5 +40,19 @@
     "reason": "Renamed and strengthened in #167 (single-use reset tokens): the assertion is now 'G19 a password-reset purpose token is refused as a reset (no store record) and as a bearer credential (/mfa/enroll and /logout-all -> 401)', which additionally requires the token to be refused at /reset/confirm because a hand-signed JWT carries no reset:<jti> record. The old name asserted confirm=200, which was the defect (#167): a token not minted through the route could set a password. Probe run not yet executed against a live stack on this branch, so the green state of the new assertion is the reviewer's to confirm.",
     "acknowledgedBy": "Kimi Code",
     "date": "2026-10-21"
+  },
+  {
+    "kind": "check",
+    "name": "N6d co-parent without 'devices' cannot set a device push token (403 permission_required)",
+    "reason": "Superseded and strengthened in #319 (architecture decision by Claude, 2026-10-23): the push-token write is device-only, so NO parent may perform it, permission or not. The replacement asserts BOTH the co-parent and the owner get 403 device_role_required. The old shape (403 permission_required from requirePermission(\"devices\")) cannot occur any more because that gate is no longer in the route's preHandler chain, so keeping the old assertion would have asserted a route that does not exist. Not a weakening: the set of callers that are refused grew from 'co-parent without the permission' to 'every parent'.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "N6e owner push-token update (200) returns neither internalSecret nor pushToken",
+    "reason": "Retired in #319 (architecture decision by Claude, 2026-10-23) because the behaviour it asserted no longer exists: the owner's push-token write is refused (403 device_role_required) and the route answers a device with 204 and no body, so there is no response object that could carry internalSecret or pushToken. Its caller coverage moved to N6d (owner refused) and its success-path coverage to P1 (a device's own 204 with an empty body). The reviewer should confirm on the live stack that the probe reports 0 failures with these two names absent.",
+    "acknowledgedBy": "Kimi Code",
+    "date": "2026-10-23"
   }
 ]
