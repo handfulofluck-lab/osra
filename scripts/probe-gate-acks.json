@@ -82,5 +82,19 @@
     "reason": "Superseded in #329 (plan 2.7 finding F1, approved by Claude on #329, 2026-10-23). The check called PUT /v1/digests, a route that was never registered (the digest routes are /v1/digests/prefs and /v1/digests/send-now, routes/digests.ts:48-71), so the router's 404 satisfied its [403, 404] acceptance even with no token; it could not fail. The replacement 'B9 social events of another family's child are refused (403 forbidden)' targets GET /v1/social/events?childId= with the other family's token and asserts 403 and error === \"forbidden\" exactly; removing requireFamily from social.ts:166 makes it fail. Not a weakening: the old check asserted nothing.",
     "acknowledgedBy": "Ahmed (security + testing)",
     "date": "2026-10-23"
+  },
+  {
+    "kind": "target",
+    "name": "Q6 a guardian with no permissions is refused on every permission-, owner- and device-only route",
+    "reason": "Renamed, not removed (#338, fixing a defect #329 introduced). This was the fallback target() printed only when the O-section guardian has no live session, and it shared its exact name with the gating check() of the same id. check-probe-integrity keys names per severity, so the shared name read as both 'promoted target -> check' and 'DEMOTED check -> target' and failed the gate on main itself (main vs main exits 1). The fallback is now 'Q6 a guardian with no permissions is refused (no live guardian session)'; the gating check keeps its name and is unchanged.",
+    "acknowledgedBy": "Ahmed (security + testing)",
+    "date": "2026-10-23"
+  },
+  {
+    "kind": "target",
+    "name": "Q6b a co-parent with no permissions is refused on every permission-, owner- and device-only route",
+    "reason": "Renamed, not removed (#338, fixing a defect #329 introduced). This was the fallback target() printed only when the O-section co-parent has no live session, and it shared its exact name with the gating check() of the same id. check-probe-integrity keys names per severity, so the shared name read as both 'promoted target -> check' and 'DEMOTED check -> target' and failed the gate on main itself (main vs main exits 1). The fallback is now 'Q6b a co-parent with no permissions is refused (no live co-parent session)'; the gating check keeps its name and is unchanged.",
+    "acknowledgedBy": "Ahmed (security + testing)",
+    "date": "2026-10-23"
   }
 ]

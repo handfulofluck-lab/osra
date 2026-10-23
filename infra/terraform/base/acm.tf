@@ -8,8 +8,13 @@ resource "aws_acm_certificate" "api" {
   validation_method = "DNS"
 
   # A replacement certificate must exist before the old one is removed.
+  # prevent_destroy: a base apply from a clone without base/terraform.tfvars sets domain_name = ""
+  # (see `create_certificate`), and because base state is shared in S3 that apply DESTROYS this
+  # certificate — it looks exactly like a first-time apply, which is how it went unnoticed on
+  # 2026-10-23 (DeleteCertificate 12:57:59Z, issue #337). Refuse instead of destroying.
   lifecycle {
     create_before_destroy = true
+    prevent_destroy       = true
   }
 
   tags = {

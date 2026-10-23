@@ -26,6 +26,14 @@ resource "aws_iam_openid_connect_provider" "github" {
   tags = {
     Name = "${local.name_prefix}-github-oidc"
   }
+
+  # prevent_destroy: these three exist only when base/terraform.tfvars names the repository, and base
+  # state is shared in S3 — so an apply from a clone WITHOUT that gitignored file evaluates the count to
+  # zero and DELETES them, which looks identical to a first-time apply (issue #337). To retire these on
+  # purpose, remove this lifecycle block in the same change that empties the values.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 data "aws_iam_policy_document" "publish_assume" {
@@ -66,6 +74,10 @@ resource "aws_iam_role" "publish" {
 
   name               = "${local.name_prefix}-publish"
   assume_role_policy = data.aws_iam_policy_document.publish_assume[0].json
+
+  lifecycle {
+    prevent_destroy = true
+  }
 
   tags = {
     Name = "${local.name_prefix}-publish"

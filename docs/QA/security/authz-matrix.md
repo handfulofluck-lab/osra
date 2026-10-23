@@ -16,11 +16,11 @@ two realtime routes from `src/realtime/gateway.ts`). It has one column per calle
 | Code | Meaning | Where it comes from |
 |---|---|---|
 | `200` / `201` / `202` / `204` | allowed, with the route's success status | the handler |
-| `403p:<perm>` | `403 permission_required`, **unless** the invite granted `<perm>`, then the success status | `requirePermission`, `middleware/requireFamily.ts:143-153` |
-| `403o` | `403 owner_role_required` | `requireOwner`, `requireFamily.ts:127-136` |
-| `403r` | `403 parent_role_required` (a device token on a parent route) | `requireParent`, `requireFamily.ts:98-101` |
-| `403f` | `403 forbidden`: the resource is in another family, or a device that isn't the caller | `requireFamily.ts:221-224`, `requireOwnDevice` `:245-254` |
-| `403c` | `403 cross_child_forbidden`: a device token reading another child | `requireFamily.ts:225-231` |
+| `403p:<perm>` | `403 permission_required`, **unless** the invite granted `<perm>`, then the success status | `requirePermission`, `middleware/requireFamily.ts:151-161` |
+| `403o` | `403 owner_role_required` | `requireOwner`, `requireFamily.ts:135-144` |
+| `403r` | `403 parent_role_required` (a device token on a parent route) | `requireParent`, `requireFamily.ts:106-109` |
+| `403f` | `403 forbidden`: the resource is in another family, or a device that isn't the caller | `requireFamily.ts:229-232`, `requireOwnDevice` `:253-262` |
+| `403c` | `403 cross_child_forbidden`: a device token reading another child | `requireFamily.ts:233-239` |
 | `403d` | `403 device_role_required` (a parent token on a device-only route) | `routes/devices.ts:207-212`, `:461`; `routes/location.ts:75-78` (`pingAuth`, since #331) |
 | `401` | `401 unauthorized` | JWT verify failure, or `isBearerSession` false (`lib/sessions.ts`) |
 | `401dr` | `401 device_revoked` | the global hook, `server.ts:70-87`, plus `devices.ts:647-657` |
@@ -144,7 +144,7 @@ except `wellbeing`, which takes it from the path. None names a permission or the
 | `GET /v1/social/events?childId=` | social 166 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/content/searches?childId=` | content 264 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
-A missing `childId` is `400 missing_childId` from `requireFamily` (`:212-215`), before any data is read.
+A missing `childId` is `400 missing_childId` from `requireFamily` (`requireFamily.ts:220-223`), before any data is read.
 
 ### Parent-only, per-parent (`routes/digests.ts`, `routes/me.ts`)
 
@@ -161,7 +161,7 @@ These read or write only rows keyed by the caller's own id, so there's no other-
 
 ### Any bearer: parent or device (`routes/blocklists.ts`, `routes/insights.ts`)
 
-`requireAuth` is role-agnostic on purpose (`requireFamily.ts:82-84`): agents read these too.
+`requireAuth` is role-agnostic on purpose (`requireFamily.ts:90-92`): agents read these too.
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -172,7 +172,7 @@ These read or write only rows keyed by the caller's own id, so there's no other-
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `POST /v1/ws-ticket` | 23 | 200 | 200 | 200 | own | 403r (`:41-42`) | 403r | 401dr (`:35-39`) | 401s (hook only) | 401 | 401 (Q4) | 401 | — |
+| `POST /v1/ws-ticket` | 23 | 200 | 200 | 200 | own | 403r (`:41-42`) | 403r | 401dr (`:35-39`) | 401s (F5: in-route too) | 401 | 401 (Q4) | 401 | — |
 | `GET /v1/ws?ticket=` | 53 | upgrade with a live ticket; the socket is bound to the ticket's family | same | same | a ticket is single-use and maps to one family | — | — | — | — | — | — | `401 ticket_required` without a ticket, or with `?token=` (`:61-68`) | — |
 
 ### Public (`routes/health.ts`)
@@ -193,7 +193,7 @@ that status for that caller on that route**. Everything else in the row is **GAP
 `buildApp`) registers the routes without the global `preHandler` in `server.ts:70-87`. That hook is the
 **only** place a revoked device is refused on most routes, and the only `sv` session check in front of
 the `requireAuth` routes (`requireAuth` checks the `jti`, not the session version,
-`middleware/requireFamily.ts:59-80`). So no unit test can cover a revoked-device or revoked-session cell
+`middleware/requireFamily.ts:59-88`). So no unit test can cover a revoked-device or revoked-session cell
 whose route relies on the hook. Only the probe, against a live server, can.
 
 ### The shared columns: revoked device, revoked session, expired, wrong purpose, no token
@@ -201,7 +201,7 @@ whose route relies on the hook. Only the probe, against a live server, can.
 | Column | Guard | Asserted today on | Everything else |
 |---|---|---|---|
 | Revoked (device) | global hook `server.ts:77-82`; also `devices.ts:647-657`, `location.ts:79-86`, `gateway.ts:35-40` | `GET /v1/devices/:id` (p:G9; t:token-hygiene.test.ts:188), `GET /v1/rules/:childId` (p:G10), `POST /v1/location/ping` (p:G11, p:M5), `POST /v1/ws-ticket` (p:G12), `GET /v1/devices/:id/commands` (p:M5) | **GAP** on the other 46 JWT routes |
-| Revoked session | global hook `server.ts:84-86`; also `requireParent`, `requireFamily`, `requireJwt` | `GET /v1/family/me` (p:N2, p:N3), `POST /v1/auth/logout-all` (t:sessions-and-roles.test.ts:63, :80, :104, :130, :146), `GET /v1/rules/:childId` (t:sessions-and-roles.test.ts:284) | **GAP** on the rest, including the three `requireAuth` routes where the hook is the only `sv` check |
+| Revoked session | global hook `server.ts:84-86`; also `requireParent`, `requireFamily`, `requireJwt` | `GET /v1/family/me` (p:N2, p:N3), `POST /v1/auth/logout-all` (t:sessions-and-roles.test.ts:63, :80, :104, :130, :146), `GET /v1/rules/:childId` (t:sessions-and-roles.test.ts:284) | **GAP** on the rest, including the three `requireAuth` routes, where the hook was the only `sv` check until F5 |
 | Expired | `@fastify/jwt` verify → 401 in every guard | none. The nearest is p:A6, a garbage JWT on `GET /v1/family/me` (signature failure, same 401 branch) | **GAP** on every route |
 | Wrong purpose | `isBearerSession` in each guard (`lib/sessions.ts:79-81`) | `POST /v1/location/ping` (p:G18; t:location-auth.test.ts:29), `GET /v1/rules/:childId` (t:sessions-and-roles.test.ts:164), `GET /v1/family/me` (p:O7), `POST /v1/ws-ticket` (t:realtime.test.ts:135) | **GAP** on the rest. The auth routes are in §3 |
 | None | each guard's verify → 401 | `GET /v1/alerts` (t:alerts.test.ts:462), `GET /v1/devices` (t:devices.test.ts:258), `GET /v1/family/children/:id` (t:family.test.ts:162), `GET /v1/family/me` (t:family.test.ts:223), `GET /v1/rules/:childId` and `PUT` (t:rules.test.ts:267), the three controls in t:controls.test.ts:291, `GET /v1/reports/summary` (t:reports.test.ts:120), `GET /v1/reports/activity` (t:social.test.ts:357), `GET /v1/social/events` (t:social.test.ts:249), `GET /v1/digests/prefs` (t:reports.test.ts:339), `POST /v1/digests/send-now` (t:reports.test.ts:376), `POST /v1/me/push-token`, `DELETE` (t:email.test.ts:326), `GET /v1/blocklists` (t:blocklists.test.ts:38), `GET /v1/insights/apps` (t:review-fixes.test.ts:101), `GET /v1/devices/:id/apps` (t:device-apps.test.ts:246), `GET /v1/ws` (t:realtime.test.ts:147) | **GAP** on the rest |
@@ -320,13 +320,15 @@ went from about 80 s to about 3 minutes.
 logged-out session on these four routes:
 
 - `GET /v1/blocklists`, `GET /v1/insights/apps` and `POST /v1/family/invites/:id/accept`. Their guard,
-  `requireAuth` (`middleware/requireFamily.ts:59-80`), checks a revoked `jti`, not the session version.
-- `POST /v1/ws-ticket` (`gateway.ts:23-47`). It checks `isBearerSession`, device revocation and the role, but
+  `requireAuth` (`middleware/requireFamily.ts:59-88`), checks a revoked `jti`, not the session version.
+- `POST /v1/ws-ticket` (`gateway.ts:23-52`). It checks `isBearerSession`, device revocation and the role, but
   never the session version. With the hook's session branch removed, a logged-out owner token got a ticket
   (`-> 200`). That ticket opens the family's live socket, so this is the most sensitive of the four.
 
-Today this is correct, because the hook runs on every route. But a refactor that drops or reorders the hook
-would reopen exactly these four, and only Q2 would notice. The defence-in-depth fix is F5, in §6.
+**Closed by F5** (`ahmed/2.7-hook-independent-sessions`). `requireAuth` (`middleware/requireFamily.ts:80-87`) and
+`ws-ticket` (`gateway.ts:44-48`) now check the session version themselves, so these four routes no longer depend
+on the hook alone. They're also unit-pinned, because the harness has no hook:
+`test/blocklists.test.ts` and `test/realtime.test.ts`, each with a stale-`sv` parent token → `401 session_revoked`.
 
 ## 2. HMAC-signed device and service routes
 
@@ -488,7 +490,7 @@ counted by Claude when verifying `d5218b9`):
 - **A sibling device** on `GET /v1/devices/:id/commands` and `…/commands/:commandId/ack`.
 - **A device token** on `POST /v1/family/invites/:id/accept` (expected 401).
 
-**F5 (next, not exploitable): defence in depth for the four hook-only routes in §1a.**
+**F5 (done in `ahmed/2.7-hook-independent-sessions`, not exploitable): defence in depth for the four hook-only routes in §1a.**
 - **Change:** `requireAuth`, and `ws-ticket` after its role check, refuse a parent token whose session is no
   longer live (`isParentSessionLive` → `401 session_revoked`).
 - **Tests:** unit tests on `GET /v1/blocklists` and `POST /v1/ws-ticket` with a stale-`sv` token. Those cells
