@@ -5,13 +5,31 @@ name: API image
 # credentials — and then runs the two things staging runs: migrate + seed (twice, for idempotency) and a
 # boot that answers /health/deep. A build that cannot migrate or seed is a build that fails at the first
 # `up.sh`, which is exactly where we do not want to find out.
-# Deliberately no `paths:` filter: a gate that skips itself on the PRs it deems unrelated reports green
-# by absence (the same reasoning `probe-integrity` records in ci.yml).
+#
+# Paths (2026-10-24): this used to run on every pull request with no `paths:` filter, on the reasoning that a
+# gate which skips itself reports green by absence. That reasoning holds for `probe-integrity` (a policy over
+# every PR, one cheap script) and is why that job keeps running everywhere. It does not hold here: the image
+# is built only from the files listed below (the Dockerfile COPYs nothing else and the build context is the
+# repository root), so a PR that changes none of them builds the same image main already built. It is not a
+# required check either — `verified-gate` is the only one — so a run that did not happen can never be read
+# as a pass. The nightly run on main catches the drift no PR would trigger (base image, runner, pnpm).
+# `scripts/check-ci-paths.mjs` checks that the list names this file and every file the Dockerfile COPYs.
 on:
   pull_request:
+    paths:
+      - "services/api/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".dockerignore"
+      - ".github/workflows/api-image.yml"
+  schedule:
+    - cron: "11 2 * * *"
+  workflow_dispatch:
 
 concurrency:
-  group: api-image-${{ github.ref }}
+  group: api-image-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
