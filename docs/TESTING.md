@@ -246,6 +246,17 @@ harness trap, not a product bug.
 Rule: never make a check pass by loosening it. If a check is wrong, bring the evidence and fix the check
 explicitly, in its own commit, with the reasoning in the PR.
 
+### The idle-request budget (roadmap 5.8) — `P4`–`P6`
+
+`P4` asserts the agent cannot read its own request accounting (`403`) and `P5` asserts that the parent's view
+carries counts only: the window is named, and no route key contains an identifier. `P6` is the measurement
+itself — with `IDLE_BUDGET_M10` **unset** it prints the busiest 10-minute window as a `target`, and with the
+variable set to a number it becomes a gating `check`. It stays unset until the rate is measured on the Flip4;
+a threshold invented in code is a gate measuring the author's guess, which is the failure this row exists to
+stop. Read the number from `GET /v1/devices/:id/requests` (`busiestWindow.count`) — the busiest window, not
+an average, because the acceptance is a claim about the worst ten minutes.
+
+
 ## 4. CI (GitHub Actions)
 
 | Workflow | Purpose |
