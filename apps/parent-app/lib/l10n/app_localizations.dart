@@ -320,6 +320,42 @@ abstract class AppLocalizations {
   /// **'Register'**
   String get register;
 
+  /// No description provided for @registerFieldsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Uses the email and password above. The password needs at least 12 characters.'**
+  String get registerFieldsHint;
+
+  /// No description provided for @registerPasswordTooShort.
+  ///
+  /// In en, this message translates to:
+  /// **'The password is too short. Use at least 12 characters.'**
+  String get registerPasswordTooShort;
+
+  /// No description provided for @registerNamesRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your name and a family name.'**
+  String get registerNamesRequired;
+
+  /// No description provided for @registerEmailTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'An account with this email already exists. Sign in instead, or use another email.'**
+  String get registerEmailTaken;
+
+  /// No description provided for @authEmailInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid email address.'**
+  String get authEmailInvalid;
+
+  /// No description provided for @authFieldsInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Some details were not accepted. Check the form and try again.'**
+  String get authFieldsInvalid;
+
   /// No description provided for @familyMapTooltip.
   ///
   /// In en, this message translates to:
