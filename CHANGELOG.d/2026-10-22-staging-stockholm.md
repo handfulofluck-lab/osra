@@ -10,7 +10,7 @@
 - State coordinates changed with it — a state bucket cannot be read from the region it does not live in:
   the `backend "s3"` block in `base/versions.tf` and `env/versions.tf` and the
   `terraform_remote_state` config in `env/remote_state.tf` now name
-  `osra-terraform-state-222207908538-eu-north-1` in `eu-north-1`. Keys are unchanged
+  `osra-terraform-state-<account-id>-eu-north-1` in `eu-north-1`. Keys are unchanged
   (`staging/base/terraform.tfstate`, `staging/env/terraform.tfstate`).
 - Three comments that had become false are corrected rather than left: the bucket rationale said state
   "never leaves the UAE" — it now says state stays with the stack, and records that the region changed on

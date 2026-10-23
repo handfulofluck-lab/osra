@@ -34,10 +34,10 @@ access blocked) and is not managed here.
 
 ## State
 
-Both stacks use `osra-terraform-state-222207908538-eu-north-1`, in the stack's own region (`eu-north-1`
+Both stacks use `osra-terraform-state-<account-id>-eu-north-1`, in the stack's own region (`eu-north-1`
 since the move to Stockholm on 2026-10-22, ADR-0030), encrypted, versioned, with native S3 locking
 (`use_lockfile = true`, Terraform >= 1.10). There is no DynamoDB table. The previous bucket,
-`osra-terraform-state-222207908538-me-central-1`, still exists; it belongs to the UAE base stack and is
+`osra-terraform-state-<account-id>-me-central-1`, still exists; it belongs to the UAE base stack and is
 deleted with it, not reused.
 
 | Stack | Key |
@@ -110,8 +110,12 @@ export AWS_PROFILE=osra-staging
 export AWS_REGION=eu-north-1
 ```
 
-Both `terraform.tfvars` files are gitignored. The examples use `<account-id>` placeholders, never
-the real account.
+Both `terraform.tfvars` files are gitignored. **The examples use `<account-id>` placeholders, never the
+real account — and so does the prose in this file and in `CHANGELOG.d/`.** The exceptions are the bucket
+names in the `backend` blocks (`base/versions.tf`, `env/versions.tf`) and in `env/remote_state.tf`, which
+must be literal or Terraform cannot find the state; that is configuration, not an example, and a redacted
+bucket name there is a broken command rather than a private one. `docs/QA/DISCUSSION-LOG.md` is an
+append-only record and keeps whatever it recorded.
 
 **`base/terraform.tfvars` must carry the real values, not the example's blanks.** Base state is shared in
 S3, and most of `base` is `count`-gated on those variables — `github_repo`, `github_owner_id`,
