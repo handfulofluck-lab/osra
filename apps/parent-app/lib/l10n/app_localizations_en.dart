@@ -125,6 +125,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get register => 'Register';
 
   @override
+  String get registerFieldsHint =>
+      'Uses the email and password above. The password needs at least 12 characters.';
+
+  @override
+  String get registerPasswordTooShort =>
+      'The password is too short. Use at least 12 characters.';
+
+  @override
+  String get registerNamesRequired => 'Enter your name and a family name.';
+
+  @override
+  String get registerEmailTaken =>
+      'An account with this email already exists. Sign in instead, or use another email.';
+
+  @override
+  String get authEmailInvalid => 'Enter a valid email address.';
+
+  @override
+  String get authFieldsInvalid =>
+      'Some details were not accepted. Check the form and try again.';
+
+  @override
   String get familyMapTooltip => 'Family map';
 
   @override

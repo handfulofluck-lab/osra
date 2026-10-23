@@ -125,6 +125,28 @@ class AppLocalizationsAr extends AppLocalizations {
   String get register => 'تسجيل';
 
   @override
+  String get registerFieldsHint =>
+      'يُستخدم البريد الإلكتروني وكلمة المرور أعلاه. يجب أن تتكون كلمة المرور من 12 حرفًا على الأقل.';
+
+  @override
+  String get registerPasswordTooShort =>
+      'كلمة المرور قصيرة جدًا. استخدم 12 حرفًا على الأقل.';
+
+  @override
+  String get registerNamesRequired => 'أدخل اسمك واسم العائلة.';
+
+  @override
+  String get registerEmailTaken =>
+      'يوجد حساب بهذا البريد الإلكتروني بالفعل. سجّل الدخول بدلًا من ذلك أو استخدم بريدًا آخر.';
+
+  @override
+  String get authEmailInvalid => 'أدخل عنوان بريد إلكتروني صحيحًا.';
+
+  @override
+  String get authFieldsInvalid =>
+      'لم تُقبل بعض البيانات. راجع النموذج وحاول مجددًا.';
+
+  @override
   String get familyMapTooltip => 'خريطة العائلة';
 
   @override

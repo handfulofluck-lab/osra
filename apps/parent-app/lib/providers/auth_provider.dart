@@ -10,6 +10,12 @@ import 'server_provider.dart';
 /// Injectable [ApiClient] source; overridden in tests with a fake.
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
+/// [AuthState.error] prefix for a 400 whose body is zod's `flatten()` output: the rejected field
+/// names follow, sorted and comma-separated (`validation_failed:email,password`). The login screen
+/// turns it into a sentence naming the field; a bare "Validation failed" told a parent nothing
+/// (the 2026-10-23 setup run, where the password was under the server's 12 characters).
+const kValidationFailedPrefix = 'validation_failed:';
+
 /// Immutable authentication state for the signed-in parent.
 @immutable
 class AuthState {
@@ -206,7 +212,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         }
         return err;
       }
-      if (err is Map && err['fieldErrors'] is Map) return 'Validation failed';
+      if (err is Map && err['fieldErrors'] is Map) {
+        final fields = (err['fieldErrors'] as Map).keys.map((k) => '$k').toList()..sort();
+        return '$kValidationFailedPrefix${fields.join(',')}';
+      }
       final msg = data['message'];
       if (msg is String) return msg;
     }
