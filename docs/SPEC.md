@@ -104,6 +104,45 @@ location window. Migration `0022` scrubs the coordinates written before #242.
 `publishFamilyEvent(familyId, {type:"alert", payload})` → also enqueue push
 (FCM for Android parent app, APNs for iOS).
 
+## Device command wake (§319, roadmap 1.5)
+
+`enqueueDeviceCommand` is the single funnel every command producer goes through (controls, rules,
+auth, devices). After the row is committed and the Redis `device:<id>:commands` publish is attempted,
+it fires **one detached wake** to that device's `Device.pushToken`:
+
+- payload `{ "w": "1" }` and nothing else — no command type, payload or ids. Google never sees
+  command content (`show_reset_code` carries a parent's reset code; `locate_now` carries the timing of
+  a family's day), and a stale or misdirected token leaks nothing;
+- **data-only**: no `notification` block, so the OS displays nothing; `android.priority: "HIGH"` and
+  `collapse_key: "wake"`, so ten commands in a second cost one wake;
+- the agent answers by draining `GET /v1/devices/:id/commands` on its own authenticated channel, so
+  poll and push share one code path and one set of idempotent acks (`apps/child-android`,
+  `PushWakeHandler`);
+- **fire-and-forget**: the promise is detached, so a slow or failed Google round trip never delays or
+  fails a parent's command;
+- a token the provider reports invalid (`UNREGISTERED` / 404 / `INVALID_ARGUMENT`) is cleared from the
+  row — the only place a device token is ever removed — but **only if the row still holds the token
+  that failed** (`updateMany` with the token in the `where`). A blanket clear by id would erase a
+  token that rotated while the send was in flight, and the agent then never re-uploads it because
+  `PushTokenUploadPolicy` sees stored == uploaded: push to that phone would be dead, silently;
+- with no provider configured (no `FCM_SERVICE_ACCOUNT_JSON`/`APNS_*`, i.e. push disabled) the send is
+  skipped with one warn per process. Nothing is sent when push is disabled.
+- **The literal is `{ "w": "1" }`, never a `type` field** (Claude's ruling, 2026-10-23). An agent
+  built before the #322 client change reads `msg.data["type"] ?: return` and hands that value to
+  `CommandDispatcher`, which would log "refusing unknown command type"; with `w` such an agent
+  returns early and does nothing, so a wake is a no-op there too.
+- **iOS is not designed (roadmap 3.9).** A background push needs `apns-push-type: background` and
+  `apns-priority: 5`; the FCM `apns` block above sends priority 10 for the wake. Do not ship this
+  APNs shape for iOS — the child agent is Android-only today.
+- **Only `rules_updated` coalesces, so only it can skip a wake.** `COALESCED_TYPES` in
+  `deviceCommands.ts` holds `rules_updated` alone. A second rule edit while one is still pending
+  returns the existing row before the publish, so it sends no second wake. Every other type, `lock`
+  included, gets its own row and its own wake; FCM folds a burst together on `collapse_key: wake`.
+  This is deliberate. The payload is only `{ reason }`, and the agent fetches the current rules when
+  it acts on the pending row, so the later edit is not lost. If the first wake was lost, that row
+  waits for the next poll or for the next command's wake.
+
+
 ## Non-goals for this pass
 
 - Real Twilio/Stripe integration (stub interfaces only).
