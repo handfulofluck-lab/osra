@@ -329,22 +329,19 @@ seven-day post-window deadline, clears the plaintext from expired `show_reset_co
 deletes rows 12 months after `outcomeAt`.
 
 Not built in the API change that introduced this: the email and push templates (the send points are
-<<<<<<< HEAD
-`[mfa-reset] ... hook` log lines), the 24-hour reminder and the parent-app screens. The parent-app
-screens and the Android `show_reset_code` screen are built since (the two paragraphs below); the
-templates, the reminder and the audit route are not. The Android `show_reset_code` screen ships in
-`apps/child-android` (`commands/ResetCodeActivity.kt`): a safe-direction full-screen notice naming the
-parent (generic copy when the payload carries no name), the 8-digit code grouped `1234 5678` and set
-`TextDirection.Ltr` so an RTL paragraph cannot swap its halves, the payload's own `expiresAt` on
-screen as a plural resource, a notification that never carries the code for a locked phone or a
-device with no background-launch path, and an ack deferred until the notice ends so a withdrawal can
-still reach the device. There is also no read-only audit route yet (ADR-0031 decision 8).
-=======
 `[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
-`show_reset_code` screen. Decision 8's read exists in the two forms above (the requester's own request,
-and the family's open ones for an `owner`/`co-parent`); the 12-month history read is still not built
-(amendment 2026-10-23, item 4).
->>>>>>> origin/main
+`show_reset_code` screen. The parent-app screens and the Android screen are built since (the two
+paragraphs below); the templates, the reminder and the 12-month history read are not. Decision 8's read
+is built in the two forms below: the requester's own request (`POST /mfa/reset/status`) and the family's
+open ones for an `owner`/`co-parent` (`GET /mfa/reset/pending`); the 12-month history read is still not
+built (amendment 2026-10-23, item 4).
+
+The Android `show_reset_code` screen ships in `apps/child-android` (`commands/ResetCodeActivity.kt`): a
+safe-direction full-screen notice naming the parent (generic copy when the payload carries no name), the
+8-digit code grouped `1234 5678` and set `TextDirection.Ltr` so an RTL paragraph cannot swap its halves,
+the payload's own `expiresAt` on screen as a plural resource, a notification that never carries the code
+for a locked phone or a device with no background-launch path, its own task affinity so Close returns to
+the previous app, and an ack deferred until the notice ends so a withdrawal can still reach the device.
 
 Parent-app half (`feat/297-reset-parent-ui`, 2026-10-23): the four screens exist under
 `apps/parent-app/lib/features/auth/` — the request (email + password), the waiting state (stage, next
