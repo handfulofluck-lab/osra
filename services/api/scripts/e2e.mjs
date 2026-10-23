@@ -339,9 +339,13 @@ const pauseDrain = await call("GET", `/v1/devices/${agentId}/commands`, { token:
 check("pause command accepted and queued", pauseCmd.status === 200 && pauseDrain.data.some((c) => c.type === "pause"));
 
 // --- 9. Telemetry ---
-const tel = await call("POST", `/v1/devices/${deviceId}/telemetry`, { token, body: { batteryPct: 77, appUsage: [{ packageId: "com.minecraft", minutes: 12 }] } });
+// Plan 2.7 F2 (Claude, #329): telemetry is device-only, so the agent posts it and the parent reads it
+// back. This used to post with the parent token as a test convenience; a parent is now refused.
+const tel = await call("POST", `/v1/devices/${agentId}/telemetry`, { token: agentToken, body: { batteryPct: 77, appUsage: [{ packageId: "com.minecraft", minutes: 12 }] } });
 check("POST telemetry -> 202", tel.status === 202, `got ${tel.status}`);
-const devGet = await call("GET", `/v1/devices/${deviceId}`, { token });
+const parentTel = await call("POST", `/v1/devices/${agentId}/telemetry`, { token, body: { batteryPct: 5 } });
+check("parent cannot post a device's telemetry (403 device_role_required)", parentTel.status === 403 && parentTel.data?.error === "device_role_required", `got ${parentTel.status} ${JSON.stringify(parentTel.data)}`);
+const devGet = await call("GET", `/v1/devices/${agentId}`, { token });
 check("GET device merges telemetry", devGet.status === 200 && devGet.data?.telemetry?.batteryPct === 77);
 
 // --- 10. Cross-family isolation ---

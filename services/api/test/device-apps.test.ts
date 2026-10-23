@@ -159,6 +159,28 @@ describe("installed app inventory — agent write", () => {
     await app.close();
   });
 
+  // Plan 2.7 F2 (Claude, #329, 2026-10-23): the inventory feeds app blocking, so it must come from the
+  // phone. Before the fix a parent token of the family got 202 and replaced the list.
+  it("refuses a parent token of the same family, owner or not (403 device_role_required), writing nothing", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    for (const sub of ["parent-1", "guardian-1"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/apps",
+        headers: authHeader(app, "fam-1", sub),
+        payload: { version: 1, apps: [{ packageId: PACKAGE, label: "Game", isSystem: false }] },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("device_role_required");
+    }
+    expect(prismaMock.deviceApp.deleteMany).not.toHaveBeenCalled();
+    expect(prismaMock.deviceApp.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("stops collection when parental consent is withdrawn (428)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
