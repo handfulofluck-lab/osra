@@ -1,4 +1,4 @@
-### Parent app — the Arabic screens read the way the native reviewer approved (#159)
+### Parent app — the Arabic screens read the way the native reviewer approved (#344, issue #159)
 - Karim reviewed 14 Arabic screens at 320×568 RTL and left wording notes per screen. This PR applies
   every one of them to `app_ar.arb`: `serverLabel` ("الخادم (السيرفر)"), the screen-time value read
   used-then-limit ("45 من 120 دقيقة"), `socialMonitoringTitle` (now "وسائل التواصل"), the weekend-limit
