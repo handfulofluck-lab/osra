@@ -156,15 +156,18 @@ function compare(a, b, acks) {
   // Demotions: a gating check that survives only as an advisory severity is a weakening even though the
   // name is still present — the exact change a rename would disguise.
   for (const name of a.found.check.keys()) {
-    // A name that is STILL a gating check in head was not demoted, whatever else it also appears as.
-    // This is not a corner case: a probe that writes
-    //     if (precondition) check("Q6 …"); else target("Q6 …");
-    // puts one title in both kinds by design, and the pass used to read its own target line as a
-    // demotion of its own check line — reporting "DEMOTED check -> target" with base and head
-    // identical. It made every branch carrying such a probe red, including `main` against itself
-    // (measured 2026-10-23: `--base origin/main --head HEAD` on `origin/main` reported 2 demotions).
-    if (b.found.check.has(name)) continue;
     for (const weaker of ["target", "note"]) {
+      // An UNCHANGED if/else fallback is not a demotion. A probe may write
+      //     if (precondition) check("Q6 …"); else target("Q6 …");
+      // which puts one title in both kinds by design; the pass used to read its own fallback line as a
+      // demotion of its own check line and reported "DEMOTED check -> target" with base and head
+      // identical — `main` failed against itself on 2026-10-23.
+      //
+      // The condition is "the fallback was already there", NOT "a check still exists". Skipping on the
+      // latter (my first attempt) would let a check GAIN a same-name advisory fallback with no
+      // acknowledgement, which is a narrowing of the gate: before it, that needed an entry in
+      // scripts/probe-gate-acks.json, and AGENTS.md §4 says a gate may be extended, not narrowed.
+      if (b.found.check.has(name) && a.found[weaker].has(name)) continue;
       if (b.found[weaker].has(name)) {
         if (acked("check", name)) infos.push(`acked-demoted check -> ${weaker}: ${name}`);
         else problems.push(`DEMOTED check -> ${weaker}: ${name}`);
@@ -172,7 +175,7 @@ function compare(a, b, acks) {
     }
   }
   for (const name of a.found.target.keys()) {
-    if (b.found.target.has(name)) continue; // still a target: no demotion to note
+    if (b.found.target.has(name) && a.found.note.has(name)) continue; // unchanged target->note fallback
     if (b.found.note.has(name)) {
       if (acked("target", name)) infos.push(`acked-demoted target -> note: ${name}`);
       else problems.push(`DEMOTED target -> note: ${name}`);
@@ -276,6 +279,26 @@ if (argv.includes("--selftest")) {
     "a title that is both a check and a target is not a DEMOTED when the check survives",
     ifElse.problems.length === 0,
     `problems=${JSON.stringify(ifElse.problems)}`,
+  );
+
+  // A check that GAINS a same-name fallback is a narrowing of the gate and must be acknowledged: it was
+  // a gating assertion in base and can be advisory in head. Claude's #340 review measured exactly this
+  // against the first version of the fix, which skipped any name that still had a check.
+  const checkOnly = 'check("G3 gated", ok);';
+  const gained = compare(assertions(checkOnly), assertions(bothKinds.replaceAll("Q6 same title", "G3 gated")), []);
+  expect(
+    "a check that gains a same-name fallback is a DEMOTED until acknowledged",
+    gained.problems.some((p) => p.startsWith("DEMOTED check -> target: G3 gated")),
+    `problems=${JSON.stringify(gained.problems)}`,
+  );
+
+  const gainedAcked = compare(assertions(checkOnly), assertions(bothKinds.replaceAll("Q6 same title", "G3 gated")), [
+    { kind: "check", name: "G3 gated", reason: "a precondition can now be unavailable, fallback added" },
+  ]);
+  expect(
+    "the same gained fallback with an acknowledgement is informational, not an error",
+    gainedAcked.problems.length === 0 && gainedAcked.infos.some((i) => i.startsWith("acked-demoted check -> target: G3 gated")),
+    `problems=${JSON.stringify(gainedAcked.problems)} infos=${JSON.stringify(gainedAcked.infos)}`,
   );
 
   const acked = compare(assertions("check(\"R1 renamed\", ok);"), assertions(""), [

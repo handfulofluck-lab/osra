@@ -6,9 +6,12 @@
   puts one title in both kinds by design, so the pass read its own target line as a demotion of its own check
   line. **`main` failed against itself:** `--base origin/main --head HEAD` on `origin/main` reported two
   demotions, which is how it was found — #336 and #339 sat red for changes that touch no probe at all.
-- **The fix:** a demotion now requires the gating check to be **gone** from the head (`if (b.found.check.has(name))
-  continue`), and likewise a target must be gone before `target -> note` counts. Real demotions are unchanged:
-  delete the `check` and leave only the `target` and it still fails.
+- **The fix, and the correction to my first attempt.** A demotion is skipped only when the fallback was **already
+  there** (`b.found.check.has(name) && a.found[weaker].has(name)`), not merely because a check survives. My first
+  version skipped any name that still had a check, which made the gate narrower in a different way: a check could
+  **gain** a same-name advisory fallback with no acknowledgement, where before that needed an entry in
+  `scripts/probe-gate-acks.json`. Claude measured it against a wrapped `G3` and caught it — AGENTS.md §4 says a gate
+  may be extended, not narrowed, and an over-permissive fix breaks that rule as surely as a false positive does.
 - **A fixture for the pattern:** base and head both carrying the if/else title produce no finding. Mutant measured —
   remove the guard and it fails with `DEMOTED check -> target: Q6 same title` (14/15); restored, 15/15.
 - The promotion note also skips a title that was already a check, so it cannot print "promoted" and "demoted" for
