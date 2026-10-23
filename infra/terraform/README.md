@@ -113,6 +113,20 @@ export AWS_REGION=eu-north-1
 Both `terraform.tfvars` files are gitignored. The examples use `<account-id>` placeholders, never
 the real account.
 
+**`base/terraform.tfvars` must carry the real values, not the example's blanks.** Base state is shared in
+S3, and most of `base` is `count`-gated on those variables — `github_repo`, `github_owner_id`,
+`github_repo_id`, `domain_name`. Applied from a clone where they are empty, the counts evaluate to zero
+and the apply **destroys** the API certificate, the GitHub OIDC provider and the `osra-staging-publish`
+role. It looks exactly like a first-time apply, which is how it went unnoticed on 2026-10-23 (issue
+#337). Two consequences you will meet:
+
+- `up.sh` **refuses** to run without that file, and says why. That refusal is the guard doing its job,
+  not a broken script: create the file from the example and fill in the values.
+- If you see Terraform error `Instance cannot be destroyed` on the certificate, the OIDC provider or the
+  publish role, `prevent_destroy` has caught the same accident one step later — the values in your
+  tfvars are empty or different from the applied state. Fix the values rather than removing the
+  lifecycle block.
+
 ## Everyday use: `up.sh` / `down.sh`
 
 ```bash

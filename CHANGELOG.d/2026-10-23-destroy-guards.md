@@ -15,3 +15,9 @@
 - **Tested against the incident state itself:** in a worktree with no `terraform.tfvars` — the exact state that deleted
   the certificate — `./infra/terraform/up.sh -auto-approve` exits **1**, prints the refusal, and writes no
   `.session-start`. `sh -n` clean; `terraform validate` clean on base with the example tfvars.
+
+- **Docs from the review (#339):** `oidc.tf`'s comment had the retirement instruction backwards — it told a reader to
+  delete the tfvars values, which is the accident. It now says to remove the lifecycle block *in the same change* that
+  empties the values. `infra/terraform/README.md` gains the paragraph a person needs when they meet either guard: what
+  `base/terraform.tfvars` must contain, that the `up.sh` refusal is the guard working, and that
+  `Instance cannot be destroyed` is the same accident caught one step later.

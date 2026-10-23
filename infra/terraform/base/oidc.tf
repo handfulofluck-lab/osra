@@ -29,8 +29,8 @@ resource "aws_iam_openid_connect_provider" "github" {
 
   # prevent_destroy: these three exist only when base/terraform.tfvars names the repository, and base
   # state is shared in S3 — so an apply from a clone WITHOUT that gitignored file evaluates the count to
-  # zero and DELETES them, which looks identical to a first-time apply (issue #337). Delete the
-  # tfvars values deliberately if this ever has to go.
+  # zero and DELETES them, which looks identical to a first-time apply (issue #337). To retire these on
+  # purpose, remove this lifecycle block in the same change that empties the values.
   lifecycle {
     prevent_destroy = true
   }
