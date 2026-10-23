@@ -681,6 +681,39 @@ console.log("\n── G2. location & rules authorization ──");
   const parentPush = await call("POST", `/v1/devices/${d2.deviceId}/push-token`, { token: tokenA, body: { token: `fcm-parent-${stamp}-device-token` } });
   check("P3 a parent cannot set a device's push token (403 device_role_required)", parentPush.status === 403 && parentPush.data?.error === "device_role_required", `got ${parentPush.status} ${JSON.stringify(parentPush.data)}`);
 
+  // Roadmap 5.8's second half: "idle child phone <= 3 requests per 10 min". The rate must be COUNTED before it
+  // can be a gate, so this check always reports the measurement and gates only once a threshold has been
+  // measured: IDLE_BUDGET_M10 is empty until Claude measures the Flip4, and a threshold invented here would be
+  // a gate that measures the author's guess.
+  //
+  // Counting is off unless the API runs with IDLE_BUDGET_COUNTING=1 (#346 review), so P6 must not read a zero
+  // it did not measure: with the flag off the route says `counting: false` and a "0 requests" line here would
+  // claim a budget from no data at all.
+  const selfReq = await call("GET", `/v1/devices/${d2.deviceId}/requests`, { token: d2.token });
+  check("P4 the agent does not read its own request accounting (403; the parent does)", selfReq.status === 403, `got ${selfReq.status}`);
+  const parentReq = await call("GET", `/v1/devices/${d2.deviceId}/requests`, { token: tokenA });
+  const reqBody = parentReq.data ?? {};
+  // "Counts only" is the promise the route makes: no route key may carry an identifier, so nothing in the
+  // body can say which child or which command.
+  const routeKeys = Object.keys(reqBody.byRoute ?? {});
+  const leaksAnId = routeKeys.some((k) => /[0-9a-f]{8}-[0-9a-f]{4}-/i.test(k) || /\d{5,}/.test(k));
+  check("P5 a parent reads a device's request rate as counts only — the window is named and no route key carries an id", parentReq.status === 200 && typeof reqBody.total === "number" && typeof reqBody.windowMinutes === "number" && !leaksAnId, `got ${parentReq.status} keys=${JSON.stringify(routeKeys).slice(0, 160)} leaksAnId=${leaksAnId}`);
+  const idleThreshold = process.env.IDLE_BUDGET_M10 ? Number(process.env.IDLE_BUDGET_M10) : null;
+  const idleBusiest = reqBody.busiestWindow?.count ?? 0;
+  if (reqBody.counting === false) {
+    target(
+      "P6 the idle-request budget is not measured on this run (counting disabled on the API)",
+      `the API answers counting=false, so no request was recorded: "0" here would mean "nothing was written", not "the phone stayed idle"; run the API with IDLE_BUDGET_COUNTING=1 to measure`,
+    );
+  } else if (idleThreshold === null) {
+    target(
+      "P6 the idle-request budget is measured but not yet a gate (IDLE_BUDGET_M10 unset)",
+      `busiest 10-minute window on this run: ${idleBusiest} request(s); the row's acceptance is <= 3, measured by Claude on the Flip4`,
+    );
+  } else {
+    check("P6 the idle-request budget holds (busiest 10-minute window <= IDLE_BUDGET_M10)", idleBusiest <= idleThreshold, `busiest=${idleBusiest} threshold=${idleThreshold}`);
+  }
+
   if (process.env.JWT_SECRET) {
     const parentId = JSON.parse(Buffer.from(tokenA.split(".")[1], "base64url").toString()).sub;
     const now = Math.floor(Date.now() / 1000);

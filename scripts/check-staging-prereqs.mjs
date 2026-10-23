@@ -180,6 +180,21 @@ function runSelftest() {
   process.exit(failed ? 1 : 0);
 }
 
+/**
+ * A mistyped flag must fail closed. `--self-test` (with a hyphen) is not `--selftest`, so before this
+ * guard the script ignored it and ran the **real** check — `iam get-role`, `ecr list-images` — while the
+ * reader believed six fixture cases had run. Exit 2 is the code this script already uses for "could not
+ * be asked", so a wrong flag is indistinguishable from a missing aws CLI to anything parsing the result.
+ */
+const KNOWN_FLAGS = new Set(["--selftest"]);
+const unknownFlags = process.argv.slice(2).filter((arg) => !KNOWN_FLAGS.has(arg));
+if (unknownFlags.length > 0) {
+  console.error(`unrecognised argument: ${unknownFlags.join(" ")}`);
+  console.error("usage: node scripts/check-staging-prereqs.mjs [--selftest]");
+  console.error("(--self-test is not a flag — it would run the real AWS check, so this exits before that.)");
+  process.exit(2);
+}
+
 if (process.argv.includes("--selftest")) {
   runSelftest();
 } else {
