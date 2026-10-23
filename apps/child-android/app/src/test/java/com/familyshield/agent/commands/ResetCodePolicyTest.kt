@@ -60,13 +60,21 @@ class ResetCodePolicyTest {
     }
 
     @Test
-    fun `parent and request ids are trimmed, and a blank parent name is refused`() {
+    fun `parent and request ids are trimmed, and a blank parent name is kept, not refused`() {
         val notice = (ResetCodePolicy.parse(payload(requestId = "  req-1 ", parentName = " Sam "), null, now) as ResetCodeParse.Valid).notice
         assertEquals("req-1", notice.requestId)
         assertEquals("Sam", notice.parentName)
 
-        assertEquals(ResetCodePolicy.REASON_MISSING_PARENT_NAME, invalidReason(payload(parentName = "   ")))
-        assertEquals(ResetCodePolicy.REASON_MISSING_PARENT_NAME, invalidReason(payload(parentName = null)))
+        // Finding 6: the API sends `displayName ?? ""` and a name of " " passes its validation, so a
+        // blank name must not make every phone refuse and break the witness for that family. The
+        // screen falls back to the unnamed copy; the name is not part of the credential.
+        val unnamed = (ResetCodePolicy.parse(payload(parentName = "   "), "cmd-1", now) as ResetCodeParse.Valid).notice
+        assertEquals("", unnamed.parentName)
+        assertEquals("12345678", unnamed.code)
+        assertEquals(
+            "",
+            (ResetCodePolicy.parse(payload(parentName = null), "cmd-1", now) as ResetCodeParse.Valid).notice.parentName,
+        )
     }
 
     @Test
@@ -146,6 +154,25 @@ class ResetCodePolicyTest {
     }
 
     @Test
+    fun `a withdrawal closes the screen and only a real expiry shows the expired copy`() {
+        // Finding 1, the behaviour itself: the screen is told apart by its own expiry flag.
+        val notice = ResetCodePolicy.parse(payload(), "cmd-1", now).validNotice()
+
+        assertEquals(ResetCodeView.SHOWING, ResetCodePolicy.viewOf(notice, expiredHere = false))
+        assertEquals(ResetCodeView.SHOWING, ResetCodePolicy.viewOf(notice, expiredHere = true))
+        assertEquals(
+            "this screen watched it run out: the expired copy is right",
+            ResetCodeView.EXPIRED,
+            ResetCodePolicy.viewOf(null, expiredHere = true),
+        )
+        assertEquals(
+            "withdrawn (witness passed, superseded, cancelled): the notice closes, it does not say 'start again'",
+            ResetCodeView.CLOSED,
+            ResetCodePolicy.viewOf(null, expiredHere = false),
+        )
+    }
+
+    @Test
     fun `an empty payload is the API withdrawing the code, not a payload to show`() {
         val decision = ResetCodePolicy.decide(emptyMap(), "cmd-1", now, canShowScreen = true)
 
@@ -180,10 +207,25 @@ class ResetCodePolicyTest {
     }
 
     @Test
-    fun `the ending of a notice names how it ended in the ok ack`() {
+    fun `a notification alone is a screen path`() {
+        // Finding 4: the dispatcher passes `canShowScreen = canLaunch || canNotify`. A notification
+        // needs no background-launch exemption, so a phone with the overlay app-op and accessibility
+        // off still shows the code — refusing it there told the parent the phone could not.
+        val canLaunch = false
+        val canNotify = true
+
+        assertEquals(
+            "12345678",
+            (ResetCodePolicy.decide(payload(), "cmd-1", now, canShowScreen = canLaunch || canNotify) as ResetCodeDecision.Show).notice.code,
+        )
+    }
+
+    @Test
+    fun `the end of a notice names how it ended in the ok ack`() {
         assertEquals(mapOf("screen" to "expired"), ResetCodePolicy.ackDetail(ResetCodeEnd.EXPIRED))
         assertEquals(mapOf("screen" to "dismissed"), ResetCodePolicy.ackDetail(ResetCodeEnd.DISMISSED))
         assertEquals(mapOf("screen" to "withdrawn"), ResetCodePolicy.ackDetail(ResetCodeEnd.WITHDRAWN))
+        assertEquals("a replaced row reads like the others", mapOf("screen" to "superseded"), ResetCodePolicy.ackDetail(ResetCodeEnd.SUPERSEDED))
     }
 
     @Test

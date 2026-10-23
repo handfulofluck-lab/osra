@@ -3,6 +3,7 @@ package com.familyshield.agent.commands
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
@@ -11,7 +12,9 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.R
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
@@ -150,45 +153,87 @@ class CommandDispatcher @Inject constructor(
      * ADR-0031: show the 8-digit family-witness code, and keep it clearable.
      *
      * - **Empty payload** is the API's withdrawal (`clearResetCodePayloads` writes `payload = {}`):
-     *   clear the notice if it is the same command row and ack `ok` with `screen=withdrawn`. This
-     *   is why the row is *not* acked at display: an ack clears the payload, and then there is no
-     *   redelivery left to carry the withdrawal.
+     *   clear the notice if it is the same command row, cancel its notification and ack `ok` with
+     *   `screen=withdrawn`. This is why the row is *not* acked at display: an ack clears the payload,
+     *   and then there is no redelivery left to carry the withdrawal.
      * - **Malformed or expired payload** is a `failed` ack with the parser's reason; nothing is
      *   shown. Acking clears a credential that could not be used anyway.
-     * - **Valid payload with no background-launch path** (overlay app-op off and accessibility
-     *   unbound) is refused `reset_code_screen_unavailable` instead of leaving a silent row. The
-     *   overlay or the bound accessibility service is what exempts the `startActivity` below from
-     *   Android's background-activity-launch rule, exactly as for [lock]/[pause].
-     * - **Valid payload** enters [ResetCodeState] and [ResetCodeActivity] is started; the outcome is
-     *   [CommandOutcome.Deferred] and the notice acks when it ends.
+     * - **Valid payload with nothing that can show it** — overlay app-op off, accessibility unbound
+     *   and notifications disabled — is refused `reset_code_screen_unavailable` instead of leaving a
+     *   silent row. The overlay or the bound accessibility service is what exempts the
+     *   `startActivity` below from Android's background-activity-launch rule, exactly as for
+     *   [lock]/[pause]; a notification needs no such exemption and covers a locked phone, so it counts
+     *   as a way to show the code.
+     * - **Valid payload** enters [ResetCodeState], a code-less notification is posted when
+     *   notifications are allowed, and [ResetCodeActivity] is started when a background launch is
+     *   allowed; the outcome is [CommandOutcome.Deferred] and the notice acks when it ends.
      *
      * The payload is never logged: it is the only place the plaintext code exists on this device.
      */
     private fun showResetCode(data: Map<String, String>, commandId: String?): CommandOutcome {
-        val canShowScreen = Settings.canDrawOverlays(context) || AccessibilityMonitorService.isRunning
-        return when (val decision = ResetCodePolicy.decide(data, commandId, Instant.now(), canShowScreen)) {
+        val canLaunch = Settings.canDrawOverlays(context) || AccessibilityMonitorService.isRunning
+        val canNotify = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        return when (val decision = ResetCodePolicy.decide(data, commandId, Instant.now(), canShowScreen = canLaunch || canNotify)) {
             is ResetCodeDecision.Refuse -> {
                 Log.w(TAG, "show_reset_code refused: ${decision.reason}")
                 CommandOutcome.Refused(decision.reason)
             }
             is ResetCodeDecision.Withdraw -> {
-                ResetCodeState.clearIfCommand(decision.commandId)
-                CommandOutcome.Applied(mapOf("screen" to ResetCodeEnd.WITHDRAWN.wire))
+                ResetCodeState.clearIfCommand(decision.commandId)?.let { cancelResetCodeNotification() }
+                CommandOutcome.Applied(ResetCodePolicy.ackDetail(ResetCodeEnd.WITHDRAWN))
             }
             is ResetCodeDecision.Show -> {
                 val previous = ResetCodeState.show(decision.notice)
                 if (previous != null && previous.commandId != decision.notice.commandId) {
                     // Only one code is on screen. The replaced row is acked so it does not sit
                     // delivered; acking also clears its plaintext, which nothing is showing now.
-                    reportOutcome(previous.commandId, CommandOutcome.Applied(mapOf("superseded" to "true")))
+                    reportOutcome(previous.commandId, CommandOutcome.Applied(ResetCodePolicy.ackDetail(ResetCodeEnd.SUPERSEDED)))
                 }
-                context.startActivity(
-                    Intent(context, ResetCodeActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
+                // The notification never carries the code, so it may sit on the lock screen: it is
+                // what a child sees on a locked phone, and the only way in when no background launch
+                // is allowed.
+                if (canNotify) postResetCodeNotification(decision.notice)
+                if (canLaunch) {
+                    context.startActivity(
+                        Intent(context, ResetCodeActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
                 CommandOutcome.Deferred
             }
         }
+    }
+
+    /** ADR-0031: "a code for your parent is waiting". Never the code itself. */
+    private fun postResetCodeNotification(notice: ResetCodeNotice) {
+        runCatching {
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return@runCatching
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_COMMANDS, "Parent commands", NotificationManager.IMPORTANCE_HIGH),
+            )
+            val open = PendingIntent.getActivity(
+                context,
+                RESET_CODE_NOTIFICATION_ID,
+                Intent(context, ResetCodeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val notification = NotificationCompat.Builder(context, CHANNEL_COMMANDS)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(context.getString(R.string.reset_code_title))
+                .setContentText(context.getString(R.string.reset_code_notification_text))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true) // the 120-second redelivery re-posts the same notification quietly
+                .setTimeoutAfter(ResetCodePolicy.remaining(notice.expiresAt, Instant.now()).toMillis())
+                .build()
+            nm.notify(RESET_CODE_NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun cancelResetCodeNotification() {
+        runCatching { NotificationManagerCompat.from(context).cancel(RESET_CODE_NOTIFICATION_ID) }
     }
 
     /** Sends at most one ack for [outcome]; a blank id (the FCM path) has no durable row. */
@@ -208,6 +253,16 @@ class CommandDispatcher @Inject constructor(
         val id = commandId?.takeIf { it.isNotBlank() } ?: return
         val ack = CommandAckPolicy.locateAck(id, fix, uploaded) ?: return
         scope.launch { ackSender.sendOnce(id, ack) }
+    }
+
+    /**
+     * ADR-0031: the deferred `show_reset_code` ack, sent by [ResetCodeActivity] when the notice ends.
+     * Same shape as [ackLocateNow]: `ok` means the notice was on screen, `detail.screen` how it ended
+     * (`expired`, `dismissed`). `superseded` is acked here by [showResetCode] instead, because it is
+     * the dispatcher — not the screen — that replaces one code with another.
+     */
+    fun ackResetCode(commandId: String?, end: ResetCodeEnd) {
+        reportOutcome(commandId, CommandOutcome.Applied(ResetCodePolicy.ackDetail(end)))
     }
 
     /**
@@ -441,6 +496,9 @@ class CommandDispatcher @Inject constructor(
         private const val TAG = "CommandDispatcher"
         private const val CHANNEL_COMMANDS = "commands"
         private const val WIND_DOWN_NOTIFICATION_ID = 42
+
+        /** The ADR-0031 notice's notification; [ResetCodeActivity] cancels it when the notice ends. */
+        internal const val RESET_CODE_NOTIFICATION_ID = 43
         private const val MIN_MINUTES = 1
         private const val MAX_MINUTES = 240
 

@@ -7,6 +7,7 @@ import '../../providers/mfa_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../settings/mfa_enroll_screen.dart';
 import '../settings/mfa_messages.dart';
+import 'mfa_reset_request_screen.dart';
 
 /// "Lost your authenticator?" — email + password + one unused recovery code.
 ///
@@ -140,6 +141,15 @@ class _MfaRecoveryScreenState extends ConsumerState<MfaRecoveryScreen> {
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.key_off_outlined),
               label: Text(l10n.mfaRecoverySubmit),
+            ),
+            const SizedBox(height: AppSpace.xs),
+            // ADR-0031: a parent with no unused code left is not stranded here.
+            TextButton(
+              key: const ValueKey('mfaResetEntry'),
+              onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                builder: (_) => const MfaResetRequestScreen(),
+              )),
+              child: Text(l10n.mfaResetEntry, textAlign: TextAlign.center),
             ),
           ],
         ),

@@ -308,11 +308,25 @@ seven-day post-window deadline, clears the plaintext from expired `show_reset_co
 deletes rows 12 months after `outcomeAt`.
 
 Not built in the API change that introduced this: the email and push templates (the send points are
-`[mfa-reset] ... hook` log lines), the 24-hour reminder and the parent-app screens. The Android
-`show_reset_code` screen ships in `apps/child-android` (`commands/ResetCodeActivity.kt`): a
-safe-direction full-screen notice naming the parent, the 8-digit code grouped `1234 5678`, the
-payload's own `expiresAt` on screen, and an ack deferred until the notice ends so a withdrawal can
+`[mfa-reset] ... hook` log lines), the 24-hour reminder and the parent-app screens. The parent-app
+screens and the Android `show_reset_code` screen are built since (the two paragraphs below); the
+templates, the reminder and the audit route are not. The Android `show_reset_code` screen ships in
+`apps/child-android` (`commands/ResetCodeActivity.kt`): a safe-direction full-screen notice naming the
+parent (generic copy when the payload carries no name), the 8-digit code grouped `1234 5678` and set
+`TextDirection.Ltr` so an RTL paragraph cannot swap its halves, the payload's own `expiresAt` on
+screen as a plural resource, a notification that never carries the code for a locked phone or a
+device with no background-launch path, and an ack deferred until the notice ends so a withdrawal can
 still reach the device. There is also no read-only audit route yet (ADR-0031 decision 8).
+
+Parent-app half (`feat/297-reset-parent-ui`, 2026-10-23): the four screens exist under
+`apps/parent-app/lib/features/auth/` — the request (email + password), the waiting state (stage, next
+step, cancel, and the `complete` step once the window ends), the 8-digit witness entry and the
+co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. Two surfaces stay limited
+by the API, not by the UI: **there is no read route**, so a restarted app cannot rebuild a pending
+request (the waiting screen is session-only and nothing is persisted); and **`/approve` takes only
+`{requestId}`**, so the approval prompt cannot name the parent who asked, and no notification carries
+the request id to a co-parent's app yet. The templates, the 24-hour reminder and the audit route
+remain unbuilt (the Android `show_reset_code` screen, above, is built by the same wave).
 
 ## §4 AI Engine (`services/ai-engine`)
 
@@ -593,16 +607,20 @@ and are deleted explicitly in the GDPR erasure cascade.
   - `unsupported_command` — a command type this agent version does not implement.
   - `invalid_payload` — `bonus_time`/`wind_down` without parseable finite `minutes` in 1..240.
   - ADR-0031 `show_reset_code`: a safe-direction full-screen notice (`commands/ResetCodeActivity.kt`)
-    names the payload's `parentName`, shows the 8-digit `code` grouped `1234 5678`, and reads its
-    validity from the payload's `expiresAt`. Rejections are `missing_request_id`,
-    `missing_parent_name`, `missing_code`, `malformed_code`, `missing_expires_at`,
+    names the payload's `parentName` (or uses generic copy when it is blank — the name is not part of
+    the credential), shows the 8-digit `code` grouped `1234 5678` and set `TextDirection.Ltr`, and
+    reads its validity from the payload's `expiresAt` as a plural resource. Rejections are
+    `missing_request_id`, `missing_code`, `malformed_code`, `missing_expires_at`,
     `malformed_expires_at`, `reset_code_expired` (an `expiresAt` at or before now) and
-    `reset_code_screen_unavailable` (neither the overlay app-op nor the accessibility service can
-    exempt the background launch). The ack is **deferred** while the notice is up — the row stays
-    `delivered` so the API's payload clear (`payload = {}`) still arrives on the 120-second
-    redelivery and withdraws the code — and ends `ok` with `detail.screen = expired|dismissed`, or
-    `withdrawn` when the dispatcher clears it. Acking at display would clear the plaintext before
-    the parent read it and stop the withdrawal signal; the API's ack semantics are unchanged.
+    `reset_code_screen_unavailable` (the overlay app-op and the accessibility service cannot exempt
+    the background launch **and** notifications are unavailable). A notification that never carries
+    the code is posted alongside, because it needs no background-launch exemption and is what a
+    locked phone shows. The ack is **deferred** while the notice is up — the row stays `delivered` so
+    the API's payload clear (`payload = {}`) still arrives on the 120-second redelivery and closes the
+    notice — and ends `ok` with `detail.screen = expired|dismissed` from
+    `CommandDispatcher.ackResetCode`, or `withdrawn` when the dispatcher clears it; a code replaced by
+    a newer one is acked `superseded`. Acking at display would clear the plaintext before the parent
+    read it and stop the withdrawal signal; the API's ack semantics are unchanged.
 - Signing: sign the release build with the debug key so the APK is installable:
   `signingConfig = signingConfigs.getByName("debug")` in the release build type.
 - Build artifact: `gradlew :app:assembleRelease` → copy

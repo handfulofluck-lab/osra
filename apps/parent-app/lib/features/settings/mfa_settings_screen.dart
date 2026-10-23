@@ -6,6 +6,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../auth/mfa_reset_request_screen.dart';
 import 'mfa_enroll_screen.dart';
 import 'mfa_messages.dart';
 import 'reauth_dialog.dart';
@@ -106,6 +107,14 @@ class _MfaSettingsScreenState extends ConsumerState<MfaSettingsScreen> {
             Text(l10n.mfaRecoveryCodesTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpace.xs),
             Text(l10n.mfaRecoveryCodesExplanation, style: theme.textTheme.bodyMedium),
+            const SizedBox(height: AppSpace.xs),
+            // ADR-0031 decision 6: what is left when both the authenticator and
+            // every code are gone, stated beside the codes themselves.
+            Text(
+              l10n.mfaResetSetupNote,
+              key: const ValueKey('mfaResetSetupNote'),
+              style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
+            ),
             const SizedBox(height: AppSpace.md),
             if (_error != null) ...[
               Text(
@@ -135,6 +144,20 @@ class _MfaSettingsScreenState extends ConsumerState<MfaSettingsScreen> {
             Text(
               l10n.mfaRegenerateWarning,
               style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppSpace.lg),
+            // ADR-0031: the route back when both the authenticator and every
+            // code are gone. Kept apart from the codes section because it does
+            // not touch them.
+            OutlinedButton.icon(
+              key: const ValueKey('mfaResetEntry'),
+              onPressed: _busy
+                  ? null
+                  : () => Navigator.of(context).push<void>(MaterialPageRoute(
+                        builder: (_) => const MfaResetRequestScreen(),
+                      )),
+              icon: const Icon(Icons.lock_reset),
+              label: Text(l10n.mfaResetSettingsEntry),
             ),
           ],
         ),

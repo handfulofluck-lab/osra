@@ -2092,4 +2092,217 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get digestPrefsChildFallback => 'طفل';
+
+  @override
+  String get mfaResetTitle => 'إعادة تعيين التحقق بخطوتين';
+
+  @override
+  String get mfaResetIntro =>
+      'استخدم هذا الخيار فقط إذا فقدت تطبيق المصادقة وكل رموز الاسترداد. ستحتاج إلى كلمة مرور حسابك، وإلى الوصول إلى بريد هذا الحساب، وإلى أحد الأمرين: رمز يُعرض على هاتف طفلك، أو موافقة مالك آخر أو والد مشارك من تطبيقه. بعد ذلك تنتظر 72 ساعة قبل إعادة تعيين التحقق بخطوتين.';
+
+  @override
+  String get mfaResetSubmit => 'اطلب إعادة التعيين';
+
+  @override
+  String get mfaResetFieldsRequired => 'أدخل بريدك الإلكتروني وكلمة المرور.';
+
+  @override
+  String get mfaResetInvalidCredentials =>
+      'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+
+  @override
+  String get mfaResetMfaNotEnabled =>
+      'التحقق بخطوتين غير مفعّل على هذا الحساب، فلا يوجد ما يُعاد تعيينه. سجّل الدخول بكلمة المرور.';
+
+  @override
+  String get mfaResetNoWitness =>
+      'لا يوجد لهذا الحساب شاهد من العائلة: لا جهاز طفل مقترن ولا مالك آخر أو والد مشارك. من دون ذلك يتعذّر إعادة تعيين التحقق بخطوتين. وإذا لم يعد هاتف الطفل مقترنًا، يمكنك إنشاء حساب جديد ببريد إلكتروني آخر.';
+
+  @override
+  String get mfaResetAlreadyPending =>
+      'هناك طلب إعادة تعيين لهذا الحساب داخل فترة انتظاره (72 ساعة) ولا يمكن استبداله. أكمل ذلك الطلب، أو ألغِه عبر الرابط في بريده.';
+
+  @override
+  String get mfaResetLimitReached =>
+      'يمكنك طلب إعادة التعيين ثلاث مرات كحد أقصى خلال 30 يومًا. وقد استنفد هذا الحساب محاولاته حاليًا.';
+
+  @override
+  String get mfaResetLinkExpired =>
+      'انتهت صلاحية هذا الرابط أو استُخدم من قبل.';
+
+  @override
+  String get mfaResetEntry => 'لم يتبقَّ لديك رمز استرداد؟ اطلب إعادة تعيين';
+
+  @override
+  String get mfaResetSettingsEntry => 'فقدت تطبيق المصادقة ورموز الاسترداد؟';
+
+  @override
+  String get mfaResetSetupNote =>
+      'إذا فقدت تطبيق المصادقة وكل هذه الرموز، فلا سبيل للعودة إلا بشاهد من العائلة: جهاز طفل مقترن، أو مالك آخر أو والد مشارك.';
+
+  @override
+  String get mfaResetWaitingTitle => 'إعادة التعيين قيد الانتظار';
+
+  @override
+  String get mfaResetStageMailboxTitle => 'تحقّق من بريدك الإلكتروني';
+
+  @override
+  String get mfaResetStageMailboxBody =>
+      'افتح رابط إعادة التعيين المرسل إلى بريد هذا الحساب خلال 30 دقيقة. فتح الرابط يُظهر رمزًا من 8 أرقام على هاتف طفلك. وإذا كان والد آخر هو من سيوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه.';
+
+  @override
+  String mfaResetMailboxExpires(String time) {
+    return 'الرابط صالح حتى $time.';
+  }
+
+  @override
+  String get mfaResetCancelHint =>
+      'لإيقاف هذا الطلب، افتح رابط الإلغاء في أي بريد وصلك بشأنه. كما أن تسجيل دخولك بتطبيق المصادقة يلغيه.';
+
+  @override
+  String get mfaResetStageWitnessTitle => 'أدخل الرمز من هاتف طفلك';
+
+  @override
+  String get mfaResetStageWitnessBody =>
+      'الرمز مكوّن من 8 أرقام وصلاحيته 10 دقائق.';
+
+  @override
+  String mfaResetCodeExpires(String time) {
+    return 'الرمز صالح حتى $time.';
+  }
+
+  @override
+  String get mfaResetHaveCode => 'لديّ الرمز';
+
+  @override
+  String get mfaResetEnterCode => 'أدخل الرمز';
+
+  @override
+  String get mfaResetStageWindowTitle => 'بدأت فترة الانتظار (72 ساعة)';
+
+  @override
+  String get mfaResetStageWindowBody =>
+      'سيُعاد تعيين التحقق بخطوتين عند انتهاء الانتظار، ما لم يُلغَ الطلب قبل ذلك.';
+
+  @override
+  String mfaResetWindowEndsAt(String time) {
+    return 'ينتهي الانتظار في $time.';
+  }
+
+  @override
+  String get mfaResetWindowDue =>
+      'انتهى الانتظار. يمكنك إكمال إعادة التعيين الآن.';
+
+  @override
+  String get mfaResetFinish => 'أكمل إعادة التعيين';
+
+  @override
+  String get mfaResetCancelKeep => 'متابعة الانتظار';
+
+  @override
+  String get mfaResetRequestNotFound => 'هذا الطلب لم يعد موجودًا.';
+
+  @override
+  String get mfaResetRequestNotOpen =>
+      'هذا الطلب لم يعد مفتوحًا. ابدأ من جديد.';
+
+  @override
+  String get mfaResetRequestExpired => 'انتهت صلاحية هذا الطلب. ابدأ من جديد.';
+
+  @override
+  String get mfaResetRequestCompleted => 'تم إكمال هذا الطلب بالفعل.';
+
+  @override
+  String get mfaResetRequestCancelled => 'تم إلغاء هذا الطلب.';
+
+  @override
+  String get mfaResetWitnessRequired => 'أدخل الرمز المكوّن من 8 أرقام.';
+
+  @override
+  String get mfaResetWindowOpen => 'لم ينتهِ الانتظار بعد. لم يتغيّر شيء.';
+
+  @override
+  String get mfaResetWitnessDispatchFailed =>
+      'تعذّر إرسال الرمز إلى هاتف طفلك. اطلب إعادة تعيين مرة أخرى بعد قليل.';
+
+  @override
+  String get mfaResetUnavailable =>
+      'خدمة إعادة التعيين غير متاحة الآن. حاول بعد قليل.';
+
+  @override
+  String get mfaResetFinishTitle => 'إكمال إعادة التعيين';
+
+  @override
+  String get mfaResetFinishBody =>
+      'أدخل بريد هذا الحساب وكلمة مروره. سيُمسح التحقق بخطوتين الحالي، ثم تُعِدّ تطبيق مصادقة جديدًا.';
+
+  @override
+  String get mfaResetFinishSubmit => 'إعادة تعيين التحقق بخطوتين';
+
+  @override
+  String get mfaResetWitnessTitle => 'أدخل رمز إعادة التعيين';
+
+  @override
+  String get mfaResetWitnessIntro =>
+      'اكتب الرمز المكوّن من 8 أرقام المعروض على هاتف طفلك. صلاحيته 10 دقائق، وخمسة رموز خاطئة تُنهي هذا الطلب.';
+
+  @override
+  String get mfaResetWitnessLabel => 'رمز من 8 أرقام';
+
+  @override
+  String get mfaResetWitnessSubmit => 'تحقّق من الرمز';
+
+  @override
+  String get mfaResetWitnessInvalid =>
+      'لم يُقبل هذا الرمز أو انتهت صلاحيته. تحقّق من الرمز على هاتف طفلك وحاول مجددًا.';
+
+  @override
+  String mfaResetWitnessAttemptsLeft(int count) {
+    return 'لم يُقبل هذا الرمز. المحاولات المتبقية: $count.';
+  }
+
+  @override
+  String get mfaResetWitnessTooMany =>
+      'رموز خاطئة كثيرة. انتهى هذا الطلب؛ ابدأ من جديد.';
+
+  @override
+  String get mfaResetApproveTitle => 'الموافقة على طلب إعادة تعيين';
+
+  @override
+  String get mfaResetApproveIntro =>
+      'طلب والد آخر في عائلتك إعادة تعيين التحقق بخطوتين بعد أن فقد تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من ذلك الوالد خلال الانتظار يلغي الطلب.';
+
+  @override
+  String get mfaResetApproveAction => 'موافقة';
+
+  @override
+  String get mfaResetDeclineAction => 'رفض';
+
+  @override
+  String get mfaResetDeclineTitle => 'رفض هذا الطلب؟';
+
+  @override
+  String get mfaResetDeclineBody =>
+      'لن تتم إعادة التعيين ويبقى التحقق بخطوتين كما هو.';
+
+  @override
+  String get mfaResetDeclineConfirm => 'رفض الطلب';
+
+  @override
+  String get mfaResetApproved => 'تمت الموافقة. بدأ انتظار الـ 72 ساعة.';
+
+  @override
+  String get mfaResetDeclined => 'تم الرفض وإلغاء الطلب.';
+
+  @override
+  String get mfaResetApproveRole =>
+      'لا يمكن إلا لمالك أو والد مشارك الموافقة على طلب إعادة التعيين أو رفضه.';
+
+  @override
+  String get mfaResetApproveForbidden =>
+      'لا يمكنك الموافقة على هذا الطلب أو رفضه.';
+
+  @override
+  String get mfaResetApproveNeedsId =>
+      'افتح هذه الشاشة من الإشعار الخاص بالطلب.';
 }

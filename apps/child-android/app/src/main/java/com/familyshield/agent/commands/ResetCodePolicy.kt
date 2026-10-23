@@ -50,11 +50,29 @@ enum class ResetCodeEnd(val wire: String) {
     EXPIRED("expired"),
     DISMISSED("dismissed"),
     WITHDRAWN("withdrawn"),
+
+    /** A newer code replaced this one; the replaced row is acked so it does not sit `delivered`. */
+    SUPERSEDED("superseded"),
+}
+
+/**
+ * What the notice screen should do with the shared state. Distinguishing the two ways a notice can
+ * vanish is the point: [EXPIRED] is copy ("ask your parent to start again"); [CLOSED] is silence,
+ * because a withdrawal usually means the parent just used the code successfully.
+ */
+enum class ResetCodeView {
+    /** A notice is in [ResetCodeState]; show it. */
+    SHOWING,
+
+    /** This screen watched the notice reach `expiresAt`; show the expired copy. */
+    EXPIRED,
+
+    /** The notice went for another reason (withdrawn, witness passed, request cancelled); close. */
+    CLOSED,
 }
 
 object ResetCodePolicy {
     const val REASON_MISSING_REQUEST_ID = "missing_request_id"
-    const val REASON_MISSING_PARENT_NAME = "missing_parent_name"
     const val REASON_MISSING_CODE = "missing_code"
     const val REASON_MALFORMED_CODE = "malformed_code"
     const val REASON_MISSING_EXPIRES_AT = "missing_expires_at"
@@ -63,7 +81,10 @@ object ResetCodePolicy {
     /** The payload is well-formed but its own `expiresAt` has passed; there is nothing to show. */
     const val REASON_EXPIRED = "reset_code_expired"
 
-    /** No background-launch path can put the notice on screen (overlay off, accessibility unbound). */
+    /**
+     * Nothing on the device can put the notice in front of the child: the overlay app-op, the bound
+     * accessibility service and notifications are all unavailable.
+     */
     const val REASON_SCREEN_UNAVAILABLE = "reset_code_screen_unavailable"
 
     private val EIGHT_DIGITS = Regex("^\\d{8}$")
@@ -92,15 +113,17 @@ object ResetCodePolicy {
     }
 
     /**
-     * Strict on every field the screen needs. `parentName` may not be blank: the notice names the
-     * parent so a child can recognise whose code it is, and an unnamed code fails that purpose.
+     * Strict on every field the credential needs. `parentName` is trimmed and may be **empty**: the
+     * API sends `parent?.displayName ?? ""` and a display name is validated only as non-empty with no
+     * trim, so a name of `" "` would otherwise make every phone refuse and the device witness could
+     * never pass. The name is copy, not part of the credential — the screen falls back to generic
+     * wording when it is blank.
      */
     fun parse(payload: Map<String, String>, commandId: String?, now: Instant): ResetCodeParse {
         val requestId = payload["requestId"]?.trim().orEmpty()
         if (requestId.isEmpty()) return ResetCodeParse.Invalid(REASON_MISSING_REQUEST_ID)
 
         val parentName = payload["parentName"]?.trim().orEmpty()
-        if (parentName.isEmpty()) return ResetCodeParse.Invalid(REASON_MISSING_PARENT_NAME)
 
         val code = payload["code"]
         if (code == null) return ResetCodeParse.Invalid(REASON_MISSING_CODE)
@@ -134,6 +157,19 @@ object ResetCodePolicy {
     /** `1234 5678`, so the code can be read aloud in two groups. */
     fun formatCode(code: String): String =
         if (code.length == 8) "${code.substring(0, 4)} ${code.substring(4)}" else code
+
+    /**
+     * The screen's three-way decision, kept out of the composable so the JVM suite holds it.
+     *
+     * [expiredHere] is set only by this screen's own expiry tick. A null notice with [expiredHere]
+     * false means the notice was withdrawn — most often because the parent just typed the code — so
+     * the screen closes rather than telling the child the code is invalid and to start again.
+     */
+    fun viewOf(notice: ResetCodeNotice?, expiredHere: Boolean): ResetCodeView = when {
+        notice != null -> ResetCodeView.SHOWING
+        expiredHere -> ResetCodeView.EXPIRED
+        else -> ResetCodeView.CLOSED
+    }
 
     /** `expiresAt` is inclusive of its own instant: at exactly `expiresAt` the code is gone. */
     fun isExpired(expiresAt: Instant, now: Instant): Boolean = !now.isBefore(expiresAt)

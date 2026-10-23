@@ -1,7 +1,6 @@
 package com.familyshield.agent.commands
 
 import android.os.Bundle
-import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,24 +29,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import com.familyshield.agent.R
-import com.familyshield.agent.data.AgentSettings
-import com.familyshield.agent.network.ApiService
-import com.familyshield.agent.network.dto.CommandAckDto
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Instant
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
  * ADR-0031, the child's half of the family witness: the full-screen notice carrying the 8-digit code
@@ -62,32 +58,26 @@ import kotlinx.coroutines.launch
  * `delivered` until an ack or the code's expiry clears it.
  *
  * **Expiry is the payload's own `expiresAt`**, checked once a second while the notice is composed —
- * not a hardcoded ten minutes and not a background timer. **Withdrawal** comes from the existing
- * command poll: the API clears the payload, the same row is redelivered as `{}`, and
- * [CommandDispatcher] clears [ResetCodeState]; this screen then drops to the expired copy with no
- * code on it.
+ * not a hardcoded ten minutes and not a background timer, and the expired copy is shown only for a
+ * notice this screen itself watched run out. **Withdrawal** comes from the existing command poll: the
+ * API clears the payload, the same row is redelivered as `{}`, and [CommandDispatcher] clears
+ * [ResetCodeState]. Withdrawal usually means the parent just used the code, so the notice simply
+ * closes instead of telling the child to ask their parent to start again.
  *
  * **Ack is deferred** (see [CommandOutcome.Deferred]): the row stays `delivered` while the notice is
  * up, so a withdrawal can still reach the device on the 120-second redelivery. It is acked `ok` when
  * the notice ends — `detail.screen = expired|dismissed` — or by the dispatcher as `withdrawn`. Acking
  * at display time would clear the payload server-side before the parent had read it and would stop
- * the redelivery that carries the withdrawal.
+ * the redelivery that carries the withdrawal. The ack goes through [CommandDispatcher.ackResetCode],
+ * which owns the application scope and the log-once rule, rather than a second ack path here.
  */
 @AndroidEntryPoint
 class ResetCodeActivity : ComponentActivity() {
 
-    @Inject lateinit var api: ApiService
-    @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var dispatcher: CommandDispatcher
 
     /** Command ids already acked by this instance; the same row can be redelivered every 120 s. */
     private val ackedCommandIds = mutableSetOf<String>()
-
-    /**
-     * The ack outlives the screen: [closeAndFinish] finishes the Activity immediately after asking
-     * for it, and a `lifecycleScope` coroutine would be cancelled at `ON_DESTROY` before the POST.
-     * Same application-scope shape as `SosActivity`/`BlockActivity`.
-     */
-    private val ackScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -117,7 +107,9 @@ class ResetCodeActivity : ComponentActivity() {
                         onExpired = { notice ->
                             acknowledge(notice, ResetCodeEnd.EXPIRED)
                             ResetCodeState.clearIfCurrent(notice.requestId)
+                            cancelResetCodeNotification()
                         },
+                        onWithdrawn = ::finish,
                         onClose = ::closeAndFinish,
                     )
                 }
@@ -131,35 +123,27 @@ class ResetCodeActivity : ComponentActivity() {
             acknowledge(notice, ResetCodeEnd.DISMISSED)
             ResetCodeState.clearIfCurrent(notice.requestId)
         }
+        cancelResetCodeNotification()
         finish()
     }
 
     /**
      * One ack per command row. `ok` means the notice was on screen (see [CommandAckPolicy]) and
-     * `detail.screen` says how it ended. A lost ack is logged once and not retried: the row stays
-     * `delivered`, the row's expiry still clears the payload, and issue #231's rule is not bent here.
-     * The code itself is never logged.
+     * `detail.screen` says how it ended. A lost ack is logged once and not retried (see
+     * [CommandAckSender]): the row stays `delivered`, the row's expiry still clears the payload, and
+     * issue #231's rule is not bent here. The code itself is never logged.
      */
     private fun acknowledge(notice: ResetCodeNotice, end: ResetCodeEnd) {
         val commandId = notice.commandId ?: return
         if (!ackedCommandIds.add(commandId)) return
-        ackScope.launch {
-            runCatching {
-                settings.deviceId()?.let { deviceId ->
-                    api.ackCommand(
-                        deviceId = deviceId,
-                        commandId = commandId,
-                        body = CommandAckDto(status = "ok", detail = ResetCodePolicy.ackDetail(end)),
-                    )
-                }
-            }.onFailure {
-                Log.w(TAG, "show_reset_code ack failed; the row stays delivered", it)
-            }
-        }
+        dispatcher.ackResetCode(commandId, end)
     }
 
-    companion object {
-        private const val TAG = "ResetCodeActivity"
+    /** The notification is a lock-screen hint, not a second notice: it goes when this one does. */
+    private fun cancelResetCodeNotification() {
+        runCatching {
+            NotificationManagerCompat.from(this).cancel(CommandDispatcher.RESET_CODE_NOTIFICATION_ID)
+        }
     }
 }
 
@@ -169,22 +153,35 @@ private const val RESET_CODE_TICK_MS = 1_000L
 @Composable
 private fun ResetCodeScreen(
     onExpired: (ResetCodeNotice) -> Unit,
+    onWithdrawn: () -> Unit,
     onClose: () -> Unit,
 ) {
     val notice by ResetCodeState.notice.collectAsState()
     var now by remember { mutableStateOf(Instant.now()) }
+    // Set only by this screen's own expiry tick, so a notice that disappears for any other reason
+    // (witness passed, request superseded or cancelled) is told apart from one that ran out.
+    var expiredHere by remember { mutableStateOf(false) }
 
     LaunchedEffect(notice?.requestId) {
         val current = notice ?: return@LaunchedEffect
+        expiredHere = false
         while (true) {
             val at = Instant.now()
             now = at
             if (ResetCodePolicy.isExpired(current.expiresAt, at)) {
+                expiredHere = true
                 onExpired(current)
                 break
             }
             delay(RESET_CODE_TICK_MS)
         }
+    }
+
+    if (ResetCodePolicy.viewOf(notice, expiredHere) == ResetCodeView.CLOSED) {
+        // Withdrawn: the code is dead server-side, most often because the parent just used it, so
+        // "ask your parent to start again" would be wrong. The notice simply closes.
+        LaunchedEffect(Unit) { onWithdrawn() }
+        return
     }
 
     Column(
@@ -219,7 +216,11 @@ private fun ResetCodeScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = stringResource(R.string.reset_code_intro, current.parentName),
+                text = if (current.parentName.isEmpty()) {
+                    stringResource(R.string.reset_code_intro_unnamed)
+                } else {
+                    stringResource(R.string.reset_code_intro, current.parentName)
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color(0xFFD6D7DD),
                 textAlign = TextAlign.Center,
@@ -227,6 +228,9 @@ private fun ResetCodeScreen(
             Spacer(modifier = Modifier.height(28.dp))
             Text(
                 text = ResetCodePolicy.formatCode(current.code),
+                // `1234 5678` has no strong character to fix its direction, so an Arabic (RTL)
+                // paragraph would reorder the two digit runs. The code is a number, always LTR.
+                style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
                 fontSize = 40.sp,
                 lineHeight = 48.sp,
                 letterSpacing = 4.sp,
@@ -238,11 +242,9 @@ private fun ResetCodeScreen(
                 modifier = Modifier.widthIn(max = 320.dp),
             )
             Spacer(modifier = Modifier.height(10.dp))
+            val minutes = ResetCodePolicy.remainingMinutes(current.expiresAt, now)
             Text(
-                text = stringResource(
-                    R.string.reset_code_valid_for,
-                    ResetCodePolicy.remainingMinutes(current.expiresAt, now),
-                ),
+                text = pluralStringResource(R.plurals.reset_code_valid_for, minutes, minutes),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color(0xFF9AD1A0),
             )

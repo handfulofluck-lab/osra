@@ -11,11 +11,20 @@
     <!-- ADR-0031 `show_reset_code`. This is the one screen whose copy a child reads calmly and
          decides not to read out; keep it age-appropriate and never invite sending the code. -->
     <string name="reset_code_title">A code for your parent</string>
-    <string name="reset_code_intro">%1$s is resetting their two-step verification — the extra security check when they sign in. This code is for your parent only:</string>
-    <string name="reset_code_valid_for">Valid for %1$d min</string>
+    <string name="reset_code_intro">%1$s needs this code to get back into their OSRA account.</string>
+    <!-- Used when the payload carries no usable parent name (the API sends `displayName ?? ""`,
+         and a name of " " passes its validation), so a blank name does not refuse the code. -->
+    <string name="reset_code_intro_unnamed">Your parent needs this code to get back into their OSRA account.</string>
+    <plurals name="reset_code_valid_for">
+        <item quantity="one">Valid for %1$d minute</item>
+        <item quantity="other">Valid for %1$d minutes</item>
+    </plurals>
     <string name="reset_code_expired_title">This code is no longer valid</string>
     <string name="reset_code_expired_body">Ask your parent to start again. Never share an old code.</string>
-    <string name="reset_code_instruction">Show this only to your parent, in person. Do not send it to anyone, and do not read it out over the phone.</string>
-    <string name="reset_code_safety">If another adult asks you for this code, say no and tell a grown-up you trust. OSRA will never ask you for it.</string>
+    <string name="reset_code_instruction">Show it to them in person. Do not send it, and do not read it out on a call.</string>
+    <string name="reset_code_safety">If anyone else asks for it, say no and tell a grown-up you trust. OSRA will never ask you for it.</string>
+    <!-- Notification: a lock-screen hint for a locked phone or a device with no background launch.
+         It must never carry the code. -->
+    <string name="reset_code_notification_text">Tap to see it. Show it only to your parent, in person.</string>
     <string name="reset_code_close">Close</string>
 </resources>
