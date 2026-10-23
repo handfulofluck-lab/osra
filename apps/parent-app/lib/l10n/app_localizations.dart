@@ -3095,7 +3095,7 @@ abstract class AppLocalizations {
   /// No description provided for @consentRevokeDataRetention.
   ///
   /// In en, this message translates to:
-  /// **'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.'**
+  /// **'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days.\n\nUsage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.'**
   String get consentRevokeDataRetention;
 
   /// No description provided for @consentRevokeDataErase.
@@ -3317,7 +3317,7 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSendHour.
   ///
   /// In en, this message translates to:
-  /// **'The digest is sent at 18:00 your local time'**
+  /// **'The digest is sent at the hour shown below, in your local time zone.'**
   String get digestPrefsSendHour;
 
   /// No description provided for @digestPrefsSavingSuffix.
@@ -3943,6 +3943,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'If an 8-digit code is shown on your child\'s phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.'**
   String get mfaResetStageWitnessBodyResumed;
+
+  /// No description provided for @digestPrefsSendHourLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Send hour'**
+  String get digestPrefsSendHourLabel;
+
+  /// No description provided for @alertTitleSos.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS pressed'**
+  String get alertTitleSos;
+
+  /// No description provided for @alertTitleBlockedSite.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked site attempted'**
+  String get alertTitleBlockedSite;
+
+  /// No description provided for @alertTitleDailyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit reached'**
+  String get alertTitleDailyLimit;
+
+  /// No description provided for @alertTitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert'**
+  String get alertTitleGeneric;
 }
 
 class _AppLocalizationsDelegate

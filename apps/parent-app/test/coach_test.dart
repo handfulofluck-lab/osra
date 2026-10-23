@@ -126,7 +126,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'critical', 'self_harm', 'Possible self-harm detected', now),
       ]));
-      await openDetail(tester, api, 'Possible self-harm detected');
+      await openDetail(tester, api, 'Alert');
 
       expect(find.text('How to talk about this'), findsOneWidget);
       await expandCoachSection(tester);
@@ -141,7 +141,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'critical', 'self_harm', 'Possible self-harm detected', now),
       ]));
-      await openDetail(tester, api, 'Possible self-harm detected');
+      await openDetail(tester, api, 'Alert');
       await expandCoachSection(tester);
 
       // The expanded card is taller than the dialog viewport — scroll the
@@ -177,7 +177,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [
         alertJson('c1', 'info', 'brand_new_alert_type', 'Something unusual', now),
       ]));
-      await openDetail(tester, api, 'Something unusual');
+      await openDetail(tester, api, 'Alert');
       await expandCoachSection(tester);
 
       expect(find.text('A calm first conversation'), findsOneWidget);

@@ -18,6 +18,7 @@ import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/reports/usage_history_screen.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/features/settings/appearance_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/locale_provider.dart';
@@ -183,12 +184,16 @@ void main() {
     testWidgets('reports', (tester) async {
       await pumpArabic(tester, const ReportsScreen(childId: 'child-1'), arabicApi());
       expect(find.text('التقارير'), findsOneWidget);
+      expect(find.text('الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 
     testWidgets('usage history', (tester) async {
       await pumpArabic(tester, const UsageHistoryScreen(childId: 'child-1'), arabicApi());
       expect(find.text('وقت الشاشة والويب'), findsOneWidget);
+      expect(find.text('7 أيام'), findsOneWidget);
+      expect(find.text('14 يومًا'), findsOneWidget);
+      expect(find.text('30 يومًا'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 
@@ -287,6 +292,23 @@ void main() {
         expect(arNames, enNames, reason: 'placeholder mismatch for "$key"');
       }
     });
+
+    test('the four alert-title keys are present and non-empty in both locales', () {
+      final en = readArb('app_en.arb');
+      final ar = readArb('app_ar.arb');
+      const titles = [
+        'alertTitleSos',
+        'alertTitleBlockedSite',
+        'alertTitleDailyLimit',
+        'alertTitleGeneric',
+      ];
+      for (final key in titles) {
+        expect(en.containsKey(key), isTrue, reason: 'app_en.arb is missing $key');
+        expect(ar.containsKey(key), isTrue, reason: 'app_ar.arb is missing $key');
+        expect((en[key] as String).trim(), isNotEmpty, reason: 'app_en.arb $key is empty');
+        expect((ar[key] as String).trim(), isNotEmpty, reason: 'app_ar.arb $key is empty');
+      }
+    });
   });
 
   /// The fake HTTP layer resolves on a microtask after the first frame, so a provider-backed screen
@@ -325,6 +347,8 @@ void main() {
       expect(find.text('كيف أشتري فيب'), findsOneWidget);
       // The severity chip is translated rather than an English enum in Latin capitals.
       expect(find.text('تحذير'), findsOneWidget);
+      // The engine name stays a brand, but the relative time is translated.
+      expect(find.text('Google · قبل ساعتين'), findsOneWidget);
       expect(find.text('عرض تفاصيل الخزنة'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
@@ -338,7 +362,7 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text('لم يُرصد أي بحث مُبلَّغ عنه'), findsOneWidget);
+      expect(find.text('لم يتم رصد أي عمليات بحث تستدعي الإبلاغ عنها'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
   });
@@ -371,7 +395,50 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -400));
       await tester.pumpAndSettle();
       expect(find.text('حفظ التفضيلات'), findsOneWidget);
+      // The send hour and timezone are separate fields, not one run-on line.
+      expect(find.text('ساعة الإرسال'), findsOneWidget);
+      expect(find.text('18:00'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
+    });
+  });
+
+  /// Pure copy checks for the native-speaker review of the Arabic screen
+  /// strings: the changed values, the plural period selectors, and the
+  /// alert-title mapping that never falls back to the server's English.
+  group('Arabic copy (review of #330)', () {
+    Future<AppLocalizations> arabic() => AppLocalizations.delegate.load(const Locale('ar'));
+
+    test('changed values read as the native reviewer approved', () async {
+      final ar = await arabic();
+      expect(ar.serverLabel, 'الخادم (السيرفر)');
+      expect(ar.totalAverage(300, 43), 'الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا');
+      expect(ar.digestPrefsPushBody, 'إرسال التنبيهات الحرجة كإشعارات فورية');
+    });
+
+    test('the screen-time value reads used-then-limit', () async {
+      final ar = await arabic();
+      expect(ar.screenTimeValue(120, '180'), '120 من 180 دقيقة');
+    });
+
+    test('the retention explanation is split into paragraphs', () async {
+      final ar = await arabic();
+      expect(ar.consentRevokeDataRetention, contains('\n\n'));
+    });
+
+    test('the period selectors use full Arabic words', () async {
+      final ar = await arabic();
+      expect(ar.daysShort(7), '7 أيام');
+      expect(ar.daysShort(14), '14 يومًا');
+      expect(ar.daysShort(30), '30 يومًا');
+    });
+
+    test('alert titles come from the category, never the server text', () async {
+      final ar = await arabic();
+      expect(ar.alertTitleFor('sos', 'SOS pressed'), 'تم الضغط على زر الاستغاثة');
+      expect(ar.alertTitleFor('web_filter', 'Blocked site attempted'), 'تمت محاولة زيارة موقع محظور');
+      expect(ar.alertTitleFor('screen_time', 'Daily limit reached'), 'تم بلوغ الحد اليومي');
+      expect(ar.alertTitleFor('unknown_category', 'SERVER ENGLISH TITLE'), 'تنبيه');
+      expect(ar.alertTitleGeneric, 'تنبيه');
     });
   });
 }

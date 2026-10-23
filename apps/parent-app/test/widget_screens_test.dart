@@ -517,7 +517,7 @@ void main() {
       await pumpScreen(tester, const AlertsScreen(), api);
 
       expect(severityIconColor(tester, 'SOS pressed'), Colors.red);
-      expect(severityIconColor(tester, 'Blocked site visited'), Colors.amber);
+      expect(severityIconColor(tester, 'Blocked site attempted'), Colors.amber);
       expect(severityIconColor(tester, 'Daily limit reached'), Colors.blue);
 
       // Grouped under one header per distinct local day.
@@ -542,7 +542,7 @@ void main() {
 
       expect(api.calls('POST', '/v1/alerts/a3/ack'), hasLength(1));
       expect(find.text('SOS pressed'), findsNothing);
-      expect(find.text('Blocked site visited'), findsOneWidget);
+      expect(find.text('Blocked site attempted'), findsOneWidget);
     });
 
     testWidgets('shows an empty state when there are no alerts', (tester) async {

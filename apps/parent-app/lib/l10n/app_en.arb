@@ -924,7 +924,7 @@
   "consentRevokeKeepsSafe": "Unlocking and resuming your child's device still work while consent is withdrawn.",
   "consentRevokeDataTitle": "What happens to data already collected",
   "consentRevokeDataRetained": "Nothing is deleted or anonymised now. Reports, alerts and location history already collected stay in your family account.",
-  "consentRevokeDataRetention": "Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child's data is erased.",
+  "consentRevokeDataRetention": "Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days.\n\nUsage summaries are kept for 365 days. Alerts are kept until the child's data is erased.",
   "consentRevokeDataErase": "Deleting your child's profile is a separate action that removes all their data immediately. It is not part of withdrawing consent.",
   "consentRevokeTypePrompt": "Type {childName} to confirm",
   "@consentRevokeTypePrompt": {
@@ -979,7 +979,7 @@
   "digestPrefsTimezoneTitle": "Digest timezone (local send hour)",
   "digestPrefsTimezoneLabel": "Timezone",
   "digestPrefsTimezoneLoading": "Loading…",
-  "digestPrefsSendHour": "The digest is sent at 18:00 your local time",
+  "digestPrefsSendHour": "The digest is sent at the hour shown below, in your local time zone.",
   "digestPrefsSavingSuffix": "saving…",
   "digestPrefsSaving": "Saving…",
   "digestPrefsSave": "Save preferences",
@@ -1099,5 +1099,10 @@
   "mfaResetTerminalNotFound": "This request no longer exists, so nothing was changed. Start again from the beginning.",
   "mfaResetTerminalUnknown": "This request cannot continue, and nothing was changed. Start a new request.",
   "mfaResetStageWitnessTitleResumed": "Waiting for the witness step",
-  "mfaResetStageWitnessBodyResumed": "If an 8-digit code is shown on your child's phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens."
+  "mfaResetStageWitnessBodyResumed": "If an 8-digit code is shown on your child's phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.",
+  "digestPrefsSendHourLabel": "Send hour",
+  "alertTitleSos": "SOS pressed",
+  "alertTitleBlockedSite": "Blocked site attempted",
+  "alertTitleDailyLimit": "Daily limit reached",
+  "alertTitleGeneric": "Alert"
 }

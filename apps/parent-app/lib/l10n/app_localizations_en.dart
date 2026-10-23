@@ -1833,7 +1833,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get consentRevokeDataRetention =>
-      'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
+      'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days.\n\nUsage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.';
 
   @override
   String get consentRevokeDataErase =>
@@ -1973,7 +1973,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get digestPrefsSendHour =>
-      'The digest is sent at 18:00 your local time';
+      'The digest is sent at the hour shown below, in your local time zone.';
 
   @override
   String get digestPrefsSavingSuffix => 'saving…';
@@ -2357,4 +2357,19 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mfaResetStageWitnessBodyResumed =>
       'If an 8-digit code is shown on your child\'s phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.';
+
+  @override
+  String get digestPrefsSendHourLabel => 'Send hour';
+
+  @override
+  String get alertTitleSos => 'SOS pressed';
+
+  @override
+  String get alertTitleBlockedSite => 'Blocked site attempted';
+
+  @override
+  String get alertTitleDailyLimit => 'Daily limit reached';
+
+  @override
+  String get alertTitleGeneric => 'Alert';
 }

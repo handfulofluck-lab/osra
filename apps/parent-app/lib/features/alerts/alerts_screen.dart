@@ -85,7 +85,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             children: [
               Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity, dialogContext)),
               const SizedBox(width: AppSpace.sm),
-              Expanded(child: Text(alert.title, style: Theme.of(dialogContext).textTheme.titleMedium)),
+              Expanded(child: Text(l10n.alertTitleFor(alert.category, alert.title), style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
           content: SingleChildScrollView(

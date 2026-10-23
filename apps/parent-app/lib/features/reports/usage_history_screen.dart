@@ -41,8 +41,9 @@ class _UsageHistoryScreenState extends ConsumerState<UsageHistoryScreen> {
           preferredSize: const Size.fromHeight(48),
           child: Padding(
             padding: const EdgeInsets.only(bottom: AppSpace.sm),
-            // NOTE: '7d'/'14d'/'30d' instead of '7 days' — three full labels
-            // overflow a 320px-wide AppBar.
+            // NOTE: three full English labels ("7 days"/"14 days"/"30 days")
+            // overflow a 320px-wide AppBar, so the labels come from the short
+            // day forms in the ARB (English "{days}d"; Arabic full-word plurals).
             child: SegmentedButton<int>(
               key: const ValueKey('usageWindowSelector'),
               showSelectedIcon: false,
@@ -118,12 +119,14 @@ class _UsageBody extends StatelessWidget {
 
   static String _dayLabel(String day, String locale) {
     final date = DateTime.tryParse(day);
-    return date == null ? day : DateFormat('EEE, MMM d', locale).format(date);
+    // Locale-aware skeleton (not a fixed "MMM d" pattern) so Arabic keeps the
+    // day-before-month order, matching the DateFormat.MMMd used in the web list.
+    return date == null ? day : DateFormat.MMMEd(locale).format(date);
   }
 
   static String _shortDay(String day, String locale) {
     final date = DateTime.tryParse(day);
-    return date == null ? day : DateFormat('MMM d', locale).format(date);
+    return date == null ? day : DateFormat.MMMd(locale).format(date);
   }
 
   @override

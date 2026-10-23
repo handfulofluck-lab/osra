@@ -140,7 +140,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [installAlert()]));
       await pumpScreen(tester, const AlertsScreen(), api);
 
-      await tester.tap(find.text('App install requested'));
+      await tester.tap(find.text('Alert'));
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(FilledButton, 'Block this app'), findsOneWidget);
@@ -165,7 +165,7 @@ void main() {
       final api = FakeApiClient(standardRoutes(alerts: [installAlert()]));
       await pumpScreen(tester, const AlertsScreen(), api);
 
-      await tester.tap(find.text('App install requested'));
+      await tester.tap(find.text('Alert'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Allow'));
       await tester.pumpAndSettle();

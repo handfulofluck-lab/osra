@@ -29,6 +29,10 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   String? _timezone;
   bool _timezoneSaving = false;
 
+  /// The fixed local send hour (see `digestPrefsSendHour`); shown as its own
+  /// field so the explanation and this value are no longer one run-on line.
+  static const _sendHour = '18:00';
+
   /// A curated list rather than the full IANA database: these are the markets OSRA ships to, and the
   /// API validates the value anyway (an unknown name is refused with invalid_timezone).
   static const _timezones = <String>[
@@ -218,26 +222,59 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
               const SizedBox(height: AppSpace.lg),
               // ADR-0020: the family's local hour. A parent who picks a zone here owns it: the API marks
               // the source as `parent`, and no device login can move it again (#101, #105).
-              Text(l10n.digestPrefsTimezoneTitle, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: AppSpace.xs),
-              Text(
-                _timezone == null
-                    ? l10n.digestPrefsTimezoneLoading
-                    : '${l10n.digestPrefsSendHour}${_timezoneSaving ? ' · ${l10n.digestPrefsSavingSuffix}' : ''}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: AppSpace.sm),
-              DropdownButtonFormField<String>(
-                key: const ValueKey('digestTimezone'),
-                // The same 320 px trap the register and invite dropdowns hit (ROADMAP 3.8): a long zone
-                // name like `America/Argentina/Buenos_Aires` overflows the button's Row in RTL.
-                isExpanded: true,
-                initialValue: _zoneOptions.contains(_timezone) ? _timezone : 'UTC',
-                decoration: InputDecoration(border: const OutlineInputBorder(), labelText: l10n.digestPrefsTimezoneLabel),
-                items: [
-                  for (final tz in _zoneOptions) DropdownMenuItem(value: tz, child: Text(tz)),
-                ],
-                onChanged: _timezoneSaving ? null : (v) { if (v != null) _saveTimezone(v); },
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l10n.digestPrefsTimezoneTitle, style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: AppSpace.xs),
+                      // The explanation, the fixed send hour and the zone are
+                      // three separate fields — the old single line crammed
+                      // "18:00" and the saving suffix into the explanation.
+                      Text(l10n.digestPrefsSendHour, style: Theme.of(context).textTheme.bodySmall),
+                      const SizedBox(height: AppSpace.sm),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(l10n.digestPrefsSendHourLabel, style: Theme.of(context).textTheme.bodySmall),
+                          ),
+                          const SizedBox(width: AppSpace.md),
+                          Expanded(
+                            child: Text(
+                              _sendHour,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      if (_timezone == null) ...[
+                        Text(l10n.digestPrefsTimezoneLoading, style: Theme.of(context).textTheme.bodySmall),
+                        const SizedBox(height: AppSpace.sm),
+                      ],
+                      DropdownButtonFormField<String>(
+                        key: const ValueKey('digestTimezone'),
+                        // The same 320 px trap the register and invite dropdowns hit (ROADMAP 3.8): a long zone
+                        // name like `America/Argentina/Buenos_Aires` overflows the button's Row in RTL.
+                        isExpanded: true,
+                        initialValue: _zoneOptions.contains(_timezone) ? _timezone : 'UTC',
+                        decoration: InputDecoration(border: const OutlineInputBorder(), labelText: l10n.digestPrefsTimezoneLabel),
+                        items: [
+                          for (final tz in _zoneOptions) DropdownMenuItem(value: tz, child: Text(tz)),
+                        ],
+                        onChanged: _timezoneSaving ? null : (v) { if (v != null) _saveTimezone(v); },
+                      ),
+                      if (_timezoneSaving) ...[
+                        const SizedBox(height: AppSpace.xs),
+                        Text(l10n.digestPrefsSavingSuffix, style: Theme.of(context).textTheme.bodySmall),
+                      ],
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: AppSpace.lg),
               FilledButton.icon(

@@ -161,7 +161,7 @@ class _SearchEventCard extends StatelessWidget {
                   const SizedBox(width: AppSpace.sm),
                   Expanded(
                     child: Text(
-                      '$engineLabel · ${formatRelativeTime(item.createdAt)}',
+                      '$engineLabel · ${formatRelativeTime(item.createdAt, l10n)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

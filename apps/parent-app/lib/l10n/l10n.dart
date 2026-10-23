@@ -66,6 +66,23 @@ extension AppLocalizationsLabels on AppLocalizations {
         _ => category,
       };
 
+  /**
+   * The title shown for an alert, chosen by **type**, never by matching the server's English text (#159).
+   *
+   * The three titles Karim flagged ("SOS pressed", "Blocked site visited", "Daily limit reached") arrive from
+   * the server in English and were rendered verbatim on an Arabic screen. Matching the English string would
+   * break the moment the server reworded one, and would leave every new type in English anyway — so the app
+   * maps the category to a translated title and an unrecognised category falls back to a translated generic
+   * one, never to the server's English.
+   */
+  String alertTitleFor(String category, String serverTitle) => switch (category) {
+        'sos' => alertTitleSos,
+        'web_filter' => alertTitleBlockedSite,
+        'screen_time' => alertTitleDailyLimit,
+        // A category the app does not know still gets a translated title; the server's text is the body's job.
+        _ => alertTitleGeneric,
+      };
+
   String severityName(String severity) => switch (severity) {
         'critical' => severityCritical,
         'warning' => severityWarning,
