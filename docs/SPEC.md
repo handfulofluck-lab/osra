@@ -147,7 +147,8 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
 - src/routes/auth.ts — DONE. `POST /register`, `/login`, `/logout`, `/logout-all`, `/token/refresh`,
   `/reset/request`, `/reset/confirm`, `/mfa/enroll`, `/mfa/verify`, (ADR-0023) `/mfa/recovery-codes`
   and `/mfa/recover`, and (ADR-0031) `/mfa/reset/request`, `/mfa/reset/confirm`, `/mfa/reset/witness`,
-  `/mfa/reset/approve`, `/mfa/reset/cancel`, `/mfa/reset/complete`. See "MFA and account recovery"
+  `/mfa/reset/approve`, `/mfa/reset/cancel`, `/mfa/reset/complete`, and the two read-only routes
+  `/mfa/reset/status` and `GET /mfa/reset/pending`. See "MFA and account recovery"
   below for the second-factor contract.
 - src/routes/family.ts — GENERATE THIS:
     GET /me; POST /children (428 without active consent); GET/PATCH/DELETE /children/:id
@@ -296,6 +297,26 @@ factor by hand.
 | `POST /v1/auth/mfa/reset/approve` | `{requestId}` from another `owner`/`co-parent` of the same family; same revocation and window as the device code | `403 role_not_allowed` (guardian), `403 forbidden` (another family, or the subject), `409 request_not_open` |
 | `POST /v1/auth/mfa/reset/cancel` | `{token}` (the link, no sign-in) or `{requestId}` with a session from another `owner`/`co-parent`; idempotent | `401 invalid_or_expired_token`, `401 unauthorized`, `403` for a guardian/stranger |
 | `POST /v1/auth/mfa/reset/complete` | `{email, password, requestId}` after `windowEndsAt`; runs ADR-0023's sequence (recovery-token record, revoke all, one transaction that clears `mfaSecret` and deletes the codes, sign the 15-minute token) and returns `{recoveryToken}` | `409 window_open`, `409 witness_required`, `409 request_cancelled`, `409 request_expired`, `409 too_many_attempts`, `409 request_completed`, `404 request_not_found`, `401 invalid_credentials` |
+| `POST /v1/auth/mfa/reset/status` | `{email, password, requestId}`; the requester reads their **own** request. Same 20/min bucket, the same unknown-address timing path, the same `401 invalid_credentials` and the same `404 request_not_found` as `/complete`. **Writes nothing** (ADR-0031 amendment 2026-10-23) | `401 invalid_credentials`, `404 request_not_found` (no such id *and* another parent's id, one answer) |
+| `GET /v1/auth/mfa/reset/pending` | A live session from an `owner` or `co-parent` of the family; lists the family's requests in `mailbox_confirmed` or `witness_passed` whose `parentId` is not the caller's, with the requester's `displayName` and role. Read-only | `401 unauthorized`, `403 role_not_allowed` (a `guardian`) |
+
+The two reads are ADR-0031 decision 8's read for "the parent it is about" and the approval prompt's
+lookup, added by the 2026-10-23 amendment. Field lists, exactly:
+
+- `POST /mfa/reset/status` → `{requestId, state, createdAt, emailConfirmedAt, mailboxLinkExpiresAt,
+  witnessDeadline, codeExpiresAt, attemptsRemaining, witnessKind, witnessAt, windowEndsAt, outcomeAt}`.
+  A field that does not apply to the current state is `null`: `mailboxLinkExpiresAt` is `createdAt` +
+  30 min while `requested`; `witnessDeadline` is `emailConfirmedAt` + 24 h and `attemptsRemaining` is
+  5 − `failedCodeAttempts` while `mailbox_confirmed`; `codeExpiresAt` is the live code's deadline,
+  `null` once the code is spent. Never `codeHash`, the plaintext code, `witnessRef`, a device id or
+  anything about another parent.
+- `GET /mfa/reset/pending` → `{requests: [{requestId, state, requester: {parentId, displayName, role},
+  createdAt, emailConfirmedAt, witnessDeadline, windowEndsAt}]}`. The requester's **email is not
+  returned**, and neither is `witnessRef`.
+
+Both routes write nothing: `status` is not a sign-in, so it does not cancel the request (decision 3
+needs the authenticator for that), and neither read revokes a session, acks a command or touches a
+`MfaResetRequest` row. The requester still has no in-app cancel (amendment 2026-10-23, item 3).
 
 `MfaResetRequest` holds one row per request: `parentId`, `familyId`, `state`, `createdAt`,
 `emailConfirmedAt`, `witnessKind` (`device` | `parent`), `witnessRef`, `witnessAt`, `windowEndsAt`,
@@ -309,7 +330,9 @@ deletes rows 12 months after `outcomeAt`.
 
 Not built in the API change that introduced this: the email and push templates (the send points are
 `[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
-`show_reset_code` screen. There is also no read-only audit route yet (ADR-0031 decision 8).
+`show_reset_code` screen. Decision 8's read exists in the two forms above (the requester's own request,
+and the family's open ones for an `owner`/`co-parent`); the 12-month history read is still not built
+(amendment 2026-10-23, item 4).
 
 Parent-app half (`feat/297-reset-parent-ui`, 2026-10-23): the four screens exist under
 `apps/parent-app/lib/features/auth/` — the request (email + password), the waiting state (stage, next
