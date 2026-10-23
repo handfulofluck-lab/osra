@@ -16,6 +16,12 @@ int _int(dynamic v, [int fallback = 0]) {
 
 bool _bool(dynamic v, [bool fallback = false]) => v is bool ? v : fallback;
 String? _strOrNull(dynamic v) => v == null ? null : _str(v);
+int? _intOrNull(dynamic v) {
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v);
+  return null;
+}
 List<String> _strList(dynamic v) => v is List ? [for (final e in v) _str(e)] : const <String>[];
 List<int> _intList(dynamic v) => v is List ? [for (final e in v) _int(e)] : const <int>[];
 List<Map<String, dynamic>> _mapList(dynamic v) =>
@@ -1270,4 +1276,102 @@ class MfaResetCompleteResult {
 
   factory MfaResetCompleteResult.fromJson(Map<String, dynamic> json) =>
       MfaResetCompleteResult(recoveryToken: _str(json['recoveryToken']));
+}
+
+/// `POST /v1/auth/mfa/reset/status` — the requester's own request, read-only.
+///
+/// A derived field that does not apply to [state] is `null` from the API, never
+/// stale: [mailboxLinkExpiresAt] exists only while `requested`,
+/// [codeExpiresAt] and [attemptsRemaining] only while `mailbox_confirmed`, and
+/// [windowEndsAt] only once the witness step passed. [outcomeAt] is set when
+/// the request reached a terminal state.
+@immutable
+class MfaResetStatusView {
+  final String requestId;
+  final String state;
+  final DateTime? createdAt;
+  final DateTime? emailConfirmedAt;
+  final DateTime? mailboxLinkExpiresAt;
+  final DateTime? witnessDeadline;
+  final DateTime? codeExpiresAt;
+  final int? attemptsRemaining;
+  final String? witnessKind;
+  final DateTime? witnessAt;
+  final DateTime? windowEndsAt;
+  final DateTime? outcomeAt;
+
+  const MfaResetStatusView({
+    required this.requestId,
+    required this.state,
+    this.createdAt,
+    this.emailConfirmedAt,
+    this.mailboxLinkExpiresAt,
+    this.witnessDeadline,
+    this.codeExpiresAt,
+    this.attemptsRemaining,
+    this.witnessKind,
+    this.witnessAt,
+    this.windowEndsAt,
+    this.outcomeAt,
+  });
+
+  factory MfaResetStatusView.fromJson(Map<String, dynamic> json) => MfaResetStatusView(
+        requestId: _str(json['requestId']),
+        state: _str(json['state']),
+        createdAt: DateTime.tryParse(_str(json['createdAt'])),
+        emailConfirmedAt: DateTime.tryParse(_str(json['emailConfirmedAt'])),
+        mailboxLinkExpiresAt: DateTime.tryParse(_str(json['mailboxLinkExpiresAt'])),
+        witnessDeadline: DateTime.tryParse(_str(json['witnessDeadline'])),
+        codeExpiresAt: DateTime.tryParse(_str(json['codeExpiresAt'])),
+        attemptsRemaining: _intOrNull(json['attemptsRemaining']),
+        witnessKind: _strOrNull(json['witnessKind']),
+        witnessAt: DateTime.tryParse(_str(json['witnessAt'])),
+        windowEndsAt: DateTime.tryParse(_str(json['windowEndsAt'])),
+        outcomeAt: DateTime.tryParse(_str(json['outcomeAt'])),
+      );
+}
+
+/// One entry of `GET /v1/auth/mfa/reset/pending` — another owner's or
+/// co-parent's request that needs a witness.
+///
+/// [requesterName] and [requesterRole] are what the approval prompt names; the
+/// address and `witnessRef` are deliberately absent from the route.
+@immutable
+class MfaResetPendingRequest {
+  final String requestId;
+  final String state;
+  final String requesterParentId;
+  final String requesterName;
+  final String requesterRole;
+  final DateTime? createdAt;
+  final DateTime? emailConfirmedAt;
+  final DateTime? witnessDeadline;
+  final DateTime? windowEndsAt;
+
+  const MfaResetPendingRequest({
+    required this.requestId,
+    required this.state,
+    this.requesterParentId = '',
+    this.requesterName = '',
+    this.requesterRole = '',
+    this.createdAt,
+    this.emailConfirmedAt,
+    this.witnessDeadline,
+    this.windowEndsAt,
+  });
+
+  factory MfaResetPendingRequest.fromJson(Map<String, dynamic> json) {
+    final requester = json['requester'] is Map ? Map<String, dynamic>.from(json['requester'] as Map) : const <String, dynamic>{};
+    return MfaResetPendingRequest(
+      requestId: _str(json['requestId']),
+      state: _str(json['state']),
+      requesterParentId: _str(requester['parentId']),
+      requesterName: _str(requester['displayName']),
+      requesterRole: _str(requester['role']),
+      createdAt: DateTime.tryParse(_str(json['createdAt'])),
+      emailConfirmedAt: DateTime.tryParse(_str(json['emailConfirmedAt'])),
+      witnessDeadline: DateTime.tryParse(_str(json['witnessDeadline'])),
+      windowEndsAt: DateTime.tryParse(_str(json['windowEndsAt'])),
+    );
+  }
 }

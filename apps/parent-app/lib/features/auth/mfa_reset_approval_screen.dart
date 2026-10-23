@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/mfa_reset_api.dart';
+import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/mfa_provider.dart';
+import '../../providers/mfa_reset_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'mfa_reset_messages.dart';
 
@@ -12,16 +14,33 @@ import 'mfa_reset_messages.dart';
 /// from their own signed-in app. A `guardian` cannot; the API answers
 /// `403 role_not_allowed` and this screen says so in words.
 ///
-/// **Known API gap:** the route takes only `{requestId}` and returns no details
-/// about the request, so this screen cannot name the parent who asked, their
-/// address, or when the request was made — and no notification carries the
-/// request id here yet (ADR-0031 decision 4's templates are unbuilt). The copy
-/// therefore says "another parent in your family", not a name; the screen is
-/// reached with a request id from outside the app today.
+/// [requesterName], [requesterRole], [pendingState] and [pendingWindowEndsAt]
+/// come from `GET /v1/auth/mfa/reset/pending`: the dashboard and the MFA
+/// settings screen open this prompt straight from that list, with the id and
+/// the name the route returned. The deep link (`/mfa/reset/approve?requestId=`)
+/// reaches the prompt through [MfaResetApprovalLink], which takes only the id
+/// from the URL and looks the rest up in that same list.
+/// Without a name the copy falls back to "another parent in your family",
+/// which is what the app said before the list existed.
+///
+/// [pendingState] `witness_passed` means someone already supplied the witness:
+/// the prompt then shows the running window and offers only decline (a cancel
+/// during the window), instead of an Approve button the API would refuse.
 class MfaResetApprovalScreen extends ConsumerStatefulWidget {
-  const MfaResetApprovalScreen({super.key, required this.requestId});
+  const MfaResetApprovalScreen({
+    super.key,
+    required this.requestId,
+    this.requesterName,
+    this.requesterRole,
+    this.pendingState,
+    this.pendingWindowEndsAt,
+  });
 
   final String requestId;
+  final String? requesterName;
+  final String? requesterRole;
+  final String? pendingState;
+  final DateTime? pendingWindowEndsAt;
 
   @override
   ConsumerState<MfaResetApprovalScreen> createState() => _MfaResetApprovalScreenState();
@@ -32,8 +51,13 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
   MfaResetFailure? _failure;
   DateTime? _windowEndsAt;
   bool _declined = false;
+  bool _approvedNow = false;
 
-  bool get _answered => _windowEndsAt != null || _declined;
+  bool get _alreadyApproved =>
+      widget.pendingState == 'witness_passed' && !_approvedNow && _windowEndsAt != null;
+
+  bool get _canApprove => !_busy && !_terminal && !_declined && _windowEndsAt == null;
+  bool get _canDecline => !_busy && !_terminal && !_declined;
 
   bool get _terminal => _failure != null &&
       const {
@@ -47,6 +71,16 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
         MfaResetFailureKind.unauthorized,
       }.contains(_failure!.kind);
 
+  @override
+  void initState() {
+    super.initState();
+    // A `witness_passed` entry from `pending` already has its window; showing
+    // it beats an Approve button the next tap would have refused.
+    if (widget.pendingState == 'witness_passed') {
+      _windowEndsAt = widget.pendingWindowEndsAt;
+    }
+  }
+
   Future<void> _approve() async {
     setState(() {
       _busy = true;
@@ -55,8 +89,10 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
     try {
       final accepted = await ref.read(mfaResetApiProvider).approve(widget.requestId);
       if (!mounted) return;
+      ref.invalidate(mfaResetPendingProvider);
       setState(() {
         _busy = false;
+        _approvedNow = true;
         _windowEndsAt = accepted.windowEndsAt;
       });
     } on MfaResetFailure catch (failure) {
@@ -95,9 +131,13 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
     try {
       await ref.read(mfaResetApiProvider).cancel(requestId: widget.requestId);
       if (!mounted) return;
+      ref.invalidate(mfaResetPendingProvider);
       setState(() {
         _busy = false;
         _declined = true;
+        // The request is cancelled; a window shown from `pending` is no longer
+        // running, so do not leave it on screen beside "Declined".
+        _windowEndsAt = null;
       });
     } on MfaResetFailure catch (failure) {
       if (!mounted) return;
@@ -126,12 +166,18 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
                 style: theme.textTheme.bodyMedium,
               )
             else ...[
-              Text(l10n.mfaResetApproveIntro, style: theme.textTheme.bodyMedium),
+              Text(
+                _intro(l10n),
+                key: const ValueKey('mfaResetApproveIntro'),
+                style: theme.textTheme.bodyMedium,
+              ),
               if (_windowEndsAt != null) ...[
                 const SizedBox(height: AppSpace.lg),
                 Text(
-                  l10n.mfaResetApproved,
-                  key: const ValueKey('mfaResetApproved'),
+                  _alreadyApproved ? l10n.mfaResetApproveAlready : l10n.mfaResetApproved,
+                  key: _alreadyApproved
+                      ? const ValueKey('mfaResetApproveAlready')
+                      : const ValueKey('mfaResetApproved'),
                   style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.ok),
                 ),
                 const SizedBox(height: AppSpace.xs),
@@ -157,23 +203,25 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
                   style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
                 ),
               ],
-              if (!_answered) ...[
+              if (_canApprove || _canDecline) ...[
                 const SizedBox(height: AppSpace.xl),
-                FilledButton.icon(
-                  key: const ValueKey('mfaResetApprove'),
-                  onPressed: _busy || _terminal ? null : _approve,
-                  icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.verified_user_outlined),
-                  label: Text(l10n.mfaResetApproveAction),
-                ),
-                const SizedBox(height: AppSpace.md),
-                OutlinedButton.icon(
-                  key: const ValueKey('mfaResetDecline'),
-                  onPressed: _busy || _terminal ? null : _decline,
-                  icon: const Icon(Icons.block),
-                  label: Text(l10n.mfaResetDeclineAction),
-                ),
+                if (_canApprove)
+                  FilledButton.icon(
+                    key: const ValueKey('mfaResetApprove'),
+                    onPressed: _approve,
+                    icon: _busy
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.verified_user_outlined),
+                    label: Text(l10n.mfaResetApproveAction),
+                  ),
+                if (_canApprove && _canDecline) const SizedBox(height: AppSpace.md),
+                if (_canDecline)
+                  OutlinedButton.icon(
+                    key: const ValueKey('mfaResetDecline'),
+                    onPressed: _decline,
+                    icon: const Icon(Icons.block),
+                    label: Text(l10n.mfaResetDeclineAction),
+                  ),
               ],
             ],
           ],
@@ -182,6 +230,59 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
     );
   }
 
+  /// Names the requester when `pending` provided them; otherwise keeps the
+  /// pre-list wording rather than inventing an identity.
+  String _intro(AppLocalizations l10n) {
+    final name = (widget.requesterName ?? '').trim();
+    if (name.isEmpty) return l10n.mfaResetApproveIntro;
+    final role = mfaResetRoleName(l10n, widget.requesterRole ?? '');
+    return l10n.mfaResetApproveIntroNamed(
+      name,
+      role.isEmpty ? l10n.mfaResetRoleFamilyMember : role,
+    );
+  }
+
   String _format(BuildContext context, DateTime at) =>
       DateFormat.yMMMd(context.localeName).add_Hm().format(at.toLocal());
+}
+
+/// The `/mfa/reset/approve` deep link: a notification (decision 4's templates
+/// are still unbuilt) or a link another parent handed over.
+///
+/// Only `requestId` comes from the URL. The requester's name, role and state
+/// are read from `GET /v1/auth/mfa/reset/pending` and matched by id, so a
+/// crafted link cannot put words in the requester's mouth ("X (owner) asked…")
+/// or pass `state=witness_passed` to hide the Approve button. An id that is not
+/// in the list — the caller's own request, one that already ended, a stale link
+/// — falls back to the generic copy, and the API decides what may happen.
+class MfaResetApprovalLink extends ConsumerWidget {
+  const MfaResetApprovalLink({super.key, required this.requestId});
+
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (requestId.isEmpty) return const MfaResetApprovalScreen(requestId: '');
+    final pending = ref.watch(mfaResetPendingProvider);
+    if (pending.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text(context.l10n.mfaResetApproveTitle)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    MfaResetPendingRequest? match;
+    for (final request in pending.valueOrNull ?? const <MfaResetPendingRequest>[]) {
+      if (request.requestId == requestId) {
+        match = request;
+        break;
+      }
+    }
+    return MfaResetApprovalScreen(
+      requestId: requestId,
+      requesterName: match?.requesterName,
+      requesterRole: match?.requesterRole,
+      pendingState: match?.state,
+      pendingWindowEndsAt: match?.windowEndsAt,
+    );
+  }
 }

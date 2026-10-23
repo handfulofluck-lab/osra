@@ -1,6 +1,15 @@
 import '../../api/mfa_reset_api.dart';
 import '../../l10n/l10n.dart';
 
+/// The family role as a noun a parent reads in a sentence. Unknown values are
+/// returned raw rather than hidden, matching the app's other label helpers.
+String mfaResetRoleName(AppLocalizations l10n, String role) => switch (role) {
+      'owner' => l10n.mfaResetRoleOwner,
+      'co-parent' => l10n.mfaResetRoleCoParent,
+      'guardian' => l10n.mfaResetRoleGuardian,
+      _ => role,
+    };
+
 /// Human copy for one reset failure.
 ///
 /// The API deliberately collapses several causes into one answer (an unknown
