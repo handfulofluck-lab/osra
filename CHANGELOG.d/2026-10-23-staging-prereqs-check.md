@@ -24,5 +24,9 @@
   found`. (2) A clone under a path containing a space reported the tfvars missing while it was present, because
   `new URL(...).pathname` is percent-encoded; now `fileURLToPath`. Measured on a copy under `…/sp test/` with the file
   present: `EXIT=0`, "ready".
+- **A missing ECR repository is a finding, not an environment error** (third defect, #343 review). The `ecr list-images`
+  call passed no not-found pattern, so `classifyAwsFailure` threw on `undefined` and a `RepositoryNotFoundException`
+  exited **2**; it now passes `/RepositoryNotFoundException/`, as the IAM call already does. Measured with
+  `TF_PROJECT=nope`: exit **1**, rules 1 and 2 listed.
 - **Wired in:** `workflow-lint.yml` runs `--selftest` (6 cases), and `infra/terraform/README.md` puts the command first in
   *Everyday use*, with what exit 1 and exit 2 mean.

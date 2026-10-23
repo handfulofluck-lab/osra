@@ -105,7 +105,7 @@ function observe() {
       apiImage = "";
     }
   }
-  const imageTags = aws(["ecr", "list-images", "--repository-name", `${(process.env.TF_PROJECT ?? "osra")}-staging/api`, ...regionArgs, "--query", "imageIds[].imageTag", "--output", "text"]).split(/\s+/).filter(Boolean);
+  const imageTags = aws(["ecr", "list-images", "--repository-name", `${(process.env.TF_PROJECT ?? "osra")}-staging/api`, ...regionArgs, "--query", "imageIds[].imageTag", "--output", "text"], /RepositoryNotFoundException/).split(/\s+/).filter(Boolean);
 
   return { baseTfvars, publishRoleArn, apiImage, imageTags };
 }
