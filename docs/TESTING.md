@@ -120,6 +120,35 @@ wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and
 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the count was skipped — that skip is not a
 pass. The probe does not need it, and deliberately has no database connection (§6).
 
+### The device push-token route (#319) — probe `P1`–`P3`, `N6d`
+
+`POST /v1/devices/:id/push-token` is the child agent's own registration path, and device-only by
+decision (Claude, 2026-10-23): `requireFamily` keeps the family scoping, a role gate refuses every
+parent (`403 device_role_required` — the same refusal `GET /:id/commands` sends), and
+`requireOwnDevice` confines a device token to its own id, so a sibling device in the same family is
+refused `403 forbidden`. The preHandler order matters: `requireOwnDevice()` deliberately lets parent
+tokens through, so it is not the gate that keeps parents out. The body is `{ token }`, 20–4096
+characters, the same field `POST /v1/me/push-token` reads, and the answer is `204` with no body. The
+same token is cleared from every other device row in the same transaction ("one token, one device"),
+so a phone unpaired and paired again — possibly into another family — cannot keep its old row waking
+it.
+
+**The parent capability was removed, not deprecated.** A parent with the `devices` permission used to
+set a child's token (audit finding 6 / #124); it had no legitimate caller. Do not "restore" it: an
+edit that adds `requireParent` back, or that drops the role gate as redundant, is the regression these
+checks exist for.
+
+The probe pins four: `P1` the device registers its own token (`204`, no body), `P2` the same device
+token used against another device id is `403 forbidden`, `P3` a parent token is
+`403 device_role_required`, and `N6d` both a co-parent and the owner are refused the same way — the
+stronger replacement for #124's "co-parent without the permission" assertion. `N6e` (an owner's
+`200` returning a sanitized device) is retired with the behaviour; both retirements are acknowledged
+in `scripts/probe-gate-acks.json` with their reasons. `test/devices.test.ts` pins the same shape
+against mocks — own-204, sibling-403, parent-403 (with and without the permission), the
+one-token-one-device outcome, and `400` for a 19-character token and for the old `{ pushToken }`
+body. Stated mutants: removing `requireOwnDevice()` turns the sibling case into a `204`; dropping the
+role gate lets a parent write (`204`); dropping the `updateMany` leaves the old row holding the token.
+
 ### The AI evaluation harness (plan 4.2/4.3) — no stack, no key, seconds to run
 
 ```bash

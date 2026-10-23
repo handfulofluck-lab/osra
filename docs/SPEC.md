@@ -167,7 +167,12 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
 - src/routes/devices.ts — GENERATE THIS:
     POST /register; GET /; GET /:id (+last 24h telemetry summary); POST /:id/command
     (lock, unlock, ring, sos_clear — Redis pub/sub channel `device:${deviceId}:commands`);
-    POST /:id/push-token; DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
+    POST /:id/push-token (device JWT only, #319: `requireFamily` + role `device` +
+    `requireOwnDevice`; body `{ token }`, 20–4096 characters, the same field and bounds as
+    `POST /v1/me/push-token`; `204` with no body; one token, one device — the same token is cleared
+    from every other device row in the same transaction; no parent may call it, permission or not:
+    `403 device_role_required`);
+    DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
     TelemetryUploader — aggregates of per-app minutes / url logs); PLUS GET/POST /:id/apps
     (roadmap 3.4 — the installed-launchable-app inventory, §14.1a).
     Issue #221 (D1): `/telemetry` also accepts `locationGrant` (`background` | `while_in_use` |
@@ -390,8 +395,13 @@ screen is built (the paragraph above).
 
 DONE: app/build.gradle.kts, AndroidManifest.xml, res/xml/accessibility_config.xml,
 AccessibilityMonitorService.kt, FirebaseMessagingSvc.kt, BootReceiver.kt.
-TODOs inside DONE files: FirebaseMessagingSvc.onNewToken → POST /v1/devices/:id/push-token;
-BootReceiver → schedule RuleRepository sync + UsageReporter WorkManager jobs.
+TODOs inside DONE files: BootReceiver → schedule RuleRepository sync + UsageReporter WorkManager jobs.
+(#319): the agent registers its own FCM token on `POST /v1/devices/:id/push-token`, body `{ token }`
+(the shape is in the `devices.ts` routes above). The route is device-only since #319, so the device
+JWT that holds the token is its only caller — a parent is refused `403 device_role_required` — and a
+token minted before pairing is re-published by `CommandPollWorker` (`PushTokenUploadPolicy`). The
+server half lands first; the client half is a separate PR, so the API's own PR ships no Android
+change.
 
 GENERATE THIS:
 - data/RuleRepository.kt — persists latest RuleSet locally (DataStore, JSON); subscribes to

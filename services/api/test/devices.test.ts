@@ -137,8 +137,9 @@ describe("device enrollment & management", () => {
   });
 
   // Issue #138: enrollment creates device credentials, so it requires the same `devices`
-  // permission as command, push-token and unpair. A guardian invited with `[]` used to mint a
-  // Device row (and, via pair/claim, its HMAC signing key) while being refused `command`.
+  // permission as command and unpair (push-token left this set in #319: it is device-only now). A
+  // guardian invited with `[]` used to mint a Device row (and, via pair/claim, its HMAC signing key)
+  // while being refused `command`.
   it("register requires the devices permission: co-parent without it 403, with it 201", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
@@ -293,102 +294,196 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
-  it("updates the push token as a parent (200)", async () => {
+  // ── #319 (Claude, 2026-10-23): the push-token write is device-only ─────────────────────────────
+  // What this block used to assert is the opposite: a parent with the `devices` permission set a
+  // token and got a sanitized device back (audit finding 6 / #124), a device token was refused, and
+  // a second `/push-token/self` route carried the agent's own registration. The decision is that the
+  // path stays `POST /:id/push-token` — so the Android client needs no change — and becomes
+  // device-only: one token, one device, `204`, no body, no parent. The parent capability was removed
+  // on purpose because it had no legitimate caller. Each test below names the decision that
+  // superseded an older assertion, and the mutant that would break it.
+  const SELF_TOKEN = "fcm-device-self-token-0001"; // 26 chars: inside the 20..4096 bounds
+  const SIBLING_TOKEN = "fcm-device-sibling-token-0002";
+
+  // MUTANT: answer `200 { ok: true }` instead of `204`, or drop the `prisma.device.update` from the
+  // transaction — either fails this test (`expected 200 to be 204`; `expected "spy" to be called 1
+  // times, but got 0 times`). Both measured, then reverted.
+  it("a device JWT stores its own push token and answers 204 with no body", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
-    prismaMock.device.update.mockResolvedValue({ ...DEVICE, pushToken: "fcm-new" });
+    prismaMock.device.update.mockResolvedValue({ ...DEVICE, pushToken: SELF_TOKEN });
 
     const res = await app.inject({
-      method: "POST",
-      url: "/v1/devices/dev-1/push-token",
-      headers: authHeader(app),
-      payload: { pushToken: "fcm-new" },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(prismaMock.device.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "dev-1" },
-      data: { pushToken: "fcm-new" },
-    }));
-    // Audit finding 6: the row is read through an allowlist, so a secret column added later is not
-    // returned by accident either.
-    const select = prismaMock.device.update.mock.calls[0][0].select as Record<string, boolean>;
-    expect(select).toBeDefined();
-    expect(select).not.toHaveProperty("internalSecret");
-    expect(select).not.toHaveProperty("pushToken");
-    await app.close();
-  });
-
-  it("rejects push-token updates from device tokens (403) and empty tokens (400)", async () => {
-    const app = await buildApp(deviceRoutes, "/v1/devices");
-    const deviceToken = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/push-token",
       headers: deviceHeader(app),
-      payload: { pushToken: "fcm-new" },
+      payload: { token: SELF_TOKEN },
     });
-    expect(deviceToken.statusCode).toBe(403);
-    expect(prismaMock.device.findUnique).not.toHaveBeenCalled();
-
-    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
-    const empty = await app.inject({
-      method: "POST",
-      url: "/v1/devices/dev-1/push-token",
-      headers: authHeader(app),
-      payload: { pushToken: "" },
-    });
-    expect(empty.statusCode).toBe(400);
-    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(204);
+    // Superseded: the parent route answered `200 { device }` and this file used to assert the
+    // allowlisted `select` of that body. A 204 carries nothing — no device object, no token.
+    expect(res.body).toBe("");
+    expect(prismaMock.device.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.device.update).toHaveBeenCalledWith({ where: { id: "dev-1" }, data: { pushToken: SELF_TOKEN } });
     await app.close();
   });
 
-  // Audit finding 6: the update returns the whole Prisma row, so the response used to carry the
-  // per-device HMAC `internalSecret` (and the push token) to any parent who set a token.
-  it("push-token response is sanitized: no internalSecret, no pushToken", async () => {
+  // MUTANT: remove `requireOwnDevice()` and this returns 204: `requireFamily` only proves dev-1 is
+  // in dev-2's family, so a sibling's token is written.
+  it("refuses a sibling device id (403 forbidden) without writing anything", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
-    prismaMock.device.update.mockResolvedValue({ ...DEVICE, pushToken: "fcm-new", internalSecret: "per-device-hmac-secret" });
 
     const res = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/push-token",
-      headers: authHeader(app),
-      payload: { pushToken: "fcm-new" },
+      headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }),
+      payload: { token: SIBLING_TOKEN },
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().device).not.toHaveProperty("internalSecret");
-    expect(res.json().device).not.toHaveProperty("pushToken");
-    expect(res.json().device.id).toBe("dev-1");
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: "forbidden" });
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
     await app.close();
   });
 
-  // Audit finding 6: command and unpair require the `devices` permission; push-token now matches.
-  it("push-token requires the devices permission: a co-parent without it is rejected (403)", async () => {
+  // Superseded: this was two tests — "updates the push token as a parent (200)" and "push-token
+  // requires the devices permission". #319 removed the parent capability, so both collapse into
+  // "no parent may write it", and the owner case proves the refusal is about the role, not the
+  // permission set.
+  // MUTANT: drop `requireDeviceRole` from the preHandler — a parent token passes `requireOwnDevice`
+  // untouched (it only refuses device tokens), the transaction runs and the answer is 204.
+  it("refuses a parent session in the same family (403 device_role_required), with or without the devices permission", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
-    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["location"] });
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);
 
-    const denied = await app.inject({
-      method: "POST",
-      url: "/v1/devices/dev-1/push-token",
-      headers: authHeader(app, "fam-1", "p-co"),
-      payload: { pushToken: "fcm-new" },
-    });
-    expect(denied.statusCode).toBe(403);
-    expect(denied.json()).toEqual({ error: "permission_required", permission: "devices" });
-    expect(prismaMock.device.findUnique).not.toHaveBeenCalled();
-    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    for (const permissions of [[], ["devices"]]) {
+      prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions });
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/push-token",
+        headers: authHeader(app, "fam-1", "p-co"),
+        payload: { token: SELF_TOKEN },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("device_role_required");
+    }
 
-    prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["devices"] });
-    prismaMock.device.update.mockResolvedValue({ ...DEVICE, pushToken: "fcm-new" });
-    const allowed = await app.inject({
+    // The owner of the family holds every permission; the refusal must not be permission-shaped.
+    const owner = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/push-token",
-      headers: authHeader(app, "fam-1", "p-co"),
-      payload: { pushToken: "fcm-new" },
+      headers: authHeader(app),
+      payload: { token: SELF_TOKEN },
     });
-    expect(allowed.statusCode).toBe(200);
+    expect(owner.statusCode).toBe(403);
+    expect(owner.json().error).toBe("device_role_required");
+
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
     await app.close();
   });
+
+  // One token, one device. The mock is made to hold two real rows so the test reads an *outcome*:
+  // dev-1 registers a phone's token, then dev-2 (the same phone, re-paired) registers the same
+  // token, and dev-1 must end up with none — otherwise the old row keeps waking a phone that now
+  // belongs to someone else.
+  // MUTANT: drop the `updateMany` from the transaction — dev-1 keeps the token and the last
+  // assertion fails on `"fcm-device-self-token-0001"` instead of null.
+  it("one token, one device: the same token re-posted by another device clears it from the first", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const rows: Record<string, { id: string; pushToken: string | null }> = {
+      "dev-1": { id: "dev-1", pushToken: null },
+      "dev-2": { id: "dev-2", pushToken: null },
+    };
+    prismaMock.device.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+      ...rows[where.id],
+      childId: "child-1",
+      child: { familyId: "fam-1" },
+    }));
+    prismaMock.device.updateMany.mockImplementation(async ({ where, data }: {
+      where: { pushToken: string; id?: { not?: string } };
+      data: { pushToken: string | null };
+    }) => {
+      let count = 0;
+      for (const row of Object.values(rows)) {
+        if (row.pushToken !== where.pushToken) continue;
+        if (where.id?.not !== undefined && row.id === where.id.not) continue;
+        row.pushToken = data.pushToken;
+        count += 1;
+      }
+      return { count };
+    });
+    prismaMock.device.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: { pushToken: string } }) => {
+      rows[where.id].pushToken = data.pushToken;
+      return rows[where.id];
+    });
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: deviceHeader(app),
+      payload: { token: SELF_TOKEN },
+    });
+    expect(first.statusCode).toBe(204);
+    expect(rows["dev-1"].pushToken).toBe(SELF_TOKEN);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-2/push-token",
+      headers: deviceHeader(app, { deviceId: "dev-2", childId: "child-1", familyId: "fam-1" }),
+      payload: { token: SELF_TOKEN },
+    });
+    expect(second.statusCode).toBe(204);
+    expect(rows["dev-2"].pushToken).toBe(SELF_TOKEN);
+    expect(rows["dev-1"].pushToken).toBeNull();
+    // The clearing write is issued before the adopting one — the order the transaction relies on.
+    expect(prismaMock.device.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prismaMock.device.update.mock.invocationCallOrder[0],
+    );
+    await app.close();
+  });
+
+  // MUTANT: loosen `PushTokenSchema` back to `{ pushToken }` / `min(1)` — the legacy body below then
+  // answers 204 instead of 400 (`expected 204 to be 400`), and the `{ token }` cases 400 instead.
+  // Measured: 3 failed | 26 passed, then reverted.
+  it("rejects a 19-character token (400) and the old { pushToken } body (400), writing nothing", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const short = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: deviceHeader(app),
+      payload: { token: "x".repeat(19) },
+    });
+    expect(short.statusCode).toBe(400);
+
+    // Superseded: the body used to be `{ pushToken: z.string().min(1) }`. #319 moved it to
+    // `{ token }`, 20..4096, matching `POST /v1/me/push-token`; the old field must not be accepted
+    // silently, or an un-updated client would look like it had registered.
+    const legacy = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: deviceHeader(app),
+      payload: { pushToken: SELF_TOKEN },
+    });
+    expect(legacy.statusCode).toBe(400);
+
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  // Audit finding 6's sanitization assertion ("no internalSecret, no pushToken") and the
+  // permission test that followed it are gone with the parent route: a `204` with no body has no
+  // device object to sanitize, and no parent reaches the write to need a permission gate. Both are
+  // replaced by "refuses a parent session in the same family" above (#319, Claude, 2026-10-23).
+
+  // The three `/push-token/self` tests that lived here are retired with the route (#319, Claude,
+  // 2026-10-23): the path stays `POST /:id/push-token`, and its success case is
+  // "a device JWT stores its own push token and answers 204 with no body" above. The sibling-403 and
+  // parent-403 cases they covered are the first two tests of that block, against the real path.
 
   it("rejects telemetry with an out-of-range battery or wrong field types (400)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
