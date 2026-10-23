@@ -102,6 +102,19 @@ export class MockRedis {
   smembers = vi.fn(async (_key: string) => [] as string[]);
   incrby = vi.fn(async (_key: string, _increment: number) => 1);
   expire = vi.fn(async (_key: string, _seconds: number) => 1);
+  /** Hash storage for the idle-request counters (roadmap 5.8) and anything else that counts in a hash. */
+  readonly hashes = new Map<string, Record<string, string>>();
+  hincrby = vi.fn(async (key: string, field: string, increment: number) => {
+    const hash = this.hashes.get(key) ?? {};
+    hash[field] = String(Number(hash[field] ?? 0) + increment);
+    this.hashes.set(key, hash);
+    return Number(hash[field]);
+  });
+  hgetall = vi.fn(async (key: string) => this.hashes.get(key) ?? {});
+  /** Seed a hash as if a previous process had written it. */
+  seedHash(key: string, values: Record<string, string>): void {
+    this.hashes.set(key, { ...values });
+  }
   constructor() {
     MockRedis.instances.push(this);
   }
