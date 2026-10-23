@@ -8,17 +8,25 @@ name: verified-gate
 #
 # The check passes only when BOTH hold:
 #   1. the PR carries the `state:verified` label, and
-#   2. a PR comment signed by a verifier ("— Antigravity", "— Claude", or "— Kimi Code" for a PR Kimi
-#      did not author) contains a line
+#   2. a PR comment WRITTEN BY THE AGENT ACCOUNT (SIGNER_LOGIN below) and signed by a verifier
+#      ("— Antigravity", "— Claude", or "— Kimi Code" for a PR Kimi did not author) contains a line
 #      `Verified-sha: <sha>` whose sha is a prefix (7+ characters) of the PR's CURRENT head.
 # (2) is what makes rule 4 of §6.5 ("the verified sha is the merged sha") mechanical: any push after
 # verification — a fix, a rebase, a merge of main — changes the head, and the gate goes red again
 # until the new head is verified. No label removal is needed for that, so this job needs no write
 # permission.
 #
-# HONEST LIMIT: all agents share one GitHub account, so CI cannot prove WHO wrote the comment or set
-# the label. A forged verification is still a signed, permanent record on the PR. The gate turns
-# "merged without verification" from an oversight into a deliberate act.
+# WHO MAY SIGN (2026-10-23): only comments whose author is SIGNER_LOGIN are read. The repository is public,
+# so anyone with a GitHub account can comment on a PR, and a second member with write access (Ahmed,
+# `ahmedyusseff`, security + testing) joined on 2026-10-23 working with his own Claude Code agent. Before
+# this, a comment from ANY account ending "— Claude" with the head sha satisfied (2), so a signature typed
+# by any commenter, or by another member's agent that is also called Claude, counted as Claude's.
+# Self-test: scripts/check-verified-gate-signers.mjs (run by workflow-lint).
+#
+# HONEST LIMIT: all agents still share that one GitHub account, so CI cannot prove WHICH agent wrote a
+# comment or set the label, and a member with write access can edit an agent's comment (GitHub keeps the
+# edit history on the comment). A forged verification is still a signed, permanent record on the PR. The
+# gate turns "merged without verification" from an oversight into a deliberate act.
 #
 # CARRY-FORWARD (added 2026-10-19, issue #207): main's protection is `strict` (branch up to date), so every
 # merge forces the PRs behind it to merge main in, which changes their head. A signature at sha S still
@@ -57,6 +65,9 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The only account whose comments can verify (see WHO MAY SIGN above). Every agent and the
+          # maintainer post as it; a comment by any other account is never read as a verification.
+          SIGNER_LOGIN: handfulofluck-lab
         run: |
           set -euo pipefail
           echo "PR #$PR head $HEAD_SHA"
@@ -75,7 +86,12 @@ jobs:
           kimi_commits=$(gh api --paginate "repos/$REPO/pulls/$PR/commits" --jq '[.[] | select((.parents | length) == 1) | select(.commit.author.email == "kimi@familyshield.local")] | length' | awk '{s += $1} END {print s + 0}')
           echo "Kimi-authored non-merge commits on this PR: $kimi_commits"
 
-          # One line per comment body (newlines flattened). Signed by a verifier AND naming a sha.
+          # Say how many comments were left out, so a run log shows the filter working rather than hiding.
+          others=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login != env.SIGNER_LOGIN)] | length' | awk '{s += $1} END {print s + 0}')
+          echo "Comments by accounts other than $SIGNER_LOGIN (never read as a verification): $others"
+
+          # One line per comment body (newlines flattened), from SIGNER_LOGIN only. Signed by a verifier
+          # AND naming a sha.
           verified=""
           signed=""
           while IFS= read -r body; do
@@ -100,7 +116,7 @@ jobs:
                 "$sha"*) verified="$sha" ;;
               esac
             done
-          done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[].body | gsub("[[:cntrl:]]"; " ")')
+          done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SIGNER_LOGIN) | .body | gsub("[[:cntrl:]]"; " ")')
 
           # Carry-forward (see header): only merges after the signature, and the PR's own patch unchanged.
           pr_patch() {
@@ -127,7 +143,7 @@ jobs:
           fi
 
           if [ -z "$verified" ]; then
-            echo "::error::'state:verified' is set, but no comment signed by Antigravity, Claude or Kimi Code verifies the current head $HEAD_SHA."
+            echo "::error::'state:verified' is set, but no comment by $SIGNER_LOGIN signed by Antigravity, Claude or Kimi Code verifies the current head $HEAD_SHA."
             echo "A push after verification (fix, rebase, merge of main) needs a fresh verification of the new head (AGENTS.md §6.5 rule 4), unless it only merged main and left the PR's own change identical."
             exit 1
           fi
