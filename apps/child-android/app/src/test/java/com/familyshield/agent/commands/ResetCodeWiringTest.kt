@@ -205,6 +205,12 @@ class ResetCodeWiringTest {
         assertEquals("true", element.getAttribute("android:turnScreenOn"))
         // #312: without an empty task affinity the notice is hosted by the app's main task, so
         // Close/Back land on PairingActivity (measured on the phone) instead of the previous app.
+        // The hasAttribute check is the assertion that can fail: getAttribute returns "" for a
+        // missing attribute, so a bare assertEquals("") would pass on an absent line too.
+        assertTrue(
+            "the task affinity must be set explicitly, not merely absent",
+            element.hasAttribute("android:taskAffinity"),
+        )
         assertEquals("", element.getAttribute("android:taskAffinity"))
         assertNull(
             "issue #87: never draw over the keyguard; the notice starts behind it",

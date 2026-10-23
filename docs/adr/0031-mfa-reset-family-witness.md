@@ -322,3 +322,16 @@ record did not say:
 - It does not add the read-only audit route (decision 8) or the notification templates (decision 4).
   Those remain unbuilt, as the changelog fragment for #305 states.
 
+## Amendment 2026-10-23 — Claude, on #311: what the parent app needs to read
+
+1. **The requester reads their own request with `POST /v1/auth/mfa/reset/status` `{email, password, requestId}`.** This is decision 8's read for "the parent it is about", in the only form that parent can use: they have no session. It has the same rate limit, the same `401 invalid_credentials` and the same `404 request_not_found` as `complete`. It writes nothing, and it is not a sign-in, so it cancels nothing. It returns the request's stage and deadlines and never the code, its hash, `witnessRef` or anything about another parent.
+2. **An `owner` or `co-parent` lists the family's open requests with `GET /v1/auth/mfa/reset/pending`:** other parents' requests in `mailbox_confirmed` or `witness_passed`, each with the requester's `displayName` and role. This is how the approval prompt and decision 3's "cancel from their app" find a request before the push messages (decision 4) exist. A `guardian` is refused, as on `approve`.
+3. **Recorded, not changed: the requester has no in-app cancel.** Every cancel path needs the authenticator, the mailbox or another parent's session. A password-only cancel would let a password holder block a genuine reset indefinitely.
+4. **Not done here:** decision 8's 12-month history read for the family's `owner` stays a later item. The pending list covers the open requests, which are the ones that need action.
+
+**Falsifiable claims:**
+1. `status` changes no row: `MfaResetRequest`, `DeviceCommand` and `Parent.sessionVersion` are byte-identical before and after.
+2. During the window, `status` for a `witness_passed` request leaves `complete` working after `windowEndsAt` (it is not a sign-in).
+3. `status` with another parent's valid `requestId` and the caller's own credentials answers `404 request_not_found`.
+4. `pending` lists neither the caller's own request nor any other family's. A `guardian` gets `403 role_not_allowed`.
+5. Neither response contains `codeHash`, the plaintext code or `witnessRef`.
