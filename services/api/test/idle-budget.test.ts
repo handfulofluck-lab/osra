@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BUDGET_WINDOW_MINUTES,
+  countingEnabled,
   idleBudgetThreshold,
   minuteOf,
+  registerIdleBudgetHook,
   routeKey,
   summarise,
   withinBudget,
@@ -21,6 +23,21 @@ vi.mock("ioredis", async () => {
 });
 vi.mock("../src/lib/push/notify.js", () => ({ notifyParentsOfAlert: vi.fn(async () => undefined) }));
 vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async () => undefined) }));
+
+/** The harness turns counting on (`vitest.config.ts`); a case that needs it off deletes it for its own body. */
+afterEach(() => {
+  process.env.IDLE_BUDGET_COUNTING = "1";
+  delete process.env.IDLE_BUDGET_M10;
+});
+
+beforeEach(() => {
+  // `getRedis()` is one mock instance for the whole file, so every case starts from an empty hash.
+  const redis = getRedis() as unknown as MockRedis;
+  redis.hashes.clear();
+  redis.multi.mockClear();
+  redis.hincrby.mockClear();
+  redis.expire.mockClear();
+});
 
 /**
  * Roadmap 5.8's second half: "idle child phone ≤ 3 requests per 10 min with lock still ≤ 5 s". These are the
@@ -89,6 +106,16 @@ describe("the idle-request budget", () => {
     expect(summarise(counts, { now }).total).toBe(0);
     expect(summarise(counts, { now: now, windowMinutes: 90 }).total).toBe(9);
   });
+
+  it("is off unless the environment says exactly 1", () => {
+    // Mutant: return true when the variable is merely present (`!== undefined`) — then every production
+    // request writes telemetry again, which is the architecture call this flag exists to make.
+    expect(countingEnabled({})).toBe(false);
+    expect(countingEnabled({ IDLE_BUDGET_COUNTING: "" })).toBe(false);
+    expect(countingEnabled({ IDLE_BUDGET_COUNTING: "0" })).toBe(false);
+    expect(countingEnabled({ IDLE_BUDGET_COUNTING: "true" })).toBe(false);
+    expect(countingEnabled({ IDLE_BUDGET_COUNTING: "1" })).toBe(true);
+  });
 });
 
 describe("the requests route", () => {
@@ -111,7 +138,9 @@ describe("the requests route", () => {
 
     const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1/requests", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { total: number; byRoute: Record<string, number>; threshold: number | null; withinBudget: boolean | null };
+    const body = res.json() as { counting: boolean; total: number; byRoute: Record<string, number>; threshold: number | null; withinBudget: boolean | null };
+    // The harness has IDLE_BUDGET_COUNTING=1 (vitest.config.ts), so this reading is one being recorded.
+    expect(body.counting).toBe(true);
     expect(body.total).toBe(3);
     expect(body.byRoute["GET /v1/devices/:id/commands"]).toBe(2);
     // No threshold measured yet: the route reports the number and refuses to pronounce on it.
@@ -120,11 +149,89 @@ describe("the requests route", () => {
     await app.close();
   });
 
+  it("says counting is off rather than reporting an unmeasured device as idle", async () => {
+    // Mutant: compute `withinBudget(result, threshold)` without consulting the flag. An empty reading then
+    // answers `withinBudget: true` for a threshold of 3 — "nobody was counting" printed as "the phone is idle".
+    delete process.env.IDLE_BUDGET_COUNTING;
+    process.env.IDLE_BUDGET_M10 = "3";
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1/requests", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { counting: boolean; total: number; busiestWindow: unknown; withinBudget: boolean | null };
+    expect(body.counting).toBe(false);
+    expect(body.total).toBe(0);
+    expect(body.busiestWindow).toBeNull();
+    expect(body.withinBudget).toBeNull(); // not `true`
+    await app.close();
+  });
+
   it("refuses a device token (403) — the agent does not read its own accounting", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
     const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1/requests", headers: deviceHeader(app) });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+/**
+ * Counting is a test instrument, not production telemetry (Claude, #346 review). It runs only with
+ * `IDLE_BUDGET_COUNTING=1`, so the gate that turns it on is asserted here rather than trusted: an
+ * instrument that silently writes in production is a Redis bill and a collision with durable revocation.
+ */
+describe("counting runs only when it is switched on", () => {
+  /** An app whose only route needs a valid device JWT, so the hook sees exactly what production hands it. */
+  async function deviceApp() {
+    return buildApp(async (a) => {
+      registerIdleBudgetHook(a);
+      a.addHook("preHandler", async (req) => {
+        await req.jwtVerify();
+      });
+      a.get("/ping", async () => ({ ok: true }));
+    }, "/t");
+  }
+
+  it("records nothing for an authenticated device request when the variable is unset", async () => {
+    // Mutant: drop the `countingEnabled()` guard in `recordDeviceRequest`. The device request below still
+    // answers 200, and the hash is no longer empty — every production request writes telemetry again.
+    delete process.env.IDLE_BUDGET_COUNTING;
+    const app = await deviceApp();
+    const redis = getRedis() as unknown as MockRedis;
+
+    const res = await app.inject({ method: "GET", url: "/t/ping", headers: deviceHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(redis.hashes.get("idle:dev:dev-1")).toBeUndefined();
+    expect(redis.multi).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("records one count and its hour, in a single MULTI, when the variable is 1", async () => {
+    process.env.IDLE_BUDGET_COUNTING = "1";
+    const app = await deviceApp();
+    const redis = getRedis() as unknown as MockRedis;
+
+    const res = await app.inject({ method: "GET", url: "/t/ping", headers: deviceHeader(app) });
+    expect(res.statusCode).toBe(200);
+    const hash = redis.hashes.get("idle:dev:dev-1") ?? {};
+    expect(Object.keys(hash)).toEqual([`${minuteOf(Date.now())}:GET /t/ping`]);
+    expect(Object.values(hash)).toEqual(["1"]);
+    // Mutant: `await hincrby(...)` then `await expire(...)` — two round trips, and `multi` is never called.
+    expect(redis.multi).toHaveBeenCalledTimes(1);
+    // 3600 literal, not RETENTION_MINUTES * 60: a retention that drifts back to three hours must fail here.
+    expect(redis.expire).toHaveBeenCalledWith("idle:dev:dev-1", 3600);
+    await app.close();
+  });
+
+  it("counts no parent request, so a parent opening the read route cannot inflate it", async () => {
+    process.env.IDLE_BUDGET_COUNTING = "1";
+    const app = await deviceApp();
+    const redis = getRedis() as unknown as MockRedis;
+
+    const res = await app.inject({ method: "GET", url: "/t/ping", headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(redis.hashes.size).toBe(0);
     await app.close();
   });
 });

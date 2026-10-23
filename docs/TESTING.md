@@ -256,6 +256,14 @@ a threshold invented in code is a gate measuring the author's guess, which is th
 stop. Read the number from `GET /v1/devices/:id/requests` (`busiestWindow.count`) — the busiest window, not
 an average, because the acceptance is a claim about the worst ten minutes.
 
+**The API has to be counting for that number to mean anything.** Counting is enabled with
+`IDLE_BUDGET_COUNTING=1` and is **off by default**: the harness sets it (`services/api/vitest.config.ts`) and
+so does staging (`infra/terraform/env/ecs.tf`, `environment == "staging"`), while production leaves it unset
+because a per-device hash does not deserve the cache node that carries flags and durable revocation. With it
+off, the read route still answers but returns `counting: false` and `withinBudget: null`, and `P6` is a
+`target` that says counting is disabled — a busiest window of `0` there would mean "nothing was written", not
+"the phone stayed idle". Start the API under test with the flag before running a measurement.
+
 
 ## 4. CI (GitHub Actions)
 

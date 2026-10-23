@@ -1,3 +1,4 @@
+import type { FastifyInstance } from "fastify";
 import { getRedis } from "../redis.js";
 
 /**
@@ -14,13 +15,24 @@ import { getRedis } from "../redis.js";
  *
  * Storage is one Redis hash per device — `idle:dev:<deviceId>` — whose fields are `<minuteEpoch>:<route>` with
  * a count. One key means the reader never SCANs the keyspace, and the hash expires on its own.
+ *
+ * **Off by default, and that is an architecture call** (Claude, #346 review). Counting in production would
+ * hold roughly 54 fields per device per hour in the cache node that carries flags and fan-out — at 1M
+ * devices, gigabytes of telemetry — and it would collide with the durable-revocation fix, which sets
+ * `maxmemory-policy noeviction`: telemetry that fills memory would make revocation writes fail, and a
+ * logout would answer 5xx because of a counter. So a count is recorded only when `IDLE_BUDGET_COUNTING=1`
+ * — set in the test harness and in staging, never in production. The read route stays available either
+ * way and says `counting: false`, because "no data" must never be mistaken for "idle".
  */
 
 /** Ten minutes, in minutes. The acceptance's window, named once. */
 export const BUDGET_WINDOW_MINUTES = 10;
 
-/** How long a count is kept. Longer than the window, shorter than a shift, so a read is cheap. */
-export const RETENTION_MINUTES = 180;
+/**
+ * How long a count is kept: one hour. A measurement session reads inside that hour, and 60 minutes still
+ * covers six 10-minute windows. Three hours held telemetry the reader never looked at.
+ */
+export const RETENTION_MINUTES = 60;
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const HEX_ID = /\b[0-9a-f]{24,32}\b/gi;
@@ -115,19 +127,50 @@ export function summarise(
 const field = (minute: number, route: string): string => `${minute}:${route}`;
 
 /**
+ * Whether this process records counts. `IDLE_BUDGET_COUNTING=1` and nothing else — an unset variable, `"0"`
+ * and `"true"` all mean off, so the production default needs no configuration to be safe.
+ *
+ * Test harness: `vitest.config.ts` sets it, because the instrument is what the suite tests. Staging:
+ * `infra/terraform/env/ecs.tf`. Production: off, deliberately — see the module comment.
+ */
+export function countingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.IDLE_BUDGET_COUNTING === "1";
+}
+
+/**
  * Count one authenticated device request. Best-effort by contract: a counting failure must never fail the
- * request it is counting, so every error is swallowed here and the caller does not await anything on the
- * request's critical path.
+ * request it is counting, so every error is swallowed here and the caller has nothing to handle.
+ *
+ * One round trip, not two: `HINCRBY` and `EXPIRE` are sent as a MULTI, so a device request costs one Redis
+ * round trip on the cache node instead of two. The expiry rides along with each count, so the hash's TTL
+ * keeps moving forward as the device wakes.
  */
 export async function recordDeviceRequest(deviceId: string, method: string, url: string, at: Date = new Date()): Promise<void> {
+  if (!countingEnabled()) return;
   try {
     const redis = getRedis();
     const key = `idle:dev:${deviceId}`;
-    await redis.hincrby(key, field(minuteOf(at), routeKey(method, url)), 1);
-    await redis.expire(key, RETENTION_MINUTES * 60);
+    await redis
+      .multi()
+      .hincrby(key, field(minuteOf(at), routeKey(method, url)), 1)
+      .expire(key, RETENTION_MINUTES * 60)
+      .exec();
   } catch {
     /* counting is telemetry, not a gate on the request */
   }
+}
+
+/**
+ * The `onResponse` hook the server registers: device-authenticated requests only, after the response, so a
+ * handler's failures and timings cannot change what is counted. Exported so the test exercises the same
+ * function production runs rather than a copy of it.
+ */
+export function registerIdleBudgetHook(app: FastifyInstance): void {
+  app.addHook("onResponse", async (req) => {
+    const user = req.user as { role?: string; deviceId?: string } | undefined;
+    if (user?.role !== "device" || !user.deviceId) return;
+    await recordDeviceRequest(user.deviceId, req.method, req.url);
+  });
 }
 
 /** Read a device's counts from Redis as the shape `summarise` takes. Empty on any failure. */
