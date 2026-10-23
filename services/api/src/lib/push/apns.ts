@@ -125,6 +125,11 @@ export class ApnsProvider implements PushProvider {
   }
 
   static buildPayload(message: PushMessage) {
+    // A data-only message (the device wake) has an empty `aps` on purpose: no alert to show, and the
+    // app fetches the command itself over its authenticated channel (#319).
+    if (message.dataOnly) {
+      return { aps: { "content-available": 1 }, ...message.data };
+    }
     return {
       aps: {
         alert: { title: message.title, body: message.body },

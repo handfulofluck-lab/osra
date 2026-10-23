@@ -7,7 +7,16 @@ vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async (
 
 import { FcmProvider, buildAssertion } from "../src/lib/push/fcm.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
-import { buildAlertMessage, notifyParentsOfAlert, setPushProviders, shouldPush } from "../src/lib/push/notify.js";
+import {
+  buildAlertMessage,
+  buildDeviceWakeMessage,
+  notifyDeviceWake,
+  notifyParentsOfAlert,
+  setDeviceWakeSender,
+  setPushProviders,
+  shouldPush,
+} from "../src/lib/push/notify.js";
+import { enqueueDeviceCommand } from "../src/lib/deviceCommands.js";
 import { raiseAlert } from "../src/lib/alerts.js";
 import { publishFamilyEvent } from "../src/realtime/gateway.js";
 import type { PushMessage, PushProvider, PushResult } from "../src/lib/push/types.js";
@@ -178,5 +187,125 @@ describe("notification policy", () => {
     expect(provider.sent).toHaveLength(1);
     expect(provider.sent[0].message.title).toBe("Alex: T");
     expect(provider.sent[0].message.priority).toBe("normal");
+  });
+});
+
+describe("the child device wake (#319)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    setPushProviders(null);
+    setDeviceWakeSender(null);
+  });
+
+  it("builds a data-only message: the literal word wake, high priority, a collapse key, no title, body or command field", () => {
+    const message = buildDeviceWakeMessage();
+    // Claude's ruling (2026-10-23): `{ "w": "1" }`, never a `type` field — a pre-#322 agent reads
+    // `msg.data["type"] ?: return` and would otherwise hand "wake" to the dispatcher as an unknown
+    // command. This assertion is the mutant for that: swap in `type: "wake"` and it goes red.
+    expect(message).toEqual({ data: { w: "1" }, threadId: "wake", priority: "high", dataOnly: true });
+    // The whole point: nothing about a command travels in the payload.
+    expect(Object.keys(message.data)).toEqual(["w"]);
+    expect(message.data).not.toHaveProperty("type");
+    expect(message.title).toBeUndefined();
+    expect(message.body).toBeUndefined();
+  });
+
+  it("FCM: a data-only message carries no notification block and collapses on the wake key", () => {
+    const body = FcmProvider.buildMessage("tok", buildDeviceWakeMessage());
+    expect(body.message).not.toHaveProperty("notification");
+    expect(body.message.android).toEqual({ priority: "HIGH", collapse_key: "wake" });
+    expect(body.message.android).not.toHaveProperty("notification");
+    expect(body.message.data).toEqual({ w: "1" });
+    expect(body.message.apns.headers["apns-priority"]).toBe("10");
+    expect(body.message.apns.payload.aps).toEqual({ "content-available": 1 });
+  });
+
+  it("FCM: an ordinary alert still renders a notification (the data-only branch must not leak)", () => {
+    const body = FcmProvider.buildMessage("tok", buildAlertMessage(alert, "Alex"));
+    expect(body.message.notification).toEqual({ title: "Alex: SOS", body: "Alex pressed SOS" });
+    expect(body.message.android.notification.channel_id).toBe("osra_alerts");
+  });
+
+  it("APNs: a data-only payload has no alert, an alert payload still does", () => {
+    expect(ApnsProvider.buildPayload(buildDeviceWakeMessage()).aps).toEqual({ "content-available": 1 });
+    expect(ApnsProvider.buildPayload(buildAlertMessage(alert, "Alex")).aps.alert).toEqual({ title: "Alex: SOS", body: "Alex pressed SOS" });
+  });
+
+  it("wakes the device row's own token, and a dead token is cleared from the row", async () => {
+    const provider = new FakeProvider((token) => (token === "dead" ? { ok: false, invalidToken: true, reason: "UNREGISTERED" } : { ok: true }));
+    setPushProviders([provider]);
+
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "live", platform: "android" });
+    expect(await notifyDeviceWake("dev-1")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    expect(provider.sent).toHaveLength(1);
+    expect(provider.sent[0].token).toBe("live");
+    expect(provider.sent[0].message.data).toEqual({ w: "1" });
+
+    // Compare-and-clear (#323 review): the clear must name the token that failed. Without the
+    // `pushToken` condition a token that rotated mid-flight would be erased — the agent then never
+    // re-uploads, because stored == uploaded, and push stays dead with no error anywhere.
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-2", pushToken: "dead", platform: "android" });
+    prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
+    expect(await notifyDeviceWake("dev-2")).toEqual({ delivered: 0, clearedToken: true, skipped: null });
+    expect(prismaMock.device.updateMany).toHaveBeenCalledWith({ where: { id: "dev-2", pushToken: "dead" }, data: { pushToken: null } });
+
+    // W10 (Claude's #323 review): a compare-and-clear that matches nothing must report
+    // clearedToken: false, not a hard-coded true. The row already holds a rotated token, so the
+    // `pushToken` condition finds no row.
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-3", pushToken: "dead", platform: "android" });
+    prismaMock.device.updateMany.mockResolvedValue({ count: 0 });
+    expect(await notifyDeviceWake("dev-3")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
+  });
+
+  it("skips cleanly with no token, no provider, or a provider that throws — never throwing itself", async () => {
+    setPushProviders([]);
+    expect((await notifyDeviceWake("dev-1")).skipped).toBe("no_providers");
+
+    const provider = new FakeProvider();
+    setPushProviders([provider]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: null, platform: "android" });
+    expect((await notifyDeviceWake("dev-1")).skipped).toBe("no_token");
+    expect(provider.sent).toHaveLength(0);
+
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    prismaMock.device.findUnique.mockRejectedValue(new Error("db down"));
+    expect(await notifyDeviceWake("dev-1")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it("a transient send failure keeps the token (only an invalid token clears it)", async () => {
+    const provider = new FakeProvider(() => ({ ok: false, invalidToken: false, reason: "HTTP 503" }));
+    setPushProviders([provider]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "live", platform: "android" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(await notifyDeviceWake("dev-1")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("enqueueDeviceCommand wakes the device exactly once, and a wake that fails does not fail the command", async () => {
+    const wakes: string[] = [];
+    setDeviceWakeSender(async (id) => {
+      wakes.push(id);
+      return { delivered: 1, clearedToken: false, skipped: null };
+    });
+    prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "cmd-1", createdAt: new Date(), status: "pending", attempts: 0, ...data,
+    }));
+
+    const message = await enqueueDeviceCommand("dev-1", "lock", {}, { requestedBy: "parent-1" });
+    expect(message.type).toBe("lock");
+    expect(wakes).toEqual(["dev-1"]);
+
+    // The route's guarantee: a wake that throws synchronously or rejects is invisible to the caller.
+    setDeviceWakeSender(() => {
+      throw new Error("boom");
+    });
+    expect((await enqueueDeviceCommand("dev-1", "unlock", {}, { requestedBy: "parent-1" })).type).toBe("unlock");
+    setDeviceWakeSender(async () => {
+      throw new Error("network");
+    });
+    expect((await enqueueDeviceCommand("dev-1", "ring", {}, { requestedBy: "parent-1" })).type).toBe("ring");
   });
 });

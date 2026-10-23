@@ -127,6 +127,14 @@ jobs:
           node scripts/check-no-service-account-keys.mjs --selftest
           node scripts/check-no-service-account-keys.mjs
 
+      - name: verified-gate reads a verification only from the agent account
+        # The repository is public and, from 2026-10-23, has a second member working with his own Claude
+        # agent: a comment from any other account that ends "— Claude" must never verify a PR. The
+        # self-test proves the check fails on the pre-fix filter, structurally and under jq.
+        run: |
+          node scripts/check-verified-gate-signers.mjs --selftest
+          node scripts/check-verified-gate-signers.mjs
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.

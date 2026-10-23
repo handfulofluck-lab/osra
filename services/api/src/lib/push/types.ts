@@ -8,14 +8,21 @@
 export type PushPlatform = "android" | "ios" | "web";
 
 export interface PushMessage {
-  title: string;
-  body: string;
+  /** Omitted only for a data-only message (the device wake): there is nothing to show, only to act on. */
+  title?: string;
+  body?: string;
   /** Flat string map; FCM data payloads and APNs custom keys are both string-valued. */
   data: Record<string, string>;
   /** Collapse/thread key so repeated alerts for one child replace each other on the lock screen. */
   threadId?: string;
   /** "high" wakes the device; "normal" is batched by the OS. Critical alerts are always high. */
   priority: "high" | "normal";
+  /**
+   * True → the payload carries no `notification` block, so no operating system displays anything and
+   * the app's own service handles it. This is what a *wake* is (#319): the child device must not be
+   * able to learn a command from a push, and the parent's lock screen must not show one.
+   */
+  dataOnly?: boolean;
 }
 
 export type PushResult =

@@ -140,3 +140,120 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     return outcome;
   }
 }
+
+/* ───────────────────────── the child device wake (#319) ───────────────────────── */
+
+/**
+ * A push to a child device is a **wake-up only** (Claude's Decision 2, issue #319, 2026-10-23). The
+ * message carries no command type, no payload and no ids — just "there is something to fetch" — and
+ * the agent then drains `GET /v1/devices/:id/commands` over its own authenticated channel, acking as
+ * it always has.
+ *
+ * **Why the push carries nothing:** Google (and anyone holding a stale or misdirected token) must not
+ * see command content. `show_reset_code` carries a parent's reset code; a `locate_now` request carries
+ * the timing of a family's day. A wake-up leaks neither, and the same idempotent ack path serves both
+ * poll and push, so there is only one way a command ever takes effect.
+ *
+ * The literal is `{ "w": "1" }` — deliberately **not** a `type` field (Claude's ruling, 2026-10-23,
+ * replacing the looser `{type:"wake"}` in his earlier note). An agent built before the #322 client
+ * change reads `msg.data["type"] ?: return` and then hands the value to `CommandDispatcher`, which
+ * would log "refusing unknown command type 'wake'". With `w` it returns at the `?:` and does nothing,
+ * so a pre-#322 agent treats a wake as the no-op it should be.
+ *
+ * The current client asserts that it reads nothing from the data map at all (apps/child-android,
+ * `PushWakeHandlerTest`), so this value can change for an up-to-date agent without touching it; it
+ * exists so an operator reading logs or a captured packet can tell a wake from an alert.
+ */
+export const DEVICE_WAKE_DATA: Readonly<Record<string, string>> = Object.freeze({ w: "1" });
+
+/** The one message shape a child device may receive. Exported so a test can assert it has no command fields. */
+export function buildDeviceWakeMessage(): PushMessage {
+  return {
+    data: { ...DEVICE_WAKE_DATA },
+    // Collapse key: ten commands in a second must cost one wake-up, because the agent drains the
+    // whole queue on the first one. Nothing about the command is in the key — it is the word "wake".
+    threadId: "wake",
+    priority: "high",
+    dataOnly: true,
+  };
+}
+
+export interface WakeOutcome {
+  delivered: number;
+  clearedToken: boolean;
+  skipped: "no_providers" | "no_token" | "unsupported_platform" | null;
+}
+
+/**
+ * Wake one child device. Never throws: the command row is already committed and published when this
+ * runs, and a push outage must not fail a parent's command.
+ *
+ * A token the provider reports as dead is cleared from the row (`UNREGISTERED` / 404 / invalid), which
+ * is the only place a device token is ever removed — the agent re-registers on its next `onNewToken`
+ * or poll tick.
+ */
+export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
+  const outcome: WakeOutcome = { delivered: 0, clearedToken: false, skipped: null };
+  try {
+    const providers = getPushProviders();
+    if (providers.size === 0) {
+      if (!warnedUnconfigured) {
+        console.warn("[push] no provider configured (set FCM_SERVICE_ACCOUNT_JSON or APNS_*); device wake disabled");
+        warnedUnconfigured = true;
+      }
+      return { ...outcome, skipped: "no_providers" };
+    }
+    const device = await prisma.device.findUnique({ where: { id: deviceId }, select: { id: true, pushToken: true, platform: true } });
+    if (!device?.pushToken) return { ...outcome, skipped: "no_token" };
+    const provider = providerFor(device.platform as PushPlatform, providers);
+    if (!provider) return { ...outcome, skipped: "unsupported_platform" };
+
+    const result = await provider.send(device.pushToken, buildDeviceWakeMessage());
+    if (result.ok) return { ...outcome, delivered: 1 };
+    if (result.invalidToken) {
+      // Compare-and-clear (Claude's #323 review). Clearing by id alone would erase a token that
+      // rotated while this send was in flight: onNewToken uploads the new one, this stale send comes
+      // back UNREGISTERED, and the blanket clear then wipes the *new* token — which the agent never
+      // re-uploads, because PushTokenUploadPolicy sees stored == uploaded. Push to that phone would be
+      // dead until the next rotation, with no error anywhere. The `pushToken` condition also means a
+      // device deleted mid-send is a no-op instead of a throw inside this try.
+      const cleared = await prisma.device.updateMany({
+        where: { id: deviceId, pushToken: device.pushToken },
+        data: { pushToken: null },
+      });
+      return { ...outcome, clearedToken: cleared.count > 0 };
+    }
+    console.warn(`[push] device wake failed device=${deviceId} reason=${result.reason}`);
+    return outcome;
+  } catch (err) {
+    console.error("[push] notifyDeviceWake failed", err);
+    return outcome;
+  }
+}
+
+/**
+ * Test seam: swap the wake sender so a command-path test can assert the fan-out without a provider.
+ * Production leaves it as [notifyDeviceWake].
+ */
+let deviceWakeSender: (deviceId: string) => Promise<WakeOutcome> = notifyDeviceWake;
+
+export function setDeviceWakeSender(fn: ((deviceId: string) => Promise<WakeOutcome>) | null): void {
+  deviceWakeSender = fn ?? notifyDeviceWake;
+}
+
+export function getDeviceWakeSender(): (deviceId: string) => Promise<WakeOutcome> {
+  return deviceWakeSender;
+}
+
+/**
+ * Fire-and-forget wake from a synchronous-ish path. The invocation happens **synchronously** (so a
+ * test can observe it), the promise is detached (so a slow Google round trip never delays a parent's
+ * command), and a rejection is swallowed because `notifyDeviceWake` already logs its own failures.
+ */
+export function wakeDeviceDetached(deviceId: string): void {
+  try {
+    void deviceWakeSender(deviceId).catch(() => undefined);
+  } catch {
+    /* a sender that throws synchronously is not allowed to fail the caller */
+  }
+}

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { publishJson } from "../redis.js";
+import { wakeDeviceDetached } from "./push/notify.js";
 
 /**
  * Durable device command queue (Phase 2b, ADR-0012).
@@ -112,6 +113,11 @@ export async function enqueueDeviceCommand(
   const message = toMessage(row);
   // Wake-up only: an agent that misses this still finds the row on its next drain.
   await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
+  // #319: the same wake over FCM, so a backgrounded phone with no socket does not wait for the
+  // 15-minute poll. Detached on purpose — a slow or failed Google round trip must never delay or
+  // fail a parent's command, and the row above is already durable. One funnel: every command
+  // producer (controls, rules, auth, this file) reaches the device through here.
+  wakeDeviceDetached(deviceId);
   return message;
 }
 
