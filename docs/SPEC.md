@@ -341,14 +341,22 @@ co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. W
 wired in (`feat/297-wire-read-routes`, 2026-10-23), the waiting screen keeps the request id and the
 address in secure storage (never the password), asks for the password once after a restart and
 rebuilds the stage from `/status`; a `404 request_not_found` clears the saved id and offers a fresh
-start, and a terminal state says what happened next. The dashboard and Settings read `/pending`, so
+start, and a terminal state says what happened next. A deadline that has run out — the 30-minute
+mailbox link or the 10-minute device code — also replaces the code entry with "start a new request",
+because the API keeps the row in `requested`/`mailbox_confirmed` until the 24-hour sweep and a new
+request supersedes it; the 72-hour window never offers that, since `/request` answers
+`409 reset_already_pending` there (review of #314). The dashboard and Settings read `/pending`, so
 the approval prompt names the requester with `displayName` and role and no longer depends on a deep
-link; a guardian's `403` shows nothing. Two surfaces still stay limited by the API: **`witnessKind` is
-`null` until the witness passes**, so a resumed `mailbox_confirmed` screen cannot say whether a device
-code or a co-parent approval is expected and keeps both in its wording; and **no notification carries
-the request id to a co-parent's app yet** (decision 4's templates are unbuilt), so the banner and the
-settings entry are how they find out. The Android `show_reset_code` screen, the templates, the
-24-hour reminder and the audit route remain unbuilt.
+link; the deep link itself carries only `requestId` and looks name, role and state up in `/pending`,
+so a crafted URL cannot name the requester or pass `witness_passed` to hide Approve; a guardian's
+`403` shows nothing. Two surfaces still stay limited by the API: **`witnessKind` is `null` until the
+witness passes** — but `codeExpiresAt` is not, so a resumed `mailbox_confirmed` with no `codeExpiresAt`
+had no paired device, a co-parent is the only remaining witness, and the screen offers no code entry
+(it names the 24-hour approval deadline instead); with a code, both witnesses stay possible and the
+wording keeps both; and **no notification carries the request id to a co-parent's app yet**
+(decision 4's templates are unbuilt), so the banner and the settings entry are how they find out. The
+Android `show_reset_code` screen, the templates, the 24-hour reminder and the audit route remain
+unbuilt.
 
 ## §4 AI Engine (`services/ai-engine`)
 

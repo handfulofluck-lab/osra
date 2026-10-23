@@ -116,19 +116,12 @@ final router = GoRouter(
     // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
     // MFA settings screen open it from `GET /mfa/reset/pending`, with the id
     // and the requester's name; this deep link remains for a notification
-    // (decision 4's templates are still unbuilt) and accepts the same fields.
+    // (decision 4's templates are still unbuilt). It carries the id only — the
+    // name, role and state are read from `/pending` by id, never trusted from
+    // the URL (review of #314).
     GoRoute(
       path: '/mfa/reset/approve',
-      builder: (_, s) {
-        final query = s.uri.queryParameters;
-        return MfaResetApprovalScreen(
-          requestId: query['requestId'] ?? '',
-          requesterName: query['name'],
-          requesterRole: query['role'],
-          pendingState: query['state'],
-          pendingWindowEndsAt: DateTime.tryParse(query['windowEndsAt'] ?? ''),
-        );
-      },
+      builder: (_, s) => MfaResetApprovalLink(requestId: s.uri.queryParameters['requestId'] ?? ''),
     ),
     GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
     GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),

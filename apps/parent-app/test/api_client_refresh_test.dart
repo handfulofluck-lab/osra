@@ -40,6 +40,13 @@ ResponseBody jsonBody(int status, Object body) => ResponseBody.fromString(
       },
     );
 
+/// The 401 body the classifier reads, as the API sends it.
+Response<dynamic> unauthorized(String error) => Response<dynamic>(
+      requestOptions: RequestOptions(path: '/v1/auth/test'),
+      statusCode: 401,
+      data: {'error': error},
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -58,7 +65,7 @@ void main() {
     RequestOptions options(String path, {Object? data}) =>
         RequestOptions(path: path, method: 'POST', data: data);
 
-    test('credential-only routes never refresh', () {
+    test('credential-only routes never refresh, even on a session-shaped 401', () {
       for (final path in [
         '/v1/auth/login',
         '/v1/auth/register',
@@ -73,11 +80,11 @@ void main() {
         '/v1/auth/mfa/reset/status',
         '/v1/auth/mfa/reset/complete',
       ]) {
-        expect(shouldRefreshOn401(options(path)), isFalse, reason: path);
+        expect(shouldRefreshOn401(options(path), unauthorized('unauthorized')), isFalse, reason: path);
       }
     });
 
-    test('session-carrying routes refresh', () {
+    test('session-carrying routes refresh on the session\'s own 401', () {
       for (final path in [
         '/v1/auth/mfa/reset/pending',
         '/v1/auth/mfa/reset/approve',
@@ -85,19 +92,53 @@ void main() {
         '/v1/auth/logout-all',
         '/v1/auth/mfa/enroll',
         '/v1/auth/mfa/verify',
-        '/v1/family/me',
       ]) {
-        expect(shouldRefreshOn401(options(path)), isTrue, reason: path);
+        expect(shouldRefreshOn401(options(path), unauthorized('unauthorized')), isTrue, reason: path);
+        expect(shouldRefreshOn401(options(path), unauthorized('session_revoked')), isTrue, reason: path);
       }
+    });
+
+    test('a credential refusal on a session route is the answer, not an expired session', () {
+      // /mfa/verify answers 401 invalid_code for a mistyped code, /mfa/enroll and
+      // /mfa/recovery-codes 401 reauth_required for a mistyped password. A refresh
+      // replays the same wrong secret, and a failed one deletes both tokens.
+      expect(shouldRefreshOn401(options('/v1/auth/mfa/verify'), unauthorized('invalid_code')), isFalse);
+      expect(shouldRefreshOn401(options('/v1/auth/mfa/enroll'), unauthorized('reauth_required')), isFalse);
+      expect(shouldRefreshOn401(options('/v1/auth/mfa/recovery-codes'), unauthorized('reauth_required')), isFalse);
+    });
+
+    test('an auth 401 without a readable error body does not refresh', () {
+      expect(shouldRefreshOn401(options('/v1/auth/mfa/verify')), isFalse);
+      expect(
+        shouldRefreshOn401(
+          options('/v1/auth/mfa/verify'),
+          Response<dynamic>(
+            requestOptions: RequestOptions(path: '/v1/auth/mfa/verify'),
+            statusCode: 401,
+            data: '<html>nope</html>',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('a non-auth route refreshes without needing a body', () {
+      expect(shouldRefreshOn401(options('/v1/family/me')), isTrue);
     });
 
     test('cancel is classified by its body: token = link, requestId = session', () {
       expect(
-        shouldRefreshOn401(options('/v1/auth/mfa/reset/cancel', data: {'token': 'mailbox-token'})),
+        shouldRefreshOn401(
+          options('/v1/auth/mfa/reset/cancel', data: {'token': 'mailbox-token'}),
+          unauthorized('invalid_or_expired_token'),
+        ),
         isFalse,
       );
       expect(
-        shouldRefreshOn401(options('/v1/auth/mfa/reset/cancel', data: {'requestId': 'req-1'})),
+        shouldRefreshOn401(
+          options('/v1/auth/mfa/reset/cancel', data: {'requestId': 'req-1'}),
+          unauthorized('unauthorized'),
+        ),
         isTrue,
       );
     });
@@ -225,6 +266,52 @@ void main() {
 
       expect(adapter.callsTo('/v1/auth/token/refresh'), isEmpty);
       expect(adapter.callsTo('/v1/auth/mfa/enroll'), hasLength(1));
+    });
+
+    test('a wrong code on /mfa/verify is not refreshed and not replayed', () async {
+      final adapter = _FakeAdapter((options) {
+        if (options.path == '/v1/auth/token/refresh') {
+          return jsonBody(200, {'token': 'new-token', 'refreshToken': 'refresh-2'});
+        }
+        if (options.path == '/v1/auth/mfa/verify') {
+          return jsonBody(401, {'error': 'invalid_code'});
+        }
+        return jsonBody(404, {'error': 'no_route'});
+      });
+      final client = clientWith(adapter);
+
+      await expectLater(
+        client.raw.post('/v1/auth/mfa/verify', data: {'code': '000000'}),
+        throwsA(isA<DioException>().having((e) => e.response?.statusCode, 'status', 401)),
+      );
+
+      expect(adapter.callsTo('/v1/auth/token/refresh'), isEmpty);
+      expect(adapter.callsTo('/v1/auth/mfa/verify'), hasLength(1));
+      // A failed refresh deletes both tokens: a typo must not sign the parent out.
+      expect(await const FlutterSecureStorage().read(key: 'jwt'), 'old-token');
+      expect(await const FlutterSecureStorage().read(key: 'refresh'), 'refresh-1');
+    });
+
+    test('a wrong password on /mfa/enroll is not refreshed either', () async {
+      final adapter = _FakeAdapter((options) {
+        if (options.path == '/v1/auth/token/refresh') {
+          return jsonBody(200, {'token': 'new-token', 'refreshToken': 'refresh-2'});
+        }
+        if (options.path == '/v1/auth/mfa/enroll') {
+          return jsonBody(401, {'error': 'reauth_required'});
+        }
+        return jsonBody(404, {'error': 'no_route'});
+      });
+      final client = clientWith(adapter);
+
+      await expectLater(
+        client.raw.post('/v1/auth/mfa/enroll', data: {'password': 'wrong'}),
+        throwsA(isA<DioException>().having((e) => e.response?.statusCode, 'status', 401)),
+      );
+
+      expect(adapter.callsTo('/v1/auth/token/refresh'), isEmpty);
+      expect(adapter.callsTo('/v1/auth/mfa/enroll'), hasLength(1));
+      expect(await const FlutterSecureStorage().read(key: 'jwt'), 'old-token');
     });
   });
 }

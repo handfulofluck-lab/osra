@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/mfa_reset_api.dart';
+import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/mfa_provider.dart';
 import '../../providers/mfa_reset_provider.dart';
@@ -17,7 +18,8 @@ import 'mfa_reset_messages.dart';
 /// come from `GET /v1/auth/mfa/reset/pending`: the dashboard and the MFA
 /// settings screen open this prompt straight from that list, with the id and
 /// the name the route returned. The deep link (`/mfa/reset/approve?requestId=`)
-/// still works for a notification, but it is no longer the only way in.
+/// reaches the prompt through [MfaResetApprovalLink], which takes only the id
+/// from the URL and looks the rest up in that same list.
 /// Without a name the copy falls back to "another parent in your family",
 /// which is what the app said before the list existed.
 ///
@@ -242,4 +244,45 @@ class _MfaResetApprovalScreenState extends ConsumerState<MfaResetApprovalScreen>
 
   String _format(BuildContext context, DateTime at) =>
       DateFormat.yMMMd(context.localeName).add_Hm().format(at.toLocal());
+}
+
+/// The `/mfa/reset/approve` deep link: a notification (decision 4's templates
+/// are still unbuilt) or a link another parent handed over.
+///
+/// Only `requestId` comes from the URL. The requester's name, role and state
+/// are read from `GET /v1/auth/mfa/reset/pending` and matched by id, so a
+/// crafted link cannot put words in the requester's mouth ("X (owner) asked…")
+/// or pass `state=witness_passed` to hide the Approve button. An id that is not
+/// in the list — the caller's own request, one that already ended, a stale link
+/// — falls back to the generic copy, and the API decides what may happen.
+class MfaResetApprovalLink extends ConsumerWidget {
+  const MfaResetApprovalLink({super.key, required this.requestId});
+
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (requestId.isEmpty) return const MfaResetApprovalScreen(requestId: '');
+    final pending = ref.watch(mfaResetPendingProvider);
+    if (pending.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text(context.l10n.mfaResetApproveTitle)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    MfaResetPendingRequest? match;
+    for (final request in pending.valueOrNull ?? const <MfaResetPendingRequest>[]) {
+      if (request.requestId == requestId) {
+        match = request;
+        break;
+      }
+    }
+    return MfaResetApprovalScreen(
+      requestId: requestId,
+      requesterName: match?.requesterName,
+      requesterRole: match?.requesterRole,
+      pendingState: match?.state,
+      pendingWindowEndsAt: match?.windowEndsAt,
+    );
+  }
 }

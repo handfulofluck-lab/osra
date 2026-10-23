@@ -3530,6 +3530,12 @@ abstract class AppLocalizations {
   /// **'The code is valid until {time}.'**
   String mfaResetCodeExpires(String time);
 
+  /// No description provided for @mfaResetAwaitingCoParent.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for your co-parent to approve, by {time}.'**
+  String mfaResetAwaitingCoParent(String time);
+
   /// No description provided for @mfaResetHaveCode.
   ///
   /// In en, this message translates to:
@@ -3565,6 +3571,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The wait is over. You can finish the reset now.'**
   String get mfaResetWindowDue;
+
+  /// No description provided for @mfaResetDeadlinePassed.
+  ///
+  /// In en, this message translates to:
+  /// **'This link or code has run out. A new request replaces this one.'**
+  String get mfaResetDeadlinePassed;
 
   /// No description provided for @mfaResetFinish.
   ///

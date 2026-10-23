@@ -43,10 +43,10 @@ enum MfaResetTerminal {
 /// `mailbox_confirmed`, and the 72-hour window once the witness passed.
 ///
 /// [resumed] marks a state rebuilt from `POST /mfa/reset/status` after a
-/// restart. The one thing that route cannot say while `mailbox_confirmed` is
-/// `witnessKind` (it is null until the witness passes), so a resumed witness
-/// stage keeps both possibilities in its wording instead of assuming a device
-/// code.
+/// restart. `witnessKind` is still null until the witness passes, but
+/// `codeExpiresAt` is not: it is set only when the family had a paired device,
+/// so a null one means a co-parent is the only possible witness and [deviceCode]
+/// is false.
 @immutable
 class MfaResetProgress {
   final String requestId;
@@ -60,6 +60,18 @@ class MfaResetProgress {
   final DateTime? mailboxExpiresAt;
   final DateTime? codeExpiresAt;
   final DateTime? windowEndsAt;
+
+  /// The 24-hour deadline for the witness step, from `/status` while
+  /// `mailbox_confirmed`. Null on a live screen, which has not asked.
+  final DateTime? witnessDeadline;
+
+  /// Whether the family had a paired device when the mailbox link was opened,
+  /// so a code was issued. `false` means no code exists and only another parent
+  /// can witness; the screen then offers no code entry. True until `/status`
+  /// says otherwise, because a live screen reached this stage by "I have the
+  /// code".
+  final bool deviceCode;
+
   final bool resumed;
 
   const MfaResetProgress({
@@ -69,6 +81,8 @@ class MfaResetProgress {
     this.mailboxExpiresAt,
     this.codeExpiresAt,
     this.windowEndsAt,
+    this.witnessDeadline,
+    this.deviceCode = true,
     this.resumed = false,
   });
 
@@ -78,6 +92,8 @@ class MfaResetProgress {
     DateTime? mailboxExpiresAt,
     DateTime? codeExpiresAt,
     DateTime? windowEndsAt,
+    DateTime? witnessDeadline,
+    bool? deviceCode,
     bool? resumed,
   }) =>
       MfaResetProgress(
@@ -87,6 +103,8 @@ class MfaResetProgress {
         mailboxExpiresAt: mailboxExpiresAt ?? this.mailboxExpiresAt,
         codeExpiresAt: codeExpiresAt ?? this.codeExpiresAt,
         windowEndsAt: windowEndsAt ?? this.windowEndsAt,
+        witnessDeadline: witnessDeadline ?? this.witnessDeadline,
+        deviceCode: deviceCode ?? this.deviceCode,
         resumed: resumed ?? this.resumed,
       );
 }
@@ -140,6 +158,24 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
     return progress != null && progress.stage == MfaResetStage.window && ends != null && !ends.isAfter(_now);
   }
 
+  /// Whether the deadline this stage waits on has already run out, read from
+  /// the same [_now] as [_windowDue].
+  ///
+  /// `window` is deliberately exempt: a new request there is answered
+  /// `409 reset_already_pending`, so start-again would be a button that cannot
+  /// work. The API keeps a request in `requested` or `mailbox_confirmed` after
+  /// its own deadline, so without this the parent loops between this screen and
+  /// the request screen until the 24-hour sweep expires the row.
+  bool get _deadlinePassed {
+    final progress = _progress;
+    final ends = switch (progress?.stage) {
+      MfaResetStage.awaitingMailbox => progress?.mailboxExpiresAt,
+      MfaResetStage.awaitingWitness => progress?.codeExpiresAt,
+      _ => null,
+    };
+    return ends != null && !ends.isAfter(_now);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -173,6 +209,9 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
       setState(() => _resumeFailure = const MfaResetFailure(MfaResetFailureKind.validation));
       return;
     }
+    // Read before the call, not after: a terminal state or a 404 must still
+    // forget the id, and that answer can arrive once this screen is gone.
+    final store = ref.read(mfaResetStoreProvider);
     setState(() {
       _checking = true;
       _resumeFailure = null;
@@ -183,8 +222,9 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
             password: password,
             requestId: stored.requestId,
           );
-      if (!mounted) return;
       final terminal = _terminalFor(status.state);
+      if (terminal != null) await store.clear();
+      if (!mounted) return;
       setState(() {
         _checking = false;
         if (terminal != null) {
@@ -193,8 +233,8 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
           _progress = _progressFromStatus(status, stored.email);
         }
       });
-      if (terminal != null) await _forgetRequest();
     } on MfaResetFailure catch (failure) {
+      if (failure.kind == MfaResetFailureKind.requestNotFound) await store.clear();
       if (!mounted) return;
       setState(() {
         _checking = false;
@@ -204,11 +244,11 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
           _resumeFailure = failure;
         }
       });
-      if (failure.kind == MfaResetFailureKind.requestNotFound) await _forgetRequest();
     } finally {
       // The password is asked for this one call and then dropped: it is never
-      // written anywhere, and no later screen reads it.
-      _resumePassword.clear();
+      // written anywhere, and no later screen reads it. It must go even when
+      // the call throws, and only while the field that owns it still exists.
+      if (mounted) _resumePassword.clear();
     }
   }
 
@@ -227,6 +267,10 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
             stage: MfaResetStage.awaitingWitness,
             email: email,
             codeExpiresAt: status.codeExpiresAt,
+            witnessDeadline: status.witnessDeadline,
+            // The API issues a code only when the family has a paired device;
+            // no code deadline therefore means a co-parent is the only witness.
+            deviceCode: status.codeExpiresAt != null,
             resumed: true,
           ),
         'witness_passed' => MfaResetProgress(
@@ -398,6 +442,14 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
           ? null
           : l10n.mfaResetWindowEndsAt(_format(context, progress.windowEndsAt!)),
     };
+    final deadlinePassed = _deadlinePassed;
+    // No device code means no code exists to type: only another owner or
+    // co-parent can witness, and the screen says when that must happen.
+    final coParentOnly = stage == MfaResetStage.awaitingWitness && !progress.deviceCode;
+    final coParentDeadline = coParentOnly && progress.witnessDeadline != null
+        ? l10n.mfaResetAwaitingCoParent(_format(context, progress.witnessDeadline!))
+        : null;
+    final offerCode = stage != MfaResetStage.window && !deadlinePassed && !coParentOnly;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.mfaResetWaitingTitle)),
       body: SafeArea(
@@ -423,14 +475,36 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
                 style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
               ),
             ],
+            if (coParentDeadline != null) ...[
+              const SizedBox(height: AppSpace.sm),
+              Text(
+                coParentDeadline,
+                key: const ValueKey('mfaResetAwaitingCoParent'),
+                style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
+              ),
+            ],
             const SizedBox(height: AppSpace.lg),
-            if (stage != MfaResetStage.window)
+            if (offerCode)
               FilledButton.icon(
                 key: const ValueKey('mfaResetHaveCode'),
                 onPressed: _openWitness,
                 icon: const Icon(Icons.pin_outlined),
                 label: Text(stage == MfaResetStage.awaitingWitness ? l10n.mfaResetEnterCode : l10n.mfaResetHaveCode),
               ),
+            if (deadlinePassed) ...[
+              Text(
+                l10n.mfaResetDeadlinePassed,
+                key: const ValueKey('mfaResetDeadlinePassed'),
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: AppSpace.sm),
+              FilledButton.icon(
+                key: const ValueKey('mfaResetStartAgain'),
+                onPressed: _startAgain,
+                icon: const Icon(Icons.refresh),
+                label: Text(l10n.mfaResetStartNewRequest),
+              ),
+            ],
             if (_windowDue) ...[
               Text(
                 l10n.mfaResetWindowDue,

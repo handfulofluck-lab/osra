@@ -2106,6 +2106,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String mfaResetAwaitingCoParent(String time) {
+    return 'Waiting for your co-parent to approve, by $time.';
+  }
+
+  @override
   String get mfaResetHaveCode => 'I have the code';
 
   @override
@@ -2126,6 +2131,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mfaResetWindowDue =>
       'The wait is over. You can finish the reset now.';
+
+  @override
+  String get mfaResetDeadlinePassed =>
+      'This link or code has run out. A new request replaces this one.';
 
   @override
   String get mfaResetFinish => 'Finish the reset';

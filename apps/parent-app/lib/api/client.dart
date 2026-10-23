@@ -35,11 +35,25 @@ const Set<String> credentialOnlyAuthPaths = {
 /// owner/co-parent form when it has `requestId` (session). A purpose-scoped
 /// token in `extra['authToken']` (the 15-minute `mfa_recovery` credential) is
 /// never swapped for the stored session.
-bool shouldRefreshOn401(RequestOptions options) {
+///
+/// [response] is the 401 that caused this, when the interceptor has it. The
+/// `/v1/auth/` prefix alone cannot separate an expired session from a secret
+/// the parent typed wrong: `/mfa/verify` answers `401 invalid_code` for a
+/// mistyped code and `/mfa/enroll`, `/mfa/recovery-codes` answer
+/// `401 reauth_required` for a mistyped password. Refreshing those replays the
+/// same wrong secret, spends a second rate-limit slot and a second password
+/// check, and a failed refresh deletes the stored tokens — a typo would sign
+/// the parent out. So the prefix refreshes only for the session's own refusals.
+bool shouldRefreshOn401(RequestOptions options, [Response<dynamic>? response]) {
   final scoped = options.extra['authToken'];
   if (scoped is String && scoped.isNotEmpty) return false;
   if (options.extra['retried'] == true) return false;
   final path = options.path;
+  if (path.startsWith('/v1/auth/')) {
+    final data = response?.data;
+    final error = data is Map ? data['error'] : null;
+    if (error != 'unauthorized' && error != 'session_revoked') return false;
+  }
   if (path == '/v1/auth/mfa/reset/cancel') {
     final body = options.data;
     final linkForm = body is Map && body.containsKey('token') && !body.containsKey('requestId');
@@ -97,8 +111,8 @@ class ApiClient {
         final res = e.response;
         if (res == null || res.statusCode != 401) return handler.next(e);
         // Credential-only auth routes (and the refresh call itself) answer their
-        // own 401; session-carrying auth routes below refresh like any other.
-        if (!shouldRefreshOn401(e.requestOptions)) return handler.next(e);
+        // own 401; the others refresh only when the 401 is the session's own.
+        if (!shouldRefreshOn401(e.requestOptions, res)) return handler.next(e);
 
         try {
           _refreshFuture ??= _refreshToken().whenComplete(() {

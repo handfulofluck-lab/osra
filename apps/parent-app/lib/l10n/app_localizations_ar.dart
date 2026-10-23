@@ -2172,6 +2172,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String mfaResetAwaitingCoParent(String time) {
+    return 'بانتظار موافقة الوالد المشارك، بحلول $time.';
+  }
+
+  @override
   String get mfaResetHaveCode => 'لديّ الرمز';
 
   @override
@@ -2192,6 +2197,10 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get mfaResetWindowDue =>
       'انتهى الانتظار. يمكنك إكمال إعادة التعيين الآن.';
+
+  @override
+  String get mfaResetDeadlinePassed =>
+      'انتهت صلاحية هذا الرابط أو الرمز. الطلب الجديد يستبدل هذا الطلب.';
 
   @override
   String get mfaResetFinish => 'أكمل إعادة التعيين';
@@ -2270,7 +2279,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetApproveIntro =>
-      'طلب والد آخر في عائلتك إعادة تعيين التحقق بخطوتين بعد أن فقد تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من ذلك الوالد خلال الانتظار يلغي الطلب.';
+      'وصل طلب من والد آخر في عائلتك لإعادة تعيين التحقق بخطوتين بعد فقدان تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من ذلك الوالد خلال الانتظار يلغي الطلب.';
 
   @override
   String get mfaResetApproveAction => 'موافقة';
@@ -2308,15 +2317,15 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String mfaResetApproveIntroNamed(String name, String role) {
-    return 'طلب $name ($role) إعادة تعيين التحقق بخطوتين بعد أن فقد تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من $name خلال الانتظار يلغي الطلب.';
+    return 'وصل طلب من $name ($role) لإعادة تعيين التحقق بخطوتين بعد فقدان تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من $name خلال الانتظار يلغي الطلب.';
   }
 
   @override
   String get mfaResetApproveAlready =>
-      'هذا الطلب تجاوز خطوة الشاهد بالفعل. انتظار الـ 72 ساعة جارٍ، ويمكنك رفضه لإلغائه.';
+      'اجتاز هذا الطلب خطوة الشاهد بالفعل. فترة الانتظار البالغة 72 ساعة جارية، ويمكنك رفضه لإلغائه.';
 
   @override
-  String get mfaResetRoleOwner => 'المالك';
+  String get mfaResetRoleOwner => 'مالك';
 
   @override
   String get mfaResetRoleCoParent => 'والد مشارك';
@@ -2332,7 +2341,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String mfaResetPendingBanner(String name, String role) {
-    return 'طلب $name ($role) إعادة تعيين التحقق بخطوتين.';
+    return 'وصل طلب من $name ($role) لإعادة تعيين التحقق بخطوتين.';
   }
 
   @override
@@ -2340,12 +2349,21 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String mfaResetPendingMore(int count) {
-    return 'و$count طلبات أخرى';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'و$count طلب آخر',
+      many: 'و$count طلبًا آخر',
+      few: 'و$count طلبات أخرى',
+      two: 'وطلبان آخران',
+      one: 'وطلب آخر',
+    );
+    return '$_temp0';
   }
 
   @override
   String mfaResetPendingAlreadyWaiting(String role) {
-    return '$role — تم تجاوز خطوة الشاهد، وانتظار الـ 72 ساعة جارٍ';
+    return '$role — اجتاز خطوة الشاهد، وفترة الانتظار البالغة 72 ساعة جارية';
   }
 
   @override
@@ -2353,7 +2371,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetResumeBody =>
-      'لا يزال هناك طلب إعادة تعيين محفوظ من هذا الهاتف. أدخل كلمة مرور حسابك لعرض حالته. تُستخدم كلمة المرور لهذا الفحص فقط ولا تُحفظ.';
+      'لا يزال هناك طلب إعادة تعيين محفوظ على هذا الهاتف. أدخل كلمة مرور حسابك لعرض حالته. تُستخدم كلمة المرور لهذا الفحص فقط ولا تُحفظ.';
 
   @override
   String get mfaResetResumePasswordRequired => 'أدخل كلمة المرور للمتابعة.';
@@ -2385,7 +2403,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetTerminalTooManyAttempts =>
-      'خمسة رموز خاطئة أنهت هذا الطلب، لذلك لم يتغيّر شيء. اجعل الطفل الذي يعرض هاتفه الرمز معك، ثم ابدأ طلبًا جديدًا.';
+      'خمسة رموز خاطئة أنهت هذا الطلب، لذلك لم يتغيّر شيء. تأكّد أن هاتف طفلك الذي يعرض الرمز بين يديك، ثم ابدأ طلبًا جديدًا.';
 
   @override
   String get mfaResetTerminalCompleted =>
