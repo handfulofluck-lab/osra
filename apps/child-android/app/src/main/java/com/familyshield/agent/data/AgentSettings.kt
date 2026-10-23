@@ -170,6 +170,9 @@ class AgentSettings @Inject constructor(
             // Issue #225: after a re-pair the next accessibility/overlay check is a first observation again.
             it.remove(KEY_ACCESSIBILITY_WAS_ENABLED)
             it.remove(KEY_OVERLAY_WAS_GRANTED)
+            // Issue #319: the enrolment is new, so the token has to be published to it again. The token
+            // itself is kept — an FCM registration token belongs to the install, not to the pairing.
+            it.remove(KEY_PUSH_TOKEN_UPLOADED)
         }
         // Issue #227: a re-pair is a new device enrolment; its first guard attempt opens a new window.
         TamperState.clearGuardAttemptWindow(context)
@@ -383,6 +386,35 @@ class AgentSettings @Inject constructor(
         }
     }
 
+    /**
+     * Issue #319: the latest FCM registration token this install received, or null before Firebase
+     * mints one. Persisted because `onNewToken` also fires before pairing — a token that arrived
+     * then used to be dropped (the old code uploaded only when a device id already existed), and the
+     * child never got a second chance at it until FCM rotated the token.
+     *
+     * Plain DataStore, not [com.familyshield.agent.security.SecureStore]: a registration token
+     * identifies a device to Firebase, it is not a credential this agent presents to our server, and
+     * the server stores it in a plain column.
+     */
+    suspend fun pushToken(): String? = read(KEY_PUSH_TOKEN)
+
+    /** Persists a token from `FirebaseMessagingService.onNewToken` (§1.5). */
+    suspend fun savePushToken(token: String) {
+        store.edit { it[KEY_PUSH_TOKEN] = token }
+    }
+
+    /**
+     * The token the server last accepted, or null when none has been uploaded to this enrolment.
+     * [com.familyshield.agent.push.PushTokenUploadPolicy] compares it with [pushToken] so the
+     * 15-minute poll re-sends a token only when the two differ.
+     */
+    suspend fun uploadedPushToken(): String? = read(KEY_PUSH_TOKEN_UPLOADED)
+
+    /** Records a token the server accepted, so the same one is not re-sent on every poll. */
+    suspend fun recordUploadedPushToken(token: String) {
+        store.edit { it[KEY_PUSH_TOKEN_UPLOADED] = token }
+    }
+
     /** Synchronous cold-start read of the consent-pause flag (once per process). */
     fun consentPausedSync(): Boolean = runBlocking { read(KEY_CONSENT_PAUSED) } == "1"
 
@@ -426,5 +458,8 @@ class AgentSettings @Inject constructor(
         private val KEY_INSTALLED_APPS_REPORTED_AT = stringPreferencesKey("installed_apps_reported_at")
         // Issue #264 (F1): future-dated texts already imported (`\u0000`-separated `date|id|digest`).
         private val KEY_FUTURE_SMS_SEEN = stringPreferencesKey("comms_sms_future_seen")
+        // Issue #319: the FCM registration token this install received, and the one the server last took.
+        private val KEY_PUSH_TOKEN = stringPreferencesKey("push_token")
+        private val KEY_PUSH_TOKEN_UPLOADED = stringPreferencesKey("push_token_uploaded")
     }
 }

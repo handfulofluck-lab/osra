@@ -43,7 +43,17 @@ interface ApiService {
     @POST("v1/devices/{id}/apps")
     suspend fun postInstalledApps(@Path("id") deviceId: String, @Body body: InstalledAppsDto)
 
-    /** Registers a new FCM push token for a device. */
+    /**
+     * Publishes this device's FCM registration token (#319).
+     *
+     * The decided contract (Claude, #319, 2026-10-23; server half in PR #320): the **existing**
+     * `POST /v1/devices/:id/push-token`, device-only, body `{ "token": string }` (20–4096 characters),
+     * response `204`. The route writes only the caller's own `Device.pushToken`; a device JWT naming
+     * another device is refused. Pinned by `PushTokenRouteTest` — do not repoint this annotation at
+     * another path without a new decision, and do not rename the body field: `PushTokenSchema`
+     * (`services/api/src/routes/devices.ts`) reads `token`, so any other name is a `400` on every
+     * upload.
+     */
     @POST("v1/devices/{id}/push-token")
     suspend fun postPushToken(@Path("id") deviceId: String, @Body body: PushTokenDto)
 

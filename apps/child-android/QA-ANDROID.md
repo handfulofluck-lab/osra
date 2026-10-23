@@ -17,7 +17,7 @@ green `:app:testDebugUnitTest` + `:app:assembleDebug`.
 | `services/LocationService.kt` | FGS location: adaptive interval, 60 s batch flush, Room on failure, ACTION_PING_NOW, 60 s command loop | ✅ | 2 (flush race vs worker/concurrent flush; cancellation swallowed) |
 | `services/PendingPingWorker.kt` | Re-uploads Room-persisted pings | ✅ | (shared the flush-race fix) |
 | `services/AccessibilityMonitorService.kt` | Foreground events → UsageReporter + evaluate → AppBlocker | ✅ | 0 |
-| `services/FirebaseMessagingSvc.kt` | FCM commands + push-token upload | ✅ | 0 |
+| `services/FirebaseMessagingSvc.kt` | Push wake-up (no command content) + push-token upload | ✅ | 0 |
 | `telemetry/UsageReporter.kt` | Usage aggregation + POST telemetry (watermark, unlock counter, battery) | ✅ | 1 (events lost in snapshot/delete race; cancellation swallowed) |
 | `telemetry/UsageAggregation.kt` (new) | Pure per-app minutes from event stream | ✅ | — (extracted for testability) |
 | `telemetry/TelemetryWorker.kt` | 15-min aggregation job | ✅ | 0 |
