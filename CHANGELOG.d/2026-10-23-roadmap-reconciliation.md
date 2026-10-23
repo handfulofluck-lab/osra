@@ -16,3 +16,10 @@
   says that, and names what the acceptance still needs.
 - The Phase 3 line in "Progress at a glance" said 1 / 9 merged; it now lists the eight merged rows with their shas, the one
   acceptance still open (3.1's native-speaker review) and the one row blocked externally (3.9, Apple entitlement).
+- **From the review (#342):** the "Progress at a glance" table now matches the rows beneath it — dated 2026-10-23, Phase 0
+  at 6/6, Phase 1 at 9/9 with 1.5 measured (TR-95) and the acceptance open on 1.4/1.8, Phase 2's push half measured on
+  Android and open on iOS, Phase 3 naming the timed first-run test, Phase 5 at 0/8 with 5.8 in progress. Five cells also
+  contradicted their own status and are fixed: 1.4 said "acceptance not closed" twice, 3.2 repeated its own clause, 3.3
+  still said "author-run only, unmerged" under a heading that says #305 merged, 3.8 named two branches that are #203 and
+  #204, and 1.5's "no `docs/QA/` record" is now **TR-95**, supplied by Claude from his own run — the record belongs to
+  whoever measured it.
