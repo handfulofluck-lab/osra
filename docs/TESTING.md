@@ -77,6 +77,40 @@ node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count g
 node scripts/qa-probe.mjs   # 151 passed / 0 failed / 0 targets at 2026-10-21 — any failure exits 1
 ```
 
+`O14`–`O23` are the ADR-0031 MFA-reset group (ten checks, plus a `setup:` check that builds the family
+they need; the dated counts above are the last measured run, not a prediction): `O14`
+`/mfa/reset/request` refuses a wrong password and an unknown
+address with `/login`'s own status and body; `O15` a parent cannot issue `show_reset_code` (`400`, and
+nothing queued); `O16` no `show_reset_code` reaches the family before the mailbox link is clicked and
+exactly one is sent after; `O17` only the child's own device — never a parent surface — holds the 8-digit
+code; `O18` the parent-facing command history shows the row's status and `expiresAt` but never the
+plaintext code (the #305 review finding); `O19` a guardian and another family's owner cannot approve;
+`O20` `complete` inside the window is `409 window_open` and the factor stays bound; `O21` a
+`witness_passed` request cannot be restarted (`409 reset_already_pending`); `O22` a successful `/login`
+during the window cancels it (`409 request_cancelled`); `O23` a family with no witness gets
+`409 no_witness` with nothing stored (proved by a fourth request after pairing answering `200`, not `429`).
+
+`O24`–`O28` are the two read routes of the ADR-0031 amendment 2026-10-23 (`POST /mfa/reset/status` and
+`GET /mfa/reset/pending`), run inside the same `else` block because they need the request it walks:
+`O24` `status` writes nothing — two reads leave the request `mailbox_confirmed` with five attempts, the
+device command history byte-identical, another parent's session live and `complete` still answering
+`409 witness_required` (the DB-level "rows identical" half is the unit test's claim 1, because the probe
+has no database connection, §6); `O25` `status` on another parent's valid `requestId` answers
+`404 request_not_found`, byte-identical to an unknown id; `O26` `pending` lists the other parent's open
+request — never the caller's own, never another family's — with the requester's `displayName` and role;
+`O27` a guardian gets `403 role_not_allowed` and an unauthenticated caller `401`; `O28` neither body
+carries `codeHash`, `witnessRef`, the plaintext code or the requester's email, and both bodies are
+exactly the documented field list. `O25`/`O26` need the co-parent the block now invites, with no second
+factor and no request of their own: in `O25` their correct credentials ask about the requester's
+request, and in `O26` they are the caller the list is for, while the owner's own open request shows the
+caller's request left out. A co-parent with MFA would cost one more `/login`, and the probe already makes
+20, which is `/login`'s per-minute limit per address: a 21st aborts a run that finishes inside a minute.
+`O16`–`O22` walk the mailbox step through the `confirmToken` that
+`/mfa/reset/request` echoes **only** while no email provider is configured and `NODE_ENV` is not
+production; on a stack with `RESEND_API_KEY`/`EMAIL_FROM` set they cannot be walked over HTTP and the run
+prints one `target` naming them instead of a pass. The seven-day post-window expiry is a database clock
+the probe cannot wait for and stays with `test/mfa-reset-expiry.test.ts` and `src/jobs/mfaResetExpiry.ts`.
+
 `VAULT_KEY` is **its own** value, not the HMAC secret: the launcher sets a 44-character base64 key that
 differs from the 64-character `INTERNAL_HMAC_SECRET` (measured on this host, 2026-10-18). The earlier
 wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and fails two e2e checks with

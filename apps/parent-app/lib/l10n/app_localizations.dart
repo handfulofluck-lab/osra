@@ -3403,6 +3403,366 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Child'**
   String get digestPrefsChildFallback;
+
+  /// No description provided for @mfaResetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset two-step verification'**
+  String get mfaResetTitle;
+
+  /// No description provided for @mfaResetIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this only if you have lost your authenticator and every recovery code. You will need your account password and access to this account\'s email, and one of these: a code shown on your child\'s phone, or another owner or co-parent who approves from their app. Then there is a 72-hour wait before two-step verification is reset.'**
+  String get mfaResetIntro;
+
+  /// No description provided for @mfaResetSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Request a reset'**
+  String get mfaResetSubmit;
+
+  /// No description provided for @mfaResetFieldsRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill in your email and password.'**
+  String get mfaResetFieldsRequired;
+
+  /// No description provided for @mfaResetInvalidCredentials.
+  ///
+  /// In en, this message translates to:
+  /// **'The email or password is incorrect.'**
+  String get mfaResetInvalidCredentials;
+
+  /// No description provided for @mfaResetMfaNotEnabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off for this account, so there is nothing to reset. Sign in with your password.'**
+  String get mfaResetMfaNotEnabled;
+
+  /// No description provided for @mfaResetNoWitness.
+  ///
+  /// In en, this message translates to:
+  /// **'This account has no family witness: no paired child device and no other owner or co-parent. Without one, two-step verification cannot be reset. If the child\'s phone is no longer paired, you can create a new account with another email address.'**
+  String get mfaResetNoWitness;
+
+  /// No description provided for @mfaResetAlreadyPending.
+  ///
+  /// In en, this message translates to:
+  /// **'A reset for this account is already in its 72-hour wait and cannot be replaced. Finish that one, or cancel it with the link in its email.'**
+  String get mfaResetAlreadyPending;
+
+  /// No description provided for @mfaResetLimitReached.
+  ///
+  /// In en, this message translates to:
+  /// **'You can request at most three resets in 30 days. This account has used them all for now.'**
+  String get mfaResetLimitReached;
+
+  /// No description provided for @mfaResetLinkExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'That link has expired or was already used.'**
+  String get mfaResetLinkExpired;
+
+  /// No description provided for @mfaResetEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'No recovery code left? Request a reset'**
+  String get mfaResetEntry;
+
+  /// No description provided for @mfaResetSettingsEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'Lost your authenticator and recovery codes?'**
+  String get mfaResetSettingsEntry;
+
+  /// No description provided for @mfaResetSetupNote.
+  ///
+  /// In en, this message translates to:
+  /// **'If you lose the authenticator and every one of these codes, you can only get back in with a family witness: a paired child device or another owner or co-parent.'**
+  String get mfaResetSetupNote;
+
+  /// No description provided for @mfaResetWaitingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset in progress'**
+  String get mfaResetWaitingTitle;
+
+  /// No description provided for @mfaResetStageMailboxTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email'**
+  String get mfaResetStageMailboxTitle;
+
+  /// No description provided for @mfaResetStageMailboxBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the reset link sent to this account\'s email within 30 minutes. Opening the link puts an 8-digit code on your child\'s phone. If another parent is going to approve instead, they must do it from their app.'**
+  String get mfaResetStageMailboxBody;
+
+  /// No description provided for @mfaResetMailboxExpires.
+  ///
+  /// In en, this message translates to:
+  /// **'The link is valid until {time}.'**
+  String mfaResetMailboxExpires(String time);
+
+  /// No description provided for @mfaResetCancelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.'**
+  String get mfaResetCancelHint;
+
+  /// No description provided for @mfaResetStageWitnessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the code from your child\'s phone'**
+  String get mfaResetStageWitnessTitle;
+
+  /// No description provided for @mfaResetStageWitnessBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The code is 8 digits and is valid for 10 minutes.'**
+  String get mfaResetStageWitnessBody;
+
+  /// No description provided for @mfaResetCodeExpires.
+  ///
+  /// In en, this message translates to:
+  /// **'The code is valid until {time}.'**
+  String mfaResetCodeExpires(String time);
+
+  /// No description provided for @mfaResetHaveCode.
+  ///
+  /// In en, this message translates to:
+  /// **'I have the code'**
+  String get mfaResetHaveCode;
+
+  /// No description provided for @mfaResetEnterCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the code'**
+  String get mfaResetEnterCode;
+
+  /// No description provided for @mfaResetStageWindowTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The 72-hour wait has started'**
+  String get mfaResetStageWindowTitle;
+
+  /// No description provided for @mfaResetStageWindowBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification will be reset when the wait ends, unless the request is cancelled before then.'**
+  String get mfaResetStageWindowBody;
+
+  /// No description provided for @mfaResetWindowEndsAt.
+  ///
+  /// In en, this message translates to:
+  /// **'The wait ends at {time}.'**
+  String mfaResetWindowEndsAt(String time);
+
+  /// No description provided for @mfaResetWindowDue.
+  ///
+  /// In en, this message translates to:
+  /// **'The wait is over. You can finish the reset now.'**
+  String get mfaResetWindowDue;
+
+  /// No description provided for @mfaResetFinish.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish the reset'**
+  String get mfaResetFinish;
+
+  /// No description provided for @mfaResetCancelKeep.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep waiting'**
+  String get mfaResetCancelKeep;
+
+  /// No description provided for @mfaResetRequestNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'That request no longer exists.'**
+  String get mfaResetRequestNotFound;
+
+  /// No description provided for @mfaResetRequestNotOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'This request is no longer open. Start again from the beginning.'**
+  String get mfaResetRequestNotOpen;
+
+  /// No description provided for @mfaResetRequestExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This request has expired. Start again from the beginning.'**
+  String get mfaResetRequestExpired;
+
+  /// No description provided for @mfaResetRequestCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'This request has already been completed.'**
+  String get mfaResetRequestCompleted;
+
+  /// No description provided for @mfaResetRequestCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'This request was cancelled.'**
+  String get mfaResetRequestCancelled;
+
+  /// No description provided for @mfaResetWitnessRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 8-digit code.'**
+  String get mfaResetWitnessRequired;
+
+  /// No description provided for @mfaResetWindowOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'The wait is not over yet. Nothing has changed.'**
+  String get mfaResetWindowOpen;
+
+  /// No description provided for @mfaResetWitnessDispatchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The code could not be sent to your child\'s phone. Request a reset again in a moment.'**
+  String get mfaResetWitnessDispatchFailed;
+
+  /// No description provided for @mfaResetUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The reset service is unavailable right now. Try again in a moment.'**
+  String get mfaResetUnavailable;
+
+  /// No description provided for @mfaResetFinishTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish the reset'**
+  String get mfaResetFinishTitle;
+
+  /// No description provided for @mfaResetFinishBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter this account\'s email and password. Two-step verification will be cleared and you will set up a new authenticator.'**
+  String get mfaResetFinishBody;
+
+  /// No description provided for @mfaResetFinishSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset two-step verification'**
+  String get mfaResetFinishSubmit;
+
+  /// No description provided for @mfaResetWitnessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the reset code'**
+  String get mfaResetWitnessTitle;
+
+  /// No description provided for @mfaResetWitnessIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the 8-digit code shown on your child\'s phone. It is valid for 10 minutes, and five wrong codes end this request.'**
+  String get mfaResetWitnessIntro;
+
+  /// No description provided for @mfaResetWitnessLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'8-digit code'**
+  String get mfaResetWitnessLabel;
+
+  /// No description provided for @mfaResetWitnessSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Check code'**
+  String get mfaResetWitnessSubmit;
+
+  /// No description provided for @mfaResetWitnessInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That code was not accepted or has expired. Check the code on your child\'s phone and try again.'**
+  String get mfaResetWitnessInvalid;
+
+  /// No description provided for @mfaResetWitnessAttemptsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'That code was not accepted. Attempts left: {count}.'**
+  String mfaResetWitnessAttemptsLeft(int count);
+
+  /// No description provided for @mfaResetWitnessTooMany.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong codes. This request has ended; start again from the beginning.'**
+  String get mfaResetWitnessTooMany;
+
+  /// No description provided for @mfaResetApproveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve a reset request'**
+  String get mfaResetApproveTitle;
+
+  /// No description provided for @mfaResetApproveIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Another parent in your family asked to reset their two-step verification after losing their authenticator and recovery codes. Approving starts a 72-hour wait. A sign-in by that parent during the wait cancels the request.'**
+  String get mfaResetApproveIntro;
+
+  /// No description provided for @mfaResetApproveAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get mfaResetApproveAction;
+
+  /// No description provided for @mfaResetDeclineAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get mfaResetDeclineAction;
+
+  /// No description provided for @mfaResetDeclineTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline this request?'**
+  String get mfaResetDeclineTitle;
+
+  /// No description provided for @mfaResetDeclineBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The reset will not happen and two-step verification stays as it is.'**
+  String get mfaResetDeclineBody;
+
+  /// No description provided for @mfaResetDeclineConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline request'**
+  String get mfaResetDeclineConfirm;
+
+  /// No description provided for @mfaResetApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved. The 72-hour wait has started.'**
+  String get mfaResetApproved;
+
+  /// No description provided for @mfaResetDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined. The request was cancelled.'**
+  String get mfaResetDeclined;
+
+  /// No description provided for @mfaResetApproveRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Only an owner or co-parent can approve or decline a reset request.'**
+  String get mfaResetApproveRole;
+
+  /// No description provided for @mfaResetApproveForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'You cannot approve or decline this request.'**
+  String get mfaResetApproveForbidden;
+
+  /// No description provided for @mfaResetApproveNeedsId.
+  ///
+  /// In en, this message translates to:
+  /// **'Open this screen from the notification about the request.'**
+  String get mfaResetApproveNeedsId;
 }
 
 class _AppLocalizationsDelegate
