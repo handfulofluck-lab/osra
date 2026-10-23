@@ -20,6 +20,32 @@ function autoMockModel(): Record<string, ReturnType<typeof vi.fn>> {
   }) as Record<string, ReturnType<typeof vi.fn>>;
 }
 
+/** Every model the mocked client has; a test that must prove "no write" walks this list. */
+export const MOCKED_MODELS = [
+  "family",
+  "parent",
+  "parentMfaRecoveryCode",
+  "mfaResetRequest",
+  "child",
+  "device",
+  "ruleSet",
+  "geofence",
+  "alert",
+  "consentRecord",
+  "locationPing",
+  "activityEvent",
+  "socialEvent",
+  "digestPrefs",
+  "digestSend",
+  "familyInvite",
+  "parentPushToken",
+  "deviceCommand",
+  "deviceApp",
+  "installRequest",
+  "appUsageDaily",
+  "webVisit",
+] as const;
+
 /** Build the mocked PrismaClient shape used by all route tests. */
 function makePrismaMock() {
   const root: Record<string, unknown> = {
@@ -30,30 +56,7 @@ function makePrismaMock() {
   allMocks.push(root.$transaction as ReturnType<typeof vi.fn>);
   allMocks.push(root.$queryRaw as ReturnType<typeof vi.fn>);
   allMocks.push(root.$executeRaw as ReturnType<typeof vi.fn>);
-  for (const model of [
-    "family",
-    "parent",
-    "parentMfaRecoveryCode",
-    "mfaResetRequest",
-    "child",
-    "device",
-    "ruleSet",
-    "geofence",
-    "alert",
-    "consentRecord",
-    "locationPing",
-    "activityEvent",
-    "socialEvent",
-    "digestPrefs",
-    "digestSend",
-    "familyInvite",
-    "parentPushToken",
-    "deviceCommand",
-    "deviceApp",
-    "installRequest",
-    "appUsageDaily",
-    "webVisit",
-  ]) {
+  for (const model of MOCKED_MODELS) {
     root[model] = autoMockModel();
   }
   const mock = root as unknown as {

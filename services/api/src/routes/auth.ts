@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import argon2 from "argon2";
 import { Prisma } from "@prisma/client";
+import type { MfaResetRequest as MfaResetRequestRow } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { appPublicUrl, emailConfigured, getEmailSender } from "../lib/email/index.js";
@@ -13,6 +14,7 @@ import {
   MFA_RESET_MAX_CODE_ATTEMPTS,
   MFA_RESET_MAX_PER_WINDOW,
   MFA_RESET_REQUEST_WINDOW_MS,
+  MFA_RESET_WITNESS_DEADLINE_MS,
   OPEN_RESET_STATES,
   clearResetCodePayloads,
   generateResetCode,
@@ -1058,6 +1060,145 @@ export async function authRoutes(app: FastifyInstance) {
     // Completion notice hook, templates deferred (ADR-0031 decision 4).
     req.log.info({ requestId: request.id }, "[mfa-reset] completion notice hook: email + push not sent (templates deferred)");
     return { recoveryToken };
+  });
+
+  // --- ADR-0031 amendment 2026-10-23: the two reads the parent app needs -------------------------
+  // Decision 8's read for "the parent it is about" had no route the requester could use, because that
+  // parent has no session; and a co-parent's approval prompt had no way to find a request or name its
+  // requester. This is exactly two routes, both read-only. Neither adds a state, a token or a cancel
+  // path: the state machine and decision 3's cancel rules are unchanged.
+
+  /** `createdAt` + 30 min, the mailbox link's life (decision 2.2) — only a `requested` row waits on it. */
+  const mailboxLinkExpiresAt = (request: { state: string; createdAt: Date }): Date | null =>
+    request.state === "requested" ? new Date(request.createdAt.getTime() + MFA_RESET_MAILBOX_TTL_SECONDS * 1000) : null;
+
+  /** `emailConfirmedAt` + 24 h, the witness step's deadline (decision 3) — only `mailbox_confirmed` waits. */
+  const witnessDeadline = (request: { state: string; emailConfirmedAt: Date | null }): Date | null =>
+    request.state === "mailbox_confirmed" && request.emailConfirmedAt
+      ? new Date(request.emailConfirmedAt.getTime() + MFA_RESET_WITNESS_DEADLINE_MS)
+      : null;
+
+  /**
+   * The read-only view of one request: the stage and the deadline that stage is waiting on, and
+   * nothing that is a credential.
+   *
+   * The fields are listed here, never spread from the row, so `codeHash`, the plaintext code,
+   * `witnessRef`, device ids and anything about another parent are absent by construction rather than
+   * by filtering. A derived field that does not apply to the current state is `null`, never a stale
+   * value: the link exists only while `requested`; the code, its deadline and the attempt count only
+   * while `mailbox_confirmed` (the code is spent when the witness passes). `emailConfirmedAt`,
+   * `witnessKind`, `witnessAt`, `windowEndsAt` and `outcomeAt` are the row's own nulls when the
+   * request never reached them.
+   */
+  const resetStatusView = (request: MfaResetRequestRow) => ({
+    requestId: request.id,
+    state: request.state,
+    createdAt: request.createdAt,
+    emailConfirmedAt: request.emailConfirmedAt,
+    mailboxLinkExpiresAt: mailboxLinkExpiresAt(request),
+    witnessDeadline: witnessDeadline(request),
+    codeExpiresAt: request.state === "mailbox_confirmed" ? request.codeExpiresAt : null,
+    attemptsRemaining:
+      request.state === "mailbox_confirmed" ? MFA_RESET_MAX_CODE_ATTEMPTS - request.failedCodeAttempts : null,
+    witnessKind: request.witnessKind,
+    witnessAt: request.witnessAt,
+    windowEndsAt: request.windowEndsAt,
+    outcomeAt: request.outcomeAt,
+  });
+
+  /**
+   * The requester re-reads their own request (amendment 2026-10-23, item 1).
+   *
+   * `POST`, not `GET`, because a password never goes in a URL — and the front door is `/complete`'s,
+   * copied from it: this route's own 20/min bucket, the dummy hash for an unknown address so the work
+   * is the same either way, `401 invalid_credentials` for a bad email or password, and one
+   * `404 request_not_found` for "no such id" and "another parent's id" alike, so it is not an oracle
+   * for other accounts' request ids.
+   *
+   * **It writes nothing.** It is not a sign-in, so it must not cancel the request: decision 3 makes a
+   * successful sign-in the cancel signal precisely because that needs the authenticator this parent
+   * has lost. It revokes nothing, acks nothing, and touches no row, command, email or counter except
+   * this route's own rate-limit bucket.
+   */
+  app.post("/mfa/reset/status", { config: RL }, async (req, reply) => {
+    const parsed = z
+      .object({
+        email: z.string().email().transform((e) => e.trim().toLowerCase()),
+        password: z.string().min(1).max(256),
+        requestId: z.string().min(1).max(64),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const parent = await prisma.parent.findUnique({ where: { email: parsed.data.email } });
+    // The same unknown-address path as `/complete` and `/login`: verify against a dummy hash so timing
+    // does not distinguish the two, and answer one refusal.
+    const passwordHash = parent?.passwordHash ?? (await unknownParentPasswordHash());
+    const passwordOk = await argon2.verify(passwordHash, parsed.data.password).catch(() => false);
+    if (!parent || !passwordOk) return reply.code(401).send({ error: "invalid_credentials" });
+
+    const request = await prisma.mfaResetRequest.findUnique({ where: { id: parsed.data.requestId } });
+    if (!request || request.parentId !== parent.id) return reply.code(404).send({ error: "request_not_found" });
+
+    return resetStatusView(request);
+  });
+
+  /**
+   * The family's open requests, for whoever has to act on one before decision 4's push messages exist
+   * (amendment 2026-10-23, item 2): another `owner`/`co-parent` approving (decision 2.3) or cancelling
+   * (decision 3) from their own app.
+   *
+   * The gate is `/approve`'s, copied: a live parent session, then the caller's own row, then the role —
+   * a `guardian` is refused `403 role_not_allowed` because partial access is not approval. Only
+   * `mailbox_confirmed` and `witness_passed` are listed: nothing reaches a child device before the
+   * mailbox step, and an approval comes after it. The caller's own requests are not listed — those are
+   * what `status` is for, and this list exists to act on someone else's.
+   *
+   * The requester's `displayName` and role are returned because the prompt has to name them. The
+   * address is not, and neither is `witnessRef`.
+   */
+  app.get("/mfa/reset/pending", { preHandler: requireJwt, config: RL }, async (req, reply) => {
+    const user = req.user as { sub: string };
+    const caller = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!caller) return reply.code(404).send({ error: "parent_not_found" });
+    if (caller.role !== "owner" && caller.role !== "co-parent") return reply.code(403).send({ error: "role_not_allowed" });
+
+    // The caller's family, not a token snapshot: the same rule `/approve` applies to the request's
+    // family, so the scope cannot be borrowed from a stale claim.
+    const open = await prisma.mfaResetRequest.findMany({
+      where: {
+        familyId: caller.familyId,
+        parentId: { not: caller.id },
+        state: { in: ["mailbox_confirmed", "witness_passed"] },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, parentId: true, state: true, createdAt: true, emailConfirmedAt: true, windowEndsAt: true },
+    });
+    const requesters = open.length
+      ? await prisma.parent.findMany({
+          where: { id: { in: [...new Set(open.map((request) => request.parentId))] } },
+          select: { id: true, displayName: true, role: true },
+        })
+      : [];
+    const byId = new Map(requesters.map((parent) => [parent.id, parent]));
+    return {
+      requests: open.map((request) => {
+        // A request cascades with its parent row, so a missing one is unreachable in practice.
+        const requester = byId.get(request.parentId);
+        return {
+          requestId: request.id,
+          state: request.state,
+          requester: {
+            parentId: request.parentId,
+            displayName: requester?.displayName ?? "",
+            role: requester?.role ?? "",
+          },
+          createdAt: request.createdAt,
+          emailConfirmedAt: request.emailConfirmedAt,
+          witnessDeadline: witnessDeadline(request),
+          windowEndsAt: request.windowEndsAt,
+        };
+      }),
+    };
   });
 
   // --- #167: a password-reset link is single-use ------------------------------------------------
