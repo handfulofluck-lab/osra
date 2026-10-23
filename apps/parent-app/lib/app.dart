@@ -7,6 +7,7 @@ import 'features/children/child_detail_screen.dart';
 import 'features/children/command_history_screen.dart';
 import 'features/children/consent_screen.dart';
 import 'features/alerts/alerts_screen.dart';
+import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
 import 'features/onboarding/setup_child_screen.dart';
@@ -112,6 +113,13 @@ final router = GoRouter(
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
     GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
     GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
+    // ADR-0031 step 3b: the co-parent's approval prompt. The request id is the
+    // whole input; the notification that should deliver it is not built yet
+    // (decision 4), so a deep link is the only path in.
+    GoRoute(
+      path: '/mfa/reset/approve',
+      builder: (_, s) => MfaResetApprovalScreen(requestId: s.uri.queryParameters['requestId'] ?? ''),
+    ),
     GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
     GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
     GoRoute(path: '/family', builder: (_, __) => const FamilyScreen()),
