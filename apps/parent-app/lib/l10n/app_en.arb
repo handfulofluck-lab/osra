@@ -1022,7 +1022,7 @@
   "mfaResetStageWitnessBody": "The code is 8 digits and is valid for 10 minutes.",
   "mfaResetCodeExpires": "The code is valid until {time}.",
   "@mfaResetCodeExpires": {"placeholders": {"time": {"type": "String"}}},
-  "mfaResetAwaitingCoParent": "Waiting for your co-parent to approve, by {time}.",
+  "mfaResetAwaitingCoParent": "Waiting for another parent in your family to approve, by {time}.",
   "@mfaResetAwaitingCoParent": {"placeholders": {"time": {"type": "String"}}},
   "mfaResetHaveCode": "I have the code",
   "mfaResetEnterCode": "Enter the code",

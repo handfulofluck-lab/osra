@@ -3533,7 +3533,7 @@ abstract class AppLocalizations {
   /// No description provided for @mfaResetAwaitingCoParent.
   ///
   /// In en, this message translates to:
-  /// **'Waiting for your co-parent to approve, by {time}.'**
+  /// **'Waiting for another parent in your family to approve, by {time}.'**
   String mfaResetAwaitingCoParent(String time);
 
   /// No description provided for @mfaResetHaveCode.

@@ -167,13 +167,29 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
   /// its own deadline, so without this the parent loops between this screen and
   /// the request screen until the 24-hour sweep expires the row.
   bool get _deadlinePassed {
+    final ends = _deadline;
+    return ends != null && !ends.isAfter(_now);
+  }
+
+  /// ADR-0031: a device code lives `MFA_RESET_CODE_TTL_SECONDS` (10 minutes,
+  /// `services/api/src/lib/mfaReset.ts`). A link opened in its last second issues
+  /// a code valid this much longer, so the mailbox stage really ends here — and
+  /// start-again three seconds after the link expires would supersede a request
+  /// whose code is still usable, spending one of three attempts in 30 days.
+  static const Duration _resetCodeLifetime = Duration(minutes: 10);
+
+  /// The moment this stage can no longer move forward, or null when it has no
+  /// deadline of its own.
+  DateTime? get _deadline {
     final progress = _progress;
-    final ends = switch (progress?.stage) {
-      MfaResetStage.awaitingMailbox => progress?.mailboxExpiresAt,
-      MfaResetStage.awaitingWitness => progress?.codeExpiresAt,
+    return switch (progress?.stage) {
+      MfaResetStage.awaitingMailbox => progress?.mailboxExpiresAt?.add(_resetCodeLifetime),
+      // With no device code there is no code deadline: the witness is a co-parent,
+      // and the only clock left is the 24-hour approval deadline.
+      MfaResetStage.awaitingWitness =>
+          (progress?.deviceCode ?? true) ? progress?.codeExpiresAt : progress?.witnessDeadline,
       _ => null,
     };
-    return ends != null && !ends.isAfter(_now);
   }
 
   @override
@@ -446,7 +462,10 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
     // No device code means no code exists to type: only another owner or
     // co-parent can witness, and the screen says when that must happen.
     final coParentOnly = stage == MfaResetStage.awaitingWitness && !progress.deviceCode;
-    final coParentDeadline = coParentOnly && progress.witnessDeadline != null
+    // Only while the deadline is still ahead: a past "by {time}" next to a
+    // start-again button would read as a reason to wait for something that cannot
+    // arrive (#314 review).
+    final coParentDeadline = coParentOnly && !deadlinePassed && progress.witnessDeadline != null
         ? l10n.mfaResetAwaitingCoParent(_format(context, progress.witnessDeadline!))
         : null;
     final offerCode = stage != MfaResetStage.window && !deadlinePassed && !coParentOnly;

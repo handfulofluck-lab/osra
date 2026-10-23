@@ -2173,7 +2173,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String mfaResetAwaitingCoParent(String time) {
-    return 'بانتظار موافقة الوالد المشارك، بحلول $time.';
+    return 'بانتظار موافقة والد آخر في عائلتك، بحلول $time.';
   }
 
   @override

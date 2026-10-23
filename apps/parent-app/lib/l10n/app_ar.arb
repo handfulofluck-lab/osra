@@ -662,7 +662,7 @@
   "mfaResetStageWitnessTitle": "أدخل الرمز من هاتف طفلك",
   "mfaResetStageWitnessBody": "الرمز مكوّن من 8 أرقام وصلاحيته 10 دقائق.",
   "mfaResetCodeExpires": "الرمز صالح حتى {time}.",
-  "mfaResetAwaitingCoParent": "بانتظار موافقة الوالد المشارك، بحلول {time}.",
+  "mfaResetAwaitingCoParent": "بانتظار موافقة والد آخر في عائلتك، بحلول {time}.",
   "mfaResetHaveCode": "لديّ الرمز",
   "mfaResetEnterCode": "أدخل الرمز",
   "mfaResetStageWindowTitle": "بدأت فترة الانتظار (72 ساعة)",

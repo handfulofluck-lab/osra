@@ -53,6 +53,7 @@ void main() {
     String state = 'mailbox_confirmed',
     DateTime? mailboxLinkExpiresAt,
     DateTime? codeExpiresAt,
+    DateTime? witnessDeadline,
     bool deviceCode = true,
   }) {
     final now = DateTime.now().toUtc();
@@ -63,7 +64,9 @@ void main() {
       'emailConfirmedAt': state == 'requested' ? null : now.subtract(const Duration(minutes: 20)).toIso8601String(),
       'mailboxLinkExpiresAt':
           state == 'requested' ? (mailboxLinkExpiresAt ?? now.add(const Duration(minutes: 10))).toIso8601String() : null,
-      'witnessDeadline': state == 'mailbox_confirmed' ? now.add(const Duration(hours: 23)).toIso8601String() : null,
+      'witnessDeadline': state == 'mailbox_confirmed'
+          ? (witnessDeadline ?? now.add(const Duration(hours: 23))).toIso8601String()
+          : null,
       'codeExpiresAt': state == 'mailbox_confirmed' && deviceCode
           ? (codeExpiresAt ?? now.add(const Duration(minutes: 8))).toIso8601String()
           : null,
@@ -590,6 +593,43 @@ void main() {
       expect(await const FlutterSecureStorage().read(key: MfaResetStore.emailKey), isNull);
     });
 
+    testWidgets('a mailbox link that ran out minutes ago still offers the code', (tester) async {
+      // ADR-0031: a link opened in its last second issues a device code valid 10 more minutes, so
+      // start-again five minutes after the link expired would supersede a request whose code works
+      // and spend one of the parent's three attempts in 30 days (#314 review).
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(
+        status: (_) => statusPayload(
+          state: 'requested',
+          mailboxLinkExpiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 5)),
+        ),
+      ));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      expect(find.byKey(const ValueKey('mfaResetDeadlinePassed')), findsNothing);
+      expect(find.byKey(const ValueKey('mfaResetStartAgain')), findsNothing);
+      expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsOneWidget);
+    });
+
+    testWidgets('with no device code, a past 24-hour approval deadline offers a new request', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(
+        status: (_) => statusPayload(
+          state: 'mailbox_confirmed',
+          deviceCode: false,
+          witnessDeadline: DateTime.now().toUtc().subtract(const Duration(hours: 1)),
+        ),
+      ));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      expect(find.byKey(const ValueKey('mfaResetDeadlinePassed')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsNothing);
+      // A past "by {time}" beside a start-again button would read as a reason to keep waiting.
+      expect(find.byKey(const ValueKey('mfaResetAwaitingCoParent')), findsNothing);
+    });
+
     testWidgets('a device code that ran out offers a new request too', (tester) async {
       storeRequest();
       final api = FakeApiClient(resetRoutes(
@@ -622,7 +662,7 @@ void main() {
       expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsNothing);
       expect(find.text('Enter the code'), findsNothing);
       expect(find.byKey(const ValueKey('mfaResetAwaitingCoParent')), findsOneWidget);
-      expect(find.textContaining('Waiting for your co-parent to approve'), findsOneWidget);
+      expect(find.textContaining('Waiting for another parent in your family to approve'), findsOneWidget);
       // No code deadline to show, and the request is still live.
       expect(find.byKey(const ValueKey('mfaResetDeadline')), findsNothing);
       expect(await const FlutterSecureStorage().read(key: MfaResetStore.requestIdKey), 'req-1');
@@ -845,11 +885,18 @@ void main() {
     });
 
     testWidgets('an id that is not in the list falls back to the generic copy', (tester) async {
-      final api = FakeApiClient(resetRoutes());
+      // The list must hold a *different* request: with an empty list a builder that takes the first
+      // entry regardless of id passes, which is what Claude's `if (true)` mutant showed (#314 review).
+      final api = FakeApiClient(resetRoutes(
+        pending: (_) => {
+          'requests': [pendingRequest(requestId: 'req-9', name: 'Fatima', role: 'co-parent')],
+        },
+      ));
       await pumpScreen(tester, const MfaResetApprovalLink(requestId: 'req-404'), api);
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Another parent in your family'), findsOneWidget);
+      expect(find.textContaining('Fatima'), findsNothing);
       expect(find.byKey(const ValueKey('mfaResetApprove')), findsOneWidget);
     });
 
@@ -1234,7 +1281,7 @@ void main() {
       await flush(tester);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('بانتظار موافقة الوالد المشارك'), findsOneWidget);
+      expect(find.textContaining('بانتظار موافقة والد آخر في عائلتك'), findsOneWidget);
       expect(find.text('أدخل الرمز'), findsNothing);
       expectRtl(tester);
     });

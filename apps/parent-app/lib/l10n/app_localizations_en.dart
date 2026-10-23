@@ -2107,7 +2107,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String mfaResetAwaitingCoParent(String time) {
-    return 'Waiting for your co-parent to approve, by $time.';
+    return 'Waiting for another parent in your family to approve, by $time.';
   }
 
   @override
