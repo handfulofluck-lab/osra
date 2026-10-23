@@ -191,7 +191,9 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
   below for the second-factor contract.
 - src/routes/family.ts — GENERATE THIS:
     GET /me; POST /children (428 without active consent); GET/PATCH/DELETE /children/:id
-    (DELETE = GDPR erasure cascade — ADR-0013: every child-scoped table in one transaction,
+    (PATCH needs the `rules` permission — owner always passes, a co-parent or guardian without it gets
+    `403 permission_required` — because `birthYear` sets the age risk scoring uses: plan 2.7 F3,
+    Claude, #329; DELETE = GDPR erasure cascade — ADR-0013: every child-scoped table in one transaction,
     response carries `deletedDevices` + per-table `rows`, each device token revoked as on unpair);
     POST /children/:id/consent; GET /children/:id/consent (active status + `records` history,
     revoked/expired included); POST /children/:id/consent/revoke (ADR-0008); GET /export
@@ -212,7 +214,8 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     from every other device row in the same transaction; no parent may call it, permission or not:
     `403 device_role_required`);
     DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
-    TelemetryUploader — aggregates of per-app minutes / url logs); PLUS GET/POST /:id/apps
+    TelemetryUploader — aggregates of per-app minutes / url logs; device JWT only, plan 2.7 F2:
+    a parent JWT is `403 device_role_required`, as on `/:id/activity` and `POST /:id/apps`); PLUS GET/POST /:id/apps
     (roadmap 3.4 — the installed-launchable-app inventory, §14.1a).
     Issue #221 (D1): `/telemetry` also accepts `locationGrant` (`background` | `while_in_use` |
     `none`), stored on `Device.locationGrant` together with `Device.locationGrantReportedAt`;
@@ -621,9 +624,13 @@ POST /v1/devices/pair/claim  (NO auth)
 
 Device JWTs must work on existing agent endpoints: `GET /v1/rules/:childId` (its own child
 only), `GET/POST /v1/devices/:id/commands`, `POST /v1/devices/:id/telemetry`,
-`POST /v1/devices/:id/push-token`, `POST /v1/location/ping` (a parent JWT or a device JWT; a
-device JWT may ping only its own child, and a parent-supplied `deviceId` must be a row of the
-named child — 403 `device_mismatch` otherwise). A signature-valid JWT with any other role or
+`POST /v1/devices/:id/push-token`, `POST /v1/location/ping` (a device JWT or an HMAC signature; a
+device JWT may ping only its own child and its own device id — 403 `cross_child_forbidden` /
+`device_mismatch` otherwise). **Device-only since plan 2.7** (Claude, #329, 2026-10-23, findings F2
+and F4): `POST /v1/devices/:id/telemetry`, `/:id/activity`, `/:id/apps` and `POST /v1/location/ping`
+refuse every parent JWT — owner, co-parent or guardian, any permission — with
+`403 device_role_required`, because data the child's phone reports must come from the phone. A
+signature-valid JWT with any other role or
 purpose (e.g. the password-reset token) is **401**: `jwtVerify()` proves the signature, not the
 right to write location data (audit 2026-10-18). Parent-only endpoints keep requiring the parent
 role (req.user.role !== "parent" → 403): enforce in requireAuth/requireFamily where missing.
@@ -639,7 +646,8 @@ label instead of typing a package id. This is an inventory, not usage: package i
 system flag. Icons, minutes and launch counts are not part of the contract.
 
 ```
-POST /v1/devices/:id/apps       (device JWT; requireFamily device + requireOwnDevice;
+POST /v1/devices/:id/apps       (device JWT only; requireFamily device + role `device` +
+                                 requireOwnDevice — a parent JWT is 403 device_role_required, plan 2.7 F2;
                                  active consent required — 428 when withdrawn)
   body: { version: 1,
           apps: [ { packageId, label, isSystem } ] }

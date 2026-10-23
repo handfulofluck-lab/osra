@@ -128,6 +128,22 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     expect(res.json()).toMatchObject({ error: "ticket_required" });
   });
 
+  // Plan 2.7 Q4 (Claude, #329, 2026-10-23): a purpose-scoped token is not a bearer credential (#146).
+  // Before the fix it reached the role check and got 403 parent_role_required; now it is 401 like
+  // every other route. A purpose token that also carries role "parent" is the case the role check
+  // alone would have let through, so it is the one that proves the order of the checks.
+  it("refuses a purpose-scoped token at /v1/ws-ticket with 401 unauthorized, and mints no ticket", async () => {
+    for (const purpose of ["password_reset", "mfa_recovery", "mfa_reset_confirm", "mfa_reset_cancel"]) {
+      for (const claims of [{ sub: "parent-1", purpose }, { sub: "parent-1", familyId: "fam-1", role: "parent", purpose }]) {
+        const token = app.jwt.sign(claims);
+        const res = await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } });
+        expect(res.statusCode).toBe(401);
+        expect(res.json()).toEqual({ error: "unauthorized" });
+      }
+    }
+    expect([...store.keys()].some((k) => k.startsWith("ws:ticket:"))).toBe(false);
+  });
+
   it("refuses a handshake with no ticket with HTTP 401 ticket_required", async () => {
     const res = await app.inject({ method: "GET", url: "/v1/ws" });
     expect(res.statusCode).toBe(401);

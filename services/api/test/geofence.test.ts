@@ -17,6 +17,13 @@ vi.mock("ioredis", async () => {
 
 const CHILD_ID = "child-1";
 const DEVICE_ID = "device-1";
+
+/** Plan 2.7 F4: a location ping comes from the child's device (a parent JWT is 403), so the ping
+ * tests sign a device JWT for the fixture device. */
+function pingHeader(app: Parameters<typeof deviceHeader>[0]) {
+  return deviceHeader(app, { deviceId: DEVICE_ID, childId: CHILD_ID, familyId: "fam-1" });
+}
+
 const HOME_FENCE = {
   id: "fence-1",
   childId: CHILD_ID,
@@ -103,7 +110,7 @@ describe("geofence transitions on POST /v1/location/ping", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.7128, lng: -74.006, accuracyM: 5 },
     });
     expect(res.statusCode).toBe(201);
@@ -133,7 +140,7 @@ describe("geofence transitions on POST /v1/location/ping", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.72, lng: -74.006, accuracyM: 5 },
     });
     expect(res.statusCode).toBe(201);
@@ -160,7 +167,7 @@ describe("geofence transitions on POST /v1/location/ping", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.72, lng: -74.006, accuracyM: 5 },
     });
     expect(res.statusCode).toBe(201);
@@ -172,7 +179,7 @@ describe("geofence transitions on POST /v1/location/ping", () => {
     const res2 = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.721, lng: -74.006, accuracyM: 5 },
     });
     expect(res2.statusCode).toBe(201);
@@ -214,7 +221,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: pingBody(INSIDE.lat, INSIDE.lng),
     });
     expect(res.statusCode).toBe(201);
@@ -243,7 +250,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: pingBody(INSIDE.lat, INSIDE.lng, "2026-10-20T12:00:00.000Z"),
     });
     expect(res.statusCode).toBe(201);
@@ -263,7 +270,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: pingBody(INSIDE.lat, INSIDE.lng, "2026-10-20T14:00:00.000Z"),
     });
     expect(res.statusCode).toBe(201);
@@ -291,7 +298,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: {
         childId: CHILD_ID,
         deviceId: DEVICE_ID,
@@ -323,7 +330,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: {
         childId: CHILD_ID,
         deviceId: DEVICE_ID,
@@ -358,7 +365,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, pings },
     });
     expect(res.statusCode).toBe(201);
@@ -379,7 +386,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: pingBody(INSIDE.lat, INSIDE.lng, "2026-10-20T11:00:00.000Z"),
     });
     expect(res.statusCode).toBe(201);
@@ -395,7 +402,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: {
         childId: CHILD_ID,
         deviceId: DEVICE_ID,
@@ -434,7 +441,7 @@ describe("school-geofence routine auto-apply (Feature #23)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.7128, lng: -74.006, accuracyM: 5 },
     });
     expect(res.statusCode).toBe(201);
@@ -465,7 +472,7 @@ describe("school-geofence routine auto-apply (Feature #23)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.7128, lng: -74.006, accuracyM: 5 },
     });
     expect(res.statusCode).toBe(201);
@@ -495,13 +502,15 @@ describe("location ping validation & auth", () => {
       { ...base, lat: 40.7128, lng: -180.5 },
       { ...base, lat: "40.7", lng: -74.006 },
       { ...base, lat: 40.7128, lng: -74.006, accuracyM: -3 },
-      { deviceId: DEVICE_ID, lat: 40.7128, lng: -74.006 },
+      // Plan 2.7 F4: the former `{ deviceId, lat, lng }` case (no childId -> 400) needed a parent caller,
+      // whose identity came from the body. A device JWT always carries its childId, so that body is a
+      // valid ping now; parents are refused outright (location-auth.test.ts).
     ];
     for (const payload of cases) {
       const res = await app.inject({
         method: "POST",
         url: "/v1/location/ping",
-        headers: authHeader(app),
+        headers: pingHeader(app),
         payload: payload as Record<string, unknown>,
       });
       expect(res.statusCode).toBe(400);
@@ -519,7 +528,7 @@ describe("location ping validation & auth", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 90, lng: -180, accuracyM: 0 },
     });
     expect(res.statusCode).toBe(201);
@@ -570,7 +579,7 @@ describe("location ping validation & auth", () => {
     const missing = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app),
+      headers: pingHeader(app),
       payload: { childId: "child-9", deviceId: DEVICE_ID, lat: 40.7128, lng: -74.006, accuracyM: 5 },
     });
     expect(missing.statusCode).toBe(404);
@@ -580,7 +589,7 @@ describe("location ping validation & auth", () => {
     const foreign = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app, "fam-1"),
+      headers: pingHeader(app),
       payload: { childId: CHILD_ID, deviceId: DEVICE_ID, lat: 40.7128, lng: -74.006, accuracyM: 5 },
     });
     expect(foreign.statusCode).toBe(403);

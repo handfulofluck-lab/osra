@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireOwner, requireParent, sanitizeDevice } from "../middleware/requireFamily.js";
+import { requireFamily, requireOwner, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
@@ -170,8 +170,13 @@ export async function familyRoutes(app: FastifyInstance) {
     return child;
   });
 
-  /** Update a child's profile fields. */
-  app.patch("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" }), requireConsent({ param: "id" })] }, async (req, reply) => {
+  /**
+   * Update a child's profile fields.
+   * Plan 2.7 F3 (Claude, #329, 2026-10-23): `birthYear` sets the age risk scoring uses
+   * (social.ts, content.ts), so editing the profile is a rules decision — the owner passes, a
+   * co-parent or guardian needs the `rules` permission.
+   */
+  app.patch("/children/:id", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ model: "child" }), requireConsent({ param: "id" })] }, async (req, reply) => {
     const parsed = ChildPatchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
