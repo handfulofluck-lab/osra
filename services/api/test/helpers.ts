@@ -102,6 +102,40 @@ export class MockRedis {
   smembers = vi.fn(async (_key: string) => [] as string[]);
   incrby = vi.fn(async (_key: string, _increment: number) => 1);
   expire = vi.fn(async (_key: string, _seconds: number) => 1);
+  /** Hash storage for the idle-request counters (roadmap 5.8) and anything else that counts in a hash. */
+  readonly hashes = new Map<string, Record<string, string>>();
+  hincrby = vi.fn(async (key: string, field: string, increment: number) => {
+    const hash = this.hashes.get(key) ?? {};
+    hash[field] = String(Number(hash[field] ?? 0) + increment);
+    this.hashes.set(key, hash);
+    return Number(hash[field]);
+  });
+  hgetall = vi.fn(async (key: string) => this.hashes.get(key) ?? {});
+  /**
+   * A MULTI that behaves like the one `recordDeviceRequest` uses: `multi().hincrby(...).expire(...).exec()`
+   * queues both commands and applies them on `exec`, in order, through the same `hincrby`/`expire` mocks. A
+   * fake inside the test would assert the fake; this one means a broken chain (a missing `exec`, a dropped
+   * `expire`) actually fails the test.
+   */
+  multi = vi.fn(() => {
+    const queued: Array<() => Promise<unknown>> = [];
+    const chain = {
+      hincrby: (key: string, field: string, increment: number) => {
+        queued.push(() => this.hincrby(key, field, increment));
+        return chain;
+      },
+      expire: (key: string, seconds: number) => {
+        queued.push(() => this.expire(key, seconds));
+        return chain;
+      },
+      exec: async () => Promise.all(queued.map((run) => run())),
+    };
+    return chain;
+  });
+  /** Seed a hash as if a previous process had written it. */
+  seedHash(key: string, values: Record<string, string>): void {
+    this.hashes.set(key, { ...values });
+  }
   constructor() {
     MockRedis.instances.push(this);
   }

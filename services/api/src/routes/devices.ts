@@ -8,6 +8,7 @@ import { requireAuth, requireFamily, requireOwnDevice, requireParent, requirePer
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
@@ -477,6 +478,39 @@ export async function deviceRoutes(app: FastifyInstance) {
     const row = await ackDeviceCommand(id, commandId, parsed.data.status, parsed.data.detail);
     if (!row) return reply.code(404).send({ error: "no_delivered_command" });
     return { command: row };
+  });
+
+  /**
+   * Parent view of a device's own request rate (roadmap 5.8): the counting half of the idle-request budget.
+   * Counts only — per minute, per coarsened route, no bodies and no addresses — so this answers "how often does
+   * this phone wake?" without becoming a record of what it did. Parent-only and family-scoped: the agent has no
+   * reason to read its own accounting, and a sibling device must not be able to.
+   *
+   * Available with counting off (the production default), but it says so: `counting: false` and a `null`
+   * `withinBudget`. An empty reading reported as "within budget" would turn "nobody was counting" into
+   * "the phone is idle", which is the one answer this instrument exists to be unable to give.
+   */
+  app.get("/:id/requests", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const windowParam = Number((req.query as { window?: string })?.window ?? BUDGET_WINDOW_MINUTES);
+    const windowMinutes = Number.isFinite(windowParam) && windowParam > 0 && windowParam <= RETENTION_MINUTES ? Math.floor(windowParam) : BUDGET_WINDOW_MINUTES;
+    const counting = countingEnabled();
+    const counts = await readDeviceCounts(id);
+    const result = summarise(counts, { windowMinutes });
+    const threshold = idleBudgetThreshold();
+    // `null` with counting off: no verdict from a number nobody recorded this hour.
+    const within = counting ? withinBudget(result, threshold) : null;
+    return {
+      deviceId: id,
+      counting,
+      windowMinutes: result.windowMinutes,
+      total: result.total,
+      byRoute: result.byRoute,
+      busiestWindow: result.busiest,
+      // `null` means "no threshold measured yet" — a gate that reports rather than fails, by design.
+      threshold,
+      withinBudget: within,
+    };
   });
 
   /** Parent view of recent commands and their delivery state (Phase 2b). Never consumes anything. */
