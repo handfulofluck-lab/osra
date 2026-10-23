@@ -311,6 +311,16 @@ Not built in the API change that introduced this: the email and push templates (
 `[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
 `show_reset_code` screen. There is also no read-only audit route yet (ADR-0031 decision 8).
 
+Parent-app half (`feat/297-reset-parent-ui`, 2026-10-23): the four screens exist under
+`apps/parent-app/lib/features/auth/` — the request (email + password), the waiting state (stage, next
+step, cancel, and the `complete` step once the window ends), the 8-digit witness entry and the
+co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. Two surfaces stay limited
+by the API, not by the UI: **there is no read route**, so a restarted app cannot rebuild a pending
+request (the waiting screen is session-only and nothing is persisted); and **`/approve` takes only
+`{requestId}`**, so the approval prompt cannot name the parent who asked, and no notification carries
+the request id to a co-parent's app yet. The Android `show_reset_code` screen, the templates, the
+24-hour reminder and the audit route remain unbuilt.
+
 ## §4 AI Engine (`services/ai-engine`)
 
 - app.py, requirements.txt, Dockerfile — DONE.

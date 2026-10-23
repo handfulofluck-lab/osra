@@ -1191,3 +1191,83 @@ class RecoveryCodeBatch {
 
   bool get isEmpty => codes.isEmpty;
 }
+
+/// `POST /v1/auth/mfa/reset/request` (ADR-0031 decision 2.1–2.2). The mailbox
+/// link is the next step; [expiresAt] is its 30-minute deadline. [confirmToken]
+/// is echoed only by a development server and is never used by the app.
+@immutable
+class MfaResetRequestResult {
+  final String requestId;
+  final DateTime? expiresAt;
+  final String? confirmToken;
+
+  const MfaResetRequestResult({required this.requestId, this.expiresAt, this.confirmToken});
+
+  factory MfaResetRequestResult.fromJson(Map<String, dynamic> json) => MfaResetRequestResult(
+        requestId: _str(json['requestId']),
+        expiresAt: DateTime.tryParse(_str(json['expiresAt'])),
+        confirmToken: _strOrNull(json['confirmToken']),
+      );
+}
+
+/// `POST /v1/auth/mfa/reset/confirm` — the mailbox link was consumed and a
+/// `show_reset_code` command went to every paired device. [witness] is
+/// `device` (a code appeared on the children's phones) or `parent` (a second
+/// owner/co-parent must approve); [codeExpiresAt] exists only for `device`.
+@immutable
+class MfaResetConfirmResult {
+  final String requestId;
+  final String witness;
+  final DateTime? codeExpiresAt;
+
+  const MfaResetConfirmResult({required this.requestId, required this.witness, this.codeExpiresAt});
+
+  factory MfaResetConfirmResult.fromJson(Map<String, dynamic> json) => MfaResetConfirmResult(
+        requestId: _str(json['requestId']),
+        witness: _str(json['witness']),
+        codeExpiresAt: DateTime.tryParse(_str(json['codeExpiresAt'])),
+      );
+
+  bool get usesDeviceCode => witness == 'device';
+}
+
+/// `POST /v1/auth/mfa/reset/witness` and `.../approve` — the witness step
+/// passed and the 72-hour window opened. [state] is `witness_passed`.
+@immutable
+class MfaResetWitnessAccepted {
+  final String state;
+  final DateTime? windowEndsAt;
+
+  const MfaResetWitnessAccepted({required this.state, this.windowEndsAt});
+
+  factory MfaResetWitnessAccepted.fromJson(Map<String, dynamic> json) => MfaResetWitnessAccepted(
+        state: _str(json['state']),
+        windowEndsAt: DateTime.tryParse(_str(json['windowEndsAt'])),
+      );
+}
+
+/// `POST /v1/auth/mfa/reset/cancel` — the request's state after the call.
+/// Cancelling is idempotent, so [state] can also be a state the request was
+/// already in (`completed`, `expired`, ...).
+@immutable
+class MfaResetCancelResult {
+  final String state;
+
+  const MfaResetCancelResult({required this.state});
+
+  factory MfaResetCancelResult.fromJson(Map<String, dynamic> json) =>
+      MfaResetCancelResult(state: _str(json['state']));
+}
+
+/// `POST /v1/auth/mfa/reset/complete` — the 15-minute `purpose:"mfa_recovery"`
+/// token, the same one `/mfa/recover` issues. It is handed to the enrolment
+/// screen and never written to the session slot.
+@immutable
+class MfaResetCompleteResult {
+  final String recoveryToken;
+
+  const MfaResetCompleteResult({required this.recoveryToken});
+
+  factory MfaResetCompleteResult.fromJson(Map<String, dynamic> json) =>
+      MfaResetCompleteResult(recoveryToken: _str(json['recoveryToken']));
+}
