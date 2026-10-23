@@ -2089,6 +2089,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String mfaResetMailboxLinkGrace(String time) {
+    return 'The link expired at $time. If you opened it before then, enter the code now: it works for 10 minutes after the link was opened.';
+  }
+
+  @override
   String get mfaResetCancelHint =>
       'To stop this request, open the cancel link in any email about it. Signing in with your authenticator also cancels it.';
 
@@ -2103,6 +2108,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String mfaResetCodeExpires(String time) {
     return 'The code is valid until $time.';
+  }
+
+  @override
+  String mfaResetAwaitingCoParent(String time) {
+    return 'Waiting for another parent in your family to approve, by $time.';
   }
 
   @override
@@ -2126,6 +2136,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mfaResetWindowDue =>
       'The wait is over. You can finish the reset now.';
+
+  @override
+  String get mfaResetDeadlinePassed =>
+      'This link or code has run out. A new request replaces this one.';
 
   @override
   String get mfaResetFinish => 'Finish the reset';
@@ -2242,4 +2256,105 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mfaResetApproveNeedsId =>
       'Open this screen from the notification about the request.';
+
+  @override
+  String mfaResetApproveIntroNamed(String name, String role) {
+    return '$name ($role) asked to reset their two-step verification after losing their authenticator and recovery codes. Approving starts a 72-hour wait. A sign-in by $name during the wait cancels the request.';
+  }
+
+  @override
+  String get mfaResetApproveAlready =>
+      'This request already has its witness. The 72-hour wait is running; you can still decline it to cancel.';
+
+  @override
+  String get mfaResetRoleOwner => 'owner';
+
+  @override
+  String get mfaResetRoleCoParent => 'co-parent';
+
+  @override
+  String get mfaResetRoleGuardian => 'guardian';
+
+  @override
+  String get mfaResetRoleFamilyMember => 'family member';
+
+  @override
+  String get mfaResetPendingSectionTitle => 'Reset requests waiting for you';
+
+  @override
+  String mfaResetPendingBanner(String name, String role) {
+    return '$name ($role) asked to reset their two-step verification.';
+  }
+
+  @override
+  String get mfaResetPendingReview => 'Review';
+
+  @override
+  String mfaResetPendingMore(int count) {
+    return 'and $count more';
+  }
+
+  @override
+  String mfaResetPendingAlreadyWaiting(String role) {
+    return '$role — witness passed, the 72-hour wait is running';
+  }
+
+  @override
+  String get mfaResetResumeTitle => 'Continue your reset';
+
+  @override
+  String get mfaResetResumeBody =>
+      'A reset request from this phone is still on file. Enter your account password to see where it stands. The password is used only for this check and is not saved.';
+
+  @override
+  String get mfaResetResumePasswordRequired =>
+      'Enter your password to continue.';
+
+  @override
+  String get mfaResetResumeSubmit => 'Continue';
+
+  @override
+  String get mfaResetResumeNone =>
+      'There is no saved reset request on this phone.';
+
+  @override
+  String get mfaResetStartNewRequest => 'Start a new request';
+
+  @override
+  String get mfaResetTerminalTitle => 'This reset request has ended';
+
+  @override
+  String get mfaResetTerminalSigninCancelled =>
+      'A successful sign-in cancels a reset request, so nothing was changed. If you still need to reset two-step verification, start a new request.';
+
+  @override
+  String get mfaResetTerminalCancelled =>
+      'This request was cancelled, so nothing was changed. If you still need to reset two-step verification, start a new request.';
+
+  @override
+  String get mfaResetTerminalExpired =>
+      'This request expired before it finished, so nothing was changed. Start a new request when you are ready.';
+
+  @override
+  String get mfaResetTerminalTooManyAttempts =>
+      'Five wrong codes ended this request, so nothing was changed. Have the child whose phone shows the code with you, then start a new request.';
+
+  @override
+  String get mfaResetTerminalCompleted =>
+      'This reset was completed. Sign in with your new authenticator; if you have not set it up yet, do that first.';
+
+  @override
+  String get mfaResetTerminalNotFound =>
+      'This request no longer exists, so nothing was changed. Start again from the beginning.';
+
+  @override
+  String get mfaResetTerminalUnknown =>
+      'This request cannot continue, and nothing was changed. Start a new request.';
+
+  @override
+  String get mfaResetStageWitnessTitleResumed => 'Waiting for the witness step';
+
+  @override
+  String get mfaResetStageWitnessBodyResumed =>
+      'If an 8-digit code is shown on your child\'s phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.';
 }

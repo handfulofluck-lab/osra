@@ -1,6 +1,67 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// `/v1/auth/*` paths whose 401 is the answer, not an expired session.
+///
+/// These routes authenticate with a credential in the request (a password, a
+/// recovery code, a mailbox or cancel link, the refresh token itself) and the
+/// parent being reset deliberately holds no session. A token refresh could not
+/// help them, and replaying the call after one would turn "wrong password" into
+/// a second attempt at the same wrong password. Everything else under
+/// `/v1/auth/*` — `/mfa/reset/pending`, `/mfa/reset/approve`, the session form
+/// of `/mfa/reset/cancel`, `/mfa/recovery-codes`, `/logout-all`, and
+/// `/mfa/enroll` + `/mfa/verify` when they carry the parent session — refreshes
+/// like any signed-in call.
+const Set<String> credentialOnlyAuthPaths = {
+  '/v1/auth/register',
+  '/v1/auth/login',
+  '/v1/auth/logout',
+  '/v1/auth/token/refresh',
+  '/v1/auth/reset/request',
+  '/v1/auth/reset/confirm',
+  '/v1/auth/mfa/recover',
+  '/v1/auth/mfa/reset/request',
+  '/v1/auth/mfa/reset/confirm',
+  '/v1/auth/mfa/reset/witness',
+  '/v1/auth/mfa/reset/status',
+  '/v1/auth/mfa/reset/complete',
+};
+
+/// Whether a 401 on [options] should trigger the stored-session refresh.
+///
+/// The exemption is per route, not the whole `/v1/auth/` prefix: two routes
+/// share a path with different authentication. `/mfa/reset/cancel` is the
+/// emailed-link form when the body has `token` (no session) and the
+/// owner/co-parent form when it has `requestId` (session). A purpose-scoped
+/// token in `extra['authToken']` (the 15-minute `mfa_recovery` credential) is
+/// never swapped for the stored session.
+///
+/// [response] is the 401 that caused this, when the interceptor has it. The
+/// `/v1/auth/` prefix alone cannot separate an expired session from a secret
+/// the parent typed wrong: `/mfa/verify` answers `401 invalid_code` for a
+/// mistyped code and `/mfa/enroll`, `/mfa/recovery-codes` answer
+/// `401 reauth_required` for a mistyped password. Refreshing those replays the
+/// same wrong secret, spends a second rate-limit slot and a second password
+/// check, and a failed refresh deletes the stored tokens — a typo would sign
+/// the parent out. So the prefix refreshes only for the session's own refusals.
+bool shouldRefreshOn401(RequestOptions options, [Response<dynamic>? response]) {
+  final scoped = options.extra['authToken'];
+  if (scoped is String && scoped.isNotEmpty) return false;
+  if (options.extra['retried'] == true) return false;
+  final path = options.path;
+  if (path.startsWith('/v1/auth/')) {
+    final data = response?.data;
+    final error = data is Map ? data['error'] : null;
+    if (error != 'unauthorized' && error != 'session_revoked') return false;
+  }
+  if (path == '/v1/auth/mfa/reset/cancel') {
+    final body = options.data;
+    final linkForm = body is Map && body.containsKey('token') && !body.containsKey('requestId');
+    return !linkForm;
+  }
+  return !credentialOnlyAuthPaths.contains(path);
+}
+
 class ApiClient {
   static const _base = String.fromEnvironment('API_BASE', defaultValue: '');
   final _dio = Dio(BaseOptions(baseUrl: _base));
@@ -49,9 +110,9 @@ class ApiClient {
       onError: (e, handler) async {
         final res = e.response;
         if (res == null || res.statusCode != 401) return handler.next(e);
-        // Auth endpoints handle their own errors; never refresh-loop there.
-        if (e.requestOptions.path.startsWith('/v1/auth/')) return handler.next(e);
-        if (e.requestOptions.extra['retried'] == true) return handler.next(e);
+        // Credential-only auth routes (and the refresh call itself) answer their
+        // own 401; the others refresh only when the 401 is the session's own.
+        if (!shouldRefreshOn401(e.requestOptions, res)) return handler.next(e);
 
         try {
           _refreshFuture ??= _refreshToken().whenComplete(() {

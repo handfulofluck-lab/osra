@@ -332,7 +332,7 @@ Not built in the API change that introduced this: the email and push templates (
 `[mfa-reset] ... hook` log lines), the 24-hour reminder, the parent-app screens and the Android
 `show_reset_code` screen. The parent-app screens and the Android screen are built since (the two
 paragraphs below); the templates, the reminder and the 12-month history read are not. Decision 8's read
-is built in the two forms below: the requester's own request (`POST /mfa/reset/status`) and the family's
+is built in the two forms above: the requester's own request (`POST /mfa/reset/status`) and the family's
 open ones for an `owner`/`co-parent` (`GET /mfa/reset/pending`); the 12-month history read is still not
 built (amendment 2026-10-23, item 4).
 
@@ -346,12 +346,29 @@ the previous app, and an ack deferred until the notice ends so a withdrawal can 
 Parent-app half (`feat/297-reset-parent-ui`, 2026-10-23): the four screens exist under
 `apps/parent-app/lib/features/auth/` — the request (email + password), the waiting state (stage, next
 step, cancel, and the `complete` step once the window ends), the 8-digit witness entry and the
-co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. Two surfaces stay limited
-by the API, not by the UI: **there is no read route**, so a restarted app cannot rebuild a pending
-request (the waiting screen is session-only and nothing is persisted); and **`/approve` takes only
-`{requestId}`**, so the approval prompt cannot name the parent who asked, and no notification carries
-the request id to a co-parent's app yet. The templates, the 24-hour reminder and the audit route
-remain unbuilt (the Android `show_reset_code` screen, above, is built by the same wave).
+co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. With the two read routes
+wired in (`feat/297-wire-read-routes`, 2026-10-23), the waiting screen keeps the request id and the
+address in secure storage (never the password), asks for the password once after a restart and
+rebuilds the stage from `/status`; a `404 request_not_found` clears the saved id and offers a fresh
+start, and a terminal state says what happened next. A deadline that has run out — the mailbox link (plus the 10
+minutes a last-second code can still live), the device code, or, with no paired device, the 24-hour
+approval deadline — also replaces the code entry with "start a new request",
+because the API keeps the row in `requested`/`mailbox_confirmed` until the 24-hour sweep and a new
+request supersedes it; the 72-hour window never offers that, since `/request` answers
+`409 reset_already_pending` there (review of #314). Inside those 10 minutes the deadline line says when the
+link expired and that a code from a link opened before then works for 10 minutes after it was opened,
+instead of a past "valid until" (review of #314). The dashboard and Settings read `/pending`, so
+the approval prompt names the requester with `displayName` and role and no longer depends on a deep
+link; the deep link itself carries only `requestId` and looks name, role and state up in `/pending`,
+so a crafted URL cannot name the requester or pass `witness_passed` to hide Approve; a guardian's
+`403` shows nothing. Two surfaces still stay limited by the API: **`witnessKind` is `null` until the
+witness passes** — but `codeExpiresAt` is not, so a resumed `mailbox_confirmed` with no `codeExpiresAt`
+had no paired device, a co-parent is the only remaining witness, and the screen offers no code entry
+(it names the 24-hour approval deadline instead); with a code, both witnesses stay possible and the
+wording keeps both; and **no notification carries the request id to a co-parent's app yet**
+(decision 4's templates are unbuilt), so the banner and the settings entry are how they find out. The
+templates, the 24-hour reminder and the audit route remain unbuilt; the Android `show_reset_code`
+screen is built (the paragraph above).
 
 ## §4 AI Engine (`services/ai-engine`)
 
