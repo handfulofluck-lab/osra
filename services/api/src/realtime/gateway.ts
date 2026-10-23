@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
-import { isBearerSession } from "../lib/sessions.js";
+import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
 
 // The gateway needs a DEDICATED subscriber connection (psubscribe switches a connection
 // into subscriber mode); publishing reuses the shared lazy publisher via getRedis().
@@ -40,6 +40,11 @@ export function registerRealtime(app: FastifyInstance) {
     }
     if (user.role !== "parent") {
       return reply.code(403).send({ error: "parent_role_required" });
+    }
+    // Plan 2.7 F5 (Claude, #329): the ticket opens the family's live socket, so a revoked parent session
+    // is refused here too, not only by the global hook (probe Q2 with that branch removed: 200).
+    if (!(await isParentSessionLive(user as { sub?: string; jti?: string; iat?: number; sv?: number }))) {
+      return reply.code(401).send({ error: "session_revoked" });
     }
     const ticket = randomUUID();
     const familyId = user.familyId ?? "";

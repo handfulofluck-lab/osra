@@ -5,7 +5,8 @@ import { DEFAULT_BLOCKED_CATEGORIES } from "@familyshield/shared-types";
 import { blocklistRoutes } from "../src/routes/blocklists.js";
 import { rulesRoutes } from "../src/routes/rules.js";
 import { familyRoutes } from "../src/routes/family.js";
-import { authHeader, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, authHeader, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { getRedis } from "../src/redis.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -61,6 +62,28 @@ describe("blocklist pack (Feature #1)", () => {
       expect(entry.domains.every((d: string) => d === d.toLowerCase())).toBe(true);
     }
     await app.close();
+  });
+
+  // Plan 2.7 F5 (Claude, #329): requireAuth checks the parent's sessions version itself, so a logged-out
+  // session is refused even where the global server.ts hook does not run (this harness has no hook).
+  // Before F5 the same request answered 200. Mutant: delete the isParentSessionLive line -> 200.
+  it("refuses a parent token whose session was revoked (401 session_revoked), without the global hook", async () => {
+    const app = await buildApp();
+    const redis = getRedis() as unknown as MockRedis;
+    redis.get.mockImplementation(async (k: string) => (k === "auth:session-version:parent-1" ? "2" : null));
+    try {
+      const stale = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", jti: "a".repeat(32), sv: 1 });
+      const refused = await app.inject({ method: "GET", url: "/v1/blocklists", headers: { authorization: `Bearer ${stale}` } });
+      expect(refused.statusCode).toBe(401);
+      expect(refused.json()).toEqual({ error: "session_revoked" });
+
+      const current = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", jti: "b".repeat(32), sv: 2 });
+      const served = await app.inject({ method: "GET", url: "/v1/blocklists", headers: { authorization: `Bearer ${current}` } });
+      expect(served.statusCode).toBe(200);
+    } finally {
+      redis.get.mockReset();
+      await app.close();
+    }
   });
 
   it("serves the pack to a device token (requireAuth is role-agnostic)", async () => {
