@@ -112,6 +112,12 @@ jobs:
           node scripts/check-docs-links.mjs --selftest
           node scripts/check-docs-links.mjs
 
+      - name: Staging-prereqs self-test - one fixture per rule, and an environment failure is not a finding (#337)
+        # The script answers "will this clone be able to run a session?" before one spends: tfvars present,
+        # publish role resolvable, api_image tag in ECR. The fixtures cover each rule and the classifier that
+        # separates "the role does not exist" from "aws could not be asked".
+        run: node scripts/check-staging-prereqs.mjs --selftest
+
       - name: No conflict markers in any tracked file
         # A conflicted merge that is staged and committed leaves `<<<<<<<` in the tree, and no test reads
         # documentation, so every suite stays green. The self-test proves the rule fires on a real pair

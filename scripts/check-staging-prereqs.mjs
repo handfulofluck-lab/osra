@@ -20,6 +20,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * The decision, with no I/O — so the rules can be tested without an AWS account.
@@ -62,17 +63,28 @@ export function stagingProblems(observed) {
 
 /* ───────────────────────────── the CLI ───────────────────────────── */
 
-const here = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const here = fileURLToPath(new URL("..", import.meta.url)).replace(/[\/]$/, "");
 
-function aws(args) {
+/**
+ * Only "the thing does not exist" is a finding. Every other failure — a missing profile, AccessDenied,
+ * a network error, throttling — is the environment, and reporting it as a missing publish role would be
+ * the misleading-symptom failure this script exists to prevent. Pure, so the self-test covers it the
+ * same way the three rules are covered.
+ */
+export function classifyAwsFailure(detail, notFound) {
+  if (/command not found|ENOENT|not recognized/i.test(detail)) return "ENV: the aws CLI is not on PATH";
+  if (notFound.test(detail)) return "missing";
+  const line = detail.split(/\r?\n/).find((l) => l.trim()) ?? "unknown error";
+  return `ENV: aws failed: ${line.trim()}`;
+}
+
+function aws(args, notFound) {
   try {
     return execFileSync("aws", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   } catch (err) {
-    // An empty output is a finding; a failure to run the CLI at all is an environment problem.
-    const detail = `${err.stderr ?? ""}${err.message ?? ""}`;
-    if (/command not found|ENOENT|not recognized/i.test(detail)) throw new Error("ENV: the aws CLI is not on PATH");
-    if (/Unable to locate credentials|ExpiredToken|InvalidClientTokenId/.test(detail)) throw new Error("ENV: no usable AWS credentials");
-    return "";
+    const verdict = classifyAwsFailure(`${err.stderr ?? ""}${err.code === "ENOENT" ? " ENOENT" : ""}`, notFound);
+    if (verdict === "missing") return "";
+    throw new Error(verdict);
   }
 }
 
@@ -82,7 +94,7 @@ function observe() {
   const regionArgs = ["--profile", profile, "--region", region];
 
   const baseTfvars = existsSync(`${here}/infra/terraform/base/terraform.tfvars`);
-  const publishRoleArn = aws(["iam", "get-role", "--role-name", `${(process.env.TF_PROJECT ?? "osra")}-staging-publish`, ...regionArgs, "--query", "Role.Arn", "--output", "text"]);
+  const publishRoleArn = aws(["iam", "get-role", "--role-name", `${(process.env.TF_PROJECT ?? "osra")}-staging-publish`, ...regionArgs, "--query", "Role.Arn", "--output", "text"], /NoSuchEntity/);
   const envTfvars = existsSync(`${here}/infra/terraform/env/terraform.tfvars`) ? "present" : "";
   let apiImage = "";
   if (envTfvars) {
@@ -124,6 +136,17 @@ const CASES = [
     expect: ["not in ECR"],
   },
   {
+    // Finding 1 (#343 review): only "not found" is a finding; every other AWS failure is ENV (exit 2).
+    // Mutant: return "missing" for any error and this fails - a bad profile would read as a missing role.
+    name: "classifyAwsFailure: NoSuchEntity is a finding, a bad profile is the environment",
+    classify: [
+      ["An error occurred (NoSuchEntity) when calling the GetRole operation", /NoSuchEntity/, "missing"],
+      ["Could not connect to the endpoint URL: network error", /NoSuchEntity/, "ENV:"],
+      ["An error occurred (AccessDenied) when calling the GetRole operation", /NoSuchEntity/, "ENV:"],
+      ["aws: command not found", /NoSuchEntity/, "ENV: the aws CLI is not on PATH"],
+    ],
+  },
+  {
     name: "no api_image set is not a problem on its own — env may still be unconfigured",
     observed: { baseTfvars: true, publishRoleArn: "arn:aws:iam::1:role/x", apiImage: "", imageTags: [] },
     expect: [],
@@ -133,6 +156,18 @@ const CASES = [
 function runSelftest() {
   let failed = 0;
   for (const c of CASES) {
+    if (c.classify) {
+      const bad = c.classify.filter(([detail, notFound, want]) => {
+        const got = classifyAwsFailure(detail, notFound);
+        return want === "missing" ? got !== "missing" : !got.startsWith(want);
+      });
+      if (bad.length === 0) console.log(`PASS  ${c.name}`);
+      else {
+        failed++;
+        console.log(`FAIL  ${c.name}: ${bad.map(([d]) => classifyAwsFailure(d, /NoSuchEntity/)).join(" | ")}`);
+      }
+      continue;
+    }
     const problems = stagingProblems(c.observed);
     const ok = c.expect.length === 0 ? problems.length === 0 : c.expect.every((e) => problems.some((p) => p.includes(e)));
     if (ok) console.log(`PASS  ${c.name}`);
