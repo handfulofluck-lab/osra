@@ -77,6 +77,14 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
       return;
     }
   }
+  // Plan 2.7 F5 (Claude, #329): a parent's sessions-version is checked HERE, not only by the global
+  // hook in server.ts. requireAuth fronts /v1/blocklists, /v1/insights/apps and invite accept; with only
+  // the jti check above, a logged-out session reached them whenever the hook did not run first (probe Q2,
+  // with the hook's session branch removed, measured 200 on all three). Device tokens are unaffected.
+  if (user?.role === "parent" && !(await isParentSessionLive(user))) {
+    await reply.code(401).send({ error: "session_revoked" });
+    return;
+  }
 }
 
 /** preHandler for parent-only mutations: verified JWT plus role "parent" (403 otherwise). */
