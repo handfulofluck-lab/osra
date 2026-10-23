@@ -248,6 +248,13 @@ describe("the child device wake (#319)", () => {
     prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
     expect(await notifyDeviceWake("dev-2")).toEqual({ delivered: 0, clearedToken: true, skipped: null });
     expect(prismaMock.device.updateMany).toHaveBeenCalledWith({ where: { id: "dev-2", pushToken: "dead" }, data: { pushToken: null } });
+
+    // W10 (Claude's #323 review): a compare-and-clear that matches nothing must report
+    // clearedToken: false, not a hard-coded true. The row already holds a rotated token, so the
+    // `pushToken` condition finds no row.
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-3", pushToken: "dead", platform: "android" });
+    prismaMock.device.updateMany.mockResolvedValue({ count: 0 });
+    expect(await notifyDeviceWake("dev-3")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
   });
 
   it("skips cleanly with no token, no provider, or a provider that throws — never throwing itself", async () => {

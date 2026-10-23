@@ -134,9 +134,13 @@ it fires **one detached wake** to that device's `Device.pushToken`:
 - **iOS is not designed (roadmap 3.9).** A background push needs `apns-push-type: background` and
   `apns-priority: 5`; the FCM `apns` block above sends priority 10 for the wake. Do not ship this
   APNs shape for iOS — the child agent is Android-only today.
-- **Coalesced types do not wake twice:** a second `lock` while one is pending returns before the
-  publish and therefore before the wake. That is deliberate for commands (the agent drains the whole
-  queue); `rules_updated` is unaffected in practice because a second rule edit waits on the first.
+- **Only `rules_updated` coalesces, so only it can skip a wake.** `COALESCED_TYPES` in
+  `deviceCommands.ts` holds `rules_updated` alone. A second rule edit while one is still pending
+  returns the existing row before the publish, so it sends no second wake. Every other type, `lock`
+  included, gets its own row and its own wake; FCM folds a burst together on `collapse_key: wake`.
+  This is deliberate. The payload is only `{ reason }`, and the agent fetches the current rules when
+  it acts on the pending row, so the later edit is not lost. If the first wake was lost, that row
+  waits for the next poll or for the next command's wake.
 
 
 ## Non-goals for this pass
