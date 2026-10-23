@@ -3315,3 +3315,252 @@ own assumption. The cheaper order would have been to wait for his ruling on an a
 routed to him as architecture. Recorded so the next reader sees an exception that was decided rather than a rule
 that was forgotten.
 — Kimi Code (development lead)
+
+---
+
+### 2026-10-23 · Kimi Code (development lead) → the repository · roadmap 0.5: the merged branches, deleted with their SHAs recorded first
+
+Maintainer's decision at 15:31:13Z (relayed by Claude): **delete the old branches already merged into `main`**. The
+branch list was 21× the number of live lanes, and every "which branch is this?" question cost a scan. This entry is the
+restoration record: every deleted branch is listed as `name sha`, so any of them can be recreated exactly with
+`git push origin <sha>:refs/heads/<name>` even where no PR page remains to restore it from.
+
+**Recounted at the moment of deletion**, after `git fetch --prune`: **220 remote heads**, of which **212 fully merged**
+(deleted), **8 kept**. A branch counts as merged only when its tip is an ancestor of `origin/main`
+(`git merge-base --is-ancestor <sha> origin/main`), never because its PR was closed.
+
+#### Deleted (212)
+
+```
+ANTIGRAVITY c6cbd958148144dfba2d817f918829e7d54292c7
+ahmed/2.7-authz-fixes 189aef7cfb94b1093f9bc082e09c327b53e48819
+chore/changelog-fragments 4ccad24503ffb4ffaea8392a364a09a78d3e2724
+chore/p0-repo-hygiene 3bc3413ed5abb62f1ade1b38a9fa4f7effc05c9d
+chore/signing-v1-opt-in 9fc3c8c9700e03456e6d7eae194f5881aa4e2bbb
+ci/gate-author-check d9627567302cb36b62b15263f13692b0b6d0b81d
+ci/gate-carry-forward 007e306cc7436b1ffae9603e9e4d215a7b7d4c82
+ci/gate-signer-account 7a77ac5fdf4fd28554130ace5070280a32c9be4f
+ci/no-conflict-markers ae676e320f60a274787fa02b3514a758eb7a1a1e
+ci/probe-integrity-check 6dfec7987db25b3af03aada30397a9ee72c6996e
+ci/stale-base-guard ec0bbdf0536147c6ac98ea6881468c367b155120
+ci/value-guard d6f5e139fc844e3e15c8a24725db590ba3491723
+ci/verified-merge-gate 7e1236d768a6f19d8d2f87987a39722159234a95
+claude/group2-results-2026-10-19 490fa634f4c47ad8c3cb45ffbc135ebe94a49627
+claude/group3-results-2026-10-19 e02f471514f473f21f61f5c8692aaa97a155c86b
+docs/206-group1-rows 1e69c3e977182de4c8da930e04920ffbed564ce6
+docs/206-group2-3-rows e765343d77212a1681058d91f5bee9f4ae8e8921
+docs/adr-0017-0019 6b2bf03cd238f46ff1df951409a0974ca0af3303
+docs/adr-0020-0021 df59c4848649edc8e70a599e6467d315c1d49123
+docs/adr-0020-0021-amend 12d29a437eb62c3ae9dd5e8e621434854e5af082
+docs/adr-0020-guard 4774c28deb6d103c4aae330b2488d72cd960c76e
+docs/adr-0023-mfa-recovery 1d5a149d134ac61ef9c1a80370a59e892b72eedb
+docs/adr-0027-hosting aafcd89f77e5433bba352e5e9a64919014b6aeba
+docs/adr-0028-accepted 0ce04a31eac8e3105d73cb58547e6a2c0e577764
+docs/adr-0028-location-30d cd9a9f81d7ad94c50b2b111b03ee50d299d9e443
+docs/adr-0028-prod-account-v2 34caff1d0a714934a51dc7a3520e58dc0afd65bd
+docs/adr-0031-mfa-reset dde07cbacca27ac7ee674821bce79cd222f000f6
+docs/adr-region-frankfurt a0ec2f7eceff0ab9e91ca4f4e52b0218fb7dbfd0
+docs/agents-ahmed a73c4199aaf5a0e905141185196a5077ace07eaf
+docs/autoclose-trap 13faa6c8cff9e0bb34e581bbce83e86bb76a7fc1
+docs/batch-2026-10-21-eve 7451b54fc55fb2f700224b6fe03db99c48df3062
+docs/batch-log-2026-10-21 462c09df4626cab0978b2b99bfd49e88a83ccdaa
+docs/collaboration-roadmap-superseded a6c7eb404e85b8e9cf696076403a3cd8e8ea6810
+docs/discussion-log-2026-10-18 8de740516d712c3d84f6cb6b25b9c7b677fc380a
+docs/discussion-log-2026-10-20 a3d9788239f89229a39e2828701e326d8ea2f338
+docs/discussion-log-2026-10-20-pm d52fa65d355b9a92743e1df519382b460caa67de
+docs/discussion-log-2026-10-21 d7ad96449a92376ad89a5dd28e3ee6a6c7436e3c
+docs/discussion-log-sync 038b4e2ef6380ea438e7c1a383ff6dba11f78ee7
+docs/hw-s1-2026-10-18 6c6c987f7e4c51786bfe34cd1ba96c6ba140f5b6
+docs/kcl-collab-protocol aebdf7aef4639371daff3fde8e287b82a237274a
+docs/ledger-143-conditions 3b255d84840184921fcb827192fcf961bffbbef4
+docs/ledger-2026-10-19-eve 70242af13827f1a26450e4ad2b241f3cb1467f17
+docs/ledger-2026-10-19-pm 59f24a628a7866e9989864d12d7933cc8fbce619
+docs/local-env-traps d38c86d1bd108f5762eaeef447734e36520679d1
+docs/numbers-and-wording-2026-10-21 9071f8689cecf35ff1e305c8f9a181353787d437
+docs/promises-2026-10-18 b52a7e4440e50ef57978f3344d68649abf7473ab
+docs/qa-queue-sync-2026-10-18 713e2b1bba5c32948b054511ef93183f3ebeee4b
+docs/qalog-0031 616351e961f15de1cb772f5d550bad64e44f7951
+docs/qalog-2026-10-22 c6bb314be50d4927e233a6a67c3655bc79e0229b
+docs/readme-suite-counts 68bd1066dbed3e5538298606d2e0c0fe796d9e7f
+docs/roadmap-catchup 7356c0586d73fcf1683b0301a4f3edc19f663184
+docs/roadmap-status 7d27f628a66ee27c0b4677ad134d17f3dab45fc9
+docs/roadmap-truth-2026-10-18 66df2b42cfd7fecd73388750d2aab1608b5d9f88
+docs/roles-cadence-2026-10-17 1224768be7a691ef2fe020805f51fb4982fc5fe1
+docs/roles-claude-tests 7a509c539a1eae136ebeefbd4c0c7fef9a69b74f
+docs/staging-session-traps c2dc4b24f43eb9681a3a07b7b2337909c39b5c0a
+docs/technical-questions-to-claude 1aa1a65539c3675b4a85317925bc1aae0a19ec3b
+docs/testing-strategy 88902487cef2deefa07d197a331b80cdc3c796b0
+docs/tr-01-02-closed 9d6c2d38eddec02f37c96d97f51d6e472379ecca
+docs/tr-03-04-closed 6305f994f298f346f5c5bac274a6d510144cdc65
+docs/tr21-s1-pass e822865e7812fdc5cdf5d2cfdb43e52e5b8c78ec
+docs/verification-ledger-2026-10-18 ff9c06173110731c405f8bab9f45cf3ed95a5125
+docs/verification-ledger-2026-10-19 430711b6a035f048ed5b16de68a8c16cce61e231
+feat/15-device-wake a710d3010551204b28fa20b4191bdf0e5dcb427c
+feat/15-fcm-agent ca25495bec86821397e1bcba1b21724afb7eb55c
+feat/15-fcm-secret 2a8deeb21f6629f7d64dff98a28e7ed95f90a178
+feat/15-fcm-self-token b375a152f917886511d9f2645ca61852e17fc5e6
+feat/2.2-family-local-digest 733e2fd65fc6934773c15a3f70fc8744c1c1c400
+feat/2.2-timezone-source 219d3265b6a9228df960e547550d4b5794238dcc
+feat/2.6-onboarding-capture-note 1db8beab8fd67db160df2ef868c0f2ecdad6c451
+feat/206-verification-harnesses af76a121bce956a8dc74de6abd06bd9de4b246f6
+feat/23-mfa-recovery-codes 7f857dfe473d0b2b3bc4bf034767e1a8d96adacd
+feat/275-search-safety-arabic 6bb0b597eb207f56e5a75f4adb5c942cb46d6abd
+feat/276-digest-prefs-arabic 7e05bce37c7890b588ee63c264ef2b76f9e855cf
+feat/297-mfa-reset-api a52e67dd5fd96dda58e4806b6ba13df997436db3
+feat/297-mfa-reset-followups 98ded96b2166fb9daf3c659f8a419dfce838342d
+feat/297-reset-parent-ui 279df7a8db2850e818b195ba85e3ecdb08637470
+feat/297-reset-read-routes 5bb060f86e6cecaf3298238547834bd1904e6551
+feat/297-show-reset-code-android d5da5a9ce2ae8333b89a66aa7eeb44edd352b208
+feat/297-wire-read-routes e3d3b1852b14d6ceb0411277876305e0ba37dc5c
+feat/3.1-localization ef96b542f4fff8919ebdea19263865047413fc58
+feat/3.2-first-run-wizard a4080c84680c895e870effeb9586fa66534bff55
+feat/3.2-qr-pairing 8255835cd8439d17f0dbc61f075c1421ca11b59e
+feat/3.2-qr-scanner 7a39b3c34f93bf0b181d45637d7de6a1da584d4c
+feat/3.4-installed-apps 7c1651a127551787925a958ef2950ae954784db8
+feat/3.5-usage-web-trends 1a4e4f0344d402479e708d7d5012b382ba38ce10
+feat/3.6-command-delivery-status 6f360f8a0b9e3ff27c63a674355c4796288561e0
+feat/3.7-consent-screen b315e5f704a45877dbf1fc72a71ded20d72ace4c
+feat/3.8-auth-family-tokens ce3406567dccff758713bfbab7ba082c44c69162
+feat/3.8-design-system 91cbb3a1208b4ce416a456a5b7c08ee915435523
+feat/3.8-token-migration b19697a4a86aacb02f75a736b10c9a84af5b085a
+feat/3.x-digest-timezone-ui 8d3b6880d7e44f7d3127d3e98d6f3976237b9987
+feat/41-deepseek-eval-scorer f4f721ebf991bd3ac1497df4bb31a3c9538d5ac0
+feat/41-deepseek-results f9f0f8268cd6e226d65bf1c8d6d1fe370e88c978
+feat/42-dev-test-split c3df65ecb3091bd0e9c4ee4aa80402b9d090cf15
+feat/ai-eval-set b118a4d94765858153f7037d595ba2674a0db86a
+feat/android-dns-sinkhole a10329a1aff7e148cf2372ea077a515e8b8e997d
+feat/android-tamper-and-lock 846d3fefbdba827c60d6a00af6ed7f57b085e5b2
+feat/backend-command-queue b071c6f3b19d93b93efa57f4f7b0227ae74fa8ab
+feat/backend-push-email 3a4c0dd2e37ae7a72621c89a2cec02265816dd97
+feat/backend-ready-frame-redis-hygiene bb98849e67bb3a410f9026a4be6fe2d2ba3c02c3
+feat/backend-usage-model e34d1ae6abed3e140979fd2699d9f672925bfd5e
+feat/content-safety-and-ai-engine 89c1d2ea376ad92b64a33d3aabe9787097131071
+feat/ecr-publish-oidc 83e9bce05d2a03320a63299d51317a780da8fc36
+feat/mfa-recovery-ui a26d657499b02b3d8408e2d0b6ed5ea3cf28ddcd
+feat/parent-app-content-safety 261f3977b8e405ae0db96274b784fe1afbf9fb06
+feat/staging-stockholm b664fbbc488ad9b7fe538d6b3e709971ab102974
+feat/staging-terraform 93ae29540b0afca3b0a069aacbe99e3052687196
+fix/108-zone-option d8e22a420bc8e976cf6b83bbc0788a562863155c
+fix/110-f8-epoch 00780394d13bd28559c2a02fe0617d40ca5fdbfa
+fix/112-probe-429-abort e21e0116575c0b0a3feb7cb10e85dde10c40472b
+fix/117-iat-second-revocation 923a695f95519f6160072a83df7d917ea0cc6a5b
+fix/120-ws-ticket-only b8fdeabb6528909bcb0a12e6c2d65a52264529f3
+fix/126-e2e-429-abort 8071bcaa93b5de2cd5ea0875b70da73c7e0427e4
+fix/128-boot-fgs-guard 89ea651d36b56b839884429de249c431d33812b7
+fix/132-background-location-guard c94aa15365509ef4dfe70b402bb2ca810610c1bc
+fix/138-device-enrollment-permission bdcff5188d47008a8559261d7dbf96c375a19690
+fix/146-purpose-token c63b938d1234da3ae82f7df15f91b45489588b23
+fix/151-app-pin-hygiene 3b14e8f1487802f910f0ab63542e7ebdc632832d
+fix/151-probe-pin-fallback 6202229dfdab2fc8a89085c58dbc74ac3bfd4aca
+fix/158-refresh-sv 3920307e8fd19a80390091ccc86452497ceccf4a
+fix/165-bedtime-launcher-exempt 9127b4db2cd9c1e92d2d273581779c4f72a5f900
+fix/165-home-event-package 69767d83c6843042573d1457ed06fd5396e24d24
+fix/166-silence-floor-cadence e507f1c5c630b55242fa2f6a863c1e3e92d13a10
+fix/167-single-use-reset-token 218c5d852b72461c1aa8c475bfb44b912154c215
+fix/170-testonly-debug 186e2b03d968dd5a15e9c5ce6cd55b909c2e113c
+fix/175-pip-split-bypass 0646e94419314042b6c029089d80ad1fc6acc96a
+fix/176-social-test-clock 0d563d19f2cffabbee16b5e6d91ea9445ede91d6
+fix/178-gate-build-evidence 97fd2f0eeec0ac0871d7cb28ca2e003bac1a3598
+fix/181-admin-activation-sheet 72eed2dcab7c5a8c0d0b871226051d5a169d0b1d
+fix/183-recovery-login-window 5c5fc4d30ad31e6e57610e158e018eef62792826
+fix/186-knox-aware-removal c4601d99ab3adf073c21b31e4a04ad803164030a
+fix/192-prefix-exemption 646685a06157333aeaddb2d01877d81244fc3106
+fix/199-mfa-recovery-atomicity 6ed5389c09246b8371a5418d83e4ba70b98ca3bd
+fix/202-admin-receiver-rename 2f3a618893a6ebf41c61775609f5d685ca561799
+fix/217-admin-label-and-block-intent 74a8a7cdedcd1c431c673d591b5fa5375d12266d
+fix/218-followups 7189de478167f2b445addb4001fb9545b0b67c0b
+fix/221-locate-now-expiry 62e07ae74d7efd6fda5107c1e47109da931e39bf
+fix/225-tamper-alert-dedup ec401821be28c8918c0a93e1e7ad96eca883ba6e
+fix/227-guard-attempt-aggregate 057297479627ceb78acdbe25a21e02f99aa03d9c
+fix/229-comms-grant-and-history af8e0b22acb169a8b28aa565ee0917b7ab9c32e5
+fix/231-command-success-ack 97f2bb5ddc139c06f8cfc00069f8579594ba092f
+fix/233-unlock-refusal fa63a79b4fdda2ad95c0d22ff536061402e75730
+fix/238-location-retention 773dacf5b13e809da09f4bfe783653806cb29511
+fix/241-visible-screen-count 8a630366e16b47ba83d93a16948f76f4ce7fe259
+fix/243-geofence-baseline cb7d7cb8d51868be0b68b52c81e7b04071ef758a
+fix/245-drop-dead-routine-switch 809f170ea6fec2df659f7dda3a6adf1b8c303669
+fix/247-timestampless-gap d0d4cca5b3a5c0b92252813f07b5a84965c5011f
+fix/252-alerts-body-400 5f848f4d1d4d2a8fe50ebca095c45a6c55780c5b
+fix/253-location-event ad85d10494981568b059bdf1128c8845ef6627b8
+fix/260-comms-timestamps-and-watermarks a2f1fc48a3ca8525c5f1f9f4efd69b9227c089be
+fix/264-call-clock-and-sms-future 892813b0f9cd0f34b32373f411bab44c61e03142
+fix/264f1-future-sms c45bebf6d81b86b469e6ad4f8c788659f08ac79c
+fix/265-telemetry-consent-window 515c125adcaccc5d868688d6b8d4cb2ae4f5d2b9
+fix/267-usagestats-delta e4a0678b7c2c10b3ce5a4883c35419b2652b7251
+fix/276-usage-counter-milliseconds 9a4f177214dceea3e05b67ef53882e74c9beb608
+fix/284-block-screen-not-usage 7cdba24469523b02d3dbb12d94169b7fa38e10ca
+fix/286-restart-keeps-counters fa4d9d6db86cd6847b93d5f33e9d251bce983637
+fix/310-probe-integrity-multiline efa97c69c19e5c559f6438b4835e5e93a10555fe
+fix/324-docs-links d34b38211e1efa65192dd8b160ced4a6e224e813
+fix/332-repair-moves-token d14215b1e431bf9a43662ae95d6d2a3910ca327c
+fix/43-consent-revocation 0a58afda46cfd51539922758b7493a392b959621
+fix/45-youtube-restricted-mode 00d6ca3d5ce9095c63ce00d003b6c1530c54971c
+fix/87-keyguard-overlay 08c7193a2e168e3f0b94cc06099b6bb7f1061ad8
+fix/91-commslogger-guard 67f6c8fca4c1d76c12e4f0b2c3d5919b7cc228c0
+fix/93-digest-claim-and-hour 66e072db8b98b5abf139a251ef9c7d80d4eafc0d
+fix/ai-prompt-hash-cache-key e71d5824922c560045739b3ca7ff0abb4b9eb726
+fix/android-sos-tile-api34 ac9051baef9caaac8cb3d7346fefdb7c09204264
+fix/api-dockerfile 53aa042fea724b3717e9bc4246a646e3b3e7b766
+fix/api-replay-mfa-invite 553538ca9a29d61a9b05fe42f5460d7d879a8d25
+fix/audit-devices-silence cd772600b71efbcbf47083ae5f7491862d6c074d
+fix/audit-location-auth c3afda61123cc428239fccc928d129bae1125078
+fix/ci-green-and-guardrails 2762363b368ca0ed9259c627664c8f9a1a757e01
+fix/ci-syntax-and-location-fgs 6d67ae396af086c7ed3a4799945707042991aa18
+fix/comms-capture-interface e4a19834642a896df8db4864d97c0ed28bd8e6fa
+fix/desktop-pin-and-tls 57d213c770356e0a1b2ba9be8558426010d6bb59
+fix/p0-location-resilience b3508c0d581b0d47d2630baf2ae6fe5c5b28e6ad
+fix/p0-security-hardening 5cadb3ac238ba2ecb8e6bf3e4a9e76c707b18731
+fix/p1-android-hardening 447f9b86dae75df62e770a69d532afa82e97f9e9
+fix/p1-flutter-api-contracts 2e649230590b71a52700b30bfe6b002d6fec6d6d
+fix/p1-ios-shielding 45f22672ae2d1f4d2a3bfe13d9f14c5ad3b6a7a8
+fix/p1-windows-enforcement 78b75df06aeee36f4ee34900540f311a07b6719d
+fix/play-capture-notice f5bd0deceb49fd4b571d5a17fc427fc639a9bf62
+fix/play-policy-manifest 4a177a6d47d3ff06ff4a76e22c1317583ca580ce
+fix/publish-region 1cd44329f0fee0789c0052285407605e4491c2fa
+fix/qa-findings-batch 7299437c8ad1a6df984f91860c284abafcc81a4c
+fix/row3-silence bb2489e19da0c15850075701ee8cc49de00aa77f
+fix/security-targets 121d811552024d7d80cf3bdb5d0014d92cf38e27
+fix/timezone-fill-guard 9eb47c114d03c640118c153f84961543d362301e
+fix/verified-gate-yaml 36a37c46056e7794af1fc1193fe6b2e93473aced
+kimi/1.9-emergency-exempt 1c725bd2d0d0ac3e12103b59195a9d0f3550251d
+kimi/2.6-notification-listener 6256b065797b36176ef4d22462104f253880f72d
+qa/android-build-fix-33 92503583bc43f1ed617f0bb4bdc48df3b3f3566a
+qa/audit-2026-10-11 6dc9092c7e9aa1beffc525c0015cd87517a39689
+qa/cleanup-orphan-families 32e13d25b493a440b9b5e094efde8e1d4a392e5e
+qa/group1-antigravity-verification-2026-10-19 730c8aaef06b7b7b1792be891423235a6535a5dc
+qa/j7-label 4ec1b20345276e0cd2f20468226194fe94b3f204
+qa/phone-governance d4f444149934655049499e35ba3d7d76bce0a236
+qa/probe-integrity-check-2026-10-17 eaf02ed973ed05da857f24520cd2a8e54e1e24af
+qa/review-followup-2026-10-11 72278ce7115ebb45982c0b05acfdbc56baf631c4
+qa/roles-release-workstate 2ef6799a339b16aeb9314d308b727331f97ba52b
+qa/s2-keyguard-row 2f9fc0583a1430b28aab0956a2309697b2360a77
+qa/shared-api-trap-2026-10-17 9888c17793dc7ab80bb66801be5a96d4388749ba
+qa/tr01-tr02-verification-2026-10-16 3024cde6d8a767e659a1fbdb7a62ace864a329c7
+qa/tr04-comment-correction b1e28450d0e87f7c513e6b43b879208b86702d82
+qa/tr05-tr06-verification-2026-10-17 b13696a3769472b8280a7f91a72e0d0ad1f4624b
+qa/wo04-branch-prune 89c714d05bf1911a0bffbe9da64295ac2743fede
+test/23-pairing-time-proxy 4ac057d052cafd4fa612f7ed86d61cf6d62a1831
+test/236-socket-badge 4c5a6867f5008080662555c5df206bc2b37b133b
+test/297-reset-probe bcb19ee36424145fe44051edf6fb225b516e7fda
+test/merged-manifest-gate 731a0ae431ad701b057d042bfadcd706141fbe2e
+test/probe-124-gate-checks cce4d01acddb4844799b9453ece38164d20f658a
+```
+
+#### Kept (8)
+
+```
+KCL 3676a9d414b6cba6e596ef57b1b69ea228f4071b   # NOT fully merged into main — kept
+ahmed/2.7-authz-matrix f9cd5e5296d278e66fdfead72b8d5363c1cf8ebd   # open PR #329
+docs/adr-0028-prod-account df9a11feec594e10c1e96afd77ed889cfb834251   # NOT fully merged into main — kept
+docs/adr-0030-region-and-lifecycle f3a606af78dfcd8173b11adfdf80fc04139ef884   # NOT fully merged into main — kept
+docs/roles-antigravity-silent 27e5d6d3e56313f21a0e8f09a47272786888b8a0   # NOT fully merged into main — kept
+docs/staging-traps 58381f90bf7e2b446df54283bcfa9339439fc90d   # open PR #330
+main c3badbdb448c4d270293d6c4ed0ea716b9b95161   # the base branch
+qa/verify-track12-2026-10-12 c0d9d87f0b6270f5366aa30d0111481877bd25f2   # NOT fully merged into main — kept
+```
+
+**Outcome (appended after the deletion ran).** `git ls-remote --heads origin` went from **220 to 9**. The 212 branches
+in the list above were deleted in six batches with `git push origin --delete`; nothing outside the list was touched.
+The nine remaining heads are: `main`, the two open-PR heads (`docs/staging-traps` #330, `ahmed/2.7-authz-matrix` #329),
+this record's own branch (`docs/branch-cleanup-2026-10-23`), and the five **unmerged** branches named in the kept set
+above. The deletion is restorable line by line: `git push origin <sha>:refs/heads/<name>`.
