@@ -90,20 +90,29 @@ export class FcmProvider implements PushProvider {
 
   /** The FCM v1 message body for one token. Exported shape so tests can assert it. */
   static buildMessage(token: string, message: PushMessage) {
+    const collapse = message.threadId;
     return {
       message: {
         token,
-        notification: { title: message.title, body: message.body },
+        // A data-only message has no `notification` block at all: Android would otherwise raise a
+        // system notification for a wake-up, and the device would be showing command *metadata*.
+        ...(message.dataOnly ? {} : { notification: { title: message.title, body: message.body } }),
         data: message.data,
         android: {
           priority: message.priority === "high" ? "HIGH" : "NORMAL",
-          ...(message.threadId ? { collapse_key: message.threadId } : {}),
-          notification: { channel_id: "osra_alerts", ...(message.threadId ? { tag: message.threadId } : {}) },
+          ...(collapse ? { collapse_key: collapse } : {}),
+          ...(message.dataOnly
+            ? {}
+            : { notification: { channel_id: "osra_alerts", ...(collapse ? { tag: collapse } : {}) } }),
         },
         // Flutter parent app on iOS registers through FCM too; keep APNs headers coherent.
         apns: {
           headers: { "apns-priority": message.priority === "high" ? "10" : "5" },
-          payload: { aps: { sound: "default", ...(message.threadId ? { "thread-id": message.threadId } : {}) } },
+          payload: {
+            aps: message.dataOnly
+              ? { "content-available": 1 }
+              : { sound: "default", ...(collapse ? { "thread-id": collapse } : {}) },
+          },
         },
       },
     };

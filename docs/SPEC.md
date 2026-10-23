@@ -104,6 +104,27 @@ location window. Migration `0022` scrubs the coordinates written before #242.
 `publishFamilyEvent(familyId, {type:"alert", payload})` → also enqueue push
 (FCM for Android parent app, APNs for iOS).
 
+## Device command wake (§319, roadmap 1.5)
+
+`enqueueDeviceCommand` is the single funnel every command producer goes through (controls, rules,
+auth, devices). After the row is committed and the Redis `device:<id>:commands` publish is attempted,
+it fires **one detached wake** to that device's `Device.pushToken`:
+
+- payload `{ type: "wake" }` and nothing else — no command type, payload or ids. Google never sees
+  command content (`show_reset_code` carries a parent's reset code; `locate_now` carries the timing of
+  a family's day), and a stale or misdirected token leaks nothing;
+- **data-only**: no `notification` block, so the OS displays nothing; `android.priority: "HIGH"` and
+  `collapse_key: "wake"`, so ten commands in a second cost one wake;
+- the agent answers by draining `GET /v1/devices/:id/commands` on its own authenticated channel, so
+  poll and push share one code path and one set of idempotent acks (`apps/child-android`,
+  `PushWakeHandler`);
+- **fire-and-forget**: the promise is detached, so a slow or failed Google round trip never delays or
+  fails a parent's command;
+- a token the provider reports invalid (`UNREGISTERED` / 404 / `INVALID_ARGUMENT`) is cleared from the
+  row — the only place a device token is ever removed;
+- with no provider configured (no `FCM_SERVICE_ACCOUNT_JSON`/`APNS_*`, i.e. push disabled) the send is
+  skipped with one warn per process. Nothing is sent when push is disabled.
+
 ## Non-goals for this pass
 
 - Real Twilio/Stripe integration (stub interfaces only).

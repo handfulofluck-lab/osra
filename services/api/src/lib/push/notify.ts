@@ -140,3 +140,106 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     return outcome;
   }
 }
+
+/* ───────────────────────── the child device wake (#319) ───────────────────────── */
+
+/**
+ * A push to a child device is a **wake-up only** (Claude's Decision 2, issue #319, 2026-10-23). The
+ * message carries no command type, no payload and no ids — just "there is something to fetch" — and
+ * the agent then drains `GET /v1/devices/:id/commands` over its own authenticated channel, acking as
+ * it always has.
+ *
+ * **Why the push carries nothing:** Google (and anyone holding a stale or misdirected token) must not
+ * see command content. `show_reset_code` carries a parent's reset code; a `locate_now` request carries
+ * the timing of a family's day. A wake-up leaks neither, and the same idempotent ack path serves both
+ * poll and push, so there is only one way a command ever takes effect.
+ *
+ * The literal is `{ type: "wake" }` — a fixed word, not a command type. The client asserts that it
+ * reads nothing from the data map (apps/child-android, `PushWakeHandlerTest`), so this value can
+ * change without touching the agent; it exists so an operator reading logs or a captured packet can
+ * tell a wake from an alert.
+ */
+export const DEVICE_WAKE_DATA: Readonly<Record<string, string>> = Object.freeze({ type: "wake" });
+
+/** The one message shape a child device may receive. Exported so a test can assert it has no command fields. */
+export function buildDeviceWakeMessage(): PushMessage {
+  return {
+    data: { ...DEVICE_WAKE_DATA },
+    // Collapse key: ten commands in a second must cost one wake-up, because the agent drains the
+    // whole queue on the first one. Nothing about the command is in the key — it is the word "wake".
+    threadId: "wake",
+    priority: "high",
+    dataOnly: true,
+  };
+}
+
+export interface WakeOutcome {
+  delivered: number;
+  clearedToken: boolean;
+  skipped: "no_providers" | "no_token" | "unsupported_platform" | null;
+}
+
+/**
+ * Wake one child device. Never throws: the command row is already committed and published when this
+ * runs, and a push outage must not fail a parent's command.
+ *
+ * A token the provider reports as dead is cleared from the row (`UNREGISTERED` / 404 / invalid), which
+ * is the only place a device token is ever removed — the agent re-registers on its next `onNewToken`
+ * or poll tick.
+ */
+export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
+  const outcome: WakeOutcome = { delivered: 0, clearedToken: false, skipped: null };
+  try {
+    const providers = getPushProviders();
+    if (providers.size === 0) {
+      if (!warnedUnconfigured) {
+        console.warn("[push] no provider configured (set FCM_SERVICE_ACCOUNT_JSON or APNS_*); device wake disabled");
+        warnedUnconfigured = true;
+      }
+      return { ...outcome, skipped: "no_providers" };
+    }
+    const device = await prisma.device.findUnique({ where: { id: deviceId }, select: { id: true, pushToken: true, platform: true } });
+    if (!device?.pushToken) return { ...outcome, skipped: "no_token" };
+    const provider = providerFor(device.platform as PushPlatform, providers);
+    if (!provider) return { ...outcome, skipped: "unsupported_platform" };
+
+    const result = await provider.send(device.pushToken, buildDeviceWakeMessage());
+    if (result.ok) return { ...outcome, delivered: 1 };
+    if (result.invalidToken) {
+      await prisma.device.update({ where: { id: deviceId }, data: { pushToken: null } });
+      return { ...outcome, clearedToken: true };
+    }
+    console.warn(`[push] device wake failed device=${deviceId} reason=${result.reason}`);
+    return outcome;
+  } catch (err) {
+    console.error("[push] notifyDeviceWake failed", err);
+    return outcome;
+  }
+}
+
+/**
+ * Test seam: swap the wake sender so a command-path test can assert the fan-out without a provider.
+ * Production leaves it as [notifyDeviceWake].
+ */
+let deviceWakeSender: (deviceId: string) => Promise<WakeOutcome> = notifyDeviceWake;
+
+export function setDeviceWakeSender(fn: ((deviceId: string) => Promise<WakeOutcome>) | null): void {
+  deviceWakeSender = fn ?? notifyDeviceWake;
+}
+
+export function getDeviceWakeSender(): (deviceId: string) => Promise<WakeOutcome> {
+  return deviceWakeSender;
+}
+
+/**
+ * Fire-and-forget wake from a synchronous-ish path. The invocation happens **synchronously** (so a
+ * test can observe it), the promise is detached (so a slow Google round trip never delays a parent's
+ * command), and a rejection is swallowed because `notifyDeviceWake` already logs its own failures.
+ */
+export function wakeDeviceDetached(deviceId: string): void {
+  try {
+    void deviceWakeSender(deviceId).catch(() => undefined);
+  } catch {
+    /* a sender that throws synchronously is not allowed to fail the caller */
+  }
+}
