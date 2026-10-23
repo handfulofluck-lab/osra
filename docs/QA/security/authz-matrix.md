@@ -207,11 +207,19 @@ whose route relies on the hook. Only the probe, against a live server, can.
 | Wrong purpose | `isBearerSession` in each guard (`lib/sessions.ts:79-81`) | `POST /v1/location/ping` (p:G18; t:location-auth.test.ts:29), `GET /v1/rules/:childId` (t:sessions-and-roles.test.ts:164), `GET /v1/family/me` (p:O7), `POST /v1/ws-ticket` (t:realtime.test.ts:135) | **GAP** on the rest. The auth routes are in §3 |
 | None | each guard's verify → 401 | `GET /v1/alerts` (t:alerts.test.ts:462), `GET /v1/devices` (t:devices.test.ts:258), `GET /v1/family/children/:id` (t:family.test.ts:162), `GET /v1/family/me` (t:family.test.ts:223), `GET /v1/rules/:childId` and `PUT` (t:rules.test.ts:267), the three controls in t:controls.test.ts:291, `GET /v1/reports/summary` (t:reports.test.ts:120), `GET /v1/reports/activity` (t:social.test.ts:357), `GET /v1/social/events` (t:social.test.ts:249), `GET /v1/digests/prefs` (t:reports.test.ts:339), `POST /v1/digests/send-now` (t:reports.test.ts:376), `POST /v1/me/push-token`, `DELETE` (t:email.test.ts:326), `GET /v1/blocklists` (t:blocklists.test.ts:38), `GET /v1/insights/apps` (t:review-fixes.test.ts:101), `GET /v1/devices/:id/apps` (t:device-apps.test.ts:246), `GET /v1/ws` (t:realtime.test.ts:147) | **GAP** on the rest |
 
-**Plan for these five columns:** five probe checks, one per column, each looping over every JWT route in §1.
-They'd be named for 2.7 and live in a new section after `O`. Each check prints the route that broke, so a
-regression names its route instead of hiding inside a count. They need `JWT_SECRET` in the probe
-environment to mint expired and purpose tokens. Without it they report `target`, the way G18 does today
-(`qa-probe.mjs:707`).
+**Closed by probe section Q** (`services/api/scripts/qa-probe.mjs`, "Q. plan 2.7 authorization matrix").
+Each check walks one column across all 63 JWT routes of §1, and names every route whose answer is wrong:
+
+| Check | Column | Caller | Expected on every route |
+|---|---|---|---|
+| p:Q1 | Revoked (device) | `d1`, unpaired at G8 | `401 device_revoked` |
+| p:Q2 | Revoked session | owner A's token from before N2's `logout-all` | `401 session_revoked` |
+| p:Q3 | Expired | owner A's claims, `exp` a minute ago (needs `JWT_SECRET`) | `401` |
+| p:Q4 | Wrong purpose | a `password_reset` token for owner A (needs `JWT_SECRET`) | `401` |
+| p:Q5 | None | no `Authorization` header | `401` |
+
+So every cell in these five columns is now covered, live, by one check per column. Without `JWT_SECRET` in
+the probe environment, Q3 and Q4 report `target`, the way G18 does.
 
 ### Per-route cells: owner, co-parent, guardian, other family, own device, sibling device, consent
 
@@ -280,11 +288,40 @@ permission → 2xx" half is listed separately where a test has it.
 - **`POST /v1/ws-ticket`**: Ow t:realtime.test.ts:76, p:L1 · Own dev. `403r` p:G6b · GAP: Co, Gu.
 - **`GET /v1/ws`**: ticket flow t:realtime.test.ts:76, p:L1, p:L4, p:L5, p:L9 · `?token=` refused t:realtime.test.ts:117, :124, p:L6, p:L7, p:L7b.
 
-**Count:** across the seven per-route columns, the largest GAP class is co-parent and guardian. Most routes
-assert only the owner and the other family, so a dropped `requirePermission` or `requireOwner` on most
-routes is caught by p:N6–N7 and the few role tests above, or not at all. The 2.7 probe section will add
-one table-driven check per role: a co-parent and a guardian **with no permissions** against every route
-whose cell is `403p`/`403o`, and **with** the permission against the same routes for the `2xx` half.
+**Closed by probe section Q, for the columns above:**
+
+- **p:Q6 and p:Q6b:** a guardian and a co-parent invited with **no permissions** are refused on all 25
+  `403p`/`403o` routes, plus the six device-only routes. The refusal is `403 permission_required`,
+  `owner_role_required` or `device_role_required`. That closes the Co and Gu refusal cells listed as GAP
+  above. The "with the permission → 2xx" half is still asserted only by p:N7 and the unit tests cited
+  above. Adding it would need logins the probe can't afford (the `/v1/auth` bucket is 20 a minute, and the
+  probe already uses it up).
+- **p:Q7:** a live device token is refused with `403 parent_role_required` on all 48 parent-only routes.
+  That closes the Own dev. and Sib. dev. cells marked GAP on those routes.
+- **p:Q8:** another family's owner is refused with `403 forbidden` on 16 family-scoped routes that name no
+  permission, using this family's real ids. That closes the Other fam. cells marked GAP above.
+
+**The mutant, measured** (`main@7b8e404`, local stack). With six guards removed at once, the probe exits 1.
+Each Q check names the route whose guard was removed:
+
+| Guard removed | Caught by |
+|---|---|
+| the device branch of the global hook, `server.ts:77-82` | Q1: `GET /v1/alerts -> 403 parent_role_required`, `GET /v1/family/me -> 403 …` and every other row that hook alone protected |
+| the session branch of the hook, `server.ts:84-86` | Q2: `GET /v1/family/export -> 200`, `GET /v1/me/push-tokens -> 200`, `GET /v1/blocklists -> 200` and more |
+| the whole preHandler of `GET /v1/me/push-tokens` | Q3: `-> 500`, Q4: `-> 200`, Q5: `-> 500` |
+| `requirePermission("location")` on `POST /v1/location/geofences` | Q6 and Q6b: `-> 404 not_found` instead of 403 |
+| `requireParent` → `requireAuth` on `GET /v1/family/export` | Q7: `-> 200` for a device token |
+| `requireFamily` on `GET /v1/family/children/:id/consent` | Q8: `-> 200` for another family's owner |
+
+With the guards restored: 178 passed, 0 failed, 0 x 429. The section paces itself on the limiter's
+`x-ratelimit-remaining` and `x-ratelimit-reset` headers. That's about 430 requests, and the whole probe
+went from about 80 s to about 3 minutes.
+
+**Learned from the Q2 mutant:** `requireAuth` (`middleware/requireFamily.ts:59-80`) checks a revoked `jti`,
+not the session version. On `GET /v1/blocklists`, `GET /v1/insights/apps` and
+`POST /v1/family/invites/:id/accept`, only the global hook stops a logged-out session. Today that's correct,
+because the hook runs on every route. But a refactor that drops or reorders the hook would reopen exactly
+those three routes, and only Q2 would notice.
 
 ## 2. HMAC-signed device and service routes
 

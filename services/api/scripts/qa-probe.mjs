@@ -1460,6 +1460,232 @@ const nwAfter = await call("POST", "/v1/auth/mfa/reset/request", { body: { email
 check("O23 a family with no paired device and no other owner/co-parent is refused 409 no_witness, and the refusals store nothing (after three refusals and a newly paired device, the next request is an ordinary 200, not 429)", nwVerify.status === 200 && nwRefusals.every((r) => r.status === 409 && r.data?.error === "no_witness" && r.data?.requestId === undefined) && !!nwClaim.data?.token && nwAfter.status === 200 && !!nwAfter.data?.requestId, `verify=${nwVerify.status} refusals=${nwRefusals.map((r) => `${r.status}/${r.data?.error}`).join(",")} login=${nwLogin.status} claim=${nwClaim.status} after=${nwAfter.status}/${nwAfter.data?.error ?? "ok"}`);
 
 
+// ── Q. plan 2.7 — the authorization matrix, column by column ────────────────
+// docs/QA/security/authz-matrix.md §1a lists the cells no test or check pinned. Each check below walks
+// one column of that matrix across every JWT route, so a route that loses (or never had) its guard is
+// named in the failure instead of averaging into a count. The ids are real where the route reads, and
+// a placeholder where it writes: every expected answer here is decided before the resource is loaded,
+// so a placeholder cannot make a check pass, and a regression cannot mutate real rows.
+// Pacing: about 430 requests, so this section reads the global limiter's own headers and waits for the
+// window instead of tripping the probe's 429 abort (200/min per address, server.ts:66).
+console.log("\n── Q. plan 2.7 authorization matrix ──");
+{
+  const Z = "00000000-0000-0000-0000-000000000000";
+  const qState = { remaining: Infinity, resetAt: 0 };
+  /** `call` with pacing: same request shape, but it waits out the limiter window when it is nearly spent. */
+  async function qcall(method, path, { token, body } = {}) {
+    if (qState.remaining <= 3) await new Promise((r) => setTimeout(r, Math.max(0, qState.resetAt - Date.now()) + 300));
+    const raw = body === undefined ? undefined : JSON.stringify(body);
+    const res = await fetch(`${API}${path}`, {
+      method,
+      headers: { ...(raw !== undefined ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: raw,
+    });
+    const remaining = Number(res.headers.get("x-ratelimit-remaining"));
+    const reset = Number(res.headers.get("x-ratelimit-reset"));
+    if (Number.isFinite(remaining)) qState.remaining = remaining;
+    if (Number.isFinite(reset)) qState.resetAt = Date.now() + reset * 1000;
+    if (res.status === 429) {
+      count429(`Q ${method} ${path}`);
+      qState.remaining = 0;
+      return qcall(method, path, { token, body });
+    }
+    let data = null;
+    try { data = await res.json(); } catch { /* empty body */ }
+    return { status: res.status, data };
+  }
+  /** Run a table of [method, path, body, expected status, expected error|null]; return the mismatches. */
+  async function walk(token, rows) {
+    const bad = [];
+    for (const [method, path, body, status, error] of rows) {
+      const r = await qcall(method, path, { token, body });
+      if (r.status !== status || (error && r.data?.error !== error)) bad.push(`${method} ${path} -> ${r.status} ${r.data?.error ?? ""}`.trim());
+    }
+    return bad;
+  }
+  const kid = kidA2;
+  const dev = d2.deviceId;
+  // Every JWT route in matrix §1 (63): health, pair/claim, the ticket-only GET /v1/ws, the HMAC-only
+  // ingest routes and the /v1/auth routes (matrix §3) are the only ones left out.
+  const jwtRoutes = [
+    ["GET", "/v1/alerts"], ["POST", `/v1/alerts/${Z}/ack`, {}],
+    ["POST", "/v1/devices/register", { childId: Z, platform: "android", model: "q", osVersion: "1" }],
+    ["POST", "/v1/devices/pair", { childId: Z }],
+    ["GET", "/v1/devices"], ["GET", `/v1/devices/${dev}`], ["GET", `/v1/devices/${dev}/apps`],
+    ["POST", `/v1/devices/${Z}/apps`, { version: 1, apps: [] }],
+    ["POST", `/v1/devices/${Z}/command`, { command: "unlock" }],
+    ["GET", `/v1/devices/${dev}/commands`], ["POST", `/v1/devices/${Z}/commands/${Z}/ack`, { status: "acked" }],
+    ["GET", `/v1/devices/${dev}/commands/history`],
+    ["POST", `/v1/devices/${Z}/push-token`, { token: "q".repeat(24) }],
+    ["POST", `/v1/devices/${Z}/telemetry`, { batteryPct: 50 }], ["POST", `/v1/devices/${Z}/activity`, { events: [] }],
+    ["DELETE", `/v1/devices/${Z}`],
+    ["GET", "/v1/family/me"], ["PATCH", "/v1/family/me", { timezone: "UTC" }],
+    ["POST", "/v1/family/children", { displayName: "q", birthYear: 2015 }],
+    ["GET", `/v1/family/children/${kid}`], ["PATCH", `/v1/family/children/${Z}`, { displayName: "q" }],
+    ["DELETE", `/v1/family/children/${Z}`],
+    ["POST", `/v1/family/children/${Z}/consent`, { method: "sms_plus", jurisdiction: "US" }],
+    ["GET", `/v1/family/children/${kid}/consent`], ["POST", `/v1/family/children/${Z}/consent/revoke`, {}],
+    ["GET", "/v1/family/export"],
+    ["POST", "/v1/family/invites", { email: "q@example.invalid", role: "guardian", permissions: [] }],
+    ["GET", "/v1/family/invites"], ["POST", `/v1/family/invites/${Z}/accept`, {}], ["DELETE", `/v1/family/invites/${Z}`],
+    ["POST", "/v1/location/ping", { lat: 1, lng: 2, accuracyM: 5 }],
+    ["GET", `/v1/location/${kid}/latest`], ["GET", `/v1/location/${kid}/history`], ["GET", `/v1/location/geofences/${kid}`],
+    ["POST", "/v1/location/geofences", { childId: Z, label: "q", lat: 1, lng: 2, radiusM: 100 }],
+    ["DELETE", `/v1/location/geofences/${Z}`],
+    ["GET", `/v1/rules/${kid}`], ["PUT", `/v1/rules/${Z}`, {}], ["PATCH", `/v1/rules/${Z}`, {}],
+    ...["pause-internet", "pause", "resume-internet", "resume", "wind-down"].map((a) => ["POST", `/v1/controls/children/${Z}/${a}`, { minutes: 5 }]),
+    ["POST", `/v1/controls/children/${Z}/bonus`, { minutes: 5 }], ["GET", `/v1/controls/children/${kid}/status`],
+    ["GET", `/v1/reports/activity?childId=${kid}`], ["GET", `/v1/reports/summary?childId=${kid}`],
+    ["GET", `/v1/reports/usage?childId=${kid}&days=1`], ["GET", `/v1/reports/web?childId=${kid}&days=1`],
+    ["GET", `/v1/reports/wellbeing/${kid}`],
+    ["GET", `/v1/social/events?childId=${kid}`], ["GET", `/v1/content/searches?childId=${kid}`],
+    ["GET", "/v1/digests/prefs"], ["PUT", "/v1/digests/prefs", { dailyEmail: false, weeklyEmail: false, pushEnabled: false, emails: ["q@example.invalid"] }],
+    ["POST", "/v1/digests/send-now", {}],
+    ["POST", "/v1/me/push-token", { token: "q".repeat(24), platform: "android" }], ["DELETE", "/v1/me/push-token", { token: "q".repeat(24) }],
+    ["GET", "/v1/me/push-tokens"],
+    ["GET", "/v1/blocklists"], ["GET", "/v1/insights/apps?packageId=com.spotify.music"],
+    ["POST", "/v1/ws-ticket"],
+  ];
+  const as = (status, error) => jwtRoutes.map(([m, p, b]) => [m, p, b, status, error]);
+
+  // Q1: a revoked device token (d1, unpaired at G8) is 401 device_revoked on every route — the global
+  // hook (server.ts:77-82) is the only guard on most of them, and no unit test reaches it.
+  // Mutant: drop the device branch of the server.ts hook -> most rows answer 403/200/404 and are named.
+  if (d1.token) {
+    const bad = await walk(d1.token, as(401, "device_revoked"));
+    check("Q1 a revoked device token is refused on every JWT route (401 device_revoked)", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+  } else {
+    target("Q1 a revoked device token is refused on every JWT route", "the G-section device was not paired, so there is no revoked device token");
+  }
+
+  // Q2: tokenA was minted before N2's logout-all for account A, so its session is revoked. Every route
+  // must say so, including the three requireAuth routes, where the hook (server.ts:84-86) is the only
+  // `sv` check (requireAuth reads the jti only). Mutant: drop the parent branch of the hook -> the
+  // requireAuth rows answer 200 and are named.
+  {
+    const bad = await walk(tokenA, as(401, "session_revoked"));
+    check("Q2 a revoked parent session is refused on every JWT route (401 session_revoked)", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+  }
+
+  // Q3/Q4 mint tokens, so they need the API's signing secret (as G18/G19 do).
+  if (process.env.JWT_SECRET) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const aClaims = JSON.parse(Buffer.from(tokenA.split(".")[1], "base64url").toString());
+    // Q3: the same claims as a real owner token, expired a minute ago. Mutant: verify with
+    // `ignoreExpiration` in any guard -> that route answers 200/403 and is named.
+    const expired = signHs256Jwt({ ...aClaims, iat: nowSec - 3600, exp: nowSec - 60 }, process.env.JWT_SECRET);
+    const badExp = await walk(expired, as(401, null));
+    check("Q3 an expired parent token is refused on every JWT route (401)", badExp.length === 0, badExp.slice(0, 8).join("; ") + (badExp.length > 8 ? ` … +${badExp.length - 8}` : ""));
+    // Q4: a password-reset token for the same parent, the shape /reset/request mints (no role, no
+    // family). #146 was this token reaching /mfa/enroll. Mutant: drop isBearerSession from a guard ->
+    // its routes are named.
+    const purpose = signHs256Jwt({ sub: aClaims.sub, purpose: "password_reset", jti: "q".repeat(32), iat: nowSec, exp: nowSec + 900 }, process.env.JWT_SECRET);
+    const badPurpose = await walk(purpose, as(401, null));
+    check("Q4 a password-reset purpose token is refused on every JWT route (401)", badPurpose.length === 0, badPurpose.slice(0, 8).join("; ") + (badPurpose.length > 8 ? ` … +${badPurpose.length - 8}` : ""));
+  } else {
+    target("Q3 an expired parent token is refused on every JWT route", "JWT_SECRET not present in the probe environment, so an expired token cannot be minted here");
+    target("Q4 a password-reset purpose token is refused on every JWT route", "JWT_SECRET not present in the probe environment, so a purpose token cannot be minted here");
+  }
+
+  // Q5: no token at all. Mutant: delete a route's preHandler -> that route answers 200/400/404.
+  {
+    const bad = await walk(undefined, as(401, null));
+    check("Q5 a request with no token is refused on every JWT route (401)", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+  }
+
+  // Q6: a guardian and a co-parent invited with NO permissions (the O-section family). Every route that
+  // names a permission or the owner refuses them before any row is read; the device-only routes refuse
+  // them as parents. Mutant: drop any one requirePermission/requireOwner/requireDeviceRole -> its row
+  // is named. The device-only rows use the family's own device, because requireFamily runs first there.
+  const roleRows = [
+    ["POST", `/v1/alerts/${Z}/ack`, {}, 403, "permission_required"],
+    ["POST", "/v1/devices/register", { childId: Z, platform: "android", model: "q", osVersion: "1" }, 403, "permission_required"],
+    ["POST", "/v1/devices/pair", { childId: Z }, 403, "permission_required"],
+    ["GET", `/v1/devices/${Z}/apps`, undefined, 403, "permission_required"],
+    ["POST", `/v1/devices/${Z}/command`, { command: "unlock" }, 403, "permission_required"],
+    ["DELETE", `/v1/devices/${Z}`, undefined, 403, "permission_required"],
+    ["PATCH", `/v1/family/children/${Z}`, { displayName: "q" }, 403, "permission_required"],
+    ["POST", "/v1/location/geofences", { childId: Z, label: "q", lat: 1, lng: 2, radiusM: 100 }, 403, "permission_required"],
+    ["DELETE", `/v1/location/geofences/${Z}`, undefined, 403, "permission_required"],
+    ["PUT", `/v1/rules/${Z}`, {}, 403, "permission_required"], ["PATCH", `/v1/rules/${Z}`, {}, 403, "permission_required"],
+    ...["pause-internet", "pause", "resume-internet", "resume", "bonus", "wind-down"].map((a) => ["POST", `/v1/controls/children/${Z}/${a}`, { minutes: 5 }, 403, "permission_required"]),
+    ["GET", `/v1/controls/children/${Z}/status`, undefined, 403, "permission_required"],
+    ["PATCH", "/v1/family/me", { timezone: "UTC" }, 403, "owner_role_required"],
+    ["POST", "/v1/family/children", { displayName: "q", birthYear: 2015 }, 403, "owner_role_required"],
+    ["DELETE", `/v1/family/children/${Z}`, undefined, 403, "owner_role_required"],
+    ["POST", `/v1/family/children/${Z}/consent`, { method: "sms_plus", jurisdiction: "US" }, 403, "owner_role_required"],
+    ["POST", `/v1/family/children/${Z}/consent/revoke`, {}, 403, "owner_role_required"],
+    ["POST", "/v1/family/invites", { email: "q@example.invalid", role: "guardian", permissions: [] }, 403, "owner_role_required"],
+    ["DELETE", `/v1/family/invites/${Z}`, undefined, 403, "owner_role_required"],
+    ...(mrDeviceId ? [
+      ["POST", `/v1/devices/${mrDeviceId}/telemetry`, { batteryPct: 50 }, 403, "device_role_required"],
+      ["POST", `/v1/devices/${mrDeviceId}/activity`, { events: [] }, 403, "device_role_required"],
+      ["POST", `/v1/devices/${mrDeviceId}/apps`, { version: 1, apps: [] }, 403, "device_role_required"],
+      ["POST", `/v1/devices/${mrDeviceId}/push-token`, { token: "q".repeat(24) }, 403, "device_role_required"],
+      ["GET", `/v1/devices/${mrDeviceId}/commands`, undefined, 403, "device_role_required"],
+    ] : []),
+    ["POST", "/v1/location/ping", { lat: 1, lng: 2, accuracyM: 5 }, 403, "device_role_required"],
+  ];
+  /** Walk roleRows with one no-permission role; null when that role has no live session here. */
+  async function roleWalk(tok) {
+    const live = tok ? (await qcall("GET", "/v1/family/me", { token: tok })).status === 200 : false;
+    return live ? walk(tok, roleRows) : null;
+  }
+  const badGuardian = await roleWalk(mrGuardianToken);
+  if (badGuardian) {
+    check("Q6 a guardian with no permissions is refused on every permission-, owner- and device-only route", badGuardian.length === 0, badGuardian.slice(0, 8).join("; ") + (badGuardian.length > 8 ? ` … +${badGuardian.length - 8}` : ""));
+  } else {
+    target("Q6 a guardian with no permissions is refused on every permission-, owner- and device-only route", "the O-section guardian has no live session here");
+  }
+  const badCoParent = await roleWalk(mrCoParentToken);
+  if (badCoParent) {
+    check("Q6b a co-parent with no permissions is refused on every permission-, owner- and device-only route", badCoParent.length === 0, badCoParent.slice(0, 8).join("; ") + (badCoParent.length > 8 ? ` … +${badCoParent.length - 8}` : ""));
+  } else {
+    target("Q6b a co-parent with no permissions is refused on every permission-, owner- and device-only route", "the O-section co-parent has no live session here");
+  }
+
+  // Q7: a live device token on every parent-only route is 403 parent_role_required (requireParent, or
+  // the ws-ticket role check). Mutant: requireParent that skips the role test -> the reads answer 200.
+  if (d2.token) {
+    // The routes a device token may call (matrix §1, own-device column not 403r); every other JWT route
+    // is parent-only. Listed by hand, so a route added later without a decision shows up here as a diff.
+    const deviceAllowed = new Set([
+      `GET /v1/devices/${dev}`, `POST /v1/devices/${Z}/apps`, `GET /v1/devices/${dev}/commands`,
+      `POST /v1/devices/${Z}/commands/${Z}/ack`, `POST /v1/devices/${Z}/push-token`,
+      `POST /v1/devices/${Z}/telemetry`, `POST /v1/devices/${Z}/activity`,
+      `POST /v1/family/invites/${Z}/accept`,
+      "POST /v1/location/ping", `GET /v1/location/${kid}/latest`, `GET /v1/location/${kid}/history`,
+      `GET /v1/location/geofences/${kid}`, `GET /v1/rules/${kid}`,
+      "GET /v1/blocklists", "GET /v1/insights/apps?packageId=com.spotify.music",
+    ]);
+    const parentOnly = jwtRoutes.filter(([m, p]) => !deviceAllowed.has(`${m} ${p}`));
+    const bad = await walk(d2.token, parentOnly.map(([m, p, b]) => [m, p, b, 403, "parent_role_required"]));
+    check("Q7 a device token is refused on every parent-only route (403 parent_role_required)", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+  } else {
+    target("Q7 a device token is refused on every parent-only route", "the G-section device was not paired");
+  }
+
+  // Q8: the owner of ANOTHER family (the no-witness family above) against this family's real ids, on
+  // the family-scoped routes that name no permission — reads, plus the safe-direction writes. Mutant:
+  // drop requireFamily from any of them -> it answers 200 and is named.
+  if (nwToken) {
+    const bad = await walk(nwToken, [
+      ["GET", `/v1/devices/${dev}`], ["GET", `/v1/devices/${dev}/commands/history`],
+      ["GET", `/v1/family/children/${kid}`], ["GET", `/v1/family/children/${kid}/consent`],
+      ["GET", `/v1/location/${kid}/latest`], ["GET", `/v1/location/${kid}/history`], ["GET", `/v1/location/geofences/${kid}`],
+      ["GET", `/v1/rules/${kid}`], ["GET", `/v1/controls/children/${kid}/status`],
+      ["GET", `/v1/reports/activity?childId=${kid}`], ["GET", `/v1/reports/summary?childId=${kid}`],
+      ["GET", `/v1/reports/usage?childId=${kid}&days=1`], ["GET", `/v1/reports/web?childId=${kid}&days=1`],
+      ["GET", `/v1/reports/wellbeing/${kid}`],
+      ["POST", `/v1/devices/${dev}/command`, { command: "unlock" }],
+      ["POST", `/v1/controls/children/${kid}/resume`, {}],
+    ].map(([m, p, b]) => [m, p, b, 403, "forbidden"]));
+    check("Q8 another family's owner is refused on this family's scoped routes (403 forbidden)", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+  } else {
+    target("Q8 another family's owner is refused on this family's scoped routes", "the no-witness family above has no live session");
+  }
+}
+
 console.log("\n── H. surface ──");
 const unknownRoute = await call("GET", `/v1/does-not-exist-${stamp}`);
 check("H1 unknown route -> 404 JSON", unknownRoute.status === 404, `got ${unknownRoute.status}`);
