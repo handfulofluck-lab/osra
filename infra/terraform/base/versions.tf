@@ -19,7 +19,7 @@ terraform {
   #
   # This region changed on 2026-10-22 (ADR-0030: staging moved to Stockholm because the UAE region
   # is damaged), so this names a new bucket. The old one,
-  # osra-terraform-state-222207908538-me-central-1, still exists and is left to be deleted together
+  # osra-terraform-state-<account-id>-me-central-1, still exists and is left to be deleted together
   # with that base stack — pointing here at it again would read the abandoned stack's state.
   backend "s3" {
     bucket       = "osra-terraform-state-222207908538-eu-north-1"

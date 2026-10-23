@@ -111,11 +111,11 @@ export AWS_REGION=eu-north-1
 ```
 
 Both `terraform.tfvars` files are gitignored. **The examples use `<account-id>` placeholders, never the
-real account — and so does the prose in this file and in `CHANGELOG.d/`.** The two exceptions are the
-`backend` blocks in `base/versions.tf` and `env/remote_state.tf`, which must carry the literal bucket name
-or Terraform cannot find the state; that is configuration, not an example, and a redacted bucket name
-there is a broken command rather than a private one. `docs/QA/DISCUSSION-LOG.md` is an append-only record
-and keeps whatever it recorded.
+real account — and so does the prose in this file and in `CHANGELOG.d/`.** The exceptions are the bucket
+names in the `backend` blocks (`base/versions.tf`, `env/versions.tf`) and in `env/remote_state.tf`, which
+must be literal or Terraform cannot find the state; that is configuration, not an example, and a redacted
+bucket name there is a broken command rather than a private one. `docs/QA/DISCUSSION-LOG.md` is an
+append-only record and keeps whatever it recorded.
 
 **`base/terraform.tfvars` must carry the real values, not the example's blanks.** Base state is shared in
 S3, and most of `base` is `count`-gated on those variables — `github_repo`, `github_owner_id`,
