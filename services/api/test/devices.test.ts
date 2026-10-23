@@ -459,6 +459,17 @@ describe("device enrollment & management", () => {
     });
     expect(short.statusCode).toBe(400);
 
+    // #319 review: the upper bound had no test, so `drop .max(4096)` survived. A 4097-character token
+    // must be refused and a 4096-character one must be accepted — otherwise the bound can be off by one
+    // in either direction without a red test.
+    const tooLong = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: deviceHeader(app),
+      payload: { token: "x".repeat(4097) },
+    });
+    expect(tooLong.statusCode).toBe(400);
+
     // Superseded: the body used to be `{ pushToken: z.string().min(1) }`. #319 moved it to
     // `{ token }`, 20..4096, matching `POST /v1/me/push-token`; the old field must not be accepted
     // silently, or an un-updated client would look like it had registered.
@@ -472,6 +483,24 @@ describe("device enrollment & management", () => {
 
     expect(prismaMock.device.update).not.toHaveBeenCalled();
     expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  // MUTANT: drop `.max(4096)` from `PushTokenSchema` and this is the case that goes red
+  // (`expected 204 to be 400`, 1 failed | 30 passed). Measured, then reverted.
+  it("accepts a 4096-character token at the boundary (204) and stores it", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const atLimit = "x".repeat(4096);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/push-token",
+      headers: deviceHeader(app),
+      payload: { token: atLimit },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(prismaMock.device.update).toHaveBeenCalledWith({ where: { id: "dev-1" }, data: { pushToken: atLimit } });
     await app.close();
   });
 
