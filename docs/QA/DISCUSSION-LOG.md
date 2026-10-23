@@ -3564,3 +3564,30 @@ in the list above were deleted in six batches with `git push origin --delete`; n
 The nine remaining heads are: `main`, the two open-PR heads (`docs/staging-traps` #330, `ahmed/2.7-authz-matrix` #329),
 this record's own branch (`docs/branch-cleanup-2026-10-23`), and the five **unmerged** branches named in the kept set
 above. The deletion is restorable line by line: `git push origin <sha>:refs/heads/<name>`.
+
+**The five unmerged branches: triaged, on the maintainer's word (17:01:08Z, "Do both").** Roadmap 0.5 kept them
+because their tips are not ancestors of `main`. Claude put the question — *"Delete the 4 outdated branches and move the
+KCL assessment into main?"* — and the answer was **do both**. Tips re-read with `git ls-remote` at 17:03Z and every one
+matched the values Claude recorded at 17:02Z before anything was touched; had any differed, the deletion would have
+stopped there.
+
+| Branch | Tip | Superseded by |
+|---|---|---|
+| `docs/adr-0030-region-and-lifecycle` | `f3a606af78dfcd8173b11adfdf80fc04139ef884` | #299 — `main` carries `docs/adr/0030-regions-after-uae-outage.md` |
+| `docs/adr-0028-prod-account` | `df9a11feec594e10c1e96afd77ed889cfb834251` | content in `main` via #292 (`RELEASING.md`, ADR-0028) |
+| `docs/roles-antigravity-silent` | `27e5d6d3e56313f21a0e8f09a47272786888b8a0` | #214 — `AGENTS.md` §1 carries the role table |
+| `qa/verify-track12-2026-10-12` | `c0d9d87f0b6270f5366aa30d0111481877bd25f2` | #36 |
+| `KCL` | `3676a9d414b6cba6e596ef57b1b69ea228f4071b` | **moved**, not deleted: the 16 Oct readiness assessment now lives in `docs/QA/KCL-2026-10-16/` |
+
+The first four were **deleted** once this record was pushed; each is restorable with
+`git push origin <tip>:refs/heads/<branch>`. `KCL` is deleted only after this PR merges, because it is the source of the
+copied files and Claude's check is that they are byte-identical to `3676a9d4`.
+
+**Why copied and not merged:** merging `KCL` would put its commit history — and its author metadata — into `main` for
+five documents whose content is the deliverable. `git checkout 3676a9d4 -- docs/QA/KCL-2026-10-16/` copies the blobs;
+the hashes below are the proof they are unchanged.
+
+```
+355d5a00 AUDIT-ANDROID.md · c0f18940 AUDIT-API-AI-PARENT-APP.md · 0afe5e42 AUDIT-IOS-WINDOWS-MACOS.md
+dd15d671 COMPETITOR-LANDSCAPE.md · daf2a640 README.md
+```
