@@ -13,7 +13,9 @@
   `scripts/probe-gate-acks.json`. Claude measured it against a wrapped `G3` and caught it — AGENTS.md §4 says a gate
   may be extended, not narrowed, and an over-permissive fix breaks that rule as surely as a false positive does.
 - **A fixture for the pattern:** base and head both carrying the if/else title produce no finding. Mutant measured —
-  remove the guard and it fails with `DEMOTED check -> target: Q6 same title` (14/15); restored, 15/15.
+  remove the guard and it fails with `DEMOTED check -> target: Q6 same title` (16/17); restored, 17/17. With the two
+  review fixtures the suite is **17 cases**, so the numbers in the earlier revision of this fragment (14/15, 15/15)
+  were the 15-case suite's — corrected here rather than left to read as the current counts.
 - The promotion note also skips a title that was already a check, so it cannot print "promoted" and "demoted" for
   the same name in one run — which is what the broken run did, and what made it obviously wrong on reading.
 
