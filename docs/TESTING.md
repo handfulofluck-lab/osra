@@ -120,6 +120,31 @@ wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and
 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the count was skipped — that skip is not a
 pass. The probe does not need it, and deliberately has no database connection (§6).
 
+### The authorization matrix, column by column (plan 2.7) — probe `Q1`–`Q8`
+
+Section Q walks the columns of `docs/QA/security/authz-matrix.md` across every JWT route the API registers (62).
+It covers:
+
+- a revoked device (`Q1`) and a revoked parent session (`Q2`);
+- an expired token (`Q3`) and a password-reset purpose token (`Q4`);
+- no token at all (`Q5`);
+- a guardian and a co-parent with no permissions (`Q6`, `Q6b`);
+- a device token on the parent-only routes (`Q7`);
+- another family's owner (`Q8`).
+
+A failure prints every route that answered wrong, as `METHOD path -> status error`, so read the detail, not
+the count. Things to know when running it:
+
+- **It needs `JWT_SECRET`** in the probe's environment for `Q3` and `Q4` (they mint tokens). Without it they
+  report `target`, the same as G18.
+- **It takes about 3 minutes, and that's expected.** The section makes about 430 requests and paces itself on
+  the limiter's `x-ratelimit-remaining`/`x-ratelimit-reset` headers. The global limit is 200 a minute per
+  address (`server.ts:66`), so it waits for the window instead of tripping the probe's 429 abort. Don't
+  remove the pacing to make it faster. The probe would then abort on the limiter, not fail.
+- **It covers what unit tests can't.** The unit harness (`buildApp`, `test/helpers.ts:115`) has no global
+  `preHandler`, so revoked devices and revoked sessions are only ever tested here, against a live server.
+- **Mutants measured** (six guards removed at once; each Q check named its route): see the matrix, §1a.
+
 ### The device push-token route (#319) — probe `P1`–`P3`, `N6d`
 
 `POST /v1/devices/:id/push-token` is the child agent's own registration path, and device-only by

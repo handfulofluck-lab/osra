@@ -68,5 +68,19 @@
     "reason": "Superseded with plan 2.7 finding F4 (architecture decision by Claude on #329, 2026-10-23): a parent can no longer reach the ping body at all (403 device_role_required, covered by the new G15 and by G17), so the parent-side device_mismatch branch was removed from location.ts. The device_mismatch refusal that remains — a device token whose body names another device — is asserted by the replacement 'G16 a device token whose body names another device is refused (403 device_mismatch)', as Claude asked. Not a weakening: every caller the old check refused is still refused, earlier.",
     "acknowledgedBy": "Ahmed (security + testing)",
     "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "B7 insights for other family's child (403/404)",
+    "reason": "Superseded in #329 (plan 2.7 finding F1, approved by Claude on #329, 2026-10-23). The check called GET /v1/insights/:childId, a route that was never registered (the only insights route is GET /v1/insights/apps, routes/insights.ts:33), so the router's 404 satisfied its [403, 404] acceptance even with no token; it could not fail. The replacement 'B7 flagged searches of another family's child are refused (403 forbidden)' targets GET /v1/content/searches?childId= with the other family's token and asserts 403 and error === \"forbidden\" exactly; removing requireFamily from content.ts:266 makes it fail. Not a weakening: the old check asserted nothing.",
+    "acknowledgedBy": "Ahmed (security + testing)",
+    "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "B9 digest prefs for other family's child (403/404)",
+    "reason": "Superseded in #329 (plan 2.7 finding F1, approved by Claude on #329, 2026-10-23). The check called PUT /v1/digests, a route that was never registered (the digest routes are /v1/digests/prefs and /v1/digests/send-now, routes/digests.ts:48-71), so the router's 404 satisfied its [403, 404] acceptance even with no token; it could not fail. The replacement 'B9 social events of another family's child are refused (403 forbidden)' targets GET /v1/social/events?childId= with the other family's token and asserts 403 and error === \"forbidden\" exactly; removing requireFamily from social.ts:166 makes it fail. Not a weakening: the old check asserted nothing.",
+    "acknowledgedBy": "Ahmed (security + testing)",
+    "date": "2026-10-23"
   }
 ]
