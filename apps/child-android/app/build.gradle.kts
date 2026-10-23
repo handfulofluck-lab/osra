@@ -6,6 +6,21 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+/**
+ * Roadmap 1.5 (#319): the Google Services plugin turns `app/google-services.json` into the resource
+ * values FirebaseApp reads at startup, so without it `FirebaseMessagingService.onNewToken` never runs
+ * and the agent never holds a token to publish.
+ *
+ * Applied conditionally, and outside the `plugins` block, because the plugin fails configuration with
+ * `File google-services.json is missing` when that file is absent — and it is absent on CI and in every
+ * fresh clone: it carries a Firebase project id and API key, so it is gitignored, never committed. The
+ * FCM-free build (poll fallback, §14.2) is the default and must stay buildable; a machine that has the
+ * file gets real FCM. The unconditional form is measured in the PR: it fails the build here.
+ */
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Plan 1.8: a real release signing config, read from the environment so no key material ever sits in
 // the repo. When the four variables are absent (CI, a tester's machine) the release build falls back
 // to the debug key and says so — the APK still installs, it is just not the store key.

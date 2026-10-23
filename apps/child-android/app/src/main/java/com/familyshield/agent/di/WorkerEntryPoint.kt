@@ -5,7 +5,7 @@ import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.BlocklistStore
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.db.FamilyShieldDatabase
-import com.familyshield.agent.commands.CommandDispatcher
+import com.familyshield.agent.commands.CommandPoller
 import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.telemetry.UsageReporter
@@ -38,8 +38,8 @@ interface WorkerEntryPoint {
     /** Retrofit API. */
     fun apiService(): ApiService
 
-    /** Command dispatcher for the polling worker (§14.2). */
-    fun commandDispatcher(): CommandDispatcher
+    /** One command fetch-and-dispatch pass (§14.2, #319) — shared by the poll worker and the push wake. */
+    fun commandPoller(): CommandPoller
 
     /** DataStore-backed settings. */
     fun agentSettings(): AgentSettings
