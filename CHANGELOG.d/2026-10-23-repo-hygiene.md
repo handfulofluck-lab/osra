@@ -2,7 +2,7 @@
 - **`.gitignore`** now excludes `google-services.json`, `GoogleService-Info.plist` and `*firebase-adminsdk*.json`.
   None of them was ignored before, and this repository is public: the Firebase project exists as of 2026-10-23 and
   the first agent to drop a service-account JSON into a checkout would have found it stageable. The key itself lives
-  outside the repo (`C:\karim\osra-secrets\firebase\`) and reaches the API through Secrets Manager.
+  outside every checkout and reaches the API through Secrets Manager.
 - **`AGENTS.md` §5a** records how to resolve a conflicted merge, because three resolutions on 2026-10-23 kept the
   markers out and still deleted another PR's work (`docs/ROADMAP.md` row 3.3 lost #312's Android paragraph;
   `docs/SPEC.md` went back to calling that screen unbuilt). No suite reads prose, so all three were green. The rule:

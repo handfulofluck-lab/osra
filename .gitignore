@@ -72,12 +72,10 @@ pgdata/
 dump.rdb
 
 # ── Firebase / FCM credentials ───────────────────────────────────────────────
-# The repo is public and these are per-project credentials, not templates.
-# The service-account key lives outside the repo (C:/karim/osra-secrets/firebase/)
-# and reaches the API through Secrets Manager, never through git.
-google-services.json
-**/google-services.json
-GoogleService-Info.plist
-**/GoogleService-Info.plist
+# Per-project credentials, not templates, on a public repository. The names cover the
+# browser's second-download form (" (1)") and the service-account file the API reads.
+# The key itself lives outside every checkout and reaches the API through Secrets Manager.
+google-services*.json
+GoogleService-Info*.plist
 *firebase-adminsdk*.json
-**/*firebase-adminsdk*.json
+fcm-service-account*.json
