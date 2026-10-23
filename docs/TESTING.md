@@ -225,7 +225,7 @@ explicitly, in its own commit, with the reasoning in the PR.
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended) |
+| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended; its `--selftest` runs in `workflow-lint.yml`) |
 | `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
 | `api-image.yml` | Builds `services/api/Dockerfile` from the repo root on every pull request (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
 | `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job |
@@ -761,7 +761,7 @@ after its parent dies.
 | A PowerShell wrapper around `adb` eats `-c`, `-d`, `-s` | `adb shell ping -c 1` and `adb logcat -d` inside a function ran without their flags (logcat then streamed forever) | Call the exe directly for anything with dash arguments; `$host` is a reserved variable |
 | `uiautomator dump` on the One UI VPN screen | "could not get idle state" forever (the screen animates) | Screenshot + tap at coordinates for that screen; everything else dumps fine |
 | A 401-after-revocation check (e.g. probe F8) fails once, then passes on re-run with no code change | `iat` was per-second and the comparison was `iat < epoch`, so a token minted in the same second as the revocation survived — the server bug behind #117; #110/#111 changed only the probe and waited out the symptom. Fixed 2026-10-18 | Since ADR-0025 / #117 revocation is a counter (`sv`), not a clock: a token minted in the revocation second is dead **by design**, and a login after the revocation works in that same second (probe F8 and N2 rely on this; their boundary waits are gone). Do not reintroduce `Date.now()` into the comparison. Keep asserting the fresh token **works** (`GET /v1/family/me` → 200), not merely that login returned 200 — `qa-probe` F8, #110/#117 |
-| `check-probe-integrity.mjs` reports a probe assertion as **REMOVED** although the line is still there | The checker only reads a literal name that opens on the **same line** as `check(`; a wrapped call — `check(` then the name on the next line — is counted as *dynamic* and therefore looks deleted. Separately, `--head HEAD` compares the **committed** tree, not your working copy, so an uncommitted reformat is invisible and the removal persists | Keep the assertion name on the `check(` line (the probe's existing style), and run the checker with no `--head` for a working-tree comparison: `node scripts/check-probe-integrity.mjs --base origin/main`. Hit on #111: the name set matched 88/88 by hand while the gate stayed red |
+| `check-probe-integrity.mjs` reports a probe assertion as **REMOVED** although the line is still there | Until #310 the checker only read a literal name that opens on the **same line** as `check(`; a wrapped call — `check(` then the name on the next line — was counted as *dynamic* and therefore looked deleted (on `68dd367` it saw 132 of 141 call sites). Separately, `--head HEAD` compares the **committed** tree, not your working copy, so an uncommitted reformat is invisible and the removal persists | **Fixed 2026-10-23 (#310):** the scanner skips whitespace across newlines before the opening quote, so a wrapped call is compared like an inline one and deleting one is `REMOVED` (the `--selftest` deleted-multi-line case is the proof). The `--head` half still applies: run the checker with no `--head` for a working-tree comparison — `node scripts/check-probe-integrity.mjs --base origin/main`. Hit on #111: the name set matched 88/88 by hand while the gate stayed red |
 | The JVM `LockEnforcementPolicyTest` is green and the device still locks the wrong window | The test proves the **rule**, not the device's package names: on the Flip4 the emergency dialer is `com.samsung.android.emergency`, which no AOSP name contains (issue #80) | Treat probe row **S1** as the only proof that the lock leaves the dialer reachable; a green JVM suite is necessary, never sufficient |
 | A bedtime / school / allow-list rule covers the **home screen**, and Home does nothing on the phone | The rule is evaluated for whatever is in the foreground, so "block" was answered for the launcher too. Before issue #165 only the empty-cache path consulted the essential list, and the JVM suite was green because it never asked what the launcher package is. Seen on the Flip4 during TR-22 (relaunch after midnight, seeded bedtime 21:00–07:00; evidence in `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-ROW3.md`) | The essential set (`enforcement/EssentialPackages.kt`) is consulted before any rule, and `AppBlocker` re-checks with `PackageFacts` (HOME role + system dialer). Verify on hardware with the #165 check: after Home, `dumpsys window \| grep mCurrentFocus` names the launcher, `adb shell am start -a android.intent.action.DIAL` reaches the dialer, and a named blocked app still shows the overlay. Do not add one package name to the table to fix one device without checking the role path, and never "fix" the report by removing the bedtime rule |
 | An accessibility event's **package is not always the app in front** — the launcher is blocked although its name is in the essential set | The fix for #165 held in JVM and failed on the phone: with bedtime active on the Flip4 (Android 16, WM-Shell), the Home transition arrives as a `TYPE_WINDOW_STATE_CHANGED` event whose `packageName` is **`android`** (the framework), not `com.sec.android.app.launcher`. The overlay's subtitle showed the evidence — the package handed to `showBlockScreen` was `android` — and `EssentialPackages` never had that name (`C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-165.md`, rows 3a/3b) | Decide from the window in front, not from the event: `EssentialPackages.foregroundPackage(eventPackage, windowPackage)` takes the event's package as a **hint** and the active window's package (event source, else `rootInActiveWindow`) as the authority. `AccessibilityMonitorService` resolves once per event and uses the result for the guard, the lock, the usage counter and the block decision; `android` alone resolves to `null` and raises no overlay. Do **not** add `android` to `EssentialPackages.EXACT` — it fronts dialogs and shell surfaces, so it would exempt far more than Home. Check every consumer of "which app is in front" when touching this |
@@ -850,6 +850,8 @@ assertion that was renamed.
 ```bash
 node scripts/check-probe-integrity.mjs                                  # origin/main -> working tree
 node scripts/check-probe-integrity.mjs --base origin/main --head origin/<branch>
+node scripts/check-probe-integrity.mjs --base 68dd367 --head 68dd367 --stats   # call-site counts
+node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (14 cases)
 ```
 
 It compares the **sets of assertion names per severity** (`check` gating, `target` tracked, `note`
@@ -863,6 +865,16 @@ Two honest limits, so nobody over-trusts it: loop-generated assertion names coll
 per family, so it detects *a family disappearing*, not *one iteration of it*; and dynamically built
 names cannot be compared at all (the script counts those and says so). It narrows a reviewer's search
 — it does not replace the reviewer.
+
+The scanner reads the first argument **across line breaks**: `check(` with its title on the next line
+is compared like an inline one (fixed in #310). Before that fix the per-line matcher could not cross
+the newline, so nine wrapped calls in `qa-probe.mjs` were invisible — on `68dd367` it saw **132 of 141**
+`check(`/`target(` call sites, counted each of the nine as neither added nor removed, and a PR that
+deleted one passed. `--stats` prints the per-kind call-site count, so this coverage is measured rather
+than inferred. `--selftest` (14 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
+interpolated forms, the demotion path, and the deleted-call case; its stated **mutant** is the old
+per-line matcher, under which the deleted multi-line call is reported as nothing (CLI exit `0`) and the
+self-test fails. On `68dd367` the fixed tool sees **141/141** call sites.
 
 ### The live gates must run against a non-UTC database (issue #53)
 
@@ -889,3 +901,5 @@ Pattern to use instead: put the secret in `env:` and test the variable inside th
 (`--base origin/<base branch> --head HEAD`, acks read from the PR's merge ref) and fails the PR on a
 removed or demoted assertion. It runs unconditionally rather than behind a path filter, so a PR that
 does not touch the probe shows the job green on a no-op comparison instead of absent.
+`workflow-lint.yml` runs `--selftest` on every push and PR, including the deleted-multi-line-call case
+that the old matcher missed (#310).
