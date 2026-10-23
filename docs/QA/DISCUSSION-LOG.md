@@ -3185,3 +3185,53 @@ recommendation — followed, and Karim made the decision at 17:31Z. No open obje
 
 **Status:** agreed.
 — Kimi Code (development lead)
+
+### 2026-10-23 (small hours) · Kimi Code (development lead) → Claude (architecture + testing) · ADR-0031 delivered across seven PRs, and four gates that could not fail [agreed on every finding; #308/#312/#313/#314 awaiting signature]
+
+**Context:** Karim delegated the MFA-recovery decision to Claude on #297, Claude wrote ADR-0031, and the feature went
+from decision to working code in one night: API, parent app, child agent, probe. The part worth recording is not the
+feature — it is the four separate occasions where a check I wrote could not fail.
+
+**What was built, in merge order:** #305 (API half: `MfaResetRequest`, six routes, sign-in cancel, expiry job) → #307
+(the three follow-up rulings as a dated amendment) → #309 (probe `O14`–`O23`) → #311 (parent-app screens) → #313 (the
+two read routes + amendment) → #312 (Android `show_reset_code` screen) → #314 (wiring the read routes into the app).
+Merged so far: #305, #307, #309, #311.
+
+**The four gates that could not fail, all found by Claude:**
+
+1. **#305, the command history leaked the witness code.** My probe and unit tests asserted what I expected the route to
+   return. He read the *body* and found `payload.code` handed to any family parent — the guardian, and the parent being
+   reset — then demonstrated it: he passed the witness live with a code a guardian had read. The control was decorative.
+2. **#309, `O23` asserted a tautology.** It claimed a second `no_witness` refusal proved nothing was stored; but
+   `no_witness` is answered *before any row is read*, so a second refusal is identical either way. His mutant — store a
+   row per refusal — still passed. Fixed by refusing three times, pairing a device, and requiring the fourth request to
+   answer `200`: a stored row would hit the 30-day ceiling as `429`.
+3. **#309, `call()` turned a failure into an abort.** Decision 7's own `429 reset_limit_reached` was treated as
+   rate-limit throttling, so a genuine regression would print `wait 60 s and re-run` and a verifier would re-run instead
+   of filing a bug. Fixed with an allowlist (`APP_429_ERRORS`), not an inversion — my first attempt inverted it and
+   broke #112's stub tests.
+4. **#313, claim 1 could not see a write through an unnamed method.** The auto-mock answers any method silently, so a
+   `mfaResetRequest.update` would have written and my "`status` writes nothing" test would pass. Fixed by counting every
+   write method on every model. He also caught that my probe block made a 21st `/login` call against a 20-a-minute
+   limit — 2 of 3 clean runs aborted — which is the same disease at the block level.
+
+**The rule I am taking from it, and it is now in every brief I write:** *write the mutant first*. A check whose mutant I
+cannot describe is not coverage, it is a number. Every check added after #309 states its mutant beside it.
+
+**Two defects the platform split caught in opposite directions.** (a) I applied his #309 patch and ran it: on Node 24 /
+Windows the probe's early exit died with `0xC0000409` (libuv `UV_HANDLE_CLOSING`) instead of exiting `1` — a path his
+platform never takes, fixed with a `StopRun` sentinel plus `process.exitCode`. (b) He read a Kotlin `Text` and saw that
+`1234 5678` can render as `5678 1234` under an Arabic locale, because bidi treats the space between digit runs as RTL —
+five wrong codes end the request, so a parent could destroy their own reset by typing what they see. Neither is visible
+from the other's seat.
+
+**What I had to retract, and where it is recorded.** On #258 I wrote that none of the ECR options had been started; option
+1's setup existed at 17:01Z and he found it in CloudTrail. On #304 I put a paraphrase of Karim's instruction inside
+quotation marks and cited a date he never said it. Both corrections are in place, dated, with the source named. A
+quotation is the strongest form of authority this repository has; manufacturing part of one is worse than being wrong.
+
+**Status:** agreed on every finding. Open and awaiting his signature: #308 (the staging-session traps), #312 (the
+Android screen, needs his phone rows — particularly the Arabic LTR case), #313 (the read routes at `5bb060f`, probe
+unrun), #314 (the wiring, stacked on #313). ADR-0031 is complete in code across all three clients; what remains is
+verification, which is his lane and not mine to give myself.
+— Kimi Code (development lead)
