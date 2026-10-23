@@ -121,6 +121,21 @@ The record is Postgres; Redis holds caches of it, and every cache rebuilds from 
   ignores the column, and there is none. Recorded here because "the cache always equals the column"
   is a claim someone will want to test, and the exact guarantee is "monotonic, and equal to the
   column after any quiescent moment".
+- **A restored snapshot is older than Postgres, and an existing marker is never re-read.** The
+  snapshot this ADR turns on defends against a *missing* cache, not a *stale* one. Restoring
+  `auth:session-version:<parentId>` from a snapshot brings back a value that predates the database, and
+  because the marker has no TTL and is only re-read when it is absent, every revocation made after the
+  snapshot would read as not made until the key disappears on its own — which, without a TTL, is never.
+  **Operational rule: before the API serves from a restored snapshot, delete every
+  `auth:session-version:*` key**; they rebuild from Postgres on the next request. The same command is
+  harmless for `revoked:token:*` and `revoked:device:*`: those are single facts whose presence can only
+  revoke *more*, and a missing one is restored by the load or by the row check anyway — only the
+  counter, where a smaller number means less revoked, has the wrong direction.
+- **A failed cache write drops the marker** (`invalidateSessionsBefore`, `revokeTokenOnce`). With
+  `noeviction` a full node refuses writes but still serves reads and still accepts `DEL`, so a failed
+  `INCRBY` would otherwise leave the pre-revocation value serving indefinitely. The `DEL` costs one
+  rebuild on the next request; the alternative — comparing the cache with the column on every read —
+  puts a database read back on the request path, which is the cost this ADR exists to avoid.
 - **Not covered by this ADR:** the per-route copies of the device tombstone check (`routes/location.ts`,
   `routes/alerts.ts`, `routes/content.ts`, `routes/social.ts`, the `deviceRoutes` hook and
   `realtime/gateway.ts`) still read `revoked:device:<id>` directly. They run *behind* the global hook,

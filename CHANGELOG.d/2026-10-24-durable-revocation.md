@@ -10,15 +10,21 @@
   device is decided by its row when both the tombstone and the 5-minute positive cache miss.
 - The writes fail closed: a revocation that cannot be recorded in the database, or published to the
   cache, answers 5xx instead of reporting success. `GET`-path cache writes stay best-effort — the
-  row already answered the question.
+  row already answered the question. If the cache write fails **after** the database write, the
+  parent's session-version marker is deleted before the error is raised, so the next request rebuilds
+  it from the column instead of serving a value that predates the revocation (#349 review: a full
+  node under `noeviction` refuses writes but still accepts `DEL`).
 - Staging ElastiCache: the parameter group pins `maxmemory-policy = noeviction` (the default
   `allkeys-lru` evicts exactly the revocation keys) and `snapshot_retention_limit` goes from 0 to 1.
   `scripts/check-redis-durability.mjs` gates both settings, with a self-test for each rule.
+- A restored snapshot is older than the database and an existing marker is never re-read, so before
+  the API serves from a restored cache, delete every `auth:session-version:*` key; they rebuild from
+  Postgres on the next request (`docs/adr/0032-durable-revocation.md`, `infra/terraform/README.md`).
 - Costs, accepted in ADR-0032: one primary-key device lookup per device per 5 minutes, and one
   database read per parent per Redis miss (a restart, an eviction, or the first request after a
   deploy). One extra migration (`0024_durable_revocation`) adds the column and the table; it is
   additive, so no coordinated restart and no backfill.
-- Verified by `test/durable-revocation.test.ts` (11 tests): each names the mutant that makes it fail,
+- Verified by `test/durable-revocation.test.ts` (15 tests): each names the mutant that makes it fail,
   and the empty-Redis cases were re-run against the pre-fix code, where they returned 200. Not run
   for this change: `qa-probe.mjs` and `e2e.mjs`, because the shared stack was in use by another
   agent's run (see the PR).

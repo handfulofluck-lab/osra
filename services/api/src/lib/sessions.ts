@@ -180,13 +180,26 @@ export async function currentSessionVersion(parentId: string): Promise<number> {
  * incremented before the cache write, and a failed column write never reaches Redis at all. The
  * cache is loaded from the column first when the key is missing — otherwise `INCRBY` on a cold key
  * would answer 1 while the column held N, and versions 1..N-1 would read as current again.
+ *
+ * If the `INCRBY` fails the marker is deleted before the error is rethrown (#349 review): a key that
+ * still exists is never re-read, so leaving the old value behind would let the cache outvote the
+ * column for as long as the node refused writes.
  */
 export async function invalidateSessionsBefore(parentId: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
   const redis = getRedis();
   const cached = await redis.get(sessionVersionKey(parentId));
   if (cached === null) await loadSessionState(parentId, redis);
   await prisma.parent.update({ where: { id: parentId }, data: { sessionVersion: { increment: 1 } } });
-  await redis.incrby(sessionVersionKey(parentId), 1);
+  try {
+    await redis.incrby(sessionVersionKey(parentId), 1);
+  } catch (err) {
+    // The column moved and the cache did not: drop the marker so the next read rebuilds from the
+    // column. This is not hypothetical — with `noeviction` a full node refuses writes but still
+    // serves reads and still accepts DEL, so without this the old marker would keep answering and
+    // the token this request was meant to kill would stay live while the node stayed full.
+    await redis.del(sessionVersionKey(parentId)).catch(() => {});
+    throw err;
+  }
   await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
 }
 
@@ -231,6 +244,13 @@ export async function isParentSessionLive(user: ParentSessionClaims): Promise<bo
  * that reported success while the only copy of the revocation was lost is exactly the defect this
  * change removes.
  *
+ * A failed `SET` leaves the row written and the key absent, which only matters while this parent's
+ * marker still exists: an existing marker is never re-read, so the rebuild that would load the new
+ * row would not run. So the marker is dropped before the error is rethrown, and the next request
+ * reloads and finds the row. (Same reason as `invalidateSessionsBefore`: a node can refuse writes and
+ * still accept `DEL`.) This key is not this token's key — it is the parent's, and the parent is where
+ * that rebuild starts.
+ *
  * `expiresAt` is the token's own end, not "now + something": the row must be prunable as soon as the
  * token it revokes could no longer be presented, and the key gets the same horizon so both halves of
  * one revocation expire together.
@@ -242,5 +262,11 @@ export async function revokeTokenOnce(jti: string, parentId: string, ttlSeconds 
     create: { jti, parentId, expiresAt },
     update: { expiresAt },
   });
-  await getRedis().set(revokedTokenKey(jti), "1", "EX", ttlSeconds);
+  const redis = getRedis();
+  try {
+    await redis.set(revokedTokenKey(jti), "1", "EX", ttlSeconds);
+  } catch (err) {
+    if (parentId) await redis.del(sessionVersionKey(parentId)).catch(() => {});
+    throw err;
+  }
 }

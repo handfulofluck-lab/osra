@@ -4,7 +4,7 @@ import { deviceRoutes } from "../src/routes/devices.js";
 import { familyRoutes } from "../src/routes/family.js";
 import { rulesRoutes } from "../src/routes/rules.js";
 import { getRedis } from "../src/redis.js";
-import { currentSessionVersion, sessionVersionKey, revokedTokenKey, REVOKED_TOKEN_TTL_SECONDS } from "../src/lib/sessions.js";
+import { currentSessionVersion, invalidateSessionsBefore, sessionVersionKey, revokedTokenKey, REVOKED_TOKEN_TTL_SECONDS } from "../src/lib/sessions.js";
 import { DEVICE_LIVE_TTL_SECONDS, liveDeviceKey, markDeviceRevoked, revokedDeviceKey } from "../src/lib/deviceRevocation.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../src/lib/deviceToken.js";
 import { eraseChildData } from "../src/lib/usageModel.js";
@@ -182,6 +182,120 @@ describe("ADR-0032 claim 1 — the sessions version is durable in Parent.session
     expect(failed.statusCode).toBe(500);
     await app.close();
   });
+
+  it("R4: a revocation on a cold cache starts the counter from the column, not from zero", async () => {
+    // #349 review, survivor R4. After a Redis restart, a password reset (or logout-all) can be the
+    // first thing this parent does: it runs without a session, so nothing has warmed the marker.
+    // Mutant: remove `if (cached === null) await loadSessionState(parentId, redis)`. Then INCRBY runs
+    // on a missing key and answers 1 while the column says 4, so every token minted at version 1..3
+    // reads as current again — and the assertion below sees "1", not "4".
+    const store = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, sessionVersion: 3 });
+    prismaMock.parent.update.mockResolvedValue({ ...PARENT, sessionVersion: 4 });
+
+    await invalidateSessionsBefore("parent-1");
+
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("4");
+    // And the answer a token minted before the revocation gets. sv=3 was current a moment ago.
+    prismaMock.family.findUnique.mockResolvedValue(familyEnvelope());
+    const app = await buildApp(familyRoutes, "/v1/family");
+    const token = app.jwt.sign(
+      { sub: "parent-1", familyId: "fam-1", role: "parent", familyRole: "owner", jti: "jti-r4", sv: 3 },
+      { expiresIn: "7d" },
+    );
+    const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe("session_revoked");
+    await app.close();
+  });
+
+  it("R5: a failed cache bump drops the marker, so the next request rebuilds and refuses the old token", async () => {
+    // #349 review, survivor R5. The test above checks the 5xx but not what the cache holds after it,
+    // so "INCRBY before the column write" survived: the column moved, the cache did not, and the
+    // stale marker kept answering. With `noeviction` a full node refuses writes but still serves
+    // reads and still accepts DEL, so this window is not transient.
+    //
+    // Mutant: drop the `catch` that deletes the marker in `invalidateSessionsBefore` (the pre-review
+    // code). Then the marker still reads "0" after the failure, and the last assertion sees 200.
+    const store = wireRedisStore();
+    let column = 0;
+    prismaMock.parent.findUnique.mockImplementation(async (args: { select?: { sessionVersion?: boolean } }) =>
+      args?.select?.sessionVersion ? { ...PARENT, sessionVersion: column } : { ...PARENT },
+    );
+    prismaMock.parent.update.mockImplementation(async ({ data }: { data: { sessionVersion?: unknown } }) => {
+      if (data?.sessionVersion !== undefined) column += 1;
+      return { ...PARENT, sessionVersion: column };
+    });
+    prismaMock.family.findUnique.mockResolvedValue(familyEnvelope());
+    const app = await buildApp(authRoutes, "/v1/auth");
+
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: PARENT.email, password: PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    const { token } = login.json() as { token: string };
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("0");
+
+    // The node refuses the write (a full node under `noeviction`), after the column has moved.
+    (getRedis() as unknown as MockRedis).incrby.mockRejectedValueOnce(new Error("OOM command not allowed when used memory > 'maxmemory'"));
+    const failed = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(failed.statusCode).toBe(500);
+    // The column is the record: 1. The cache no longer contradicts it — the marker is gone, so the
+    // next read loads from the column instead of trusting a value that predates the revocation.
+    expect(column).toBe(1);
+    expect(await getRedis().get(sessionVersionKey("parent-1"))).toBeNull();
+
+    const family = await buildApp(familyRoutes, "/v1/family");
+    const after = await family.inject({ method: "GET", url: "/v1/family/me", headers: { authorization: `Bearer ${token}` } });
+    expect(after.statusCode).toBe(401);
+    expect(after.json().error).toBe("session_revoked");
+    // ... and the rebuild put the column's value back.
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("1");
+    await family.close();
+    await app.close();
+  });
+
+  it("R5b: a failed token SET drops the marker, so the row is loaded instead of being invisible", async () => {
+    // The same window one level down (`revokeTokenOnce`): the row is written, the key is not. While
+    // the marker exists the rebuild never runs, so the row would be invisible until something else
+    // evicted the marker.
+    // Mutant: `throw err` without the `DEL` in `revokeTokenOnce`. Then the marker survives, the
+    // reload never happens, and the logged-out token answers 200.
+    const store = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, sessionVersion: 0 });
+    prismaMock.family.findUnique.mockResolvedValue(familyEnvelope());
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: PARENT.email, password: PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    const { token, refreshToken } = login.json() as { token: string; refreshToken: string };
+    const claims = app.jwt.decode(token) as { jti: string };
+    expect(store.get(sessionVersionKey("parent-1"))).not.toBeNull();
+
+    // Only this token's key is refused: `retireRefreshToken` writes its own `refresh:used:*` key in
+    // the same request, and a blanket failure there would fail the request before the row is written.
+    const redisMock = getRedis() as unknown as MockRedis;
+    const storeSet = redisMock.set.getMockImplementation()!;
+    redisMock.set.mockImplementation(async (key: string, value: string, ...args: unknown[]) => {
+      if (key === revokedTokenKey(claims.jti)) throw new Error("OOM command not allowed when used memory > 'maxmemory'");
+      return storeSet(key, value, ...args);
+    });
+    const out = await app.inject({ method: "POST", url: "/v1/auth/logout", payload: { refreshToken } });
+    expect(out.statusCode).toBe(500);
+    // The row landed; the key did not; the marker that would hide it is gone.
+    expect(prismaMock.revokedToken.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { jti: claims.jti } }));
+    expect(store.get(revokedTokenKey(claims.jti))).toBeUndefined();
+    expect(await getRedis().get(sessionVersionKey("parent-1"))).toBeNull();
+    redisMock.set.mockImplementation(storeSet);
+
+    // The next request reloads the parent's logout rows from the table and refuses the token.
+    prismaMock.revokedToken.findMany.mockResolvedValue([
+      { jti: claims.jti, expiresAt: new Date(Date.now() + 8 * 24 * 3600 * 1000) },
+    ]);
+    const family = await buildApp(familyRoutes, "/v1/family");
+    const after = await family.inject({ method: "GET", url: "/v1/family/me", headers: { authorization: `Bearer ${token}` } });
+    expect(after.statusCode).toBe(401);
+    expect(after.json().error).toBe("session_revoked");
+    await family.close();
+    await app.close();
+  });
 });
 
 describe("ADR-0032 claim 2 — an unpaired device is refused because its row is gone", () => {
@@ -267,6 +381,28 @@ describe("ADR-0032 claim 2 — an unpaired device is refused because its row is 
     expect(res.json().error).toBe("device_revoked");
     // ... and the verdict was written back, so the next request does not need the database.
     expect(store.get(revokedDeviceKey("dev-1"))).toBeTruthy();
+    await app.close();
+  });
+
+  it("R12: the tombstone wins over the positive cache when both keys exist", async () => {
+    // #349 review, survivor R12. A verdict that read the row just before an unpair can write
+    // `device:live` just after it, so both keys can be present at once. The tombstone-first order is
+    // what makes the stale positive key harmless, and the row below is deliberately present too, so
+    // neither the cache nor the database could produce the 401 on its own.
+    // Mutant: read `device:live` before `revoked:device` in `deviceVerdict` — then this is a 200.
+    const store = wireRedisStore();
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1" });
+    store.set(revokedDeviceKey("dev-1"), new Date().toISOString());
+    store.set(liveDeviceKey("dev-1"), "1");
+
+    const app = await buildApp(rulesRoutes, "/v1/rules", { sessionGuard: true });
+    const res = await app.inject({ method: "GET", url: "/v1/rules/child-1", headers: deviceHeader(app) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe("device_revoked");
+    // The database was not consulted at all: the tombstone answers before the row would.
+    expect(prismaMock.device.findUnique).not.toHaveBeenCalled();
     await app.close();
   });
 
