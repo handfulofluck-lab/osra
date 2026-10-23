@@ -286,6 +286,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(weekly).value, isTrue);
 
+      // The email field now carries a helper line (#344 review), so Save sits
+      // just below the 600 px default surface.
+      await tester.ensureVisible(find.text('Save preferences'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Save preferences'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();

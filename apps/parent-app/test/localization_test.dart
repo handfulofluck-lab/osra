@@ -319,6 +319,56 @@ void main() {
     }
   }
 
+  /// The alerts feed with every category the server can send, so the maintainer
+  /// reviews the new Arabic titles in one render instead of taking the mapping's
+  /// word for it. Each title is asserted as the feed is scrolled, and the frame
+  /// is the same 320×568 RTL one as the other screens.
+  group('Alert titles, all 13 server categories (Arabic, 320×568)', () {
+    FakeApiClient allCategoriesApi() {
+      final now = DateTime.now();
+      return FakeApiClient({
+        ...standardRoutes(
+          // Newest first in the feed, so the scroll below walks
+          // [serverAlertCategories] in order. All on one day, so the feed groups
+          // them into a single column and every tile is laid out.
+          alerts: [
+            for (var i = 0; i < serverAlertCategories.length; i++)
+              alertJson(
+                'all-$i',
+                serverAlertCategories[i] == 'sos' ? 'critical' : 'warning',
+                serverAlertCategories[i],
+                'SERVER TITLE ${serverAlertCategories[i]}',
+                now.subtract(Duration(minutes: 5 * i)),
+              ),
+          ],
+          unacked: serverAlertCategories.length,
+        ),
+      });
+    }
+
+    testWidgets('every category renders its own Arabic title', (tester) async {
+      await pumpArabic(tester, const AlertsScreen(), allCategoriesApi());
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final ar = await AppLocalizations.delegate.load(const Locale('ar'));
+      for (final category in serverAlertCategories) {
+        final title = ar.alertTitleFor(category, 'SERVER TITLE $category', isEnglish: false);
+        expect(title, isNot(ar.alertTitleGeneric), reason: '"$category" fell through to the generic title');
+        await tester.scrollUntilVisible(
+          find.text(title),
+          80,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text(title), findsOneWidget, reason: '"$category" is missing from the Arabic feed');
+        await tester.pumpAndSettle();
+      }
+      // The server's English title is never what an Arabic parent reads.
+      expect(find.textContaining('SERVER TITLE'), findsNothing);
+      expectRtlAndNoOverflow(tester);
+    });
+  });
+
   /// Search safety was the last screen with hardcoded English (#275). This holds its Arabic form: RTL,
   /// no overflow at 320 px, and the two strings a parent actually reads first.
   group('Search safety in Arabic (#275)', () {
@@ -417,12 +467,26 @@ void main() {
 
     test('the screen-time value reads used-then-limit', () async {
       final ar = await arabic();
-      expect(ar.screenTimeValue(120, '180'), '120 من 180 دقيقة');
+      expect(ar.screenTimeValue(120, 180), '120 من 180 دقيقة');
     });
 
     test('the retention explanation is split into paragraphs', () async {
       final ar = await arabic();
       expect(ar.consentRevokeDataRetention, contains('\n\n'));
+    });
+
+    test('the consent warning names the child instead of a dangling لـ', () async {
+      final ar = await arabic();
+      expect(ar.consentRevokeWarning('أليكس'), startsWith('سيؤدي هذا إلى إيقاف مراقبة أليكس.'));
+    });
+
+    test('the digest email field is a short label plus a helper line', () async {
+      final ar = await arabic();
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(ar.digestPrefsEmailsLabel, 'عناوين البريد الإلكتروني');
+      expect(ar.digestPrefsEmailsHelper, 'لتلقي الملخّص (افصل بينها بفواصل)');
+      expect(en.digestPrefsEmailsLabel, 'Digest emails');
+      expect(en.digestPrefsEmailsHelper, isNotEmpty);
     });
 
     test('the period selectors use full Arabic words', () async {
@@ -432,13 +496,82 @@ void main() {
       expect(ar.daysShort(30), '30 يومًا');
     });
 
+    /// Arabic plural categories, pinned on the numbers the review named: 3 and
+    /// 10 are `few` (دقائق), 11 is `many` and 100 is `other` (both دقيقة).
+    test('minutes are pluralized in Arabic, not printed as a fixed noun', () async {
+      final ar = await arabic();
+      expect(ar.minutesShort(3), '3 دقائق');
+      expect(ar.minutesShort(10), '10 دقائق');
+      expect(ar.minutesShort(11), '11 دقيقة');
+      expect(ar.minutesShort(100), '100 دقيقة');
+      expect(ar.minutesShort(1), 'دقيقة واحدة');
+      expect(ar.minutesShort(2), 'دقيقتان');
+      expect(ar.screenTimeValue(3, 10), '3 من 10 دقائق');
+      expect(ar.screenTimeValue(45, 120), '45 من 120 دقيقة');
+      expect(ar.liveActivityToday('YouTube', 10), 'YouTube · 10 دقائق اليوم');
+      expect(ar.dailyLimit(3), 'الحد اليومي: 3 دقائق');
+      expect(ar.weekendLimit(10), 'الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: 10 دقائق');
+      expect(ar.totalAverage(11, 100), 'الإجمالي: 11 دقيقة · المتوسط: 100 دقيقة يوميًا');
+      expect(ar.totalAverage(3, 10), 'الإجمالي: 3 دقائق · المتوسط: 10 دقائق يوميًا');
+      expect(ar.totalOverDays(3, 7), 'الإجمالي: 3 دقائق خلال 7 أيام');
+      expect(ar.totalOverDays(11, 30), 'الإجمالي: 11 دقيقة خلال 30 يومًا');
+      expect(ar.dayTooltip('2026-10-24', 10), '2026-10-24: 10 دقائق');
+      expect(ar.dayTooltip('2026-10-24', 100), '2026-10-24: 100 دقيقة');
+    });
+
     test('alert titles come from the category, never the server text', () async {
       final ar = await arabic();
-      expect(ar.alertTitleFor('sos', 'SOS pressed'), 'تم الضغط على زر الاستغاثة');
-      expect(ar.alertTitleFor('web_filter', 'Blocked site attempted'), 'تمت محاولة زيارة موقع محظور');
-      expect(ar.alertTitleFor('screen_time', 'Daily limit reached'), 'تم بلوغ الحد اليومي');
-      expect(ar.alertTitleFor('unknown_category', 'SERVER ENGLISH TITLE'), 'تنبيه');
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(ar.alertTitleFor('sos', 'SOS pressed', isEnglish: false), 'تم الضغط على زر الاستغاثة');
+      expect(ar.alertTitleFor('web_threat', 'Blocked site attempted', isEnglish: false), 'تمت محاولة زيارة موقع محظور');
+      expect(ar.alertTitleFor('screen_time_exceeded', 'Daily limit reached', isEnglish: false), 'تم بلوغ الحد اليومي');
+      // An unknown category: English keeps the server's own title (it is already
+      // English and says more than "Alert"), any other locale shows the generic one.
+      expect(ar.alertTitleFor('unknown_category', 'SERVER ENGLISH TITLE', isEnglish: false), 'تنبيه');
+      expect(en.alertTitleFor('unknown_category', 'SERVER ENGLISH TITLE', isEnglish: true), 'SERVER ENGLISH TITLE');
       expect(ar.alertTitleGeneric, 'تنبيه');
+    });
+
+    /// The drift guard for the blocking finding: the fixture, the mapping and
+    /// the screenshot all use the server's categories, and a category the app
+    /// stops mapping renders the generic title — which fails here.
+    test('every server alert category has its own title in both locales', () async {
+      final ar = await arabic();
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      for (final category in serverAlertCategories) {
+        expect(
+          en.alertTitleFor(category, 'SERVER TITLE', isEnglish: true),
+          isNot(en.alertTitleGeneric),
+          reason: 'en "$category" fell through to the generic title',
+        );
+        final arTitle = ar.alertTitleFor(category, 'SERVER TITLE', isEnglish: false);
+        expect(arTitle, isNot(ar.alertTitleGeneric), reason: 'ar "$category" fell through to the generic title');
+        expect(arTitle, isNot('SERVER TITLE'), reason: 'ar "$category" leaked the server English title');
+      }
+      expect(serverAlertCategories, hasLength(13));
+    });
+
+    /// `serverAlertCategories` is a copy of the server's enum, so it is checked
+    /// against the server rather than trusted.
+    test('the category list matches InternalAlertSchema', () {
+      final source = File('../../services/api/src/routes/alerts.ts').readAsStringSync();
+      final enumBody = RegExp(r'category: z\.enum\(\[(.*?)\]\)', dotAll: true).firstMatch(source);
+      expect(enumBody, isNotNull, reason: 'InternalAlertSchema category enum moved or changed shape');
+      final fromServer = RegExp(r'"([a-z_]+)"')
+          .allMatches(enumBody!.group(1)!)
+          .map((m) => m.group(1)!)
+          .toList();
+      expect(fromServer, serverAlertCategories);
+    });
+
+    test('search risk tags are localized, with the raw key only as a fallback', () async {
+      final ar = await arabic();
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(ar.searchRiskCategory('substance_use'), 'تعاطي المواد');
+      expect(ar.searchRiskCategory('self_harm'), 'إيذاء النفس');
+      expect(ar.searchRiskCategory('grooming_risk'), 'استدراج');
+      expect(en.searchRiskCategory('substance_use'), 'Substance use');
+      expect(en.searchRiskCategory('late_night'), 'late_night');
     });
   });
 }

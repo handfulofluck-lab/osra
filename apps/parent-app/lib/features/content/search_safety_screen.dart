@@ -193,7 +193,7 @@ class _SearchEventCard extends StatelessWidget {
                     for (final t in item.concernTypes)
                       Chip(
                         visualDensity: VisualDensity.compact,
-                        label: Text(t, style: Theme.of(context).textTheme.bodySmall),
+                        label: Text(l10n.searchRiskCategory(t), style: Theme.of(context).textTheme.bodySmall),
                       ),
                   ],
                 ),

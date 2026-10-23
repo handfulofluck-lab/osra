@@ -166,8 +166,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get screenTime => 'Screen time';
 
   @override
-  String screenTimeValue(int minutes, String limit) {
-    return '$minutes / $limit min';
+  String screenTimeValue(int minutes, int limit) {
+    String _temp0 = intl.Intl.pluralLogic(
+      limit,
+      locale: localeName,
+      other: '$limit min',
+      zero: '— min',
+    );
+    return '$minutes / $_temp0';
   }
 
   @override
@@ -1960,7 +1966,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsPushBody => 'Critical alerts as push messages';
 
   @override
-  String get digestPrefsEmailsLabel => 'Digest emails (comma separated)';
+  String get digestPrefsEmailsLabel => 'Digest emails';
+
+  @override
+  String get digestPrefsEmailsHelper =>
+      'For the digest summary (separate addresses with commas)';
 
   @override
   String get digestPrefsTimezoneTitle => 'Digest timezone (local send hour)';
@@ -2371,5 +2381,65 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleDailyLimit => 'Daily limit reached';
 
   @override
+  String get alertTitleAppBlocked => 'App blocked';
+
+  @override
+  String get alertTitleGeofence => 'Place alert';
+
+  @override
+  String get alertTitleAiConcern => 'Concerning content';
+
+  @override
+  String get alertTitleCyberbullying => 'Possible cyberbullying';
+
+  @override
+  String get alertTitleSelfHarm => 'Possible self-harm risk';
+
+  @override
+  String get alertTitleGrooming => 'Possible grooming';
+
+  @override
+  String get alertTitleTamper => 'Protection tampered with';
+
+  @override
+  String get alertTitleVpnDetected => 'VPN detected';
+
+  @override
+  String get alertTitleInstallRequest => 'App install request';
+
+  @override
+  String get alertTitleUnknownContact => 'Unknown contact';
+
+  @override
   String get alertTitleGeneric => 'Alert';
+
+  @override
+  String get riskSelfHarm => 'Self-harm';
+
+  @override
+  String get riskSubstanceUse => 'Substance use';
+
+  @override
+  String get riskSubstanceAbuse => 'Substance abuse';
+
+  @override
+  String get riskAdultContent => 'Adult content';
+
+  @override
+  String get riskSexualContent => 'Sexual content';
+
+  @override
+  String get riskCyberbullying => 'Cyberbullying';
+
+  @override
+  String get riskGrooming => 'Grooming';
+
+  @override
+  String get riskViolence => 'Violence';
+
+  @override
+  String get riskHateSpeech => 'Hate speech';
+
+  @override
+  String get riskAiConcern => 'Concerning content';
 }

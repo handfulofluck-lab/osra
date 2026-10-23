@@ -216,6 +216,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                 controller: _emails,
                 decoration: InputDecoration(
                   labelText: l10n.digestPrefsEmailsLabel,
+                  helperText: l10n.digestPrefsEmailsHelper,
                   border: const OutlineInputBorder(),
                 ),
               ),

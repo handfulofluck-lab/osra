@@ -64,7 +64,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String minutesShort(int minutes) {
-    return '$minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -166,13 +175,32 @@ class AppLocalizationsAr extends AppLocalizations {
   String get screenTime => 'وقت الشاشة';
 
   @override
-  String screenTimeValue(int minutes, String limit) {
-    return '$minutes من $limit دقيقة';
+  String screenTimeValue(int minutes, int limit) {
+    String _temp0 = intl.Intl.pluralLogic(
+      limit,
+      locale: localeName,
+      other: '$limit دقيقة',
+      many: '$limit دقيقة',
+      few: '$limit دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+      zero: '—',
+    );
+    return '$minutes من $_temp0';
   }
 
   @override
   String liveActivityToday(String app, int minutes) {
-    return '$app · $minutes دقيقة اليوم';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة اليوم',
+      many: '$minutes دقيقة اليوم',
+      few: '$minutes دقائق اليوم',
+      two: 'دقيقتان اليوم',
+      one: 'دقيقة واحدة اليوم',
+    );
+    return '$app · $_temp0';
   }
 
   @override
@@ -663,12 +691,30 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String dailyLimit(int minutes) {
-    return 'الحد اليومي: $minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'الحد اليومي: $_temp0';
   }
 
   @override
   String weekendLimit(int minutes) {
-    return 'الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: $minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: $_temp0';
   }
 
   @override
@@ -915,7 +961,25 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String totalAverage(int total, int avg) {
-    return 'الإجمالي: $total دقيقة · المتوسط: $avg دقيقة يوميًا';
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$total دقيقة',
+      many: '$total دقيقة',
+      few: '$total دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      avg,
+      locale: localeName,
+      other: '$avg دقيقة يوميًا',
+      many: '$avg دقيقة يوميًا',
+      few: '$avg دقائق يوميًا',
+      two: 'دقيقتان يوميًا',
+      one: 'دقيقة واحدة يوميًا',
+    );
+    return 'الإجمالي: $_temp0 · المتوسط: $_temp1';
   }
 
   @override
@@ -1062,6 +1126,15 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String totalOverDays(int total, int count) {
     String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$total دقيقة',
+      many: '$total دقيقة',
+      few: '$total دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
       other: '$count يوم',
@@ -1070,7 +1143,7 @@ class AppLocalizationsAr extends AppLocalizations {
       two: 'يومين',
       one: 'يوم واحد',
     );
-    return 'الإجمالي $total دقيقة خلال $_temp0';
+    return 'الإجمالي: $_temp0 خلال $_temp1';
   }
 
   @override
@@ -1134,7 +1207,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String dayTooltip(String date, int minutes) {
-    return '$date: $minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$date: $_temp0';
   }
 
   @override
@@ -1877,7 +1959,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String consentRevokeWarning(String childName) {
-    return 'سيؤدي هذا إلى إيقاف المراقبة لـ $childName. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.';
+    return 'سيؤدي هذا إلى إيقاف مراقبة $childName. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.';
   }
 
   @override
@@ -2036,8 +2118,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsPushBody => 'إرسال التنبيهات الحرجة كإشعارات فورية';
 
   @override
-  String get digestPrefsEmailsLabel =>
-      'عناوين البريد الإلكتروني لتلقي الملخّص (افصل بينها بفواصل)';
+  String get digestPrefsEmailsLabel => 'عناوين البريد الإلكتروني';
+
+  @override
+  String get digestPrefsEmailsHelper => 'لتلقي الملخّص (افصل بينها بفواصل)';
 
   @override
   String get digestPrefsTimezoneTitle =>
@@ -2452,5 +2536,65 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleDailyLimit => 'تم بلوغ الحد اليومي';
 
   @override
+  String get alertTitleAppBlocked => 'تم حظر تطبيق';
+
+  @override
+  String get alertTitleGeofence => 'تنبيه دخول أو مغادرة مكان';
+
+  @override
+  String get alertTitleAiConcern => 'محتوى مثير للقلق';
+
+  @override
+  String get alertTitleCyberbullying => 'تنمّر إلكتروني محتمل';
+
+  @override
+  String get alertTitleSelfHarm => 'مؤشرات محتملة لإيذاء النفس';
+
+  @override
+  String get alertTitleGrooming => 'استدراج محتمل من شخص بالغ';
+
+  @override
+  String get alertTitleTamper => 'محاولة تعطيل الحماية';
+
+  @override
+  String get alertTitleVpnDetected => 'تم اكتشاف شبكة VPN';
+
+  @override
+  String get alertTitleInstallRequest => 'طلب تثبيت تطبيق';
+
+  @override
+  String get alertTitleUnknownContact => 'تواصل من جهة غير معروفة';
+
+  @override
   String get alertTitleGeneric => 'تنبيه';
+
+  @override
+  String get riskSelfHarm => 'إيذاء النفس';
+
+  @override
+  String get riskSubstanceUse => 'تعاطي المواد';
+
+  @override
+  String get riskSubstanceAbuse => 'إساءة استخدام المواد';
+
+  @override
+  String get riskAdultContent => 'محتوى للبالغين';
+
+  @override
+  String get riskSexualContent => 'محتوى جنسي';
+
+  @override
+  String get riskCyberbullying => 'تنمّر إلكتروني';
+
+  @override
+  String get riskGrooming => 'استدراج';
+
+  @override
+  String get riskViolence => 'العنف';
+
+  @override
+  String get riskHateSpeech => 'خطاب الكراهية';
+
+  @override
+  String get riskAiConcern => 'محتوى مثير للقلق';
 }

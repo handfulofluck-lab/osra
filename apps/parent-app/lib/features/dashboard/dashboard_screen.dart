@@ -313,7 +313,7 @@ class ChildCard extends ConsumerWidget {
                   Text(l10n.screenTime, style: Theme.of(context).textTheme.bodySmall),
                   // NOTE: flexible + ellipsis — narrow cards overflowed this row.
                   Flexible(
-                    child: Text(l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? '$dailyLimit' : '—'),
+                    child: Text(l10n.screenTimeValue(child.screenTimeTodayMinutes, dailyLimit > 0 ? dailyLimit : 0),
                         style: Theme.of(context).textTheme.bodySmall,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.end),

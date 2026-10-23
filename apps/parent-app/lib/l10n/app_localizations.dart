@@ -401,8 +401,8 @@ abstract class AppLocalizations {
   /// No description provided for @screenTimeValue.
   ///
   /// In en, this message translates to:
-  /// **'{minutes} / {limit} min'**
-  String screenTimeValue(int minutes, String limit);
+  /// **'{minutes} / {limit, plural, =0{— min} other{{limit} min}}'**
+  String screenTimeValue(int minutes, int limit);
 
   /// No description provided for @liveActivityToday.
   ///
@@ -3293,8 +3293,14 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsEmailsLabel.
   ///
   /// In en, this message translates to:
-  /// **'Digest emails (comma separated)'**
+  /// **'Digest emails'**
   String get digestPrefsEmailsLabel;
+
+  /// No description provided for @digestPrefsEmailsHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'For the digest summary (separate addresses with commas)'**
+  String get digestPrefsEmailsHelper;
 
   /// No description provided for @digestPrefsTimezoneTitle.
   ///
@@ -3968,11 +3974,131 @@ abstract class AppLocalizations {
   /// **'Daily limit reached'**
   String get alertTitleDailyLimit;
 
+  /// No description provided for @alertTitleAppBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'App blocked'**
+  String get alertTitleAppBlocked;
+
+  /// No description provided for @alertTitleGeofence.
+  ///
+  /// In en, this message translates to:
+  /// **'Place alert'**
+  String get alertTitleGeofence;
+
+  /// No description provided for @alertTitleAiConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning content'**
+  String get alertTitleAiConcern;
+
+  /// No description provided for @alertTitleCyberbullying.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible cyberbullying'**
+  String get alertTitleCyberbullying;
+
+  /// No description provided for @alertTitleSelfHarm.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible self-harm risk'**
+  String get alertTitleSelfHarm;
+
+  /// No description provided for @alertTitleGrooming.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible grooming'**
+  String get alertTitleGrooming;
+
+  /// No description provided for @alertTitleTamper.
+  ///
+  /// In en, this message translates to:
+  /// **'Protection tampered with'**
+  String get alertTitleTamper;
+
+  /// No description provided for @alertTitleVpnDetected.
+  ///
+  /// In en, this message translates to:
+  /// **'VPN detected'**
+  String get alertTitleVpnDetected;
+
+  /// No description provided for @alertTitleInstallRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'App install request'**
+  String get alertTitleInstallRequest;
+
+  /// No description provided for @alertTitleUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown contact'**
+  String get alertTitleUnknownContact;
+
   /// No description provided for @alertTitleGeneric.
   ///
   /// In en, this message translates to:
   /// **'Alert'**
   String get alertTitleGeneric;
+
+  /// No description provided for @riskSelfHarm.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-harm'**
+  String get riskSelfHarm;
+
+  /// No description provided for @riskSubstanceUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Substance use'**
+  String get riskSubstanceUse;
+
+  /// No description provided for @riskSubstanceAbuse.
+  ///
+  /// In en, this message translates to:
+  /// **'Substance abuse'**
+  String get riskSubstanceAbuse;
+
+  /// No description provided for @riskAdultContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Adult content'**
+  String get riskAdultContent;
+
+  /// No description provided for @riskSexualContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sexual content'**
+  String get riskSexualContent;
+
+  /// No description provided for @riskCyberbullying.
+  ///
+  /// In en, this message translates to:
+  /// **'Cyberbullying'**
+  String get riskCyberbullying;
+
+  /// No description provided for @riskGrooming.
+  ///
+  /// In en, this message translates to:
+  /// **'Grooming'**
+  String get riskGrooming;
+
+  /// No description provided for @riskViolence.
+  ///
+  /// In en, this message translates to:
+  /// **'Violence'**
+  String get riskViolence;
+
+  /// No description provided for @riskHateSpeech.
+  ///
+  /// In en, this message translates to:
+  /// **'Hate speech'**
+  String get riskHateSpeech;
+
+  /// No description provided for @riskAiConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning content'**
+  String get riskAiConcern;
 }
 
 class _AppLocalizationsDelegate

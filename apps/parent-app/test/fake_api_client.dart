@@ -315,12 +315,15 @@ Map<String, dynamic> commandJson(
 
 /// Default alert feed: one critical + one warning today, one info yesterday.
 /// Deltas chosen so the day split survives midnight runs (time-bomb fix).
+/// Categories are the ones `InternalAlertSchema` accepts
+/// (`services/api/src/routes/alerts.ts`); `web_filter`/`screen_time` are not
+/// among them (#344 review).
 List<Map<String, dynamic>> defaultAlerts() {
   final now = DateTime.now();
   return [
     alertJson('a3', 'critical', 'sos', 'SOS pressed', now.subtract(const Duration(minutes: 30))),
-    alertJson('a2', 'warning', 'web_filter', 'Blocked site visited', now.subtract(const Duration(minutes: 10))),
-    alertJson('a1', 'info', 'screen_time', 'Daily limit reached', now.subtract(const Duration(days: 1, hours: 2))),
+    alertJson('a2', 'warning', 'web_threat', 'Blocked site visited', now.subtract(const Duration(minutes: 10))),
+    alertJson('a1', 'info', 'screen_time_exceeded', 'Daily limit reached', now.subtract(const Duration(days: 1, hours: 2))),
   ];
 }
 

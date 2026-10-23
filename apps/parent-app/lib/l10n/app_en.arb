@@ -65,11 +65,11 @@
   "statusOffline": "offline",
   "noLocationYet": "No location yet",
   "screenTime": "Screen time",
-  "screenTimeValue": "{minutes} / {limit} min",
+  "screenTimeValue": "{minutes} / {limit, plural, =0{— min} other{{limit} min}}",
   "@screenTimeValue": {
     "placeholders": {
       "minutes": { "type": "int" },
-      "limit": { "type": "String" }
+      "limit": { "type": "int" }
     }
   },
   "liveActivityToday": "{app} · {minutes}m today",
@@ -975,7 +975,8 @@
   "digestPrefsWeeklyBody": "A deeper summary once a week",
   "digestPrefsPushTitle": "Push notifications",
   "digestPrefsPushBody": "Critical alerts as push messages",
-  "digestPrefsEmailsLabel": "Digest emails (comma separated)",
+  "digestPrefsEmailsLabel": "Digest emails",
+  "digestPrefsEmailsHelper": "For the digest summary (separate addresses with commas)",
   "digestPrefsTimezoneTitle": "Digest timezone (local send hour)",
   "digestPrefsTimezoneLabel": "Timezone",
   "digestPrefsTimezoneLoading": "Loading…",
@@ -1104,5 +1105,25 @@
   "alertTitleSos": "SOS pressed",
   "alertTitleBlockedSite": "Blocked site attempted",
   "alertTitleDailyLimit": "Daily limit reached",
-  "alertTitleGeneric": "Alert"
+  "alertTitleAppBlocked": "App blocked",
+  "alertTitleGeofence": "Place alert",
+  "alertTitleAiConcern": "Concerning content",
+  "alertTitleCyberbullying": "Possible cyberbullying",
+  "alertTitleSelfHarm": "Possible self-harm risk",
+  "alertTitleGrooming": "Possible grooming",
+  "alertTitleTamper": "Protection tampered with",
+  "alertTitleVpnDetected": "VPN detected",
+  "alertTitleInstallRequest": "App install request",
+  "alertTitleUnknownContact": "Unknown contact",
+  "alertTitleGeneric": "Alert",
+  "riskSelfHarm": "Self-harm",
+  "riskSubstanceUse": "Substance use",
+  "riskSubstanceAbuse": "Substance abuse",
+  "riskAdultContent": "Adult content",
+  "riskSexualContent": "Sexual content",
+  "riskCyberbullying": "Cyberbullying",
+  "riskGrooming": "Grooming",
+  "riskViolence": "Violence",
+  "riskHateSpeech": "Hate speech",
+  "riskAiConcern": "Concerning content"
 }
