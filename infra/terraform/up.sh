@@ -23,6 +23,29 @@ export AWS_PROFILE AWS_REGION
 command -v terraform >/dev/null 2>&1 || { echo "terraform is not on PATH" >&2; exit 1; }
 command -v aws >/dev/null 2>&1 || { echo "aws CLI is not on PATH" >&2; exit 1; }
 
+# Issue #337: base state is shared in S3, and most of base is `count`-gated on variables that live in a
+# GITIGNORED terraform.tfvars. Without that file the counts evaluate to zero, so the apply does not
+# "create nothing" — it DESTROYS the certificate, the GitHub OIDC provider and the publish role, and it
+# looks exactly like a first-time apply. It happened on 2026-10-23 (DeleteCertificate 12:57:59Z) from a
+# fresh clone. Refuse before applying rather than rely on prevent_destroy alone, because a refusal can
+# say why.
+if [ ! -f "$HERE/base/terraform.tfvars" ]; then
+  cat >&2 <<'EOG'
+refusing to apply base: infra/terraform/base/terraform.tfvars is missing.
+
+Base state is shared in S3. Without that file the `count`-gated resources evaluate to zero and this
+apply would DESTROY the API certificate, the GitHub OIDC provider and the osra-staging-publish role.
+
+Create it (it is gitignored on purpose) from the example and fill in the values:
+    cp infra/terraform/base/terraform.tfvars.example infra/terraform/base/terraform.tfvars
+    github_repo     = "handfulofluck-lab/osra"
+    github_owner_id = "<gh api repos/OWNER/REPO --jq .owner.id>"
+    github_repo_id  = "<gh api repos/OWNER/REPO --jq .id>"
+    domain_name / hosted_zone_name if the session needs HTTPS.
+EOG
+  exit 1
+fi
+
 START_FILE="$HERE/.session-start"
 if [ -s "$START_FILE" ]; then
   start_epoch=$(cat "$START_FILE")
@@ -33,9 +56,20 @@ else
   echo "Session start: $(date -d "@$start_epoch" '+%Y-%m-%d %H:%M:%S %Z')"
 fi
 
+
 echo "==> base (created once; a no-op when nothing changed)"
 terraform -chdir="$HERE/base" init -input=false
 terraform -chdir="$HERE/base" apply "$@"
+
+# And check what base actually produced before env depends on it. A silent empty output here is how the
+# 2026-10-23 session got as far as a publish failure that named GitHub instead of the real cause.
+publish_role_arn=$(terraform -chdir="$HERE/base" output -raw publish_role_arn 2>/dev/null || true)
+if [ -z "$publish_role_arn" ]; then
+  echo "    WARNING: base has no publish_role_arn — an image publish (gh workflow run api-publish.yml)" >&2
+  echo "             will fail with an OIDC error that names GitHub. Cause is almost always empty" >&2
+  echo "             github_repo/owner_id/repo_id in base/terraform.tfvars. This session can continue;" >&2
+  echo "             the publish cannot." >&2
+fi
 
 echo "==> env (per session)"
 terraform -chdir="$HERE/env" init -input=false
