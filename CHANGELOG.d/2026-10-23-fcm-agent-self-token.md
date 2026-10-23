@@ -10,6 +10,15 @@ back on the decided route, and `FirebaseMessagingSvc` no longer dispatches push 
   in-process once** via the newly extracted `CommandPoller.pollOnce`
   (`commands/CommandPoller.kt`) — the same fetch-and-dispatch body the periodic worker used to hold —
   and **falls back** to a one-shot `CommandPollWorker` only when that poll throws or cannot run.
+- **The wake runs inside FCM's callback window (#322 review).** `onMessageReceived` used to hand the
+  poll to a detached `scope.launch`, which returns immediately: the poll then runs *after*
+  `onMessageReceived` has returned, and FCM's background limits can pause or terminate the process
+  **without an exception**. Nothing throws, so the fallback never fires, and the command waits for the
+  periodic poll — clamped to ~15 minutes, which is precisely the case the acceptance row is about. It
+  now uses `runBlocking` (FCM's own worker thread, never the main thread) with an **8 s budget** in
+  `PushWakeHandler` (`WAKE_BUDGET_MS`, well inside FCM's ~20 s window); a poll that overruns is handed
+  to the one-shot worker as well. `withTimeoutOrNull` converts its own timeout to `null`, so a slow
+  poll is handled like a failed one, while a real outer cancellation still reaches the rethrow.
   **Why the in-process attempt is primary:** lowest latency, which is what a `lock` needs; **why the
   worker is the fallback:** a `FirebaseMessagingService` has no `goAsync()`, so the process can be
   reclaimed the moment the callback returns, and WorkManager work outlives it. **Why content is never

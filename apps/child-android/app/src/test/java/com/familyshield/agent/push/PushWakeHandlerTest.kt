@@ -1,6 +1,7 @@
 package com.familyshield.agent.push
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -128,5 +129,34 @@ class PushWakeHandlerTest {
         }
 
         assertEquals("a cancelled poll is not a failure to recover from", 0, recorder.fallbacks)
+    }
+
+    /**
+     * A poll that has not finished inside the wake budget is handed to the worker as well.
+     *
+     * This is the case the acceptance row is actually about: FCM's callback window closes and the
+     * process is paused or reclaimed **without an exception**, so a slow in-process poll cannot be
+     * allowed to be the only attempt. A short real budget (50 ms against a 400 ms poll) keeps the test
+     * fast without adding `kotlinx-coroutines-test` for virtual time.
+     *
+     * Mutant: drop `withTimeoutOrNull(...)` from `PushWakeHandler.onPushReceived` and this fails with
+     * `fallbacks expected:<1> but was:<0>` after the poll runs to completion.
+     */
+    @Test
+    fun `a poll that overruns the wake budget also enqueues the worker`() = runBlocking {
+        val recorder = Recorder()
+
+        PushWakeHandler.onPushReceived(
+            data = mapOf("w" to "1"),
+            poll = {
+                recorder.poll()
+                delay(400)
+            },
+            fallback = recorder.trigger,
+            budgetMs = 50,
+        )
+
+        assertEquals("the overrunning poll still ran exactly once", 1, recorder.polls)
+        assertEquals("an unfinished poll must be handed to the worker", 1, recorder.fallbacks)
     }
 }

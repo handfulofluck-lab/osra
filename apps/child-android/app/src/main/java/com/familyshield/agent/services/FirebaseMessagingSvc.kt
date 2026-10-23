@@ -14,6 +14,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 @AndroidEntryPoint
 class FirebaseMessagingSvc : FirebaseMessagingService() {
@@ -32,13 +33,21 @@ class FirebaseMessagingSvc : FirebaseMessagingService() {
      *
      * The wake polls **in-process first** ([CommandPoller.pollOnce], the same call the periodic worker
      * makes). That is the lowest-latency path, which is what a `lock` needs: the HTTP round trip
-     * starts on this callback's own coroutine instead of waiting for a WorkManager slot. The one-shot
-     * [CommandPollWorker.requestFetchNow] is the **fallback**, because a `FirebaseMessagingService`
-     * has no `goAsync()`: the process can be reclaimed the moment this callback returns, so a poll
-     * that throws or cannot start is handed to WorkManager, which outlives the process.
+     * starts on this callback's own thread instead of waiting for a WorkManager slot.
+     *
+     * It runs inside the callback on purpose (Claude's #322 review, 2026-10-23). FCM gives
+     * `onMessageReceived` a short window and then applies background limits that can pause or
+     * terminate the process **without an exception**. A poll launched on a separate scope returns from
+     * this method immediately, so it runs *after* the window has closed: when FCM kills it, nothing
+     * throws, `PushWakeHandler`'s fallback never fires, and the command waits for the periodic poll
+     * (clamped to ~15 minutes). `runBlocking` on FCM's own worker thread — never the main thread —
+     * keeps the poll inside the window, and the handler's 8 s budget bounds it well inside FCM's ~20 s.
+     * The one-shot [CommandPollWorker.requestFetchNow] stays as the fallback for a poll that throws or
+     * overruns: WorkManager outlives the process, which the callback does not.
      */
     override fun onMessageReceived(msg: RemoteMessage) {
-        scope.launch {
+        // Blocks FCM's worker thread (never the main thread) so the poll runs inside the handler window.
+        runBlocking {
             PushWakeHandler.onPushReceived(
                 data = msg.data,
                 poll = { poller.pollOnce() },

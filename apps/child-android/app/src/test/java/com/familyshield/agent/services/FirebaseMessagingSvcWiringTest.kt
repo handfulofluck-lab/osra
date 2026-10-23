@@ -105,6 +105,19 @@ class FirebaseMessagingSvcWiringTest {
             "the worker must be the fallback trigger",
             body.contains("CommandPollWorker.requestFetchNow("),
         )
+        assertTrue(
+            "the wake must run inside the FCM callback window (Claude's #322 review): FCM gives " +
+                "onMessageReceived a short window and then applies background limits that can pause " +
+                "or terminate the process WITHOUT an exception, so a poll on a detached scope returns " +
+                "immediately, gets killed, never throws, and the fallback never fires — the command " +
+                "then waits for the ~15-minute periodic poll.",
+            body.contains("runBlocking"),
+        )
+        assertFalse(
+            "onMessageReceived must not launch the wake on a separate scope: scope.launch returns " +
+                "before the poll runs, so the work outlives FCM's callback window (#322 review).",
+            body.contains("scope.launch"),
+        )
     }
 
     /**

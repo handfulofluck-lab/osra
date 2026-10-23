@@ -1,6 +1,7 @@
 package com.familyshield.agent.push
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The fallback when the in-process poll cannot run: enqueue the one-shot poll worker. One method, so
@@ -36,22 +37,42 @@ fun interface CommandFetchTrigger {
 object PushWakeHandler {
 
     /**
-     * Polls once, then falls back if it did not run; never inspects [data]. Cancellation is rethrown
-     * (it is not a poll failure), and a failure to *enqueue* the fallback is swallowed because this is
-     * the best-effort end of a push: it must not crash the messaging thread.
+     * How long a wake may spend polling before the work is handed to the one-shot worker.
+     *
+     * FCM gives `onMessageReceived` a short window (roughly 20 s) and then applies background limits
+     * that can pause or terminate the process **without an exception** — so a poll cut short that way
+     * would never reach the `catch`, the fallback would never be enqueued, and the command would wait
+     * for the periodic poll, which is clamped to ~15 minutes. That is exactly the case 1.5's acceptance
+     * is about (app backgrounded, phone dozing), so the budget has to be well inside the window.
+     */
+    const val WAKE_BUDGET_MS: Long = 8_000
+
+    /**
+     * Polls once inside [budgetMs], then falls back if the poll did not finish or threw. Never inspects
+     * [data]. An **outer** cancellation is rethrown (it is not a poll failure), and a failure to
+     * *enqueue* the fallback is swallowed because this is the best-effort end of a push: it must not
+     * crash the messaging thread.
      */
     @Suppress("UNUSED_PARAMETER")
     suspend fun onPushReceived(
         data: Map<String, String>,
         poll: suspend () -> Unit,
         fallback: CommandFetchTrigger,
+        budgetMs: Long = WAKE_BUDGET_MS,
     ) {
-        try {
-            poll()
+        // `withTimeoutOrNull` turns its *own* timeout into null, so a slow poll is indistinguishable
+        // from a failed one here — both mean "enqueue the worker". A real outer cancellation still
+        // surfaces as CancellationException from inside, so the rethrow below keeps its meaning.
+        val finished = try {
+            withTimeoutOrNull(budgetMs) {
+                poll()
+                true
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failed: Exception) {
-            runCatching { fallback.requestFetch() }
+            null
         }
+        if (finished == null) runCatching { fallback.requestFetch() }
     }
 }
