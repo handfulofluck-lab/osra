@@ -240,7 +240,26 @@ Local equivalents of the two lint gates (the workflow lint is also installed as 
 node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
+node scripts/check-docs-links.mjs --selftest   # the gate's own fixtures (#324)
 ```
+
+**What the link gate reads, and what it used to miss (#324).** It resolves relative paths, `#anchor`
+targets (including `#top`/`#`), reference-style links (`[label][ref]` with a `[ref]: path`
+definition), intra-file anchors (`[x](#section)`), and root-absolute `(/docs/...)` links. Three of
+those shapes passed silently until #324: an anchor into a **heading-less** file (the old
+`headings.size > 0` guard made the *certainly wrong* case the one that passed), reference definitions
+(never scanned), and intra-file anchors (skipped outright, while a comment claimed "handled below").
+Each rule now has a fixture in `--selftest`, and one mutant apiece: restore the guard, drop the
+reference scan, drop the intra-file branch — the cross-checked count drops, so the "0 broken" line
+can no longer be narrower than it reads. A fourth rule came from the strictness itself: link syntax
+**inside code spans and fences** is literal Markdown, not a link, so `stripCode` removes it first —
+otherwise a document that quotes a broken link fails the gate that is checking it.
+
+Anchors follow GitHub's own slug rules, measured against `POST /markdown`: an **intraword** underscore
+stays (`FCM_SERVICE_ACCOUNT_JSON` → `fcm_service_account_json`) while an **emphasis** underscore goes
+(`The _x_ thing` → `the-x-thing`); a fenced block contributes no headings; percent-encoded paths
+resolve (`My%20File.md`); an intra-file anchor resolves the containing file by its basename; and a
+root-absolute `(/docs/...)` link is classified once and checked from the repository root.
 
 Local equivalent of the Terraform gate (from the repository root; no credentials, no state):
 
