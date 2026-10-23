@@ -68,7 +68,13 @@ as such and the row goes to the human or stays open; it does not quietly become 
       `apps/parent-app` → `flutter test` · `apps/child-android` → `./gradlew testDebugUnitTest`
       (`ANDROID_HOME` required) · `apps/agent-desktop` → `dotnet test` ·
       `services/ai-engine` → `pytest tests`.
-- [ ] New/changed behaviour has a test in the same suite that failed before the fix.
+- [ ] New/changed behaviour has a test in the same suite that failed before the fix — **and, for a gate or an
+      assertion about a gate, the mutant that would break it, stated beside the test.** A test that cannot fail is
+      worse than no test, because it prints a number: on 2026-10-23 five such checks were found in one night (a
+      `/commands/history` test that read what the route happened to return, a probe check that asserted a tautology
+      because the refusal happens before any row is read, a `429` rule that turned a failure into an abort, a
+      write-count test blind to an unnamed mock method, and a manifest assertion whose `getAttribute` returns `""`
+      for a missing attribute). Where the writer cannot state the mutant, the check is not coverage yet.
 - [ ] **Documentation is updated in the same PR** (§8): a `CHANGELOG.d/` fragment for anything
       user-visible, an ADR for an architectural decision, and `docs/TESTING.md` when the procedure,
       a suite or a gate changes.
