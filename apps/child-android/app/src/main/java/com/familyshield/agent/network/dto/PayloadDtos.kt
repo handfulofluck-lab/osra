@@ -30,7 +30,15 @@ data class TelemetryDto(
     val locationGrant: String,
 )
 
-/** Push-token registration for POST /v1/devices/<id>/push-token. */
+/**
+ * Push-token registration for `POST /v1/devices/<id>/push-token` (#319; the decided contract,
+ * device-only, server half in PR #320).
+ *
+ * The field is `token` because that is the name `PushTokenSchema`
+ * (`services/api/src/routes/devices.ts`) reads, and the value is the FCM registration token
+ * (20–4096 characters). It was briefly `pushToken` while the client pointed at a different route;
+ * that is a `400` against this schema, which is why `PushTokenRouteTest` pins the serialised JSON.
+ */
 data class PushTokenDto(
     val token: String,
 )

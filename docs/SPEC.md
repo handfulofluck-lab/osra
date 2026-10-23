@@ -434,8 +434,9 @@ TODOs inside DONE files: BootReceiver → schedule RuleRepository sync + UsageRe
 (#319): the agent registers its own FCM token on `POST /v1/devices/:id/push-token`, body `{ token }`
 (the shape is in the `devices.ts` routes above). The route is device-only since #319, so the device
 JWT that holds the token is its only caller — a parent is refused `403 device_role_required` — and a
-token minted before pairing **will be** re-published by `CommandPollWorker` (`PushTokenUploadPolicy`),
-which is the Android half in a separate PR and is not on `main` yet. The
+token minted before pairing is re-published by `CommandPoller.pollOnce` — through `CommandPollWorker`
+on its 15-minute tick and through the push wake when one arrives — governed by
+`PushTokenUploadPolicy` (client half of #319, #322). The
 server half lands first; the client half is a separate PR, so the API's own PR ships no Android
 change.
 
