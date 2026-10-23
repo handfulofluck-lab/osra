@@ -20,7 +20,8 @@
   - parent location pings;
   - `ws-ticket` answering a purpose token with 403.
 
-  The fixes are a separate PR.
+  The fixes landed in #331. The matrix shows the statuses after that merge, with each changed cell marked
+  by its finding.
 - **⚠️ Not verified yet:** apart from the probe checks above, the matrix is the expected half only. The
   statuses are read from the code, not observed against a stack. Coverage citations and the probe checks
   for the gaps come next.

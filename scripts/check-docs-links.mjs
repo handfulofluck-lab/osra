@@ -1,17 +1,22 @@
 #!/usr/bin/env node
 /**
  * Checks that relative links in the repository's Markdown resolve to files that exist, and that
- * relative anchors point at a heading that exists in the target file.
+ * relative and intra-file anchors point at a heading that exists.
  *
  * Why: a documentation set is only world-class if it can be *navigated*. Broken links rot silently —
  * a rename or a moved guide turns the index into a maze, and nobody notices because the file still
  * exists. Cheap to check, so it is checked in CI and can be run locally.
  *
- * Usage: node scripts/check-docs-links.mjs [--quiet]
+ * Issue #324: three shapes used to pass silently — an anchor into a **heading-less** file (the old
+ * `headings.size > 0` guard), **reference-style** links (`[label][ref]` + `[ref]: path`), and
+ * **intra-file** anchors (`[x](#section)`), which the old comment claimed were "handled below" when
+ * nothing handled them. Each is now a rule with a self-test.
+ *
+ * Usage: node scripts/check-docs-links.mjs [--quiet] [--selftest]
  * Exits 1 when a link is broken.
  */
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { dirname, resolve, relative } from "node:path";
+import { basename, dirname, resolve, relative } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const quiet = process.argv.includes("--quiet");
@@ -30,61 +35,393 @@ function markdownFiles() {
   }
 }
 
-const slugify = (heading) =>
+export const slugify = (heading) =>
   heading
     .trim()
     .toLowerCase()
-    .replace(/[`*_[\]()]/g, "")
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/[`*[\]()]/g, "")
+    // GitHub keeps an *intraword* underscore (FCM_SERVICE_ACCOUNT_JSON -> fcm_service_account_json) and
+    // drops an emphasis one (The _x_ thing -> the-x-thing). Measured with POST /markdown.
+    .replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "")
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
     .replace(/\s+/g, "-");
+
+/** Headings of a file, slugged the way GitHub does it (plus a `-N` suffix for duplicates). */
+export const headingsOfText = (raw) => {
+  const seen = new Map();
+  const headings = new Set();
+  // Strip fenced blocks only: GitHub does not treat `# install deps` inside a fence as a heading, but it
+  // DOES keep inline code text in a slug, so inline spans must stay (#325 review).
+  const text = raw.replace(/^[ \t]*(```|~~~)[\s\S]*?^[ \t]*\1[^\n]*$/gm, "");
+  for (const line of text.split(/\r?\n/)) {
+    if (!/^#{1,6}\s/.test(line)) continue;
+    const base = slugify(line.replace(/^#{1,6}\s+/, ""));
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    headings.add(n === 0 ? base : `${base}-${n}`);
+  }
+  return headings;
+};
 
 const headingsOf = (file) => {
   try {
-    return new Set(
-      readFileSync(file, "utf8")
-        .split(/\r?\n/)
-        .filter((l) => /^#{1,6}\s/.test(l))
-        .map((l) => slugify(l.replace(/^#{1,6}\s+/, ""))),
-    );
+    return headingsOfText(readFileSync(file, "utf8"));
   } catch {
     return new Set();
   }
 };
 
-const problems = [];
-let checked = 0;
+/** An anchor that legitimately has no heading: `#` and `#top` scroll to the top of any page. */
+const TOP_ANCHORS = new Set(["", "top"]);
 
-for (const file of markdownFiles()) {
-  const text = readFileSync(file, "utf8");
-  // [label](target) — ignore absolute URLs, mailto, and bare anchors handled below.
-  const links = [...text.matchAll(/\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map((m) => m[1]);
-  for (const target of links) {
-    if (/^(https?:|mailto:|tel:|#)/.test(target)) continue;
-    const [pathPart, anchor] = target.split("#");
+/** Normalise a raw anchor the way GitHub does: percent-decoding, then a leading `user-content-` strip. */
+const normaliseAnchor = (raw) => {
+  let a = raw;
+  try {
+    a = decodeURIComponent(raw);
+  } catch {
+    /* a malformed escape stays literal and simply will not match a heading */
+  }
+  return a.replace(/^user-content-/, "");
+};
+
+/**
+ * Remove fenced code blocks and inline code spans before scanning.
+ *
+ * Markdown renders `[x](y)` inside backticks or a fence as **literal text**, not a link, so a
+ * documentation PR that quotes a broken link (exactly what #324's own changelog does while describing
+ * the three shapes) must not fail the gate. Found the hard way: with the three new rules in place, four
+ * "broken links" appeared in this repository and all four were examples inside code.
+ *
+ * Mutant: return the text unmodified and the self-test's "a link inside a code span is not a link"
+ * case fails, reporting the two links quoted in the fixture's code.
+ */
+export function stripCode(text) {
+  return (
+    text
+      // Fenced blocks: opening and closing fence with the same character, then to the next fence.
+      .replace(/^[ \t]*(```|~~~)[\s\S]*?^[ \t]*\1[^\n]*$/gm, "")
+      // Inline code spans, single line.
+      .replace(/`[^`\n]*`/g, "")
+  );
+}
+
+/**
+ * Every link target in one Markdown file, in the three shapes that exist in practice:
+ *  - inline          [label](target)  and  [label](<target with spaces>)
+ *  - reference       [label][ref], [label][], [label]  ->  the `[ref]: target` definitions
+ *  - intra-file      [label](#anchor)
+ * Returns `{ target, kind }` so a caller can report the shape it came from.
+ */
+export function linksOf(rawText) {
+  const found = [];
+  const text = stripCode(rawText);
+
+  // Reference definitions first: [ref]: target "optional title"
+  const defs = new Map();
+  for (const m of text.matchAll(/^\s{0,3}\[([^\]]+)\]:\s*(\S+)(?:\s+["'(].*)?$/gm)) {
+    defs.set(m[1].trim().toLowerCase(), m[2]);
+  }
+
+  // Inline links and images. <...> allows spaces in the target.
+  for (const m of text.matchAll(/\[[^\]]*\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+["'][^"']*["'])?\s*\)/g)) {
+    const target = m[1].replace(/^<|>$/g, "");
+    if (/^\/(?!\/)/.test(target)) continue; // root-absolute: the pass below checks it from the repo root
+    found.push({ target, kind: "inline" });
+  }
+
+  // Reference links: [label][ref] and the collapsed [label][] form.
+  for (const m of text.matchAll(/\[([^\]]*)\]\[([^\]]*)\]/g)) {
+    const key = (m[2] || m[1]).trim().toLowerCase();
+    const target = defs.get(key);
+    if (target !== undefined) found.push({ target, kind: "reference" });
+  }
+
+  // Intra-file anchors: [label](#anchor). Not a path, but it is still a link.
+  for (const m of text.matchAll(/\[[^\]]*\]\(\s*(#[^)\s]*)\s*\)/g)) {
+    found.push({ target: m[1], kind: "intra-file" });
+  }
+
+  // In-repo absolute links written from the repo root, e.g. (/docs/TESTING.md)
+  for (const m of text.matchAll(/\]\((\/[^)\s]+)\)/g)) {
+    found.push({ target: m[1], kind: "root-absolute" });
+  }
+
+  // De-duplicate identical (kind, target) pairs. Note the inline pass also matches `[x](#anchor)`, but
+  // under a different kind — that copy is dropped later by `if (!pathPart) continue`, not here (#325).
+  const seen = new Set();
+  return found.filter((l) => {
+    const key = `${l.kind}|${l.target}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Check one file's links. Pure over (text, resolver) so the self-test needs no filesystem.
+ *
+ * `resolveTarget(file, pathPart)` returns an absolute path or null; `headingsFor(abs)` returns the
+ * heading set (or null when the file cannot be read).
+ */
+export function checkLinks(file, text, resolveTarget, headingsFor) {
+  const problems = [];
+  let checked = 0;
+
+  for (const { target, kind } of linksOf(text)) {
+    if (/^(https?:|mailto:|tel:|\/\/)/.test(target)) continue;
+
+    // Intra-file anchor: the containing file is the target.
+    if (kind === "intra-file") {
+      const anchor = normaliseAnchor(target.slice(1));
+      if (TOP_ANCHORS.has(anchor)) continue;
+      checked++;
+      // basename, not `file`: the containing file is already relative to the repo root, so
+      // resolveTarget(file, file) asks for docs/docs/x.md inside a folder (#325 review).
+      const abs = resolveTarget(file, basename(file));
+      const headings = abs ? headingsFor(abs) : null;
+      // Issue #324: a heading-less file cannot satisfy ANY anchor. The old `headings.size > 0`
+      // guard made this the one case that passed while being certainly wrong.
+      if (!abs || !headings || !headings.has(anchor)) {
+        problems.push(`${file}: intra-file anchor not found -> ${target}`);
+      }
+      continue;
+    }
+
+    const hash = target.indexOf("#");
+    const pathPart = hash === -1 ? target : target.slice(0, hash);
+    const anchor = hash === -1 ? "" : normaliseAnchor(target.slice(hash + 1));
+
+    if (kind === "root-absolute") {
+      checked++;
+      const abs = resolve(process.cwd(), "." + pathPart);
+      if (!existsSync(abs)) problems.push(`${file}: missing target -> ${target}`);
+      continue;
+    }
+
     if (!pathPart) continue;
     checked++;
-    const abs = resolve(dirname(file), decodeURI(pathPart));
-    if (!existsSync(abs)) {
+    let decoded = pathPart;
+    try {
+      decoded = decodeURI(pathPart);
+    } catch {
+      /* a malformed escape stays literal and simply will not resolve */
+    }
+    const abs = resolveTarget(file, decoded);
+    if (!abs) {
       problems.push(`${file}: missing target -> ${target}`);
       continue;
     }
-    if (anchor && statSync(abs).isFile() && abs.endsWith(".md")) {
-      const headings = headingsOf(abs);
-      if (!headings.has(anchor) && headings.size > 0) {
-        problems.push(`${file}: anchor not found -> ${target}`);
-      }
+    if (anchor && TOP_ANCHORS.has(anchor)) continue;
+    if (anchor && abs.endsWith(".md")) {
+      const headings = headingsFor(abs);
+      if (!headings.has(anchor)) problems.push(`${file}: anchor not found -> ${target}`);
     }
   }
-  // Also check in-repo absolute links written from the repo root, e.g. (/docs/TESTING.md)
-  for (const m of text.matchAll(/\]\((\/[^)\s]+)\)/g)) {
-    const abs = resolve(process.cwd(), "." + m[1]);
-    checked++;
-    if (!existsSync(abs)) problems.push(`${file}: missing target -> ${m[1]}`);
-  }
+
+  return { problems, checked };
 }
 
-if (problems.length) {
-  for (const p of problems) console.log(`ERROR ${p}`);
+/* ───────────────────────────── the CLI ───────────────────────────── */
+
+function runCli() {
+  const problems = [];
+  let checked = 0;
+  const files = markdownFiles();
+
+  const resolveTarget = (file, pathPart) => {
+    const abs = resolve(dirname(file), pathPart);
+    return existsSync(abs) ? abs : null;
+  };
+
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    const result = checkLinks(
+      file,
+      text,
+      resolveTarget,
+      (abs) => (statSync(abs).isFile() && abs.endsWith(".md") ? headingsOf(abs) : new Set()),
+    );
+    for (const p of result.problems) problems.push(p);
+    checked += result.checked;
+  }
+
+  if (problems.length) for (const p of problems) console.log(`ERROR ${p}`);
+  if (!quiet) {
+    console.log(
+      `\n${problems.length} broken link(s) out of ${checked} checked in ${files.length} Markdown file(s)`,
+    );
+  }
+  process.exit(problems.length ? 1 : 0);
 }
-if (!quiet) console.log(`\n${problems.length} broken link(s) out of ${checked} checked in ${markdownFiles().length} Markdown file(s)`);
-process.exit(problems.length ? 1 : 0);
+
+/* ───────────────────────────── the self-test ─────────────────────────────
+ * Issue #324. Each case names the shape it protects and the mutant that breaks it; the three
+ * shapes below were all silently passing before this change.
+ */
+const CASES = [
+  {
+    name: "inline link to an existing file is clean",
+    text: "see [guide](docs/guide.md)",
+    files: { "docs/guide.md": "# Guide\n" },
+    expect: [],
+  },
+  {
+    name: "inline link to a missing file is reported",
+    text: "see [guide](docs/nope.md)",
+    files: { "docs/guide.md": "# Guide\n" },
+    expect: ["missing target -> docs/nope.md"],
+  },
+  {
+    name: "an anchor that exists in the target is clean",
+    text: "[x](docs/guide.md#the-guide)",
+    files: { "docs/guide.md": "# The guide\n" },
+    expect: [],
+  },
+  {
+    name: "an anchor that does not exist is reported",
+    text: "[x](docs/guide.md#nope)",
+    files: { "docs/guide.md": "# The guide\n" },
+    expect: ["anchor not found -> docs/guide.md#nope"],
+  },
+  {
+    // Mutant: restore the old `headings.size > 0` guard and this passes silently.
+    name: "an anchor into a heading-less file is reported (#324)",
+    text: "[x](docs/plain.md#anything)",
+    files: { "docs/plain.md": "just a paragraph, no headings\n" },
+    expect: ["anchor not found -> docs/plain.md#anything"],
+  },
+  {
+    // Mutant: drop the reference-definition scan and this passes silently.
+    name: "a reference-style link to a missing file is reported (#324)",
+    text: "see [the guide][g]\n\n[g]: docs/nope.md\n",
+    files: {},
+    expect: ["missing target -> docs/nope.md"],
+  },
+  {
+    // Mutant: drop the intra-file branch and this passes silently.
+    name: "an intra-file anchor with no such heading is reported (#324)",
+    text: "# Real\n\njump [there](#not-here)\n",
+    files: {},
+    expect: ["intra-file anchor not found -> #not-here"],
+  },
+  {
+    name: "an intra-file anchor that exists is clean",
+    text: "# Real heading\n\njump [there](#real-heading)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    name: "#top and a bare # are accepted anywhere",
+    text: "# Real\n\n[top](#top) and [here](#)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    name: "duplicate headings get GitHub's -1 suffix",
+    text: "# Dup\n\n## Dup\n\n[x](#dup-1)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    // Mutant: return `text` instead of `stripCode(text)` in linksOf and this reports both quoted links.
+    name: "a link inside a code span is not a link (#324)",
+    text: [
+      "prose `[x](missing.md)` is literal.",
+      "",
+      "```",
+      "[y](also-missing.md)",
+      "```",
+      "",
+    ].join("\n"),
+    files: {},
+    expect: [],
+  },
+  {
+    name: "the same missing link outside a code span is still reported",
+    text: "`[x](missing.md)` then a real one [y](really-missing.md)",
+    files: {},
+    expect: ["missing target -> really-missing.md"],
+  },
+  {
+    // Mutant: resolve the containing file as `resolveTarget(file, file)` and this reports the anchor.
+    name: "an intra-file anchor in a file inside a folder is clean (#325)",
+    file: "docs/probe.md",
+    text: "# Real heading\n\njump [there](#real-heading)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    // Mutant: drop the decodeURI and this reports a missing target.
+    name: "a percent-encoded path resolves to the file with a space (#325)",
+    text: "[x](docs/My%20File.md)",
+    files: { "docs/My File.md": "# Mine\n" },
+    expect: [],
+  },
+  {
+    // Measured with GitHub's own renderer (POST /markdown): FCM_SERVICE_ACCOUNT_JSON ->
+    // fcm_service_account_json, "The _x_ thing" -> the-x-thing. Mutant: strip every underscore and the
+    // first link is reported.
+    name: "intraword underscores stay in a slug, emphasis underscores do not (#325)",
+    text: "# FCM_SERVICE_ACCOUNT_JSON\n\n## The _x_ thing\n\n[a](#fcm_service_account_json) [b](#the-x-thing)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    // The root-absolute check reads the real disk (process.cwd() + existsSync), so the fixture level
+    // cannot reach it. Pin the extraction instead: exactly one link, of that kind — the inline pass must
+    // not claim it. That was #325's item 3: a valid /docs link failed because the inline pass resolved it
+    // against the file's own folder.
+    name: "a root-absolute link is classified once, as root-absolute (#325)",
+    links: "[a](/docs/TESTING.md)",
+    expectKinds: ["root-absolute"],
+  },
+  {
+    name: "absolute urls, mailto and tel are ignored",
+    text: "[a](https://example.com) [b](mailto:x@y.z) [c](tel:123)",
+    files: {},
+    expect: [],
+  },
+];
+
+function runSelfTest() {
+  let failed = 0;
+  for (const c of CASES) {
+    // The case's own text is the containing file; `files` supplies the targets it links to.
+    const home = c.file ?? "probe.md";
+    const fixture = { [home]: c.text, ...c.files };
+    const rel = (abs) => relative(process.cwd(), abs).split("\\").join("/");
+    const resolveTarget = (file, pathPart) => {
+      const abs = resolve(dirname(file), pathPart);
+      return fixture[rel(abs)] !== undefined ? abs : null;
+    };
+    const headingsFor = (abs) => {
+      const text = fixture[rel(abs)];
+      return text === undefined ? new Set() : headingsOfText(text);
+    };
+    // A case may pin the extraction instead of a problem list (the root-absolute rule reads the disk).
+    if (c.expectKinds) {
+      const kinds = linksOf(c.links).map((l) => l.kind);
+      const ok = kinds.length === c.expectKinds.length && kinds.every((k, i) => k === c.expectKinds[i]);
+      if (ok) console.log(`PASS  ${c.name}`);
+      else {
+        failed++;
+        console.log(`FAIL  ${c.name}: got kinds [${kinds.join(", ")}]`);
+      }
+      continue;
+    }
+    const { problems } = checkLinks(home, c.text, resolveTarget, headingsFor);
+    const ok = c.expect.length === 0 ? problems.length === 0 : c.expect.every((e) => problems.some((p) => p.endsWith(e)));
+    if (ok) {
+      console.log(`PASS  ${c.name}`);
+    } else {
+      failed++;
+      console.log(`FAIL  ${c.name}: ${problems.length ? problems.join(" | ") : "no problems reported"}`);
+    }
+  }
+  console.log(`\ndocs-links self-test: ${CASES.length - failed}/${CASES.length} cases`);
+  process.exit(failed ? 1 : 0);
+}
+
+if (process.argv.includes("--selftest")) runSelfTest();
+else runCli();

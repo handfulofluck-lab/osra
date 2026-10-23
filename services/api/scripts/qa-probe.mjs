@@ -576,29 +576,37 @@ console.log("\n── G2. location & rules authorization ──");
   const sibLoc = await call("GET", `/v1/location/${kidA}/history`, { token: d2.token });
   check("G14 device JWT cannot read a sibling child's rules or location (403 cross_child_forbidden)", sibRules.status === 403 && sibRules.data?.error === "cross_child_forbidden" && sibLoc.status === 403 && sibLoc.data?.error === "cross_child_forbidden", `rules=${sibRules.status}/${sibRules.data?.error} location=${sibLoc.status}/${sibLoc.data?.error}`);
 
+  // Plan 2.7 F4 (Claude, #329, 2026-10-23): a location ping comes from the child's device. A parent
+  // JWT is refused with 403 device_role_required before the body is read — the former G15 ("parent
+  // ping … still succeeds (201)") and G16 (a parent-supplied deviceId of another child) are superseded,
+  // see scripts/probe-gate-acks.json. Mutant: restore `if (user?.role === "parent" && user.familyId) return;`
+  // in pingAuth (location.ts) -> G15 gets 201 and fails.
   const ownPing = await call("POST", "/v1/location/ping", {
     token: tokenA,
     body: { childId: kidA2, deviceId: d2.deviceId, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
   });
-  check("G15 parent ping for its own child's device still succeeds (201)", ownPing.status === 201, `got ${ownPing.status}`);
+  check("G15 a parent location ping is refused even for its own child's device (403 device_role_required)", ownPing.status === 403 && ownPing.data?.error === "device_role_required", `got ${ownPing.status} ${JSON.stringify(ownPing.data)}`);
 
+  // The device-token identity check stays (location.ts, the `user.role === "device"` branch): a device
+  // may not file a ping under another device's id. Mutant: drop the topDeviceId comparison -> 201.
   const crossDevPing = await call("POST", "/v1/location/ping", {
-    token: tokenA,
+    token: d2.token,
     body: { childId: kidA2, deviceId: deviceIdA, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
   });
-  check("G16 parent-supplied deviceId belonging to another child is refused (403 device_mismatch)", crossDevPing.status === 403 && crossDevPing.data?.error === "device_mismatch", `got ${crossDevPing.status} ${JSON.stringify(crossDevPing.data)}`);
+  check("G16 a device token whose body names another device is refused (403 device_mismatch)", crossDevPing.status === 403 && crossDevPing.data?.error === "device_mismatch", `got ${crossDevPing.status} ${JSON.stringify(crossDevPing.data)}`);
 
   const crossFamPing = await call("POST", "/v1/location/ping", {
     token: tokenB,
     body: { childId: kidA, deviceId: deviceIdA, lat: 37.7749, lng: -122.4194, accuracyM: 5 },
   });
-  check("G17 parent ping for another family's child is still forbidden (403)", crossFamPing.status === 403, `got ${crossFamPing.status}`);
+  // Since plan 2.7 F4 the parent refusal comes before the family check, so the error is named exactly.
+  check("G17 parent ping for another family's child is still forbidden (403)", crossFamPing.status === 403 && crossFamPing.data?.error === "device_role_required", `got ${crossFamPing.status} ${JSON.stringify(crossFamPing.data)}`);
 
   // #124 (audit finding 5): family scoping is not device identity. Device A could post telemetry for
   // sibling B in the same family, refreshing B's lastSeen/battery and B's child's day totals, because
   // `requireFamily` only proves the target shares the caller's familyId — every device in a family
   // does. Agent-write routes therefore compose `requireOwnDevice` after it
-  // (`services/api/src/middleware/requireFamily.ts`); parents stay family-scoped (G15).
+  // (`services/api/src/middleware/requireFamily.ts`); since plan 2.7 F2 a parent token is refused too.
   const sibTelemetry = await call("POST", `/v1/devices/${deviceIdA}/telemetry`, { token: d2.token, body: { batteryPct: 11 } });
   check("G20 a device token cannot post telemetry for a sibling device in the same family (403 forbidden)", sibTelemetry.status === 403 && sibTelemetry.data?.error === "forbidden", `got ${sibTelemetry.status} ${JSON.stringify(sibTelemetry.data)}`);
   const ownTelemetry = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, { token: d2.token, body: { batteryPct: 57 } });

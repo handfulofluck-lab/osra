@@ -5,7 +5,7 @@ should get, read from the guards at the cited lines. It does **not** yet show ob
 probe/test coverage for each cell. Those come next, once the shape of this table is agreed (issue #326).
 
 - **Author:** Ahmed (security + testing).
-- **Read from:** `main@bbda837`.
+- **Read from:** `main@bbda837`. Every route line and every cited line in a route row was re-checked against `main@7b8e404`, after #331 merged.
 - **Scope:** the API only (`services/api`). Device HMAC routes are in their own table, because their callers
   are signing keys, not JWTs.
 
@@ -22,9 +22,9 @@ two realtime routes from `src/realtime/gateway.ts`). It has one column per calle
 | `403r` | `403 parent_role_required` (a device token on a parent route) | `requireParent`, `requireFamily.ts:98-101` |
 | `403f` | `403 forbidden`: the resource is in another family, or a device that isn't the caller | `requireFamily.ts:221-224`, `requireOwnDevice` `:245-254` |
 | `403c` | `403 cross_child_forbidden`: a device token reading another child | `requireFamily.ts:225-231` |
-| `403d` | `403 device_role_required` (a parent token on a device-only route) | `routes/devices.ts:201-206`, `:455` |
+| `403d` | `403 device_role_required` (a parent token on a device-only route) | `routes/devices.ts:207-212`, `:461`; `routes/location.ts:75-78` (`pingAuth`, since #331) |
 | `401` | `401 unauthorized` | JWT verify failure, or `isBearerSession` false (`lib/sessions.ts`) |
-| `401dr` | `401 device_revoked` | the global hook, `server.ts:70-87`, plus `devices.ts:641-651` |
+| `401dr` | `401 device_revoked` | the global hook, `server.ts:70-87`, plus `devices.ts:647-657` |
 | `401s` | `401 session_revoked`: a parent token after `logout-all`, a password reset, an MFA change, an invite move, or the refresh-reuse theft response | the global hook, `server.ts:84-86` (it runs before every route's own preHandlers); `isParentSessionLive`, `lib/sessions.ts:123-145` |
 | `428` | consent gate: `428` while the child's consent is withdrawn or missing | `middleware/requireConsent.ts`, or `assertProcessingAllowed` inside the handler |
 | `own` | the route reads only the caller's own family or parent, so there's no "other family" target to test | the handler's `where` clause |
@@ -63,21 +63,21 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `POST /v1/devices/register` | 228 | 201 | 403p:devices | 403p:devices | 403f (child check, `:236`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:239`) |
-| `POST /v1/devices/pair` | 256 | 201 | 403p:devices | 403p:devices | 403f (`:264`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:267`) |
-| `POST /v1/devices/pair/claim` | 279 | — | — | — | — | — | — | — | — | — | — | 201 with a live code, else 404 | 428 (`:292`) |
-| `GET /v1/devices` | 326 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/devices/:id` | 339 | 200 | 200 | 200 | 403f | 200 | 403f (`:342`) | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/devices/:id/apps` | 362 | 200 | 403p:rules | 403p:rules | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `POST /v1/devices/:id/apps` | 392 | 202 (Q1) | 202 (Q1) | 202 (Q1) | 403f | 202 | 403f | 401dr | 401s | 401 | 401 | 401 | 428 (`:397`) |
-| `POST /v1/devices/:id/command` | 416 | 200 | 403p:devices | 403p:devices | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 except safe-direction commands (`:426`) |
-| `GET /v1/devices/:id/commands` | 452 | 403d | 403d | 403d | 403f | 200 | 403f (`:456`) | 401dr | 401s | 401 | 401 | 401 | 428 (`:459`) |
-| `POST /v1/devices/:id/commands/:commandId/ack` | 465 | 403f (`:468`) | 403f | 403f | 403f | 200, or 404 `no_delivered_command` | 403f | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/devices/:id/commands/history` | 477 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `POST /v1/devices/:id/push-token` | 506 | 403d | 403d | 403d | 403f | 204 | 403f | 401dr | 401s | 401 | 401 | 401 | none, by decision (`:501`) |
-| `POST /v1/devices/:id/telemetry` | 525 | 202 (Q1) | 202 (Q1) | 202 (Q1) | 403f | 202 | 403f | 401dr | 401s | 401 | 401 | 401 | 428 (`:531`) |
-| `POST /v1/devices/:id/activity` | 571 | 202 (Q1) | 202 (Q1) | 202 (Q1) | 403f | 202 | 403f | 401dr | 401s | 401 | 401 | 401 | 428 (`:577`) |
-| `DELETE /v1/devices/:id` | 626 | 200 | 403p:devices | 403p:devices | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/devices/register` | 234 | 201 | 403p:devices | 403p:devices | 403f (child check, `:242`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:245`) |
+| `POST /v1/devices/pair` | 262 | 201 | 403p:devices | 403p:devices | 403f (`:270`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:273`) |
+| `POST /v1/devices/pair/claim` | 285 | — | — | — | — | — | — | — | — | — | — | 201 with a live code, else 404 | 428 (`:298`) |
+| `GET /v1/devices` | 332 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/devices/:id` | 345 | 200 | 200 | 200 | 403f | 200 | 403f (`:348`) | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/devices/:id/apps` | 368 | 200 | 403p:rules | 403p:rules | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/devices/:id/apps` | 398 | 403d (F2) | 403d (F2) | 403d (F2) | 403f | 202 | 403f | 401dr | 401s | 401 | 401 | 401 | 428 (`:403`) |
+| `POST /v1/devices/:id/command` | 422 | 200 | 403p:devices | 403p:devices | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 except safe-direction commands (`:432`) |
+| `GET /v1/devices/:id/commands` | 458 | 403d | 403d | 403d | 403f | 200 | 403f (`:462`) | 401dr | 401s | 401 | 401 | 401 | 428 (`:465`) |
+| `POST /v1/devices/:id/commands/:commandId/ack` | 471 | 403f (`:474`) | 403f | 403f | 403f | 200, or 404 `no_delivered_command` | 403f | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/devices/:id/commands/history` | 483 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/devices/:id/push-token` | 512 | 403d | 403d | 403d | 403f | 204 | 403f | 401dr | 401s | 401 | 401 | 401 | none, by decision (`:507`) |
+| `POST /v1/devices/:id/telemetry` | 531 | 403d (F2) | 403d (F2) | 403d (F2) | 403f | 202 | 403f | 401dr | 401s | 401 | 401 | 401 | 428 (`:537`) |
+| `POST /v1/devices/:id/activity` | 577 | 403d (F2) | 403d (F2) | 403d (F2) | 403f | 202 | 403f | 401dr | 401s | 401 | 401 | 401 | 428 (`:583`) |
+| `DELETE /v1/devices/:id` | 632 | 200 | 403p:devices | 403p:devices | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 ### `/v1/family` (`routes/family.ts`, `routes/invites.ts`)
 
@@ -87,12 +87,12 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 | `PATCH /v1/family/me` | family 108 | 200 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/children` | family 120 | 201 with inline consent, else 428 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:135`, `:164`) |
 | `GET /v1/family/children/:id` | family 168 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `PATCH /v1/family/children/:id` | family 174 | 200 | 200 (Q2) | 200 (Q2) | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 |
-| `DELETE /v1/family/children/:id` | family 188 | 200 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `POST /v1/family/children/:id/consent` | family 194 | 201 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/family/children/:id/consent` | family 231 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `POST /v1/family/children/:id/consent/revoke` | family 265 | 200 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/family/export` | family 295 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `PATCH /v1/family/children/:id` | family 179 | 200 | 403p:rules (F3) | 403p:rules (F3) | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 |
+| `DELETE /v1/family/children/:id` | family 193 | 200 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/family/children/:id/consent` | family 199 | 201 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/family/children/:id/consent` | family 236 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/family/children/:id/consent/revoke` | family 270 | 200 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/family/export` | family 300 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/invites` | invites 33 | 201 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/family/invites` | invites 61 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/invites/:id/accept` | invites 71 | 200 if the token's email matches, else 403 `email_mismatch` | same | same | same | 401 (no Parent row, `:81`) | 401 | 401dr | 401s | 401 | 401 | 401 | — |
@@ -105,12 +105,12 @@ answers `403f`. A co-parent or guardian of another family would get `403o` first
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `POST /v1/location/ping` | 180 | 201 (Q3) | 201 (Q3) | 201 (Q3) | 403f (`:231`) | 201 | 403c / 403 `device_mismatch` when the body names another child or device (`:248-252`) | 401dr (`:74-77`) | 401s | 401 | 401 | 401, unless the request is HMAC-signed (§2) | 428 (`:264`) |
-| `GET /v1/location/:childId/latest` | 335 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/location/:childId/history` | 346 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/location/geofences/:childId` | 370 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
-| `POST /v1/location/geofences` | 377 | 201 | 403p:location | 403p:location | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 |
-| `DELETE /v1/location/geofences/:id` | 386 | 200 | 403p:location | 403p:location | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/location/ping` | 187 | 403d (F4) | 403d (F4) | 403d (F4) | 403d (F4) | 201 | 403c / 403 `device_mismatch` when the body names another child or device (`:243-247`) | 401dr (`:81-84`) | 401s | 401 | 401 | 401, unless the request is HMAC-signed (§2) | 428 (`:259`) |
+| `GET /v1/location/:childId/latest` | 330 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/location/:childId/history` | 341 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/location/geofences/:childId` | 365 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/location/geofences` | 372 | 201 | 403p:location | 403p:location | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 |
+| `DELETE /v1/location/geofences/:id` | 381 | 200 | 403p:location | 403p:location | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 "Sib. dev." here means a device of a **different child** in the same family. Two devices of the same child
 are both "own child" on the child-scoped reads.
@@ -173,8 +173,8 @@ These read or write only rows keyed by the caller's own id, so there's no other-
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `POST /v1/ws-ticket` | 22 | 200 | 200 | 200 | own | 403r (`:35-36`) | 403r | 401dr (`:29-33`) | 401s | 401 | **403r** (Q4) | 401 | — |
-| `GET /v1/ws?ticket=` | 47 | upgrade with a live ticket; the socket is bound to the ticket's family | same | same | a ticket is single-use and maps to one family | — | — | — | — | — | — | `401 ticket_required` without a ticket, or with `?token=` (`:55-62`) | — |
+| `POST /v1/ws-ticket` | 23 | 200 | 200 | 200 | own | 403r (`:41-42`) | 403r | 401dr (`:35-39`) | 401s | 401 | 401 (Q4) | 401 | — |
+| `GET /v1/ws?ticket=` | 53 | upgrade with a live ticket; the socket is bound to the ticket's family | same | same | a ticket is single-use and maps to one family | — | — | — | — | — | — | `401 ticket_required` without a ticket, or with `?token=` (`:61-68`) | — |
 
 ### Public (`routes/health.ts`)
 
@@ -195,7 +195,7 @@ Every one returns `401 invalid_signature` with a `reason` on failure.
 | `POST /v1/content/search-event` | content 94 | 201, or 200 if not flagged | 400 `cross_child_content_forbidden` | 400 | 201 | 401 | 401 `replay` | 401 `stale_timestamp` | 401 | 401 | 401 | 428 |
 | `POST /v1/content/youtube-watch` | content 186 | 201, or 200 if not flagged | 400 | 400 | 201 | 401 | 401 `replay` | 401 `stale_timestamp` | 401 | 401 | 401 | 428 |
 | `POST /v1/social/scan` | social 92 | 2xx | 400 `cross_child_forbidden` (`:111`) | 400 | 2xx | 401 | 401 `replay` | 401 `stale_timestamp` | 401 | 401 | 401 | 428 |
-| `POST /v1/location/ping` | location 180 | 201 | 403 `cross_child_forbidden` / `device_mismatch` (`:254-259`) | 403 | 201 | 401 | 401 `replay` | 401 `stale_timestamp` | 401 | 401 | 401 `unauthorized` | 428 |
+| `POST /v1/location/ping` | location 180 | 201 | 403 `cross_child_forbidden` / `device_mismatch` (`:249-254`) | 403 | 201 | 401 | 401 `replay` | 401 `stale_timestamp` | 401 | 401 | 401 `unauthorized` | 428 |
 
 In the sibling column the sibling signs a body that names **this** child (or this device). A body naming
 only a child is accepted from any of that child's devices (`internalAuth.ts:200-213`). A body naming a
@@ -242,11 +242,12 @@ Claude ruled on all four on #329 (2026-10-23, comment `6366294192`, checked at `
 | Q3: parent location pings | **Not intended → finding F4.** A forged ping can trigger a routine that applies rules, and it falsifies the location history. No app sends one | `/v1/location/ping` takes a device JWT or HMAC only. A parent gets `403 device_role_required`. Probe G15 and G16 are superseded, G17 names its new error, and a device-token `device_mismatch` case stays asserted |
 | Q4: `ws-ticket` and purpose tokens | **Fix for consistency** (not exposure) | `isBearerSession` before the role check, so a purpose token gets `401 unauthorized` |
 
-All four fixes land in a separate PR, `ahmed/2.7-authz-fixes`, because they are product changes. Until it
-merges, the cells above still show today's behaviour (`202 (Q1)`, `200 (Q2)`, `201 (Q3)`, `403r (Q4)`). That
-PR updates them to the decided statuses.
+All four fixes landed in **#331** (verified by Claude at `a21d0ef`, merged 2026-10-23). The cells above
+show the statuses after that merge, marked with the finding that changed them: `403d (F2)`,
+`403p:rules (F3)`, `403d (F4)` and `401 (Q4)`. Before #331 they were `202`, `200`, `201` (`403f` for
+another family) and `403r`.
 
-The questions as originally raised:
+The questions as originally raised (line numbers as at `bbda837`, before #331 moved them):
 
 - **Q1.** Any parent of the family (owner, co-parent or guardian, **with no permission**) can POST a device's
   telemetry, activity and app inventory (`devices.ts:392`, `:525`, `:571`). That's because
@@ -273,7 +274,7 @@ The questions as originally raised:
 Both checks accept `403` or `404`, and both call a path the API never registered, so the router answers
 `404` before any guard runs:
 
-- `services/api/scripts/qa-probe.mjs:304-305`: B7 calls `GET /v1/insights/${kidA}`. The only insights route is
+- `services/api/scripts/qa-probe.mjs:304-305` (as at `bbda837`; this PR replaces the check): B7 calls `GET /v1/insights/${kidA}`. The only insights route is
   `GET /v1/insights/apps` (`routes/insights.ts:33`).
 - `qa-probe.mjs:313-314`: B9 calls `PUT /v1/digests`. The digest routes are `/v1/digests/prefs` and
   `/v1/digests/send-now` (`routes/digests.ts:48`, `:54`, `:71`).

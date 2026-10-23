@@ -1,7 +1,7 @@
 # AGENTS.md — working agreement for AI agents in this repository
 
 > Read this first. It is binding for every agent (Antigravity, Kimi Code, Copilot, Cursor, …)
-> that touches this repo.
+> and every member (and their agent) that touches this repo.
 
 ## 1. Roles
 
@@ -14,9 +14,16 @@ principle survives every re-cut, enforced at the merge (§6.5).
 | Agent | Role | May do | Must not do |
 |---|---|---|---|
 | **Kimi Code** (development lead) | Implements features and fixes; owns `main` and releases | Edit application code, tests, CI and docs; open and **merge** PRs (§6.5); tag and prepare releases | Merge unverified work, **including their own**; merge with a red gate; push to `main` (§6); act on a store account, entitlement or key |
-| **Claude** (architecture + testing) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12) | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
+| **Claude** (architecture + testing, **team coordinator** from 2026-10-23) | Owns architecture decisions and **all testing**: runs the gates, tests PR claims, runs the hardware rows, with a detailed fix for every finding (§12). Coordinates the team: assigns members' tasks and is the one point of contact for technical questions | Decide architecture and record it as an ADR; review designs and diffs against their roadmap row; re-run every gate on a branch; run hardware rows on the leased phone (§9); verify TR rows and sign `Verified-sha:`; write tests, checklists, harnesses and test requests; assign and schedule members' work | Merge; push to `main`; write product code; verify its own PR; change the code under test to make a claim true; weaken or delete a failing check |
 | **Antigravity** | **Inactive from 2026-10-19** (maintainer), once the Group 1 hardware re-runs and TR-52 in flight at that time are filed. A silent member until the maintainer says otherwise: takes no new testing tasks and is not assigned any | Finish the rows already in flight; read | Take new rows; merge |
+| **Ahmed** (security + testing, from 2026-10-23) | A human member in Doha, working with his own Claude Code agent from his own GitHub account (`ahmedyusseff`). Security reviews, penetration testing of our own code and test environments, threat modelling and testing, each finding with the fix he recommends (§12) | Open PRs from `ahmed/<roadmap-item>-<topic>` branches; review any PR (advisory); test on his own local stack, emulator or phone; test staging only in a window Claude schedules with him; report exploitable findings privately (§4) | Merge; set `state:verified` or write a `Verified-sha:` line (his account's comments never count, §6.4); sign as another member, including `— Claude`; use the physical test phone, production or real family data |
 | Human maintainer | Product and security trade-offs; anything that needs an account or money | Everything; final call on scope | — |
+
+**New member and coordinator (maintainer, 2026-10-23 12:38Z):** *"we have a new colleague joining our team as
+tester and cyber security consultant … i recommend you act as the central coordinator since you are leading the
+architecture and also responsible of QA, we keep one leader clear to all."* So Claude assigns members' tasks and
+answers their technical questions; merging stays Kimi's (§6.5) and the human's queue (above) is unchanged. Ahmed's
+onboarding and his channel with the team is issue #326.
 
 **Routing (maintainer, 2026-10-22):** at 17:58Z, on #297, *"seems like an architecture decision let claude decide
 on that please"*; at 18:29Z, on the #258 destroy, *"ask claude about the decision above, all technical questions go to
@@ -95,6 +102,9 @@ as such and the row goes to the human or stays open; it does not quietly become 
 - Preserve the security invariants: family isolation (403), consent gate (428), per-device HMAC
   agent auth, device revocation on unpair, refresh rotation, optional MFA.
 - Findings are evidence-based: file:line + repro + expected/actual. "Seems risky" is not a bug.
+- **Never** disclose an exploitable vulnerability in a public issue, PR, commit message or comment before its
+  fix has merged: the repository is public. Report it privately under **Security → Report a vulnerability**
+  (GitHub private vulnerability reporting, on since 2026-10-23); only the maintainers see it.
 
 ## 5. Where things live
 
@@ -166,7 +176,9 @@ The third step is what fails quietly: a row that is one 6,400-character line loo
 fixes. Nobody (agent or human) pushes to `main` directly. This exists so the author of a change is
 never the one who decides it is correct.
 
-**Branch names:** `qa/<topic>-<date>` (Kimi) · `fix/<item-id>-<topic>` or `feat/<topic>` (Antigravity).
+**Branch names:** `qa/<topic>-<date>` (Kimi) · `fix/<item-id>-<topic>` or `feat/<topic>` (Antigravity) ·
+`ahmed/<roadmap-item>-<topic>` (Ahmed; if his environment only pushes a branch it names itself, he uses that one
+and names it in the PR, because CI reads the PR title, not the branch).
 
 ### 6.1 A PR is a discussion, not an announcement
 
@@ -208,7 +220,7 @@ correct and silently do nothing.**
 | `scripts/install-git-hooks.sh` → copies `.githooks/*` into `.git/hooks/` | Refuses a push whose destination is `refs/heads/main` | Per clone; must be run once. Verified working (see below) |
 | `.githooks/pre-push` + `git config core.hooksPath <ABSOLUTE path>` | Same, driven from the versioned file | The path **must be absolute** — a relative `core.hooksPath` silently resolves to nothing on Git for Windows. Also, the file only exists in checkouts that contain it (i.e. not on `main` before this PR merges) |
 | `.github/workflows/main-guard.yml` | Server-side: on every push to `main`, asserts an associated PR exists; fails the run and files a `needs-human` issue otherwise | Detection, not prevention; only active once merged to `main` |
-| `.github/workflows/verified-gate.yml` (maintainer decision, 2026-10-19) | On every PR to `main`: fails unless the PR has `state:verified` **and** a comment signed `— Claude`, `— Antigravity` (rows in flight on 2026-10-19 only) or `— Kimi Code` (only on a PR with no Kimi-authored non-merge commit, checked by commit email) with `Verified-sha: <sha>` matching the current head, or carried forward across a merge from `main` when the PR's patch-id is unchanged (§6.5 rule 6) | Binds only once `verified-gate` is a required status check with bypass disabled (`enforce_admins`), because every agent pushes as a repo admin. One shared account: CI cannot prove who wrote the comment |
+| `.github/workflows/verified-gate.yml` (maintainer decision, 2026-10-19) | On every PR to `main`: fails unless the PR has `state:verified` **and** a comment **written by the agent account `handfulofluck-lab`** (from 2026-10-23; a comment by any other account is never read, pinned by `scripts/check-verified-gate-signers.mjs` in `workflow-lint`) signed `— Claude`, `— Antigravity` (rows in flight on 2026-10-19 only) or `— Kimi Code` (only on a PR with no Kimi-authored non-merge commit, checked by commit email) with `Verified-sha: <sha>` matching the current head, or carried forward across a merge from `main` when the PR's patch-id is unchanged (§6.5 rule 6) | Binds only once `verified-gate` is a required status check with bypass disabled (`enforce_admins`), because every agent pushes as a repo admin. One shared account: CI cannot prove which agent wrote the comment, and a member with write access can edit an agent's comment (GitHub keeps the edit history) |
 | This file + PR review | The real control | Relies on both agents honouring it |
 
 **Install (recommended, works regardless of which branch is checked out):**
@@ -255,7 +267,8 @@ A PR may merge only when all of the following hold:
    the command output in the run log.
 6. **The `verified-gate` check is green** (maintainer decision, 2026-10-19). The verifier (Claude for every
    PR it did not author; Kimi Code only for a PR with no Kimi-authored commit, which CI checks by commit
-   email; Antigravity only for rows already in flight on 2026-10-19) posts a signed comment containing a line
+   email; Antigravity only for rows already in flight on 2026-10-19) posts, from the agent account
+   `handfulofluck-lab` (the only account the gate reads, §6.4), a signed comment containing a line
    `Verified-sha: <head sha>` (7+ characters), **then** adds `state:verified`; adding the label is what
    re-runs the check. Any push after that (fix, rebase) changes the head and turns the check red until
    the new head is verified, which is rule 4 made mechanical. One exception, because `main` is `strict`:
@@ -439,10 +452,15 @@ Rules:
 
 ## 11. Identity — say who you are, because the account cannot
 
-**All three agents post as the same GitHub account** (`handfullofluck-lab`). Every comment in this repo
+**All three agents post as the same GitHub account** (`handfulofluck-lab`). Every comment in this repo
 therefore looks as though one person wrote it, `@`-mentions notify nobody, and a reviewer cannot tell the
 verifier from the author by looking at the login. On 2026-10-17 the maintainer's fair criticism was "I
 did not see any recent comms among you guys" — the messages existed, and the medium hid them.
+
+**Ahmed (from 2026-10-23) posts from his own account, `ahmedyusseff`.** He opens comments with
+`**Ahmed (security + testing) →**` and ends them `— Ahmed (security + testing)`. His agent is also Claude Code, so
+it never signs `— Claude`: that is another member's signature, and from 2026-10-23 the merge gate reads
+verifications only from the agent account (§6.4), so a signature from any other account never counts.
 
 So identity is part of the message:
 
@@ -459,7 +477,11 @@ So identity is part of the message:
 5. **The fast channel is a host-level mailbox, outside every repo:** `C:\KARIM\collab\` (its `README.md`
    and `collab.ps1`). One file per message, one ask per message, acknowledged by moving the file to
    `inbox/<agent>/read/`, and every request carries a **default if silent**. It is a convenience, not the
-   record: a decision that exists only in the mailbox is not finished.
+   record: a decision that exists only in the mailbox is not finished. **A member who does not work on the
+   maintainer's PC cannot reach it** (Ahmed, from 2026-10-23: his agent runs in a cloud container). For such a
+   member GitHub is the only channel: their onboarding issue (#326 for Ahmed) until they have a PR, then the PR.
+   Claude copies anything addressed to them from the mailbox to GitHub, so nothing they need exists only in the
+   mailbox.
 6. **The durable channel is the file, not a direct message.** With one account there is no private inbox
    between agents: `docs/QA/TEST-REQUESTS.md` is the request board, the `TR-*` row is the unit of work,
    and this log is the record. Anything that only exists in a chat window is lost when the session ends.
