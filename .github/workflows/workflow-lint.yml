@@ -101,6 +101,17 @@ jobs:
         # the CLI case must exit 1. Mutant: the old per-line matcher makes it exit 0 and the test fails.
         run: node scripts/check-probe-integrity.mjs --selftest
 
+      - name: Docs-links self-test - three shapes that used to pass silently (#324)
+        # The gate behind every PR's "0 broken link(s)" line. Before #324 an anchor into a
+        # heading-less file, a reference-style link (`[label][ref]` + `[ref]: path`) and an
+        # intra-file anchor (`[x](#section)`) were all invisible, so a stale documentation index
+        # produced a lower number in a line that reads "0 broken" rather than a red run.
+        # Mutants, one per rule: restore the `headings.size > 0` guard, drop the reference scan,
+        # drop the intra-file branch - each makes one fixture fail.
+        run: |
+          node scripts/check-docs-links.mjs --selftest
+          node scripts/check-docs-links.mjs
+
       - name: No conflict markers in any tracked file
         # A conflicted merge that is staged and committed leaves `<<<<<<<` in the tree, and no test reads
         # documentation, so every suite stays green. The self-test proves the rule fires on a real pair
