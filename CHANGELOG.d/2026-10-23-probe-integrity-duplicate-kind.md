@@ -13,3 +13,13 @@
   remove the guard and it fails with `DEMOTED check -> target: Q6 same title` (14/15); restored, 15/15.
 - The promotion note also skips a title that was already a check, so it cannot print "promoted" and "demoted" for
   the same name in one run — which is what the broken run did, and what made it obviously wrong on reading.
+
+- **A canary, because this class is otherwise invisible on the day it lands.** `ci.yml` now runs the gate with
+  `--base HEAD --head HEAD` — the same tree against itself — which must report nothing. **Measured: the old script
+  exits 1 with two `DEMOTED` lines on an unchanged tree; the fixed one exits 0.** One line in CI would have caught this
+  when the if/else pattern was introduced instead of on the next PR that happened to be open.
+- **Two related facts worth recording.** (1) `probe-integrity` is gated on `github.event_name == 'pull_request'`, so it
+  does not run on pushes to `main`; a probe regression that lands is only seen by the *next* PR, which is then blamed for
+  it. The canary above is what closes that gap without changing the trigger. (2) The pattern arrived via a PR whose own
+  run saw only "added" (the title was new), which is why the introducing PR was green and every later one was red — the
+  asymmetry only appears once both sides carry the duplicate.

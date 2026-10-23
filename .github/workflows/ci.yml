@@ -203,6 +203,15 @@ jobs:
       - name: Compare probe assertion sets against the base branch
         run: node scripts/check-probe-integrity.mjs --base "origin/${{ github.base_ref }}" --head HEAD
 
+      # A canary for the gate itself: the same tree compared with itself must produce no finding.
+      # Without this, a comparison that is LOUDER than its evidence is indistinguishable from a real
+      # removal — and it fails on every PR while being wrong, which is what happened on 2026-10-23: the
+      # if/else pattern (a title that is both a check and a target) made the pass report DEMOTED on
+      # unchanged input, and two PRs that touch no probe were red for it. One line here would have
+      # caught it the day the pattern landed.
+      - name: The gate must be quiet on an unchanged tree (canary)
+        run: node scripts/check-probe-integrity.mjs --base HEAD --head HEAD
+
   # NOTE (2026-10-15): iOS is covered by the dedicated `.github/workflows/ios-ci.yml` workflow
   # (SwiftPM build + `generic/platform=iOS Simulator` on macos-14). A second, subtly different
   # `xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 15'` job lived here and failed
