@@ -37,8 +37,10 @@ token, no cancel path, no change to an existing route.
   `404` fails claim 3, dropping the `parentId != caller` filter fails claim 4, and spreading the row
   into the response fails both claim-5 tests.
 - **Probe:** `services/api/scripts/qa-probe.mjs` gains `O24`–`O28` (claim 1, 3, 4, 4-refusal, 5), and the
-  reset family now also invites a `co-parent` with their own MFA and their own open request, so "not the
-  caller's own request" is observable rather than asserted. Each check names the mutant it kills in the
+  reset family now also invites a `co-parent` (no second factor, no request of their own): their correct
+  credentials ask about the requester's request in `O25`, they are the caller `pending` lists it for in
+  `O26`, and the owner's own open request is what shows the caller's request left out. Keeping the
+  co-parent without MFA keeps the probe at 20 `/login` calls, `/login`'s per-minute limit (#313 review). Each check names the mutant it kills in the
   comment beside it. `node --check` clean; `scripts/check-probe-integrity.mjs --base origin/main`:
   **5 added, 0 removed or demoted**.
 - **Docs:** the ADR amendment is appended verbatim, `docs/SPEC.md` carries both routes with their field

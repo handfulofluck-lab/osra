@@ -100,8 +100,11 @@ has no database connection, §6); `O25` `status` on another parent's valid `requ
 request — never the caller's own, never another family's — with the requester's `displayName` and role;
 `O27` a guardian gets `403 role_not_allowed` and an unauthenticated caller `401`; `O28` neither body
 carries `codeHash`, `witnessRef`, the plaintext code or the requester's email, and both bodies are
-exactly the documented field list. `O26`/`O28` need the co-parent the block now invites: an account with
-its own MFA and its own open request, so "not the caller's own" is observable rather than asserted.
+exactly the documented field list. `O25`/`O26` need the co-parent the block now invites, with no second
+factor and no request of their own: in `O25` their correct credentials ask about the requester's
+request, and in `O26` they are the caller the list is for, while the owner's own open request shows the
+caller's request left out. A co-parent with MFA would cost one more `/login`, and the probe already makes
+20, which is `/login`'s per-minute limit per address: a 21st aborts a run that finishes inside a minute.
 `O16`–`O22` walk the mailbox step through the `confirmToken` that
 `/mfa/reset/request` echoes **only** while no email provider is configured and `NODE_ENV` is not
 production; on a stack with `RESEND_API_KEY`/`EMAIL_FROM` set they cannot be walked over HTTP and the run

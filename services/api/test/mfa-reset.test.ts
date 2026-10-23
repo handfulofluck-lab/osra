@@ -6,7 +6,7 @@ import { deviceRoutes } from "../src/routes/devices.js";
 import { encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { hashRecoveryCode } from "../src/lib/mfaRecovery.js";
-import { authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MOCKED_MODELS, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -1053,18 +1053,22 @@ describe("MFA reset — the requester reads their own request (amendment 2026-10
   beforeEach(() => resetPrismaMock());
 
   /**
-   * Every write the reset routes can make, by call count: a read must move none of them. `$executeRaw`
-   * is `clearResetCodePayloads` (the device code), which is the one write a "read" would plausibly
-   * sneak in.
+   * Every write the mocked client can take, by call count: a read must move none of them. Every model
+   * and every write method is listed, not a chosen few: the auto-mock answers any method name with a
+   * silent `vi.fn()`, so a write nobody counted passes unseen (#313 review: a `status` that called
+   * `mfaResetRequest.update` passed the hand-picked version). `$executeRaw` is
+   * `clearResetCodePayloads` (the device code); `$queryRaw` is how the witness counter writes.
    */
+  const WRITE_METHODS = ["create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany"];
   const writeCounts = () => ({
-    resetState: prismaMock.mfaResetRequest.updateMany.mock.calls.length,
-    resetCreate: prismaMock.mfaResetRequest.create.mock.calls.length,
-    resetDelete: prismaMock.mfaResetRequest.deleteMany.mock.calls.length,
-    commandCreate: prismaMock.deviceCommand.create.mock.calls.length,
-    commandUpdate: prismaMock.deviceCommand.updateMany.mock.calls.length,
-    parentUpdate: prismaMock.parent.update.mock.calls.length,
-    rawSql: prismaMock.$executeRaw.mock.calls.length,
+    ...Object.fromEntries(
+      MOCKED_MODELS.flatMap((model) =>
+        WRITE_METHODS.map((method) => [`${model}.${method}`, prismaMock[model][method].mock.calls.length]),
+      ),
+    ),
+    $executeRaw: prismaMock.$executeRaw.mock.calls.length,
+    $queryRaw: prismaMock.$queryRaw.mock.calls.length,
+    $transaction: prismaMock.$transaction.mock.calls.length,
   });
 
   it("claim 1: status changes no row — MfaResetRequest, DeviceCommand and the session version are byte-identical before and after, in every open state", async () => {
