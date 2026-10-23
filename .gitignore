@@ -70,3 +70,12 @@ pgdata/
 # Redis snapshots written by a locally started redis-server (never commit)
 *.rdb
 dump.rdb
+
+# ── Firebase / FCM credentials ───────────────────────────────────────────────
+# Per-project credentials, not templates, on a public repository. The names cover the
+# browser's second-download form (" (1)") and the service-account file the API reads.
+# The key itself lives outside every checkout and reaches the API through Secrets Manager.
+google-services*.json
+GoogleService-Info*.plist
+*firebase-adminsdk*.json
+fcm-service-account*.json
