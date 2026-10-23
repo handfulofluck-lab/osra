@@ -14,8 +14,7 @@
  *
  * Usage:
  *   node scripts/check-no-conflict-markers.mjs              # scan tracked files
- *   node scripts/check-no-conflict-markers.mjs --staged     # scan the index instead of the tree
- *   node scripts/check-no-conflict-markers.mjs --selftest   # prove the rule fires and does not false-positive
+ *   node scripts/check-no-conflict-markers.mjs --selftest   # prove the rule fires, and that the CLI wires it
  *
  * Exits 1 on a marker pair, 2 on an environment problem.
  */
@@ -23,17 +22,20 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import pathMod from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const argv = process.argv.slice(2);
 
 const OPEN = /^<{7}(\s|$)/;
 const CLOSE = /^>{7}(\s|$)/;
 
-/** Files git tracks (or has staged), skipping anything binary by git's own judgement. */
-function trackedFiles({ staged }) {
-  const args = staged
-    ? ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z']
-    : ['ls-files', '-z'];
+/**
+ * Files in the index (which for a clean checkout is the tree), skipping anything binary by a NUL test.
+ * A `--staged` variant existed and was removed: it listed staged paths but read the *working-tree* copy, so
+ * a file fixed on disk without re-staging passed — a flag that lied about what it checked (#316 review).
+ */
+function trackedFiles() {
+  const args = ['ls-files', '-z'];
   let out;
   try {
     out = execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -105,10 +107,41 @@ if (argv.includes('--selftest')) {
     }
   }
   fs.rmSync(dir, { recursive: true, force: true });
+
+  // The four cases above test the scanner; they would still pass if the CLI never called it, or if
+  // `report()` always returned 0 — a gate that cannot fail and passes its own test. So run the real
+  // command the way CI does, in a throwaway repository. `git ls-files` reads the index, so `git add` is
+  // enough: no commit and no git identity are needed.
+  const repo = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'markers-repo-'));
+  const git = (...a) => execFileSync('git', a, { cwd: repo, stdio: 'ignore' });
+  const cli = () => {
+    try {
+      execFileSync(process.execPath, [fileURLToPath(import.meta.url)], { cwd: repo, stdio: 'ignore' });
+      return 0;
+    } catch (e) {
+      return e.status;
+    }
+  };
+  git('init', '-q');
+  fs.writeFileSync(pathMod.join(repo, 'clean.md'), 'ok\n');
+  git('add', '-A');
+  if (cli() !== 0) {
+    bad += 1;
+    console.error('FAIL the CLI passes a clean index');
+  }
+  fs.writeFileSync(pathMod.join(repo, 'conflicted.md'), 'a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\n');
+  git('add', '-A');
+  if (cli() !== 1) {
+    bad += 1;
+    console.error('FAIL the CLI exits 1 on a staged conflict');
+  }
+  fs.rmSync(repo, { recursive: true, force: true });
+  cases.push({ name: 'the CLI wires the rule' }, { name: 'the CLI exits 1 on a conflict' });
+
   console.log(`conflict-marker self-test: ${cases.length - bad}/${cases.length} cases`);
   process.exit(bad ? 1 : 0);
 }
 
 // This file and the discussion log talk about the markers; the pair rule keeps them out of the failure set
 // on their own, but say it here so a reader is not surprised when they appear in a grep.
-process.exit(report(scan(trackedFiles({ staged: argv.includes('--staged') }))));
+process.exit(report(scan(trackedFiles())));
