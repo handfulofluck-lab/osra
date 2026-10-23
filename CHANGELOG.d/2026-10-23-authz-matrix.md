@@ -22,10 +22,7 @@
 
   The fixes landed in #331. The matrix shows the statuses after that merge, with each changed cell marked
   by its finding.
-- **⚠️ Not verified yet:** apart from the probe checks above, the matrix is the expected half only. The
-  statuses are read from the code, not observed against a stack. Coverage citations and the probe checks
-  for the gaps come next.
-- **Probe section Q (Q1–Q8): the matrix, column by column.** Each check walks one caller across all 63 JWT
+- **Probe section Q (Q1–Q8): the matrix, column by column.** Each check walks one caller across all 62 JWT
   routes and names every route that answers wrong. The callers are a revoked device, a revoked parent
   session, an expired token, a password-reset token, no token, a guardian and a co-parent with no
   permissions, a device token on parent-only routes, and another family's owner.

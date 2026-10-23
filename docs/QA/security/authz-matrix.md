@@ -1,8 +1,7 @@
 # API authorization matrix (plan 2.7)
 
-**Status: skeleton for review.** This version lists every route with the status the code says each caller
-should get, read from the guards at the cited lines. It does **not** yet show observed statuses or the
-probe/test coverage for each cell. Those come next, once the shape of this table is agreed (issue #326).
+**Status:** the expected statuses are read from the guards at the cited lines. Coverage is in §1a. The refusal
+columns are asserted live by probe section Q. §6 lists what is still a GAP after Q.
 
 - **Author:** Ahmed (security + testing).
 - **Read from:** `main@bbda837`. Every route line and every cited line in a route row was re-checked against `main@7b8e404`, after #331 merged.
@@ -173,7 +172,7 @@ These read or write only rows keyed by the caller's own id, so there's no other-
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `POST /v1/ws-ticket` | 23 | 200 | 200 | 200 | own | 403r (`:41-42`) | 403r | 401dr (`:35-39`) | 401s | 401 | 401 (Q4) | 401 | — |
+| `POST /v1/ws-ticket` | 23 | 200 | 200 | 200 | own | 403r (`:41-42`) | 403r | 401dr (`:35-39`) | 401s (hook only) | 401 | 401 (Q4) | 401 | — |
 | `GET /v1/ws?ticket=` | 53 | upgrade with a live ticket; the socket is bound to the ticket's family | same | same | a ticket is single-use and maps to one family | — | — | — | — | — | — | `401 ticket_required` without a ticket, or with `?token=` (`:61-68`) | — |
 
 ### Public (`routes/health.ts`)
@@ -208,7 +207,7 @@ whose route relies on the hook. Only the probe, against a live server, can.
 | None | each guard's verify → 401 | `GET /v1/alerts` (t:alerts.test.ts:462), `GET /v1/devices` (t:devices.test.ts:258), `GET /v1/family/children/:id` (t:family.test.ts:162), `GET /v1/family/me` (t:family.test.ts:223), `GET /v1/rules/:childId` and `PUT` (t:rules.test.ts:267), the three controls in t:controls.test.ts:291, `GET /v1/reports/summary` (t:reports.test.ts:120), `GET /v1/reports/activity` (t:social.test.ts:357), `GET /v1/social/events` (t:social.test.ts:249), `GET /v1/digests/prefs` (t:reports.test.ts:339), `POST /v1/digests/send-now` (t:reports.test.ts:376), `POST /v1/me/push-token`, `DELETE` (t:email.test.ts:326), `GET /v1/blocklists` (t:blocklists.test.ts:38), `GET /v1/insights/apps` (t:review-fixes.test.ts:101), `GET /v1/devices/:id/apps` (t:device-apps.test.ts:246), `GET /v1/ws` (t:realtime.test.ts:147) | **GAP** on the rest |
 
 **Closed by probe section Q** (`services/api/scripts/qa-probe.mjs`, "Q. plan 2.7 authorization matrix").
-Each check walks one column across all 63 JWT routes of §1, and names every route whose answer is wrong:
+Each check walks one column across all 62 JWT routes of §1, and names every route whose answer is wrong:
 
 | Check | Column | Caller | Expected on every route |
 |---|---|---|---|
@@ -296,7 +295,7 @@ permission → 2xx" half is listed separately where a test has it.
   above. The "with the permission → 2xx" half is still asserted only by p:N7 and the unit tests cited
   above. Adding it would need logins the probe can't afford (the `/v1/auth` bucket is 20 a minute, and the
   probe already uses it up).
-- **p:Q7:** a live device token is refused with `403 parent_role_required` on all 48 parent-only routes.
+- **p:Q7:** a live device token is refused with `403 parent_role_required` on all 47 parent-only routes.
   That closes the Own dev. and Sib. dev. cells marked GAP on those routes.
 - **p:Q8:** another family's owner is refused with `403 forbidden` on 16 family-scoped routes that name no
   permission, using this family's real ids. That closes the Other fam. cells marked GAP above.
@@ -317,11 +316,17 @@ With the guards restored: 178 passed, 0 failed, 0 x 429. The section paces itsel
 `x-ratelimit-remaining` and `x-ratelimit-reset` headers. That's about 430 requests, and the whole probe
 went from about 80 s to about 3 minutes.
 
-**Learned from the Q2 mutant:** `requireAuth` (`middleware/requireFamily.ts:59-80`) checks a revoked `jti`,
-not the session version. On `GET /v1/blocklists`, `GET /v1/insights/apps` and
-`POST /v1/family/invites/:id/accept`, only the global hook stops a logged-out session. Today that's correct,
-because the hook runs on every route. But a refactor that drops or reorders the hook would reopen exactly
-those three routes, and only Q2 would notice.
+**Learned from the Q2 mutant** (four routes; Claude's re-run found the fourth). Only the global hook stops a
+logged-out session on these four routes:
+
+- `GET /v1/blocklists`, `GET /v1/insights/apps` and `POST /v1/family/invites/:id/accept`. Their guard,
+  `requireAuth` (`middleware/requireFamily.ts:59-80`), checks a revoked `jti`, not the session version.
+- `POST /v1/ws-ticket` (`gateway.ts:23-47`). It checks `isBearerSession`, device revocation and the role, but
+  never the session version. With the hook's session branch removed, a logged-out owner token got a ticket
+  (`-> 200`). That ticket opens the family's live socket, so this is the most sensitive of the four.
+
+Today this is correct, because the hook runs on every route. But a refactor that drops or reorders the hook
+would reopen exactly these four, and only Q2 would notice. The defence-in-depth fix is F5, in §6.
 
 ## 2. HMAC-signed device and service routes
 
@@ -465,14 +470,30 @@ line 1449 GET /v1/does-not-exist-${stamp}
   ───────────  169 passed · 0 failed · 0 targets · 0 notes · rate limit: 0 x 429  ───────────
   ```
 
-## 6. What comes next
+## 6. Still GAP after probe section Q
 
-1. **Coverage.** Replace each code above with `probe:<check>` or `test:<file>:<line>` where it's already
-   pinned, or **GAP** where it isn't.
-2. **Observed statuses.** Drive every GAP cell against a local stack and record the observed status next to
-   the expected one.
-3. **Probe checks.** Add the GAP checks to `services/api/scripts/qa-probe.mjs` as a new lettered section
-   after `O`, named for 2.7. Each check states the mutant it catches (`AGENTS.md` §3).
+Probe section Q asserts every refusal column. These cells are still not asserted by any test or check (as
+counted by Claude when verifying `d5218b9`):
+
+- **Co-parent and guardian with the permission → 2xx.** This is the positive half of every `403p` cell.
+  Today only p:N7 and the unit tests cited in §1a assert it.
+- **Owner 2xx** on `/v1/controls/children/:childId/pause` and `/resume` (the aliases) and on
+  `GET /v1/me/push-tokens`.
+- **Consent 428** on `POST /v1/devices/:id/telemetry`, `/activity`, `PATCH /v1/rules/:childId` and
+  `POST /v1/devices/pair/claim`.
+- **Other fam.** cells that Q8 can't walk, because they need a real id on a write:
+  - `GET /v1/devices/:id/commands`, `…/commands/:commandId/ack` and `…/push-token`;
+  - `DELETE /v1/devices/:id`;
+  - `PATCH /v1/family/children/:id`, `POST …/consent` and `PATCH /v1/rules/:childId`.
+- **A sibling device** on `GET /v1/devices/:id/commands` and `…/commands/:commandId/ack`.
+- **A device token** on `POST /v1/family/invites/:id/accept` (expected 401).
+
+**F5 (next, not exploitable): defence in depth for the four hook-only routes in §1a.**
+- **Change:** `requireAuth`, and `ws-ticket` after its role check, refuse a parent token whose session is no
+  longer live (`isParentSessionLive` → `401 session_revoked`).
+- **Tests:** unit tests on `GET /v1/blocklists` and `POST /v1/ws-ticket` with a stale-`sv` token. Those cells
+  become unit-testable once the check no longer lives only in the hook.
+- **Mutant:** delete the new line, and the test fails.
 
 Exploitable findings go to Security → Report a vulnerability first, and stay out of this file until their fix
 has merged.

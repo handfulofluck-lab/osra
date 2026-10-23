@@ -1505,7 +1505,7 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
   }
   const kid = kidA2;
   const dev = d2.deviceId;
-  // Every JWT route in matrix §1 (63): health, pair/claim, the ticket-only GET /v1/ws, the HMAC-only
+  // Every JWT route in matrix §1 (62): health, pair/claim, the ticket-only GET /v1/ws, the HMAC-only
   // ingest routes and the /v1/auth routes (matrix §3) are the only ones left out.
   const jwtRoutes = [
     ["GET", "/v1/alerts"], ["POST", `/v1/alerts/${Z}/ack`, {}],

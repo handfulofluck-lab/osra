@@ -122,7 +122,7 @@ pass. The probe does not need it, and deliberately has no database connection (�
 
 ### The authorization matrix, column by column (plan 2.7) — probe `Q1`–`Q8`
 
-Section Q walks the columns of `docs/QA/security/authz-matrix.md` across every JWT route the API registers (63).
+Section Q walks the columns of `docs/QA/security/authz-matrix.md` across every JWT route the API registers (62).
 It covers:
 
 - a revoked device (`Q1`) and a revoked parent session (`Q2`);
