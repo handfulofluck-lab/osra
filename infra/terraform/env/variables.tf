@@ -88,3 +88,9 @@ variable "cors_origin" {
   type        = string
   default     = ""
 }
+
+variable "push_enabled" {
+  description = "Map the FCM service account secret into the API task (roadmap 1.5). Set it only after the secret has a value: ECS cannot resolve a secret with no version, and the task would fail to start."
+  type        = bool
+  default     = false
+}

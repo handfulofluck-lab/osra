@@ -56,13 +56,21 @@ resource "aws_ecs_task_definition" "api" {
       )
 
       # Secrets are injected from Secrets Manager, never baked into the task definition.
-      secrets = [
-        { name = "DATABASE_URL", valueFrom = data.terraform_remote_state.base.outputs.database_url_secret_arn },
-        { name = "JWT_SECRET", valueFrom = data.terraform_remote_state.base.outputs.jwt_secret_arn },
-        { name = "VAULT_KEY", valueFrom = data.terraform_remote_state.base.outputs.vault_key_secret_arn },
-        # The seed refuses to run in production without it, and the image must not carry a default.
-        { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
-      ]
+      # push_enabled adds the FCM service account (roadmap 1.5). It stays out of the list by default
+      # because a secret with no version cannot be resolved by ECS, and the task would fail to start
+      # before anyone has run put-secret-value. Turn it on only after the value exists.
+      secrets = concat(
+        [
+          { name = "DATABASE_URL", valueFrom = data.terraform_remote_state.base.outputs.database_url_secret_arn },
+          { name = "JWT_SECRET", valueFrom = data.terraform_remote_state.base.outputs.jwt_secret_arn },
+          { name = "VAULT_KEY", valueFrom = data.terraform_remote_state.base.outputs.vault_key_secret_arn },
+          # The seed refuses to run in production without it, and the image must not carry a default.
+          { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
+        ],
+        var.push_enabled ? [
+          { name = "FCM_SERVICE_ACCOUNT_JSON", valueFrom = data.terraform_remote_state.base.outputs.fcm_service_account_secret_arn },
+        ] : [],
+      )
 
       logConfiguration = {
         logDriver = "awslogs"
