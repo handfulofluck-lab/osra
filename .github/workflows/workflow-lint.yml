@@ -94,6 +94,13 @@ jobs:
       - name: Diff-scope self-test
         run: node scripts/check-pr-diff-scope.mjs --selftest
 
+      - name: Probe-integrity self-test - a wrapped call is compared, a deleted one is REMOVED (#310)
+        # The gate reads assertion names across line breaks. Before #310 a `check(` whose title opened
+        # on the next line was invisible: it counted as neither added nor removed, so deleting it passed
+        # (132 of 141 call sites seen on 68dd367). The fixtures include that exact deleted wrapped call;
+        # the CLI case must exit 1. Mutant: the old per-line matcher makes it exit 0 and the test fails.
+        run: node scripts/check-probe-integrity.mjs --selftest
+
       - name: No conflict markers in any tracked file
         # A conflicted merge that is staged and committed leaves `<<<<<<<` in the tree, and no test reads
         # documentation, so every suite stays green. The self-test proves the rule fires on a real pair
