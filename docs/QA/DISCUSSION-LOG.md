@@ -3558,3 +3558,9 @@ docs/staging-traps 58381f90bf7e2b446df54283bcfa9339439fc90d   # open PR #330
 main c3badbdb448c4d270293d6c4ed0ea716b9b95161   # the base branch
 qa/verify-track12-2026-10-12 c0d9d87f0b6270f5366aa30d0111481877bd25f2   # NOT fully merged into main — kept
 ```
+
+**Outcome (appended after the deletion ran).** `git ls-remote --heads origin` went from **220 to 9**. The 212 branches
+in the list above were deleted in six batches with `git push origin --delete`; nothing outside the list was touched.
+The nine remaining heads are: `main`, the two open-PR heads (`docs/staging-traps` #330, `ahmed/2.7-authz-matrix` #329),
+this record's own branch (`docs/branch-cleanup-2026-10-23`), and the five **unmerged** branches named in the kept set
+above. The deletion is restorable line by line: `git push origin <sha>:refs/heads/<name>`.
