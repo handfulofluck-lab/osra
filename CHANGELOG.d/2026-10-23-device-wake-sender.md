@@ -4,7 +4,7 @@
   committed and the Redis publish is attempted. Before this, a backgrounded phone learned about a
   command only on its next 15-minute WorkManager tick, which is why 1.5's acceptance ("a lock lands in
   under 5 s with the app backgrounded") could not be met however fast the encryption was.
-- **The push carries no command.** Payload is `{ type: "wake" }`, a fixed literal, and the message is
+- **The push carries no command.** Payload is `{ "w": "1" }`, a fixed literal with no `type` field (Claude's ruling, 2026-10-23: a pre-#322 agent reads `msg.data["type"] ?: return` and would otherwise hand "wake" to the dispatcher as an unknown command; with `w` it does nothing), and the message is
   data-only: no `notification` block, `android.priority: "HIGH"`, `collapse_key: "wake"`. Google never
   sees command content — `show_reset_code` carries a parent's reset code and `locate_now` carries the
   timing of a family's day — and on a stale or misdirected token the message gives nothing away.
@@ -13,8 +13,11 @@
   authenticated channel (client half: the Android PR), so poll and push share the same idempotent acks.
 - **A wake never fails a command.** The promise is detached and its rejection swallowed: the row is
   already durable, and a slow Google round trip must not delay the parent's POST.
-- **A dead token is cleared.** `UNREGISTERED` / 404 / `INVALID_ARGUMENT` sets `Device.pushToken` to
-  null — the only place a device token is ever removed; the agent re-registers on its next
+- **A dead token is cleared, but only if it is still the same token.** `UNREGISTERED` / 404 /
+  `INVALID_ARGUMENT` runs `updateMany({where:{id, pushToken: <the one that failed>}})`. A blanket clear
+  by id would erase a token that rotated mid-flight — and the agent never re-uploads it, because
+  `PushTokenUploadPolicy` sees stored == uploaded, so push to that phone would be dead with no error
+  anywhere (#323 review); the agent re-registers on its next
   `onNewToken` or poll tick and `PushTokenUploadPolicy` republishes it.
 - **Nothing is sent when push is disabled.** With no provider configured (no
   `FCM_SERVICE_ACCOUNT_JSON` / `APNS_*`, which is what `push_enabled=false` produces) the wake is
@@ -22,9 +25,9 @@
 - `PushMessage` gained `dataOnly?: boolean` and lost its required `title`/`body`; both providers build
   a data-only payload without an alert. An ordinary alert payload is unchanged, and a test pins that
   the data-only branch does not leak into it.
-- **Evidence.** `pnpm --filter @familyshield/api test` → **39 files / 518 tests passed** (8 new in
+- **Evidence.** `pnpm --filter @familyshield/api test` → **39 files / 520 tests passed** (8 new in
   `test/push.test.ts`); `pnpm exec tsc --noEmit` clean; live gate on an isolated stack (database
-  `osra_wake`, API `:3011`, Redis db 2): `node scripts/qa-probe.mjs` → **164 passed · 0 failed**, and
+  `osra_wake2`, API `:3012`, Redis db 3): `node scripts/qa-probe.mjs` → **166 passed · 0 failed**, and
   `node scripts/e2e.mjs` → **71 passed · 0 failed**, with the wake firing on every command they send.
   Mutants measured, then reverted: `dataOnly: false` fails three tests (the FCM body gains a
   `notification`, the APNs `aps` gains an alert); commenting out the wake call in

@@ -110,7 +110,7 @@ location window. Migration `0022` scrubs the coordinates written before #242.
 auth, devices). After the row is committed and the Redis `device:<id>:commands` publish is attempted,
 it fires **one detached wake** to that device's `Device.pushToken`:
 
-- payload `{ type: "wake" }` and nothing else — no command type, payload or ids. Google never sees
+- payload `{ "w": "1" }` and nothing else — no command type, payload or ids. Google never sees
   command content (`show_reset_code` carries a parent's reset code; `locate_now` carries the timing of
   a family's day), and a stale or misdirected token leaks nothing;
 - **data-only**: no `notification` block, so the OS displays nothing; `android.priority: "HIGH"` and
@@ -121,9 +121,23 @@ it fires **one detached wake** to that device's `Device.pushToken`:
 - **fire-and-forget**: the promise is detached, so a slow or failed Google round trip never delays or
   fails a parent's command;
 - a token the provider reports invalid (`UNREGISTERED` / 404 / `INVALID_ARGUMENT`) is cleared from the
-  row — the only place a device token is ever removed;
+  row — the only place a device token is ever removed — but **only if the row still holds the token
+  that failed** (`updateMany` with the token in the `where`). A blanket clear by id would erase a
+  token that rotated while the send was in flight, and the agent then never re-uploads it because
+  `PushTokenUploadPolicy` sees stored == uploaded: push to that phone would be dead, silently;
 - with no provider configured (no `FCM_SERVICE_ACCOUNT_JSON`/`APNS_*`, i.e. push disabled) the send is
   skipped with one warn per process. Nothing is sent when push is disabled.
+- **The literal is `{ "w": "1" }`, never a `type` field** (Claude's ruling, 2026-10-23). An agent
+  built before the #322 client change reads `msg.data["type"] ?: return` and hands that value to
+  `CommandDispatcher`, which would log "refusing unknown command type"; with `w` such an agent
+  returns early and does nothing, so a wake is a no-op there too.
+- **iOS is not designed (roadmap 3.9).** A background push needs `apns-push-type: background` and
+  `apns-priority: 5`; the FCM `apns` block above sends priority 10 for the wake. Do not ship this
+  APNs shape for iOS — the child agent is Android-only today.
+- **Coalesced types do not wake twice:** a second `lock` while one is pending returns before the
+  publish and therefore before the wake. That is deliberate for commands (the agent drains the whole
+  queue); `rules_updated` is unaffected in practice because a second rule edit waits on the first.
+
 
 ## Non-goals for this pass
 
@@ -188,7 +202,12 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
 - src/routes/devices.ts — GENERATE THIS:
     POST /register; GET /; GET /:id (+last 24h telemetry summary); POST /:id/command
     (lock, unlock, ring, sos_clear — Redis pub/sub channel `device:${deviceId}:commands`);
-    POST /:id/push-token; DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
+    POST /:id/push-token (device JWT only, #319: `requireFamily` + role `device` +
+    `requireOwnDevice`; body `{ token }`, 20–4096 characters, the same field and bounds as
+    `POST /v1/me/push-token`; `204` with no body; one token, one device — the same token is cleared
+    from every other device row in the same transaction; no parent may call it, permission or not:
+    `403 device_role_required`);
+    DELETE /:id; PLUS POST /:id/telemetry (used by UsageReporter and
     TelemetryUploader — aggregates of per-app minutes / url logs); PLUS GET/POST /:id/apps
     (roadmap 3.4 — the installed-launchable-app inventory, §14.1a).
     Issue #221 (D1): `/telemetry` also accepts `locationGrant` (`background` | `while_in_use` |
@@ -411,8 +430,14 @@ screen is built (the paragraph above).
 
 DONE: app/build.gradle.kts, AndroidManifest.xml, res/xml/accessibility_config.xml,
 AccessibilityMonitorService.kt, FirebaseMessagingSvc.kt, BootReceiver.kt.
-TODOs inside DONE files: FirebaseMessagingSvc.onNewToken → POST /v1/devices/:id/push-token;
-BootReceiver → schedule RuleRepository sync + UsageReporter WorkManager jobs.
+TODOs inside DONE files: BootReceiver → schedule RuleRepository sync + UsageReporter WorkManager jobs.
+(#319): the agent registers its own FCM token on `POST /v1/devices/:id/push-token`, body `{ token }`
+(the shape is in the `devices.ts` routes above). The route is device-only since #319, so the device
+JWT that holds the token is its only caller — a parent is refused `403 device_role_required` — and a
+token minted before pairing **will be** re-published by `CommandPollWorker` (`PushTokenUploadPolicy`),
+which is the Android half in a separate PR and is not on `main` yet. The
+server half lands first; the client half is a separate PR, so the API's own PR ships no Android
+change.
 
 GENERATE THIS:
 - data/RuleRepository.kt — persists latest RuleSet locally (DataStore, JSON); subscribes to

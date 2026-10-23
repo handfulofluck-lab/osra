@@ -199,10 +199,13 @@ describe("the child device wake (#319)", () => {
 
   it("builds a data-only message: the literal word wake, high priority, a collapse key, no title, body or command field", () => {
     const message = buildDeviceWakeMessage();
-    expect(message).toEqual({ data: { type: "wake" }, threadId: "wake", priority: "high", dataOnly: true });
+    // Claude's ruling (2026-10-23): `{ "w": "1" }`, never a `type` field — a pre-#322 agent reads
+    // `msg.data["type"] ?: return` and would otherwise hand "wake" to the dispatcher as an unknown
+    // command. This assertion is the mutant for that: swap in `type: "wake"` and it goes red.
+    expect(message).toEqual({ data: { w: "1" }, threadId: "wake", priority: "high", dataOnly: true });
     // The whole point: nothing about a command travels in the payload.
-    expect(Object.keys(message.data)).toEqual(["type"]);
-    expect(message.data.type).toBe("wake");
+    expect(Object.keys(message.data)).toEqual(["w"]);
+    expect(message.data).not.toHaveProperty("type");
     expect(message.title).toBeUndefined();
     expect(message.body).toBeUndefined();
   });
@@ -212,7 +215,7 @@ describe("the child device wake (#319)", () => {
     expect(body.message).not.toHaveProperty("notification");
     expect(body.message.android).toEqual({ priority: "HIGH", collapse_key: "wake" });
     expect(body.message.android).not.toHaveProperty("notification");
-    expect(body.message.data).toEqual({ type: "wake" });
+    expect(body.message.data).toEqual({ w: "1" });
     expect(body.message.apns.headers["apns-priority"]).toBe("10");
     expect(body.message.apns.payload.aps).toEqual({ "content-available": 1 });
   });
@@ -236,12 +239,15 @@ describe("the child device wake (#319)", () => {
     expect(await notifyDeviceWake("dev-1")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
     expect(provider.sent).toHaveLength(1);
     expect(provider.sent[0].token).toBe("live");
-    expect(provider.sent[0].message.data).toEqual({ type: "wake" });
+    expect(provider.sent[0].message.data).toEqual({ w: "1" });
 
+    // Compare-and-clear (#323 review): the clear must name the token that failed. Without the
+    // `pushToken` condition a token that rotated mid-flight would be erased — the agent then never
+    // re-uploads, because stored == uploaded, and push stays dead with no error anywhere.
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-2", pushToken: "dead", platform: "android" });
-    prismaMock.device.update.mockResolvedValue({});
+    prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
     expect(await notifyDeviceWake("dev-2")).toEqual({ delivered: 0, clearedToken: true, skipped: null });
-    expect(prismaMock.device.update).toHaveBeenCalledWith({ where: { id: "dev-2" }, data: { pushToken: null } });
+    expect(prismaMock.device.updateMany).toHaveBeenCalledWith({ where: { id: "dev-2", pushToken: "dead" }, data: { pushToken: null } });
   });
 
   it("skips cleanly with no token, no provider, or a provider that throws — never throwing itself", async () => {
@@ -267,7 +273,7 @@ describe("the child device wake (#319)", () => {
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "live", platform: "android" });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     expect(await notifyDeviceWake("dev-1")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
-    expect(prismaMock.device.update).not.toHaveBeenCalled();
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 

@@ -154,12 +154,17 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
  * the timing of a family's day. A wake-up leaks neither, and the same idempotent ack path serves both
  * poll and push, so there is only one way a command ever takes effect.
  *
- * The literal is `{ type: "wake" }` — a fixed word, not a command type. The client asserts that it
- * reads nothing from the data map (apps/child-android, `PushWakeHandlerTest`), so this value can
- * change without touching the agent; it exists so an operator reading logs or a captured packet can
- * tell a wake from an alert.
+ * The literal is `{ "w": "1" }` — deliberately **not** a `type` field (Claude's ruling, 2026-10-23,
+ * replacing the looser `{type:"wake"}` in his earlier note). An agent built before the #322 client
+ * change reads `msg.data["type"] ?: return` and then hands the value to `CommandDispatcher`, which
+ * would log "refusing unknown command type 'wake'". With `w` it returns at the `?:` and does nothing,
+ * so a pre-#322 agent treats a wake as the no-op it should be.
+ *
+ * The current client asserts that it reads nothing from the data map at all (apps/child-android,
+ * `PushWakeHandlerTest`), so this value can change for an up-to-date agent without touching it; it
+ * exists so an operator reading logs or a captured packet can tell a wake from an alert.
  */
-export const DEVICE_WAKE_DATA: Readonly<Record<string, string>> = Object.freeze({ type: "wake" });
+export const DEVICE_WAKE_DATA: Readonly<Record<string, string>> = Object.freeze({ w: "1" });
 
 /** The one message shape a child device may receive. Exported so a test can assert it has no command fields. */
 export function buildDeviceWakeMessage(): PushMessage {
@@ -206,8 +211,17 @@ export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
     const result = await provider.send(device.pushToken, buildDeviceWakeMessage());
     if (result.ok) return { ...outcome, delivered: 1 };
     if (result.invalidToken) {
-      await prisma.device.update({ where: { id: deviceId }, data: { pushToken: null } });
-      return { ...outcome, clearedToken: true };
+      // Compare-and-clear (Claude's #323 review). Clearing by id alone would erase a token that
+      // rotated while this send was in flight: onNewToken uploads the new one, this stale send comes
+      // back UNREGISTERED, and the blanket clear then wipes the *new* token — which the agent never
+      // re-uploads, because PushTokenUploadPolicy sees stored == uploaded. Push to that phone would be
+      // dead until the next rotation, with no error anywhere. The `pushToken` condition also means a
+      // device deleted mid-send is a no-op instead of a throw inside this try.
+      const cleared = await prisma.device.updateMany({
+        where: { id: deviceId, pushToken: device.pushToken },
+        data: { pushToken: null },
+      });
+      return { ...outcome, clearedToken: cleared.count > 0 };
     }
     console.warn(`[push] device wake failed device=${deviceId} reason=${result.reason}`);
     return outcome;
