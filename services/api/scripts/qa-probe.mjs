@@ -301,8 +301,12 @@ check("B5b browsing history for other family's child (403/404)", [403, 404].incl
 const crossWellbeing = await call("GET", `/v1/reports/wellbeing/${kidA}`, { token: tokenB });
 check("B6 wellbeing for other family's child (403/404)", [403, 404].includes(crossWellbeing.status), `got ${crossWellbeing.status}`);
 
-const crossInsights = await call("GET", `/v1/insights/${kidA}`, { token: tokenB });
-check("B7 insights for other family's child (403/404)", [403, 404].includes(crossInsights.status), `got ${crossInsights.status}`);
+// Plan 2.7 F1 (Claude, #329): the old B7 called GET /v1/insights/:childId, a route that was never
+// registered, so the router's 404 passed it whatever the guards did. It now targets a child-scoped
+// read the B group did not cover, and asserts the exact refusal. Mutant: drop requireFamily from
+// content.ts:266 -> 200, and this fails.
+const crossSearches = await call("GET", `/v1/content/searches?childId=${kidA}`, { token: tokenB });
+check("B7 flagged searches of another family's child are refused (403 forbidden)", crossSearches.status === 403 && crossSearches.data?.error === "forbidden", `got ${crossSearches.status} ${JSON.stringify(crossSearches.data)}`);
 
 const crossDevRegister = await call("POST", "/v1/devices/register", {
   token: tokenB,
@@ -310,8 +314,11 @@ const crossDevRegister = await call("POST", "/v1/devices/register", {
 });
 check("B8 register device against other family's child (403/404)", [403, 404].includes(crossDevRegister.status), `got ${crossDevRegister.status}`);
 
-const crossDigest = await call("PUT", "/v1/digests", { token: tokenB, body: { childId: kidA, cadence: "daily" } });
-check("B9 digest prefs for other family's child (403/404)", [403, 404].includes(crossDigest.status), `got ${crossDigest.status}`);
+// Plan 2.7 F1 (Claude, #329): the old B9 called PUT /v1/digests, a route that was never registered
+// (digests live at /prefs and /send-now), so it could not fail. Mutant: drop requireFamily from
+// social.ts:166 -> 200, and this fails.
+const crossSocial = await call("GET", `/v1/social/events?childId=${kidA}`, { token: tokenB });
+check("B9 social events of another family's child are refused (403 forbidden)", crossSocial.status === 403 && crossSocial.data?.error === "forbidden", `got ${crossSocial.status} ${JSON.stringify(crossSocial.data)}`);
 
 // Token-type confusion is asserted with a real device JWT in section G (G6).
 const parentOnDevice = await call("GET", `/v1/devices/${deviceIdA}/commands`, { token: tokenA });
