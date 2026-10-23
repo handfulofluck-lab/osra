@@ -117,10 +117,14 @@ jobs:
         # publish role resolvable, api_image tag in ECR. The fixtures cover each rule and the classifier that
         # separates "the role does not exist" from "aws could not be asked".
         # The last line is the flag guard: a mistyped flag must never fall through to the real AWS check.
+        # Exit 2 alone is NOT proof — with no credentials the real check also exits 2, so the step would
+        # stay green with the guard deleted. It must also see the guard's own message (#347 review).
         run: |
           node scripts/check-staging-prereqs.mjs --selftest
-          code=0; node scripts/check-staging-prereqs.mjs --self-test || code=$?
-          if [ "$code" -ne 2 ]; then echo "an unknown flag must exit 2, got $code"; exit 1; fi
+          code=0; out=$(node scripts/check-staging-prereqs.mjs --self-test 2>&1) || code=$?
+          if [ "$code" -ne 2 ] || ! printf '%s' "$out" | grep -q "unrecognised argument"; then
+            echo "an unknown flag must exit 2 with 'unrecognised argument', got $code: $out"; exit 1
+          fi
 
       - name: No conflict markers in any tracked file
         # A conflicted merge that is staged and committed leaves `<<<<<<<` in the tree, and no test reads
