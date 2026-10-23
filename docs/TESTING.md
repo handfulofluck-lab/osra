@@ -254,6 +254,12 @@ can no longer be narrower than it reads. A fourth rule came from the strictness 
 **inside code spans and fences** is literal Markdown, not a link, so `stripCode` removes it first —
 otherwise a document that quotes a broken link fails the gate that is checking it.
 
+Anchors follow GitHub's own slug rules, measured against `POST /markdown`: an **intraword** underscore
+stays (`FCM_SERVICE_ACCOUNT_JSON` → `fcm_service_account_json`) while an **emphasis** underscore goes
+(`The _x_ thing` → `the-x-thing`); a fenced block contributes no headings; percent-encoded paths
+resolve (`My%20File.md`); an intra-file anchor resolves the containing file by its basename; and a
+root-absolute `(/docs/...)` link is classified once and checked from the repository root.
+
 Local equivalent of the Terraform gate (from the repository root; no credentials, no state):
 
 ```bash

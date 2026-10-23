@@ -16,7 +16,7 @@
  * Exits 1 when a link is broken.
  */
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { dirname, resolve, relative } from "node:path";
+import { basename, dirname, resolve, relative } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const quiet = process.argv.includes("--quiet");
@@ -39,14 +39,20 @@ export const slugify = (heading) =>
   heading
     .trim()
     .toLowerCase()
-    .replace(/[`*_[\]()]/g, "")
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/[`*[\]()]/g, "")
+    // GitHub keeps an *intraword* underscore (FCM_SERVICE_ACCOUNT_JSON -> fcm_service_account_json) and
+    // drops an emphasis one (The _x_ thing -> the-x-thing). Measured with POST /markdown.
+    .replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "")
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
     .replace(/\s+/g, "-");
 
 /** Headings of a file, slugged the way GitHub does it (plus a `-N` suffix for duplicates). */
-export const headingsOfText = (text) => {
+export const headingsOfText = (raw) => {
   const seen = new Map();
   const headings = new Set();
+  // Strip fenced blocks only: GitHub does not treat `# install deps` inside a fence as a heading, but it
+  // DOES keep inline code text in a slug, so inline spans must stay (#325 review).
+  const text = raw.replace(/^[ \t]*(```|~~~)[\s\S]*?^[ \t]*\1[^\n]*$/gm, "");
   for (const line of text.split(/\r?\n/)) {
     if (!/^#{1,6}\s/.test(line)) continue;
     const base = slugify(line.replace(/^#{1,6}\s+/, ""));
@@ -88,7 +94,7 @@ const normaliseAnchor = (raw) => {
  * "broken links" appeared in this repository and all four were examples inside code.
  *
  * Mutant: return the text unmodified and the self-test's "a link inside a code span is not a link"
- * case fails with four problems reported against prose.
+ * case fails, reporting the two links quoted in the fixture's code.
  */
 export function stripCode(text) {
   return (
@@ -119,7 +125,9 @@ export function linksOf(rawText) {
 
   // Inline links and images. <...> allows spaces in the target.
   for (const m of text.matchAll(/\[[^\]]*\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+["'][^"']*["'])?\s*\)/g)) {
-    found.push({ target: m[1].replace(/^<|>$/g, ""), kind: "inline" });
+    const target = m[1].replace(/^<|>$/g, "");
+    if (/^\/(?!\/)/.test(target)) continue; // root-absolute: the pass below checks it from the repo root
+    found.push({ target, kind: "inline" });
   }
 
   // Reference links: [label][ref] and the collapsed [label][] form.
@@ -139,7 +147,8 @@ export function linksOf(rawText) {
     found.push({ target: m[1], kind: "root-absolute" });
   }
 
-  // De-duplicate: the inline pass also catches `[x](#anchor)`; the intra-file pass reports it once.
+  // De-duplicate identical (kind, target) pairs. Note the inline pass also matches `[x](#anchor)`, but
+  // under a different kind — that copy is dropped later by `if (!pathPart) continue`, not here (#325).
   const seen = new Set();
   return found.filter((l) => {
     const key = `${l.kind}|${l.target}`;
@@ -167,7 +176,9 @@ export function checkLinks(file, text, resolveTarget, headingsFor) {
       const anchor = normaliseAnchor(target.slice(1));
       if (TOP_ANCHORS.has(anchor)) continue;
       checked++;
-      const abs = resolveTarget(file, file);
+      // basename, not `file`: the containing file is already relative to the repo root, so
+      // resolveTarget(file, file) asks for docs/docs/x.md inside a folder (#325 review).
+      const abs = resolveTarget(file, basename(file));
       const headings = abs ? headingsFor(abs) : null;
       // Issue #324: a heading-less file cannot satisfy ANY anchor. The old `headings.size > 0`
       // guard made this the one case that passed while being certainly wrong.
@@ -190,7 +201,13 @@ export function checkLinks(file, text, resolveTarget, headingsFor) {
 
     if (!pathPart) continue;
     checked++;
-    const abs = resolveTarget(file, pathPart);
+    let decoded = pathPart;
+    try {
+      decoded = decodeURI(pathPart);
+    } catch {
+      /* a malformed escape stays literal and simply will not resolve */
+    }
+    const abs = resolveTarget(file, decoded);
     if (!abs) {
       problems.push(`${file}: missing target -> ${target}`);
       continue;
@@ -307,7 +324,7 @@ const CASES = [
     expect: [],
   },
   {
-    // Mutant: return `text` instead of `stripCode(text)` in linksOf and this reports four problems.
+    // Mutant: return `text` instead of `stripCode(text)` in linksOf and this reports both quoted links.
     name: "a link inside a code span is not a link (#324)",
     text: [
       "prose `[x](missing.md)` is literal.",
@@ -327,6 +344,39 @@ const CASES = [
     expect: ["missing target -> really-missing.md"],
   },
   {
+    // Mutant: resolve the containing file as `resolveTarget(file, file)` and this reports the anchor.
+    name: "an intra-file anchor in a file inside a folder is clean (#325)",
+    file: "docs/probe.md",
+    text: "# Real heading\n\njump [there](#real-heading)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    // Mutant: drop the decodeURI and this reports a missing target.
+    name: "a percent-encoded path resolves to the file with a space (#325)",
+    text: "[x](docs/My%20File.md)",
+    files: { "docs/My File.md": "# Mine\n" },
+    expect: [],
+  },
+  {
+    // Measured with GitHub's own renderer (POST /markdown): FCM_SERVICE_ACCOUNT_JSON ->
+    // fcm_service_account_json, "The _x_ thing" -> the-x-thing. Mutant: strip every underscore and the
+    // first link is reported.
+    name: "intraword underscores stay in a slug, emphasis underscores do not (#325)",
+    text: "# FCM_SERVICE_ACCOUNT_JSON\n\n## The _x_ thing\n\n[a](#fcm_service_account_json) [b](#the-x-thing)\n",
+    files: {},
+    expect: [],
+  },
+  {
+    // The root-absolute check reads the real disk (process.cwd() + existsSync), so the fixture level
+    // cannot reach it. Pin the extraction instead: exactly one link, of that kind — the inline pass must
+    // not claim it. That was #325's item 3: a valid /docs link failed because the inline pass resolved it
+    // against the file's own folder.
+    name: "a root-absolute link is classified once, as root-absolute (#325)",
+    links: "[a](/docs/TESTING.md)",
+    expectKinds: ["root-absolute"],
+  },
+  {
     name: "absolute urls, mailto and tel are ignored",
     text: "[a](https://example.com) [b](mailto:x@y.z) [c](tel:123)",
     files: {},
@@ -338,7 +388,8 @@ function runSelfTest() {
   let failed = 0;
   for (const c of CASES) {
     // The case's own text is the containing file; `files` supplies the targets it links to.
-    const fixture = { "probe.md": c.text, ...c.files };
+    const home = c.file ?? "probe.md";
+    const fixture = { [home]: c.text, ...c.files };
     const rel = (abs) => relative(process.cwd(), abs).split("\\").join("/");
     const resolveTarget = (file, pathPart) => {
       const abs = resolve(dirname(file), pathPart);
@@ -348,7 +399,18 @@ function runSelfTest() {
       const text = fixture[rel(abs)];
       return text === undefined ? new Set() : headingsOfText(text);
     };
-    const { problems } = checkLinks("probe.md", c.text, resolveTarget, headingsFor);
+    // A case may pin the extraction instead of a problem list (the root-absolute rule reads the disk).
+    if (c.expectKinds) {
+      const kinds = linksOf(c.links).map((l) => l.kind);
+      const ok = kinds.length === c.expectKinds.length && kinds.every((k, i) => k === c.expectKinds[i]);
+      if (ok) console.log(`PASS  ${c.name}`);
+      else {
+        failed++;
+        console.log(`FAIL  ${c.name}: got kinds [${kinds.join(", ")}]`);
+      }
+      continue;
+    }
+    const { problems } = checkLinks(home, c.text, resolveTarget, headingsFor);
     const ok = c.expect.length === 0 ? problems.length === 0 : c.expect.every((e) => problems.some((p) => p.endsWith(e)));
     if (ok) {
       console.log(`PASS  ${c.name}`);
