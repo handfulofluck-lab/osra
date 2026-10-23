@@ -103,8 +103,11 @@ as such and the row goes to the human or stays open; it does not quietly become 
   agent auth, device revocation on unpair, refresh rotation, optional MFA.
 - Findings are evidence-based: file:line + repro + expected/actual. "Seems risky" is not a bug.
 - **Never** disclose an exploitable vulnerability in a public issue, PR, commit message or comment before its
-  fix has merged: the repository is public. Report it privately under **Security → Report a vulnerability**
-  (GitHub private vulnerability reporting, on since 2026-10-23); only the maintainers see it.
+  fix has merged: the repository is public. File it as an issue in the private repo
+  **`handfulofluck-lab/osra-security`** (maintainer, 2026-10-23), one finding per issue, labelled
+  `severity:high|medium|low`. On the public repo, post only the repo and issue number. **Security → Report a
+  vulnerability** (GitHub private vulnerability reporting) stays as the fallback. Fix PRs describe the fix
+  without the exploit steps.
 
 ## 5. Where things live
 
