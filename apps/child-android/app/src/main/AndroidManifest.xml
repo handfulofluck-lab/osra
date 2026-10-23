@@ -204,6 +204,7 @@
             android:resizeableActivity="false"
             android:supportsPictureInPicture="false"
             android:turnScreenOn="true"
+            android:taskAffinity=""
             android:theme="@android:style/Theme.Material.NoActionBar"/>
     </application>
 </manifest>

@@ -67,3 +67,9 @@ withdrawal can only be observed while the row is still being redelivered (up to 
 roughly six minutes); after that a withdrawn code clears at its own ten-minute expiry. If
 notifications are disabled **and** the overlay app-op and accessibility service are both off, the
 command is acked `failed` with `reset_code_screen_unavailable` rather than shown.
+
+- **`android:taskAffinity=""` on the activity, added after a phone row (#312 review).** Without it the notice is
+  hosted by the app's main task, so Close/Back landed on `PairingActivity` instead of returning to whatever the child
+  was doing. Measured on the handset by Claude: with the attribute, closing returns to the previous app. Pinned by a
+  manifest assertion in `ResetCodeWiringTest`.
+

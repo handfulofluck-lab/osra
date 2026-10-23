@@ -203,6 +203,9 @@ class ResetCodeWiringTest {
         assertEquals("singleTask", element.getAttribute("android:launchMode"))
         assertEquals("true", element.getAttribute("android:excludeFromRecents"))
         assertEquals("true", element.getAttribute("android:turnScreenOn"))
+        // #312: without an empty task affinity the notice is hosted by the app's main task, so
+        // Close/Back land on PairingActivity (measured on the phone) instead of the previous app.
+        assertEquals("", element.getAttribute("android:taskAffinity"))
         assertNull(
             "issue #87: never draw over the keyguard; the notice starts behind it",
             element.getAttribute("android:showWhenLocked").takeIf { it.isNotEmpty() },
