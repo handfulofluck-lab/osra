@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/mfa_reset_api.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/mfa_provider.dart';
+import '../../providers/mfa_reset_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'mfa_reset_messages.dart';
 import 'mfa_reset_waiting_screen.dart';
@@ -16,9 +17,14 @@ import 'mfa_reset_waiting_screen.dart';
 /// the mailbox link is clicked, so this screen cannot say whether a code will
 /// appear.
 ///
-/// On success it replaces itself with [MfaResetWaitingScreen]. Nothing is
-/// persisted: the API has no read route, so a restarted app cannot rebuild a
-/// request (see the class comment on [MfaResetProgress]).
+/// On success it replaces itself with [MfaResetWaitingScreen] and keeps the
+/// request id and address in secure storage (never the password), so a restart
+/// can resume at the waiting screen.
+///
+/// On open it checks for such a saved request first: if one exists this screen
+/// is replaced at once by the waiting screen's resume path, which asks for the
+/// password once and re-reads the stage. Starting over is not the only option a
+/// restarted app offers.
 class MfaResetRequestScreen extends ConsumerStatefulWidget {
   const MfaResetRequestScreen({super.key});
 
@@ -32,6 +38,20 @@ class _MfaResetRequestScreenState extends ConsumerState<MfaResetRequestScreen> {
   bool _obscured = true;
   bool _submitting = false;
   MfaResetFailureKind? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resumeStoredRequest());
+  }
+
+  Future<void> _resumeStoredRequest() async {
+    final stored = await ref.read(mfaResetStoreProvider).read();
+    if (!mounted || stored == null) return;
+    await Navigator.of(context).pushReplacement<void, void>(MaterialPageRoute(
+      builder: (_) => const MfaResetWaitingScreen(),
+    ));
+  }
 
   @override
   void dispose() {
@@ -58,6 +78,10 @@ class _MfaResetRequestScreenState extends ConsumerState<MfaResetRequestScreen> {
             email: email,
             password: password,
           );
+      if (!mounted) return;
+      // Persist before leaving: the request outlives this process, the password
+      // does not.
+      await ref.read(mfaResetStoreProvider).save(requestId: result.requestId, email: email);
       if (!mounted) return;
       setState(() => _submitting = false);
       await Navigator.of(context).pushReplacement<void, void>(MaterialPageRoute(

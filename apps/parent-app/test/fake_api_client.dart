@@ -361,6 +361,8 @@ Map<String, FakeRoute> standardRoutes({
     'POST /v1/alerts/a3/ack': (_) => {'ok': true},
     'POST /v1/devices/dev-1/command': (_) => {'ok': true},
     'POST /v1/devices/dev-2/command': (_) => {'ok': true},
+    // ADR-0031: no family reset request needs a witness unless a test says so.
+    'GET /v1/auth/mfa/reset/pending': (_) => {'requests': <dynamic>[]},
     // Plan 3.6: device cards read the durable queue; default to no commands.
     'GET /v1/devices/dev-1/commands/history': (_) => {'items': <dynamic>[]},
     'GET /v1/devices/dev-2/commands/history': (_) => {'items': <dynamic>[]},

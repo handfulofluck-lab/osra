@@ -113,16 +113,18 @@ class MfaResetFailure implements Exception {
       'MfaResetFailure(${kind.name}, status: $statusCode, attemptsRemaining: $attemptsRemaining)';
 }
 
-/// Thin client over the six ADR-0031 reset routes.
+/// Thin client over the ADR-0031 reset routes, including the two read routes
+/// added by the 2026-10-23 amendment.
 ///
-/// `request`, `witness`, `confirm` and the link form of `cancel` are
-/// unauthenticated by construction: the parent being reset cannot hold a
-/// session (`/login` needs the authenticator they lost). `approve` and the
-/// session form of `cancel` use the stored session of another owner/co-parent.
+/// `request`, `witness`, `confirm`, `status`, `complete` and the link form of
+/// `cancel` are unauthenticated by construction: the parent being reset cannot
+/// hold a session (`/login` needs the authenticator they lost). `approve`, the
+/// session form of `cancel` and `pending` use the stored session of another
+/// owner/co-parent and therefore refresh like any signed-in call.
 ///
-/// There is no read route: the API exposes no way to ask for a request's
-/// current state (`docs/SPEC.md`: the read-only audit route of ADR-0031
-/// decision 8 is not built). Nothing here pretends otherwise.
+/// `status` is a write-free read of the requester's own request; `pending` lists
+/// the family's requests that still need a witness. Neither adds a state or a
+/// cancel path to the ADR-0031 state machine.
 class MfaResetApi {
   MfaResetApi(this._client);
 
@@ -141,6 +143,47 @@ class MfaResetApi {
     final result = MfaResetRequestResult.fromJson(data);
     if (result.requestId.isEmpty) throw const MfaResetFailure(MfaResetFailureKind.malformed);
     return result;
+  }
+
+  /// Re-read the requester's own request. Writes nothing on the server: it is
+  /// how a restarted app finds the stage again without the password being kept.
+  ///
+  /// `401 invalid_credentials` and `404 request_not_found` are the only two
+  /// refusals; the screen must not invent finer ones.
+  Future<MfaResetStatusView> status({
+    required String email,
+    required String password,
+    required String requestId,
+  }) async {
+    final data = await _post('/v1/auth/mfa/reset/status', {
+      'email': email,
+      'password': password,
+      'requestId': requestId,
+    });
+    final view = MfaResetStatusView.fromJson(data);
+    if (view.requestId.isEmpty || view.state.isEmpty) {
+      throw const MfaResetFailure(MfaResetFailureKind.malformed);
+    }
+    return view;
+  }
+
+  /// The family's requests that still need a witness, for an owner or
+  /// co-parent. A `guardian` gets `403 role_not_allowed`; callers that only
+  /// want a prompt treat that as "nothing to show", never as an error page.
+  Future<List<MfaResetPendingRequest>> pending() async {
+    try {
+      final res = await _client.raw.get('/v1/auth/mfa/reset/pending');
+      final data = res.data;
+      if (data is! Map) throw const MfaResetFailure(MfaResetFailureKind.malformed);
+      final raw = data['requests'];
+      if (raw is! List) throw const MfaResetFailure(MfaResetFailureKind.malformed);
+      return [
+        for (final entry in raw)
+          if (entry is Map) MfaResetPendingRequest.fromJson(Map<String, dynamic>.from(entry)),
+      ];
+    } on DioException catch (e) {
+      throw _failure(e);
+    }
   }
 
   /// The mailbox link, consumed by the web page the email points at. The app
@@ -174,6 +217,11 @@ class MfaResetApi {
 
   /// Cancel by the emailed link (no sign-in) or by another owner/co-parent's
   /// session. Cancelling is idempotent.
+  ///
+  /// The two forms share a path but not an authentication: a `token` request
+  /// carries no session and must never be retried after a refresh, while a
+  /// `requestId` request carries the approver's session and must refresh like
+  /// any signed-in call. `ApiClient` tells them apart by the body.
   Future<MfaResetCancelResult> cancel({String? token, String? requestId}) async {
     if ((token == null || token.isEmpty) == (requestId == null || requestId.isEmpty)) {
       throw ArgumentError('cancel takes exactly one of token or requestId');

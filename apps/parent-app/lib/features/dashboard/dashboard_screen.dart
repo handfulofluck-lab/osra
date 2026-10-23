@@ -9,9 +9,12 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/mfa_reset_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../auth/mfa_reset_approval_screen.dart';
+import '../auth/mfa_reset_messages.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -22,6 +25,10 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final family = ref.watch(familyProvider);
     final unread = ref.watch(unacknowledgedCountProvider);
+    // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
+    // someone needs a witness. A guardian's 403 becomes an empty list in the
+    // provider, so this is absent rather than an error.
+    final pendingResets = ref.watch(mfaResetPendingProvider).valueOrNull ?? const <MfaResetPendingRequest>[];
     final l10n = context.l10n;
     // Keep the live WS channel subscribed so the activity chips update (#29).
     ref.watch(wsProvider);
@@ -67,7 +74,11 @@ class DashboardScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(l10n.familyLoadFailed('$e'))),
         data: (overview) {
-          final banner = _finishSetupBanner(context, ref, overview);
+          final setupBanner = _finishSetupBanner(context, ref, overview);
+          final banners = <Widget>[
+            if (pendingResets.isNotEmpty) _pendingApprovalBanner(context, pendingResets),
+            if (setupBanner != null) setupBanner,
+          ];
           final content = overview.children.isEmpty
               ? ListView(
                   children: [
@@ -85,12 +96,15 @@ class DashboardScreen extends ConsumerWidget {
                   children: [for (final child in overview.children) ChildCard(child: child)],
                 );
           return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(familyProvider),
-            child: banner == null
+            onRefresh: () async {
+              ref.invalidate(familyProvider);
+              ref.invalidate(mfaResetPendingProvider);
+            },
+            child: banners.isEmpty
                 ? content
                 : Column(
                     children: [
-                      banner,
+                      ...banners,
                       Expanded(child: content),
                     ],
                   ),
@@ -103,6 +117,45 @@ class DashboardScreen extends ConsumerWidget {
         label: Text(l10n.addChild),
       ),
     );
+  }
+
+  /// A family reset request that needs this parent's witness, with the
+  /// requester's name from `GET /v1/auth/mfa/reset/pending`. The prompt exists
+  /// only when the list is non-empty, so a guardian and an empty family see
+  /// nothing at all.
+  Widget _pendingApprovalBanner(BuildContext context, List<MfaResetPendingRequest> requests) {
+    final l10n = context.l10n;
+    final first = requests.first;
+    final name = first.requesterName.trim().isEmpty ? l10n.mfaResetRoleFamilyMember : first.requesterName;
+    final role = mfaResetRoleName(l10n, first.requesterRole);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(AppSpace.md, AppSpace.md, AppSpace.md, 0),
+      child: ListTile(
+        key: const ValueKey('mfaResetPendingBanner'),
+        leading: const Icon(Icons.lock_reset),
+        title: Text(l10n.mfaResetPendingBanner(name, role.isEmpty ? l10n.mfaResetRoleFamilyMember : role)),
+        subtitle: requests.length > 1 ? Text(l10n.mfaResetPendingMore(requests.length - 1)) : null,
+        trailing: TextButton(
+          key: const ValueKey('mfaResetPendingReview'),
+          onPressed: () => _openApproval(context, first),
+          child: Text(l10n.mfaResetPendingReview),
+        ),
+        onTap: () => _openApproval(context, first),
+      ),
+    );
+  }
+
+  /// Opens the approval prompt with the id and name the pending list gave us.
+  void _openApproval(BuildContext context, MfaResetPendingRequest request) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => MfaResetApprovalScreen(
+        requestId: request.requestId,
+        requesterName: request.requesterName,
+        requesterRole: request.requesterRole,
+        pendingState: request.state,
+        pendingWindowEndsAt: request.windowEndsAt,
+      ),
+    ));
   }
 
   /// Persistent "finish setting up" affordance after the wizard was completed

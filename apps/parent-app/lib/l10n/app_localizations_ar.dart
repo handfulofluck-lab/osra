@@ -2305,4 +2305,104 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get mfaResetApproveNeedsId =>
       'افتح هذه الشاشة من الإشعار الخاص بالطلب.';
+
+  @override
+  String mfaResetApproveIntroNamed(String name, String role) {
+    return 'طلب $name ($role) إعادة تعيين التحقق بخطوتين بعد أن فقد تطبيق المصادقة ورموز الاسترداد. الموافقة تبدأ انتظارًا مدته 72 ساعة، وأي تسجيل دخول من $name خلال الانتظار يلغي الطلب.';
+  }
+
+  @override
+  String get mfaResetApproveAlready =>
+      'هذا الطلب تجاوز خطوة الشاهد بالفعل. انتظار الـ 72 ساعة جارٍ، ويمكنك رفضه لإلغائه.';
+
+  @override
+  String get mfaResetRoleOwner => 'المالك';
+
+  @override
+  String get mfaResetRoleCoParent => 'والد مشارك';
+
+  @override
+  String get mfaResetRoleGuardian => 'ولي أمر';
+
+  @override
+  String get mfaResetRoleFamilyMember => 'فرد من العائلة';
+
+  @override
+  String get mfaResetPendingSectionTitle => 'طلبات إعادة تعيين بانتظارك';
+
+  @override
+  String mfaResetPendingBanner(String name, String role) {
+    return 'طلب $name ($role) إعادة تعيين التحقق بخطوتين.';
+  }
+
+  @override
+  String get mfaResetPendingReview => 'مراجعة';
+
+  @override
+  String mfaResetPendingMore(int count) {
+    return 'و$count طلبات أخرى';
+  }
+
+  @override
+  String mfaResetPendingAlreadyWaiting(String role) {
+    return '$role — تم تجاوز خطوة الشاهد، وانتظار الـ 72 ساعة جارٍ';
+  }
+
+  @override
+  String get mfaResetResumeTitle => 'متابعة إعادة التعيين';
+
+  @override
+  String get mfaResetResumeBody =>
+      'لا يزال هناك طلب إعادة تعيين محفوظ من هذا الهاتف. أدخل كلمة مرور حسابك لعرض حالته. تُستخدم كلمة المرور لهذا الفحص فقط ولا تُحفظ.';
+
+  @override
+  String get mfaResetResumePasswordRequired => 'أدخل كلمة المرور للمتابعة.';
+
+  @override
+  String get mfaResetResumeSubmit => 'متابعة';
+
+  @override
+  String get mfaResetResumeNone =>
+      'لا يوجد طلب إعادة تعيين محفوظ على هذا الهاتف.';
+
+  @override
+  String get mfaResetStartNewRequest => 'ابدأ طلبًا جديدًا';
+
+  @override
+  String get mfaResetTerminalTitle => 'انتهى طلب إعادة التعيين هذا';
+
+  @override
+  String get mfaResetTerminalSigninCancelled =>
+      'تسجيل الدخول الناجح يلغي طلب إعادة التعيين، لذلك لم يتغيّر شيء. إذا كنت لا تزال بحاجة إلى إعادة تعيين التحقق بخطوتين، فابدأ طلبًا جديدًا.';
+
+  @override
+  String get mfaResetTerminalCancelled =>
+      'تم إلغاء هذا الطلب، لذلك لم يتغيّر شيء. إذا كنت لا تزال بحاجة إلى إعادة تعيين التحقق بخطوتين، فابدأ طلبًا جديدًا.';
+
+  @override
+  String get mfaResetTerminalExpired =>
+      'انتهت صلاحية هذا الطلب قبل اكتماله، لذلك لم يتغيّر شيء. ابدأ طلبًا جديدًا عندما تكون مستعدًا.';
+
+  @override
+  String get mfaResetTerminalTooManyAttempts =>
+      'خمسة رموز خاطئة أنهت هذا الطلب، لذلك لم يتغيّر شيء. اجعل الطفل الذي يعرض هاتفه الرمز معك، ثم ابدأ طلبًا جديدًا.';
+
+  @override
+  String get mfaResetTerminalCompleted =>
+      'اكتملت إعادة التعيين هذه. سجّل الدخول بتطبيق المصادقة الجديد؛ وإذا لم تُعِدّه بعد، فأعدّه أولًا.';
+
+  @override
+  String get mfaResetTerminalNotFound =>
+      'هذا الطلب لم يعد موجودًا، لذلك لم يتغيّر شيء. ابدأ من جديد.';
+
+  @override
+  String get mfaResetTerminalUnknown =>
+      'لا يمكن متابعة هذا الطلب، ولم يتغيّر شيء. ابدأ طلبًا جديدًا.';
+
+  @override
+  String get mfaResetStageWitnessTitleResumed => 'بانتظار خطوة الشاهد';
+
+  @override
+  String get mfaResetStageWitnessBodyResumed =>
+      'إذا ظهر رمز من 8 أرقام على هاتف طفلك، فأدخله أدناه. وإذا كان مالك آخر أو والد مشارك هو من يوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه؛ ويتابع هذا الطلب عندما يحدث ذلك.';
 }

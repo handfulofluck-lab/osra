@@ -7,11 +7,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/api/mfa_reset_store.dart';
 import 'package:familyshield_parent/features/auth/mfa_recovery_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_approval_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_request_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_waiting_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_witness_screen.dart';
+import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/settings/mfa_enroll_screen.dart';
 import 'package:familyshield_parent/features/settings/mfa_settings_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -36,12 +38,56 @@ void main() {
         'windowEndsAt': windowEnd.toIso8601String(),
       };
 
+  /// A `POST /mfa/reset/status` body: an open state by default, and the two
+  /// date fields that state owns.
+  Map<String, dynamic> statusPayload({String state = 'mailbox_confirmed'}) => {
+        'requestId': 'req-1',
+        'state': state,
+        'createdAt': DateTime.now().toUtc().subtract(const Duration(hours: 1)).toIso8601String(),
+        'emailConfirmedAt':
+            state == 'requested' ? null : DateTime.now().toUtc().subtract(const Duration(minutes: 20)).toIso8601String(),
+        'mailboxLinkExpiresAt': state == 'requested'
+            ? DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String()
+            : null,
+        'witnessDeadline': state == 'mailbox_confirmed'
+            ? DateTime.now().toUtc().add(const Duration(hours: 23)).toIso8601String()
+            : null,
+        'codeExpiresAt':
+            state == 'mailbox_confirmed' ? DateTime.now().toUtc().add(const Duration(minutes: 8)).toIso8601String() : null,
+        'attemptsRemaining': state == 'mailbox_confirmed' ? 5 : null,
+        'witnessKind': state == 'witness_passed' ? 'device' : null,
+        'witnessAt':
+            state == 'witness_passed' ? DateTime.now().toUtc().subtract(const Duration(minutes: 5)).toIso8601String() : null,
+        'windowEndsAt': state == 'witness_passed' ? windowEnd.toIso8601String() : null,
+        'outcomeAt': const {'requested', 'mailbox_confirmed', 'witness_passed'}.contains(state)
+            ? null
+            : DateTime.now().toUtc().toIso8601String(),
+      };
+
+  Map<String, dynamic> pendingRequest({
+    String requestId = 'req-9',
+    String state = 'mailbox_confirmed',
+    String name = 'Fatima',
+    String role = 'co-parent',
+  }) =>
+      {
+        'requestId': requestId,
+        'state': state,
+        'requester': {'parentId': 'par-2', 'displayName': name, 'role': role},
+        'createdAt': DateTime.now().toUtc().subtract(const Duration(hours: 2)).toIso8601String(),
+        'emailConfirmedAt': DateTime.now().toUtc().subtract(const Duration(hours: 1)).toIso8601String(),
+        'witnessDeadline': DateTime.now().toUtc().add(const Duration(hours: 23)).toIso8601String(),
+        'windowEndsAt': state == 'witness_passed' ? windowEnd.toIso8601String() : null,
+      };
+
   Map<String, FakeRoute> resetRoutes({
     FakeRoute? request,
     FakeRoute? witness,
     FakeRoute? approve,
     FakeRoute? cancel,
     FakeRoute? complete,
+    FakeRoute? status,
+    FakeRoute? pending,
   }) =>
       {
         ...standardRoutes(),
@@ -61,6 +107,8 @@ void main() {
         'POST /v1/auth/mfa/reset/approve': approve ?? (_) => accepted(),
         'POST /v1/auth/mfa/reset/cancel': cancel ?? (_) => {'ok': true, 'state': 'cancelled_by_parent'},
         'POST /v1/auth/mfa/reset/complete': complete ?? (_) => {'recoveryToken': 'recovery-token'},
+        'POST /v1/auth/mfa/reset/status': status ?? (_) => statusPayload(),
+        'GET /v1/auth/mfa/reset/pending': pending ?? (_) => {'requests': <dynamic>[]},
         'POST /v1/auth/mfa/enroll': (_) => {
               'secret': 'JBSWY3DPEHPK3PXP',
               'otpauthUrl': 'otpauth://totp/OSRA:qa%40familyshield.dev?secret=JBSWY3DPEHPK3PXP&issuer=OSRA',
@@ -374,6 +422,312 @@ void main() {
     });
   });
 
+  group('Restart path: the waiting screen re-reads the server (gap 1)', () {
+    void storeRequest({String id = 'req-1', String email = 'qa@familyshield.dev'}) =>
+        FlutterSecureStorage.setMockInitialValues({
+          MfaResetStore.requestIdKey: id,
+          MfaResetStore.emailKey: email,
+        });
+
+    Future<void> submitPassword(WidgetTester tester) async {
+      await tester.enterText(find.byKey(const ValueKey('mfaResetResumePassword')), 'good-password');
+      await tester.tap(find.byKey(const ValueKey('mfaResetResumeSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a stored id asks for the password once and renders the stage from status', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(status: (_) => statusPayload()));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+
+      expect(find.text('Continue your reset'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetResumeEmail')), findsOneWidget);
+      expect(find.text('qa@familyshield.dev'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetResumePassword')), findsOneWidget);
+      // Nothing is asked twice: no email field, only the password.
+      expect(find.byKey(const ValueKey('mfaResetEmail')), findsNothing);
+
+      await submitPassword(tester);
+
+      final call = api.calls('POST', '/v1/auth/mfa/reset/status').single;
+      expect(call.body['email'], 'qa@familyshield.dev');
+      expect(call.body['password'], 'good-password');
+      expect(call.body['requestId'], 'req-1');
+
+      expect(find.byKey(const ValueKey('mfaResetStageTitle')), findsOneWidget);
+      expect(find.text('Waiting for the witness step'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetDeadline')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetHaveCode')), findsOneWidget);
+
+      // The password is not kept anywhere; the request id and address are.
+      final stored = await const FlutterSecureStorage().readAll();
+      expect(stored[MfaResetStore.requestIdKey], 'req-1');
+      expect(stored[MfaResetStore.emailKey], 'qa@familyshield.dev');
+      expect(stored.values, isNot(contains('good-password')));
+    });
+
+    testWidgets('a restored mailbox stage keeps the link deadline', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(status: (_) => statusPayload(state: 'requested')));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      expect(find.text('Check your email'), findsOneWidget);
+      expect(find.textContaining('within 30 minutes'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetDeadline')), findsOneWidget);
+      // Live and resumed share the mailbox wording: the route says nothing a
+      // live screen did not already know.
+      expect(find.text('Waiting for the witness step'), findsNothing);
+    });
+
+    testWidgets('a restored window stage shows the 72-hour end and the finish action once due', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(status: (_) => statusPayload(state: 'witness_passed')));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      expect(find.text('The 72-hour wait has started'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetDeadline')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetFinish')), findsNothing);
+    });
+
+    testWidgets('401 invalid_credentials keeps the one honest refusal and the request on file', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(
+        status: (_) => const FakeHttpError(401, {'error': 'invalid_credentials'}),
+      ));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      expect(find.byKey(const ValueKey('mfaResetResumeError')), findsOneWidget);
+      expect(find.text('The email or password is incorrect.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetStageTitle')), findsNothing);
+      expect(find.byKey(const ValueKey('mfaResetResumePassword')), findsOneWidget);
+      expect(await const FlutterSecureStorage().read(key: MfaResetStore.requestIdKey), 'req-1');
+    });
+
+    testWidgets('404 request_not_found is "gone — start again", and the saved id is cleared', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes(
+        status: (_) => const FakeHttpError(404, {'error': 'request_not_found'}),
+      ));
+      await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+      await submitPassword(tester);
+
+      expect(find.byKey(const ValueKey('mfaResetTerminalTitle')), findsOneWidget);
+      expect(
+        find.text('This request no longer exists, so nothing was changed. Start again from the beginning.'),
+        findsOneWidget,
+      );
+      expect(await const FlutterSecureStorage().read(key: MfaResetStore.requestIdKey), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetStartAgain')));
+      await tester.pumpAndSettle();
+      expect(find.byType(MfaResetRequestScreen), findsOneWidget);
+    });
+
+    for (final (state, copy, offersStart) in [
+      (
+        'cancelled_by_signin',
+        'A successful sign-in cancels a reset request, so nothing was changed. '
+            'If you still need to reset two-step verification, start a new request.',
+        true,
+      ),
+      (
+        'cancelled_by_link',
+        'This request was cancelled, so nothing was changed. '
+            'If you still need to reset two-step verification, start a new request.',
+        true,
+      ),
+      (
+        'cancelled_by_parent',
+        'This request was cancelled, so nothing was changed. '
+            'If you still need to reset two-step verification, start a new request.',
+        true,
+      ),
+      (
+        'expired',
+        'This request expired before it finished, so nothing was changed. Start a new request when you are ready.',
+        true,
+      ),
+      (
+        'too_many_attempts',
+        'Five wrong codes ended this request, so nothing was changed. '
+            'Have the child whose phone shows the code with you, then start a new request.',
+        true,
+      ),
+      (
+        'completed',
+        'This reset was completed. Sign in with your new authenticator; '
+            'if you have not set it up yet, do that first.',
+        false,
+      ),
+    ]) {
+      testWidgets('state $state says what happened and what to do next', (tester) async {
+        storeRequest();
+        final api = FakeApiClient(resetRoutes(status: (_) => statusPayload(state: state)));
+        await pumpScreen(tester, const MfaResetWaitingScreen(), api);
+        await submitPassword(tester);
+
+        expect(find.byKey(const ValueKey('mfaResetTerminalTitle')), findsOneWidget);
+        expect(find.text(copy), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('mfaResetStartAgain')),
+          offersStart ? findsOneWidget : findsNothing,
+        );
+        expect(await const FlutterSecureStorage().read(key: MfaResetStore.requestIdKey), isNull);
+      });
+    }
+
+    testWidgets('a successful request saves the id and address, never the password', (tester) async {
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(tester, const MfaResetRequestScreen(), api);
+
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
+      await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MfaResetWaitingScreen), findsOneWidget);
+      final stored = await const FlutterSecureStorage().readAll();
+      expect(stored[MfaResetStore.requestIdKey], 'req-1');
+      expect(stored[MfaResetStore.emailKey], 'qa@familyshield.dev');
+      expect(stored.values, isNot(contains('good-password')));
+    });
+
+    testWidgets('opening the request screen with a saved request resumes instead of asking again', (tester) async {
+      storeRequest();
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(tester, const MfaResetRequestScreen(), api);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MfaResetWaitingScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetResumePassword')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetEmail')), findsNothing);
+    });
+  });
+
+  group('Pending list: a co-parent gets a name and a way in (gap 2)', () {
+    testWidgets('an owner sees the banner, and the approval prompt names the requester', (tester) async {
+      final api = FakeApiClient(resetRoutes(
+        pending: (_) => {'requests': [pendingRequest()]},
+      ));
+      await pumpScreen(tester, const DashboardScreen(), api);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mfaResetPendingBanner')), findsOneWidget);
+      expect(find.text('Fatima (co-parent) asked to reset their two-step verification.'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetPendingReview')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MfaResetApprovalScreen), findsOneWidget);
+      expect(find.textContaining('Fatima (co-parent) asked to reset'), findsOneWidget);
+      expect(find.textContaining('Another parent in your family'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetApprove')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/auth/mfa/reset/approve').single.body['requestId'], 'req-9');
+      expect(find.byKey(const ValueKey('mfaResetApproved')), findsOneWidget);
+    });
+
+    testWidgets('a guardian gets the 403 and sees nothing on the dashboard, not an error page', (tester) async {
+      final api = FakeApiClient(resetRoutes(
+        pending: (_) => const FakeHttpError(403, {'error': 'role_not_allowed'}),
+      ));
+      await pumpScreen(tester, const DashboardScreen(), api);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mfaResetPendingBanner')), findsNothing);
+      expect(find.textContaining('Only an owner or co-parent'), findsNothing);
+      expect(find.text('Alex'), findsOneWidget);
+    });
+
+    testWidgets('a guardian sees nothing in settings either', (tester) async {
+      final api = FakeApiClient(resetRoutes(
+        pending: (_) => const FakeHttpError(403, {'error': 'role_not_allowed'}),
+      ));
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mfaResetPendingSection')), findsNothing);
+      expect(find.text('Two-step verification'), findsOneWidget);
+    });
+
+    testWidgets('an empty list shows no prompt at all', (tester) async {
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(tester, const DashboardScreen(), api);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mfaResetPendingBanner')), findsNothing);
+      expect(find.byKey(const ValueKey('mfaResetPendingSection')), findsNothing);
+    });
+
+    testWidgets('settings lists the request and opens the named prompt', (tester) async {
+      final api = FakeApiClient(resetRoutes(
+        pending: (_) => {'requests': [pendingRequest()]},
+      ));
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mfaResetPendingSection')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetPendingItem-req-9')), findsOneWidget);
+      expect(find.text('Fatima'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetPendingItem-req-9')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MfaResetApprovalScreen), findsOneWidget);
+      expect(find.textContaining('Fatima (co-parent)'), findsOneWidget);
+      expect(api.calls('POST', '/v1/auth/mfa/reset/approve'), isEmpty);
+    });
+
+    testWidgets('a request that already passed its witness shows the window and no Approve button', (tester) async {
+      final api = FakeApiClient(resetRoutes(
+        pending: (_) => {'requests': [pendingRequest(state: 'witness_passed')]},
+      ));
+      await pumpScreen(tester, const DashboardScreen(), api);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetPendingReview')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mfaResetApproveAlready')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mfaResetApprove')), findsNothing);
+      expect(find.byKey(const ValueKey('mfaResetDecline')), findsOneWidget);
+    });
+  });
+
+  group('Approval with a real name (gap 2)', () {
+    testWidgets('the named prompt replaces "another parent in your family"', (tester) async {
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(
+        tester,
+        const MfaResetApprovalScreen(
+          requestId: 'req-9',
+          requesterName: 'Fatima',
+          requesterRole: 'co-parent',
+        ),
+        api,
+      );
+
+      expect(find.textContaining('Fatima (co-parent)'), findsOneWidget);
+      expect(find.textContaining('Another parent in your family'), findsNothing);
+      expect(find.byKey(const ValueKey('mfaResetApprove')), findsOneWidget);
+    });
+
+    testWidgets('a request with no name keeps the old wording instead of inventing one', (tester) async {
+      final api = FakeApiClient(resetRoutes());
+      await pumpScreen(tester, const MfaResetApprovalScreen(requestId: 'req-9'), api);
+
+      expect(find.textContaining('Another parent in your family'), findsOneWidget);
+    });
+  });
+
   group('Witness code (ADR-0031 decision 2.3)', () {
     testWidgets('a code that is not 8 digits is refused before the API', (tester) async {
       final api = FakeApiClient(resetRoutes());
@@ -610,6 +964,74 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('لم يُقبل هذا الرمز. المحاولات المتبقية: 2.'), findsOneWidget);
+      expectRtl(tester);
+    });
+
+    testWidgets('resume prompt', (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        MfaResetStore.requestIdKey: 'req-1',
+        MfaResetStore.emailKey: 'qa@familyshield.dev',
+      });
+      await pumpArabic(tester, const MfaResetWaitingScreen(), FakeApiClient(resetRoutes()));
+      expect(find.text('متابعة إعادة التعيين'), findsOneWidget);
+      expect(find.textContaining('لا يزال هناك طلب إعادة تعيين محفوظ'), findsOneWidget);
+      expect(find.text('متابعة'), findsOneWidget);
+      expectRtl(tester);
+    });
+
+    testWidgets('resumed witness stage', (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        MfaResetStore.requestIdKey: 'req-1',
+        MfaResetStore.emailKey: 'qa@familyshield.dev',
+      });
+      await pumpArabic(tester, const MfaResetWaitingScreen(), FakeApiClient(resetRoutes()));
+      await tester.enterText(find.byKey(const ValueKey('mfaResetResumePassword')), 'good-password');
+      await tester.tap(find.byKey(const ValueKey('mfaResetResumeSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('بانتظار خطوة الشاهد'), findsOneWidget);
+      expectRtl(tester);
+    });
+
+    testWidgets('terminal copy', (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        MfaResetStore.requestIdKey: 'req-1',
+        MfaResetStore.emailKey: 'qa@familyshield.dev',
+      });
+      await pumpArabic(
+        tester,
+        const MfaResetWaitingScreen(),
+        FakeApiClient(resetRoutes(status: (_) => statusPayload(state: 'cancelled_by_parent'))),
+      );
+      await tester.enterText(find.byKey(const ValueKey('mfaResetResumePassword')), 'good-password');
+      await tester.tap(find.byKey(const ValueKey('mfaResetResumeSubmit')));
+      await flush(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('انتهى طلب إعادة التعيين هذا'), findsOneWidget);
+      expect(find.textContaining('تم إلغاء هذا الطلب، لذلك لم يتغيّر شيء'), findsOneWidget);
+      expect(find.text('ابدأ طلبًا جديدًا'), findsOneWidget);
+      expectRtl(tester);
+    });
+
+    testWidgets('pending banner and named approval', (tester) async {
+      await pumpArabic(
+        tester,
+        const DashboardScreen(),
+        FakeApiClient(resetRoutes(
+          pending: (_) => {'requests': [pendingRequest(name: 'فاطمة')]},
+        )),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('طلب فاطمة (والد مشارك) إعادة تعيين التحقق بخطوتين.'), findsOneWidget);
+      expectRtl(tester);
+
+      await tester.tap(find.byKey(const ValueKey('mfaResetPendingReview')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('طلب فاطمة (والد مشارك)'), findsOneWidget);
       expectRtl(tester);
     });
   });

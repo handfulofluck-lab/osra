@@ -3763,6 +3763,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open this screen from the notification about the request.'**
   String get mfaResetApproveNeedsId;
+
+  /// No description provided for @mfaResetApproveIntroNamed.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ({role}) asked to reset their two-step verification after losing their authenticator and recovery codes. Approving starts a 72-hour wait. A sign-in by {name} during the wait cancels the request.'**
+  String mfaResetApproveIntroNamed(String name, String role);
+
+  /// No description provided for @mfaResetApproveAlready.
+  ///
+  /// In en, this message translates to:
+  /// **'This request already has its witness. The 72-hour wait is running; you can still decline it to cancel.'**
+  String get mfaResetApproveAlready;
+
+  /// No description provided for @mfaResetRoleOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'owner'**
+  String get mfaResetRoleOwner;
+
+  /// No description provided for @mfaResetRoleCoParent.
+  ///
+  /// In en, this message translates to:
+  /// **'co-parent'**
+  String get mfaResetRoleCoParent;
+
+  /// No description provided for @mfaResetRoleGuardian.
+  ///
+  /// In en, this message translates to:
+  /// **'guardian'**
+  String get mfaResetRoleGuardian;
+
+  /// No description provided for @mfaResetRoleFamilyMember.
+  ///
+  /// In en, this message translates to:
+  /// **'family member'**
+  String get mfaResetRoleFamilyMember;
+
+  /// No description provided for @mfaResetPendingSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset requests waiting for you'**
+  String get mfaResetPendingSectionTitle;
+
+  /// No description provided for @mfaResetPendingBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ({role}) asked to reset their two-step verification.'**
+  String mfaResetPendingBanner(String name, String role);
+
+  /// No description provided for @mfaResetPendingReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Review'**
+  String get mfaResetPendingReview;
+
+  /// No description provided for @mfaResetPendingMore.
+  ///
+  /// In en, this message translates to:
+  /// **'and {count} more'**
+  String mfaResetPendingMore(int count);
+
+  /// No description provided for @mfaResetPendingAlreadyWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{role} — witness passed, the 72-hour wait is running'**
+  String mfaResetPendingAlreadyWaiting(String role);
+
+  /// No description provided for @mfaResetResumeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue your reset'**
+  String get mfaResetResumeTitle;
+
+  /// No description provided for @mfaResetResumeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A reset request from this phone is still on file. Enter your account password to see where it stands. The password is used only for this check and is not saved.'**
+  String get mfaResetResumeBody;
+
+  /// No description provided for @mfaResetResumePasswordRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your password to continue.'**
+  String get mfaResetResumePasswordRequired;
+
+  /// No description provided for @mfaResetResumeSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get mfaResetResumeSubmit;
+
+  /// No description provided for @mfaResetResumeNone.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no saved reset request on this phone.'**
+  String get mfaResetResumeNone;
+
+  /// No description provided for @mfaResetStartNewRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a new request'**
+  String get mfaResetStartNewRequest;
+
+  /// No description provided for @mfaResetTerminalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This reset request has ended'**
+  String get mfaResetTerminalTitle;
+
+  /// No description provided for @mfaResetTerminalSigninCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'A successful sign-in cancels a reset request, so nothing was changed. If you still need to reset two-step verification, start a new request.'**
+  String get mfaResetTerminalSigninCancelled;
+
+  /// No description provided for @mfaResetTerminalCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'This request was cancelled, so nothing was changed. If you still need to reset two-step verification, start a new request.'**
+  String get mfaResetTerminalCancelled;
+
+  /// No description provided for @mfaResetTerminalExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This request expired before it finished, so nothing was changed. Start a new request when you are ready.'**
+  String get mfaResetTerminalExpired;
+
+  /// No description provided for @mfaResetTerminalTooManyAttempts.
+  ///
+  /// In en, this message translates to:
+  /// **'Five wrong codes ended this request, so nothing was changed. Have the child whose phone shows the code with you, then start a new request.'**
+  String get mfaResetTerminalTooManyAttempts;
+
+  /// No description provided for @mfaResetTerminalCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'This reset was completed. Sign in with your new authenticator; if you have not set it up yet, do that first.'**
+  String get mfaResetTerminalCompleted;
+
+  /// No description provided for @mfaResetTerminalNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'This request no longer exists, so nothing was changed. Start again from the beginning.'**
+  String get mfaResetTerminalNotFound;
+
+  /// No description provided for @mfaResetTerminalUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'This request cannot continue, and nothing was changed. Start a new request.'**
+  String get mfaResetTerminalUnknown;
+
+  /// No description provided for @mfaResetStageWitnessTitleResumed.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the witness step'**
+  String get mfaResetStageWitnessTitleResumed;
+
+  /// No description provided for @mfaResetStageWitnessBodyResumed.
+  ///
+  /// In en, this message translates to:
+  /// **'If an 8-digit code is shown on your child\'s phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.'**
+  String get mfaResetStageWitnessBodyResumed;
 }
 
 class _AppLocalizationsDelegate

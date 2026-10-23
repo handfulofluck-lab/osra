@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/mfa_api.dart';
+import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mfa_provider.dart';
+import '../../providers/mfa_reset_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../auth/mfa_reset_approval_screen.dart';
+import '../auth/mfa_reset_messages.dart';
 import '../auth/mfa_reset_request_screen.dart';
 import 'mfa_enroll_screen.dart';
 import 'mfa_messages.dart';
@@ -72,12 +76,35 @@ class _MfaSettingsScreenState extends ConsumerState<MfaSettingsScreen> {
     }
   }
 
+  String _requesterRole(AppLocalizations l10n, MfaResetPendingRequest request) {
+    final role = mfaResetRoleName(l10n, request.requesterRole);
+    if (role.isEmpty) return l10n.mfaResetRoleFamilyMember;
+    if (request.state == 'witness_passed') return l10n.mfaResetPendingAlreadyWaiting(role);
+    return role;
+  }
+
+  void _openApproval(MfaResetPendingRequest request) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => MfaResetApprovalScreen(
+        requestId: request.requestId,
+        requesterName: request.requesterName,
+        requesterRole: request.requesterRole,
+        pendingState: request.state,
+        pendingWindowEndsAt: request.windowEndsAt,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final theme = Theme.of(context);
     final bool enabled = widget.mfaEnabledOverride ??
         ref.watch(authProvider.select<bool>((state) => state.parent?.mfaEnabled ?? false));
+    // The settings entry is the second place a signed-in owner/co-parent can
+    // learn that a reset needs their witness. A guardian's 403 is an empty
+    // list, not an error (see mfaResetPendingProvider).
+    final pendingResets = ref.watch(mfaResetPendingProvider).valueOrNull ?? const <MfaResetPendingRequest>[];
     return Scaffold(
       appBar: AppBar(title: Text(l10n.mfaSettingsTitle)),
       body: SafeArea(
@@ -94,6 +121,32 @@ class _MfaSettingsScreenState extends ConsumerState<MfaSettingsScreen> {
                 subtitle: Text(enabled ? l10n.mfaSettingsStatusOn : l10n.mfaSettingsStatusOff),
               ),
             ),
+            if (pendingResets.isNotEmpty) ...[
+              const SizedBox(height: AppSpace.xl),
+              Text(
+                l10n.mfaResetPendingSectionTitle,
+                key: const ValueKey('mfaResetPendingSection'),
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpace.xs),
+              Card(
+                child: Column(
+                  children: [
+                    for (final request in pendingResets)
+                      ListTile(
+                        key: ValueKey('mfaResetPendingItem-${request.requestId}'),
+                        leading: const Icon(Icons.lock_reset),
+                        title: Text(request.requesterName.trim().isEmpty
+                            ? l10n.mfaResetRoleFamilyMember
+                            : request.requesterName),
+                        subtitle: Text(_requesterRole(l10n, request)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _busy ? null : () => _openApproval(request),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: AppSpace.md),
             Text(l10n.mfaSettingsExplanation, style: theme.textTheme.bodyMedium),
             const SizedBox(height: AppSpace.lg),

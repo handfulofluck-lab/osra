@@ -337,11 +337,17 @@ and the family's open ones for an `owner`/`co-parent`); the 12-month history rea
 Parent-app half (`feat/297-reset-parent-ui`, 2026-10-23): the four screens exist under
 `apps/parent-app/lib/features/auth/` — the request (email + password), the waiting state (stage, next
 step, cancel, and the `complete` step once the window ends), the 8-digit witness entry and the
-co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. Two surfaces stay limited
-by the API, not by the UI: **there is no read route**, so a restarted app cannot rebuild a pending
-request (the waiting screen is session-only and nothing is persisted); and **`/approve` takes only
-`{requestId}`**, so the approval prompt cannot name the parent who asked, and no notification carries
-the request id to a co-parent's app yet. The Android `show_reset_code` screen, the templates, the
+co-parent approval prompt — with the client in `lib/api/mfa_reset_api.dart`. With the two read routes
+wired in (`feat/297-wire-read-routes`, 2026-10-23), the waiting screen keeps the request id and the
+address in secure storage (never the password), asks for the password once after a restart and
+rebuilds the stage from `/status`; a `404 request_not_found` clears the saved id and offers a fresh
+start, and a terminal state says what happened next. The dashboard and Settings read `/pending`, so
+the approval prompt names the requester with `displayName` and role and no longer depends on a deep
+link; a guardian's `403` shows nothing. Two surfaces still stay limited by the API: **`witnessKind` is
+`null` until the witness passes**, so a resumed `mailbox_confirmed` screen cannot say whether a device
+code or a co-parent approval is expected and keeps both in its wording; and **no notification carries
+the request id to a co-parent's app yet** (decision 4's templates are unbuilt), so the banner and the
+settings entry are how they find out. The Android `show_reset_code` screen, the templates, the
 24-hour reminder and the audit route remain unbuilt.
 
 ## §4 AI Engine (`services/ai-engine`)

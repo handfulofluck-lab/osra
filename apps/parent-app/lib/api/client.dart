@@ -1,6 +1,53 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// `/v1/auth/*` paths whose 401 is the answer, not an expired session.
+///
+/// These routes authenticate with a credential in the request (a password, a
+/// recovery code, a mailbox or cancel link, the refresh token itself) and the
+/// parent being reset deliberately holds no session. A token refresh could not
+/// help them, and replaying the call after one would turn "wrong password" into
+/// a second attempt at the same wrong password. Everything else under
+/// `/v1/auth/*` — `/mfa/reset/pending`, `/mfa/reset/approve`, the session form
+/// of `/mfa/reset/cancel`, `/mfa/recovery-codes`, `/logout-all`, and
+/// `/mfa/enroll` + `/mfa/verify` when they carry the parent session — refreshes
+/// like any signed-in call.
+const Set<String> credentialOnlyAuthPaths = {
+  '/v1/auth/register',
+  '/v1/auth/login',
+  '/v1/auth/logout',
+  '/v1/auth/token/refresh',
+  '/v1/auth/reset/request',
+  '/v1/auth/reset/confirm',
+  '/v1/auth/mfa/recover',
+  '/v1/auth/mfa/reset/request',
+  '/v1/auth/mfa/reset/confirm',
+  '/v1/auth/mfa/reset/witness',
+  '/v1/auth/mfa/reset/status',
+  '/v1/auth/mfa/reset/complete',
+};
+
+/// Whether a 401 on [options] should trigger the stored-session refresh.
+///
+/// The exemption is per route, not the whole `/v1/auth/` prefix: two routes
+/// share a path with different authentication. `/mfa/reset/cancel` is the
+/// emailed-link form when the body has `token` (no session) and the
+/// owner/co-parent form when it has `requestId` (session). A purpose-scoped
+/// token in `extra['authToken']` (the 15-minute `mfa_recovery` credential) is
+/// never swapped for the stored session.
+bool shouldRefreshOn401(RequestOptions options) {
+  final scoped = options.extra['authToken'];
+  if (scoped is String && scoped.isNotEmpty) return false;
+  if (options.extra['retried'] == true) return false;
+  final path = options.path;
+  if (path == '/v1/auth/mfa/reset/cancel') {
+    final body = options.data;
+    final linkForm = body is Map && body.containsKey('token') && !body.containsKey('requestId');
+    return !linkForm;
+  }
+  return !credentialOnlyAuthPaths.contains(path);
+}
+
 class ApiClient {
   static const _base = String.fromEnvironment('API_BASE', defaultValue: '');
   final _dio = Dio(BaseOptions(baseUrl: _base));
@@ -49,9 +96,9 @@ class ApiClient {
       onError: (e, handler) async {
         final res = e.response;
         if (res == null || res.statusCode != 401) return handler.next(e);
-        // Auth endpoints handle their own errors; never refresh-loop there.
-        if (e.requestOptions.path.startsWith('/v1/auth/')) return handler.next(e);
-        if (e.requestOptions.extra['retried'] == true) return handler.next(e);
+        // Credential-only auth routes (and the refresh call itself) answer their
+        // own 401; session-carrying auth routes below refresh like any other.
+        if (!shouldRefreshOn401(e.requestOptions)) return handler.next(e);
 
         try {
           _refreshFuture ??= _refreshToken().whenComplete(() {

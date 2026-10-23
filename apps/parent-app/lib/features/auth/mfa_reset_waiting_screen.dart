@@ -3,44 +3,64 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/mfa_reset_api.dart';
+import '../../api/mfa_reset_store.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/mfa_provider.dart';
+import '../../providers/mfa_reset_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../settings/mfa_enroll_screen.dart';
 import 'mfa_reset_messages.dart';
+import 'mfa_reset_request_screen.dart';
 import 'mfa_reset_witness_screen.dart';
 
 /// The three stages a request can be in while the parent waits (ADR-0031
 /// decision 2). `mailbox_confirmed` is not a separate stage here: the app never
-/// learns that the link was clicked (the link is a web page, and the API has no
-/// read route), so the parent moves on by entering the code they can see.
+/// learns that the link was clicked until it re-reads the request, so the
+/// parent moves on by entering the code they can see.
 enum MfaResetStage { awaitingMailbox, awaitingWitness, window }
+
+/// Why a request stopped, as much as the API's vocabulary allows.
+///
+/// `cancelled_*` is one user-facing outcome (the request was stopped) with a
+/// separate sentence for `cancelled_by_signin`, because that one is the parent's
+/// own successful sign-in and the most confusing. [completed] is success, not a
+/// failure, and has no "start again" action.
+enum MfaResetTerminal {
+  signinCancelled,
+  cancelled,
+  expired,
+  tooManyAttempts,
+  completed,
+  notFound,
+  unknown,
+}
 
 /// What the waiting screen shows.
 ///
-/// Every non-null field is a value the API returned in this session: the
-/// request id and 30-minute mailbox deadline from `/reset/request`, the
-/// 10-minute code deadline from `/reset/confirm`, the 72-hour window from
-/// `/reset/witness` or `/reset/approve`.
+/// Every non-null date is a value the API returned for this request: the
+/// 30-minute mailbox deadline while `requested`, the code deadline while
+/// `mailbox_confirmed`, and the 72-hour window once the witness passed.
 ///
-/// **Nothing here is persisted, and it cannot be rebuilt after a restart.**
-/// The API exposes no route that reads a request's state (`docs/SPEC.md`: the
-/// read-only audit route of ADR-0031 decision 8 is not built), and the app is
-/// required not to remember state locally. A resumed app therefore has to begin
-/// again at [MfaResetRequestScreen]; that is the API gap, not a UI choice.
+/// [resumed] marks a state rebuilt from `POST /mfa/reset/status` after a
+/// restart. The one thing that route cannot say while `mailbox_confirmed` is
+/// `witnessKind` (it is null until the witness passes), so a resumed witness
+/// stage keeps both possibilities in its wording instead of assuming a device
+/// code.
 @immutable
 class MfaResetProgress {
   final String requestId;
   final MfaResetStage stage;
 
-  /// The address the parent typed, kept only so the final `complete` step can
-  /// repeat it. Empty when the screen was opened without the request step.
+  /// The address the parent typed, kept only so `status` and the final
+  /// `complete` step can repeat it. Empty when the screen was opened without
+  /// the request step.
   final String email;
 
   final DateTime? mailboxExpiresAt;
   final DateTime? codeExpiresAt;
   final DateTime? windowEndsAt;
+  final bool resumed;
 
   const MfaResetProgress({
     required this.requestId,
@@ -49,6 +69,7 @@ class MfaResetProgress {
     this.mailboxExpiresAt,
     this.codeExpiresAt,
     this.windowEndsAt,
+    this.resumed = false,
   });
 
   MfaResetProgress copyWith({
@@ -57,6 +78,7 @@ class MfaResetProgress {
     DateTime? mailboxExpiresAt,
     DateTime? codeExpiresAt,
     DateTime? windowEndsAt,
+    bool? resumed,
   }) =>
       MfaResetProgress(
         requestId: requestId,
@@ -65,11 +87,20 @@ class MfaResetProgress {
         mailboxExpiresAt: mailboxExpiresAt ?? this.mailboxExpiresAt,
         codeExpiresAt: codeExpiresAt ?? this.codeExpiresAt,
         windowEndsAt: windowEndsAt ?? this.windowEndsAt,
+        resumed: resumed ?? this.resumed,
       );
 }
 
 /// The screen a parent comes back to while a reset is pending: the current
 /// stage, the next thing to do, and how the request can be stopped.
+///
+/// Opened in two ways:
+/// - **live**, with [progress] from the `/request` call this session made; and
+/// - **resumed** (`progress == null`), after a restart. The screen reads the
+///   stored request id and address, asks for the password once, and calls
+///   `POST /mfa/reset/status` to rebuild the stage. The password is never
+///   stored; it lives in the field until that one call returns. A `404
+///   request_not_found` means the request is gone and the parent starts again.
 ///
 /// There is no cancel button here, deliberately. The parent on this screen is
 /// the one being reset, and the API gives them no in-app cancel: they hold no
@@ -81,9 +112,9 @@ class MfaResetProgress {
 ///
 /// [onNow] is a test seam for the 72-hour boundary; production passes nothing.
 class MfaResetWaitingScreen extends ConsumerStatefulWidget {
-  const MfaResetWaitingScreen({super.key, required this.progress, this.onNow});
+  const MfaResetWaitingScreen({super.key, this.progress, this.onNow});
 
-  final MfaResetProgress progress;
+  final MfaResetProgress? progress;
   final DateTime Function()? onNow;
 
   @override
@@ -91,22 +122,152 @@ class MfaResetWaitingScreen extends ConsumerStatefulWidget {
 }
 
 class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
-  late MfaResetProgress _progress = widget.progress;
+  MfaResetProgress? _progress;
+  StoredMfaReset? _stored;
+  MfaResetTerminal? _terminal;
+  MfaResetFailure? _resumeFailure;
+  bool _loadingStored = false;
+  bool _checking = false;
+  final _resumePassword = TextEditingController();
+
+  bool get _resumeMode => _progress == null;
 
   DateTime get _now => (widget.onNow ?? DateTime.now)();
 
   bool get _windowDue {
-    final ends = _progress.windowEndsAt;
-    return _progress.stage == MfaResetStage.window && ends != null && !ends.isAfter(_now);
+    final progress = _progress;
+    final ends = progress?.windowEndsAt;
+    return progress != null && progress.stage == MfaResetStage.window && ends != null && !ends.isAfter(_now);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _progress = widget.progress;
+    if (_progress == null) {
+      _loadingStored = true;
+      _loadStored();
+    }
+  }
+
+  @override
+  void dispose() {
+    _resumePassword.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadStored() async {
+    final stored = await ref.read(mfaResetStoreProvider).read();
+    if (!mounted) return;
+    setState(() {
+      _stored = stored;
+      _loadingStored = false;
+    });
+  }
+
+  Future<void> _checkStatus() async {
+    final stored = _stored;
+    if (stored == null) return;
+    final password = _resumePassword.text;
+    if (password.isEmpty) {
+      setState(() => _resumeFailure = const MfaResetFailure(MfaResetFailureKind.validation));
+      return;
+    }
+    setState(() {
+      _checking = true;
+      _resumeFailure = null;
+    });
+    try {
+      final status = await ref.read(mfaResetApiProvider).status(
+            email: stored.email,
+            password: password,
+            requestId: stored.requestId,
+          );
+      if (!mounted) return;
+      final terminal = _terminalFor(status.state);
+      setState(() {
+        _checking = false;
+        if (terminal != null) {
+          _terminal = terminal;
+        } else {
+          _progress = _progressFromStatus(status, stored.email);
+        }
+      });
+      if (terminal != null) await _forgetRequest();
+    } on MfaResetFailure catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        if (failure.kind == MfaResetFailureKind.requestNotFound) {
+          _terminal = MfaResetTerminal.notFound;
+        } else {
+          _resumeFailure = failure;
+        }
+      });
+      if (failure.kind == MfaResetFailureKind.requestNotFound) await _forgetRequest();
+    } finally {
+      // The password is asked for this one call and then dropped: it is never
+      // written anywhere, and no later screen reads it.
+      _resumePassword.clear();
+    }
+  }
+
+  /// Only the three open states map to a stage. Everything else ended.
+  MfaResetProgress? _progressFromStatus(MfaResetStatusView status, String email) =>
+      switch (status.state) {
+        'requested' => MfaResetProgress(
+            requestId: status.requestId,
+            stage: MfaResetStage.awaitingMailbox,
+            email: email,
+            mailboxExpiresAt: status.mailboxLinkExpiresAt,
+            resumed: true,
+          ),
+        'mailbox_confirmed' => MfaResetProgress(
+            requestId: status.requestId,
+            stage: MfaResetStage.awaitingWitness,
+            email: email,
+            codeExpiresAt: status.codeExpiresAt,
+            resumed: true,
+          ),
+        'witness_passed' => MfaResetProgress(
+            requestId: status.requestId,
+            stage: MfaResetStage.window,
+            email: email,
+            windowEndsAt: status.windowEndsAt,
+            resumed: true,
+          ),
+        _ => null,
+      };
+
+  MfaResetTerminal? _terminalFor(String state) => switch (state) {
+        'cancelled_by_signin' => MfaResetTerminal.signinCancelled,
+        'cancelled_by_link' || 'cancelled_by_parent' => MfaResetTerminal.cancelled,
+        'expired' => MfaResetTerminal.expired,
+        'too_many_attempts' => MfaResetTerminal.tooManyAttempts,
+        'completed' => MfaResetTerminal.completed,
+        'requested' || 'mailbox_confirmed' || 'witness_passed' => null,
+        _ => MfaResetTerminal.unknown,
+      };
+
+  Future<void> _forgetRequest() => ref.read(mfaResetStoreProvider).clear();
+
+  Future<void> _startAgain() async {
+    await _forgetRequest();
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement<void, void>(MaterialPageRoute(
+      builder: (_) => const MfaResetRequestScreen(),
+    ));
   }
 
   Future<void> _openWitness() async {
+    final progress = _progress;
+    if (progress == null) return;
     final accepted = await Navigator.of(context).push<MfaResetWitnessAccepted>(MaterialPageRoute(
-      builder: (_) => MfaResetWitnessScreen(requestId: _progress.requestId),
+      builder: (_) => MfaResetWitnessScreen(requestId: progress.requestId),
     ));
     if (accepted == null || !mounted) return;
     setState(() {
-      _progress = _progress.copyWith(
+      _progress = progress.copyWith(
         stage: MfaResetStage.window,
         windowEndsAt: accepted.windowEndsAt,
       );
@@ -114,14 +275,18 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
   }
 
   Future<void> _finish() async {
+    final progress = _progress;
+    if (progress == null) return;
     final token = await showDialog<String>(
       context: context,
       builder: (_) => _FinishResetDialog(
-        requestId: _progress.requestId,
-        initialEmail: _progress.email,
+        requestId: progress.requestId,
+        initialEmail: progress.email.isEmpty ? (_stored?.email ?? '') : progress.email,
       ),
     );
     if (token == null || !mounted) return;
+    await _forgetRequest();
+    if (!mounted) return;
     await Navigator.of(context).pushReplacement<void, void>(MaterialPageRoute(
       builder: (_) => MfaEnrollScreen(recoveryToken: token),
     ));
@@ -130,23 +295,108 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    if (_loadingStored) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l10n.mfaResetWaitingTitle)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_terminal != null) return _terminalScaffold(context, _terminal!);
+    if (_resumeMode) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l10n.mfaResetResumeTitle)),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            children: _stored == null
+                ? [
+                    Text(l10n.mfaResetResumeNone, key: const ValueKey('mfaResetResumeNone')),
+                    const SizedBox(height: AppSpace.lg),
+                    FilledButton(
+                      key: const ValueKey('mfaResetStartAgain'),
+                      onPressed: _startAgain,
+                      child: Text(l10n.mfaResetStartNewRequest),
+                    ),
+                  ]
+                : _resumeFields(context, l10n, _stored!),
+          ),
+        ),
+      );
+    }
+    return _progressScaffold(context, l10n, _progress!);
+  }
+
+  List<Widget> _resumeFields(BuildContext context, AppLocalizations l10n, StoredMfaReset stored) {
     final theme = Theme.of(context);
-    final stage = _progress.stage;
+    return [
+      Text(
+        l10n.mfaResetResumeBody,
+        key: const ValueKey('mfaResetResumeBody'),
+        style: theme.textTheme.bodyMedium,
+      ),
+      const SizedBox(height: AppSpace.lg),
+      Text(
+        stored.email,
+        key: const ValueKey('mfaResetResumeEmail'),
+        style: theme.textTheme.bodyLarge,
+      ),
+      const SizedBox(height: AppSpace.md),
+      TextField(
+        key: const ValueKey('mfaResetResumePassword'),
+        controller: _resumePassword,
+        obscureText: true,
+        autofillHints: const [AutofillHints.password],
+        decoration: InputDecoration(
+          labelText: l10n.passwordLabel,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        ),
+        onSubmitted: (_) {
+          if (!_checking) _checkStatus();
+        },
+      ),
+      if (_resumeFailure != null) ...[
+        const SizedBox(height: AppSpace.md),
+        Text(
+          _resumeFailure!.kind == MfaResetFailureKind.validation
+              ? l10n.mfaResetResumePasswordRequired
+              : mfaResetFailureText(l10n, _resumeFailure!.kind),
+          key: const ValueKey('mfaResetResumeError'),
+          style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
+        ),
+      ],
+      const SizedBox(height: AppSpace.lg),
+      FilledButton.icon(
+        key: const ValueKey('mfaResetResumeSubmit'),
+        onPressed: _checking ? null : _checkStatus,
+        icon: _checking
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.lock_open),
+        label: Text(l10n.mfaResetResumeSubmit),
+      ),
+    ];
+  }
+
+  Widget _progressScaffold(BuildContext context, AppLocalizations l10n, MfaResetProgress progress) {
+    final theme = Theme.of(context);
+    final stage = progress.stage;
+    final bool neutralWitness = stage == MfaResetStage.awaitingWitness && progress.resumed;
     final (title, body) = switch (stage) {
       MfaResetStage.awaitingMailbox => (l10n.mfaResetStageMailboxTitle, l10n.mfaResetStageMailboxBody),
-      MfaResetStage.awaitingWitness => (l10n.mfaResetStageWitnessTitle, l10n.mfaResetStageWitnessBody),
+      MfaResetStage.awaitingWitness => neutralWitness
+          ? (l10n.mfaResetStageWitnessTitleResumed, l10n.mfaResetStageWitnessBodyResumed)
+          : (l10n.mfaResetStageWitnessTitle, l10n.mfaResetStageWitnessBody),
       MfaResetStage.window => (l10n.mfaResetStageWindowTitle, l10n.mfaResetStageWindowBody),
     };
     final deadline = switch (stage) {
-      MfaResetStage.awaitingMailbox => _progress.mailboxExpiresAt == null
+      MfaResetStage.awaitingMailbox => progress.mailboxExpiresAt == null
           ? null
-          : l10n.mfaResetMailboxExpires(_format(context, _progress.mailboxExpiresAt!)),
-      MfaResetStage.awaitingWitness => _progress.codeExpiresAt == null
+          : l10n.mfaResetMailboxExpires(_format(context, progress.mailboxExpiresAt!)),
+      MfaResetStage.awaitingWitness => progress.codeExpiresAt == null
           ? null
-          : l10n.mfaResetCodeExpires(_format(context, _progress.codeExpiresAt!)),
-      MfaResetStage.window => _progress.windowEndsAt == null
+          : l10n.mfaResetCodeExpires(_format(context, progress.codeExpiresAt!)),
+      MfaResetStage.window => progress.windowEndsAt == null
           ? null
-          : l10n.mfaResetWindowEndsAt(_format(context, _progress.windowEndsAt!)),
+          : l10n.mfaResetWindowEndsAt(_format(context, progress.windowEndsAt!)),
     };
     return Scaffold(
       appBar: AppBar(title: Text(l10n.mfaResetWaitingTitle)),
@@ -201,6 +451,49 @@ class _MfaResetWaitingScreenState extends ConsumerState<MfaResetWaitingScreen> {
               key: const ValueKey('mfaResetCancelHint'),
               style: theme.textTheme.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _terminalScaffold(BuildContext context, MfaResetTerminal terminal) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final body = switch (terminal) {
+      MfaResetTerminal.signinCancelled => l10n.mfaResetTerminalSigninCancelled,
+      MfaResetTerminal.cancelled => l10n.mfaResetTerminalCancelled,
+      MfaResetTerminal.expired => l10n.mfaResetTerminalExpired,
+      MfaResetTerminal.tooManyAttempts => l10n.mfaResetTerminalTooManyAttempts,
+      MfaResetTerminal.completed => l10n.mfaResetTerminalCompleted,
+      MfaResetTerminal.notFound => l10n.mfaResetTerminalNotFound,
+      MfaResetTerminal.unknown => l10n.mfaResetTerminalUnknown,
+    };
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.mfaResetWaitingTitle)),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpace.lg),
+          children: [
+            Text(
+              l10n.mfaResetTerminalTitle,
+              key: const ValueKey('mfaResetTerminalTitle'),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpace.sm),
+            Text(
+              body,
+              key: const ValueKey('mfaResetTerminalBody'),
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (terminal != MfaResetTerminal.completed) ...[
+              const SizedBox(height: AppSpace.lg),
+              FilledButton(
+                key: const ValueKey('mfaResetStartAgain'),
+                onPressed: _startAgain,
+                child: Text(l10n.mfaResetStartNewRequest),
+              ),
+            ],
           ],
         ),
       ),

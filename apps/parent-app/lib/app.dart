@@ -113,12 +113,22 @@ final router = GoRouter(
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
     GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
     GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
-    // ADR-0031 step 3b: the co-parent's approval prompt. The request id is the
-    // whole input; the notification that should deliver it is not built yet
-    // (decision 4), so a deep link is the only path in.
+    // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
+    // MFA settings screen open it from `GET /mfa/reset/pending`, with the id
+    // and the requester's name; this deep link remains for a notification
+    // (decision 4's templates are still unbuilt) and accepts the same fields.
     GoRoute(
       path: '/mfa/reset/approve',
-      builder: (_, s) => MfaResetApprovalScreen(requestId: s.uri.queryParameters['requestId'] ?? ''),
+      builder: (_, s) {
+        final query = s.uri.queryParameters;
+        return MfaResetApprovalScreen(
+          requestId: query['requestId'] ?? '',
+          requesterName: query['name'],
+          requesterRole: query['role'],
+          pendingState: query['state'],
+          pendingWindowEndsAt: DateTime.tryParse(query['windowEndsAt'] ?? ''),
+        );
+      },
     ),
     GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
     GoRoute(path: '/map', builder: (_, __) => const FamilyMapScreen()),
