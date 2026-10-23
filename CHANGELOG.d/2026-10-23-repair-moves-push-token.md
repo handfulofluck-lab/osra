@@ -1,7 +1,7 @@
 ### Child agent — a re-pair moves the push token at once, instead of at the next poll (#332)
 - **The defect, found on the 1.5 push row.** After a re-pair the push token stayed on the **old** device row
   until the next poll ran. Measured on staging (Flip4, agent from main `bbda837`): re-pair at 13:59:25, a
-  `ring` to the new row at 14:01:28 woke nothing for over two minutes, while an `unlock` to the **old** row
+  `ring` to the new row at 14:01:28 woke nothing for **91 s**, while an `unlock` to the **old** row
   at 14:02:58 woke the phone. The poll that finally ran at 14:02:59 uploaded the token and drained the
   pending commands.
 - **Cause, on the agent only.** `CommandPoller` is the one place the token is uploaded, and `clearPairing`
