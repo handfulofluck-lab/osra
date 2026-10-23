@@ -56,24 +56,13 @@ describe("POST /v1/location/ping — caller eligibility", () => {
     await app.close();
   });
 
-  it("rejects a parent token without a familyId (401)", async () => {
+  // Plan 2.7 F4 (Claude, #329, 2026-10-23): a location ping comes from the child's device. A parent JWT
+  // (any family role, family claim or not) is refused with 403 device_role_required before the body is
+  // read, so nothing is stored and no geofence (or routine) is evaluated. These replace the former
+  // parent-ping tests ("accepts a parent ping … (201)", "parent-supplied deviceId … device_mismatch",
+  // "… device_revoked for a parent-supplied deviceId"): the set of refused callers only grew.
+  it("refuses a parent ping for a child of their own family (403 device_role_required) and stores nothing", async () => {
     const app = await buildApp(locationRoutes, "/v1/location");
-    const token = app.jwt.sign({ sub: "parent-1", role: "parent" });
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/location/ping",
-      headers: { authorization: `Bearer ${token}` },
-      payload: PING,
-    });
-    expect(res.statusCode).toBe(401);
-    expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
-    await app.close();
-  });
-
-  it("keeps the family check for a parent from another family (403)", async () => {
-    const app = await buildApp(locationRoutes, "/v1/location");
-    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-2" });
 
     const res = await app.inject({
       method: "POST",
@@ -82,17 +71,58 @@ describe("POST /v1/location/ping — caller eligibility", () => {
       payload: PING,
     });
     expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("device_role_required");
+    expect(prismaMock.child.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.geofence.findMany).not.toHaveBeenCalled();
     expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it("accepts a parent ping for a child in their own family (201)", async () => {
+  it("refuses every family role, with or without a family claim (403 device_role_required)", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    const tokens = [
+      app.jwt.sign({ sub: "owner-1", familyId: "fam-1", role: "parent", familyRole: "owner" }),
+      app.jwt.sign({ sub: "co-1", familyId: "fam-1", role: "parent", familyRole: "co-parent" }),
+      app.jwt.sign({ sub: "guardian-1", familyId: "fam-1", role: "parent", familyRole: "guardian" }),
+      app.jwt.sign({ sub: "parent-1", role: "parent" }),
+    ];
+    for (const token of tokens) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/location/ping",
+        headers: { authorization: `Bearer ${token}` },
+        payload: PING,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("device_role_required");
+    }
+    expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("keeps the family check for a device token whose family does not own the child (403 forbidden)", async () => {
+    const app = await buildApp(locationRoutes, "/v1/location");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-2" });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/location/ping",
+      headers: deviceHeader(app, { deviceId: DEVICE_ID, childId: CHILD_ID, familyId: "fam-1" }),
+      payload: PING,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("forbidden");
+    expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("accepts the device's own ping (201) and files it under the token's device and child", async () => {
     const app = await buildApp(locationRoutes, "/v1/location");
 
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app, "fam-1"),
+      headers: deviceHeader(app, { deviceId: DEVICE_ID, childId: CHILD_ID, familyId: "fam-1" }),
       payload: PING,
     });
     expect(res.statusCode).toBe(201);
@@ -102,34 +132,17 @@ describe("POST /v1/location/ping — caller eligibility", () => {
     await app.close();
   });
 
-  it("rejects a parent-supplied deviceId that belongs to another child (403 device_mismatch)", async () => {
+  it("refuses a device token whose body names another device (403 device_mismatch)", async () => {
     const app = await buildApp(locationRoutes, "/v1/location");
-    prismaMock.device.findUnique.mockResolvedValue({ id: DEVICE_ID, childId: SIBLING_ID });
 
     const res = await app.inject({
       method: "POST",
       url: "/v1/location/ping",
-      headers: authHeader(app, "fam-1"),
+      headers: deviceHeader(app, { deviceId: "device-other", childId: CHILD_ID, familyId: "fam-1" }),
       payload: PING,
     });
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toBe("device_mismatch");
-    expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
-    await app.close();
-  });
-
-  it("keeps 401 device_revoked for a parent-supplied deviceId with no row (existing contract)", async () => {
-    const app = await buildApp(locationRoutes, "/v1/location");
-    prismaMock.device.findUnique.mockResolvedValue(null);
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/location/ping",
-      headers: authHeader(app, "fam-1"),
-      payload: PING,
-    });
-    expect(res.statusCode).toBe(401);
-    expect(res.json().error).toBe("device_revoked");
     expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
     await app.close();
   });

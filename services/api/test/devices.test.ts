@@ -604,7 +604,7 @@ describe("device enrollment & management", () => {
 
   // Audit finding 5: `requireFamily` proves the device belongs to the caller's family, not that the
   // caller *is* it. Device A could refresh sibling B's lastSeen/status and write B's usage.
-  it("telemetry: a device token may post only for its own id (403 to a sibling), parents stay family-scoped", async () => {
+  it("telemetry: a device token may post only for its own id (403 to a sibling); a parent token is refused (403 device_role_required)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
       where.id === "dev-1" ? DEVICE : { ...DEVICE, id: "dev-2" });
@@ -627,10 +627,16 @@ describe("device enrollment & management", () => {
     });
     expect(own.statusCode).toBe(202);
 
+    // Plan 2.7 F2 (Claude, #329, 2026-10-23): this used to pin a parent's 202 ("parents stay
+    // family-scoped"). Data the phone reports must come from the phone, so every parent token is now
+    // refused and nothing is written.
+    const writesBefore = prismaMock.device.update.mock.calls.length;
     for (const url of ["/v1/devices/dev-1/telemetry", "/v1/devices/dev-2/telemetry"]) {
       const parent = await app.inject({ method: "POST", url, headers: authHeader(app), payload: { batteryPct: 10 } });
-      expect(parent.statusCode).toBe(202);
+      expect(parent.statusCode).toBe(403);
+      expect(parent.json().error).toBe("device_role_required");
     }
+    expect(prismaMock.device.update.mock.calls.length).toBe(writesBefore);
 
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, child: { familyId: "fam-2" } });
     const foreign = await app.inject({
@@ -643,7 +649,7 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
-  it("activity: a device token may post only for its own id (403 to a sibling), parents stay family-scoped", async () => {
+  it("activity: a device token may post only for its own id (403 to a sibling); a parent token is refused (403 device_role_required)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
       where.id === "dev-1" ? DEVICE : { ...DEVICE, id: "dev-2" });
@@ -673,10 +679,15 @@ describe("device enrollment & management", () => {
     expect(own.statusCode).toBe(202);
     expect(redis.publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"live_activity"'));
 
+    // Plan 2.7 F2 (Claude, #329, 2026-10-23): this used to pin a parent's 202. A parent token could
+    // forge the calls, texts and usage minutes in the child's activity log, so it is now refused.
+    const rowsBefore = prismaMock.activityEvent.createMany.mock.calls.length;
     for (const url of ["/v1/devices/dev-1/activity", "/v1/devices/dev-2/activity"]) {
       const parent = await app.inject({ method: "POST", url, headers: authHeader(app), payload: batch });
-      expect(parent.statusCode).toBe(202);
+      expect(parent.statusCode).toBe(403);
+      expect(parent.json().error).toBe("device_role_required");
     }
+    expect(prismaMock.activityEvent.createMany.mock.calls.length).toBe(rowsBefore);
 
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, child: { familyId: "fam-2" } });
     const foreign = await app.inject({
