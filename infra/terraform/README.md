@@ -23,7 +23,7 @@ teardown path.
 
 | Stack | Lifetime | Contains |
 |---|---|---|
-| `base/` | created once, effectively never destroyed | ECR repository + lifecycle policy; the four Secrets Manager entries (and the `JWT_SECRET` / `VAULT_KEY` / demo-password values); the ACM certificate and its Route 53 validation records; the ECS task execution role and its policies; the CloudWatch log group |
+| `base/` | created once, effectively never destroyed | ECR repository + lifecycle policy; the five Secrets Manager entries (and the `JWT_SECRET` / `VAULT_KEY` / demo-password values; the FCM service account holds no value in Terraform); the ACM certificate and its Route 53 validation records; the ECS task execution role and its policies; the CloudWatch log group |
 | `env/` | created and destroyed per session | VPC, subnets, IGW, NAT, route tables, security groups; ALB, listeners, target group; the Route 53 alias record for the API hostname (release mode); ECS cluster, service, task definition and autoscaling; RDS; ElastiCache; the per-session `DATABASE_URL` secret version |
 
 `env/` reads `base/` through a `terraform_remote_state` data source (`env/remote_state.tf`), so
@@ -77,7 +77,7 @@ Do not edit state by hand; use `terraform state ...`. `down.sh` only touches `en
 | `base/versions.tf` | Terraform/provider constraints and the base backend |
 | `base/ecr.tf` | ECR repository and the 14-day untagged-image lifecycle policy |
 | `base/oidc.tf` | GitHub OIDC provider and the `osra-staging-publish` role that pushes the API image |
-| `base/secrets.tf` | Four secret containers; `JWT_SECRET`, `VAULT_KEY` and demo-password values |
+| `base/secrets.tf` | Five secret containers; `JWT_SECRET`, `VAULT_KEY` and demo-password values. The FCM service account's value is written out of band (`Turning push on` below) |
 | `base/acm.tf` | Optional ACM certificate, DNS validation records and validation; the Route 53 zone lookup |
 | `base/iam.tf` | ECS task execution role, managed attachment, read-the-secrets policy |
 | `base/logs.tf` | CloudWatch log group `/ecs/osra-staging-api` |
@@ -138,6 +138,31 @@ printing a URL for a crash-looping deployment.
 
 Extra arguments (for example `-auto-approve`) are passed to the applies; a `-var-file` path would
 have to be valid in both stacks, so prefer each stack's own `terraform.tfvars`.
+
+### Turning push on (roadmap 1.5)
+
+The FCM service account is the one credential Terraform creates a container for and never fills. Three steps, in
+order, and step 2 must come before step 3:
+
+```bash
+# 1. The container's ARN (no secret value is returned by this).
+ARN=$(terraform -chdir=infra/terraform/base output -raw fcm_service_account_secret_arn)
+
+# 2. The value, from a path outside every checkout. Never echo or print it, and never paste it into a log.
+aws secretsmanager put-secret-value --region eu-north-1 --secret-id "$ARN"   --secret-string file://<path outside every checkout>/fcm-service-account.json
+
+# 3. Turn the mapping on. It is an environment variable, not `-var`: up.sh forwards "$@" to every stack,
+#    and base does not declare push_enabled, so `-var` would fail on the base apply.
+TF_VAR_push_enabled=true ./infra/terraform/up.sh
+```
+
+Why the flag exists at all: **ECS cannot resolve a secret with no version**, so mapping it before step 2 would fail
+the task at start with `ResourceInitializationError` and break every session in between. With the flag off, the API's
+`loadServiceAccountFromEnv` returns `null` (`services/api/src/lib/push/fcm.ts:55`) — "flag off" and "push off" mean
+the same thing.
+
+**If `base` is ever destroyed, the value goes with it** (`recovery_window_in_days = 0`, so the name is reusable at
+once). Repeat step 2 after a rebuild; the container comes back, the value does not.
 
 ### Two traps that cost a real session time on 2026-10-23
 
@@ -345,11 +370,12 @@ a non-release run put your own address there (for example `203.0.113.7/32`).
 `base`:
 
 - ECR repository `osra-staging/api` with scan-on-push and a 14-day untagged-image lifecycle.
-- Four Secrets Manager entries (`osra-staging/database-url`, `-jwt-secret`, `-vault-key`,
-  `-demo-password`), with `JWT_SECRET`, `VAULT_KEY` and the demo password generated here and kept
-  across sessions.
+- Five Secrets Manager entries (`osra-staging/database-url`, `-jwt-secret`, `-vault-key`,
+  `-demo-password`, `-fcm-service-account`), with `JWT_SECRET`, `VAULT_KEY` and the demo password
+  generated here and kept across sessions. The FCM entry's container is Terraform's and its value is
+  not: it is a Google-issued credential, written out of band and never in state.
 - Optional ACM certificate + Route 53 validation records (release mode).
-- IAM task execution role: ECR pull, logs, and read those four secrets.
+- IAM task execution role: ECR pull, logs, and read those five secrets.
 - When `github_repo` is set: a GitHub OIDC provider and the `osra-staging-publish` role, limited to
   pushing images to that one repository (`Publishing the image` above).
 - CloudWatch log group `/ecs/osra-staging-api`, 14-day retention.
@@ -394,7 +420,7 @@ Rough **US$0.19/hour** for `env` at the defaults, on-demand list prices in `eu-n
 **US$1.55 for an 8-hour session** (the line items below add up to 0.194; `up.sh` prints 1.52 because
 it multiplies the rounded 0.19). The per-item figures were quoted from the previous region's price
 list before the move to Stockholm on 2026-10-22 and have not been re-quoted for `eu-north-1`, so read
-the total as an order of magnitude, not a Stockholm price. `base` is roughly **US$2/month** (ECR, four
+the total as an order of magnitude, not a Stockholm price. `base` is roughly **US$2.40/month** (ECR, five
 secrets, the log group) and is always on. The certificate costs nothing while attached to the ALB.
 Excludes free-tier credits, AWS Support, taxes and unpredictable data transfer. **This is an estimate,
 not a quote.**
@@ -432,6 +458,10 @@ not needed for routine staging.
 
 ## Operational notes and deviations
 
+- **Nothing in Terraform manages registry replication.** The hand-made ECR replication rule that sent the first
+  published image from `eu-north-1` back into `me-central-1` was removed on 2026-10-22 (#258); the repository in the
+  UAE was deleted with it. If a replication rule reappears, it was made by hand — `aws ecr describe-registry`
+  is the check, and ADR-0030 is the reason it must not.
 - **`env` reads `domain_name` and `hosted_zone_id` from base's state**, so a base applied before that
   output existed must be re-applied before `env` can even plan — `up.sh` applies base first, which is
   why the routine path needs no extra step.
