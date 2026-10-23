@@ -352,17 +352,24 @@ void main() {
       await tester.pumpAndSettle();
 
       final ar = await AppLocalizations.delegate.load(const Locale('ar'));
+      var inFrame = 0;
       for (final category in serverAlertCategories) {
         final title = ar.alertTitleFor(category, 'SERVER TITLE $category', isEnglish: false);
         expect(title, isNot(ar.alertTitleGeneric), reason: '"$category" fell through to the generic title');
-        await tester.scrollUntilVisible(
-          find.text(title),
-          80,
-          scrollable: find.byType(Scrollable).first,
-        );
-        expect(find.text(title), findsOneWidget, reason: '"$category" is missing from the Arabic feed');
+        // Every tile is laid out in the feed's single day column, so the finder
+        // sees all 13; a frame of 568 px holds only the first five, hence the
+        // scroll before the geometry check. That is what makes this the render
+        // the maintainer reviews: each title is actually on screen.
+        final finder = find.text(title);
+        expect(finder, findsOneWidget, reason: '"$category" is missing from the Arabic feed');
+        await tester.ensureVisible(finder);
         await tester.pumpAndSettle();
+        final rect = tester.getRect(finder);
+        expect(rect.top, greaterThanOrEqualTo(0), reason: '"$category" scrolled above the frame');
+        expect(rect.bottom, lessThanOrEqualTo(568), reason: '"$category" is not inside the 320x568 frame');
+        inFrame++;
       }
+      expect(inFrame, serverAlertCategories.length);
       // The server's English title is never what an Arabic parent reads.
       expect(find.textContaining('SERVER TITLE'), findsNothing);
       expectRtlAndNoOverflow(tester);
