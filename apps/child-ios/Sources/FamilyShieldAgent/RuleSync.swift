@@ -186,7 +186,6 @@ public enum RuleSyncer {
             #endif
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
-            RuleStore.clear()
             #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
             if enforce { ScreenTimeController().clearRules() }
             #endif
