@@ -42,6 +42,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0031](0031-mfa-reset-family-witness.md) | MFA reset when every recovery code is gone: password, mailbox, a family witness (a code on a paired child device or another parent's approval) and a 72-hour window that any sign-in cancels; no support operator; supersedes ADR-0023's open support path (#297) | accepted |
 | [0032](0032-durable-revocation.md) | Revocations are stored in Postgres (`Parent.sessionVersion`, `RevokedToken`, the `Device` row) and Redis is only a cache that rebuilds on a miss; ElastiCache pins `noeviction` and keeps one daily snapshot (roadmap 2.7) | accepted |
 | [0033](0033-production-message-scoring.md) | A real child's message is scored only on Amazon Bedrock inside the EU (Frankfurt in-region, the EU profile, or another EU region), with AWS data retention set to `none`; the model is the cheapest that passes the Phase 4 gate on the held-out split twice; DeepSeek's own API stays eval-only; our own model (4.4) is the scale path (roadmap 4.1/4.4) | proposed |
+| [0034](0034-capability-report-and-version-gate.md) | Each device reports what it can enforce (grants, plus features computed by the agent's own acknowledgement policies) on telemetry and at pairing, and every client names its build in `X-OSRA-Client`; a parent app below the minimum gets 426, an old child agent is never refused, and a keyguard-only lock counts as `unavailable` (roadmap 5.8 items 1 and 2, #368) | accepted |
 
 ## Writing a new ADR
 
