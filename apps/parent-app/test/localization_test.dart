@@ -467,6 +467,37 @@ void main() {
       expect(find.text('18:00'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
+
+    testWidgets('a pending digest recipient says the confirmation was sent (roadmap 2.7)', (tester) async {
+      // Roadmap 2.7 (osra-security#2): the pending state needs Arabic copy too, and the row must not
+      // overflow at 320 px with an email address in it.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['parent@example.com', 'grandma@example.com'],
+              'recipients': [
+                {'email': 'parent@example.com', 'status': 'confirmed'},
+                {'email': 'grandma@example.com', 'status': 'pending'},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo Family', 'timezone': 'Asia/Dubai', 'timezoneSource': 'parent'},
+            },
+      });
+      await pumpArabic(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      // The rows sit under the switches and the email field, and a ListView builds lazily at 320x568.
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(find.text('تم إرسال رابط التأكيد — لن يستلم هذا العنوان أي ملخّص قبل التأكيد'), findsOneWidget);
+      expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
   });
 
   /// Pure copy checks for the native-speaker review of the Arabic screen

@@ -12,6 +12,19 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/**
+ * Longest piece of a stored row this file will put in a subject or a body (roadmap 2.7,
+ * osra-security#2). The writes are bounded too (`register`, `PATCH /family/children/:id`), but a row
+ * created before that bound — or by any future caller that forgets it — must not be able to stretch a
+ * subject line. Truncation is by code point, so an Arabic letter or an emoji is never cut in half.
+ */
+export const MAX_OUTBOUND_TEXT = 80;
+
+function clip(value: string, max = MAX_OUTBOUND_TEXT): string {
+  const points = Array.from(value ?? "");
+  return points.length > max ? points.slice(0, max).join("") : points.join("");
+}
+
 function shell(parts: { en: { title: string; body: string[]; cta?: { label: string; href: string } }; ar: { title: string; body: string[]; cta?: { label: string; href: string } } }, locale: Locale) {
   const block = (dir: "ltr" | "rtl", t: { title: string; body: string[]; cta?: { label: string; href: string } }) => `
     <div dir="${dir}" style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2430">
@@ -79,22 +92,24 @@ export function mfaRecoveredEmail(to: string, locale: Locale = "both"): EmailMes
 }
 
 export function inviteEmail(to: string, opts: { inviterName: string; familyName: string; role: string; link: string }, locale: Locale = "both"): EmailMessage {
+  const inviterName = clip(opts.inviterName);
+  const familyName = clip(opts.familyName);
   const { html, text } = shell(
     {
       en: {
-        title: `${opts.inviterName} invited you to the ${opts.familyName} family on OSRA`,
+        title: `${inviterName} invited you to the ${familyName} family on OSRA`,
         body: [`You have been invited as a ${opts.role}. Accept to see the family's children, alerts and controls from your own account.`, "The invitation expires in 7 days."],
         cta: { label: "Accept invitation", href: opts.link },
       },
       ar: {
-        title: `${opts.inviterName} دعاك للانضمام إلى عائلة ${opts.familyName} في أسرة`,
+        title: `${inviterName} دعاك للانضمام إلى عائلة ${familyName} في أسرة`,
         body: [`تمت دعوتك بصفة ${opts.role}. اقبل الدعوة لمتابعة الأطفال والتنبيهات وأدوات التحكم من حسابك.`, "تنتهي صلاحية الدعوة خلال 7 أيام."],
         cta: { label: "قبول الدعوة", href: opts.link },
       },
     },
     locale,
   );
-  return { to, subject: `Invitation to ${opts.familyName} on OSRA · دعوة إلى أسرة`, html, text, idempotencyKey: `invite:${opts.link}` };
+  return { to, subject: `Invitation to ${familyName} on OSRA · دعوة إلى أسرة`, html, text, idempotencyKey: `invite:${opts.link}` };
 }
 
 export interface DigestChild {
@@ -109,18 +124,50 @@ export interface DigestChild {
 }
 
 export function digestEmail(to: string | string[], opts: { familyName: string; days: number; children: DigestChild[]; link: string }, locale: Locale = "both"): EmailMessage {
+  const familyName = clip(opts.familyName);
   const periodEn = opts.days === 1 ? "today" : `the last ${opts.days} days`;
   const periodAr = opts.days === 1 ? "اليوم" : `آخر ${opts.days} أيام`;
   const lineEn = (c: DigestChild) =>
-    `${c.displayName}: ${c.totalAppMinutes} min on screen; top apps ${c.topApps.map((a) => `${a.name} ${a.minutes}m`).join(", ") || "none"}; ${c.urlVisits} sites visited, ${c.topBlockedDomains.length} blocked; ${c.socialConcerns} social concern(s); ${c.calls} calls, ${c.sms} SMS.`;
+    `${clip(c.displayName)}: ${c.totalAppMinutes} min on screen; top apps ${c.topApps.map((a) => `${a.name} ${a.minutes}m`).join(", ") || "none"}; ${c.urlVisits} sites visited, ${c.topBlockedDomains.length} blocked; ${c.socialConcerns} social concern(s); ${c.calls} calls, ${c.sms} SMS.`;
   const lineAr = (c: DigestChild) =>
-    `${c.displayName}: ${c.totalAppMinutes} دقيقة على الشاشة؛ أكثر التطبيقات ${c.topApps.map((a) => `${a.name} ${a.minutes}د`).join("، ") || "لا شيء"}؛ ${c.urlVisits} موقعاً، ${c.topBlockedDomains.length} محجوب؛ ${c.socialConcerns} تنبيه اجتماعي؛ ${c.calls} مكالمة، ${c.sms} رسالة.`;
+    `${clip(c.displayName)}: ${c.totalAppMinutes} دقيقة على الشاشة؛ أكثر التطبيقات ${c.topApps.map((a) => `${a.name} ${a.minutes}د`).join("، ") || "لا شيء"}؛ ${c.urlVisits} موقعاً، ${c.topBlockedDomains.length} محجوب؛ ${c.socialConcerns} تنبيه اجتماعي؛ ${c.calls} مكالمة، ${c.sms} رسالة.`;
   const { html, text } = shell(
     {
-      en: { title: `OSRA digest for ${opts.familyName} — ${periodEn}`, body: opts.children.length ? opts.children.map(lineEn) : ["No activity was recorded."], cta: { label: "Open the dashboard", href: opts.link } },
-      ar: { title: `ملخص أسرة لعائلة ${opts.familyName} — ${periodAr}`, body: opts.children.length ? opts.children.map(lineAr) : ["لم يُسجَّل أي نشاط."], cta: { label: "فتح لوحة المتابعة", href: opts.link } },
+      en: { title: `OSRA digest for ${familyName} — ${periodEn}`, body: opts.children.length ? opts.children.map(lineEn) : ["No activity was recorded."], cta: { label: "Open the dashboard", href: opts.link } },
+      ar: { title: `ملخص أسرة لعائلة ${familyName} — ${periodAr}`, body: opts.children.length ? opts.children.map(lineAr) : ["لم يُسجَّل أي نشاط."], cta: { label: "فتح لوحة المتابعة", href: opts.link } },
     },
     locale,
   );
-  return { to, subject: `OSRA digest · ملخص أسرة — ${opts.familyName}`, html, text };
+  return { to, subject: `OSRA digest · ملخص أسرة — ${familyName}`, html, text };
+}
+
+/**
+ * Roadmap 2.7 (osra-security#2): the address was added to a family's digest by a parent and must prove
+ * it wants it. It states what will happen and carries the single-use 24-hour link — and nothing about
+ * the family's children, so the message itself tells a stranger nothing.
+ */
+export function digestConfirmEmail(to: string, opts: { familyName: string; link: string }, locale: Locale = "both"): EmailMessage {
+  const familyName = clip(opts.familyName);
+  const { html, text } = shell(
+    {
+      en: {
+        title: `Confirm the OSRA digest for the ${familyName} family`,
+        body: [
+          "A parent added this address to the family's OSRA digest. Nothing is sent here until you confirm, and you can ignore this message if you do not want it.",
+          "The link works once and expires in 24 hours.",
+        ],
+        cta: { label: "Confirm this address", href: opts.link },
+      },
+      ar: {
+        title: `تأكيد ملخّص أسرة لعائلة ${familyName}`,
+        body: [
+          "أضاف أحد الوالدين هذا العنوان إلى ملخّص عائلة أسرة. لن يُرسَل شيء إلى هنا حتى تؤكّد، ويمكنك تجاهل هذه الرسالة إن لم ترغب في استلامه.",
+          "الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 24 ساعة.",
+        ],
+        cta: { label: "تأكيد هذا العنوان", href: opts.link },
+      },
+    },
+    locale,
+  );
+  return { to, subject: `Confirm your OSRA digest · تأكيد ملخّص أسرة`, html, text };
 }

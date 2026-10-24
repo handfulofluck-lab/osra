@@ -318,6 +318,26 @@ model DigestPrefs {
   emails      String[] @default([])
 }
 
+/// Roadmap 2.7 (osra-security#2): an address that is not a parent of the family has to confirm before a
+/// digest is sent to it, so a family's recipient list cannot turn the sending domain into a relay.
+///
+/// One row per (family, address). `confirmedAt` is the durable proof that the address asked for the
+/// digest; `tokenHash` is the SHA-256 of the single-use 24-hour link token and `tokenExpiresAt` its
+/// deadline. Confirming clears both, so the link is spent. A parent's own address needs no row: the
+/// address is already verified by registration (see lib/digestRecipients.ts).
+model DigestRecipient {
+  id             String    @id @default(uuid())
+  familyId       String
+  email          String
+  confirmedAt    DateTime?
+  tokenHash      String?   @unique
+  tokenExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([familyId, email])
+  @@index([familyId])
+}
+
 model InstallRequest {
   id        String   @id @default(uuid())
   childId   String

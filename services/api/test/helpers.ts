@@ -36,6 +36,7 @@ export const MOCKED_MODELS = [
   "activityEvent",
   "socialEvent",
   "digestPrefs",
+  "digestRecipient",
   "digestSend",
   "familyInvite",
   "parentPushToken",

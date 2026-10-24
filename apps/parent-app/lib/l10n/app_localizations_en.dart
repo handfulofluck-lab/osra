@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -2008,6 +2009,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get digestPrefsEmailsHelper =>
       'For the digest summary (separate addresses with commas)';
+
+  @override
+  String get digestPrefsConfirmationSent =>
+      'Confirmation sent — this address gets no digest until it is confirmed';
 
   @override
   String get digestPrefsTimezoneTitle => 'Digest timezone (local send hour)';

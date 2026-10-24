@@ -1051,6 +1051,24 @@ class WellbeingScore {
   }
 }
 
+/// One digest recipient and whether it has proved the address (roadmap 2.7, osra-security#2).
+/// A parent's own address is `confirmed` as it is; any other address is `pending` until the
+/// single-use link in its email is used, and a pending address receives no digest.
+@immutable
+class DigestRecipientStatus {
+  final String email;
+  final String status;
+
+  const DigestRecipientStatus({required this.email, this.status = 'pending'});
+
+  bool get isPending => status != 'confirmed';
+
+  factory DigestRecipientStatus.fromJson(Map<String, dynamic> json) => DigestRecipientStatus(
+        email: _str(json['email']),
+        status: _str(json['status'], 'pending'),
+      );
+}
+
 /// `GET/PUT /v1/digests/prefs` notification preferences (feature #5).
 @immutable
 class DigestPrefs {
@@ -1059,13 +1077,26 @@ class DigestPrefs {
   final bool pushEnabled;
   final List<String> emails;
 
-  const DigestPrefs({this.dailyEmail = false, this.weeklyEmail = false, this.pushEnabled = true, this.emails = const []});
+  /// Per-address confirmation state; empty when the server did not send it.
+  final List<DigestRecipientStatus> recipients;
+
+  const DigestPrefs({
+    this.dailyEmail = false,
+    this.weeklyEmail = false,
+    this.pushEnabled = true,
+    this.emails = const [],
+    this.recipients = const [],
+  });
 
   factory DigestPrefs.fromJson(Map<String, dynamic> json) => DigestPrefs(
         dailyEmail: _bool(json['dailyEmail']),
         weeklyEmail: _bool(json['weeklyEmail']),
         pushEnabled: _bool(json['pushEnabled'], true),
         emails: _strList(json['emails']),
+        recipients: [
+          for (final r in (json['recipients'] is List ? json['recipients'] as List : const []))
+            if (r is Map) DigestRecipientStatus.fromJson(Map<String, dynamic>.from(r)),
+        ],
       );
 
   Map<String, dynamic> toJson() => {

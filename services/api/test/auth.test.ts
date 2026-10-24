@@ -177,6 +177,41 @@ describe("auth routes", () => {
     await app.close();
   });
 
+  it("bounds the family name and the parent name at 80 characters (roadmap 2.7)", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    prismaMock.parent.findUnique.mockResolvedValue(null);
+    prismaMock.family.create.mockResolvedValue({ id: "fam-1" });
+    prismaMock.parent.create.mockResolvedValue({ id: "parent-1", email: registerBody.email });
+
+    const tooLong = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: { ...registerBody, familyName: "F".repeat(81) },
+    });
+    // Mutant: remove `.max(80)` from `familyName` in RegisterSchema -> 201 and the 81 characters are
+    // stored, in the digest subject of every later send.
+    expect(tooLong.statusCode).toBe(400);
+    expect(prismaMock.family.create).not.toHaveBeenCalled();
+
+    const nameTooLong = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: { ...registerBody, displayName: "P".repeat(81) },
+    });
+    expect(nameTooLong.statusCode).toBe(400);
+
+    const atLimit = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: { ...registerBody, familyName: "F".repeat(80) },
+    });
+    expect(atLimit.statusCode).toBe(201);
+    expect(prismaMock.family.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ name: "F".repeat(80) }) }),
+    );
+    await app.close();
+  });
+
   it("logs in with correct password and rejects a bad one with 401", async () => {
     const app = await buildApp(authRoutes, "/v1/auth");
     const passwordHash = await argon2.hash(PASSWORD);

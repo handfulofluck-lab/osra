@@ -306,10 +306,58 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('a pending recipient is marked "confirmation sent" after a save (roadmap 2.7)', (tester) async {
+      // Roadmap 2.7 (osra-security#2): an address that is not a parent of the family gets nothing
+      // until it confirms, so the screen must not let it look like an address that will be mailed.
+      // Mutant: render the list without the `isPending` branch -> no "Confirmation sent" text.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['qa@familyshield.dev'],
+              'recipients': [
+                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+              ],
+            },
+        'PUT /v1/digests/prefs': (_) => {
+              'ok': true,
+              'recipients': [
+                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+                {'email': 'grandma@example.com', 'status': 'pending'},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Confirmation sent'), findsNothing);
+      expect(find.byKey(const ValueKey('digestRecipient-qa@familyshield.dev')), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'qa@familyshield.dev, grandma@example.com');
+      // The recipient rows push Save below the 600 px surface, so scroll it into view first.
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save preferences'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(api.calls('PUT', '/v1/digests/prefs').single.body['emails'],
+          ['qa@familyshield.dev', 'grandma@example.com']);
+      expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
+      expect(find.textContaining('Confirmation sent'), findsOneWidget);
+      // Run out the snackbar so no timer is left pending at test end.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('send-now POSTs and shows the returned markdown in a dialog', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
-
       // The timezone section now has its own card, so the send-now button sits
       // below the fold and the lazy ListView builds it only after scrolling.
       await tester.drag(find.byType(ListView), const Offset(0, -300));

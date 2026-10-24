@@ -60,6 +60,37 @@ describe("templates", () => {
     const empty = digestEmail("a@x", { familyName: "Demo", days: 1, link: "l", children: [] });
     expect(empty.text).toContain("No activity was recorded.");
   });
+
+  it("clips a stored name to 80 characters, so a long row cannot stretch a digest (roadmap 2.7)", () => {
+    // The writes are bounded too, but a row created before that bound is what this protects.
+    // Mutant: remove `clip(...)` around `opts.familyName` in digestEmail -> the subject carries all 200.
+    const longFamily = "F".repeat(200);
+    const m = digestEmail("a@x", {
+      familyName: longFamily,
+      days: 7,
+      link: "https://x/dashboard",
+      children: [
+        {
+          displayName: "C".repeat(200),
+          totalAppMinutes: 1,
+          topApps: [],
+          urlVisits: 0,
+          topBlockedDomains: [],
+          socialConcerns: 0,
+          calls: 0,
+          sms: 0,
+        },
+      ],
+    });
+    expect(m.subject).toContain("F".repeat(80));
+    expect(m.subject).not.toContain("F".repeat(81));
+    expect(m.text).toContain(`${"C".repeat(80)}: 1 min on screen`);
+    expect(m.text).not.toContain("C".repeat(81));
+    // The invite carries the same two names; it is the other way out of the family.
+    const invite = inviteEmail("co@example.com", { inviterName: "I".repeat(200), familyName: longFamily, role: "guardian", link: "l" });
+    expect(invite.subject).not.toContain("F".repeat(81));
+    expect(invite.text).not.toContain("I".repeat(81));
+  });
 });
 
 describe("senders", () => {
@@ -210,6 +241,11 @@ describe("digest scheduler", () => {
     prismaMock.digestPrefs.findUnique.mockResolvedValue({ familyId: "fam-1", emails: ["a@x"] });
     prismaMock.parent.findMany.mockResolvedValue([]);
     prismaMock.child.findMany.mockResolvedValue([]);
+    // Roadmap 2.7: `a@x` is not one of the family's parents, so it is a recipient only because it
+    // confirmed. These tests are about the send/claim state machine, not about who may be mailed.
+    prismaMock.digestRecipient.findMany.mockResolvedValue([
+      { familyId: "fam-1", email: "a@x", confirmedAt: new Date("2026-10-01T00:00:00Z") },
+    ]);
   }
 
   it("is due from the configured local hour; weekly only on the local Sunday (ADR-0017)", () => {
@@ -241,6 +277,10 @@ describe("digest scheduler", () => {
     prismaMock.digestPrefs.findUnique.mockResolvedValue({ familyId: "fam-1", emails: ["a@x"] });
     prismaMock.parent.findMany.mockResolvedValue([]);
     prismaMock.child.findMany.mockResolvedValue([]);
+    // Roadmap 2.7: the requested address is a recipient because it confirmed (see `dueFamily`).
+    prismaMock.digestRecipient.findMany.mockResolvedValue([
+      { familyId: "fam-1", email: "a@x", confirmedAt: new Date("2026-10-01T00:00:00Z") },
+    ]);
     prismaMock.digestSend.create.mockResolvedValue({ id: "send-1" });
 
     // 09:00 UTC is before DIGEST_HOUR (18): nothing is claimed, nothing is sent.
