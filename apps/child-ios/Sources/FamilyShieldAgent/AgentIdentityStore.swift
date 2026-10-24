@@ -104,9 +104,8 @@ public enum AgentIdentityStore {
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }
         for key in [Keys.deviceToken, Keys.hmacSecret] {
             guard let legacy = defaults.string(forKey: key) else { continue }
-            if legacy.isEmpty || secrets.read(key) != nil || secrets.write(legacy, for: key) {
-                defaults.removeObject(forKey: key)
-            }
+            _ = legacy.isEmpty || secrets.read(key) != nil || secrets.write(legacy, for: key)
+            defaults.removeObject(forKey: key)
         }
     }
 }
