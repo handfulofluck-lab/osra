@@ -120,7 +120,7 @@ wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and
 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the count was skipped — that skip is not a
 pass. The probe does not need it, and deliberately has no database connection (§6).
 
-### The authorization matrix, column by column (plan 2.7) — probe `Q1`–`Q8`
+### The authorization matrix, column by column (plan 2.7) — probe `Q1`–`Q9`
 
 Section Q walks the columns of `docs/QA/security/authz-matrix.md` across every JWT route the API registers (62).
 It covers:
@@ -130,7 +130,9 @@ It covers:
 - no token at all (`Q5`);
 - a guardian and a co-parent with no permissions (`Q6`, `Q6b`);
 - a device token on the parent-only routes (`Q7`);
-- another family's owner (`Q8`).
+- another family's owner (`Q8`);
+- outbound email limits (`Q9`, #354): the `familyName` bound, the five-address digest cap, and unconfirmed
+  digest addresses left out of send-now. `Q6`/`Q6b` also refuse the digest writes to a co-parent and a guardian.
 
 A failure prints every route that answered wrong, as `METHOD path -> status error`, so read the detail, not
 the count. Things to know when running it:
