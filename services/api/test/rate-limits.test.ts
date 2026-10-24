@@ -9,6 +9,7 @@ import {
   trustProxyFromEnv,
 } from "../src/lib/rateLimits.js";
 import { registerErrorHandler } from "../src/lib/errorHandler.js";
+import { FakeRateLimitRedis } from "./helpers.js";
 
 /**
  * Plan 2.7: rate limits key on the client address behind the load balancer, count in Redis so every
@@ -18,33 +19,6 @@ import { registerErrorHandler } from "../src/lib/errorHandler.js";
  * three bucket configs, `registerErrorHandler`); only the routes are stand-ins. `inject` arrives from
  * 127.0.0.1, which plays the ALB: the client address is the `X-Forwarded-For` entry the ALB appends.
  */
-
-/** The counting half of @fastify/rate-limit's Redis store script (INCR, then PEXPIRE a new key). */
-class FakeRateLimitRedis {
-  readonly counts = new Map<string, number>();
-  down = false;
-  defineCommand(): void {
-    /* the store defines `rateLimit` only when it is missing; this class supplies it */
-  }
-  rateLimit(
-    key: string,
-    timeWindow: number,
-    _max: number,
-    _ban: number,
-    _continueExceeding: boolean,
-    cb: (err: Error | null, res: [number, number, boolean] | null) => void,
-  ): void {
-    if (this.down) {
-      // What ioredis raises once `maxRetriesPerRequest` (2, src/redis.ts) is spent on a dead connection.
-      const err = new Error("Reached the max retries per request limit (which is 2).");
-      err.name = "MaxRetriesPerRequestError";
-      return cb(err, null);
-    }
-    const current = (this.counts.get(key) ?? 0) + 1;
-    this.counts.set(key, current);
-    cb(null, [current, timeWindow, false]);
-  }
-}
 
 async function buildApp(redis: FakeRateLimitRedis, trustProxy: number | false = trustProxyFromEnv("1")) {
   const app = Fastify({ logger: false, trustProxy });

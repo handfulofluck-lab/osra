@@ -253,3 +253,30 @@ export function resetPrismaMock(): void {
     region: "US",
   });
 }
+
+/** The counting half of @fastify/rate-limit's Redis store script (INCR, then PEXPIRE a new key). */
+export class FakeRateLimitRedis {
+  readonly counts = new Map<string, number>();
+  down = false;
+  defineCommand(): void {
+    /* the store defines `rateLimit` only when it is missing; this class supplies it */
+  }
+  rateLimit(
+    key: string,
+    timeWindow: number,
+    _max: number,
+    _ban: number,
+    _continueExceeding: boolean,
+    cb: (err: Error | null, res: [number, number, boolean] | null) => void,
+  ): void {
+    if (this.down) {
+      // What ioredis raises once `maxRetriesPerRequest` (2, src/redis.ts) is spent on a dead connection.
+      const err = new Error("Reached the max retries per request limit (which is 2).");
+      err.name = "MaxRetriesPerRequestError";
+      return cb(err, null);
+    }
+    const current = (this.counts.get(key) ?? 0) + 1;
+    this.counts.set(key, current);
+    cb(null, [current, timeWindow, false]);
+  }
+}
