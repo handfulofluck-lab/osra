@@ -11,6 +11,7 @@ import com.familyshield.agent.network.dto.RuleSetDto
 import com.familyshield.agent.network.dto.SocialScanDto
 import com.familyshield.agent.network.dto.TelemetryDto
 import com.familyshield.agent.network.dto.ActivityEventBatchDto
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -70,6 +71,19 @@ interface ApiService {
         @Path("id") deviceId: String,
         @Query("ack") ackCapable: Int = ACK_CAPABLE,
     ): List<DeviceCommandDto>
+
+    /**
+     * The same poll as [getCommands], with the response headers kept: roadmap 5.8 (#353). The server
+     * says how long to wait before the next poll in `X-Poll-After` (see
+     * [com.familyshield.agent.services.IdleCadence]), and only the foreground service's loop reads
+     * it. A non-2xx answer is not thrown by Retrofit for a `Response` return type, so the caller
+     * throws `HttpException` itself and the 428 consent path stays the same.
+     */
+    @GET("v1/devices/{id}/commands")
+    suspend fun getCommandsWithCadence(
+        @Path("id") deviceId: String,
+        @Query("ack") ackCapable: Int = ACK_CAPABLE,
+    ): Response<List<DeviceCommandDto>>
 
     /**
      * Reports the outcome of one delivered command (Phase 2b). Issue #132: a `locate_now` the agent

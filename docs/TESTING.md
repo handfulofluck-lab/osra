@@ -301,7 +301,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | Workflow | Runs on | Purpose |
 |---|---|---|
 | `ci.yml` | every PR | **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended; its `--selftest` runs in `workflow-lint.yml`). Until 2026-10-24 this file also held the five build-and-test jobs below |
-| `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, and the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
+| `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`), and `IdleCadence.kt`, which `poll-cadence.test.ts` reads (#353) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
 | `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales), but on a PR or a push only when it changes `apps/parent-app/ios/**`, `pubspec.yaml`, `pubspec.lock` or this workflow; nightly and by hand always — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, the merged-manifest gate, and both release APKs' `targetSdk` and the cleartext configs, each failing the job (#361); the four APKs are kept 14 days |
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed at twice the Linux rate) |
@@ -492,7 +492,7 @@ the queue drains, then `unlock`) or waits for `expiresAt`.
 and grants the phone to you. A live claim whose owner is unreachable is the warden's call —
 `-Action Break -Owner "<warden>" -Purpose "recover the handset" -Reason "<why>" -Force`
 (`AGENTS.md` §9.4). Either way the previous owner is not required to respond; apply the reset, allow up
-to 90 s (the agent polls every 60 s; a `lock` took 59 s in TR-13, §5a), then verify:
+to 90 s (without push the agent polls every 60 s, #353; a `lock` took 59 s in TR-13, §5a), then verify:
 
 ```bash
 curl -s -X POST "$API/v1/devices/$DEV/command" \

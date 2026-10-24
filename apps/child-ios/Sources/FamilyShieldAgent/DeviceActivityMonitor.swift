@@ -120,7 +120,12 @@ import ManagedSettings
 /// Device-activity monitor for FamilyShield (spec §6.4): applies the bedtime shield
 /// when a bedtime interval starts in a routine-specific named store, and clears only that
 /// routine store when it ends without unshielding parent rules (IOS-05).
-final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
+///
+/// The monitor extension target (`Extensions/Monitor`) names this class as its
+/// NSExtensionPrincipalClass. `@objc(...)` gives it that unqualified runtime name, and it is
+/// public so the extension can reference it, which keeps the static linker from dropping it.
+@objc(FamilyShieldDeviceActivityMonitor)
+public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Reporter rebuilt per use so it picks up the `agent.apiBaseURL` value the pairing
     /// flow writes into the shared app group (nil until then — reports are skipped).
@@ -129,7 +134,7 @@ final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
     /// Shields the bedtime apps in a dedicated named store for this routine (IOS-05).
     /// Using a routine-specific named store ensures overlapping routines do not clobber
     /// each other, and rule-blocked apps managed in `parentRules` store remain shielded.
-    override func intervalDidStart(for activity: DeviceActivityName) {
+    public override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
         let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.bedtimeBundleIdentifiers())
@@ -138,14 +143,14 @@ final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Clears only the routine-specific named store when bedtime interval ends (IOS-05).
     /// Does NOT clear `parentRules` or other overlapping routines.
-    override func intervalDidEnd(for activity: DeviceActivityName) {
+    public override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         routineStore.clearAllSettings()
     }
 
     /// Reports a screen-time threshold breach with category "screen_time_exceeded".
-    override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
+    public override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
         reporter.report(
             category: "screen_time_exceeded",

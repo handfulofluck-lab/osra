@@ -8,18 +8,20 @@ import ManagedSettingsUI
 /// Shield appearance for FamilyShield block screens (spec §6.3): title, a subtitle
 /// describing the rule reason, and the "Ask parent" / "OK" buttons.
 ///
-/// NOTE: this class only takes effect as the NSExtensionPrincipalClass of a Shield
-/// Configuration app extension target; the Xcode project wrapping this package
-/// supplies that target (SwiftPM alone cannot declare app extensions).
-final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
+/// NOTE: this class only takes effect as the NSExtensionPrincipalClass of the Shield
+/// Configuration extension target (`Extensions/ShieldConfiguration` in `project.yml`;
+/// SwiftPM alone cannot declare app extensions). `@objc(...)` gives it that unqualified
+/// runtime name, and it is public so the extension can reference it and keep it linked.
+@objc(FamilyShieldConfigurationDataSource)
+public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 
     /// Shield configuration shown when an application is blocked.
-    override func configuration(shielding application: Application) -> ShieldConfiguration {
+    public override func configuration(shielding application: Application) -> ShieldConfiguration {
         Self.makeConfiguration()
     }
 
     /// Shield configuration shown when a website is blocked.
-    override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
+    public override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
         Self.makeConfiguration()
     }
 
@@ -47,13 +49,15 @@ final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 /// shield and notifies the parent; "OK" dismisses the shield and logs a request-access
 /// call to the backend.
 ///
-/// NOTE: must be the NSExtensionPrincipalClass of a Shield Action app extension target.
-final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
+/// NOTE: the NSExtensionPrincipalClass of the Shield Action extension target
+/// (`Extensions/ShieldAction`); `@objc(...)` and `public` for the same reasons as above.
+@objc(FamilyShieldShieldActionDelegate)
+public final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
 
     private let reporter = AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret())
 
     /// Handles a shield action raised for a blocked application.
-    override func handle(
+    public override func handle(
         action: ShieldAction,
         for application: ApplicationToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
@@ -62,7 +66,7 @@ final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
     }
 
     /// Handles a shield action raised for a blocked website.
-    override func handle(
+    public override func handle(
         action: ShieldAction,
         for webDomain: WebDomainToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void

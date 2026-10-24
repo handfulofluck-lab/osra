@@ -1,0 +1,101 @@
+# XcodeGen spec for the iOS child agent (roadmap 5.5, #372).
+#
+# The .xcodeproj is generated from this file and never committed: run `xcodegen generate` in this
+# directory (CI pins the XcodeGen version in .github/workflows/ios-ci.yml). Review changes here,
+# not in a project.pbxproj diff.
+#
+# Four targets, all linking the FamilyShieldAgent package in this directory:
+#   OSRAAgent                      the host app (App/)
+#   OSRAAgentMonitor               Device Activity monitor extension (Extensions/Monitor/)
+#   OSRAAgentShieldConfiguration   Shield configuration extension (Extensions/ShieldConfiguration/)
+#   OSRAAgentShieldAction          Shield action extension (Extensions/ShieldAction/)
+#
+# Bundle ids are placeholders under dev.familyshield.agent: the maintainer chooses the permanent
+# ids before App Store Connect. The repository is public, so DEVELOPMENT_TEAM stays empty and no
+# team id, provisioning profile or certificate is ever added here.
+name: OSRAAgent
+
+options:
+  deploymentTarget:
+    iOS: "16.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: NO
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+packages:
+  FamilyShieldAgent:
+    path: .
+
+targets:
+  OSRAAgent:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_NAME: OSRAAgent
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/OSRAAgent.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+      # app-extension targets are embedded in the app's PlugIns/ folder.
+      - target: OSRAAgentMonitor
+      - target: OSRAAgentShieldConfiguration
+      - target: OSRAAgentShieldAction
+
+  OSRAAgentMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/Monitor
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.monitor
+        INFOPLIST_FILE: Extensions/Monitor/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/Monitor/Monitor.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+  OSRAAgentShieldConfiguration:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/ShieldConfiguration
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.shield-configuration
+        INFOPLIST_FILE: Extensions/ShieldConfiguration/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/ShieldConfiguration/ShieldConfiguration.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+  OSRAAgentShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/ShieldAction
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.shield-action
+        INFOPLIST_FILE: Extensions/ShieldAction/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/ShieldAction/ShieldAction.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+schemes:
+  OSRAAgent:
+    build:
+      targets:
+        OSRAAgent: all
