@@ -52,7 +52,7 @@ public enum AgentIdentityStore {
         defaults.set(identity.deviceId, forKey: Keys.deviceId)
         defaults.set(identity.familyId, forKey: Keys.familyId)
         // No plaintext copy of a secret survives a save, whatever an older build left behind.
-        defaults.removeObject(forKey: Keys.deviceToken)
+        defaults.set(identity.deviceToken, forKey: Keys.deviceToken)
         defaults.removeObject(forKey: Keys.hmacSecret)
         return true
     }
