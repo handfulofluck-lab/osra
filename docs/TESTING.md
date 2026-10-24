@@ -133,6 +133,9 @@ It covers:
 - another family's owner (`Q8`);
 - outbound email limits (`Q9`, #354): the `familyName` bound, the five-address digest cap, and unconfirmed
   digest addresses left out of send-now. `Q6`/`Q6b` also refuse the digest writes to a co-parent and a guardian.
+- after section R, the real `/pair/claim` and `/login` routes keep their own buckets (`S1`, `S2`, #376):
+  each is called until it answers 429, and `x-ratelimit-limit` must read 10 and 20. They run last because
+  they spend those two buckets for a minute, so a re-run inside that minute stops with exit 2 (wait 60 s).
 
 A failure prints every route that answered wrong, as `METHOD path -> status error`, so read the detail, not
 the count. Things to know when running it:
