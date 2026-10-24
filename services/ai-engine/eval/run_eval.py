@@ -21,6 +21,7 @@ from typing import Callable, Dict, List
 import model
 
 from eval.banks import HARMFUL_CATEGORIES
+from eval.prompt import REFUSED_KEY
 from eval.split import SPLITS
 
 DATASET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset.jsonl")
@@ -56,10 +57,21 @@ def score_deepseek(text: str) -> Dict[str, float]:
     return default_scorer()(text)
 
 
+def score_bedrock(text: str) -> Dict[str, float]:
+    """A candidate production model on Amazon Bedrock inside the EU (ADR-0033, `eval/bedrock_scorer.py`).
+
+    Lazy for the same reason as DeepSeek: boto3, AWS credentials and a network are needed only here.
+    """
+    from eval.bedrock_scorer import default_scorer
+
+    return default_scorer()(text)
+
+
 SCORERS: Dict[str, Callable[[str], Dict[str, float]]] = {
     "regex": score_regex,
     "model": score_model,
     "deepseek": score_deepseek,
+    "bedrock": score_bedrock,
 }
 
 
@@ -166,6 +178,9 @@ def evaluate(rows: List[dict], score_fn: Callable[[str], Dict[str, float]],
         flagged_unsafe = sum(1 for _r, p in unsafe if flagged(p))
         flagged_safe = sum(1 for _r, p in safe if flagged(p))
         flagged_hard = sum(1 for _r, p in hard if flagged(p))
+        # A hosted scorer marks the rows it scored as flagged because the model refused or answered
+        # unreadably (ADR-0033): they count as flags above, and here, so a reader can see how many.
+        refused = sum(1 for _r, p in lang_rows if p.get(REFUSED_KEY))
 
         result["langs"][lang] = {
             "items": len(lang_rows),
@@ -180,6 +195,7 @@ def evaluate(rows: List[dict], score_fn: Callable[[str], Dict[str, float]],
                 "hard_support": len(hard),
                 "hard_flagged": flagged_hard,
                 "hard_false_positive_rate": _ratio(flagged_hard, len(hard)),
+                "refused_or_unreadable": refused,
             },
         }
     return result
@@ -266,22 +282,37 @@ def main(argv=None) -> int:
     parser.add_argument("--fail-under-precision", type=float, default=None)
     parser.add_argument("--gate-categories", default="self_harm,grooming",
                         help="categories the --fail-under-* thresholds apply to")
+    parser.add_argument("--fail-over-hard-fp", type=float, default=None,
+                        help="fail when either language flags more than this share of hard negatives "
+                             "(ADR-0033 uses 0.05)")
     args = parser.parse_args(argv)
 
     score_fn = SCORERS[args.scorer]
     rows = load_dataset(args.dataset, args.limit_per_category, args.split)
     try:
         result = evaluate(rows, score_fn, args.threshold)
-    except Exception as exc:  # DeepSeekUnavailable, or a transport error that survived the retries
-        from eval.deepseek_scorer import DeepSeekUnavailable
+    except Exception as exc:  # *Unavailable, or a transport error that survived the retries
+        if args.scorer == "deepseek":
+            from eval.deepseek_scorer import DeepSeekUnavailable
 
-        if isinstance(exc, DeepSeekUnavailable):
-            # One line, no traceback: a missing key or a refused key is an operator problem, and the
-            # message says which. The rows already scored are in the cache and were paid for.
-            raise SystemExit(f"deepseek scorer unavailable: {exc}") from None
+            if isinstance(exc, DeepSeekUnavailable):
+                # One line, no traceback: a missing key or a refused key is an operator problem, and the
+                # message says which. The rows already scored are in the cache and were paid for.
+                raise SystemExit(f"deepseek scorer unavailable: {exc}") from None
+        if args.scorer == "bedrock":
+            from eval.bedrock_scorer import BedrockUnavailable
+
+            if isinstance(exc, BedrockUnavailable):
+                raise SystemExit(f"bedrock scorer unavailable: {exc}") from None
         raise
     result["split"] = args.split
+    if args.scorer == "bedrock":
+        from eval.bedrock_scorer import default_scorer
+
+        result["usage"] = default_scorer().usage()
     print(render(result, args.scorer, len(rows)))
+    if "usage" in result:
+        print("usage: " + json.dumps(result["usage"], sort_keys=True))
 
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8", newline="\n") as handle:
@@ -294,9 +325,17 @@ def main(argv=None) -> int:
         write_markdown(args.md_out, render_markdown(result, args.scorer, len(rows), note))
         print(f"updated the table in {args.md_out}")
 
-    if args.fail_under_recall is not None or args.fail_under_precision is not None:
+    gating = (args.fail_under_recall is not None or args.fail_under_precision is not None
+              or args.fail_over_hard_fp is not None)
+    if gating:
         gate = [c.strip() for c in args.gate_categories.split(",") if c.strip()]
         failures = []
+        if args.fail_over_hard_fp is not None:
+            for lang in LANGS:
+                rate = result["langs"][lang]["flag"]["hard_false_positive_rate"]
+                if rate is not None and rate > args.fail_over_hard_fp:
+                    failures.append(f"{lang}: hard-negative false-positive rate {rate:.2f} "
+                                    f"> {args.fail_over_hard_fp:.2f}")
         for lang in LANGS:
             for category in gate:
                 row = result["langs"][lang]["per_category"][category]

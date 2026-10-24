@@ -198,7 +198,9 @@ never imported by `model.py` or by the API.
 **Why eval-only.** An evaluation sends synthetic messages, written by us, about imaginary children. A
 production scorer would send a real child's message to a third party. Those are different decisions, and
 keeping the module inside `eval/` makes the second one a deliberate change rather than a flag somebody
-flips. Moving it out is the conversation `docs/ROADMAP.md` 4.1 and 4.4 exist to have.
+flips. That conversation is ADR-0033 (proposed, PR #369): a real child's message is scored only on Amazon
+Bedrock inside the EU, so this scorer stays here for synthetic messages, and the production candidates
+are measured with the Bedrock scorer below.
 
 ```bash
 cd services/ai-engine
@@ -258,6 +260,41 @@ categories**.
 - **Not in production, deliberately.** These are evaluations on synthetic messages. A production scorer
   sends a real child's message to a third party — the 4.1-versus-4.4 decision, which this number does
   not make.
+
+## The Bedrock scorer (ADR-0033)
+
+ADR-0033 chooses the production model by measurement. The rule is: the cheapest candidate on Amazon
+Bedrock, inside the EU, that passes the Phase 4 gate on `--split test` **twice**, with hard-negative false
+alarms at or below **0.05** per language. `eval/bedrock_scorer.py` is that measurement. It sends the same
+prompt and reads the same JSON as the DeepSeek scorer, because both import `eval/prompt.py`.
+
+Three rules are enforced in code:
+
+- **EU only.** A global or non-EU profile, an ARN, or a region outside the EU is refused before any
+  request is made (`check_route`).
+- **A refusal is flagged, never safe.** A refused, filtered or unreadable answer scores 1.0 in every
+  harmful category. The run counts these rows (`refused_or_unreadable`), so a reader can see how much
+  recall they bought. Their cost shows up as false alarms, which the 0.05 limit prices.
+- **The cost is measured.** The run adds up the tokens Bedrock reports. With prices given, it states
+  `usd_per_1000_scans`.
+
+```bash
+cd services/ai-engine
+pip install boto3
+export BEDROCK_MODEL_ID=eu.amazon.nova-micro-v1:0 BEDROCK_REGION=eu-central-1
+export BEDROCK_PRICE_IN=0.046 BEDROCK_PRICE_OUT=0.184   # US$ per 1M tokens, AWS Price List
+BEDROCK_NO_CACHE=1 python -m eval.run_eval --scorer bedrock --split test \
+  --fail-under-recall 0.85 --fail-under-precision 0.6 --fail-over-hard-fp 0.05 --json bedrock-result.json
+```
+
+On CI, `.github/workflows/ai-eval-bedrock.yml` (manual) does the same with one candidate per run. Each run
+starts from an empty cache, so two runs of `test` are two measurements.
+
+Its role (`infra/terraform/base/oidc.tf`, `bedrock_eval`) can call Bedrock models in EU regions and
+nothing else. A Claude candidate answers `AccessDeniedException` until its AWS Marketplace terms are
+accepted in the account, which is Karim's decision. Amazon's Nova models need no subscription.
+
+**Not measured yet.** Nothing in this file is a Bedrock number. The first runs follow this change.
 
 ## Reproducing a row
 
