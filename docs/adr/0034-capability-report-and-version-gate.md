@@ -71,8 +71,10 @@ The agent sends a `capabilities` object, defined once in `packages/shared-types`
   means the lock screen is unavailable" would be wrong on a phone where the accessibility service can
   still show it (`EnforceabilityPolicy`'s third path), and would drift every time the agent's policy
   changed.
-- **`degraded`** means the feature works by a weaker path. Example: `lock_screen` with only the
-  keyguard path, so the screen locks but OSRA's lock screen and its message do not show.
+- **`degraded`** means the feature works by a weaker path that the agent's own policy still acknowledges
+  as applied. A keyguard-only lock is **not** one: the Flip4 test on #368 (24 Oct, 16:39Z) showed that
+  the child's own unlock ends it, so with no overlay grant and no accessibility service `lock_screen` is
+  `unavailable`, whatever `lockNow()` returned.
 - **`not_supported`** means the build or the platform cannot do it at all. Examples: `call_sms_log` on
   the Play build, `uninstall_guard` on iOS. The parent app greys these out. It does not report them as a
   fault.
@@ -114,7 +116,7 @@ replaces it in a separate change.
     `lock_screen_unavailable` from `EnforceabilityPolicy`).
 
   In every other case the command is queued and the phone answers it, as today. `degraded` is never a
-  refusal: a keyguard-only lock still locks the screen. This is `locateNowRefusal` (#221) generalised
+  refusal, because the agent itself would apply it. This is `locateNowRefusal` (#221) generalised
   from one command to all of them, with the same freshness guard.
 - **No new alert kind.** A drop from `ready` to anything worse shows on the setup list. The drops that
   already page the parent keep paging, through the agent's edge-triggered path (ADR-0027): device admin
@@ -236,8 +238,9 @@ full-screen-intent permission to the parent") is this ADR's PR 2 and PR 3. #368 
    telemetry period.
 2. A `lock` sent right after that is recorded `failed` with `lock_screen_unavailable` and the phone is
    not woken. The same `lock` sent when the report is older than 20 minutes is queued.
-3. With device admin active and the overlay revoked, `lock_screen` is `degraded` and a `lock` is
-   queued, never refused.
+3. With device admin active, the overlay revoked and the accessibility service off, `lock_screen` is
+   `unavailable`, not `degraded`: `lockNow()` succeeding is not enough, because the child's own unlock
+   ends it (#368).
 4. An idle Flip4 makes no more requests per 10 minutes with this change than without it: compare #346's
    counter over the same window.
 5. With `CLIENT_POLICY` empty, every response carries `X-OSRA-Update: none` and no request is refused.
