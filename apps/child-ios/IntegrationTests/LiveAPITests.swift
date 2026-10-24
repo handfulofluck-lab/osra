@@ -41,7 +41,10 @@ final class LiveAPITests: XCTestCase {
 
     // 1. The claim: `platform: "ios"`, and what comes back is stored through AgentIdentityStore.
     func test1ClaimsTheCodeAsAnIPhoneAndStoresTheIdentity() async throws {
-        let base = try XCTUnwrap(URL(string: try input("OSRA_TEST_API_BASE")))
+        // Read outside XCTUnwrap: an XCTSkip thrown inside its autoclosure is recorded as a failure, so the
+        // case would report skipped and failed at once (found by Claude on #379, fault M4).
+        let baseString = try input("OSRA_TEST_API_BASE")
+        let base = try XCTUnwrap(URL(string: baseString))
         let code = try input("OSRA_TEST_PAIR_CODE")
         let childId = try input("OSRA_TEST_CHILD_ID")
 
