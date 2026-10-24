@@ -148,13 +148,14 @@ A missing `childId` is `400 missing_childId` from `requireFamily` (`requireFamil
 
 ### Parent-only, per-parent (`routes/digests.ts`, `routes/me.ts`)
 
-These read or write only rows keyed by the caller's own id, so there's no other-family target.
+These read or write only rows keyed by the caller's own id or family, so there's no other-family target.
+The digest row is keyed by **family**, not by parent, so since #354 writing it and sending it are owner actions (`403o` for a co-parent or guardian).
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `GET /v1/digests/prefs` | digests 48 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `PUT /v1/digests/prefs` | digests 54 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `POST /v1/digests/send-now` | digests 71 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/digests/prefs` | digests 158 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `PUT /v1/digests/prefs` | digests 177 | 200 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/digests/send-now` | digests 271 | 200 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/me/push-token` | me 21 | 201 | 201 | 201 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `DELETE /v1/me/push-token` | me 35 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/me/push-tokens` | me 43 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
@@ -278,8 +279,8 @@ permission → 2xx" half is listed separately where a test has it.
 - **`GET /v1/social/events`**: Ow t:social.test.ts:222 · OF and devices t:social.test.ts:249, p:B9 (since F1) · GAP: Co, Gu.
 - **`GET /v1/content/searches`**: Ow, OF and devices t:content.test.ts:151, p:B7 (since F1) · GAP: Co, Gu.
 - **`GET /v1/digests/prefs`**: Ow t:reports.test.ts:271 · devices t:reports.test.ts:339 · GAP: Co, Gu.
-- **`PUT /v1/digests/prefs`**: Ow t:reports.test.ts:306 · GAP: Co, Gu, devices.
-- **`POST /v1/digests/send-now`**: Ow t:reports.test.ts:353 · GAP: Co, Gu, devices.
+- **`PUT /v1/digests/prefs`**: Ow t:reports.test.ts:306, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · GAP: devices.
+- **`POST /v1/digests/send-now`**: Ow t:reports.test.ts:353, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · GAP: devices.
 - **`POST /v1/me/push-token`**, **`DELETE /v1/me/push-token`**: Ow t:email.test.ts:326 · GAP: Co, Gu, devices.
 - **`GET /v1/me/push-tokens`**: GAP in every column.
 - **`GET /v1/blocklists`**: parent t:blocklists.test.ts:46 · device t:blocklists.test.ts:66 · no GAP in these columns.
@@ -299,6 +300,10 @@ permission → 2xx" half is listed separately where a test has it.
   That closes the Own dev. and Sib. dev. cells marked GAP on those routes.
 - **p:Q8:** another family's owner is refused with `403 forbidden` on 16 family-scoped routes that name no
   permission, using this family's real ids. That closes the Other fam. cells marked GAP above.
+- **p:Q9** (#354): outbound email can't be steered by a family. An 81-character `familyName` is refused at
+  registration (Q9a), a digest list of six addresses is refused (Q9b), and an address that isn't a parent of
+  the family stays `pending` and is left out of send-now (Q9c). The 21st invite of the day (429) is pinned by
+  t:invites.test.ts only: reaching it from the probe would send 20 real invites on a deployed API.
 
 **The mutant, measured** (`main@7b8e404`, local stack). With six guards removed at once, the probe exits 1.
 Each Q check names the route whose guard was removed:
