@@ -1,4 +1,4 @@
-### Parent app — the iOS target exists, and CI builds it for the simulator
+### Parent app — the iOS target exists, and CI builds it for the simulator (#356)
 - **`apps/parent-app/ios/` is generated** (`flutter create --platforms=ios --org dev.familyshield .`, Flutter
   3.47.1), so the parent app now has both platform folders over one `lib/`. Nothing in `lib/`, `test/` or the
   Android folder changed to make it build: the app was already platform-agnostic Dart.
