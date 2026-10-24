@@ -50,8 +50,8 @@
 
 **Still needs a signed build (5.1, the Apple developer account and the Family Controls entitlement):**
 running on a real iPhone, the Screen Time authorization prompt, an extension actually being launched by
-the system, and TestFlight (5.6). Next PRs on this row: the Keychain for the device token and HMAC secret,
-rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
+the system, and TestFlight (5.6). The device token and HMAC secret are in the Keychain since PR B (see
+"Remaining pairing-related gaps"). Next PRs on this row: rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
 pairing-approval change lands, so it isn't ported twice.
 
 ## Component checklist
@@ -116,9 +116,19 @@ pure Foundation and covered by 11 XCTest cases; the network call is a thin
 Remaining pairing-related gaps:
 - ~~Xcode wrapper project still to be committed~~ — done 2026-10-24 (#372): `project.yml`, see
   "Build status" above. The app group `group.dev.familyshield.agent` is still a placeholder.
-- `deviceToken`/`hmacSecret` sit in plaintext UserDefaults (test-build acceptable,
-  flagged in `AgentIdentityStore` docs) — move to Keychain with the app-group
-  access group before shipping.
+- ~~`deviceToken`/`hmacSecret` sit in plaintext UserDefaults~~ — done 2026-10-24 (5.5 PR B, #372):
+  both are Keychain generic-password items (`KeychainSecretStore`, service `dev.familyshield.agent`)
+  in the app group's access group, `AfterFirstUnlockThisDeviceOnly`, so the extensions can read them
+  while the phone is locked and no backup carries them. The ids stay in app-group `UserDefaults`.
+  `AgentIdentityStore.load()` and `hmacSecret()` move an older build's plaintext copies into the
+  Keychain and delete them only once the Keychain holds them. Two test sets:
+  - `Tests/…/AgentIdentityStoreTests` (SwiftPM, in-memory store): save, load, clear, the migration from
+    the app and from the extension path, a stale plaintext copy, a refused write. The unsigned SwiftPM
+    bundle cannot use the Keychain at all (`errSecMissingEntitlement`, -34018, measured in CI).
+  - `HostedTests/KeychainTests` (target `OSRAAgentHostedTests`, run inside the ad-hoc signed simulator
+    app): the real Keychain with the production access group, including that the stored item is
+    `AfterFirstUnlockThisDeviceOnly` in `group.dev.familyshield.agent` and that an overwrite leaves one item.
+  Still needs a signed device build (5.1): an extension actually reading the item the app wrote.
 - After pairing, the agent does not yet register an APNs push token
   (`POST /v1/devices/:id/push-token`) — needed for parent push notifications.
 - Routine/rules sync to the app group (`apps.blockedBundleIdentifiers`,
