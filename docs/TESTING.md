@@ -290,7 +290,19 @@ node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
 node scripts/check-docs-links.mjs --selftest   # the gate's own fixtures (#324)
+node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
+node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
 ```
+
+**The Redis durability gate (ADR-0032, roadmap 2.7).** The API stores every revocation in Postgres
+and treats Redis as a cache, which is only true if the cache cannot be silently emptied.
+`scripts/check-redis-durability.mjs` reads `infra/terraform/env/elasticache.tf` with comments
+stripped and fails when the `cache` parameter group does not pin `maxmemory-policy = noeviction`
+(the default `allkeys-lru` evicts `auth:session-version:*`, `revoked:token:*` and `revoked:device:*`,
+and an evicted key reads as "nothing was revoked"), or when `snapshot_retention_limit` is below 1 (the
+provider default is 0 — no snapshots — so an absent setting fails too). It runs in `workflow-lint.yml`
+on every PR, not only when `infra/` changes: the file it reads is one `git mv` away from the failure
+it exists to prevent.
 
 **What the link gate reads, and what it used to miss (#324).** It resolves relative paths, `#anchor`
 targets (including `#top`/`#`), reference-style links (`[label][ref]` with a `[ref]: path`
