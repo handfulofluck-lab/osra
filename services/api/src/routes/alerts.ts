@@ -101,9 +101,6 @@ export async function alertsRoutes(app: FastifyInstance) {
 
     if (auth.device) {
       // P0-5: Verify device is not revoked
-      if (auth.device.revokedAt) {
-        return reply.code(401).send({ error: "device_revoked" });
-      }
       // P0-4: Prevent cross-child injection: signing device must belong to this child
       if (auth.device.childId && auth.device.childId !== childId) {
         return reply.code(400).send({ error: "cross_child_alert_forbidden" });

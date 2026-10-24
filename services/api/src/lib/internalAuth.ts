@@ -38,7 +38,6 @@ export interface InternalAuthResult {
     id: string;
     childId: string;
     internalSecret?: string | null;
-    revokedAt?: Date | null;
   } | null;
   isGlobalSecret?: boolean;
   caller?: string;
