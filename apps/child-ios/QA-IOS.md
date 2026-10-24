@@ -121,9 +121,14 @@ Remaining pairing-related gaps:
   in the app group's access group, `AfterFirstUnlockThisDeviceOnly`, so the extensions can read them
   while the phone is locked and no backup carries them. The ids stay in app-group `UserDefaults`.
   `AgentIdentityStore.load()` and `hmacSecret()` move an older build's plaintext copies into the
-  Keychain and delete them only once the Keychain holds them. `SecretStoreTests` (simulator Keychain)
-  covers save, load, clear, the migration and a refused write. Sharing the items between the app and
-  the extensions needs a signed build to check (5.1): the unsigned test bundle uses its default group.
+  Keychain and delete them only once the Keychain holds them. Two test sets:
+  - `Tests/…/AgentIdentityStoreTests` (SwiftPM, in-memory store): save, load, clear, the migration from
+    the app and from the extension path, a stale plaintext copy, a refused write. The unsigned SwiftPM
+    bundle cannot use the Keychain at all (`errSecMissingEntitlement`, -34018, measured in CI).
+  - `HostedTests/KeychainTests` (target `OSRAAgentHostedTests`, run inside the ad-hoc signed simulator
+    app): the real Keychain with the production access group, including that the stored item is
+    `AfterFirstUnlockThisDeviceOnly` in `group.dev.familyshield.agent` and that an overwrite leaves one item.
+  Still needs a signed device build (5.1): an extension actually reading the item the app wrote.
 - After pairing, the agent does not yet register an APNs push token
   (`POST /v1/devices/:id/push-token`) — needed for parent push notifications.
 - Routine/rules sync to the app group (`apps.blockedBundleIdentifiers`,

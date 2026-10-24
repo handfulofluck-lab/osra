@@ -10,7 +10,14 @@
   calls, in the extensions too) move the old plaintext keys into the Keychain, and delete them only
   once the Keychain holds them. A refused Keychain write loses nothing and is retried on the next read.
 - `save` reports failure when the Keychain refuses a secret, and leaves no half-written identity.
-- New `SecretStoreTests` run on the simulator Keychain. They cover write, read, overwrite and delete;
-  secrets kept out of `UserDefaults`; clear; migration from the app and from the extension path; a
-  stale plaintext copy losing to the Keychain value; and a refused write.
-- Not checked yet: sharing the items between the app and its extensions. That needs a signed build (5.1).
+- Tests, in two places:
+  - `AgentIdentityStoreTests`, in the SwiftPM target, use an in-memory store: secrets kept out of
+    `UserDefaults`, clear, migration from the app and from the extension path, a stale plaintext copy,
+    and a refused write. CI showed the unsigned SwiftPM bundle cannot use the simulator Keychain
+    (`-34018`).
+  - `OSRAAgentHostedTests` is a new target in `project.yml`, run inside the simulator app. It tests the
+    real Keychain with the production access group, and checks the item's accessibility and that an
+    overwrite leaves one item.
+- Simulator builds are now ad-hoc signed (`CODE_SIGN_IDENTITY "-"`, no team), so the app carries its
+  entitlements. Device builds stay unsigned in CI.
+- Not checked yet: an extension reading the item the app wrote, on a signed device build (5.1).
