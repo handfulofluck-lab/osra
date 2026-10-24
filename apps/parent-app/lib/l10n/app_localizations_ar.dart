@@ -2168,6 +2168,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsNotSent => 'لم يُرسَل. احفظ مرة أخرى للمحاولة.';
 
   @override
+  String get digestPrefsConfirmationLimited =>
+      'لم يُرسَل بعد: هناك تأكيدات كثيرة بانتظار الردّ. حاول مرة أخرى غدًا.';
+
+  @override
   String get digestPrefsTimezoneTitle =>
       'المنطقة الزمنية للملخّص (ساعة الإرسال المحلية)';
 

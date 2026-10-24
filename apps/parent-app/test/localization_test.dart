@@ -498,6 +498,38 @@ void main() {
       expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
+
+    testWidgets('a limited Arabic recipient says nothing was sent (#354 review)', (tester) async {
+      // The family is at the confirmation cap, so this save mailed nothing. The Arabic row has to say
+      // that, not repeat the "confirmation sent" line. Mutant: drop the `isLimited` branch.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['grandma@example.com'],
+              'recipients': [
+                {'email': 'grandma@example.com', 'status': 'pending', 'limited': true},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo Family', 'timezone': 'Asia/Dubai', 'timezoneSource': 'parent'},
+            },
+      });
+      await pumpArabic(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('لم يُرسَل بعد: هناك تأكيدات كثيرة بانتظار الردّ. حاول مرة أخرى غدًا.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('تم إرسال رابط التأكيد'), findsNothing);
+      expectRtlAndNoOverflow(tester);
+    });
   });
 
   /// Pure copy checks for the native-speaker review of the Arabic screen

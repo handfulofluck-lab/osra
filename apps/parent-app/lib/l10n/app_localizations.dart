@@ -3380,6 +3380,12 @@ abstract class AppLocalizations {
   /// **'Not sent. Save again to retry.'**
   String get digestPrefsNotSent;
 
+  /// No description provided for @digestPrefsConfirmationLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent yet: too many confirmations are waiting. Try again tomorrow.'**
+  String get digestPrefsConfirmationLimited;
+
   /// No description provided for @digestPrefsTimezoneTitle.
   ///
   /// In en, this message translates to:

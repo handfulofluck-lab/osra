@@ -2017,6 +2017,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPrefsNotSent => 'Not sent. Save again to retry.';
 
   @override
+  String get digestPrefsConfirmationLimited =>
+      'Not sent yet: too many confirmations are waiting. Try again tomorrow.';
+
+  @override
   String get digestPrefsTimezoneTitle => 'Digest timezone (local send hour)';
 
   @override

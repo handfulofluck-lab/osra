@@ -303,6 +303,41 @@ describe("digest recipients (roadmap 2.7)", () => {
     await app.close();
   });
 
+  it("the confirmation button works from a browser: a form POST is accepted and answers a page", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    const save = await putPrefs(app, [OWNER.email, "grandma@example.com"]);
+    expect(save.statusCode).toBe(200);
+    const link = capture.sent[0].text.match(/\/v1\/digests\/confirm\?token=([a-f0-9]{64})/)?.[1];
+    expect(link).toBeTruthy();
+
+    // What a browser actually sends: urlencoded, empty body, token in the action URL. Without the
+    // content-type parser this is 415 FST_ERR_CTP_INVALID_MEDIA_TYPE and no address can ever confirm —
+    // `app.inject` with no content type (the test above) cannot see it.
+    // Mutant: delete `addContentTypeParser` in digestRoutes -> 415, and this test fails.
+    const posted = await app.inject({
+      method: "POST",
+      url: `/v1/digests/confirm?token=${link}`,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "",
+    });
+    expect(posted.statusCode).toBe(200);
+    expect(posted.headers["content-type"]).toContain("text/html");
+    expect(posted.body).toContain("Confirmed. This address will now receive");
+    expect(posted.headers["cache-control"]).toBe("no-store");
+    expect(ledger[0].confirmedAt).toBeInstanceOf(Date);
+
+    // Pressing the button again: the link is spent, and the page says so instead of showing JSON.
+    const again = await app.inject({
+      method: "POST",
+      url: `/v1/digests/confirm?token=${link}`,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "",
+    });
+    expect(again.statusCode).toBe(404);
+    expect(again.body).toContain("expired or was already used");
+    await app.close();
+  });
+
   it("refuses an expired link and one that was never issued", async () => {
     const app = await buildApp(digestRoutes, "/v1/digests");
     const expired = "d".repeat(64);

@@ -35,7 +35,15 @@
   created, and whoever adds a rename later bounds it there too.
 - The parent app's digest screen marks a pending address with **"Confirmation sent"** in English and
   Arabic, so an address that will receive nothing no longer looks like one that will.
-- Verified locally: `pnpm --filter @familyshield/api test` **557 passed**, `tsc --noEmit` clean,
-  `flutter analyze` clean, `flutter test` **377 passed**. `qa-probe.mjs` and `e2e.mjs` were **not run** —
+- **The confirmation button works in a browser** (#354 re-review). The page's `<form>` posts as
+  `application/x-www-form-urlencoded` and Fastify had no parser for it, so every press answered **415**
+  before the handler ran — no address could ever be confirmed, and `app.inject` with no content type could
+  not see it. The type is now parsed inside this plugin only, the browser gets a page instead of raw JSON
+  (confirmed, and expired/used), and both pages carry `cache-control: no-store` so a cache never keeps one
+  holding a live token.
+- **A `limited` address says nothing was sent.** When the family is at the confirmation cap the API sends
+  no mail, and the app now reads `limited` and says so rather than repeating "Confirmation sent".
+- Verified locally: `pnpm --filter @familyshield/api test` **573 passed**, `tsc --noEmit` clean,
+  `flutter analyze` clean, `flutter test` **394 passed**. `qa-probe.mjs` and `e2e.mjs` were **not run** —
   another process holds the shared stack on this host — so the adversarial and happy-path gates on a live
   API are still owed for this change.

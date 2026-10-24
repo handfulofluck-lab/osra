@@ -990,6 +990,7 @@
   "digestPrefsEmailsHelper": "For the digest summary (separate addresses with commas)",
   "digestPrefsConfirmationSent": "Confirmation sent — this address gets no digest until it is confirmed",
   "digestPrefsNotSent": "Not sent. Save again to retry.",
+  "digestPrefsConfirmationLimited": "Not sent yet: too many confirmations are waiting. Try again tomorrow.",
   "digestPrefsTimezoneTitle": "Digest timezone (local send hour)",
   "digestPrefsTimezoneLabel": "Timezone",
   "digestPrefsTimezoneLoading": "Loading…",

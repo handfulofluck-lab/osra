@@ -273,6 +273,14 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                                       .bodySmall
                                       ?.copyWith(color: context.tokens.danger),
                                 )
+                              else if (r.isLimited)
+                                Text(
+                                  l10n.digestPrefsConfirmationLimited,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: context.tokens.warn),
+                                )
                               else if (r.isPending)
                                 Text(
                                   l10n.digestPrefsConfirmationSent,

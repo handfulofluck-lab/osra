@@ -382,6 +382,37 @@ void main() {
       expect(find.textContaining('Confirmation sent'), findsNothing);
     });
 
+    testWidgets('a limited address says nothing was sent, not that it was (roadmap 2.7, #354 review)',
+        (tester) async {
+      // The family already has the maximum confirmations waiting, so this save mailed nothing and the API
+      // says so with `limited: true`. The screen must not claim a mail it did not send.
+      // Mutant: drop the `isLimited` branch -> the row falls through to "Confirmation sent".
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['grandma@example.com'],
+              'recipients': [
+                {'email': 'grandma@example.com', 'status': 'pending', 'limited': true},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Not sent yet: too many confirmations are waiting. Try again tomorrow.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Confirmation sent'), findsNothing);
+    });
+
     testWidgets('send-now POSTs and shows the returned markdown in a dialog', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);

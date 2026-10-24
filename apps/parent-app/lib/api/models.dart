@@ -1060,10 +1060,16 @@ class DigestRecipientStatus {
   final String email;
   final String status;
 
-  const DigestRecipientStatus({required this.email, this.status = 'pending'});
+  /// True when the save did not mail this address because the family already has too many
+  /// confirmations waiting (#354 review). It is `pending` with nothing sent, so the screen must not
+  /// claim a mail went out — the same distinction `unsent` makes for a failed send.
+  final bool limited;
+
+  const DigestRecipientStatus({required this.email, this.status = 'pending', this.limited = false});
 
   bool get isConfirmed => status == 'confirmed';
   bool get isUnsent => status == 'unsent';
+  bool get isLimited => limited && !isConfirmed;
 
   /// Anything that is not confirmed: the address receives no digest either way.
   bool get isPending => !isConfirmed;
@@ -1071,6 +1077,7 @@ class DigestRecipientStatus {
   factory DigestRecipientStatus.fromJson(Map<String, dynamic> json) => DigestRecipientStatus(
         email: _str(json['email']),
         status: _str(json['status'], 'pending'),
+        limited: json['limited'] == true,
       );
 }
 

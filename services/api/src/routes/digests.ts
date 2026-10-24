@@ -116,7 +116,45 @@ async function mailConfirmations(
   return failed;
 }
 
+/**
+ * The page a browser sees after pressing the button (review of #354): the confirmed and the expired cases,
+ * in English and Arabic, in the same shape as the page that carries the button. A form POST gets this; a
+ * JSON caller keeps JSON. It says nothing about an address, so it is safe to render for any token.
+ */
+function resultPage(confirmed: boolean): string {
+  const en = confirmed
+    ? "Confirmed. This address will now receive the family's OSRA digest."
+    : "This link has expired or was already used.";
+  const ar = confirmed
+    ? "تمّ التأكيد. سيصل ملخّص العائلة من أسرة إلى هذا العنوان."
+    : "انتهت صلاحية هذا الرابط أو سبق استخدامه.";
+  return `<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OSRA</title></head>
+<body style="margin:0;background:#f6f7fb;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2430">
+  <div style="max-width:520px;margin:0 auto;padding:24px">
+    <div dir="ltr" style="background:#fff;border-radius:8px;padding:24px">
+      <p style="margin:0;line-height:1.5">${en}</p>
+    </div>
+    <div dir="rtl" style="background:#fff;border-radius:8px;padding:24px;margin-top:16px">
+      <p style="margin:0;line-height:1.5">${ar}</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 export async function digestRoutes(app: FastifyInstance) {
+  // The confirmation page's <form> posts as application/x-www-form-urlencoded, which Fastify has no parser
+  // for: without this it answers 415 before the handler runs, so no address could ever be confirmed. The
+  // token rides in the form's action URL, so the body is read and dropped. Registered inside this plugin,
+  // so only /v1/digests accepts the type.
+  app.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string", bodyLimit: 1024 },
+    (_req, _body, done) => done(null, {}),
+  );
+
   /** Read the family's digest preferences (default: all-true, emails=[parent email]) (#5). */
   app.get("/prefs", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
@@ -187,23 +225,38 @@ export async function digestRoutes(app: FastifyInstance) {
   </div>
 </body>
 </html>`;
-    return reply.type("text/html; charset=utf-8").send(html);
+    return reply.type("text/html; charset=utf-8").header("cache-control", "no-store").send(html);
   });
 
   /**
    * Spend the link: the button on the page above posts its token here. No session — the token is the
    * credential. It is single-use, it expires 24 hours after the save that issued it, and unknown, expired
    * and already-used links answer the same 404, so a caller cannot tell which addresses are on a list.
+   *
+   * A browser posts from the page above, so the answer is a page rather than raw JSON: the form's content
+   * type is the only thing that distinguishes the two callers, and JSON callers keep JSON.
    */
   app.post("/confirm", async (req, reply) => {
     // The token rides in the query string (the page's form action), so no form-body parser is needed;
     // a JSON caller may send it in the body instead.
     const body = (req.body ?? {}) as { token?: string };
     const query = (req.query ?? {}) as { token?: string };
+    const fromForm = (req.headers["content-type"] ?? "").startsWith("application/x-www-form-urlencoded");
     const parsed = ConfirmSchema.safeParse({ token: body.token ?? query.token });
-    if (!parsed.success) return reply.code(400).send({ error: "invalid_token" });
+    if (!parsed.success) {
+      return fromForm
+        ? reply.type("text/html; charset=utf-8").header("cache-control", "no-store").code(400).send(resultPage(false))
+        : reply.code(400).send({ error: "invalid_token" });
+    }
     const confirmed = await confirmRecipient(parsed.data.token);
-    if (!confirmed) return reply.code(404).send({ error: "confirmation_not_found_or_expired" });
+    if (!confirmed) {
+      return fromForm
+        ? reply.type("text/html; charset=utf-8").header("cache-control", "no-store").code(404).send(resultPage(false))
+        : reply.code(404).send({ error: "confirmation_not_found_or_expired" });
+    }
+    if (fromForm) {
+      return reply.type("text/html; charset=utf-8").header("cache-control", "no-store").send(resultPage(true));
+    }
     return { confirmed: true, email: confirmed.email };
   });
 
