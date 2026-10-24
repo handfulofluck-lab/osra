@@ -66,7 +66,7 @@ public struct KeychainSecretStore: SecretStore {
         let data = Data(value.utf8)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
         var status = SecItemUpdate(query(account) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
