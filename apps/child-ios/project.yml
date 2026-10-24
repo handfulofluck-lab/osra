@@ -4,8 +4,9 @@
 # directory (CI pins the XcodeGen version in .github/workflows/ios-ci.yml). Review changes here,
 # not in a project.pbxproj diff.
 #
-# Four app targets, all linking the FamilyShieldAgent package in this directory, plus the hosted
-# Keychain tests (OSRAAgentHostedTests, run inside the simulator app):
+# Four app targets, all linking the FamilyShieldAgent package in this directory, plus two hosted test
+# targets run inside the simulator app: the Keychain tests (OSRAAgentHostedTests) and the live API tests
+# (FamilyShieldAgentIntegrationTests, scheme OSRAAgentIntegration):
 #   OSRAAgent                      the host app (App/)
 #   OSRAAgentMonitor               Device Activity monitor extension (Extensions/Monitor/)
 #   OSRAAgentShieldConfiguration   Shield configuration extension (Extensions/ShieldConfiguration/)
@@ -117,7 +118,32 @@ targets:
       - target: OSRAAgent
       - package: FamilyShieldAgent
 
+  # The live API tests (IntegrationTests/, 5.5 PR A2). Hosted by the simulator app like the Keychain tests,
+  # so the paired identity goes through the real Keychain. Run only by ios-ci.yml's live-api job, which
+  # starts the API first; without its inputs every case skips (OSRA_REQUIRE_LIVE=1 makes that a failure).
+  FamilyShieldAgentIntegrationTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: IntegrationTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.integration-tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OSRAAgent.app/OSRAAgent"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: OSRAAgent
+      - package: FamilyShieldAgent
+
 schemes:
+  OSRAAgentIntegration:
+    build:
+      targets:
+        OSRAAgent: all
+    test:
+      targets:
+        - FamilyShieldAgentIntegrationTests
   OSRAAgent:
     build:
       targets:

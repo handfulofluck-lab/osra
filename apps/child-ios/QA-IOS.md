@@ -54,6 +54,42 @@ the system, and TestFlight (5.6). The device token and HMAC secret are in the Ke
 "Remaining pairing-related gaps"). Next PRs on this row: rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
 pairing-approval change lands, so it isn't ported twice.
 
+## Live API test (updated 2026-10-24, roadmap 5.5 PR A2, #372)
+
+A static review once missed that every iOS alert would be refused (400/401), so the agent is now tested
+against **our real API**, on every iOS change, on changes to the three server files it depends on
+(`routes/devices.ts`, `routes/alerts.ts`, `lib/internalAuth.ts`), and nightly. Job `live-api` in
+`.github/workflows/ios-ci.yml`:
+
+1. Starts Postgres 16, Redis (`noeviction`) and the API from this checkout on the macOS runner (no Docker
+   there). The JWT, HMAC and vault secrets are generated for the run with `openssl rand` and masked.
+2. `scripts/live-api.mjs setup` seeds through the API, as `services/api/scripts/e2e.mjs` does: the seeded
+   parent logs in, adds a child with consent, and mints a pairing code. The inputs reach the tests as
+   `TEST_RUNNER_OSRA_TEST_*` variables. The code is masked in the log.
+3. `FamilyShieldAgentIntegrationTests` (`IntegrationTests/LiveAPITests.swift`, scheme
+   `OSRAAgentIntegration`) runs inside the ad-hoc signed simulator app, so the identity goes through the
+   real Keychain. Its cases, in order:
+   1. `PairingClient` claims the code with `platform: "ios"`. The identity is saved and read back through
+      `AgentIdentityStore`.
+   2. A signed `screen_time_exceeded` alert from `AlertReporter` gets **201**.
+   3. The same bytes again get **401 `replay`**.
+   4. One changed body byte gets **401 `invalid_signature`**.
+   5. A request signed 600 s ago gets **401 `stale_timestamp`**.
+4. `scripts/live-api.mjs verify` logs in as the parent. `GET /v1/alerts` must hold exactly one
+   `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
+   `GET /v1/devices` must list that device as `platform: "ios"`.
+
+The simulator is booted (`simctl bootstatus -b`) before the code is minted, and case 1 waits for `GET /health` before it claims: on a cold boot the first request once reached the API about 50 s late, after the client's 30 s timeout. The claim itself is never retried, because a code is single-use.
+
+It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
+it, as in a local run, the cases skip. And the job asserts that 5 cases passed and none were skipped.
+`AlertReporter` gained `makeRequest`/`send` for the tests. `report` uses the same builder and keeps its
+fire-and-forget retry.
+
+**Not covered:** a real iPhone, the system launching the extensions, and APNs (5.1). Also the pairing
+change in osra-security#3 PR 2 (the parent approves each claim): with the path filter, that PR runs this
+job, so the iOS client gets ported in the same change.
+
 ## Component checklist
 
 | Component | Purpose | Reviewed | Result |

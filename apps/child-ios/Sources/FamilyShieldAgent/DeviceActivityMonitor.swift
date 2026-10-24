@@ -31,13 +31,52 @@ struct AlertReporter {
         childId: String?,
         metadata: [String: Any] = [:]
     ) {
+        guard let request = makeRequest(category: category, severity: severity, title: title, body: body,
+                                        childId: childId, metadata: metadata)
+        else { return }
+        Self.sendWithRetry(request: request, category: category, attemptsLeft: 3)
+    }
+
+    /// Sends one alert and returns the server's status and body, once, without retrying. The same request
+    /// as `report` (built by `makeRequest`), for callers that need the answer: the live API tests (5.5 A2).
+    func send(
+        category: String,
+        severity: String = "warning",
+        title: String,
+        body: String,
+        childId: String?,
+        metadata: [String: Any] = [:]
+    ) async throws -> (status: Int, body: Data) {
+        guard let request = makeRequest(category: category, severity: severity, title: title, body: body,
+                                        childId: childId, metadata: metadata)
+        else { throw URLError(.cancelled) }
+        return try await Self.send(request)
+    }
+
+    /// Sends a prepared request once and returns the status and body.
+    static func send(_ request: URLRequest) async throws -> (status: Int, body: Data) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+    }
+
+    /// The signed `POST /v1/alerts/internal` request, or nil when the agent is not paired. `signedAt`
+    /// (Unix seconds) overrides the signing clock; only the live tests set it, to send a stale request.
+    func makeRequest(
+        category: String,
+        severity: String = "warning",
+        title: String,
+        body: String,
+        childId: String?,
+        metadata: [String: Any] = [:],
+        signedAt: Int? = nil
+    ) -> URLRequest? {
         guard let apiBaseURL else {
             AlertReporter.logger.error("alert '\(category)' skipped: agent.apiBaseURL missing from shared app group (agent not paired)")
-            return
+            return nil
         }
         guard let childId, !childId.isEmpty else {
             AlertReporter.logger.error("alert '\(category)' skipped: childId unknown (agent not paired)")
-            return
+            return nil
         }
         var payload: [String: Any] = [
             "childId": childId,
@@ -50,7 +89,7 @@ struct AlertReporter {
         if let deviceId = AlertReporter.pairedDeviceId() {
             payload["deviceId"] = deviceId
         }
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         var request = URLRequest(url: apiBaseURL.appendingPathComponent("v1/alerts/internal"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -58,13 +97,12 @@ struct AlertReporter {
         request.timeoutInterval = 15.0
         if let hmacSecret {
             // v2 internal signing (ADR-0014): timestamp + nonce + HMAC over "ts.nonce.body".
-            let headers = InternalSigner.sign(secret: hmacSecret, body: bodyData)
+            let headers = InternalSigner.sign(secret: hmacSecret, body: bodyData, unixSeconds: signedAt)
             for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         } else {
             AlertReporter.logger.warning("no HMAC secret configured; the API will reject this alert (401)")
         }
-
-        Self.sendWithRetry(request: request, category: category, attemptsLeft: 3)
+        return request
     }
 
     private static func sendWithRetry(request: URLRequest, category: String, attemptsLeft: Int) {
