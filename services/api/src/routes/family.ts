@@ -20,7 +20,8 @@ const ConsentCreateSchema = z.object({
 });
 
 const ChildCreateSchema = z.object({
-  displayName: z.string().min(1),
+  // Roadmap 2.7 (osra-security#2): the name is rendered in a digest body, so it is bounded on write.
+  displayName: z.string().min(1).max(80),
   birthYear: z.number().int().min(1900).max(new Date().getFullYear()),
   avatarUrl: z.string().url().optional(),
   // Inline VPC payload: when present the child is created together with its
@@ -29,7 +30,7 @@ const ChildCreateSchema = z.object({
 });
 
 const ChildPatchSchema = z.object({
-  displayName: z.string().min(1).optional(),
+  displayName: z.string().min(1).max(80).optional(),
   birthYear: z.number().int().min(1900).max(new Date().getFullYear()).optional(),
   avatarUrl: z.string().url().nullable().optional(),
 });

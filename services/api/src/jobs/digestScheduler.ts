@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { summarizeChildActivity } from "../lib/activitySummary.js";
+import { confirmedRecipients } from "../lib/digestRecipients.js";
 import { appPublicUrl, getEmailSender } from "../lib/email/index.js";
 import { digestEmail, type DigestChild } from "../lib/email/templates.js";
 import {
@@ -77,8 +78,17 @@ export async function sendFamilyDigest(
   ]);
   // A row that no longer exists will not come back: terminal.
   if (!family) return { sent: false, to: [], reason: "family_not_found", retryable: false };
-  const to = prefs?.emails?.length ? prefs.emails : parents.map((p) => p.email);
-  // Cheap and local: a parent can add a recipient before the period ends.
+  // Roadmap 2.7 (osra-security#2): only addresses that proved they want the digest. A parent's own
+  // address counts as proved; any other address must have confirmed, and a requested address with no
+  // proof is skipped here rather than refused at write time (the proof arrives later, out of band).
+  const requested = prefs?.emails?.length ? prefs.emails : parents.map((p) => p.email);
+  const to = await confirmedRecipients(
+    familyId,
+    requested,
+    parents.map((p) => p.email),
+  );
+  // Cheap and local: a parent can add a recipient before the period ends, and a pending address can
+  // confirm before it, so a send with nobody confirmed yet is worth retrying on the next tick.
   if (to.length === 0) return { sent: false, to, reason: "no_recipients", retryable: true };
   const days = kind === "daily" ? 1 : 7;
   const children = await buildChildren(familyId, days);

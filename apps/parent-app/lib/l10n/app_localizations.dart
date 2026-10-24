@@ -3368,6 +3368,24 @@ abstract class AppLocalizations {
   /// **'For the digest summary (separate addresses with commas)'**
   String get digestPrefsEmailsHelper;
 
+  /// No description provided for @digestPrefsConfirmationSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmation sent — this address gets no digest until it is confirmed'**
+  String get digestPrefsConfirmationSent;
+
+  /// No description provided for @digestPrefsNotSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent. Save again to retry.'**
+  String get digestPrefsNotSent;
+
+  /// No description provided for @digestPrefsConfirmationLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent yet: too many confirmations are waiting. Try again tomorrow.'**
+  String get digestPrefsConfirmationLimited;
+
   /// No description provided for @digestPrefsTimezoneTitle.
   ///
   /// In en, this message translates to:

@@ -4,12 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/world_class_provider.dart';
+import '../../api/models.dart' show DigestRecipientStatus;
 import '../../l10n/l10n.dart';
 import '../../theme/app_tokens.dart';
 
 /// Feature #5: digest notification preferences — daily/weekly email and push
 /// switches, a comma-separated recipient list, plus a dev 'send now' button
 /// that renders the digest in-app (the test build has no SMTP — see SPEC).
+///
+/// Roadmap 2.7 (osra-security#2): a recipient that is not a parent of the family
+/// receives nothing until it uses the confirmation link mailed to it, so the
+/// screen marks each address `confirmed` or `pending` and says when a
+/// confirmation was sent.
 class DigestPrefsScreen extends ConsumerStatefulWidget {
   const DigestPrefsScreen({super.key});
 
@@ -25,6 +31,9 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   bool _initialized = false;
   bool _saving = false;
   bool _sending = false;
+  /// Per-address confirmation state from the server (roadmap 2.7): a pending address
+  /// receives no digest until its link is used.
+  List<DigestRecipientStatus> _recipients = const [];
   // ADR-0020 / #101: the family's timezone decides the local hour the digest is sent at.
   String? _timezone;
   bool _timezoneSaving = false;
@@ -116,12 +125,20 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await ref.read(apiClientProvider).raw.put('/v1/digests/prefs', data: {
+      final res = await ref.read(apiClientProvider).raw.put('/v1/digests/prefs', data: {
         'dailyEmail': _daily,
         'weeklyEmail': _weekly,
         'pushEnabled': _push,
         'emails': _emailList,
       });
+      // The PUT answers each address `confirmed` or `pending` (roadmap 2.7); take that answer, so a
+      // freshly added address shows that its confirmation was sent without a reload.
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};
+      final recipients = [
+        for (final r in (data['recipients'] is List ? data['recipients'] as List : const []))
+          if (r is Map) DigestRecipientStatus.fromJson(Map<String, dynamic>.from(r)),
+      ];
+      if (mounted && recipients.isNotEmpty) setState(() => _recipients = recipients);
       ref.invalidate(digestPrefsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.digestPrefsSaved)));
@@ -188,6 +205,7 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
             _weekly = data.weeklyEmail;
             _push = data.pushEnabled;
             _emails.text = data.emails.join(', ');
+            _recipients = data.recipients;
             _initialized = true;
           }
           return ListView(
@@ -220,6 +238,64 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                   border: const OutlineInputBorder(),
                 ),
               ),
+              // Roadmap 2.7: an address that is not a parent of the family is not a recipient yet.
+              // A pending one says the confirmation went out; an `unsent` one says it did not and to save
+              // again — so neither ever looks like an address that will actually be mailed.
+              if (_recipients.isNotEmpty) ...[
+                const SizedBox(height: AppSpace.sm),
+                for (final r in _recipients)
+                  Padding(
+                    key: ValueKey('digestRecipient-${r.email}'),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          r.isConfirmed
+                              ? Icons.check_circle
+                              : (r.isUnsent ? Icons.error_outline : Icons.schedule),
+                          size: 18,
+                          color: r.isConfirmed
+                              ? context.tokens.ok
+                              : (r.isUnsent ? context.tokens.danger : context.tokens.warn),
+                        ),
+                        const SizedBox(width: AppSpace.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(r.email, style: Theme.of(context).textTheme.bodyMedium),
+                              if (r.isUnsent)
+                                Text(
+                                  l10n.digestPrefsNotSent,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: context.tokens.danger),
+                                )
+                              else if (r.isLimited)
+                                Text(
+                                  l10n.digestPrefsConfirmationLimited,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: context.tokens.warn),
+                                )
+                              else if (r.isPending)
+                                Text(
+                                  l10n.digestPrefsConfirmationSent,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: context.tokens.warn),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
               const SizedBox(height: AppSpace.lg),
               // ADR-0020: the family's local hour. A parent who picks a zone here owns it: the API marks
               // the source as `parent`, and no device login can move it again (#101, #105).

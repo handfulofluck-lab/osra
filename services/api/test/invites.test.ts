@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { inviteRoutes } from "../src/routes/invites.js";
 import { getRedis } from "../src/redis.js";
+import { setEmailSender } from "../src/lib/email/index.js";
 import { MockRedis, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -298,6 +299,47 @@ describe("family invites (Feature #13)", () => {
       headers: authHeader(app, "fam-1"),
     });
     expect(foreign.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("refuses the 21st invite from one family in a day and serves the 20th (roadmap 2.7)", async () => {
+    const app = await buildApp(inviteRoutes, "/v1/family");
+    prismaMock.parent.findUnique.mockResolvedValue(OWNER);
+    prismaMock.family.findUnique.mockResolvedValue({ id: "fam-1", name: "Haddad", region: "US" });
+    setEmailSender({ name: "noop", send: async () => ({ ok: true as const }) });
+
+    // The limit is a count of the rows a window covers, so the fake is the rows: `count` answers from
+    // what `create` actually stored. Mutant: remove the count check in routes/invites.ts -> the 21st
+    // answers 201 and one family can mail 20 addresses a second, as often as it likes.
+    const rows: Array<{ familyId: string; email: string; createdAt: Date }> = [];
+    prismaMock.familyInvite.create.mockImplementation(async ({ data }: { data: Record<string, string> }) => {
+      rows.push({ familyId: data.familyId, email: data.email, createdAt: new Date() });
+      return { id: `inv-${rows.length}`, status: "pending", permissions: [], ...data };
+    });
+    prismaMock.familyInvite.count.mockImplementation(
+      async ({ where }: { where: { familyId: string; createdAt: { gt: Date } } }) =>
+        rows.filter((row) => row.familyId === where.familyId && row.createdAt > where.createdAt.gt).length,
+    );
+
+    for (let i = 0; i < 20; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/family/invites",
+        headers: authHeader(app),
+        payload: { email: `member${i}@example.com`, role: "guardian" },
+      });
+      expect(res.statusCode).toBe(201);
+    }
+    const over = await app.inject({
+      method: "POST",
+      url: "/v1/family/invites",
+      headers: authHeader(app),
+      payload: { email: "member20@example.com", role: "guardian" },
+    });
+    expect(over.statusCode).toBe(429);
+    expect(over.json()).toEqual({ error: "invite_limit_reached" });
+    expect(rows).toHaveLength(20);
+    setEmailSender(null);
     await app.close();
   });
 });

@@ -272,6 +272,7 @@ describe("digest prefs (#5)", () => {
     const app = await buildApp(digestRoutes, "/v1/digests");
     prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
     prismaMock.parent.findUnique.mockResolvedValue(PARENT);
+    prismaMock.parent.findMany.mockResolvedValue([{ email: "mom@example.com" }]);
 
     const res = await app.inject({ method: "GET", url: "/v1/digests/prefs", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
@@ -281,6 +282,8 @@ describe("digest prefs (#5)", () => {
       weeklyEmail: true,
       pushEnabled: true,
       emails: ["mom@example.com"],
+      // Roadmap 2.7: a parent's own verified address needs no confirmation.
+      recipients: [{ email: "mom@example.com", status: "confirmed" }],
     });
     await app.close();
   });
@@ -294,11 +297,13 @@ describe("digest prefs (#5)", () => {
       pushEnabled: false,
       emails: ["mom@example.com", "dad@example.com"],
     });
+    prismaMock.parent.findMany.mockResolvedValue([{ email: "mom@example.com" }, { email: "dad@example.com" }]);
 
     const res = await app.inject({ method: "GET", url: "/v1/digests/prefs", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.json().dailyEmail).toBe(false);
     expect(res.json().emails).toHaveLength(2);
+    expect(res.json().recipients.map((r: { status: string }) => r.status)).toEqual(["confirmed", "confirmed"]);
     expect(prismaMock.parent.findUnique).not.toHaveBeenCalled();
     await app.close();
   });
@@ -312,6 +317,7 @@ describe("digest prefs (#5)", () => {
       pushEnabled: true,
       emails: ["dad@example.com"],
     });
+    prismaMock.parent.findMany.mockResolvedValue([{ email: "dad@example.com" }]);
 
     const res = await app.inject({
       method: "PUT",

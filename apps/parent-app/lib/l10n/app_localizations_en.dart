@@ -2010,6 +2010,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'For the digest summary (separate addresses with commas)';
 
   @override
+  String get digestPrefsConfirmationSent =>
+      'Confirmation sent — this address gets no digest until it is confirmed';
+
+  @override
+  String get digestPrefsNotSent => 'Not sent. Save again to retry.';
+
+  @override
+  String get digestPrefsConfirmationLimited =>
+      'Not sent yet: too many confirmations are waiting. Try again tomorrow.';
+
+  @override
   String get digestPrefsTimezoneTitle => 'Digest timezone (local send hour)';
 
   @override

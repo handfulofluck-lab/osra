@@ -40,8 +40,10 @@ import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVa
 const RegisterSchema = z.object({
   email: z.string().email().transform((e) => e.trim().toLowerCase()),
   password: z.string().min(12),
-  displayName: z.string().min(1),
-  familyName: z.string().min(1),
+  // Roadmap 2.7 (osra-security#2): the name appears in a digest subject and body, so it is bounded at
+  // the write. The templates clip as well — a row stored before this bound cannot stretch a send.
+  displayName: z.string().min(1).max(80),
+  familyName: z.string().min(1).max(80),
   region: z.enum(["US", "EU", "UK", "OTHER"]),
   // ADR-0020: optional, additive; existing clients send nothing and nothing changes.
   timezone: z.string().max(64).optional(),
