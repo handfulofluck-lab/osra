@@ -145,6 +145,35 @@ the count. Things to know when running it:
   `preHandler`, so revoked devices and revoked sessions are only ever tested here, against a live server.
 - **Mutants measured** (six guards removed at once; each Q check named its route): see the matrix, §1a.
 
+### The digest confirmation page, as a browser sends it (#354) — probe `R1`–`R6`
+
+The confirmation link is the one route a stranger reaches, from a mail client, with no session. On #354
+its button answered **415** on every press, because Fastify has no parser for the form's
+`application/x-www-form-urlencoded` body, and the unit test missed it by posting with no content type.
+Section R sends what a browser sends:
+
+- the mailed link's GET is a page whose buttons post the token back, with `cache-control: no-store` (`R1`);
+- the button's form POST (empty body, token in the URL) reaches the handler (`R2`), and a malformed token
+  gets the 400 page (`R3`);
+- a JSON caller still gets JSON (`R4`);
+- no other route reads form bodies (`R5`, a form POST to `/v1/family/children` stays 415);
+- the form body is bounded at 1 KB (`R6`, 4 KB is 413).
+
+The probe has no mailbox and no database connection (§6), so it never holds a live token. A well-formed
+unknown token goes through the same parser and handler, so `R2` expects the **404 page**. The confirmed
+case, and the second press of a used link, stay unit tests in `test/digests-abuse.test.ts`.
+
+Section R runs straight after Q, which leaves the limiter nearly spent on purpose. So R paces on the same
+`x-ratelimit-*` headers and waits out one window on a 429, and only a second 429 aborts. Measured with the
+window spent beforehand: one 429, a 37-second wait, then the expected 404.
+
+**Mutants measured** against a live API, one at a time, 2026-10-24:
+
+- delete the `addContentTypeParser` call in `routes/digests.ts`, and `R2` fails;
+- register that parser in `server.ts` instead, and `R5` fails;
+- drop `no-store` from the GET page, and `R1` fails;
+- raise its `bodyLimit` to 1 MB, and `R6` fails.
+
 ### The device push-token route (#319) — probe `P1`–`P3`, `N6d`
 
 `POST /v1/devices/:id/push-token` is the child agent's own registration path, and device-only by
