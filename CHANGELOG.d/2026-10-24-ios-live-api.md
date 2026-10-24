@@ -11,7 +11,7 @@
   - one changed byte → 401 `invalid_signature`;
   - a timestamp 600 s old → 401 `stale_timestamp`.
 - `live-api.mjs verify` then checks, as the parent, that `GET /v1/alerts` holds the alert, attributed to
-  the device.
+  the device, and that `GET /v1/devices` lists that device as `platform: "ios"`.
 - Fails loudly: `OSRA_REQUIRE_LIVE=1` makes a missing input a failure, and the job requires 5 passed and
   0 skipped.
 - Runs on iOS changes, on `services/api/src/routes/devices.ts`, `routes/alerts.ts` and

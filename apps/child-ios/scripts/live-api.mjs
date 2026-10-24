@@ -76,6 +76,11 @@ async function verify() {
   // The replay and the tampered and stale requests were refused, so exactly one alert landed.
   if (mine.length !== 1) fail(`expected exactly 1 alert from this run, found ${mine.length}`);
   if (!mine[0].deviceId) fail("the alert carries no deviceId: it was not attributed to the paired iPhone");
+  // The claim said `platform: "ios"`: the device the parent sees must say so too.
+  const devices = await call("GET", "/v1/devices", { token });
+  const device = (devices.data?.devices ?? []).find((d) => d.id === mine[0].deviceId);
+  console.log(`paired device as the parent sees it: platform=${device?.platform ?? "missing"}`);
+  if (device?.platform !== "ios") fail(`the paired device's platform is ${JSON.stringify(device?.platform)}, expected "ios"`);
   console.log("live-api: the parent sees the iOS agent's alert");
 }
 

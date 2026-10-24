@@ -76,7 +76,8 @@ against **our real API**, on every iOS change, on changes to the three server fi
    4. One changed body byte gets **401 `invalid_signature`**.
    5. A request signed 600 s ago gets **401 `stale_timestamp`**.
 4. `scripts/live-api.mjs verify` logs in as the parent. `GET /v1/alerts` must hold exactly one
-   `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`.
+   `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
+   `GET /v1/devices` must list that device as `platform: "ios"`.
 
 It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
 it, as in a local run, the cases skip. And the job asserts that 5 cases passed and none were skipped.
