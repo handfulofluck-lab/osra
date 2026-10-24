@@ -86,15 +86,35 @@ public enum AgentIdentityStore {
     /// True when a pairing identity exists.
     public static func isPaired() -> Bool { load() != nil }
 
-    /// Clears the identity (re-pair flow). Rules/keys written by other components
-    /// (bedtime bundle ids, blocked apps) are left untouched.
+    /// Clears the identity and the rules synced for it (re-pair flow, 5.5 PR C).
     public static func clear() {
+        RuleStore.clear()
         secrets.delete(Keys.deviceToken)
         secrets.delete(Keys.hmacSecret)
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }
         for key in [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId] {
             defaults.removeObject(forKey: key)
         }
+    }
+
+    /// Deletes Keychain secrets that no paired identity owns, and returns true when it found some.
+    ///
+    /// Keychain items survive deleting the app; the app-group `UserDefaults` do not. So after a reinstall
+    /// the old device token and HMAC secret are still in the Keychain while the ids are gone. Nothing reads
+    /// them (`load()` needs the ids), but they must not linger for a later pairing to inherit (Claude on #378).
+    /// The app calls this at launch. Secrets are deleted only when no ids are present, so a paired phone,
+    /// including one an older build paired with plaintext secrets, is never touched.
+    @discardableResult
+    public static func clearOrphanedSecrets() -> Bool {
+        let defaults = UserDefaults(suiteName: suiteName)
+        let hasIds = defaults?.string(forKey: Keys.apiBaseURL) != nil || defaults?.string(forKey: Keys.childId) != nil
+        guard !hasIds else { return false }
+        let orphaned = secrets.read(Keys.deviceToken) != nil || secrets.read(Keys.hmacSecret) != nil
+        if orphaned {
+            secrets.delete(Keys.deviceToken)
+            secrets.delete(Keys.hmacSecret)
+        }
+        return orphaned
     }
 
     /// Moves secrets an older build left in app-group `UserDefaults` into the Keychain. A plaintext copy

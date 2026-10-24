@@ -54,6 +54,36 @@ the system, and TestFlight (5.6). The device token and HMAC secret are in the Ke
 "Remaining pairing-related gaps"). Next PRs on this row: rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
 pairing-approval change lands, so it isn't ported twice.
 
+## Rule sync (updated 2026-10-25, roadmap 5.5 PR C, #372)
+
+The agent now fetches the parent's rules and stores them where the extensions read them.
+
+- **When:** `RuleSyncer.syncNow()` runs when the app opens and right after pairing.
+- **How:** `GET /v1/rules/:childId` with the device token (`RuleSyncClient`), the same contract as the Android
+  agent. `RuleSet` decodes the server's shape and ignores fields it doesn't use.
+- **Stored** (`RuleStore`, app-group `UserDefaults`):
+  - `apps.blockedBundleIdentifiers` and `bedtime.blockedBundleIdentifiers`: the apps with `action: "block"`;
+  - the bedtime window, blocked domains and categories;
+  - the routines, with days already converted.
+- **Days:** rules use 1=Mon..7=Sun and Foundation uses 1=Sun..7=Sat, so `Weekday.swiftWeekday(ruleDay:)` is
+  `ruleDay % 7 + 1`. Anything outside 1...7 is dropped, not scheduled on a wrong day.
+- **Enforced** (`ScreenTimeController.applyRules`, needs Screen Time authorization): blocked apps, the web filter,
+  bedtime, and each routine once per weekday as a weekly interval. An overnight routine ends on the next day. The
+  monitor extension shields a routine's own `blockedApps` (`routine.<index>.<weekday>`) and the bedtime list for
+  bedtime.
+- **Consent withdrawn (428):** every stored rule and every shield is removed. Any other failure keeps the last
+  rules. Unpairing clears them too.
+- **Leftovers from a previous install:** Keychain items outlive deleting the app, while the app group does not. At
+  launch, `AgentIdentityStore.clearOrphanedSecrets()` deletes a token and secret that no identity owns. A paired
+  phone, including one paired by an older build, is never touched.
+- **Tests:**
+  - `RuleSyncTests` (stubbed server): the weekday table, decoding the server's shape, the stored keys, the
+    monitor's routine lookup, and sync outcomes 200 / 428 / 500 / not paired.
+  - `AgentIdentityStoreTests` and the hosted `KeychainTests`: the orphan clean-up.
+  - Live case 6: the rules the parent set through the API sync with the device token (`[2, 1]` for Mon,Sun).
+- **Still needs a signed device (5.1):** the shields actually appearing. Category shields also need the on-device
+  `FamilyActivityPicker`: `SelectionStore` persists a selection, but no screen offers the picker yet.
+
 ## Live API test (updated 2026-10-24, roadmap 5.5 PR A2, #372)
 
 A static review once missed that every iOS alert would be refused (400/401), so the agent is now tested
@@ -75,6 +105,7 @@ against **our real API**, on every iOS change, on changes to the three server fi
    3. The same bytes again get **401 `replay`**.
    4. One changed body byte gets **401 `invalid_signature`**.
    5. A request signed 600 s ago gets **401 `stale_timestamp`**.
+   6. The rules the parent set in `setup` sync with the device token into the app group (PR C).
 4. `scripts/live-api.mjs verify` logs in as the parent. `GET /v1/alerts` must hold exactly one
    `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
    `GET /v1/devices` must list that device as `platform: "ios"`.
@@ -82,7 +113,7 @@ against **our real API**, on every iOS change, on changes to the three server fi
 The simulator is booted (`simctl bootstatus -b`) before the code is minted, and case 1 waits for `GET /health` before it claims: on a cold boot the first request once reached the API about 50 s late, after the client's 30 s timeout. The claim itself is never retried, because a code is single-use.
 
 It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
-it, as in a local run, the cases skip. And the job asserts that 5 cases passed and none were skipped.
+it, as in a local run, the cases skip. And the job asserts that 6 cases passed and none were skipped.
 `AlertReporter` gained `makeRequest`/`send` for the tests. `report` uses the same builder and keeps its
 fire-and-forget retry.
 

@@ -3,7 +3,7 @@
  * The server half of the iOS live API test (roadmap 5.5 PR A2, #372). It runs against an API started on
  * the macOS runner from this checkout, never against a shared or deployed server.
  *
- *   node scripts/live-api.mjs setup    # seeded parent logs in, adds a child with consent, mints a pairing code
+ *   node scripts/live-api.mjs setup    # seeded parent logs in, adds a child with consent, sets its rules, mints a code
  *   node scripts/live-api.mjs verify   # after the XCTest run: the parent sees the agent's alert
  *
  * `setup` seeds through the API itself, as services/api/scripts/e2e.mjs does, and hands the tests their
@@ -18,6 +18,22 @@ const API = process.env.API_BASE ?? "http://127.0.0.1:3000";
 // unset outside production); the same pair services/api/scripts/e2e.mjs logs in with.
 const PARENT = { email: "demo@familyshield.dev", password: "CorrectHorseBatteryStaple!" };
 const RUN_MARKER = process.env.OSRA_TEST_RUN_MARKER ?? "";
+// What IntegrationTests/LiveAPITests.swift case 6 expects to sync. Keep the two in step.
+const LIVE_RULES = {
+  screenTime: {
+    dailyLimitMinutes: 120, weekendLimitMinutes: 240, bedtimeStart: "21:30", bedtimeEnd: "06:45",
+    schoolHours: { start: "08:00", end: "15:00", days: [1, 2, 3, 4, 5] },
+  },
+  webFilter: { blockedCategories: ["gambling"], allowedDomains: [], blockedDomains: ["blocked.example"], safeSearchEnforced: true },
+  appRules: [
+    { packageId: "com.example.blocked", appName: "Blocked", action: "block" },
+    { packageId: "com.example.allowed", appName: "Allowed", action: "allow" },
+  ],
+  routines: [
+    { name: "Homework", startTime: "16:00", endTime: "18:00", days: [1, 7], blockedApps: ["com.example.game"], allowedApps: [] },
+  ],
+  alwaysAllowedApps: [],
+};
 
 async function call(method, path, { token, body } = {}) {
   const res = await fetch(`${API}${path}`, {
@@ -55,6 +71,9 @@ async function setup() {
   });
   const childId = child.data?.child?.id ?? child.data?.id;
   if (child.status !== 201 || !childId) fail(`creating the child answered ${child.status}`);
+  // The rules case (6) reads these back as the iPhone (5.5 PR C): one blocked app, one routine on Mon and Sun.
+  const rules = await call("PUT", `/v1/rules/${childId}`, { token, body: LIVE_RULES });
+  if (rules.status !== 200) fail(`setting the child's rules answered ${rules.status}`);
   const pair = await call("POST", "/v1/devices/pair", { token, body: { childId } });
   if (pair.status !== 201 || !/^\d{6}$/.test(pair.data?.code ?? "")) fail(`minting a pairing code answered ${pair.status}`);
   exportEnv("TEST_RUNNER_OSRA_TEST_API_BASE", API);
