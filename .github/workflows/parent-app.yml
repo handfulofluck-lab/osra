@@ -22,8 +22,13 @@ on:
     - cron: "11 2 * * *"
   workflow_dispatch:
 
+# A push to main gets a group of its own, so it is never cancelled and never replaced while it waits.
+# `ios-scope` decides from that push's own `before..HEAD`, so a cancelled push's iOS inputs would not be
+# seen again until the nightly run: on 2026-10-24 the merge of #354 cancelled the run for #362's merge,
+# which had changed this file, and its own diff skipped iOS. A pull request diffs the whole PR against
+# its base on every run, so there a newer run covers the older one and cancelling it is safe.
 concurrency:
-  group: parent-app-${{ github.event_name }}-${{ github.ref }}
+  group: parent-app-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
