@@ -79,6 +79,8 @@ against **our real API**, on every iOS change, on changes to the three server fi
    `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
    `GET /v1/devices` must list that device as `platform: "ios"`.
 
+The simulator is booted (`simctl bootstatus -b`) before the code is minted, and case 1 waits for `GET /health` before it claims: on a cold boot the first request once reached the API about 50 s late, after the client's 30 s timeout. The claim itself is never retried, because a code is single-use.
+
 It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
 it, as in a local run, the cases skip. And the job asserts that 5 cases passed and none were skipped.
 `AlertReporter` gained `makeRequest`/`send` for the tests. `report` uses the same builder and keeps its

@@ -39,6 +39,22 @@ final class LiveAPITests: XCTestCase {
 
     private var metadata: [String: Any] { ["run": env["OSRA_TEST_RUN_MARKER"] ?? "local"] }
 
+    /// Polls `GET /health` until it answers 200, for up to two minutes.
+    private func waitUntilReachable(_ base: URL) async throws {
+        let deadline = Date().addingTimeInterval(120)
+        var request = URLRequest(url: base.appendingPathComponent("health"))
+        request.timeoutInterval = 10
+        while true {
+            if let (_, response) = try? await URLSession.shared.data(for: request),
+               (response as? HTTPURLResponse)?.statusCode == 200 { return }
+            guard Date() < deadline else {
+                XCTFail("the simulator could not reach \(base) within 120 s")
+                throw MissingLiveInput(name: "reachable API")
+            }
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+    }
+
     // 1. The claim: `platform: "ios"`, and what comes back is stored through AgentIdentityStore.
     func test1ClaimsTheCodeAsAnIPhoneAndStoresTheIdentity() async throws {
         // Read outside XCTUnwrap: an XCTSkip thrown inside its autoclosure is recorded as a failure, so the
@@ -48,6 +64,9 @@ final class LiveAPITests: XCTestCase {
         let code = try input("OSRA_TEST_PAIR_CODE")
         let childId = try input("OSRA_TEST_CHILD_ID")
 
+        // A freshly booted simulator's first request can stall for tens of seconds. Wait until the API answers
+        // /health before claiming: the code is single-use, so the claim itself is never retried.
+        try await waitUntilReachable(base)
         AgentIdentityStore.clear()
         let identity = try await PairingClient().claim(baseURL: base, code: code, deviceName: "iOS live test")
         XCTAssertEqual(identity.childId, childId)

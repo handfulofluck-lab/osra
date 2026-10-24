@@ -224,6 +224,9 @@ jobs:
             -scheme OSRAAgentIntegration \
             -destination "id=$DEVICE_ID" \
             -derivedDataPath .build/liveDerivedData
+          # Boot the simulator now and wait for it: on a cold boot its first request reached the API ~50 s late
+          # (after the client's 30 s timeout, run 40134997828), so it must be up before the code's clock starts.
+          xcrun simctl bootstatus "$DEVICE_ID" -b   # -b boots it first if it isn't booted
 
       - name: Seed through the API (child with consent, pairing code)
         run: node apps/child-ios/scripts/live-api.mjs setup
