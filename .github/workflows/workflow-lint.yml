@@ -38,6 +38,14 @@ jobs:
         # deliberate `|| true` is ever needed; do not add one without saying why in the PR.
         run: node scripts/check-workflows.mjs --strict
 
+      - name: Each suite's path filter covers what the suite reads (2026-10-24)
+        # The build-and-test workflows run only when their paths change, so a path list that misses an
+        # input is a suite that silently stops running on the PRs that can break it. The self-test proves
+        # each rule fails on a fixture that breaks it.
+        run: |
+          node scripts/check-ci-paths.mjs --selftest
+          node scripts/check-ci-paths.mjs
+
       - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
         # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
         # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter

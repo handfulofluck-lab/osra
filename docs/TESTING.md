@@ -21,13 +21,13 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 A green unit suite is **not** evidence that an invariant holds — that is what the probe is for. A green
 probe is **not** evidence that a feature works on a phone — that is what hardware verification is for.
 
-**CI runs one step more than this table does** (`.github/workflows/ci.yml`, re-read against the gates on
-2026-10-18), so a row below is the floor, not the gate:
+**CI runs one step more than this table does** (`.github/workflows/api.yml` and `parent-app.yml`, split out of `ci.yml` on 2026-10-24; re-read against
+the gates on 2026-10-18), so a row below is the floor, not the gate:
 
 | Suite | The step CI adds |
 |---|---|
-| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`ci.yml:28-33`) — CI's own step comment records that `pnpm install` did not create the client (`ci.yml:28`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
-| Flutter | the row's three commands are `ci.yml:47-49`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:68-79`) |
+| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml:54-62`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:57`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
+| Flutter | the row's three commands are `parent-app.yml:41-43`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:68-73`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`:123`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:130` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` for `targetSdkVersion:'35'` and both network-security configs (`:131-139`). The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
 | Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`:150`) |
 | AI engine | `pip install -r requirements-dev.txt` first (`:166`) |
@@ -39,7 +39,7 @@ release-assembly step is where a release-only failure lives.
 
 | Need | Where it lives here |
 |---|---|
-| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/ci.yml:22`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
+| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/api.yml:51`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
 | PostgreSQL | Windows service `OSRA-Postgres` (auto-start) or `C:\KARIM\start-pg.bat` |
 | Redis | `C:\KARIM\tools\redis\redis-server.exe --port 6379` |
 | JDK 17 + Android SDK | `C:\KARIM\tools\jdk-17`, `C:\KARIM\tools\android-sdk` (`ANDROID_HOME` **must** be set, or gradle fails with "SDK location not found") |
@@ -66,7 +66,7 @@ looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §
 ## 3. Running the gates
 
 ```bash
-# from the repo root, once per checkout — CI runs this before its type-check and suite (ci.yml:28-33)
+# from the repo root, once per checkout — CI runs this before its type-check and suite (api.yml:54-62)
 pnpm --filter @familyshield/api exec prisma generate
 
 cd services/api
@@ -267,12 +267,17 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 
 ## 4. CI (GitHub Actions)
 
-| Workflow | Purpose |
-|---|---|
-| `ci.yml` | api · parent-app · child-android (`testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`) · agent-desktop · ai-engine · **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended; its `--selftest` runs in `workflow-lint.yml`) |
-| `ios-ci.yml` | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
-| `api-image.yml` | Builds `services/api/Dockerfile` from the repo root on every pull request (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
-| `workflow-lint.yml` | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2) |
+| Workflow | Runs on | Purpose |
+|---|---|---|
+| `ci.yml` | every PR | **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended; its `--selftest` runs in `workflow-lint.yml`). Until 2026-10-24 this file also held the five build-and-test jobs below |
+| `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, and the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
+| `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | `flutter analyze`, `flutter test`, release AAB build and its manifest check |
+| `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, and the merged-manifest gate |
+| `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed at twice the Linux rate) |
+| `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
+| `ios-ci.yml` | `apps/child-ios/**` (path-filtered since it was added) | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
+| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
+| `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Local: `node scripts/check-verified-gate-signers.mjs --selftest` |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
@@ -328,6 +333,35 @@ terraform -chdir=infra/terraform/env  init -backend=false && terraform -chdir=in
 Delete a working copy's `.terraform/terraform.tfstate` first if `init -backend=false` complains about
 S3 credentials: that file records a previous, real backend initialisation and makes Terraform try to
 reach it even with `-backend=false`. A fresh checkout has no such file, which is what CI runs.
+
+### Which suites run on a pull request (2026-10-24)
+
+Each build-and-test suite has its own workflow file with a `paths:` filter, so a PR runs only the suites whose
+inputs it changes. Before this, every PR built the Android app twice over and the Flutter release bundle whatever it
+touched: those two jobs were about 60% of all billed minutes from 16 to 23 Oct, and most of their runs were on PRs
+that changed neither app.
+
+- **Skipping cannot block or bypass a merge.** The only required check is `verified-gate` (`AGENTS.md` §6.4). A suite
+  that did not run is absent from the PR, not failed. Never give `verified-gate.yml` a `paths:` filter or a job-level
+  `if:`: GitHub counts a required check that was *skipped* as passing, so a skip there would be a bypass.
+- **Each suite still runs** on a push to `main` that changes its paths, **nightly at 02:11 UTC** on `main` whatever
+  changed (that is what catches a suite broken from outside its paths: a Flutter, Gradle or runner-image release), and
+  by hand (Actions, the workflow, **Run workflow**, on any branch).
+- **More than 300 changed files.** GitHub matches path filters against the first 300 files of a diff only, so a very
+  large PR can skip a suite whose files come later. For such a PR, run the suites by hand on its branch.
+- **The filters are checked, not trusted.** `scripts/check-ci-paths.mjs` runs in `workflow-lint.yml` (its `--selftest`
+  first) and fails when a suite's `push` and `pull_request` lists differ, when a list leaves out its own workflow file,
+  when the workflow runs a repository file its list does not cover, when a test reads a file outside its suite's folder
+  through a `../` path that the list does not cover (the API tests read two agent files; the parent app's alert parity
+  test reads `services/api/src/routes/alerts.ts`), or when the API Dockerfile copies something `api-image.yml` does not
+  watch.
+- **Adding a suite:** its own file, the same list under `push` and `pull_request`, the file itself in the list, the
+  nightly `schedule` and `workflow_dispatch`, and its name in `SUITES` in the checker.
+
+```bash
+node scripts/check-ci-paths.mjs --selftest
+node scripts/check-ci-paths.mjs     # "6 suite workflow(s), … 0 problem(s)"
+```
 
 ## 5. Hardware verification (physical device)
 

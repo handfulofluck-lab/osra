@@ -1,0 +1,50 @@
+name: AI engine
+
+# The Python AI engine and its evaluation set. Until 2026-10-24 this was the `ai-engine` job of ci.yml and ran
+# on every pull request; now it runs when the engine changes, on main when it changes, and nightly on main
+# whatever changed. Nothing outside `services/ai-engine/` is read by this job. `scripts/check-ci-paths.mjs`
+# keeps the two lists identical and makes sure they name this file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/ai-engine/**"
+      - ".github/workflows/ai-engine.yml"
+  pull_request:
+    paths:
+      - "services/ai-engine/**"
+      - ".github/workflows/ai-engine.yml"
+  schedule:
+    - cron: "11 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ai-engine-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-engine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # Test deps only: torch/transformers are imported lazily by model.py, so the suite runs in
+      # seconds without them (verified: 21 passed vs 18 passed + 1 skipped when fastapi is absent).
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests -q
+      # Plan 4.2/4.3: the evaluation set is committed, deterministic and scored here. The gate is
+      # that the harness runs and the set is not stale -- deliberately NOT a recall floor, because
+      # today's rules layer scores 0.00 on Arabic (EVAL.md) and a floor of 0 would be a check that
+      # cannot fail. The floor arrives with the hosted scorer (4.1).
+      - name: Validate the evaluation banks
+        run: python -m eval.banks
+      - name: The committed dataset matches the banks
+        run: python -m eval.generate --check
+      - name: Score the rules layer (numbers published in EVAL.md)
+        run: python -m eval.run_eval --scorer regex

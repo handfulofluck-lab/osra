@@ -1,0 +1,78 @@
+name: Parent app
+
+# The Flutter parent app. Until 2026-10-24 this was the `parent-app` job of ci.yml and ran on every pull
+# request; now it runs when the app changes, on main when it changes, and nightly on main whatever changed
+# (Flutter's stable channel moves under us, and that must show up on main, not on the next unrelated PR).
+# One file outside `apps/parent-app/` is read: the alert-category parity test (#344) reads the server's
+# category list, so a change to it must run this suite. `scripts/check-ci-paths.mjs` keeps the two lists
+# identical, makes sure they name this file, and fails when a test starts reading another outside file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/parent-app/**"
+      - "services/api/src/routes/alerts.ts"
+      - ".github/workflows/parent-app.yml"
+  pull_request:
+    paths:
+      - "apps/parent-app/**"
+      - "services/api/src/routes/alerts.ts"
+      - ".github/workflows/parent-app.yml"
+  schedule:
+    - cron: "11 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: parent-app-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parent-app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/parent-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      # Store-readiness gate: a release build must compile, shrink and carry INTERNET + the Maps
+      # key placeholder. The Maps key is a repository secret (blank is tolerated for the build;
+      # the map simply renders empty). Signing: with OSRA_UPLOAD_KEYSTORE_B64 set this produces an
+      # upload-key-signed AAB; without it the debug key is used and the job still proves the build.
+      # NOTE: the `secrets` context is NOT available in a step `if:` — GitHub rejects the whole
+      # workflow file ("Unrecognized named-value: 'secrets'") and zero jobs run, which is exactly
+      # how the first push of this PR failed. Decide inside the run body instead.
+      - name: Materialise upload keystore (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release build will use the debug key (by design)"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
+          echo "OSRA_UPLOAD_KEYSTORE=upload.jks" >> "$GITHUB_ENV"
+          echo "upload keystore materialised"
+      - name: Release build (AAB)
+        env:
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          OSRA_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEYSTORE_PASSWORD }}
+          OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
+          OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
+        run: flutter build appbundle --release
+      - name: Release manifest must declare INTERNET
+        run: |
+          unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
+          # The AAB manifest is protobuf; the permission string survives as plain text.
+          grep -q "android.permission.INTERNET" /tmp/manifest.bin && echo "INTERNET present"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parent-app-release-aab
+          path: apps/parent-app/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 14
