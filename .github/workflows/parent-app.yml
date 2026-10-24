@@ -76,3 +76,51 @@ jobs:
           name: parent-app-release-aab
           path: apps/parent-app/build/app/outputs/bundle/release/app-release.aab
           retention-days: 14
+
+  # Roadmap 3.9: the iOS target exists in the same tree. This job is the *only*
+  # evidence the iOS build is real — no machine on the programme has Xcode, so
+  # nothing here was ever built locally (a `flutter build ios` on Windows fails
+  # with "Building for iOS is only supported on macOS", which proves nothing).
+  # `--no-codesign`: no certificate, no provisioning profile and no Apple
+  # account are involved, which is why this can run on a public repository for
+  # free. It is a simulator-target build, NOT an App Store build — signing,
+  # entitlements and archiving are separate work (docs/ROADMAP.md 3.9, 5.5, 5.6).
+  parent-app-ios:
+    name: iOS build (no code signing)
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: apps/parent-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # This Flutter version wires plugins through Swift Package Manager
+      # (Runner.xcodeproj references Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage),
+      # so there is no Podfile to commit and none was generated. The build
+      # creates it on the runner if a plugin still needs CocoaPods, which the
+      # macos-14 image ships.
+      - name: Build the iOS target unsigned
+        run: flutter build ios --release --no-codesign
+      - name: The bundle identifier matches the shape of the Android application id
+        run: |
+          BID=$(grep -m1 -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //')
+          echo "iOS bundle id: $BID"
+          # Apple's grammar allows only alphanumerics, hyphens and periods, so
+          # Flutter drops the Android id's underscore rather than emitting an
+          # identifier App Store Connect would refuse: dev.familyshield.familyshield_parent
+          # -> dev.familyshield.familyshieldParent. Same org, same leaf name.
+          case "$BID" in
+            dev.familyshield.familyshieldParent) echo "ok"; ;;
+            *) echo "unexpected bundle id: $BID" >&2; exit 1; ;;
+          esac
+      - name: Info.plist declares the display name and both locales
+        run: |
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST" | grep -qx 'OSRA'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations:0' "$PLIST" | grep -qx 'en'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations:1' "$PLIST" | grep -qx 'ar'
+          echo "display name and en/ar localizations present"
