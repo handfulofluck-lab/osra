@@ -1835,6 +1835,43 @@ check(
   `got ${bigPress.status}`,
 );
 
+// ── S. the real routes keep their own rate-limit buckets (plan 2.7, #376) ─────────────────────────
+// test/rate-limits.test.ts proves the bucket configs on stand-in routes; only a live server shows that
+// /pair/claim and /login still carry them. Each row sends requests until the limiter answers 429 and
+// reads the bucket's size from x-ratelimit-limit. Malformed bodies on purpose: the limiter counts before
+// validation, so no pairing code is ever tried and no session is created. These 429s are the answer
+// under test, not throttling, so they are not counted toward the probe's 429 abort. They run last
+// because they spend those two buckets for a minute: a re-run inside that minute waits, as always.
+// Mutants, run against a live API: drop `{ config: { rateLimit: PAIR_CLAIM_RATE_LIMIT } }` from
+// /pair/claim in routes/devices.ts -> S1 fails (limit 200, no 429 in 12); give /login a 40-a-minute
+// bucket instead of RL in routes/auth.ts -> S2 fails (limit 40). Dropping /login's bucket entirely moves
+// it onto the global one, which the earlier sections then spend: the run aborts at an O-section login
+// (exit 2) before S2 is reached, so that mutant fails the probe too, just not by name.
+console.log("\n── S. per-route rate limits (plan 2.7) ──");
+/** POST until 429 (at most `cap` requests); the bucket size the route reports and when it refused. */
+async function bucketOf(path, body, cap) {
+  let limit = null;
+  for (let i = 1; i <= cap; i++) {
+    const res = await fetch(`${API}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    limit ??= res.headers.get("x-ratelimit-limit");
+    await res.arrayBuffer();
+    if (res.status === 429) return { limit, refusedAt: i };
+  }
+  return { limit, refusedAt: null };
+}
+const claimBucket = await bucketOf("/v1/devices/pair/claim", { code: "not-a-code" }, 12);
+check(
+  "S1 /pair/claim has its own bucket of 10 a minute per address (x-ratelimit-limit 10, refused by the 11th request)",
+  claimBucket.limit === "10" && claimBucket.refusedAt !== null && claimBucket.refusedAt <= 11,
+  `x-ratelimit-limit=${claimBucket.limit} first 429 at request ${claimBucket.refusedAt ?? "none of 12"}`,
+);
+const loginBucket = await bucketOf("/v1/auth/login", { email: "not-an-email" }, 22);
+check(
+  "S2 /login has the auth bucket of 20 a minute per address (x-ratelimit-limit 20, refused by the 21st request)",
+  loginBucket.limit === "20" && loginBucket.refusedAt !== null && loginBucket.refusedAt <= 21,
+  `x-ratelimit-limit=${loginBucket.limit} first 429 at request ${loginBucket.refusedAt ?? "none of 22"}`,
+);
+
 console.log("\n── H. surface ──");
 const unknownRoute = await call("GET", `/v1/does-not-exist-${stamp}`);
 check("H1 unknown route -> 404 JSON", unknownRoute.status === 404, `got ${unknownRoute.status}`);
