@@ -108,7 +108,6 @@ public enum AgentIdentityStore {
     public static func clearOrphanedSecrets() -> Bool {
         let defaults = UserDefaults(suiteName: suiteName)
         let hasIds = defaults?.string(forKey: Keys.apiBaseURL) != nil || defaults?.string(forKey: Keys.childId) != nil
-        guard !hasIds else { return false }
         let orphaned = secrets.read(Keys.deviceToken) != nil || secrets.read(Keys.hmacSecret) != nil
         if orphaned {
             secrets.delete(Keys.deviceToken)
