@@ -27,6 +27,7 @@ import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { healthRoutes } from "./routes/health.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
+import { registerIdleBudgetHook } from "./lib/idleBudget.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -72,6 +73,15 @@ await app.register(websocket);
 // cannot be imported by a test. ADR-0032: the `Device` row and `Parent.sessionVersion` are the
 // records; the Redis keys are caches they rebuild on a miss.
 app.addHook("preHandler", sessionGuardHook);
+
+/**
+ * Idle-request budget (roadmap 5.8): count authenticated device requests, per device per minute per route,
+ * so the acceptance's "idle child phone ≤ 3 requests per 10 min" becomes a number instead of an impression.
+ * Counts only — no bodies, no query strings, no addresses — and onResponse, so a handler's own failures and
+ * timings cannot change what is counted. It never throws, and it records nothing unless
+ * `IDLE_BUDGET_COUNTING=1`: the instrument is on in tests and staging, off in production (#346 review).
+ */
+registerIdleBudgetHook(app);
 
 // Global error handler: sanitize database / Prisma internal errors to avoid leaking stack traces or
 // schema internals. Shared with the test harness so a route's status is the one production sends.

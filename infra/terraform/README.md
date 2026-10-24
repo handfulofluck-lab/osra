@@ -134,9 +134,17 @@ role. It looks exactly like a first-time apply, which is how it went unnoticed o
 ## Everyday use: `up.sh` / `down.sh`
 
 ```bash
+node scripts/check-staging-prereqs.mjs   # before a session: is this clone able to run one?
 ./infra/terraform/up.sh      # base (no-op) → env → migrate + seed → API service → URL, start time, cost
 ./infra/terraform/down.sh    # env only → elapsed time and estimated spend
 ```
+
+**Run the prerequisite check first** (issue #337). It answers, in one command and before anything
+spends: is `base/terraform.tfvars` present (its absence makes a base apply *destroy* the certificate,
+the OIDC provider and the publish role), is the publish role resolvable (otherwise an image publish
+fails later with an OIDC error that names GitHub), and does `env/api_image` name a tag that is actually
+in ECR. Exit 1 lists the problems; exit 2 means the environment could not be asked — no `aws` CLI or no
+usable credentials — which is not the same as a finding.
 
 `up.sh` is idempotent: base is applied first and changes nothing when it is already current. A fresh
 session applies `env` **twice** — the first pass builds the network, database and cache but not the

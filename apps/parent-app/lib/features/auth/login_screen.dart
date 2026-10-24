@@ -9,6 +9,7 @@ import '../../providers/onboarding_provider.dart';
 import '../../providers/server_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../onboarding/onboarding_messages.dart';
+import 'auth_messages.dart';
 import 'mfa_recovery_screen.dart';
 
 /// Sign-in screen with an expandable registration form. Navigation after a
@@ -38,6 +39,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _serverError;
   String _region = 'US';
 
+  /// A register-form problem caught before the request (see [registerFormProblem]).
+  String? _formError;
+
+  /// The last button pressed was Register, so its error shows beside that button, inside the
+  /// expanded section, rather than above Sign in where a parent filling the form cannot see it.
+  bool _registering = false;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +70,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (url == null) return null;
     await ref.read(serverUrlProvider.notifier).setServerUrl(url);
     return url;
+  }
+
+  /// What the parent reads for [AuthState.error]. A rejected field and a taken email are named on
+  /// both screens; anything else keeps the existing split (the wizard names the causes a
+  /// non-engineer can fix, the plain screen shows the server's string).
+  String? _authErrorText(AppLocalizations l10n, String? raw) {
+    if (raw == null) return null;
+    if (raw.startsWith(kValidationFailedPrefix)) return authFieldError(l10n, raw);
+    if (raw == 'email_taken') return l10n.registerEmailTaken;
+    return widget.onboarding ? onboardingAuthError(l10n, raw) : raw;
   }
 
   Future<void> _submit(Future<void> Function() action) async {
@@ -91,11 +109,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_serverTouched && _server.text != serverUrl) {
       _server.text = serverUrl;
     }
-    final errorText = auth.error == null
-        ? null
-        : widget.onboarding
-            ? onboardingAuthError(l10n, auth.error!)
-            : auth.error!;
+    final errorText = _formError ?? _authErrorText(l10n, auth.error);
     return Scaffold(
       appBar: widget.onboarding
           ? AppBar(
@@ -200,7 +214,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                 ),
-                if (errorText != null) ...[
+                if (errorText != null && !_registering) ...[
                   const SizedBox(height: AppSpace.md),
                   Text(errorText,
                       key: const ValueKey('loginError'),
@@ -211,6 +225,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   onPressed: auth.loading
                       ? null
                       : () async {
+                          setState(() {
+                            _registering = false;
+                            _formError = null;
+                          });
                           if (await _saveServer() == null) return;
                           await _submit(() => ref.read(authProvider.notifier).login(_email.text.trim(), _password.text, _code.text));
                         },
@@ -230,6 +248,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   title: Text(l10n.createAccount),
                   childrenPadding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
                   children: [
+                    // The section has no email or password of its own; say so, with the rule the
+                    // server enforces, before the parent finds out from an error.
+                    Text(
+                      l10n.registerFieldsHint,
+                      key: const ValueKey('registerFieldsHint'),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: AppSpace.md),
                     TextField(
                       controller: _familyName,
                       decoration: InputDecoration(
@@ -262,10 +288,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onChanged: (v) => setState(() => _region = v ?? 'US'),
                     ),
                     const SizedBox(height: AppSpace.md),
+                    if (errorText != null && _registering) ...[
+                      Text(errorText,
+                          key: const ValueKey('registerError'),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.danger)),
+                      const SizedBox(height: AppSpace.md),
+                    ],
                     OutlinedButton(
                       onPressed: auth.loading
                           ? null
                           : () async {
+                              final problem = registerFormProblem(
+                                l10n,
+                                email: _email.text.trim(),
+                                password: _password.text,
+                                displayName: _displayName.text.trim(),
+                                familyName: _familyName.text.trim(),
+                              );
+                              setState(() {
+                                _registering = true;
+                                _formError = problem;
+                              });
+                              if (problem != null) return;
                               if (await _saveServer() == null) return;
                               await _submit(() => ref.read(authProvider.notifier).register(
                                     email: _email.text.trim(),

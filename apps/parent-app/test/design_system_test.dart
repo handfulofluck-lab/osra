@@ -342,7 +342,7 @@ void main() {
           .color!;
 
       expect(dot('SOS pressed'), AppTokens.dark.severityCritical);
-      expect(dot('Blocked site visited'), AppTokens.dark.severityWarning);
+      expect(dot('Blocked site attempted'), AppTokens.dark.severityWarning);
       expect(dot('Daily limit reached'), AppTokens.dark.severityInfo);
     });
 

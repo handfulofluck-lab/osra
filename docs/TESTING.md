@@ -246,6 +246,25 @@ harness trap, not a product bug.
 Rule: never make a check pass by loosening it. If a check is wrong, bring the evidence and fix the check
 explicitly, in its own commit, with the reasoning in the PR.
 
+### The idle-request budget (roadmap 5.8) — `P4`–`P6`
+
+`P4` asserts the agent cannot read its own request accounting (`403`) and `P5` asserts that the parent's view
+carries counts only: the window is named, and no route key contains an identifier. `P6` is the measurement
+itself — with `IDLE_BUDGET_M10` **unset** it prints the busiest 10-minute window as a `target`, and with the
+variable set to a number it becomes a gating `check`. It stays unset until the rate is measured on the Flip4;
+a threshold invented in code is a gate measuring the author's guess, which is the failure this row exists to
+stop. Read the number from `GET /v1/devices/:id/requests` (`busiestWindow.count`) — the busiest window, not
+an average, because the acceptance is a claim about the worst ten minutes.
+
+**The API has to be counting for that number to mean anything.** Counting is enabled with
+`IDLE_BUDGET_COUNTING=1` and is **off by default**: the harness sets it (`services/api/vitest.config.ts`) and
+so does staging (`infra/terraform/env/ecs.tf`, `environment == "staging"`), while production leaves it unset
+because a per-device hash does not deserve the cache node that carries flags and durable revocation. With it
+off, the read route still answers but returns `counting: false` and `withinBudget: null`, and `P6` is a
+`target` that says counting is disabled — a busiest window of `0` there would mean "nothing was written", not
+"the phone stayed idle". Start the API under test with the flag before running a measurement.
+
+
 ## 4. CI (GitHub Actions)
 
 | Workflow | Purpose |
@@ -899,6 +918,7 @@ Hardware-host traps above (2026-10-17, TR-13…18); build/API traps below.
 | A staging session cannot publish its image: `api-publish.yml` fails with **"Could not assume role with OIDC … the web identity token could not be validated"** | The error points at the workflow, but the cause is missing **local** state: `infra/terraform/base/terraform.tfvars` is gitignored, so a fresh clone has `github_repo = ""`, `github_owner_id = ""` and `github_repo_id = ""`, and `base/oidc.tf` deliberately creates **neither** the OIDC provider nor the `osra-staging-publish` role until all three are set. `terraform output publish_role_arn` is `""` and the account has no `token.actions.githubusercontent.com` provider at all (cost, 2026-10-23: one failed session start before anyone knew why) | Check `aws iam list-open-id-connect-providers` first — an empty list means the publish path was never created, not that the workflow broke. Then write `base/terraform.tfvars` with `github_repo = "handfulofluck-lab/osra"` and the two numeric IDs (`gh api repos/OWNER/REPO --jq '.owner.id, .id'`), apply base (3 resources), and re-run the publish. The trust pins exactly one subject — `repo:OWNER@ID/REPO@ID:ref:refs/heads/main` — so do not "fix" it with a wildcard |
 | A staging session is up and healthy, but every request from the host times out | `allowed_cidrs` is the ALB allowlist, and in **non-release** mode (no certificate) `env/ecs.tf:173` refuses `0.0.0.0/0` because port 80 would carry the API in cleartext — so the session has to name an address, and a home connection's address **changed twice inside 40 minutes** on 2026-10-23. The same reasoning rules the allowlist out for a **phone** row: a handset on cellular is not on our egress at all | For anything involving the phone, use **release mode**: set `domain_name`/`hosted_zone_name` in `base/terraform.tfvars` (the zone is in Route 53, so DNS validation takes about a minute), then `allowed_cidrs = ["0.0.0.0/0"]`. Before blaming the app, run `elbv2 describe-target-health` — `healthy` targets mean the block is the allowlist, not the service |
 | `up.sh` dies immediately with **"Error handling -chdir option: chdir /c/KARIM/... : The system cannot find the path specified"** | `MSYS_NO_PATHCONV=1` was exported for the AWS CLI (so `/ecs/...` log-group names survive Git Bash), and it also stopped the conversion of the POSIX path that `up.sh` passes to the **native Windows** `terraform.exe`. Terraform then sees `/c/KARIM/…`, which Windows cannot resolve | Scope the variable to the command that needs it rather than exporting it for a whole script run: `MSYS_NO_PATHCONV=1 aws logs …` in one call, and run `up.sh` without it. The same applies to any wrapper that mixes Git Bash paths with native binaries |
+| `check-staging-prereqs.mjs --self-test` runs the **real** AWS check instead of the six fixture cases | The flag is `--selftest`, one word. `--self-test` is not an argument to anything, so the script ignored it, called `iam get-role` and `ecr list-images` for real, and a reader of the output believes the cases ran while nothing was verified. The same spelling is used by `check-probe-integrity.mjs`. Measured on `fix/337-staging-prereqs` (2026-10-24) | Use `--selftest`. Until the script refuses an unknown flag, a mistyped one fails **open** — the shape of gate this repo keeps getting bitten by. A guard that exits **2** on an unrecognised argument is the fix, and it belongs on that script, not in a wrapper |
 
 ## 7. Definition of done (tests)
 
