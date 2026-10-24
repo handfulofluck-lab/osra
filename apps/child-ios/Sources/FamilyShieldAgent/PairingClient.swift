@@ -4,9 +4,9 @@ import UIKit
 #endif
 
 /// The identity returned by a successful `POST /v1/devices/pair/claim`
-/// (spec §14.2/§14.3). Persisted in the shared app group by
-/// `AgentIdentityStore`; `AlertReporter` and the Screen Time extensions read
-/// `childId` / `hmacSecret` / `apiBaseURL` from the same store.
+/// (spec §14.2/§14.3). Persisted by `AgentIdentityStore`: the device token and
+/// HMAC secret in the shared Keychain group, the ids in the shared app group.
+/// `AlertReporter` and the Screen Time extensions read them from there.
 public struct AgentIdentity: Equatable {
     /// Normalized server base URL (no trailing slash).
     public var apiBaseURL: URL

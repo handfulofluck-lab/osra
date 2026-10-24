@@ -11,8 +11,8 @@ struct AlertReporter {
     /// group at init; nil until the pairing flow writes `agent.apiBaseURL`.
     var apiBaseURL: URL?
 
-    /// Shared secret for X-FamilyShield-Signature; provisioned at device pairing and
-    /// stored in the shared app group. Must match the server's INTERNAL_HMAC_SECRET.
+    /// Per-device secret for X-FamilyShield-Signature; provisioned at device pairing and
+    /// stored in the shared Keychain group (`AgentIdentityStore`).
     var hmacSecret: String?
 
     /// Creates a reporter pointing at the paired API base URL, if configured.
@@ -107,9 +107,9 @@ struct AlertReporter {
         return URL(string: raw)
     }
 
-    /// Reads the pairing HMAC secret from the shared app group, if any.
+    /// Reads the pairing HMAC secret from the shared Keychain group (5.5 PR B), if any.
     static func pairedHmacSecret() -> String? {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?.string(forKey: "agent.hmacSecret")
+        AgentIdentityStore.hmacSecret()
     }
 }
 
