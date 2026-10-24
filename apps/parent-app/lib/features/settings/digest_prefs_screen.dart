@@ -239,8 +239,8 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                 ),
               ),
               // Roadmap 2.7: an address that is not a parent of the family is not a recipient yet.
-              // A pending one is marked with its state and the "confirmation sent" line, so it never
-              // looks the same as an address that will actually be mailed.
+              // A pending one says the confirmation went out; an `unsent` one says it did not and to save
+              // again — so neither ever looks like an address that will actually be mailed.
               if (_recipients.isNotEmpty) ...[
                 const SizedBox(height: AppSpace.sm),
                 for (final r in _recipients)
@@ -251,9 +251,13 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
-                          r.isPending ? Icons.schedule : Icons.check_circle,
+                          r.isConfirmed
+                              ? Icons.check_circle
+                              : (r.isUnsent ? Icons.error_outline : Icons.schedule),
                           size: 18,
-                          color: r.isPending ? context.tokens.warn : context.tokens.ok,
+                          color: r.isConfirmed
+                              ? context.tokens.ok
+                              : (r.isUnsent ? context.tokens.danger : context.tokens.warn),
                         ),
                         const SizedBox(width: AppSpace.sm),
                         Expanded(
@@ -261,7 +265,15 @@ class _DigestPrefsScreenState extends ConsumerState<DigestPrefsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(r.email, style: Theme.of(context).textTheme.bodyMedium),
-                              if (r.isPending)
+                              if (r.isUnsent)
+                                Text(
+                                  l10n.digestPrefsNotSent,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: context.tokens.danger),
+                                )
+                              else if (r.isPending)
                                 Text(
                                   l10n.digestPrefsConfirmationSent,
                                   style: Theme.of(context)

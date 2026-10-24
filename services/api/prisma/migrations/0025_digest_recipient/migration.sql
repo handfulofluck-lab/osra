@@ -5,7 +5,7 @@
 -- One row per (family, address). `confirmedAt` is the durable proof that the address asked for the
 -- digest. `tokenHash` is the SHA-256 of the single-use 24-hour link token and `tokenExpiresAt` its
 -- deadline; both are cleared when the address is confirmed, so the link is spent. A parent's own
--- address needs no row — registration already verified it.
+-- address needs no row — it is trusted as that account's address.
 --
 -- Additive only: an API binary that predates this table never selects it, and a family with no rows
 -- keeps its current recipients (parents of the family) exactly as before.

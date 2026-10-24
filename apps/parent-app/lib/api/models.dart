@@ -1053,7 +1053,8 @@ class WellbeingScore {
 
 /// One digest recipient and whether it has proved the address (roadmap 2.7, osra-security#2).
 /// A parent's own address is `confirmed` as it is; any other address is `pending` until the
-/// single-use link in its email is used, and a pending address receives no digest.
+/// single-use link in its email is used, and a pending address receives no digest. `unsent` means
+/// the confirmation mail itself failed: nothing was delivered, and saving again retries.
 @immutable
 class DigestRecipientStatus {
   final String email;
@@ -1061,7 +1062,11 @@ class DigestRecipientStatus {
 
   const DigestRecipientStatus({required this.email, this.status = 'pending'});
 
-  bool get isPending => status != 'confirmed';
+  bool get isConfirmed => status == 'confirmed';
+  bool get isUnsent => status == 'unsent';
+
+  /// Anything that is not confirmed: the address receives no digest either way.
+  bool get isPending => !isConfirmed;
 
   factory DigestRecipientStatus.fromJson(Map<String, dynamic> json) => DigestRecipientStatus(
         email: _str(json['email']),

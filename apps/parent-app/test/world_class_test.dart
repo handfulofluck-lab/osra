@@ -355,6 +355,33 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('an unsent confirmation says to save again (roadmap 2.7, #354 review)', (tester) async {
+      // The confirmation mail failed, so the address has no live link: the screen has to say the mail did
+      // not go, not that it did. Mutant: treat `unsent` as `pending` on the screen -> it claims
+      // "Confirmation sent" for a message the provider never accepted.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['grandma@example.com'],
+              'recipients': [
+                {'email': 'grandma@example.com', 'status': 'unsent'},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not sent. Save again to retry.'), findsOneWidget);
+      expect(find.textContaining('Confirmation sent'), findsNothing);
+    });
+
     testWidgets('send-now POSTs and shows the returned markdown in a dialog', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);

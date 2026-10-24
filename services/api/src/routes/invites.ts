@@ -13,6 +13,11 @@ const INVITE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
  * MFA-reset limit already uses (`auth.ts`, `mfaResetRequest.count` over a 24-hour window): the invites are
  * rows, the rows are the record, and a count cannot drift from what was created. A keyed cache would need
  * its own lifetime and would still have to be reconciled with these rows after a flush.
+ *
+ * The count and the create are two statements, so a burst of parallel requests can pass 20 by the size of
+ * the burst. That is fine for a daily abuse limit whose subject is a family, not a single mailbox: the
+ * overshoot is bounded by the concurrency in flight, it costs the same as the twentieth, and the rows it
+ * creates are the record either way.
  */
 const INVITES_PER_DAY = 20;
 const INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;

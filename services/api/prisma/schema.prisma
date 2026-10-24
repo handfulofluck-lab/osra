@@ -323,8 +323,8 @@ model DigestPrefs {
 ///
 /// One row per (family, address). `confirmedAt` is the durable proof that the address asked for the
 /// digest; `tokenHash` is the SHA-256 of the single-use 24-hour link token and `tokenExpiresAt` its
-/// deadline. Confirming clears both, so the link is spent. A parent's own address needs no row: the
-/// address is already verified by registration (see lib/digestRecipients.ts).
+/// deadline. Confirming clears both, so the link is spent. A parent's own address needs no row: it is
+/// trusted as that account's address (see lib/digestRecipients.ts).
 model DigestRecipient {
   id             String    @id @default(uuid())
   familyId       String

@@ -143,15 +143,17 @@ export function digestEmail(to: string | string[], opts: { familyName: string; d
 
 /**
  * Roadmap 2.7 (osra-security#2): the address was added to a family's digest by a parent and must prove
- * it wants it. It states what will happen and carries the single-use 24-hour link — and nothing about
- * the family's children, so the message itself tells a stranger nothing.
+ * it wants it. It states what will happen and carries the single-use 24-hour link.
+ *
+ * It carries **no user-written text** — not the family name, not a child's, nothing a parent typed — and
+ * nothing about the family's children. The message goes to an address that has agreed to nothing: it must
+ * not be usable to put a chosen string in a stranger's inbox (review of #354, item 2).
  */
-export function digestConfirmEmail(to: string, opts: { familyName: string; link: string }, locale: Locale = "both"): EmailMessage {
-  const familyName = clip(opts.familyName);
+export function digestConfirmEmail(to: string, opts: { link: string }, locale: Locale = "both"): EmailMessage {
   const { html, text } = shell(
     {
       en: {
-        title: `Confirm the OSRA digest for the ${familyName} family`,
+        title: "Confirm an OSRA family digest",
         body: [
           "A parent added this address to the family's OSRA digest. Nothing is sent here until you confirm, and you can ignore this message if you do not want it.",
           "The link works once and expires in 24 hours.",
@@ -159,7 +161,7 @@ export function digestConfirmEmail(to: string, opts: { familyName: string; link:
         cta: { label: "Confirm this address", href: opts.link },
       },
       ar: {
-        title: `تأكيد ملخّص أسرة لعائلة ${familyName}`,
+        title: "تأكيد ملخّص عائلة في أسرة",
         body: [
           "أضاف أحد الوالدين هذا العنوان إلى ملخّص عائلة أسرة. لن يُرسَل شيء إلى هنا حتى تؤكّد، ويمكنك تجاهل هذه الرسالة إن لم ترغب في استلامه.",
           "الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 24 ساعة.",

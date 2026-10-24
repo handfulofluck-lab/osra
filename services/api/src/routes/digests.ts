@@ -83,22 +83,37 @@ function renderDigest(displayName: string, days: number, summary: ActivitySummar
   return lines.join("\n");
 }
 
-/** Mail the "confirm this address" links issued by a save. Best-effort: the save itself stands. */
+/**
+ * Mail the "confirm this address" links issued by a save. Returns the addresses whose mail failed so the
+ * answer can say `unsent`: a row whose link was never delivered is not a link the family is waiting on, so
+ * it is cleared here (freeing its place under `MAX_PENDING_CONFIRMATIONS`) and the next save mails it
+ * again. The save itself stands either way.
+ */
 async function mailConfirmations(
   familyId: string,
   confirmations: Array<{ email: string; token: string }>,
   log: { error: (obj: unknown, msg?: string) => void },
-): Promise<void> {
-  if (confirmations.length === 0) return;
-  const family = await prisma.family.findUnique({ where: { id: familyId } });
-  const familyName = family?.name ?? "your";
+): Promise<Set<string>> {
+  const failed = new Set<string>();
   for (const { email, token } of confirmations) {
     const link = `${appPublicUrl()}/v1/digests/confirm?token=${encodeURIComponent(token)}`;
     const result = await getEmailSender()
-      .send(digestConfirmEmail(email, { familyName, link }))
+      .send(digestConfirmEmail(email, { link }))
       .catch((err: unknown) => ({ ok: false as const, reason: (err as Error)?.message ?? "send failed" }));
-    if (!result.ok) log.error({ reason: result.reason }, "digest confirmation email failed");
+    if (result.ok) continue;
+    failed.add(email);
+    log.error({ reason: result.reason }, "digest confirmation email failed");
+    // No mail left the building, so the link is not live: clear it, and the address stops counting
+    // against the cap. Without this a family whose provider was down would sit out the 24 hours with
+    // links nobody ever saw.
+    await prisma.digestRecipient
+      .update({
+        where: { familyId_email: { familyId, email } },
+        data: { tokenHash: null, tokenExpiresAt: null },
+      })
+      .catch((err: unknown) => log.error({ err }, "could not clear an unsent digest link"));
   }
+  return failed;
 }
 
 export async function digestRoutes(app: FastifyInstance) {
@@ -117,8 +132,9 @@ export async function digestRoutes(app: FastifyInstance) {
    * Upsert the family's digest preferences (#5). Owner only (roadmap 2.7): the list is where mail leaves
    * the family, so changing it is the same class of act as inviting a member or editing the family.
    *
-   * The answer marks every address `confirmed` or `pending`; a pending one gets a single-use 24-hour
-   * link and receives nothing until it is used.
+   * The answer marks every address `confirmed`, `pending` or `unsent`; a pending one either already has a
+   * live link or was mailed one by this save, and it receives nothing until that link is used. `limited`
+   * says the family's live-link budget was spent, so this save mailed nothing for it.
    */
   app.put("/prefs", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const parsed = PrefsSchema.safeParse(req.body);
@@ -131,16 +147,60 @@ export async function digestRoutes(app: FastifyInstance) {
       update: parsed.data,
       create: { familyId: user.familyId, ...parsed.data },
     });
-    await mailConfirmations(user.familyId, confirmations, req.log);
-    return reply.code(200).send({ ...prefs, recipients: statuses });
+    const failed = await mailConfirmations(user.familyId, confirmations, req.log);
+    const recipients = statuses.map((status) =>
+      failed.has(status.email) ? { email: status.email, status: "unsent" as const } : status,
+    );
+    return reply.code(200).send({ ...prefs, recipients });
   });
 
   /**
-   * Spend a confirmation link from a digest-confirmation email. No session: the token is the credential,
-   * it is single-use, and it expires 24 hours after the save that issued it.
+   * The confirmation page, and only that. GET **spends nothing** (review of #354, item 3): a mail scanner
+   * or a link preview that follows the URL must not confirm an address a person never agreed to. The page
+   * carries one button, and the button POSTs the token back to `POST /confirm`, which is what spends it.
+   *
+   * The page states nothing about the token, so following the link tells a scanner nothing about whether
+   * it exists.
    */
   app.get("/confirm", async (req, reply) => {
     const parsed = ConfirmSchema.safeParse(req.query);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_token" });
+    const action = `/v1/digests/confirm?token=${encodeURIComponent(parsed.data.token)}`;
+    // `ConfirmSchema` admits only 64 hex characters, so the action needs no HTML escaping.
+    const button =
+      'style="background:#3949ab;color:#fff;border:0;padding:12px 18px;border-radius:8px;font-size:16px"';
+    const html = `<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OSRA</title></head>
+<body style="margin:0;background:#f6f7fb;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2430">
+  <div style="max-width:520px;margin:0 auto;padding:24px">
+    <div dir="ltr" style="background:#fff;border-radius:8px;padding:24px">
+      <h2 style="margin:0 0 12px;font-size:20px">Confirm an OSRA family digest</h2>
+      <p style="margin:0 0 16px;line-height:1.5">Press the button to confirm this address. Nothing is sent to it until you do.</p>
+      <form method="post" action="${action}"><button type="submit" ${button}>Confirm this address</button></form>
+    </div>
+    <div dir="rtl" style="background:#fff;border-radius:8px;padding:24px;margin-top:16px">
+      <h2 style="margin:0 0 12px;font-size:20px">تأكيد ملخّص عائلة في أسرة</h2>
+      <p style="margin:0 0 16px;line-height:1.5">اضغط الزر لتأكيد هذا العنوان. لن يُرسَل إليه شيء قبل ذلك.</p>
+      <form method="post" action="${action}"><button type="submit" ${button}>تأكيد هذا العنوان</button></form>
+    </div>
+  </div>
+</body>
+</html>`;
+    return reply.type("text/html; charset=utf-8").send(html);
+  });
+
+  /**
+   * Spend the link: the button on the page above posts its token here. No session — the token is the
+   * credential. It is single-use, it expires 24 hours after the save that issued it, and unknown, expired
+   * and already-used links answer the same 404, so a caller cannot tell which addresses are on a list.
+   */
+  app.post("/confirm", async (req, reply) => {
+    // The token rides in the query string (the page's form action), so no form-body parser is needed;
+    // a JSON caller may send it in the body instead.
+    const body = (req.body ?? {}) as { token?: string };
+    const query = (req.query ?? {}) as { token?: string };
+    const parsed = ConfirmSchema.safeParse({ token: body.token ?? query.token });
     if (!parsed.success) return reply.code(400).send({ error: "invalid_token" });
     const confirmed = await confirmRecipient(parsed.data.token);
     if (!confirmed) return reply.code(404).send({ error: "confirmation_not_found_or_expired" });

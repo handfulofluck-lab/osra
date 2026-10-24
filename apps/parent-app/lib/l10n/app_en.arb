@@ -989,6 +989,7 @@
   "digestPrefsEmailsLabel": "Digest emails",
   "digestPrefsEmailsHelper": "For the digest summary (separate addresses with commas)",
   "digestPrefsConfirmationSent": "Confirmation sent — this address gets no digest until it is confirmed",
+  "digestPrefsNotSent": "Not sent. Save again to retry.",
   "digestPrefsTimezoneTitle": "Digest timezone (local send hour)",
   "digestPrefsTimezoneLabel": "Timezone",
   "digestPrefsTimezoneLoading": "Loading…",

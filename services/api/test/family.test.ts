@@ -297,6 +297,48 @@ describe("family routes", () => {
     await app.close();
   });
 
+  it("rejects a child name over 80 characters on create and on patch (roadmap 2.7)", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    const tooLong = "N".repeat(81);
+    prismaMock.family.findUnique.mockResolvedValue(FAMILY);
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    // Mocked up front, so an unbounded create would answer 201 rather than trip over a missing mock.
+    prismaMock.child.create.mockResolvedValue({ id: "child-new", displayName: tooLong });
+    prismaMock.child.update.mockResolvedValue({ id: CHILD_ID, displayName: tooLong });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/family/children",
+      headers: authHeader(app),
+      payload: { displayName: tooLong, birthYear: 2014, consent: { method: "sms_plus", jurisdiction: "US" } },
+    });
+    // Mutant: remove `.max(80)` from `ChildCreateSchema` -> 201 and the 81 characters are stored, in the
+    // digest body of every later send.
+    expect(created.statusCode).toBe(400);
+    expect(prismaMock.child.create).not.toHaveBeenCalled();
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/v1/family/children/${CHILD_ID}`,
+      headers: authHeader(app),
+      payload: { displayName: tooLong },
+    });
+    // Mutant: remove `.max(80)` from `ChildPatchSchema` -> 200 and the long name replaces the short one.
+    expect(patched.statusCode).toBe(400);
+    expect(prismaMock.child.update).not.toHaveBeenCalled();
+
+    // 80 is accepted on both paths.
+    prismaMock.child.create.mockResolvedValue({ id: "child-80", displayName: "N".repeat(80) });
+    const atLimit = await app.inject({
+      method: "POST",
+      url: "/v1/family/children",
+      headers: authHeader(app),
+      payload: { displayName: "N".repeat(80), birthYear: 2014, consent: { method: "sms_plus", jurisdiction: "US" } },
+    });
+    expect(atLimit.statusCode).toBe(201);
+    await app.close();
+  });
+
   it("rejects a bad child patch body (400) and a missing child (404)", async () => {
     const app = await buildApp(familyRoutes, "/v1/family");
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });

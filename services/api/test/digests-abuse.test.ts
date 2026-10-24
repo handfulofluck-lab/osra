@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FastifyInstance } from "fastify";
 import { digestRoutes } from "../src/routes/digests.js";
 import { getRedis } from "../src/redis.js";
 import { hashConfirmToken } from "../src/lib/digestRecipients.js";
@@ -41,6 +42,37 @@ interface LedgerRow {
   createdAt: Date;
 }
 
+/** The `where` shapes the ledger is asked with; anything else is a test bug, not a silent pass. */
+interface LedgerWhere {
+  familyId?: string;
+  email?: { in?: string[]; notIn?: string[] };
+  tokenHash?: string;
+  tokenExpiresAt?: { gt?: Date; lte?: Date };
+  OR?: Array<{ tokenExpiresAt: null | { lte: Date } }>;
+}
+
+const timeOf = (value: Date | null): number | null => (value === null ? null : new Date(value).getTime());
+
+/** Postgres would match `OR: [{ tokenExpiresAt: null }, { tokenExpiresAt: { lte: now } }]` as "no live link". */
+function matches(row: LedgerRow, where: LedgerWhere): boolean {
+  if (where.familyId && row.familyId !== where.familyId) return false;
+  if (where.email?.in && !where.email.in.includes(row.email)) return false;
+  if (where.email?.notIn && where.email.notIn.includes(row.email)) return false;
+  if (where.tokenHash !== undefined && row.tokenHash !== where.tokenHash) return false;
+  const expires = timeOf(row.tokenExpiresAt);
+  if (where.tokenExpiresAt?.gt && !(expires !== null && expires > where.tokenExpiresAt.gt.getTime())) return false;
+  if (where.tokenExpiresAt?.lte && !(expires === null || expires <= where.tokenExpiresAt.lte.getTime())) return false;
+  if (where.OR) {
+    const matched = where.OR.some((clause) =>
+      clause.tokenExpiresAt === null
+        ? row.tokenExpiresAt === null
+        : expires !== null && expires <= clause.tokenExpiresAt.lte.getTime(),
+    );
+    if (!matched) return false;
+  }
+  return true;
+}
+
 let ledger: LedgerRow[] = [];
 let ledgerSeq = 0;
 
@@ -54,9 +86,11 @@ function seedLedger(initial: Array<Partial<LedgerRow> & { familyId: string; emai
     createdAt: new Date(),
     ...row,
   }));
-  prismaMock.digestRecipient.findMany.mockImplementation(
-    async ({ where }: { where: { familyId: string; email?: { in: string[] } } }) =>
-      ledger.filter((row) => row.familyId === where.familyId && (!where.email || where.email.in.includes(row.email))),
+  prismaMock.digestRecipient.findMany.mockImplementation(async ({ where }: { where: LedgerWhere }) =>
+    ledger.filter((row) => matches(row, where)),
+  );
+  prismaMock.digestRecipient.count.mockImplementation(
+    async ({ where }: { where: LedgerWhere }) => ledger.filter((row) => matches(row, where)).length,
   );
   prismaMock.digestRecipient.findUnique.mockImplementation(
     async ({ where }: { where: { tokenHash: string } }) =>
@@ -93,22 +127,29 @@ function seedLedger(initial: Array<Partial<LedgerRow> & { familyId: string; emai
     },
   );
   prismaMock.digestRecipient.update.mockImplementation(
-    async ({ where, data }: { where: { id: string }; data: Partial<LedgerRow> }) => {
-      const row = ledger.find((r) => r.id === where.id);
+    async ({
+      where,
+      data,
+    }: {
+      where: { id: string } | { familyId_email: { familyId: string; email: string } };
+      data: Partial<LedgerRow>;
+    }) => {
+      const row =
+        "id" in where
+          ? ledger.find((r) => r.id === where.id)
+          : ledger.find(
+              (r) => r.familyId === where.familyId_email.familyId && r.email === where.familyId_email.email,
+            );
       if (!row) throw new Error("Record to update not found");
       Object.assign(row, data);
       return row;
     },
   );
-  prismaMock.digestRecipient.deleteMany.mockImplementation(
-    async ({ where }: { where: { familyId: string; email?: { notIn: string[] } } }) => {
-      const before = ledger.length;
-      ledger = ledger.filter(
-        (row) => row.familyId !== where.familyId || Boolean(where.email && where.email.notIn.includes(row.email)),
-      );
-      return { count: before - ledger.length };
-    },
-  );
+  prismaMock.digestRecipient.deleteMany.mockImplementation(async ({ where }: { where: LedgerWhere }) => {
+    const before = ledger.length;
+    ledger = ledger.filter((row) => !matches(row, where));
+    return { count: before - ledger.length };
+  });
 }
 
 const store = new Map<string, string>();
@@ -166,10 +207,44 @@ describe("digest recipients (roadmap 2.7)", () => {
     process.env.APP_PUBLIC_URL = "https://app.osra.family";
     prismaMock.parent.findUnique.mockResolvedValue(OWNER);
     prismaMock.parent.findMany.mockResolvedValue([{ email: OWNER.email }]);
+    prismaMock.digestPrefs.upsert.mockImplementation(
+      async ({ create }: { create: Record<string, unknown> }) => ({ ...create }),
+    );
   });
   afterEach(() => {
     setEmailSender(null);
     delete process.env.APP_PUBLIC_URL;
+  });
+
+  /** One owner save of the recipient list, which is what issues the confirmation mail. */
+  const putPrefs = (app: FastifyInstance, emails: string[]) =>
+    app.inject({
+      method: "PUT",
+      url: "/v1/digests/prefs",
+      headers: authHeader(app),
+      payload: { dailyEmail: true, weeklyEmail: true, pushEnabled: true, emails },
+    });
+
+  /** The addresses the save actually mailed, in order. */
+  const mailed = (): string[] => capture.sent.map((message) => String(message.to));
+
+  it("refuses a sixth recipient with 400 and writes nothing", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    const six = ["a@example.com", "b@example.com", "c@example.com", "d@example.com", "e@example.com", "f@example.com"];
+
+    const res = await putPrefs(app, six);
+    // Mutant: remove `.max(MAX_DIGEST_RECIPIENTS)` from PrefsSchema -> 200, six addresses stored in
+    // `DigestPrefs.emails`, and the family is at six recipients instead of the agreed five.
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.digestPrefs.upsert).not.toHaveBeenCalled();
+    expect(mailed()).toEqual([]);
+
+    // Five is the bound, and it still works.
+    prismaMock.digestRecipient.findMany.mockResolvedValue([]);
+    const five = await putPrefs(app, six.slice(0, 5));
+    expect(five.statusCode).toBe(200);
+    expect(five.json().recipients).toHaveLength(5);
+    await app.close();
   });
 
   it("marks a non-parent address pending, mails it a single-use link, and send-now skips it until it confirms", async () => {
@@ -206,8 +281,9 @@ describe("digest recipients (roadmap 2.7)", () => {
     expect(before.json().recipients).toEqual([OWNER.email]);
 
     advanceHour();
+    // The button on the page, which is the only thing that spends a link (review of #354, item 3).
     const confirmed = await app.inject({
-      method: "GET",
+      method: "POST",
       url: `/v1/digests/confirm?token=${link}`,
     });
     expect(confirmed.statusCode).toBe(200);
@@ -222,7 +298,7 @@ describe("digest recipients (roadmap 2.7)", () => {
     expect(after.json().recipients).toEqual([OWNER.email, "grandma@example.com"]);
 
     // Single use: the same link a second time is refused.
-    const replay = await app.inject({ method: "GET", url: `/v1/digests/confirm?token=${link}` });
+    const replay = await app.inject({ method: "POST", url: `/v1/digests/confirm?token=${link}` });
     expect(replay.statusCode).toBe(404);
     await app.close();
   });
@@ -240,13 +316,15 @@ describe("digest recipients (roadmap 2.7)", () => {
     ]);
     // Mutant: drop the `tokenExpiresAt` test in lib/digestRecipients.ts -> this answers 200 and confirms
     // a link whose 24 hours are over.
-    const late = await app.inject({ method: "GET", url: `/v1/digests/confirm?token=${expired}` });
+    const late = await app.inject({ method: "POST", url: `/v1/digests/confirm?token=${expired}` });
     expect(late.statusCode).toBe(404);
     expect(ledger[0].confirmedAt).toBeNull();
 
-    const unknown = await app.inject({ method: "GET", url: `/v1/digests/confirm?token=${"e".repeat(64)}` });
+    const unknown = await app.inject({ method: "POST", url: `/v1/digests/confirm?token=${"e".repeat(64)}` });
     expect(unknown.statusCode).toBe(404);
-    const malformed = await app.inject({ method: "GET", url: "/v1/digests/confirm?token=short" });
+    // Unknown, expired and used are one answer — the 404 above is the same body for all three.
+    expect(unknown.json()).toEqual({ error: "confirmation_not_found_or_expired" });
+    const malformed = await app.inject({ method: "POST", url: "/v1/digests/confirm?token=short" });
     expect(malformed.statusCode).toBe(400);
     await app.close();
   });
@@ -305,6 +383,135 @@ describe("digest recipients (roadmap 2.7)", () => {
     advanceHour();
     const later = await app.inject({ method: "POST", url: "/v1/digests/send-now", headers: authHeader(app) });
     expect(later.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("mails a new address once when the same list is saved twice", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+
+    expect((await putPrefs(app, [OWNER.email, "grandma@example.com"])).statusCode).toBe(200);
+    expect((await putPrefs(app, [OWNER.email, "grandma@example.com"])).statusCode).toBe(200);
+    // Mutant: remove the `liveToken` branch in lib/digestRecipients.ts (issue a link on every save) ->
+    // two mails to the same stranger and a fresh token each time this screen is saved.
+    expect(mailed()).toEqual(["grandma@example.com"]);
+    expect(ledger).toHaveLength(1);
+    await app.close();
+  });
+
+  it("says an address is unsent when the confirmation mail fails, and clears its link", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    setEmailSender({ name: "down", send: async () => ({ ok: false as const, reason: "HTTP 503 unavailable", retryable: true }) });
+
+    const failed = await putPrefs(app, [OWNER.email, "grandma@example.com"]);
+    // Mutant: answer the status `pending` without clearing the link -> the family waits 24 hours for a
+    // message the provider never accepted, and the address holds a place under the cap all day.
+    expect(failed.statusCode).toBe(200);
+    expect(failed.json().recipients).toEqual([
+      { email: "parent-1@example.com", status: "confirmed" },
+      { email: "grandma@example.com", status: "unsent" },
+    ]);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].tokenHash).toBeNull();
+    expect(ledger[0].tokenExpiresAt).toBeNull();
+
+    // The next save, with the provider back, mails it again — the failure cost nothing but a retry.
+    setEmailSender(capture);
+    const retry = await putPrefs(app, [OWNER.email, "grandma@example.com"]);
+    expect(retry.json().recipients[1]).toEqual({ email: "grandma@example.com", status: "pending" });
+    expect(mailed()).toEqual(["grandma@example.com"]);
+    await app.close();
+  });
+
+  it("does not mail an address again when it is removed and re-added inside the link's life", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+
+    await putPrefs(app, ["a@example.com"]);
+    await putPrefs(app, ["b@example.com"]);
+    const third = await putPrefs(app, ["a@example.com"]);
+    expect(third.statusCode).toBe(200);
+    // Mutant: restore the pre-review `deleteMany` (drop `noLiveLink` from the where) -> removing `a`
+    // deletes its live row, the third save mints a second link, and `a@example.com` is mailed twice.
+    expect(mailed()).toEqual(["a@example.com", "b@example.com"]);
+    const a = ledger.filter((row) => row.email === "a@example.com");
+    expect(a).toHaveLength(1);
+    expect(a[0].tokenExpiresAt).toBeInstanceOf(Date);
+    await app.close();
+  });
+
+  it("stops issuing confirmation mail past ten live links a day, and says why", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    const batch = (from: number) => Array.from({ length: 5 }, (_, i) => `u${from + i}@example.com`);
+
+    expect((await putPrefs(app, batch(1))).statusCode).toBe(200);
+    expect((await putPrefs(app, batch(6))).statusCode).toBe(200);
+    expect(mailed()).toHaveLength(10);
+
+    const eleventh = await putPrefs(app, ["u11@example.com"]);
+    // Mutant: remove the `budget <= 0` branch in stageRecipients -> an eleventh mail leaves, and a family
+    // can mail a new stranger five at a time, forever, one save after another.
+    expect(eleventh.statusCode).toBe(200);
+    expect(eleventh.json().recipients).toEqual([
+      { email: "u11@example.com", status: "pending", limited: true },
+    ]);
+    expect(mailed()).toHaveLength(10);
+    // Nothing was stored for it either, so it does not hold a place under the cap.
+    expect(ledger.some((row) => row.email === "u11@example.com")).toBe(false);
+    await app.close();
+  });
+
+  it("serves a page on GET without confirming anything; the button's POST is what confirms", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    const token = "c".repeat(64);
+    seedLedger([
+      {
+        familyId: "fam-1",
+        email: "g@example.com",
+        tokenHash: hashConfirmToken(token),
+        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    ]);
+
+    const page = await app.inject({ method: "GET", url: `/v1/digests/confirm?token=${token}` });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers["content-type"]).toContain("text/html");
+    expect(page.body).toContain('method="post"');
+    expect(page.body).toContain(token);
+    // Mutant: call `confirmRecipient` in the GET handler -> a mail scanner or a link preview confirms an
+    // address no person agreed to, which is the whole point of the split.
+    expect(ledger[0].confirmedAt).toBeNull();
+    expect(ledger[0].tokenHash).toBe(hashConfirmToken(token));
+
+    // The page is the same for a token that was never issued: a GET discloses nothing.
+    const stranger = await app.inject({ method: "GET", url: `/v1/digests/confirm?token=${"9".repeat(64)}` });
+    expect(stranger.statusCode).toBe(200);
+    expect(stranger.body).toContain('method="post"');
+
+    const spent = await app.inject({ method: "POST", url: `/v1/digests/confirm?token=${token}` });
+    expect(spent.statusCode).toBe(200);
+    expect(spent.json()).toEqual({ confirmed: true, email: "g@example.com" });
+    expect(ledger[0].confirmedAt).toBeInstanceOf(Date);
+    await app.close();
+  });
+
+  it("answers a spent link with 404, the same answer as unknown and expired", async () => {
+    const app = await buildApp(digestRoutes, "/v1/digests");
+    const token = "b".repeat(64);
+    seedLedger([
+      {
+        familyId: "fam-1",
+        email: "h@example.com",
+        tokenHash: hashConfirmToken(token),
+        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    ]);
+
+    expect((await app.inject({ method: "POST", url: `/v1/digests/confirm?token=${token}` })).statusCode).toBe(200);
+    const again = await app.inject({ method: "POST", url: `/v1/digests/confirm?token=${token}` });
+    // Mutant: treat a confirmed row as success and keep its link (`if (row.confirmedAt) return { email }`
+    // plus `data: { confirmedAt: now }` in confirmRecipient) -> the second POST answers 200 and a link is
+    // reusable for the 24 hours it lives.
+    expect(again.statusCode).toBe(404);
+    expect(again.json()).toEqual({ error: "confirmation_not_found_or_expired" });
     await app.close();
   });
 });
