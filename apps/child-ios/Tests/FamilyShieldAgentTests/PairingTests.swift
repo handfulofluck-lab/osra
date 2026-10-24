@@ -8,11 +8,10 @@ final class PairingTests: XCTestCase {
 
     private let base = URL(string: "http://192.168.1.5:3000")!
 
-    // The store's secrets go to the Keychain; the unsigned test bundle has no access-group entitlement,
-    // so it uses its default group (see SecretStoreTests).
+    // The unsigned test bundle cannot reach the simulator Keychain (see AgentIdentityStoreTests).
     override func setUp() {
         super.setUp()
-        AgentIdentityStore.secrets = KeychainSecretStore(accessGroup: nil)
+        AgentIdentityStore.secrets = InMemorySecretStore()
         AgentIdentityStore.clear()
     }
 
