@@ -7,4 +7,4 @@
   `main` within a day. A diff that cannot be read builds rather than skips.
 - **Why:** a macOS minute bills as ten Linux minutes once the repository is private (Karim's 2026-10-23 condition for
   the private move: trim CI first), and the iOS job takes 3–5 minutes on every parent-app run.
-- `docs/TESTING.md` §4 (the workflow row and "When it runs") and roadmap 3.9 say when the job runs.
+- `docs/TESTING.md` §4 (the workflow row and "When it runs") says when the job runs.
