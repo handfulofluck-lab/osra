@@ -13,7 +13,7 @@ public enum InternalSigner {
 
     /// The v2 signing string: timestamp, nonce and body, dot-joined, byte for byte.
     public static func signingBytes(timestamp: String, nonce: String, body: Data) -> Data {
-        var data = Data("\(timestamp).\(nonce).".utf8)
+        var data = Data("\(timestamp).\(nonce)".utf8)
         data.append(body)
         return data
     }
