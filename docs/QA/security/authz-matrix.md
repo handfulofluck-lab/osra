@@ -181,6 +181,13 @@ These read or write only rows keyed by the caller's own id, so there's no other-
 |---|---|---|
 | `GET /health` | 9 | 200 |
 | `GET /health/deep` | 14 | 200 while the DB and Redis are up |
+| `GET /v1/digests/confirm` | digests 203 | 200 page for a well-formed token, and nothing is spent; 400 for a malformed one |
+| `POST /v1/digests/confirm` | digests 239 | 200 for a live token, which spends it; 404 for an unknown, expired or used one; 400 for a malformed one. A form POST gets the HTML page, a JSON caller gets JSON |
+
+The two confirmation routes (#354) take no session: the token in the mailed link is the credential, and
+the answers say nothing about which addresses are on a list. Covered by t:digests-abuse.test.ts:497 (GET
+spends nothing), :306 (the browser's form POST), :341 (expired and never issued), :531 (a spent link is
+404), and by p:R1–R6, which send the requests a browser sends against a live server.
 
 ## 1a. Coverage of the §1 cells
 
