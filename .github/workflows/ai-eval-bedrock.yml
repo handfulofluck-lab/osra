@@ -1,0 +1,126 @@
+name: ai-eval-bedrock
+
+# ADR-0033: a candidate production model on Amazon Bedrock, inside the EU, measured against the set.
+#
+# **Manual only**, like ai-eval-deepseek: every run bills the rows it scores, and the answer changes
+# only when the banks, the prompt or the model do. ADR-0033 asks for two runs on `test` per candidate
+# plus one on `all`; each run starts from an empty cache, so the two `test` runs are independent.
+#
+# **Synthetic messages only.** This workflow sends the committed evaluation set, which we wrote, about
+# children who do not exist. It never reads a real family's data, and its role can call nothing but
+# Bedrock models in EU regions (`infra/terraform/base/oidc.tf`, `bedrock_eval`).
+#
+# With the gate on, a candidate that misses the ADR-0033 bar fails the job. The result is uploaded
+# either way, because a failing candidate's numbers are the record of why it was not chosen.
+on:
+  workflow_dispatch:
+    inputs:
+      model_id:
+        description: "Bedrock model ID or eu. profile ID, e.g. eu.amazon.nova-micro-v1:0 (ADR-0033 Candidates)"
+        required: true
+      region:
+        description: "EU region to call from (ADR-0033 decision 1)"
+        required: false
+        type: choice
+        options: [eu-central-1, eu-north-1, eu-west-1, eu-west-3, eu-south-1, eu-south-2]
+        default: eu-central-1
+      split:
+        description: "Rows to score: the held-out test split, the whole set, or the dev split"
+        required: false
+        type: choice
+        options: [test, all, dev]
+        default: test
+      limit_per_category:
+        description: "Rows per category per language; 0 uses every row of the split"
+        required: false
+        default: "0"
+      price_in:
+        description: "US$ per 1M input tokens, from the AWS Price List (optional; adds cost per 1,000 scans)"
+        required: false
+        default: ""
+      price_out:
+        description: "US$ per 1M output tokens (optional)"
+        required: false
+        default: ""
+      extra_fields:
+        description: "JSON merged into additionalModelRequestFields, e.g. {\"enable_thinking\": false} (optional)"
+        required: false
+        default: ""
+      gate:
+        description: "Fail the job when the ADR-0033 bar is missed (recall 0.85, precision 0.6, hard-negative false alarms 0.05)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token the AWS role is assumed with; no long-lived key exists
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-engine
+    env:
+      BEDROCK_MODEL_ID: ${{ inputs.model_id }}
+      BEDROCK_REGION: ${{ inputs.region }}
+      BEDROCK_PRICE_IN: ${{ inputs.price_in }}
+      BEDROCK_PRICE_OUT: ${{ inputs.price_out }}
+      BEDROCK_EXTRA_FIELDS: ${{ inputs.extra_fields }}
+      BEDROCK_NO_CACHE: "1"
+      LIMIT: ${{ inputs.limit_per_category }}
+      SPLIT: ${{ inputs.split }}
+      GATE: ${{ inputs.gate }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Installed before any AWS credential exists in the job, so install-time code in a package cannot
+      # read one (the rule ai-eval-deepseek follows for its key).
+      - run: pip install -r requirements-dev.txt boto3==1.43.118
+
+      - name: Refuse to run without the role
+        env:
+          AWS_BEDROCK_EVAL_ROLE_ARN: ${{ vars.AWS_BEDROCK_EVAL_ROLE_ARN }}
+        run: |
+          if [ -z "${AWS_BEDROCK_EVAL_ROLE_ARN}" ]; then
+            echo "::error::AWS_BEDROCK_EVAL_ROLE_ARN is unset. After base is applied: gh variable set AWS_BEDROCK_EVAL_ROLE_ARN --body \"\$(terraform -chdir=infra/terraform/base output -raw bedrock_eval_role_arn)\""
+            exit 1
+          fi
+
+      - name: The banks and the committed set agree
+        run: |
+          python -m eval.banks
+          python -m eval.generate --check
+
+      # Pinned by full SHA (v4), as in api-publish.yml, so a moved tag cannot change what receives the token.
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_BEDROCK_EVAL_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+          role-session-name: ${{ github.run_id }}
+
+      - name: Score with the candidate model
+        run: |
+          GATE_ARGS=()
+          if [ "$GATE" = "true" ]; then
+            GATE_ARGS=(--fail-under-recall 0.85 --fail-under-precision 0.6 --fail-over-hard-fp 0.05)
+          fi
+          python -m eval.run_eval \
+            --scorer bedrock \
+            --limit-per-category "$LIMIT" \
+            --split "$SPLIT" \
+            --json bedrock-result.json \
+            "${GATE_ARGS[@]}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bedrock-eval-result-${{ github.run_id }}
+          path: services/ai-engine/bedrock-result.json
+          if-no-files-found: warn

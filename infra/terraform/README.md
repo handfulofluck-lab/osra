@@ -312,6 +312,17 @@ this one, `github_repo = "handfulofluck-lab/osra"` in `base/terraform.tfvars` â€
 empty until then. The workflow's first step fails with the command to run when either variable is
 unset.
 
+**A third, for the model evaluation (ADR-0033).** `ai-eval-bedrock.yml` assumes its own role, which can
+call Bedrock models in EU regions and nothing else, to score the synthetic evaluation set:
+
+```bash
+gh variable set AWS_BEDROCK_EVAL_ROLE_ARN --body "$(terraform -chdir=infra/terraform/base output -raw bedrock_eval_role_arn)"
+```
+
+It trusts the same subject as the publish role (this repository's `main`). It cannot subscribe to an AWS
+Marketplace model, so a Claude candidate answers `AccessDeniedException` until Karim has accepted its
+terms in the account (ADR-0033, his decision 1); Amazon's Nova models need no subscription.
+
 ### What the role can and cannot do
 
 `osra-staging-publish` trusts exactly one subject â€” the `main` branch of `handfulofluck-lab/osra`, in the

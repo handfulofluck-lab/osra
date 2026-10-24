@@ -117,3 +117,55 @@ resource "aws_iam_role_policy" "publish_ecr" {
   role   = aws_iam_role.publish[0].id
   policy = data.aws_iam_policy_document.publish_ecr[0].json
 }
+
+# --- ADR-0033: measuring candidate models on Amazon Bedrock, inside the EU, from GitHub Actions ---
+#
+# `ai-eval-bedrock.yml` sends the synthetic evaluation set — messages we wrote, about children who do not
+# exist — to one candidate model per run. The role trusts the same subject as `publish` (this
+# repository's `main`) and may call Bedrock models in EU regions and nothing else: no other service, no
+# region outside the EU, and no global or US inference profile, because ADR-0033 decision 1 rules them out.
+# It cannot subscribe to a Marketplace model either: accepting a model's terms is Karim's decision 1.
+
+locals {
+  # EU member-state regions (London and Zurich are not in the EU). Kept equal to `EU_REGIONS` in
+  # services/ai-engine/eval/bedrock_scorer.py, which refuses the same routes before a request is made.
+  bedrock_eu_regions = ["eu-central-1", "eu-north-1", "eu-west-1", "eu-west-3", "eu-south-1", "eu-south-2"]
+}
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_role" "bedrock_eval" {
+  count = local.github_oidc_enabled ? 1 : 0
+
+  name                 = "${local.name_prefix}-bedrock-eval"
+  assume_role_policy   = data.aws_iam_policy_document.publish_assume[0].json
+  max_session_duration = 3600
+
+  tags = {
+    Name = "${local.name_prefix}-bedrock-eval"
+  }
+}
+
+data "aws_iam_policy_document" "bedrock_eval" {
+  count = local.github_oidc_enabled ? 1 : 0
+
+  statement {
+    sid = "InvokeEuModelsOnly"
+    # Converse is authorised as InvokeModel.
+    actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    resources = flatten([
+      for region in local.bedrock_eu_regions : [
+        "arn:aws:bedrock:${region}::foundation-model/*",
+        "arn:aws:bedrock:${region}:${data.aws_caller_identity.current.account_id}:inference-profile/eu.*",
+      ]
+    ])
+  }
+}
+
+resource "aws_iam_role_policy" "bedrock_eval" {
+  count = local.github_oidc_enabled ? 1 : 0
+
+  name   = "${local.name_prefix}-bedrock-eval"
+  role   = aws_iam_role.bedrock_eval[0].id
+  policy = data.aws_iam_policy_document.bedrock_eval[0].json
+}

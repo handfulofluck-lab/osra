@@ -35,6 +35,11 @@ output "publish_role_arn" {
   value = local.github_oidc_enabled ? aws_iam_role.publish[0].arn : ""
 }
 
+output "bedrock_eval_role_arn" {
+  description = "Role ai-eval-bedrock.yml assumes over OIDC to measure candidate models (ADR-0033); empty unless OIDC is configured."
+  value       = local.github_oidc_enabled ? aws_iam_role.bedrock_eval[0].arn : ""
+}
+
 output "certificate_arn" {
   description = "ACM certificate for the ALB, or empty in non-release (HTTP-only) mode."
   value       = local.certificate_arn
