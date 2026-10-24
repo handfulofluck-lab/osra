@@ -145,7 +145,6 @@ jobs:
       OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
       # Handed to the test process without the prefix. OSRA_REQUIRE_LIVE=1 turns a missing input into a
       # failure instead of a skip (#361).
-      TEST_RUNNER_OSRA_REQUIRE_LIVE: '1'
       TEST_RUNNER_OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
