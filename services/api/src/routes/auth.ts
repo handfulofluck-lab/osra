@@ -34,7 +34,7 @@ import {
   hashRecoveryCode,
   normaliseRecoveryCode,
 } from "../lib/mfaRecovery.js";
-import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, signParentToken } from "../lib/sessions.js";
+import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, revokeTokenOnce, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 
 const RegisterSchema = z.object({
@@ -1382,7 +1382,11 @@ export async function authRoutes(app: FastifyInstance) {
           await revokeAllRefreshTokens(parentId);
           const jti = await redis.get(`refresh:jwt:${hash}`).catch(() => null);
           if (jti) {
-            await redis.set(`revoked:token:${jti}`, "1", "EX", 86400);
+            // ADR-0032: this is a revocation too, so it is written where a restart cannot lose it.
+            // The version bump above already kills the token (it was minted at the previous `sv`);
+            // the row covers the case the other way round, and costs one upsert on a path that has
+            // already touched Postgres through `invalidateSessionsBefore`.
+            await revokeTokenOnce(jti, parentId, 24 * 3600);
           }
         }
         return reply.code(401).send({ error: "refresh_token_reused" });
@@ -1440,7 +1444,15 @@ export async function authRoutes(app: FastifyInstance) {
       } catch { parentId = null; }
       await retireRefreshToken(hash, parentId);
       // ADR-0014: logging out a session also kills the access token that was issued with it.
-      if (jti) await redis.set(`revoked:token:${jti}`, "1", "EX", 8 * 24 * 3600).catch(() => {});
+      // ADR-0032: the record goes to Postgres before the cache, so a restarted or evicted Redis
+      // cannot bring the token back. Both writes fail closed — a 200 that means "logged out" must
+      // not rest on a revocation that exists nowhere durable.
+      //
+      // `parentId` is read from the same refresh record as `jti`, so it is present whenever `jti` is;
+      // the empty-string fallback only covers a record someone wrote without one, and such a row is
+      // stored for the record (its parent's cache rebuild cannot find it, and a refresh record with
+      // no owner cannot be rotated back into a session anyway).
+      if (jti) await revokeTokenOnce(jti, parentId ?? "");
     }
     return { ok: true };
   });

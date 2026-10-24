@@ -9,10 +9,23 @@ resource "aws_elasticache_subnet_group" "main" {
 
 # Redis 7 parameter-group family: the Valkey engine could not be listed at the time of writing — see
 # the note on the replication group below.
+#
+# `maxmemory-policy = noeviction` is a security setting, not a tuning knob (ADR-0032). The default
+# `allkeys-lru` lets Redis silently delete the keys that carry revocation state —
+# `auth:session-version:<parentId>`, `revoked:token:<jti>`, `revoked:device:<deviceId>` — under memory
+# pressure, and an evicted key reads as "nothing was revoked". Since the API now stores every
+# revocation in Postgres and treats these keys as a cache, an eviction costs a database read rather
+# than a resurrection; noeviction turns a full node into write errors the API fails closed on instead
+# of a silent data loss whose only symptom is a revoked session that works again.
 resource "aws_elasticache_parameter_group" "cache" {
   name        = "${local.name_prefix}-redis7"
   family      = "redis7"
   description = "OSRA staging Redis defaults"
+
+  parameter {
+    name  = "maxmemory-policy"
+    value = "noeviction"
+  }
 
   tags = {
     Name = "${local.name_prefix}-redis7"
@@ -20,8 +33,9 @@ resource "aws_elasticache_parameter_group" "cache" {
 }
 
 # One node, no replica. ADR-0028 names ElastiCache Valkey because the API fail-closes parent
-# sessions when Redis is unreachable; a second node would double the bill for a cache that is
-# rebuildable. Staging accepts the restart risk.
+# sessions when Redis is unreachable; a second node would double the bill for a cache whose bulk is
+# rebuildable — the revocation keys are rebuilt from Postgres, not from another node (ADR-0032).
+# Staging accepts the restart risk.
 #
 # Engine is redis 7.1, not valkey: on 2026-10-22, in me-central-1, `aws elasticache
 # describe-cache-engine-versions --engine valkey` returned InternalFailure (three attempts) while
@@ -58,8 +72,14 @@ resource "aws_elasticache_replication_group" "main" {
   apply_immediately          = true
   auto_minor_version_upgrade = true
 
-  # No snapshots: cache contents are reconstructible and staging does not pay for backups.
-  snapshot_retention_limit = 0
+  # One daily snapshot (ADR-0032). The rest of the keyspace is reconstructible — pub/sub fan-out,
+  # usage counters, refresh records — but the revocation keys are not: `auth:session-version:<parentId>`
+  # (a monotonic counter, whose loss reads as "nothing was revoked"), `revoked:token:<jti>` (the
+  # single-logout record, mirrored in the RevokedToken table) and `revoked:device:<deviceId>` (what
+  # makes an unpaired phone's 10-year token answer 401). Postgres is the record for all three and the
+  # API rebuilds each key on a miss, so the snapshot is a second line of defence, not the mechanism:
+  # it bounds the window in which a restart plus a missing Postgres row could resurrect a session.
+  snapshot_retention_limit = 1
 
   tags = {
     Name = "${local.name_prefix}-redis"
