@@ -22,8 +22,8 @@ name: verified-gate
 # this, a comment from ANY account ending "— Claude" with the head sha satisfied (2), so a signature typed
 # by any commenter, or by another member's agent that is also called Claude, counted as Claude's.
 # Self-test: scripts/check-verified-gate-signers.mjs (run by workflow-lint).
-# Carry-forward decision: scripts/verified-gate-carry.mjs, with its own `--selftest` (also run by
-# workflow-lint) over real-git fixtures.
+# Carry-forward decision: scripts/verified-gate-carry.mjs — run from `origin/main`, with its own
+# `--selftest` (also run by workflow-lint) over real-git fixtures.
 #
 # HONEST LIMIT: all agents still share that one GitHub account, so CI cannot prove WHICH agent wrote a
 # comment or set the label, and a member with write access can edit an agent's comment (GitHub keeps the
@@ -32,17 +32,21 @@ name: verified-gate
 #
 # CARRY-FORWARD (added 2026-10-19, issue #207): main's protection is `strict` (branch up to date), so every
 # merge forces the PRs behind it to merge main in, which changes their head. A signature at sha S still
-# counts for head H when (a) S is an ancestor of H and every commit in S..H that is not on main is a
-# merge commit, and
-# (b) the PR's own change is identical: diff(merge-base(main,S), S) and diff(merge-base(main,H), H)
-# have the same `git patch-id --stable`, compared with -U0 on BOTH sides. `patch-id` hashes hunks with
-# their context lines, and folding main in moves the merge base, so an edit by main near the PR's hunks
-# changed the context while the change itself did not — and the gate refused a correctly folded merge
-# (#357: on #349 the default-context ids differed while the -U0 ids were equal and both diffstats were
-# identical). -U0 still catches a different change — a deleted or added line, a changed value, another
-# file — but not a pure line move, which is the accepted cost of not switching to `git range-diff`.
-# A merge that resolves a conflict inside the PR's files, or adds anything that is not main's, changes
-# (b) and needs a fresh verification.
+# counts for head H when
+# (a) S is an ancestor of H and every commit in S..H that is not on main is a merge commit,
+# (b) every such merge is a clean merge of its parents: re-running `git merge-tree --write-tree <p1> <p2>`
+# produces exactly the merge commit's own tree. A conflict, a hand resolution, an evil merge that adds
+# something in neither parent, or a merge with other than two parents needs a fresh verification, and
+# (c) the PR's own change is identical: diff(merge-base(main,S), S) and diff(merge-base(main,H), H)
+# have the same `git patch-id --stable`, compared with -U0 on BOTH sides.
+#
+# Why -U0, and why (b) exists (2026-10-24, #357 and its review): `patch-id` hashes hunks with their context
+# lines, and folding main in moves the merge base, so with the default context an edit by main near the PR's
+# hunks refused a correctly folded merge (#349: default-context ids differed, -U0 ids equal, identical
+# diffstats). Context had to go. But `patch-id` also drops the hunk header, including the function name, so
+# -U0 no longer compares WHERE a line sits: a hand-edited fold could move the PR's line into another
+# function and the patch would still hash the same. (b) closes that gap by allowing only merges git produced
+# itself. The remaining limit is therefore a line moved by a clean merge, and that is git's own result.
 #
 # ORDER for verifiers: post the signed comment first, then add the label. Adding (or removing and
 # re-adding) the label is what re-runs this check; a comment alone does not.
@@ -132,13 +136,19 @@ jobs:
             done
           done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SIGNER_LOGIN) | .body | gsub("[[:cntrl:]]"; " ")')
 
-          # Carry-forward (see header): only merges after the signature, and the PR's own patch unchanged.
-          # The decision is scripts/verified-gate-carry.mjs (self-tested by workflow-lint): it compares the
-          # two patches with -U0 on both sides, prints carried/differs/cannot-decide, and exits 0/1/2. Any
-          # nonzero exit means this signature is not carried, so the loop moves on to the next one.
+          # Carry-forward (see header): only merges after the signature, every one of them a clean merge of
+          # its parents, and the PR's own patch unchanged. The decision is scripts/verified-gate-carry.mjs,
+          # taken from origin/main rather than from this checkout: a merge then cannot change the rule that
+          # judges it, and a branch folded before this script reached main still gets a real decision (a
+          # missing copy fails closed instead of "Cannot find module"). Any nonzero exit means this
+          # signature is not carried, so the loop moves on to the next one.
           if [ -z "$verified" ] && [ -n "$signed" ]; then
+            if ! git show origin/main:scripts/verified-gate-carry.mjs > "$RUNNER_TEMP/verified-gate-carry.mjs"; then
+              echo "::error::origin/main has no scripts/verified-gate-carry.mjs, so carry-forward cannot be decided; verify the head instead."
+              exit 1
+            fi
             for sha in $signed; do
-              if node scripts/verified-gate-carry.mjs "$sha" "$HEAD_SHA"; then
+              if node "$RUNNER_TEMP/verified-gate-carry.mjs" "$sha" "$HEAD_SHA"; then
                 verified="$sha (carried forward)"
                 break
               fi

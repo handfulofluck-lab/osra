@@ -9,7 +9,10 @@
  * A signature at sha S covers head H when ALL of these hold:
  *   1. S is an ancestor of H.
  *   2. Every commit in `S..H` that is not on main is a merge commit.
- *   3. The PR's own change is identical:
+ *   3. Every such merge is a clean merge of its parents: `git merge-tree --write-tree <p1> <p2>` must
+ *      produce exactly the merge commit's own tree. A conflict, a hand resolution, an evil merge that
+ *      adds something in neither parent, or a merge with other than two parents refuses.
+ *   4. The PR's own change is identical:
  *        patch-id( diff(-U0, merge-base(main,S), S) )  ==  patch-id( diff(-U0, merge-base(main,H), H) )
  *
  * Why -U0 (2026-10-24, issue #357): `git patch-id` hashes hunks WITH their context lines. Folding main in
@@ -19,9 +22,12 @@
  * `git diff --stat` outputs were identical. -U0 on BOTH sides: a stored signature has no stored patch-id to
  * stay compatible with, and comparing one side with context would make every comparison say "differs".
  *
- * What -U0 still catches: a deleted or added line, a changed value, a different file. What it no longer
- * catches: a pure line move (the same lines at a different line number), which is close enough for "did the
- * PR's own change move"; `git range-diff` would be a larger change to the gate than this rule needs.
+ * Why rule 3 exists (#358 review): `patch-id` also drops the `@@` header, including the function name git
+ * writes there, so with -U0 nothing records WHERE a hunk sits. A hand-edited fold could move the PR's line
+ * into another function and the patch would still hash the same. Rule 3 closes that: only a merge git
+ * produced itself may follow the signature, so a line that moved, moved because git moved it. Rule 4 still
+ * asks whether the change itself moved; rule 3 is what makes the answer safe. The remaining limit is a line
+ * moved by a clean merge — and that is git's own merge result, not a person's edit.
  *
  * Usage:
  *   node scripts/verified-gate-carry.mjs <signed-sha> <head-sha>
@@ -32,8 +38,10 @@
  *
  * stdout: `carried`, `differs`, or `cannot-decide`.
  * stderr: one line naming the rule that decided.
- * Exit: 0 carried · 1 differs · 2 cannot decide (missing or unknown sha, S not an ancestor of H, a
- *       non-merge commit after the signature, or git could not answer). Any nonzero means "do not carry".
+ * Exit: 0 carried · 1 differs (the patch moved, or a merge after the signature was not a clean merge of
+ *       its parents) · 2 cannot decide (missing or unknown sha, S not an ancestor of H, a non-merge commit
+ *       after the signature, git older than 2.38 so a merge cannot be re-run, or git could not answer).
+ *       Any nonzero means "do not carry".
  *
  * The `cannot-decide` choice for a non-merge commit is deliberate: the signature did cover a different
  * thing than the head now contains, so the gate refuses exactly as the inline bash did (it printed
@@ -108,6 +116,51 @@ export function patchId(cwd, rev, { mainRef = DEFAULT_MAIN_REF, context = 0 } = 
 const short = (sha) => sha.slice(0, 12);
 const show = (id) => (id ? `patch-id ${id.slice(0, 12)}` : 'an empty diff');
 
+/** Is the local git at least `major.minor`? Returns null when the version cannot be read. */
+export function gitVersionAtLeast(cwd, major, minor) {
+  let out;
+  try {
+    out = git(cwd, ['version']).trim();
+  } catch {
+    return null;
+  }
+  const match = out.match(/^git version (\d+)\.(\d+)/);
+  if (!match) return null;
+  const [foundMajor, foundMinor] = [Number(match[1]), Number(match[2])];
+  return foundMajor > major || (foundMajor === major && foundMinor >= minor);
+}
+
+/**
+ * Why `merge` is not a clean merge of its parents, or null when it is one.
+ * `git merge-tree --write-tree` (git >= 2.38) re-runs the merge; a clean result must reproduce the
+ * merge commit's own tree exactly. Status 1 means the merge conflicted, so a person resolved it.
+ */
+export function mergeIsClean(cwd, merge) {
+  const parents = git(cwd, ['rev-list', '--parents', '-n', '1', merge]).trim().split(' ').slice(1);
+  if (parents.length !== 2) {
+    return `${short(merge)} has ${parents.length} parents, so it is not a two-parent fold that this rule can judge`;
+  }
+  const result = spawnSync('git', ['merge-tree', '--write-tree', parents[0], parents[1]], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: MAX_BUFFER,
+  });
+  if (result.status === 1) {
+    return `${short(merge)} had conflicts, so its resolution needs a verification`;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `git merge-tree --write-tree failed for ${short(merge)} (${result.status ?? result.error?.message ?? 'unknown'}): ${(result.stderr || '').trim()}`,
+    );
+  }
+  const cleanTree = (result.stdout || '').split('\n')[0].trim();
+  const mergeTree = git(cwd, ['rev-parse', `${merge}^{tree}`]).trim();
+  if (cleanTree !== mergeTree) {
+    return `${short(merge)} is not the clean merge of its parents: its tree differs from the merge git would produce, so a resolution or an evil merge changed it`;
+  }
+  return null;
+}
+
 /**
  * @returns {{code: 0|1|2, verdict: 'carried'|'differs'|'cannot-decide', reason: string}}
  */
@@ -148,6 +201,32 @@ export function decide({ signed, head, cwd = process.cwd(), mainRef = DEFAULT_MA
     return cannot(
       `${stray.length} non-merge commit(s) arrived after the signature (${stray.map(short).join(', ')}) — only merges of ${mainRef} may follow a signed sha`,
     );
+  }
+
+  // Rule (c): every merge after the signature must be a clean merge of its parents. A hand resolution,
+  // an evil merge, or a merge this rule cannot judge (not two parents) needs a fresh verification.
+  let merges;
+  try {
+    merges = git(cwd, ['rev-list', '--merges', `${s}..${h}`, `^${mainRef}`]).trim().split('\n').filter(Boolean);
+  } catch (error) {
+    return cannot(`git could not list the merges since the signature: ${error.message}`);
+  }
+  if (merges.length) {
+    const supported = gitVersionAtLeast(cwd, 2, 38);
+    if (supported !== true) {
+      return cannot(
+        `${supported === null ? 'the local git version could not be read' : 'this git is older than 2.38'}, but re-running the ${merges.length} merge(s) after the signature needs \`git merge-tree --write-tree\` (git >= 2.38); upgrade git, or verify the head instead of carrying a signature`,
+      );
+    }
+    for (const merge of merges) {
+      let why;
+      try {
+        why = mergeIsClean(cwd, merge);
+      } catch (error) {
+        return cannot(error.message);
+      }
+      if (why) return { code: 1, verdict: 'differs', reason: why };
+    }
   }
 
   let signedId, headId;
@@ -206,9 +285,11 @@ function cli(argv) {
 const LINES = (n) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
 
 /**
- * Fixtures are built with real git in a temporary directory — no faked diff or patch-id output. Each case
- * also asserts the facts that make its named rule the deciding one, so removing that rule changes the
- * outcome (or, for the ancestor case, changes which rule the human line names).
+ * Fixtures are built with real git in a temporary directory — no faked diff, patch-id or merge-tree output.
+ * Each case also asserts the facts that make its named rule the deciding one, so removing that rule changes
+ * the outcome (or, for the ancestor case, changes which rule the human line names). Cases 1 and 5 are clean
+ * folds that must carry; case 2 is a conflicted resolution; case 6 is a hand rewrite whose -U0 patch is
+ * unchanged (the gap rule (c) closes); case 7 is a merge rule (c) cannot judge.
  */
 function selftest() {
   const root = mkdtempSync(join(tmpdir(), 'verified-gate-carry-'));
@@ -306,9 +387,10 @@ function selftest() {
   });
 
   // 2. The merge changes the PR's own hunk. A plain edit committed after signing would be refused by the
-  //    merge-only rule before the patch comparison ran, so this fixture is the realistic shape: main
-  //    changed the same line, the merge resolved the conflict to main's value, and the PR's own change is
-  //    gone. Rule (a) passes (only the merge commit follows S), so (b) is what must refuse.
+  //    merge-only rule before rule (c) ran, so this fixture is the realistic shape: main changed the same
+  //    line, the merge resolved the conflict to main's value, and the PR's own change is gone. Rule (a)
+  //    passes (only the merge commit follows S); rule (c) now decides it — the merge conflicted, so a
+  //    person resolved it — and the patch comparison is the second layer behind that.
   cases.push({
     name: "the PR's own hunk changed: a folded merge still refuses",
     run() {
@@ -338,6 +420,10 @@ function selftest() {
       if (result.code !== 1 || result.stdout !== 'differs') {
         bad.push(`want differs/1, got ${result.stdout || '(no stdout)'}/${result.code}: ${result.stderr}`);
       }
+      if (!/had conflicts/.test(result.stderr)) {
+        bad.push(`rule (c) should be what refuses a conflicted merge, got: ${result.stderr}`);
+      }
+      if (!result.stderr.includes(short(H))) bad.push(`the reason does not name the merge: ${result.stderr}`);
       return bad;
     },
   });
@@ -435,6 +521,90 @@ function selftest() {
       if (result.code !== 0 || result.stdout !== 'carried') {
         bad.push(`want carried/0, got ${result.stdout || '(no stdout)'}/${result.code}: ${result.stderr}`);
       }
+      return bad;
+    },
+  });
+
+  // 6. The gap rule (c) closes (#358 review): the fold rewrites the file so the PR's `guard();` sits in a
+  //    different function. Every hunk is still "add one line", so the -U0 patch-ids are EQUAL — asserted
+  //    below, because that equality is the gap — and only rule (c) can refuse. With default context the
+  //    old comparison refused this; -U0 alone would carry it.
+  cases.push({
+    name: "a merge that moves the PR's line into another function refuses",
+    run() {
+      const bad = [];
+      const base = 'function a() {\n  one();\n}\n\nfunction b() {\n  two();\n}\n';
+      const dir = newRepo('f.js', base);
+      g(dir, ['checkout', '-q', '-b', 'pr']);
+      writeFileSync(join(dir, 'f.js'), base.replace('  one();\n', '  one();\n  guard();\n'));
+      const S = commit(dir, 'pr: guard under a()');
+      g(dir, ['checkout', '-q', 'main']);
+      writeFileSync(join(dir, 'f.js'), '// touched by main\n' + base);
+      commit(dir, 'main: unrelated change');
+      g(dir, ['checkout', '-q', 'pr']);
+      const merge = spawnSync('git', ['merge', '--no-ff', '--no-commit', 'main'], {
+        cwd: dir,
+        env: gitEnv,
+        encoding: 'utf8',
+      });
+      if (merge.status !== 0) {
+        bad.push(`the fixture merge did not complete cleanly (${merge.status}); it should be a hand rewrite of a clean merge`);
+      }
+      writeFileSync(join(dir, 'f.js'), '// touched by main\n' + base.replace('  two();\n', '  two();\n  guard();\n'));
+      g(dir, ['add', 'f.js']);
+      g(dir, ['commit', '-qm', 'fold main, guard moved into b()']);
+      const H = rev(dir, 'HEAD');
+
+      const ancestor = spawnSync('git', ['merge-base', '--is-ancestor', S, H], { cwd: dir, env: gitEnv });
+      if (ancestor.status !== 0) bad.push('rule (a) does not hold in the fixture');
+      if (g(dir, ['rev-list', '--no-merges', `${S}..${H}`, '^main']).trim()) {
+        bad.push('a non-merge commit follows the signature, so the merge-only rule would decide this case');
+      }
+      if (patchIdAt(dir, S, 0) !== patchIdAt(dir, H, 0)) {
+        bad.push('the -U0 patch-ids differ, so the patch comparison would decide this case; the gap is not pinned');
+      }
+      const result = cli(dir, S, H);
+      if (result.code !== 1 || result.stdout !== 'differs') {
+        bad.push(`want differs/1, got ${result.stdout || '(no stdout)'}/${result.code}: ${result.stderr}`);
+      }
+      if (!result.stderr.includes(short(H))) bad.push(`the reason does not name the merge: ${result.stderr}`);
+      if (!/not the clean merge/.test(result.stderr)) bad.push(`the reason does not name rule (c): ${result.stderr}`);
+      return bad;
+    },
+  });
+
+  // 7. A merge this rule cannot judge: an octopus merge (three parents) after the signature. The other
+  //    parents are on main, so the merge-only rule passes and rule (c) is reached; it must say so rather
+  //    than pick two parents and guess.
+  cases.push({
+    name: 'a merge with other than two parents refuses',
+    run() {
+      const bad = [];
+      const dir = newRepo('f.txt', LINES(10));
+      g(dir, ['checkout', '-q', '-b', 'pr']);
+      setLine(dir, 'f.txt', 5, 'line 5 (PR)');
+      const S = commit(dir, 'pr: change line 5');
+      g(dir, ['checkout', '-q', 'main']);
+      writeFileSync(join(dir, 'm1.txt'), 'm1\n');
+      const m1 = commit(dir, 'main: m1');
+      g(dir, ['checkout', '-q', '-b', 'side', 'HEAD~1']);
+      writeFileSync(join(dir, 'side.txt'), 'side\n');
+      const side = commit(dir, 'side: s1');
+      g(dir, ['checkout', '-q', 'main']);
+      g(dir, ['merge', '-q', '--no-ff', 'side', '-m', 'main: merge side']);
+      const mainTip = rev(dir, 'main');
+      const tree = rev(dir, `${mainTip}^{tree}`);
+      const H = g(dir, ['commit-tree', tree, '-p', S, '-p', m1, '-p', side, '-m', 'three-parent fold']).trim();
+
+      if (g(dir, ['rev-list', '--no-merges', `${S}..${H}`, '^main']).trim()) {
+        bad.push('a non-merge commit divides S and H, so the merge-only rule would decide this case');
+      }
+      const result = cli(dir, S, H);
+      if (result.code !== 1 || result.stdout !== 'differs') {
+        bad.push(`want differs/1, got ${result.stdout || '(no stdout)'}/${result.code}: ${result.stderr}`);
+      }
+      if (!/has 3 parents/.test(result.stderr)) bad.push(`the reason does not report the parent count: ${result.stderr}`);
+      if (!result.stderr.includes(short(H))) bad.push(`the reason does not name the merge: ${result.stderr}`);
       return bad;
     },
   });

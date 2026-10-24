@@ -157,12 +157,16 @@ jobs:
           node scripts/check-verified-gate-signers.mjs --selftest
           node scripts/check-verified-gate-signers.mjs
 
-      - name: Carry-forward keeps a signature only when the PR's own change did not move (#357)
+      - name: Carry-forward keeps a signature only when no hand-edited merge followed it (#357, #358 review)
         # `git patch-id` hashes hunks with their context lines, so the old comparison refused a correctly
         # folded merge when main edited a line near the PR's hunks (#349: default context DIFFER, -U0
-        # EQUAL). The fixtures are real git repositories. Removing any rule from the script makes a case
-        # fail: the -U0 comparison, the merge-only rule, the ancestor rule, the merge base, and the patch
-        # refusal itself (the case that must still refuse is a merge that changes the PR's own hunk).
+        # EQUAL). With context gone, position is not compared, so every merge after the signature must be
+        # a clean merge of its parents. The fixtures are real git repositories. Every rule that can change
+        # the answer has a fixture that fails without it: the -U0 comparison, the merge-only rule, the
+        # ancestor rule, the merge base, and rule (c)'s conflict, tree and parent-count checks (case 6 pins
+        # the gap -U0 alone opens: a hand rewrite that moves the PR's line into another function, with equal
+        # -U0 ids). The patch comparison is kept as a second layer; no fixture isolates it any more, because
+        # a clean fold cannot change it.
         run: node scripts/verified-gate-carry.mjs --selftest
 
       - name: Check documentation links resolve
