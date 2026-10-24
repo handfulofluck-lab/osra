@@ -42,7 +42,6 @@ public struct KeychainSecretStore: SecretStore {
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: account,
         ]
-        if let accessGroup { query[kSecAttrAccessGroup as String] = accessGroup }
         return query
     }
 
