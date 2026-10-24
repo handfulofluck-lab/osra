@@ -14,7 +14,7 @@
   hand-edited fold could move the PR's line into another function and the patch would still hash the same.
   The only remaining limit is a line moved by a clean merge, and that is git's own result.
 - The decision moved out of the workflow into `scripts/verified-gate-carry.mjs`, run from `origin/main`
-  so a merge cannot change the rule that judges it. It prints `carried`, `differs` or `cannot-decide`,
+  so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It prints `carried`, `differs` or `cannot-decide`,
   names the deciding rule on stderr, and exits 0, 1 or 2. The workflow is a thin loop over the signed
   shas, the same split `workflow-lint` already uses for `check-verified-gate-signers.mjs`. S is still an
   ancestor of H, and every commit in `S..H` that is not on main is still a merge commit.

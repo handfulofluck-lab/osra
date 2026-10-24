@@ -22,13 +22,16 @@ name: verified-gate
 # this, a comment from ANY account ending "— Claude" with the head sha satisfied (2), so a signature typed
 # by any commenter, or by another member's agent that is also called Claude, counted as Claude's.
 # Self-test: scripts/check-verified-gate-signers.mjs (run by workflow-lint).
-# Carry-forward decision: scripts/verified-gate-carry.mjs — run from `origin/main`, with its own
-# `--selftest` (also run by workflow-lint) over real-git fixtures.
+# Carry-forward decision: scripts/verified-gate-carry.mjs — run from `origin/main`, so a PR's edit to the
+# script does not judge its own carry-forward. Its `--selftest` (also run by workflow-lint) uses real-git
+# fixtures. The workflow file itself still comes from the PR; see HONEST LIMIT.
 #
 # HONEST LIMIT: all agents still share that one GitHub account, so CI cannot prove WHICH agent wrote a
 # comment or set the label, and a member with write access can edit an agent's comment (GitHub keeps the
 # edit history on the comment). A forged verification is still a signed, permanent record on the PR. The
 # gate turns "merged without verification" from an oversight into a deliberate act.
+# The workflow and its script run from the PR's own code, so for a member with write access the gate is a
+# convention, like the comment and the label. It does not stop someone who chooses to bypass it (#359).
 #
 # CARRY-FORWARD (added 2026-10-19, issue #207): main's protection is `strict` (branch up to date), so every
 # merge forces the PRs behind it to merge main in, which changes their head. A signature at sha S still
@@ -138,9 +141,10 @@ jobs:
 
           # Carry-forward (see header): only merges after the signature, every one of them a clean merge of
           # its parents, and the PR's own patch unchanged. The decision is scripts/verified-gate-carry.mjs,
-          # taken from origin/main rather than from this checkout: a merge then cannot change the rule that
-          # judges it, and a branch folded before this script reached main still gets a real decision (a
-          # missing copy fails closed instead of "Cannot find module"). Any nonzero exit means this
+          # taken from origin/main rather than from this checkout, so a PR's edit to the script does not
+          # judge its own carry-forward (the workflow file still comes from the PR; see #359), and a branch
+          # folded before this script reached main still gets a real decision (a missing copy fails closed
+          # instead of "Cannot find module"). Any nonzero exit means this
           # signature is not carried, so the loop moves on to the next one.
           if [ -z "$verified" ] && [ -n "$signed" ]; then
             if ! git show origin/main:scripts/verified-gate-carry.mjs > "$RUNNER_TEMP/verified-gate-carry.mjs"; then
