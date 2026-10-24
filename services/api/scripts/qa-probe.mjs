@@ -1650,6 +1650,9 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     ["POST", `/v1/family/children/${Z}/consent/revoke`, {}, 403, "owner_role_required"],
     ["POST", "/v1/family/invites", { email: "q@example.invalid", role: "guardian", permissions: [] }, 403, "owner_role_required"],
     ["DELETE", `/v1/family/invites/${Z}`, undefined, 403, "owner_role_required"],
+    // #354: where the family's digest goes, and sending it, are owner actions.
+    ["PUT", "/v1/digests/prefs", { dailyEmail: false, weeklyEmail: false, pushEnabled: false, emails: ["q@example.invalid"] }, 403, "owner_role_required"],
+    ["POST", "/v1/digests/send-now", {}, 403, "owner_role_required"],
     ...(mrDeviceId ? [
       ["POST", `/v1/devices/${mrDeviceId}/telemetry`, { batteryPct: 50 }, 403, "device_role_required"],
       ["POST", `/v1/devices/${mrDeviceId}/activity`, { events: [] }, 403, "device_role_required"],
@@ -1718,6 +1721,35 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     check("Q8 another family's owner is refused on this family's scoped routes (403 forbidden)", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
   } else {
     target("Q8 another family's owner is refused on this family's scoped routes", "the no-witness family above has no live session");
+  }
+
+  // Q9: outbound email cannot be steered by a family (plan 2.7, #354). Text that lands in
+  // a subject is bounded, the digest list is capped, and an address that isn't a parent of the family
+  // gets nothing until it confirms. Mutants: drop `.max(80)` on familyName -> Q9a 201; drop `.max(5)`
+  // -> Q9b 200; drop the confirmation filter in send-now -> Q9c lists the stranger. The 21st-invite 429
+  // is not probed: reaching it sends 20 real invites on a deployed API (test/invites.test.ts pins it).
+  const longName = await qcall("POST", "/v1/auth/register", {
+    body: { email: `qa-longname-${stamp}@example.com`, password: PASSWORD, displayName: "QA", familyName: "q".repeat(81), region: "US" },
+  });
+  check("Q9a an 81-character familyName is refused at registration (400)", longName.status === 400 && !!longName.data?.error?.fieldErrors?.familyName, `got ${longName.status} ${JSON.stringify(longName.data?.error?.fieldErrors ?? null)}`);
+  if (nwToken) {
+    const digestPrefs = (emails) => ({ dailyEmail: true, weeklyEmail: false, pushEnabled: false, emails });
+    const six = await qcall("PUT", "/v1/digests/prefs", { token: nwToken, body: digestPrefs(Array.from({ length: 6 }, (_, i) => `q${i}@example.invalid`)) });
+    check("Q9b a digest list of six addresses is refused (400)", six.status === 400 && !!six.data?.error?.fieldErrors?.emails, `got ${six.status}`);
+    const stranger = `qa-digest-stranger-${stamp}@example.invalid`;
+    const set = await qcall("PUT", "/v1/digests/prefs", { token: nwToken, body: digestPrefs([nwEmail, stranger]) });
+    const byEmail = Object.fromEntries((set.data?.recipients ?? []).map((r) => [r.email, r.status]));
+    const sent = await qcall("POST", "/v1/digests/send-now", { token: nwToken, body: {} });
+    const sentTo = Array.isArray(sent.data?.recipients) ? sent.data.recipients : null;
+    check(
+      "Q9c a non-parent digest address stays pending and send-now leaves it out; the parent's own address is confirmed",
+      set.status === 200 && byEmail[stranger] === "pending" && byEmail[nwEmail.toLowerCase()] === "confirmed" && sent.status === 200 && !!sentTo && !sentTo.includes(stranger),
+      `prefs=${set.status} statuses=${JSON.stringify(byEmail)} sendNow=${sent.status} recipients=${JSON.stringify(sentTo)}`,
+    );
+    // Leave the family's digest as it was: off, with only its own address.
+    await qcall("PUT", "/v1/digests/prefs", { token: nwToken, body: { dailyEmail: false, weeklyEmail: false, pushEnabled: false, emails: [nwEmail] } });
+  } else {
+    target("Q9b-c the digest list is capped and unconfirmed addresses get nothing", "the no-witness family above has no live session");
   }
 }
 
