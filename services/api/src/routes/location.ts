@@ -96,10 +96,6 @@ async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void>
   );
   if (auth.valid) {
     if (auth.device) {
-      if (auth.device.revokedAt) {
-        await reply.code(401).send({ error: "device_revoked" });
-        return;
-      }
       (req as unknown as { authDevice: unknown }).authDevice = auth.device;
     }
     return;
