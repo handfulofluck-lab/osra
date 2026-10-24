@@ -22,19 +22,34 @@ name: verified-gate
 # this, a comment from ANY account ending "— Claude" with the head sha satisfied (2), so a signature typed
 # by any commenter, or by another member's agent that is also called Claude, counted as Claude's.
 # Self-test: scripts/check-verified-gate-signers.mjs (run by workflow-lint).
+# Carry-forward decision: scripts/verified-gate-carry.mjs — run from `origin/main`, so a PR's edit to the
+# script does not judge its own carry-forward. Its `--selftest` (also run by workflow-lint) uses real-git
+# fixtures. The workflow file itself still comes from the PR; see HONEST LIMIT.
 #
 # HONEST LIMIT: all agents still share that one GitHub account, so CI cannot prove WHICH agent wrote a
 # comment or set the label, and a member with write access can edit an agent's comment (GitHub keeps the
 # edit history on the comment). A forged verification is still a signed, permanent record on the PR. The
 # gate turns "merged without verification" from an oversight into a deliberate act.
+# The workflow and its script run from the PR's own code, so for a member with write access the gate is a
+# convention, like the comment and the label. It does not stop someone who chooses to bypass it (#359).
 #
 # CARRY-FORWARD (added 2026-10-19, issue #207): main's protection is `strict` (branch up to date), so every
 # merge forces the PRs behind it to merge main in, which changes their head. A signature at sha S still
-# counts for head H when (a) S is an ancestor of H and every commit in S..H that is not on main is a
-# merge commit, and
-# (b) the PR's own change is identical: diff(merge-base(main,S), S) and diff(merge-base(main,H), H)
-# have the same `git patch-id --stable`. A merge that resolves a conflict inside the PR's files, or
-# adds anything that is not main's, changes (b) and needs a fresh verification.
+# counts for head H when
+# (a) S is an ancestor of H and every commit in S..H that is not on main is a merge commit,
+# (b) every such merge is a clean merge of its parents: re-running `git merge-tree --write-tree <p1> <p2>`
+# produces exactly the merge commit's own tree. A conflict, a hand resolution, an evil merge that adds
+# something in neither parent, or a merge with other than two parents needs a fresh verification, and
+# (c) the PR's own change is identical: diff(merge-base(main,S), S) and diff(merge-base(main,H), H)
+# have the same `git patch-id --stable`, compared with -U0 on BOTH sides.
+#
+# Why -U0, and why (b) exists (2026-10-24, #357 and its review): `patch-id` hashes hunks with their context
+# lines, and folding main in moves the merge base, so with the default context an edit by main near the PR's
+# hunks refused a correctly folded merge (#349: default-context ids differed, -U0 ids equal, identical
+# diffstats). Context had to go. But `patch-id` also drops the hunk header, including the function name, so
+# -U0 no longer compares WHERE a line sits: a hand-edited fold could move the PR's line into another
+# function and the patch would still hash the same. (b) closes that gap by allowing only merges git produced
+# itself. The remaining limit is therefore a line moved by a clean merge, and that is git's own result.
 #
 # ORDER for verifiers: post the signed comment first, then add the label. Adding (or removing and
 # re-adding) the label is what re-runs this check; a comment alone does not.
@@ -58,6 +73,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      # The carry-forward decision runs as scripts/verified-gate-carry.mjs, so pin the interpreter the
+      # self-test (workflow-lint) and this job both use rather than relying on the runner image's node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Require state:verified and a signed verification of the head sha
         env:
@@ -118,27 +139,23 @@ jobs:
             done
           done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SIGNER_LOGIN) | .body | gsub("[[:cntrl:]]"; " ")')
 
-          # Carry-forward (see header): only merges after the signature, and the PR's own patch unchanged.
-          pr_patch() {
-            local base
-            base=$(git merge-base origin/main "$1") || return 1
-            git diff "$base" "$1" | git patch-id --stable | awk '{print $1}'
-          }
+          # Carry-forward (see header): only merges after the signature, every one of them a clean merge of
+          # its parents, and the PR's own patch unchanged. The decision is scripts/verified-gate-carry.mjs,
+          # taken from origin/main rather than from this checkout, so a PR's edit to the script does not
+          # judge its own carry-forward (the workflow file still comes from the PR; see #359), and a branch
+          # folded before this script reached main still gets a real decision (a missing copy fails closed
+          # instead of "Cannot find module"). Any nonzero exit means this
+          # signature is not carried, so the loop moves on to the next one.
           if [ -z "$verified" ] && [ -n "$signed" ]; then
-            head_patch=$(pr_patch "$HEAD_SHA")
+            if ! git show origin/main:scripts/verified-gate-carry.mjs > "$RUNNER_TEMP/verified-gate-carry.mjs"; then
+              echo "::error::origin/main has no scripts/verified-gate-carry.mjs, so carry-forward cannot be decided; verify the head instead."
+              exit 1
+            fi
             for sha in $signed; do
-              full=$(git rev-parse --verify --quiet "$sha^{commit}") || continue
-              git merge-base --is-ancestor "$full" "$HEAD_SHA" || continue
-              if [ -n "$(git rev-list --no-merges "$full..$HEAD_SHA" ^origin/main)" ]; then
-                echo "signature at $sha: non-merge commits since, not carried forward"
-                continue
-              fi
-              if [ "$(pr_patch "$full")" = "$head_patch" ]; then
-                echo "signature at $sha carried forward: only merges of main since, PR patch-id $head_patch unchanged"
+              if node "$RUNNER_TEMP/verified-gate-carry.mjs" "$sha" "$HEAD_SHA"; then
                 verified="$sha (carried forward)"
                 break
               fi
-              echo "signature at $sha: the PR's own change differs after the merge, not carried forward"
             done
           fi
 
