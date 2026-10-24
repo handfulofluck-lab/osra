@@ -70,18 +70,34 @@ jobs:
       - name: Merged-manifest gate ran and did not skip (ADR-0021)
         working-directory: .
         run: node scripts/check-merged-manifest-gate.mjs
+      # Each guard ends in `|| { …; exit 1; }`. Until #361 they were `grep -q … && echo …`, and bash exempts every
+      # command of an `&&` list but the last from `-e`, so a release APK targeting 34 passed this step; so did a
+      # path that no longer existed after the flavours landed (1.8), which is why it read no APK at all.
       - name: Release manifest is HTTPS-only and targets 35
         run: |
-          APK=app/build/outputs/apk/release/app-release.apk
-          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -1)
-          "$AAPT" dump badging "$APK" | grep -q "targetSdkVersion:'35'" && echo "targetSdk 35"
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          # Both release flavours (1.8): Gradle writes <flavour>/release/app-<flavour>-release.apk.
+          for FLAVOUR in play full; do
+            APK="app/build/outputs/apk/$FLAVOUR/release/app-$FLAVOUR-release.apk"
+            [ -f "$APK" ] || { echo "::error::$APK is missing, so the release checks cannot run"; exit 1; }
+            # Captured, not piped: `grep -q` stops at the first match, and with pipefail on, aapt2 would then die of SIGPIPE.
+            BADGING=$("$AAPT" dump badging "$APK")
+            grep -q "targetSdkVersion:'35'" <<<"$BADGING" || { echo "::error::$APK does not target 35"; exit 1; }
+            echo "$FLAVOUR release: targetSdk 35"
+          done
           # The release config is the one in src/main (src/debug overrides it for the debug build only).
-          grep -q 'cleartextTrafficPermitted="false"' app/src/main/res/xml/network_security_config.xml && echo "release cleartext off"
-          grep -q 'cleartextTrafficPermitted="true"' app/src/debug/res/xml/network_security_config.xml && echo "debug cleartext on (dev servers)"
+          grep -q 'cleartextTrafficPermitted="false"' app/src/main/res/xml/network_security_config.xml \
+            || { echo "::error::release cleartext is not off"; exit 1; }
+          echo "release cleartext off"
+          grep -q 'cleartextTrafficPermitted="true"' app/src/debug/res/xml/network_security_config.xml \
+            || { echo "::error::debug cleartext is not on"; exit 1; }
+          echo "debug cleartext on (dev servers)"
+      # RELEASING.md R4 counts on these artefacts, so an empty upload fails the job instead of warning.
       - uses: actions/upload-artifact@v4
         with:
           name: child-android-apks
           path: |
-            apps/child-android/app/build/outputs/apk/debug/*.apk
-            apps/child-android/app/build/outputs/apk/release/*.apk
+            apps/child-android/app/build/outputs/apk/*/debug/*.apk
+            apps/child-android/app/build/outputs/apk/*/release/*.apk
           retention-days: 14
+          if-no-files-found: error
