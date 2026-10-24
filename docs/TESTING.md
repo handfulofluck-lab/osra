@@ -391,7 +391,7 @@ only when it changes `apps/parent-app/ios/**`, `apps/parent-app/pubspec.yaml`, `
 `parent-app.yml` itself; anything else is Dart, which the Android release build in the same workflow already
 compiles. The nightly run and a manual run always build it, so a Dart change or a new Flutter stable that breaks
 only iOS shows on `main` within a day. When the diff cannot be read (an unknown `before` sha, for example), it
-builds. To build iOS on a branch that the filter skips: `gh workflow run parent-app.yml --ref <branch>`. Run locally
+builds. Each push to `main` runs in a concurrency group of its own, so a later merge never cancels it; a cancelled push would otherwise drop its iOS inputs until the nightly run (it happened to #362's merge). To build iOS on a branch that the filter skips: `gh workflow run parent-app.yml --ref <branch>`. Run locally
 against real merges on `main`: #356 (the iOS tree) and #352 (this workflow) build it; #344, #348, #349 and #355
 skip it.
 - Two assertions on the committed tree, so a green run is not only "the compiler finished": the
