@@ -39,7 +39,7 @@ Do not start until all of these hold. Each is checkable, and each has failed her
 
 | # | Criterion | Where it comes from |
 |---|---|---|
-| E1 | `main` is the intended commit and its CI is green: `ci.yml` and `workflow-lint` always run; **`ios-ci` runs only when `apps/child-ios/**` changes** (path filter, `.github/workflows/ios-ci.yml:4-7`), so a release that did not touch iOS says "iOS not built" rather than inheriting an old green. A rejected workflow file means *zero* jobs ran, so an absent check is not a green one | `.github/workflows/ci.yml`, `workflow-lint.yml`, `main-guard.yml` |
+| E1 | `main` is the intended commit and its CI is green. `ci.yml` and `workflow-lint` run on every push; since #352 each suite (`api`, `parent-app`, `child-android`, `agent-desktop`, `ai-engine`) runs only when its own files change, plus nightly on `main`, so a suite the release commit did not touch has no run *of that commit*. Start it with `workflow_dispatch` on the release commit rather than reading an older green. **`ios-ci` runs only when `apps/child-ios/**` changes** and has no nightly (path filter, `.github/workflows/ios-ci.yml:4-7`), so a release that did not touch iOS says "iOS not built" rather than inheriting an old green. A rejected workflow file means *zero* jobs ran, so an absent check is not a green one | `.github/workflows/ci.yml`, the five suite workflows, `workflow-lint.yml`, `main-guard.yml` |
 | E2 | Every change since the last release carries a verification record from another lane, cited in its merge message | `AGENTS.md` §6.5.3 |
 | E3 | Each platform being shipped has a hardware row on a build of that branch — the handset is leased, so the run is booked, not assumed | `AGENTS.md` §6.5.2, `TESTING.md` §5 |
 | E4 | `CHANGELOG.md` `[Unreleased]` describes everything user-visible, with the unverified parts marked as such | `AGENTS.md` §8 |
@@ -135,8 +135,8 @@ git rev-parse HEAD
 # Android child agent (release APK: minified, resource-shrunk, HTTPS-only)
 cd apps/child-android
 ./gradlew --stop
-rm -rf app/build/intermediates app/build/outputs/apk/release app/build/generated
-ANDROID_HOME=/c/KARIM/tools/android-sdk ./gradlew assembleRelease --console=plain
+rm -rf app/build/intermediates app/build/outputs/apk/*/release app/build/generated
+ANDROID_HOME=/c/KARIM/tools/android-sdk ./gradlew assemblePlayRelease assembleFullRelease --console=plain
 
 # Parent app (AAB)
 cd ../../apps/parent-app
@@ -199,12 +199,13 @@ ls -d services/api/prisma/migrations/0* | sort | tail -1    # 0013_usage_model (
 
 The build is not the artifact's evidence; these checks are. They are the same checks CI runs, repeated
 here because a release artifact does not always come from CI (its artifacts expire after 14 days,
-`.github/workflows/ci.yml:84`).
+`.github/workflows/child-android.yml:102`, `parent-app.yml:83`).
 
 ```bash
 export ANDROID_HOME=/c/KARIM/tools/android-sdk
-BT=$(ls "$ANDROID_HOME"/build-tools/* | sort | tail -1)      # newest build-tools, as ci.yml:126 does
-APK=apps/child-android/app/build/outputs/apk/release/app-release.apk
+BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)   # newest build-tools, as child-android.yml:78 does
+FLAVOUR=play    # then again with FLAVOUR=full: both are release artifacts (ADR-0016)
+APK=apps/child-android/app/build/outputs/apk/$FLAVOUR/release/app-$FLAVOUR-release.apk
 
 "$BT/aapt2.exe"     dump badging "$APK" | head -3             # versionCode, versionName, minSdk
 "$BT/aapt2.exe"     dump badging "$APK" | grep targetSdkVersion
@@ -218,23 +219,23 @@ Read the output, do not skim it:
 |---|---|---|
 | Signer DN | not `CN=Android Debug` | stop: the build is not shippable (see below) |
 | `versionCode` / `versionName` | equal to the bump in R2 | the artifact is stale, or the bump missed a carrier (§3) |
-| `targetSdkVersion` | `35` | `apps/child-android/app/build.gradle.kts:28` regressed |
+| `targetSdkVersion` | `35` | `apps/child-android/app/build.gradle.kts:43` regressed (CI's step fails on it since #361) |
 | Signature scheme | v2 **and** v3 verified (Play requires at least v2 for `targetSdk` 35) | the APK is signed with a scheme Play will reject — a debug-key fallback is *not* caught here, which is why the signer row comes first |
-| AAB manifest | carries `android.permission.INTERNET` (`.github/workflows/ci.yml:75-79`) | the parent build is broken in the way Phase 0 already fixed once |
+| AAB manifest | carries `android.permission.INTERNET` (`.github/workflows/parent-app.yml:74-78`) | the parent build is broken in the way Phase 0 already fixed once |
 
 The debug-key case is the one that costs a release: both Android builds silently fall back to the debug
-key when the keystore variables are absent (`apps/child-android/app/build.gradle.kts:59`,
+key when the keystore variables are absent (`apps/child-android/app/build.gradle.kts:79`,
 `apps/parent-app/android/app/build.gradle.kts:61`), the APK installs, pairs and enforces rules exactly
 like the real one, and the store rejects it — or worse, accepts it and the app's update path is now bound
 to a key somebody will lose. The comment at `apps/parent-app/android/app/build.gradle.kts:60` claims "CI
-fails the release job if the upload key is missing"; it does not (`.github/workflows/ci.yml:61-63` tolerates
+fails the release job if the upload key is missing"; it does not (`.github/workflows/parent-app.yml:60-62` tolerates
 it by design). That comment is a gate that looks present and does nothing, so this check is manual until
 someone makes CI fail instead.
 
 For the AAB there is no local equivalent of `apksigner verify`: Play signs with the app-signing key after
 upload. What is checkable is which key signed the *upload* — record the upload certificate's SHA-256 once
 with `keytool -list -v -keystore <upload.jks> -alias upload` and compare it on every release, and confirm
-the build log shows the keystore was materialised (`.github/workflows/ci.yml:57-67`).
+the build log shows the keystore was materialised (`.github/workflows/parent-app.yml:56-66`).
 
 ### R5 — Write the release record
 
@@ -253,7 +254,8 @@ to a tree, a set of hashes and a set of gate numbers.
 
 | Artifact | sha256 | Signer | Built on |
 |---|---|---|---|
-| `app-release.apk` (child) | `…` | SHA-256 of the upload cert | <host, toolchain versions> |
+| `app-play-release.apk` (child, store) | `…` | SHA-256 of the upload cert | <host, toolchain versions> |
+| `app-full-release.apk` (child, sideloaded) | `…` | same upload cert | |
 | `app-release.aab` (parent) | `…` | same upload cert | |
 | `OSRA.Agent.exe` | `…` | unsigned (Phase 5.4) | |
 
@@ -371,7 +373,7 @@ build (`docs/ROADMAP.md` 5.1, 5.6). A release note that implies otherwise is a d
 
 - **Upload keystore** (`upload.jks`): supplied as `OSRA_UPLOAD_KEYSTORE_B64` plus the three password/alias
   secrets (`test-guides/CI-SECRETS.md`:10-11), materialised by CI into `android/upload.jks` or
-  `app/upload.jks` (`.github/workflows/ci.yml`:57-67, `:103-113`). Never in the repository, never in
+  `app/upload.jks` (`.github/workflows/parent-app.yml:56-66`, `child-android.yml:45-55`). Never in the repository, never in
   `dist/`.
 - **Two keys, two fates.** The *upload* key can be reset through Play if it is lost; the *app signing* key,
   once Play App Signing holds it, cannot be recovered by us and cannot be replaced without a new app
@@ -423,16 +425,17 @@ unverified build with a reassuring note.
 
 | Trap | What it looks like | Caught by |
 |---|---|---|
-| Debug-signed "release" | build succeeds, APK installs and enforces rules; signer is `CN=Android Debug` (`apps/child-android/app/build.gradle.kts:59`, `apps/parent-app/android/app/build.gradle.kts:61`) | R4 signer DN |
-| Stale artifact under a familiar name | the shipped test bundle `dist/OSRA-ChildAgent.apk` is debug-signed and reports `versionCode='1' versionName='0.1.0'`, `targetSdkVersion:'34'`, while source declares 2 / 0.2.0 / 35 (`apps/child-android/app/build.gradle.kts:28-30`) — measured 2026-10-17 | R4 version checks |
-| A comment promising a check | `apps/parent-app/android/app/build.gradle.kts:60` says CI fails when the upload key is missing; `.github/workflows/ci.yml:61-63` tolerates it by design | R4, done by hand until CI is changed |
-| CI artifacts expire | `retention-days: 14` (`.github/workflows/ci.yml`:84, `:137`), so a release cannot be assembled from an old run | R3 build from the release commit |
-| Image built from a failed build | `services/api/Dockerfile:5,7` end in `|| true` | R3 build outside the image |
+| Debug-signed "release" | build succeeds, APK installs and enforces rules; signer is `CN=Android Debug` (`apps/child-android/app/build.gradle.kts:79`, `apps/parent-app/android/app/build.gradle.kts:61`) | R4 signer DN |
+| Stale artifact under a familiar name | the shipped test bundle `dist/OSRA-ChildAgent.apk` is debug-signed and reports `versionCode='1' versionName='0.1.0'`, `targetSdkVersion:'34'`, while source declares 2 / 0.2.0 / 35 (`apps/child-android/app/build.gradle.kts:43-45`) — measured 2026-10-17 | R4 version checks |
+| A comment promising a check | `apps/parent-app/android/app/build.gradle.kts:60` says CI fails when the upload key is missing; `.github/workflows/parent-app.yml:60-62` tolerates it by design | R4, done by hand until CI is changed |
+| CI artifacts expire | `retention-days: 14` (`.github/workflows/child-android.yml:102`, `parent-app.yml:83`), so a release cannot be assembled from an old run | R3 build from the release commit |
+| Image built from a failed build | the old `services/api` Dockerfile ended its install and build in `|| true`, so a broken image reported success; the current one has none and CI builds it on every pull request (R3) | R3 build outside the image |
 | Version bump inside a feature PR | the release commit's version was never built; two artifacts claim the same version | §3, one commit for all carriers |
 | Parent app reuses `versionCode` | `apps/parent-app/pubspec.yaml:3` has no `+<build>`, so `flutter.versionCode` (`apps/parent-app/android/app/build.gradle.kts:40`) falls back to 1 and Play rejects the second upload | R4 `aapt2 dump badging` |
 | Green probe in UTC | time-zone bugs pass when every component sits in UTC (issue #53, `TESTING.md` §6) | R9 smoke on a non-UTC database |
 | `migrate deploy` without `generate` | the API starts against a client that does not know the new columns (issue #47) | R3 migration step |
 | Workflow rejected by GitHub | zero jobs run, the run is named after the file; `secrets` in an `if:` is the classic (`TESTING.md` §6) | E1 plus `node scripts/check-workflows.mjs --strict` |
+| A CI check that passes without checking | `grep -q … && echo …` on a line that is not the step's last: bash `-e` ignores a failure in an `&&` list, and the step read an APK path that no longer existed after the flavours landed, so a release APK targeting 34 passed `child-android` (#361) | `check-workflows.mjs --strict` warns on the pattern; read the step's own output lines (`play release: targetSdk 35`, `full release: targetSdk 35`) |
 | Warm build output | the parent APK once reused a stale AOT snapshot (`test-guides/HANDOFF-FOR-TESTING.md`:23) | R3 clean sequence |
 | Tag before the record | the tag points at a tree where the record's own path does not exist, so its citations resolve against a commit that has nothing to show | R7 order |
 | Git Bash on Windows | `apksigner`/`aapt2` are `.bat`/`.exe`; calling the bare names fails or picks an unexpected copy | the `$BT` path in R4 |
@@ -458,7 +461,8 @@ the lead or the maintainer, recorded here rather than rediscovered at the consol
 Copy into the release PR and tick with evidence, not intention.
 
 ```markdown
-- [ ] E1  main CI green (api, parent-app, child-android, agent-desktop, ai-engine, workflow-lint;
+- [ ] E1  main CI green on the release commit (api, parent-app, child-android, agent-desktop,
+        ai-engine, workflow-lint; a suite the commit did not touch: run it by workflow_dispatch;
         ios-ci if apps/child-ios changed)
 - [ ] E2  every merge message since the last release cites a verifier + TR row
 - [ ] E3  hardware rows for each shipped platform, on this branch

@@ -15,6 +15,8 @@
  *   - a tab character in the file (YAML forbids tabs for indentation)
  * Warnings (exit 0 unless --strict): a gate that cannot fail
  *   - `|| echo …`, `|| true` inside a run body, or `continue-on-error: true` on a step
+ *   - `check && echo …` on any line of a run body but the last: bash exempts every command of an
+ *     `&&` list but the final one from `-e`, so a failing check there never fails the step (#361)
  *   - `secrets.` inside an `if:` expression — the secrets context is not available there and
  *     GitHub rejects the whole file ("Unrecognized named-value: 'secrets'") → zero jobs run (PR #49)
  *
@@ -120,6 +122,11 @@ for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort()) {
       const swallow = body.match(/\|\|\s*(echo|true|exit\s+0)\b/);
       if (swallow)
         warnings.push(`${path}:${i + 1} run body swallows failures via "|| ${swallow[1]}" — the step exits 0 even when the command fails`);
+      const commands = runBody.filter((l) => l !== "");
+      commands.slice(0, -1).forEach((l) => {
+        if (/&&\s*(echo|printf)\b/.test(l))
+          warnings.push(`${path}:${i + 1} run body line "${l.length > 60 ? `${l.slice(0, 57)}...` : l}" is an "&& ${l.match(/&&\s*(echo|printf)\b/)[1]}" guard before the last line — bash -e ignores a failure there, so the step passes; end the guard in "|| { echo …; exit 1; }"`);
+      });
     }
   }
 }
