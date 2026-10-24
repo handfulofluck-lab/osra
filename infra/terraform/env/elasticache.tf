@@ -85,3 +85,28 @@ resource "aws_elasticache_replication_group" "main" {
     Name = "${local.name_prefix}-redis"
   }
 }
+
+# The rate limiter keeps its counters here under `rl:` (each expires with its one-minute window), so
+# a flood from many addresses grows the keyspace. Under `noeviction` a full node turns writes into
+# errors, revocation writes included, so warn well before that. No action is attached: the account
+# has no alerting topic yet, so the alarm shows in the console and in `aws cloudwatch describe-alarms`.
+resource "aws_cloudwatch_metric_alarm" "redis_memory" {
+  alarm_name          = "${local.name_prefix}-redis-memory-70"
+  alarm_description   = "Redis memory above 70% (noeviction: a full node refuses writes, revocations included)."
+  namespace           = "AWS/ElastiCache"
+  metric_name         = "DatabaseMemoryUsagePercentage"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 70
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    CacheClusterId = "${aws_elasticache_replication_group.main.replication_group_id}-001"
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-redis-memory-70"
+  }
+}
