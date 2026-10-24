@@ -1,14 +1,25 @@
 name: iOS CI
 
 on:
+  # The three server files are the iOS agent's contract with the API (pairing, alerts, request signing):
+  # a server change that breaks the iPhone agent turns red on its own PR (5.5 PR A2, #372).
   push:
     paths:
       - 'apps/child-ios/**'
       - '.github/workflows/ios-ci.yml'
+      - 'services/api/src/routes/devices.ts'
+      - 'services/api/src/routes/alerts.ts'
+      - 'services/api/src/lib/internalAuth.ts'
   pull_request:
     paths:
       - 'apps/child-ios/**'
       - '.github/workflows/ios-ci.yml'
+      - 'services/api/src/routes/devices.ts'
+      - 'services/api/src/routes/alerts.ts'
+      - 'services/api/src/lib/internalAuth.ts'
+  # Nightly on main, whatever changed: the contract can also break through a dependency or an image.
+  schedule:
+    - cron: '23 1 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -117,3 +128,125 @@ jobs:
           python3 scripts/check-app-bundle.py \
             .build/appDerivedData/Build/Products/Release-iphonesimulator/OSRAAgent.app \
             .build/appDerivedData/Build/Products/Release-iphoneos/OSRAAgent.app
+
+  # 5.5 PR A2 (#372): the agent against our real API. The API, Postgres and Redis run on this runner
+  # (no Docker on macOS), from this checkout, with secrets generated for the run and masked; nothing is
+  # shared or deployed. The simulator reaches the runner's 127.0.0.1.
+  live-api:
+    name: iOS agent against the real API (macOS runner)
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      API_BASE: http://127.0.0.1:3000
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/familyshield
+      REDIS_URL: redis://127.0.0.1:6379
+      JOBS_ENABLED: '0'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
+      # Handed to the test process without the prefix. OSRA_REQUIRE_LIVE=1 turns a missing input into a
+      # failure instead of a skip (#361).
+      TEST_RUNNER_OSRA_REQUIRE_LIVE: '1'
+      TEST_RUNNER_OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select the newest Xcode on the image
+        run: |
+          XCODE="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release_candidate' | sort -V | tail -1)"
+          echo "Selecting $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - uses: pnpm/action-setup@v4   # version from package.json "packageManager", as in api.yml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install the API
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -r --filter "./packages/*" run build
+          pnpm --filter @familyshield/api exec prisma generate
+          pnpm --filter @familyshield/api run build
+
+      - name: Start Postgres 16 and Redis
+        run: |
+          brew install postgresql@16 redis
+          PGBIN="$(brew --prefix postgresql@16)/bin"
+          "$PGBIN/initdb" -D "$RUNNER_TEMP/pg" -U postgres --auth=trust >/dev/null
+          "$PGBIN/pg_ctl" -D "$RUNNER_TEMP/pg" -l "$RUNNER_TEMP/pg.log" -o "-p 5432 -k $RUNNER_TEMP" -w start
+          "$PGBIN/createdb" -h 127.0.0.1 -U postgres familyshield
+          # noeviction, as staging (ADR-0032).
+          redis-server --daemonize yes --port 6379 --maxmemory-policy noeviction
+          redis-cli ping
+
+      - name: Generate this run's secrets
+        run: |
+          for NAME in JWT_SECRET INTERNAL_HMAC_SECRET; do
+            VALUE="$(openssl rand -hex 32)"
+            echo "::add-mask::$VALUE"
+            echo "$NAME=$VALUE" >> "$GITHUB_ENV"
+          done
+          VAULT_KEY="$(openssl rand -base64 32)"
+          echo "::add-mask::$VAULT_KEY"
+          echo "VAULT_KEY=$VAULT_KEY" >> "$GITHUB_ENV"
+
+      - name: Migrate, seed and start the API
+        working-directory: services/api
+        run: |
+          pnpm exec prisma migrate deploy
+          pnpm run db:seed > /dev/null
+          nohup node dist/server.js > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf "$API_BASE/health/deep" && break; sleep 1; done
+          echo
+          curl -sf "$API_BASE/health/deep" > /dev/null
+
+      - name: Install XcodeGen ${{ env.XCODEGEN_VERSION }}
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      # Built before the pairing code is minted: a code lives 600 s, and the build takes minutes.
+      - name: Build the integration tests
+        working-directory: apps/child-ios
+        run: |
+          xcodegen generate --spec project.yml
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcodebuild build-for-testing \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentIntegration \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/liveDerivedData
+
+      - name: Seed through the API (child with consent, pairing code)
+        run: node apps/child-ios/scripts/live-api.mjs setup
+
+      - name: Run the live API tests in the simulator
+        working-directory: apps/child-ios
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentIntegration \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/liveDerivedData 2>&1 | tee "$RUNNER_TEMP/live-tests.log"
+          # Loud, not green-by-default (#361): all five cases ran and passed, none skipped.
+          COUNT='index($0, "Test Case") && index($0, "-[FamilyShieldAgentIntegrationTests.LiveAPITests test") && index($0, word " (") { n++ } END { print n + 0 }'
+          PASSED="$(awk -v word=passed "$COUNT" "$RUNNER_TEMP/live-tests.log")"
+          SKIPPED="$(awk -v word=skipped "$COUNT" "$RUNNER_TEMP/live-tests.log")"
+          echo "live API cases passed: $PASSED, skipped: $SKIPPED"
+          test "$PASSED" -eq 5 && test "$SKIPPED" -eq 0
+
+      - name: The parent sees the alert (GET /v1/alerts)
+        run: node apps/child-ios/scripts/live-api.mjs verify
+
+      - name: API log on failure
+        if: failure()
+        run: tail -n 200 "$RUNNER_TEMP/api.log"
