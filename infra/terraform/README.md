@@ -227,6 +227,28 @@ Neither script ever runs `apply` or `destroy` against `base/` except `up.sh`'s b
 the one time base is meant to change. `down.sh` destroys `env/` and nothing else, and refuses to run
 when `env/` has never been applied.
 
+### Restoring the cache from a snapshot: delete the session-version keys first
+
+`env/elasticache.tf` keeps one daily snapshot (ADR-0032). A snapshot is older than the database, and the
+API only re-reads a session-version marker when the key is **absent**: a restored
+`auth:session-version:<parentId>` therefore states a version older than `Parent.sessionVersion`, and
+every revocation made after the snapshot reads as not made — for good, because the marker has no TTL.
+
+So before the API serves traffic from a restored cache, delete those keys on the restored endpoint
+(`REDIS_URL` of the stack — that endpoint also serves pub/sub and the refresh records, so the restore
+is an operator step, not a script in this directory):
+
+```bash
+redis-cli -h <restored-endpoint> --scan --pattern 'auth:session-version:*' \
+  | xargs -r redis-cli -h <restored-endpoint> del
+```
+
+They rebuild from Postgres on the next request, one row read per parent. Nothing else needs this: a
+restored `revoked:token:*` or `revoked:device:*` can only revoke *more* than the database says, and a
+missing one is restored by the load or by the device-row check. If a restore happens during an incident
+and the keys cannot be deleted, the safe alternative is to treat every parent session as suspect and
+rotate: nothing else in this stack makes a stale cache fail open.
+
 The scripts keep the session start in `infra/terraform/.session-start` (gitignored), so the spend
 line in `down.sh` covers the whole session rather than only the destroy. Set
 `HOURLY_COST_USD=<value>` to override the built-in estimate.

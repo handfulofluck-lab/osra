@@ -23,7 +23,8 @@ import { registerRealtime } from "./realtime/gateway.js";
 import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
 import { startDeviceSilenceScheduler } from "./jobs/deviceSilence.js";
 import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
-import { isParentSessionLive } from "./lib/sessions.js";
+import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
+import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { healthRoutes } from "./routes/health.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
@@ -40,7 +41,6 @@ if (!process.env.VAULT_KEY && process.env.NODE_ENV === "production") {
   throw new Error("VAULT_KEY must be set in production (snippet vault encryption key)");
 }
 
-import { getRedis } from "./redis.js";
 import { prisma } from "./db.js";
 import { assertPrismaClientInSync } from "./lib/schemaSync.js";
 
@@ -67,25 +67,12 @@ await app.register(jwt, { secret: JWT_SECRET ?? "dev-insecure-jwt-secret" });
 await app.register(rateLimit, { max: 200, timeWindow: "1 minute" });
 await app.register(websocket);
 
-// Global device revocation hook: any authenticated device whose token was revoked gets 401 across all routes.
-app.addHook("preHandler", async (req, reply) => {
-  try {
-    await req.jwtVerify();
-  } catch {
-    return; // unauthenticated requests fall through to route-specific handlers
-  }
-  const user = req.user as { role?: string; deviceId?: string; jti?: string } | undefined;
-  if (user?.role === "device" && user.deviceId) {
-    const redis = getRedis();
-    const revoked = await redis.get(`revoked:device:${user.deviceId}`).catch(() => null);
-    if (revoked) {
-      return reply.code(401).send({ error: "device_revoked" });
-    }
-  }
-  if (user?.role === "parent" && !(await isParentSessionLive(user as { sub?: string; jti?: string; iat?: number; sv?: number }))) {
-    return reply.code(401).send({ error: "session_revoked" });
-  }
-});
+// Global auth gate for every route: a revoked device token and a revoked parent session answer 401
+// here, before any route sees the request. The rule itself lives in `middleware/sessionGuard.ts`
+// (`sessionGuardHook`) so a test can mount the production hook — `server.ts` listens on import and
+// cannot be imported by a test. ADR-0032: the `Device` row and `Parent.sessionVersion` are the
+// records; the Redis keys are caches they rebuild on a miss.
+app.addHook("preHandler", sessionGuardHook);
 
 /**
  * Idle-request budget (roadmap 5.8): count authenticated device requests, per device per minute per route,
@@ -135,3 +122,5 @@ startUsageRollupScheduler();
 startDeviceSilenceScheduler();
 // ADR-0031: the 24-hour witness deadline and the 12-month retention of MFA reset rows.
 startMfaResetExpiryScheduler();
+// ADR-0032: single-logout records are pruned once the token they revoked could no longer be shown.
+startRevokedTokenPruneScheduler();

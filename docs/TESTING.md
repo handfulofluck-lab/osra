@@ -271,11 +271,11 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 |---|---|---|
 | `ci.yml` | every PR | **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended; its `--selftest` runs in `workflow-lint.yml`). Until 2026-10-24 this file also held the five build-and-test jobs below |
 | `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, and the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
-| `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | `flutter analyze`, `flutter test`, release AAB build and its manifest check |
+| `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales) — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, and the merged-manifest gate |
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed at twice the Linux rate) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
-| `ios-ci.yml` | `apps/child-ios/**` (path-filtered since it was added) | The single iOS gate (SwiftPM build + `generic/platform=iOS Simulator`) |
+| `ios-ci.yml` | `apps/child-ios/**` (path-filtered since it was added) | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
 | `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
 | `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Local: `node scripts/check-verified-gate-signers.mjs --selftest` |
@@ -290,7 +290,19 @@ node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
 node scripts/check-docs-links.mjs --selftest   # the gate's own fixtures (#324)
+node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
+node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
 ```
+
+**The Redis durability gate (ADR-0032, roadmap 2.7).** The API stores every revocation in Postgres
+and treats Redis as a cache, which is only true if the cache cannot be silently emptied.
+`scripts/check-redis-durability.mjs` reads `infra/terraform/env/elasticache.tf` with comments
+stripped and fails when the `cache` parameter group does not pin `maxmemory-policy = noeviction`
+(the default `allkeys-lru` evicts `auth:session-version:*`, `revoked:token:*` and `revoked:device:*`,
+and an evicted key reads as "nothing was revoked"), or when `snapshot_retention_limit` is below 1 (the
+provider default is 0 — no snapshots — so an absent setting fails too). It runs in `workflow-lint.yml`
+on every PR, not only when `infra/` changes: the file it reads is one `git mv` away from the failure
+it exists to prevent.
 
 **What the link gate reads, and what it used to miss (#324).** It resolves relative paths, `#anchor`
 targets (including `#top`/`#`), reference-style links (`[label][ref]` with a `[ref]: path`
@@ -350,6 +362,35 @@ that changed neither app.
 node scripts/check-ci-paths.mjs --selftest
 node scripts/check-ci-paths.mjs     # "6 suite workflow(s), … 0 problem(s)"
 ```
+
+### The parent app's iOS build (roadmap 3.9, 2026-10-24)
+
+The `parent-app-ios` job in `parent-app.yml` is the **only** evidence the iOS target builds. Nothing about it
+can be produced on the Windows development host:
+
+```
+$ cd apps/parent-app && flutter build ios --release --no-codesign
+Could not find an option named "--release".            # exit 64
+
+$ flutter build ios
+Could not find a subcommand named "ios" for "flutter build".   # exit 64
+```
+
+`flutter build --help` on this host lists `aar`, `apk`, `appbundle`, `bundle`, `web`, `windows` — the `ios`
+subcommand does not exist here at all, so the failure is a missing platform, not a build defect, and it proves
+nothing either way. What the job runs on `macos-14`:
+
+- `flutter pub get`, then `flutter build ios --release --no-codesign`. `--no-codesign` means no certificate, no
+  provisioning profile and no Apple account; on a public repository the macOS runner minutes are free.
+- Two assertions on the committed tree, so a green run is not only "the compiler finished": the
+  `PRODUCT_BUNDLE_IDENTIFIER` is `dev.familyshield.familyshieldParent` (the Android `applicationId`'s org and
+  leaf, with the underscore dropped because Apple's bundle-ID grammar forbids it), and `Info.plist` carries
+  `CFBundleDisplayName = OSRA` with `CFBundleLocalizations = [en, ar]`. Mutant for each: edit
+  `ios/Runner.xcodeproj/project.pbxproj` or `ios/Runner/Info.plist` and the job fails.
+
+**What it does not prove.** That the app runs on a device or simulator (the job builds, it does not launch);
+that it launches with push (no push SDK is in this build); anything about signing, entitlements, App Groups,
+Family Controls or TestFlight. Those need an Apple account, and roadmap 5.1 / 5.5 / 5.6 carry them.
 
 ## 5. Hardware verification (physical device)
 
