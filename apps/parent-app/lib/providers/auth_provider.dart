@@ -200,17 +200,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Deletes the stored tokens and resets to the logged-out state.
   Future<void> logout() async {
+    // Before logout: `/v1/auth/logout` revokes the access token issued with this
+    // refresh token (`services/api/src/routes/auth.ts:1442`, ADR-0014), and
+    // `DELETE /v1/me/push-token` authenticates with it — so the removal has to
+    // go first or it is a 401 and the row survives on a signed-out phone.
+    try {
+      await _push?.unregister();
+    } catch (_) {}
     // Handoff item 2: revoke the refresh token server-side before clearing locally.
     try {
       final refresh = await _storage.read(key: 'refresh');
       if (refresh != null) {
         await _api.raw.post('/v1/auth/logout', data: {'refreshToken': refresh});
       }
-    } catch (_) {}
-    // Before the JWT goes: `DELETE /v1/me/push-token` authenticates as the parent
-    // whose token it removes, so clearing the session first would make it a 401.
-    try {
-      await _push?.unregister();
     } catch (_) {}
     try {
       await _storage.delete(key: 'jwt');

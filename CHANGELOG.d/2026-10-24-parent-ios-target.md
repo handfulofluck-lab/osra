@@ -20,8 +20,17 @@
   `/v1/me/push-token` routes) and `lib/push/push_registration.dart` (permission → token → forward, behind a
   `PushTokenSource` interface, wired into `AuthNotifier.bootstrap()`/`logout()`). **No push SDK is added and
   no token is minted in this build:** the only source that ships answers `unavailable` and makes no request,
-  so sign-in behaviour is unchanged. `flutter test` **388 passed** (374 before, 14 new in
+  so sign-in behaviour is unchanged. `flutter test` **389 passed** (374 before, 15 new in
   `test/push_registration_test.dart`), `flutter analyze` clean.
+- **Review fix (#356, Claude's verification): `logout()` removed the push token after the session was already
+  revoked.** `POST /v1/auth/logout` kills the access token issued with the refresh token
+  (`services/api/src/routes/auth.ts:1442`, ADR-0014), so the `DELETE /v1/me/push-token` that followed it
+  authenticated with a dead JWT, got a 401 that `unregister()` swallows, and the row survived — a phone
+  someone signed out of would keep receiving that parent's alerts, which is the shared-phone case the route
+  exists to close. The push block now runs **before** the logout call, and `test/push_registration_test.dart`
+  asserts the recorded order: `DELETE /v1/me/push-token` before `POST /v1/auth/logout`. Inverting the order in
+  the source turns that test red (`[POST /v1/auth/logout, DELETE /v1/me/push-token]`). It could not bite while
+  no token is minted, which is exactly why the assertion is pinned now rather than later.
 - **What this is not.** No signing, no entitlements, no App Store archive, no APNs key. `--no-codesign` is a
   simulator-target build with no certificate and no Apple account, which is why it is free on a public
   repository. **The iOS build has never been run on this machine — there is no Xcode here, and

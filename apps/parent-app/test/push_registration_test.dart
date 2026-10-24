@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show TargetPlatform;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/api/push_api.dart';
+import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/push/push_registration.dart';
 
 import 'fake_api_client.dart';
@@ -157,6 +159,38 @@ void main() {
 
       expect(await registration.unregister(), isFalse);
       expect(api.requests, isEmpty);
+    });
+  });
+
+  group('logout removes the row before the session is revoked', () {
+    test('DELETE /v1/me/push-token is recorded before POST /v1/auth/logout', () async {
+      FlutterSecureStorage.setMockInitialValues({'jwt': 'jwt-token', 'refresh': 'refresh-token'});
+      final api = FakeApiClient({
+        ..._routes(),
+        'POST /v1/auth/logout': (_) => const {'ok': true},
+      });
+      final registration = PushRegistration(api: PushApi(api), source: _FakeTokenSource(), platform: PushPlatform.ios);
+      expect(await registration.register(), PushRegistrationOutcome.registered);
+      api.requests.clear();
+
+      final notifier = AuthNotifier(api, push: registration);
+      await notifier.logout();
+
+      final paths = [for (final r in api.requests) '${r.method} ${r.path}'];
+      expect(paths, contains('DELETE /v1/me/push-token'));
+      expect(paths, contains('POST /v1/auth/logout'));
+      // The order is the assertion. `/v1/auth/logout` revokes the access token
+      // issued with this refresh token (`services/api/src/routes/auth.ts:1442`),
+      // so a DELETE issued after it carries a dead JWT, answers 401, and
+      // `unregister()`'s catch leaves the row waking a phone someone signed out.
+      // Mutant: move the push block below the logout call in AuthNotifier.logout()
+      // and this index comparison is the test that goes red.
+      expect(
+        paths.indexOf('DELETE /v1/me/push-token'),
+        lessThan(paths.indexOf('POST /v1/auth/logout')),
+        reason: 'the push token must be removed while its JWT is still valid: $paths',
+      );
+      notifier.dispose();
     });
   });
 
