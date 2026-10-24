@@ -50,7 +50,6 @@ targets:
       # app-extension targets are embedded in the app's PlugIns/ folder.
       - target: OSRAAgentMonitor
       - target: OSRAAgentShieldConfiguration
-      - target: OSRAAgentShieldAction
 
   OSRAAgentMonitor:
     type: app-extension

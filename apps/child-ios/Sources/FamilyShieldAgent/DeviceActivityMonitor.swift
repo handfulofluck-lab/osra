@@ -124,7 +124,6 @@ import ManagedSettings
 /// The monitor extension target (`Extensions/Monitor`) names this class as its
 /// NSExtensionPrincipalClass. `@objc(...)` gives it that unqualified runtime name, and it is
 /// public so the extension can reference it, which keeps the static linker from dropping it.
-@objc(FamilyShieldDeviceActivityMonitor)
 public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Reporter rebuilt per use so it picks up the `agent.apiBaseURL` value the pairing
