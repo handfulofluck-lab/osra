@@ -14,6 +14,7 @@ import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
+import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -666,12 +667,12 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.delete("/:id", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req) => {
     const { id } = req.params as { id: string };
     await prisma.device.delete({ where: { id } });
-    // Security state, not residue (#56): once the row is gone this key is the only thing that makes
-    // the device's 10-year JWT answer 401 (server.ts preHandler, location.ts, gateway.ts, and the
-    // hook below). It is bounded by the token lifetime so an unpaired device cannot leave a key
-    // forever, and it must never be given a shorter TTL or deleted while that token could still be
-    // presented — `scripts/cleanup-test-redis.mjs` deliberately keeps it.
-    await getRedis().set(`revoked:device:${id}`, new Date().toISOString(), "EX", DEVICE_TOKEN_TTL_SECONDS);
+    // Security state, not residue (#56, ADR-0032): once the row is gone, the row's absence is what
+    // makes the device's 10-year JWT answer 401 (server.ts preHandler, and the hook below). The keys
+    // are the cache of that fact — `revoked:device:<id>` for the common answer and the removal of
+    // `device:live:<id>` for the positive one — and the write fails closed: an unpair that could not
+    // publish its revocation must not report success.
+    await markDeviceRevoked(id);
     return { deleted: true, id };
   });
 
