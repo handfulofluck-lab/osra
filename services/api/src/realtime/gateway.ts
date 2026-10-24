@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
 import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
@@ -7,8 +7,59 @@ import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
 // The gateway needs a DEDICATED subscriber connection (psubscribe switches a connection
 // into subscriber mode); publishing reuses the shared lazy publisher via getRedis().
 const subscriber = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
-subscriber.on("error", () => {});
 const socketsByFamily = new Map<string, Set<any>>();
+
+/**
+ * Issue #350: a delivery miss on this path used to leave no evidence at all — the publish was a bare
+ * `redis.publish` with its return value dropped, and the subscriber installed `on("error", () => {})`,
+ * so a reconnect window (the likeliest way a frame is dropped) was silent by construction. A reviewer
+ * could not tell "never published" from "published with nobody listening" from "delivered, the client
+ * missed it". The two lines below and the error handler close that gap.
+ *
+ * The logger is Fastify's own, handed in by `registerRealtime` — the same pino instance, at the same
+ * `LOG_LEVEL`, that writes the request lines. No second logging stack. Until a process calls
+ * `registerRealtime` there is no logger and nothing is written; that window is boot only, because
+ * `src/server.ts` calls it before `listen()`.
+ *
+ * Every field here is `familyId`, the event `type` and a count. Never the payload, a ticket, an id or
+ * an address — those lines reach the same sink as the access log.
+ */
+let gatewayLog: FastifyBaseLogger | null = null;
+
+let subscriberErrors = 0;
+
+/**
+ * Issue #350: this handler used to be `() => {}`. A reconnect is logged at `warn` with the error and a
+ * running count, and the subscriber is left alone — ioredis retries by itself, and throwing from here
+ * would only kill the process that is holding every family's socket.
+ */
+subscriber.on("error", (err) => {
+  subscriberErrors += 1;
+  gatewayLog?.warn({ err, subscriberErrors }, "realtime subscriber error (ioredis reconnects; sockets unchanged)");
+});
+
+/** In-memory count of subscriber `error` events since boot (#350); a restart resets it to 0. */
+export function subscriberErrorCount(): number {
+  return subscriberErrors;
+}
+
+/** The event `type` every producer sets (`{ type: "alert", payload, ts }` — src/lib/alerts.ts:80). */
+export function eventType(event: unknown): string {
+  const type = (event as { type?: unknown } | null | undefined)?.type;
+  return typeof type === "string" && type.length > 0 ? type : "unknown";
+}
+
+/**
+ * Name the frame's type without changing it: the raw string is what the sockets receive, so a frame that
+ * is not JSON still goes out as it always did and is logged as `unknown` rather than dropped here.
+ */
+function frameType(message: string): string {
+  try {
+    return eventType(JSON.parse(message));
+  } catch {
+    return "unknown";
+  }
+}
 
 /** Serialise and send one frame if the socket is still open; a closed socket is not an error. */
 function sendFrame(socket: { readyState: number; send: (data: string) => void }, frame: unknown) {
@@ -16,6 +67,9 @@ function sendFrame(socket: { readyState: number; send: (data: string) => void },
 }
 
 export function registerRealtime(app: FastifyInstance) {
+  // #350: the module has no request, so the Fastify logger is the one thing that ties these lines to the
+  // request lines a reviewer reads next to them — same pino instance, same level, same sink.
+  gatewayLog = app.log;
   /**
    * Handoff item 6: issue a short-lived, single-use WS ticket so the JWT never travels
    * in the URL (proxy/access-log hygiene). The ticket maps to the caller's familyId.
@@ -105,13 +159,33 @@ export function registerRealtime(app: FastifyInstance) {
   subscriber.psubscribe("family:*:events");
   subscriber.on("pmessage", (_pattern, channel, message) => {
     const familyId = channel.split(":")[1];
+    const type = frameType(message);
     const set = socketsByFamily.get(familyId);
-    if (!set) return;
-    for (const ws of set) if (ws.readyState === 1) ws.send(message);
+    // #350: `listening: false` is "nobody is subscribed to this family" — a different fact from
+    // `listening: true, written: 0, sockets: 2`, which is "two sockets were here and neither was open".
+    if (!set) {
+      gatewayLog?.info({ familyId, type, listening: false, written: 0, sockets: 0 }, "realtime fan-out");
+      return;
+    }
+    let written = 0;
+    for (const ws of set) {
+      if (ws.readyState === 1) {
+        ws.send(message);
+        written += 1;
+      }
+    }
+    // `sockets` is the set's size and `written` what actually left; a CLOSING/CLOSED socket is counted
+    // in the first and not the second, which is the gap that makes a miss look like a delivery.
+    gatewayLog?.info({ familyId, type, listening: true, written, sockets: set.size }, "realtime fan-out");
   });
 }
 
 export async function publishFamilyEvent(familyId: string, event: unknown) {
   // Review API-4: reuse the shared lazy publisher instead of opening a connection per event.
-  await getRedis().publish(`family:${familyId}:events`, JSON.stringify(event));
+  // #350: `publish` resolves to the number of Redis clients that received the message, and that number is
+  // the whole point of this line — `receivers: 0` says the event went nowhere while the route still
+  // answered 201, which is the state the 2026-10-23 investigation could not read off the log.
+  const receivers = await getRedis().publish(`family:${familyId}:events`, JSON.stringify(event));
+  gatewayLog?.info({ familyId, type: eventType(event), receivers }, "realtime publish");
+  return receivers;
 }
