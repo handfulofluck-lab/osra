@@ -32,7 +32,10 @@ const TICK_MS = 5 * 60_000;
  * `test/device-silence.test.ts` reads the Kotlin sources and fails if either number drifts, so these
  * are not free-standing guesses: `WorkScheduler.kt:48` schedules telemetry every 15 minutes and
  * `LocationService.kt:430` pings every 5 minutes while stationary (the ping is faster, so telemetry
- * is what the window must cover). The 5-minute job tick (`TICK_MS`) is the server-side sampling
+ * is what the window must cover). Since #353 a stationary phone uploads its fixes every 10 minutes and
+ * an idle phone that can be woken by push polls every 10 (never more than 15, `IdleCadence.kt`); both
+ * still report at least as often as telemetry, so the window is unchanged, and `poll-cadence.test.ts`
+ * fails if either outgrows it. The 5-minute job tick (`TICK_MS`) is the server-side sampling
  * granularity and deliberately not part of the floor: a coarse tick delays detection, it does not
  * cause a false one.
  */

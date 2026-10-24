@@ -228,12 +228,8 @@ class ChildCard extends ConsumerWidget {
         _ => tokens.onSurfaceVariant,
       };
 
-  /// Online only when the device checked in within the last 3 minutes.
-  static String _effectiveStatus(Device d) {
-    final last = d.lastSeen;
-    final online = last != null && DateTime.now().difference(last) < const Duration(minutes: 3);
-    return online ? 'online' : 'offline';
-  }
+  /// Online when the device checked in within [kDeviceOnlineWindow].
+  static String _effectiveStatus(Device d) => isDeviceOnline(d.lastSeen) ? 'online' : 'offline';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -612,3 +608,15 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
 String formatLastSeen(BuildContext context, DateTime? lastSeen) => lastSeen == null
     ? context.l10n.never
     : DateFormat.yMMMd(context.localeName).add_Hm().format(lastSeen.toLocal());
+
+/// How long after its last check-in a device still shows as online (roadmap 5.8, #353).
+///
+/// An idle phone that the server can wake by push polls every 10 minutes, and each poll refreshes
+/// `lastSeen` once it is 5 minutes old, so a healthy idle phone is at most about 10 minutes behind.
+/// The old 3 minutes turned such a phone grey most of the time. 15 minutes keeps one late poll
+/// green; a phone that really stopped is reported by the silent-device alert (30 minutes).
+const Duration kDeviceOnlineWindow = Duration(minutes: 15);
+
+/// True when [lastSeen] is within [kDeviceOnlineWindow] of [now] (the current time by default).
+bool isDeviceOnline(DateTime? lastSeen, {DateTime? now}) =>
+    lastSeen != null && (now ?? DateTime.now()).difference(lastSeen) < kDeviceOnlineWindow;

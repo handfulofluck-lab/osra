@@ -10,6 +10,7 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
+import { POLL_AFTER_HEADER, pollAfterSeconds, touchLastSeen, type PolledDevice } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
@@ -456,6 +457,9 @@ export async function deviceRoutes(app: FastifyInstance) {
    * (probe note B11); parents read `/commands/history` instead. `?ack=1` declares an ack-capable
    * agent: its delivered-but-unacked commands are re-offered after 120 s, up to 3 attempts.
    * Shape is unchanged for existing agents: an array of `{type, payload, ...}`.
+   *
+   * Issue #353 (5.8): the `X-Poll-After` header tells the agent when to poll next — 600 s when this
+   * server can wake the device by push, 60 s when it cannot — and a poll refreshes a stale `lastSeen`.
    */
   app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -463,10 +467,13 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (user.role !== "device") return reply.code(403).send({ error: "device_role_required", hint: "parents: GET /v1/devices/:id/commands/history" });
     if ((user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
     // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
-    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
-    return claimPendingCommands(id, { ackCapable });
+    const commands = await claimPendingCommands(id, { ackCapable });
+    reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
+    if (device) await touchLastSeen(device);
+    return commands;
   });
 
   /** Agent reports the outcome of a delivered command (Phase 2b). */
