@@ -119,11 +119,15 @@ public struct AgentRootView: View {
                     onPaired: { newIdentity in
                         identity = newIdentity
                         showRepair = false
+                        Task { await RuleSyncer.syncNow() }
                     }
                 )
             }
         }
         .onAppear { identity = AgentIdentityStore.load() }
+        // Rules are fetched when the app opens and right after pairing (5.5 PR C). A failed sync keeps the
+        // last stored rules in force.
+        .task { await RuleSyncer.syncNow() }
     }
 }
 #endif

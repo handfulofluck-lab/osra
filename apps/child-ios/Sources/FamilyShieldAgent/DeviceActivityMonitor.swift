@@ -175,7 +175,7 @@ public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
     public override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
         let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
-        let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.bedtimeBundleIdentifiers())
+        let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.blockedBundleIdentifiers(for: activity))
         routineStore.shield.applications = tokens.isEmpty ? nil : tokens
     }
 
@@ -198,6 +198,17 @@ public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
             childId: AlertReporter.pairedChildId(),
             metadata: ["event": event.rawValue, "activity": activity.rawValue]
         )
+    }
+
+    /// The apps to shield while `activity` runs: a synced routine (`routine.<index>.<weekday>`, registered
+    /// by `ScreenTimeController.scheduleRoutines`) blocks its own list; bedtime blocks the bedtime list.
+    static func blockedBundleIdentifiers(for activity: DeviceActivityName) -> [String] {
+        let parts = activity.rawValue.split(separator: ".")
+        if parts.count == 3, parts[0] == "routine", let index = Int(parts[1]) {
+            let routines = RuleStore.routineSchedules()
+            return routines.indices.contains(index) ? routines[index].blockedApps : []
+        }
+        return bedtimeBundleIdentifiers()
     }
 
     /// Bundle identifiers to shield during bedtime, read from the shared app-group store.
