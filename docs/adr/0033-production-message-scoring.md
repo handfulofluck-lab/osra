@@ -20,8 +20,9 @@
 - **On staging:** the ECS stack (`infra/terraform/env`) has no ai-engine and sets no `AI_ENGINE_URL`, so every
   scan goes straight to the API's own keyword check.
 
-On the committed evaluation set, the rules layer flags **12 %** of harmful English rows and **0 %** of harmful
-Arabic rows, in all seven categories (`EVAL.md`). The first launch market speaks Arabic.
+On the committed evaluation set, the rules layer flags **30 %** of harmful English rows (137 of 455) and **0 %**
+of harmful Arabic rows (0 of 455): `EVAL.md`'s generated `flagged (any category)` row. Arabic recall is 0.00 in
+every one of the seven categories. The first launch market speaks Arabic.
 
 **The one scorer that has passed the Phase 4 gate is DeepSeek's own API.** It was measured on 21 October as an
 evaluation scorer (`eval/deepseek_scorer.py`, roadmap 4.1). It reached recall ≥ 0.85 on `self_harm` and
@@ -145,6 +146,9 @@ token counts:
 
 \* GPT OSS Safeguard always reasons before it answers. Its reasoning tokens are billed as output and are not in
 this estimate.
+
+The last column is a pre-filter, not evidence: it only says which candidates are worth paying to measure. A model
+passes or fails on decision 2's bar, measured on our own Arabic `test` rows, whatever its documentation claims.
 
 - **Prices on the EU profile** are 10 % above the global profile's. That 10 % is the price of decision 1.
 - **Not available from the EU:** Llama 3.x and 4, DeepSeek R1, and Cohere Command R/R+. Claude 3 Haiku reached
