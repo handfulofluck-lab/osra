@@ -63,7 +63,7 @@ public enum Weekday {
     /// bad value is dropped rather than scheduled on the wrong day.
     public static func swiftWeekday(ruleDay: Int) -> Int? {
         guard (1...7).contains(ruleDay) else { return nil }
-        return ruleDay % 7 + 1
+        return ruleDay
     }
 }
 
