@@ -41,6 +41,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0030](0030-regions-after-uae-outage.md) | Regions after the AWS UAE outage: production's first region is Frankfurt (serves the Middle East launch), staging in Stockholm, nothing built in `me-central-1`; supersedes ADR-0028's region table | accepted |
 | [0031](0031-mfa-reset-family-witness.md) | MFA reset when every recovery code is gone: password, mailbox, a family witness (a code on a paired child device or another parent's approval) and a 72-hour window that any sign-in cancels; no support operator; supersedes ADR-0023's open support path (#297) | accepted |
 | [0032](0032-durable-revocation.md) | Revocations are stored in Postgres (`Parent.sessionVersion`, `RevokedToken`, the `Device` row) and Redis is only a cache that rebuilds on a miss; ElastiCache pins `noeviction` and keeps one daily snapshot (roadmap 2.7) | accepted |
+| [0033](0033-production-message-scoring.md) | A real child's message is scored only on Amazon Bedrock inside the EU (Frankfurt in-region, the EU profile, or another EU region), with AWS data retention set to `none`; the model is the cheapest that passes the Phase 4 gate on the held-out split twice; DeepSeek's own API stays eval-only; our own model (4.4) is the scale path (roadmap 4.1/4.4) | proposed |
 
 ## Writing a new ADR
 
