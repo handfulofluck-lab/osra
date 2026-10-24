@@ -13,6 +13,47 @@
 > `AgentIdentityStore` (11 new tests in `PairingTests.swift`). Still requires a
 > macOS run of `swift test` and the Xcode wrapper project before shipping.
 
+## Build status (updated 2026-10-24, roadmap 5.5, #372)
+
+**The agent now builds as an installable app with its three extensions, on the GitHub macOS runner.**
+`ios-ci.yml` (macOS 26, the newest Xcode on the image) does this on every change under `apps/child-ios/`:
+
+1. Builds the `FamilyShieldAgent` package for the simulator and runs its XCTest target, as before.
+2. Generates `OSRAAgent.xcodeproj` from `project.yml` with XcodeGen (version and checksum pinned in the
+   workflow). The project is never committed; review `project.yml`.
+3. Builds the `OSRAAgent` scheme **unsigned** (`CODE_SIGNING_ALLOWED=NO`, Release) for
+   `generic/platform=iOS Simulator` and `generic/platform=iOS`.
+4. Runs `scripts/check-app-bundle.py` on both builds. It fails the job unless:
+   - `PlugIns/` holds exactly the three `.appex` bundles;
+   - each `.appex` has the expected `NSExtensionPointIdentifier` and `NSExtensionPrincipalClass`, and
+     its binary defines that class;
+   - all four `.entitlements` files carry `com.apple.developer.family-controls` and
+     `group.dev.familyshield.agent`. An unsigned build embeds no entitlements, so this reads the source files.
+
+| Target | Kind | Bundle id (placeholder) | Principal class | Extension point |
+|---|---|---|---|---|
+| `OSRAAgent` | host app (`App/`, `@main` `OSRAAgentApp`) | `dev.familyshield.agent` | — | — |
+| `OSRAAgentMonitor` | app extension (`Extensions/Monitor/`) | `dev.familyshield.agent.monitor` | `FamilyShieldDeviceActivityMonitor` | `com.apple.deviceactivity.monitor-extension` |
+| `OSRAAgentShieldConfiguration` | app extension (`Extensions/ShieldConfiguration/`) | `dev.familyshield.agent.shield-configuration` | `FamilyShieldConfigurationDataSource` | `com.apple.ManagedSettingsUI.shield-configuration-service` |
+| `OSRAAgentShieldAction` | app extension (`Extensions/ShieldAction/`) | `dev.familyshield.agent.shield-action` | `FamilyShieldShieldActionDelegate` | `com.apple.ManagedSettings.shield-action-service` |
+
+- **The principal classes stay in the package.** They are `public` and carry `@objc(<name>)`, so the
+  runtime finds them under the unqualified name in `Info.plist`. Each extension's one source file
+  refers to its class, so the linker keeps it in that extension's binary.
+- **The extension point ids** match the values Apple's engineers give on the developer forums, and
+  App Store Connect rejects any other value (ITMS-90349), for example
+  `com.apple.deviceactivity.monitor` without `-extension`, or the shield action id under `ManagedSettingsUI`.
+  The first signed upload is where Apple validates them; until then, the bundle check pins them.
+- **Placeholders, not final:** the bundle ids and the app group. The maintainer chooses the permanent
+  ids before App Store Connect, as for Play. The repository is public, so `DEVELOPMENT_TEAM` stays empty
+  and no team id, provisioning profile or certificate is ever committed.
+
+**Still needs a signed build (5.1, the Apple developer account and the Family Controls entitlement):**
+running on a real iPhone, the Screen Time authorization prompt, an extension actually being launched by
+the system, and TestFlight (5.6). Next PRs on this row: the Keychain for the device token and HMAC secret,
+rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
+pairing-approval change lands, so it isn't ported twice.
+
 ## Component checklist
 
 | Component | Purpose | Reviewed | Result |
@@ -66,17 +107,15 @@ app-group keys (`agent.childId` / `agent.hmacSecret` / `agent.apiBaseURL`) that
 | `PairingClient.swift` | `POST {base}/v1/devices/pair/claim` with `platform: "ios"` + device model/system version; pure `normalizeServerURL` and `parseClaimResponse` (tolerates `device` as object or string, `hmacSecret` null → nil); typed `PairingError` with user-facing messages |
 | `AgentIdentityStore.swift` | Saves/loads/clears `AgentIdentity` in `UserDefaults(suiteName: "group.dev.familyshield.agent")` under the exact keys the extensions read (`agent.apiBaseURL`, `agent.childId`, `agent.hmacSecret`, plus `agent.deviceToken`/`agent.deviceId`/`agent.familyId` for future use) |
 | `PairingView.swift` | SwiftUI form (server address, 6-digit code hard-limited to digits, optional device name) + `AgentRootView` status/re-pair switch; mirrors Android `PairingActivity` |
-| `OSRAAgentApp.swift` | `@main` host-app entry; only executes once the Xcode wrapper project links the library into the host target |
+| `OSRAAgentApp.swift` | `@main` host-app entry; moved to `App/` (the `OSRAAgent` target) on 2026-10-24, #372 |
 
 Verified statically (no macOS toolchain on the review host): parser/normalizer are
 pure Foundation and covered by 11 XCTest cases; the network call is a thin
 `URLSession` wrapper mirroring the desktop `PairingService` contract.
 
 Remaining pairing-related gaps:
-- **Xcode wrapper project still to be committed** — must declare the host app target
-  (using `OSRAAgentApp`), the three extension targets, the
-  `com.apple.developer.family-controls` entitlement, and the app-group entitlement;
-  replace the placeholder suite name `group.dev.familyshield.agent`.
+- ~~Xcode wrapper project still to be committed~~ — done 2026-10-24 (#372): `project.yml`, see
+  "Build status" above. The app group `group.dev.familyshield.agent` is still a placeholder.
 - `deviceToken`/`hmacSecret` sit in plaintext UserDefaults (test-build acceptable,
   flagged in `AgentIdentityStore` docs) — move to Keychain with the app-group
   access group before shipping.
