@@ -11,7 +11,7 @@ import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
-import '../dashboard/dashboard_screen.dart' show formatLastSeen;
+import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
 import '../pairing/pair_qr_screen.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
 import 'command_history_screen.dart' show formatCommandTime;
@@ -235,12 +235,9 @@ class _OverviewTab extends ConsumerWidget {
     );
   }
 
-  /// Online when the device checked in within the last 3 minutes.
-  static String _statusLabel(BuildContext context, Device d) {
-    final last = d.lastSeen;
-    final online = last != null && DateTime.now().difference(last) < const Duration(minutes: 3);
-    return online ? context.l10n.statusOnline : context.l10n.statusOffline;
-  }
+  /// Online when the device checked in within [kDeviceOnlineWindow].
+  static String _statusLabel(BuildContext context, Device d) =>
+      isDeviceOnline(d.lastSeen) ? context.l10n.statusOnline : context.l10n.statusOffline;
 }
 
 /// Compact latest-command line on a device card. It reports the durable

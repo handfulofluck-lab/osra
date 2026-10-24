@@ -84,6 +84,16 @@ function providerFor(platform: PushPlatform, providers: Map<PushPlatform, PushPr
   return providers.get(platform);
 }
 
+/**
+ * Could [notifyDeviceWake] reach this device right now: a token on file and a provider for its
+ * platform. It says nothing about delivery (#353 uses it to choose the poll cadence, and a token the
+ * provider rejects is cleared on the first failed wake, which flips this to false for the next poll).
+ */
+export function canWakeDevice(device: { platform?: string | null; pushToken?: string | null } | null | undefined): boolean {
+  if (!device?.pushToken) return false;
+  return providerFor((device.platform ?? "android") as PushPlatform, getPushProviders()) !== undefined;
+}
+
 export interface NotifyOutcome {
   recipients: number;
   delivered: number;

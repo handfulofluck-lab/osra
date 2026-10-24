@@ -174,14 +174,18 @@ class UsageReporter @Inject constructor(
      * Posts a live-activity snapshot (Feature #29) to POST /v1/devices/<id>/activity every ~60 s
      * from the LocationService flush loop: one app_usage event with the foreground package (or
      * "idle") and today's total minutes across apps. Failures are logged and swallowed.
+     *
+     * Roadmap 5.8 (#353): the loop calls this only while the screen is on, plus once with
+     * [screenOn] false on the tick after it turns off. That last snapshot reports "idle": with the
+     * screen off nothing is in front of the child, whatever the accessibility stream saw last.
      */
-    suspend fun postLiveActivity() {
+    suspend fun postLiveActivity(screenOn: Boolean = true) {
         val deviceId = settings.deviceId() ?: return
         // Issue #265: this had no consent check while its siblings did, so a withdrawn phone kept
         // posting the foreground app every 60 s, the server answered 428, and the stack was logged
         // once a minute. ADR-0008 decision 3 pauses collection, not just enforcement.
         if (consent.isPaused()) return
-        val event = liveActivityPayload(rules.minutesSnapshot(), currentForeground())
+        val event = liveActivityPayload(rules.minutesSnapshot(), if (screenOn) currentForeground() else null)
         val liveEvent = event.copy(payload = event.payload + ("live" to true))
         try {
             api.postActivityEvents(deviceId, ActivityEventBatchDto(listOf(liveEvent)))

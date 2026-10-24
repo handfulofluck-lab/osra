@@ -376,7 +376,7 @@ the queue drains, then `unlock`) or waits for `expiresAt`.
 and grants the phone to you. A live claim whose owner is unreachable is the warden's call —
 `-Action Break -Owner "<warden>" -Purpose "recover the handset" -Reason "<why>" -Force`
 (`AGENTS.md` §9.4). Either way the previous owner is not required to respond; apply the reset, allow up
-to 90 s (the agent polls every 60 s; a `lock` took 59 s in TR-13, §5a), then verify:
+to 90 s (without push the agent polls every 60 s, #353; a `lock` took 59 s in TR-13, §5a), then verify:
 
 ```bash
 curl -s -X POST "$API/v1/devices/$DEV/command" \
