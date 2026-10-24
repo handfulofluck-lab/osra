@@ -57,7 +57,6 @@ async function setup() {
   if (child.status !== 201 || !childId) fail(`creating the child answered ${child.status}`);
   const pair = await call("POST", "/v1/devices/pair", { token, body: { childId } });
   if (pair.status !== 201 || !/^\d{6}$/.test(pair.data?.code ?? "")) fail(`minting a pairing code answered ${pair.status}`);
-  exportEnv("TEST_RUNNER_OSRA_TEST_API_BASE", API);
   exportEnv("TEST_RUNNER_OSRA_TEST_CHILD_ID", childId);
   exportEnv("TEST_RUNNER_OSRA_TEST_PAIR_CODE", pair.data.code, { secret: true });
   exportEnv("OSRA_TEST_CHILD_ID", childId);
