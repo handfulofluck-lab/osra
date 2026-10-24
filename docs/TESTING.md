@@ -271,7 +271,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 |---|---|---|
 | `ci.yml` | every PR | **`probe-integrity`** (`scripts/check-probe-integrity.mjs`, PRs only — the probe's assertion set may only be extended; its `--selftest` runs in `workflow-lint.yml`). Until 2026-10-24 this file also held the five build-and-test jobs below |
 | `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, and the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
-| `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales) — see the iOS section below |
+| `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales), but on a PR or a push only when it changes `apps/parent-app/ios/**`, `pubspec.yaml`, `pubspec.lock` or this workflow; nightly and by hand always — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, and the merged-manifest gate |
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed at twice the Linux rate) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
@@ -382,6 +382,16 @@ nothing either way. What the job runs on `macos-14`:
 
 - `flutter pub get`, then `flutter build ios --release --no-codesign`. `--no-codesign` means no certificate, no
   provisioning profile and no Apple account; on a public repository the macOS runner minutes are free.
+
+**When it runs.** A macOS minute bills as ten Linux minutes once the repository is private, and the job takes 3–5
+minutes, so a small `ios-scope` job on `ubuntu-latest` decides first. A pull request or a push to `main` builds iOS
+only when it changes `apps/parent-app/ios/**`, `apps/parent-app/pubspec.yaml`, `apps/parent-app/pubspec.lock` or
+`parent-app.yml` itself; anything else is Dart, which the Android release build in the same workflow already
+compiles. The nightly run and a manual run always build it, so a Dart change or a new Flutter stable that breaks
+only iOS shows on `main` within a day. When the diff cannot be read (an unknown `before` sha, for example), it
+builds. To build iOS on a branch that the filter skips: `gh workflow run parent-app.yml --ref <branch>`. Run locally
+against real merges on `main`: #356 (the iOS tree) and #352 (this workflow) build it; #344, #348, #349 and #355
+skip it.
 - Two assertions on the committed tree, so a green run is not only "the compiler finished": the
   `PRODUCT_BUNDLE_IDENTIFIER` is `dev.familyshield.familyshieldParent` (the Android `applicationId`'s org and
   leaf, with the underscore dropped because Apple's bundle-ID grammar forbids it), and `Info.plist` carries
