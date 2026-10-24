@@ -320,6 +320,42 @@ abstract class AppLocalizations {
   /// **'Register'**
   String get register;
 
+  /// No description provided for @registerFieldsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Uses the email and password above. The password needs at least 12 characters.'**
+  String get registerFieldsHint;
+
+  /// No description provided for @registerPasswordTooShort.
+  ///
+  /// In en, this message translates to:
+  /// **'The password is too short. Use at least 12 characters.'**
+  String get registerPasswordTooShort;
+
+  /// No description provided for @registerNamesRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your name and a family name.'**
+  String get registerNamesRequired;
+
+  /// No description provided for @registerEmailTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'An account with this email already exists. Sign in instead, or use another email.'**
+  String get registerEmailTaken;
+
+  /// No description provided for @authEmailInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid email address.'**
+  String get authEmailInvalid;
+
+  /// No description provided for @authFieldsInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Some details were not accepted. Check the form and try again.'**
+  String get authFieldsInvalid;
+
   /// No description provided for @familyMapTooltip.
   ///
   /// In en, this message translates to:
@@ -401,8 +437,8 @@ abstract class AppLocalizations {
   /// No description provided for @screenTimeValue.
   ///
   /// In en, this message translates to:
-  /// **'{minutes} / {limit} min'**
-  String screenTimeValue(int minutes, String limit);
+  /// **'{minutes} / {limit, plural, =0{— min} other{{limit} min}}'**
+  String screenTimeValue(int minutes, int limit);
 
   /// No description provided for @liveActivityToday.
   ///
@@ -1160,17 +1196,17 @@ abstract class AppLocalizations {
   /// **'Info'**
   String get severityInfo;
 
-  /// No description provided for @alertCategorySos.
+  /// No description provided for @alertCategoryWebThreat.
   ///
   /// In en, this message translates to:
-  /// **'SOS'**
-  String get alertCategorySos;
+  /// **'Blocked site'**
+  String get alertCategoryWebThreat;
 
-  /// No description provided for @alertCategoryWebFilter.
+  /// No description provided for @alertCategoryAppBlocked.
   ///
   /// In en, this message translates to:
-  /// **'Web filter'**
-  String get alertCategoryWebFilter;
+  /// **'Blocked app'**
+  String get alertCategoryAppBlocked;
 
   /// No description provided for @alertCategoryScreenTime.
   ///
@@ -1178,35 +1214,65 @@ abstract class AppLocalizations {
   /// **'Screen time'**
   String get alertCategoryScreenTime;
 
+  /// No description provided for @alertCategoryGeofence.
+  ///
+  /// In en, this message translates to:
+  /// **'Places'**
+  String get alertCategoryGeofence;
+
+  /// No description provided for @alertCategorySos.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS'**
+  String get alertCategorySos;
+
+  /// No description provided for @alertCategoryAiConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning content'**
+  String get alertCategoryAiConcern;
+
+  /// No description provided for @alertCategoryCyberbullying.
+  ///
+  /// In en, this message translates to:
+  /// **'Bullying'**
+  String get alertCategoryCyberbullying;
+
+  /// No description provided for @alertCategorySelfHarm.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-harm'**
+  String get alertCategorySelfHarm;
+
+  /// No description provided for @alertCategoryGrooming.
+  ///
+  /// In en, this message translates to:
+  /// **'Grooming'**
+  String get alertCategoryGrooming;
+
+  /// No description provided for @alertCategoryTamper.
+  ///
+  /// In en, this message translates to:
+  /// **'Protection'**
+  String get alertCategoryTamper;
+
+  /// No description provided for @alertCategoryVpnDetected.
+  ///
+  /// In en, this message translates to:
+  /// **'VPN'**
+  String get alertCategoryVpnDetected;
+
   /// No description provided for @alertCategoryInstallRequest.
   ///
   /// In en, this message translates to:
   /// **'App install request'**
   String get alertCategoryInstallRequest;
 
-  /// No description provided for @alertCategorySocialConcern.
+  /// No description provided for @alertCategoryUnknownContact.
   ///
   /// In en, this message translates to:
-  /// **'Social concern'**
-  String get alertCategorySocialConcern;
-
-  /// No description provided for @alertCategoryLocation.
-  ///
-  /// In en, this message translates to:
-  /// **'Location'**
-  String get alertCategoryLocation;
-
-  /// No description provided for @alertCategoryDevice.
-  ///
-  /// In en, this message translates to:
-  /// **'Device'**
-  String get alertCategoryDevice;
-
-  /// No description provided for @alertCategorySafety.
-  ///
-  /// In en, this message translates to:
-  /// **'Safety'**
-  String get alertCategorySafety;
+  /// **'Unknown contact'**
+  String get alertCategoryUnknownContact;
 
   /// No description provided for @tabScreenTime.
   ///
@@ -3095,7 +3161,7 @@ abstract class AppLocalizations {
   /// No description provided for @consentRevokeDataRetention.
   ///
   /// In en, this message translates to:
-  /// **'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days. Usage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.'**
+  /// **'Raw location data is deleted by the retention job after 30 days by default; raw app, web and chat data after 90 days.\n\nUsage summaries are kept for 365 days. Alerts are kept until the child\'s data is erased.'**
   String get consentRevokeDataRetention;
 
   /// No description provided for @consentRevokeDataErase.
@@ -3293,8 +3359,14 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsEmailsLabel.
   ///
   /// In en, this message translates to:
-  /// **'Digest emails (comma separated)'**
+  /// **'Digest emails'**
   String get digestPrefsEmailsLabel;
+
+  /// No description provided for @digestPrefsEmailsHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'For the digest summary (separate addresses with commas)'**
+  String get digestPrefsEmailsHelper;
 
   /// No description provided for @digestPrefsTimezoneTitle.
   ///
@@ -3317,7 +3389,7 @@ abstract class AppLocalizations {
   /// No description provided for @digestPrefsSendHour.
   ///
   /// In en, this message translates to:
-  /// **'The digest is sent at 18:00 your local time'**
+  /// **'The digest is sent at the hour shown below, in your local time zone.'**
   String get digestPrefsSendHour;
 
   /// No description provided for @digestPrefsSavingSuffix.
@@ -3943,6 +4015,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'If an 8-digit code is shown on your child\'s phone, enter it below. If another owner or co-parent is approving instead, they must do it from their app; this request moves on when that happens.'**
   String get mfaResetStageWitnessBodyResumed;
+
+  /// No description provided for @digestPrefsSendHourLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Send hour'**
+  String get digestPrefsSendHourLabel;
+
+  /// No description provided for @alertTitleSos.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS pressed'**
+  String get alertTitleSos;
+
+  /// No description provided for @alertTitleBlockedSite.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked site attempted'**
+  String get alertTitleBlockedSite;
+
+  /// No description provided for @alertTitleDailyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit reached'**
+  String get alertTitleDailyLimit;
+
+  /// No description provided for @alertTitleAppBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'App blocked'**
+  String get alertTitleAppBlocked;
+
+  /// No description provided for @alertTitleGeofence.
+  ///
+  /// In en, this message translates to:
+  /// **'Place alert'**
+  String get alertTitleGeofence;
+
+  /// No description provided for @alertTitleAiConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning content'**
+  String get alertTitleAiConcern;
+
+  /// No description provided for @alertTitleCyberbullying.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible cyberbullying'**
+  String get alertTitleCyberbullying;
+
+  /// No description provided for @alertTitleSelfHarm.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible self-harm risk'**
+  String get alertTitleSelfHarm;
+
+  /// No description provided for @alertTitleGrooming.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible grooming'**
+  String get alertTitleGrooming;
+
+  /// No description provided for @alertTitleTamper.
+  ///
+  /// In en, this message translates to:
+  /// **'Protection tampered with'**
+  String get alertTitleTamper;
+
+  /// No description provided for @alertTitleVpnDetected.
+  ///
+  /// In en, this message translates to:
+  /// **'VPN detected'**
+  String get alertTitleVpnDetected;
+
+  /// No description provided for @alertTitleInstallRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'App install request'**
+  String get alertTitleInstallRequest;
+
+  /// No description provided for @alertTitleUnknownContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown contact'**
+  String get alertTitleUnknownContact;
+
+  /// No description provided for @alertTitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert'**
+  String get alertTitleGeneric;
+
+  /// No description provided for @riskSelfHarm.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-harm'**
+  String get riskSelfHarm;
+
+  /// No description provided for @riskSubstanceUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Substance use'**
+  String get riskSubstanceUse;
+
+  /// No description provided for @riskSubstanceAbuse.
+  ///
+  /// In en, this message translates to:
+  /// **'Substance abuse'**
+  String get riskSubstanceAbuse;
+
+  /// No description provided for @riskAdultContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Adult content'**
+  String get riskAdultContent;
+
+  /// No description provided for @riskSexualContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sexual content'**
+  String get riskSexualContent;
+
+  /// No description provided for @riskCyberbullying.
+  ///
+  /// In en, this message translates to:
+  /// **'Cyberbullying'**
+  String get riskCyberbullying;
+
+  /// No description provided for @riskGrooming.
+  ///
+  /// In en, this message translates to:
+  /// **'Grooming'**
+  String get riskGrooming;
+
+  /// No description provided for @riskViolence.
+  ///
+  /// In en, this message translates to:
+  /// **'Violence'**
+  String get riskViolence;
+
+  /// No description provided for @riskHateSpeech.
+  ///
+  /// In en, this message translates to:
+  /// **'Hate speech'**
+  String get riskHateSpeech;
+
+  /// No description provided for @riskAiConcern.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning content'**
+  String get riskAiConcern;
 }
 
 class _AppLocalizationsDelegate

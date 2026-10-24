@@ -53,6 +53,12 @@ resource "aws_ecs_task_definition" "api" {
           { name = "REDIS_URL", value = "redis://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" },
         ],
         var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [],
+        # Roadmap 5.8: count a device's request rate so "idle child phone <= 3 requests per 10 min" can be
+        # measured. Staging only — production leaves it unset on purpose (#346 review): the counter keeps a
+        # hash per device, and the durable-revocation fix pins this cache to `maxmemory-policy noeviction`, so
+        # telemetry that filled memory would make revocation writes fail. Logouts answering 5xx because of a
+        # counter is the trade this flag refuses. Staging carries it so #346's reviewer can measure the Flip4.
+        var.environment == "staging" ? [{ name = "IDLE_BUDGET_COUNTING", value = "1" }] : [],
       )
 
       # Secrets are injected from Secrets Manager, never baked into the task definition.

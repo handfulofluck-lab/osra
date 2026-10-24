@@ -88,7 +88,7 @@ void main() {
               'engine': 'google',
               'query': 'how to buy vape',
               'severity': 'warning',
-              'concernTypes': ['drugs'],
+              'concernTypes': ['substance_use'],
               'createdAt': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(),
             },
             {
@@ -110,8 +110,10 @@ void main() {
       expect(find.text('Search safety'), findsOneWidget);
       expect(find.text('how to buy vape'), findsOneWidget);
       expect(find.text('dangerous stunt tutorial'), findsOneWidget);
-      expect(find.text('drugs'), findsOneWidget);
-      expect(find.text('violence'), findsOneWidget);
+      // The risk chips are localized now (#344 review): the raw server tag used to
+      // reach the Arabic screen as "substance_use".
+      expect(find.text('Substance use'), findsOneWidget);
+      expect(find.text('Violence'), findsOneWidget);
       // The severity chip is translated now (#275): an Arabic screen showing CRITICAL in Latin
       // capitals was the last English string on this page, so the assertion follows the l10n key.
       expect(find.text('Warning'), findsOneWidget);
@@ -202,7 +204,7 @@ void main() {
       expect(find.text('Encrypted Family Vault'), findsOneWidget);
       expect(find.textContaining('AES-256-GCM encryption'), findsOneWidget);
       expect(find.text('how to hurt myself tonight'), findsOneWidget);
-      expect(find.text('self_harm'), findsOneWidget);
+      expect(find.text('Self-harm'), findsOneWidget);
 
       final coachFinder = find.text('How to talk about this');
       await tester.scrollUntilVisible(coachFinder, 150, scrollable: find.byType(Scrollable).last);

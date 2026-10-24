@@ -64,14 +64,23 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String minutesShort(int minutes) {
-    return '$minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$_temp0';
   }
 
   @override
   String get appTagline => 'أسرة — رقابة أبوية لعائلتك';
 
   @override
-  String get serverLabel => 'الخادم';
+  String get serverLabel => 'الخادم (السيرفر)';
 
   @override
   String get serverHint => 'http://host:port';
@@ -125,6 +134,28 @@ class AppLocalizationsAr extends AppLocalizations {
   String get register => 'تسجيل';
 
   @override
+  String get registerFieldsHint =>
+      'يُستخدم البريد الإلكتروني وكلمة المرور أعلاه. يجب أن تتكون كلمة المرور من 12 حرفًا على الأقل.';
+
+  @override
+  String get registerPasswordTooShort =>
+      'كلمة المرور قصيرة جدًا. استخدم 12 حرفًا على الأقل.';
+
+  @override
+  String get registerNamesRequired => 'أدخل اسمك واسم العائلة.';
+
+  @override
+  String get registerEmailTaken =>
+      'يوجد حساب بهذا البريد الإلكتروني بالفعل. سجّل الدخول بدلًا من ذلك أو استخدم بريدًا آخر.';
+
+  @override
+  String get authEmailInvalid => 'أدخل عنوان بريد إلكتروني صحيحًا.';
+
+  @override
+  String get authFieldsInvalid =>
+      'لم تُقبل بعض البيانات. راجع النموذج وحاول مجددًا.';
+
+  @override
   String get familyMapTooltip => 'خريطة العائلة';
 
   @override
@@ -166,13 +197,32 @@ class AppLocalizationsAr extends AppLocalizations {
   String get screenTime => 'وقت الشاشة';
 
   @override
-  String screenTimeValue(int minutes, String limit) {
-    return '$minutes / $limit دقيقة';
+  String screenTimeValue(int minutes, int limit) {
+    String _temp0 = intl.Intl.pluralLogic(
+      limit,
+      locale: localeName,
+      other: '$limit دقيقة',
+      many: '$limit دقيقة',
+      few: '$limit دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+      zero: '—',
+    );
+    return '$minutes من $_temp0';
   }
 
   @override
   String liveActivityToday(String app, int minutes) {
-    return '$app · $minutes دقيقة اليوم';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة اليوم',
+      many: '$minutes دقيقة اليوم',
+      few: '$minutes دقائق اليوم',
+      two: 'دقيقتان اليوم',
+      one: 'دقيقة واحدة اليوم',
+    );
+    return '$app · $_temp0';
   }
 
   @override
@@ -289,7 +339,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get socialMonitoringTitle => 'مراقبة التواصل الاجتماعي';
+  String get socialMonitoringTitle => 'مراقبة وسائل التواصل الاجتماعي';
 
   @override
   String get devices => 'الأجهزة';
@@ -629,28 +679,43 @@ class AppLocalizationsAr extends AppLocalizations {
   String get severityInfo => 'معلومة';
 
   @override
-  String get alertCategorySos => 'استغاثة';
+  String get alertCategoryWebThreat => 'موقع محظور';
 
   @override
-  String get alertCategoryWebFilter => 'تصفية الويب';
+  String get alertCategoryAppBlocked => 'تطبيق محظور';
 
   @override
   String get alertCategoryScreenTime => 'وقت الشاشة';
 
   @override
+  String get alertCategoryGeofence => 'الأماكن';
+
+  @override
+  String get alertCategorySos => 'استغاثة';
+
+  @override
+  String get alertCategoryAiConcern => 'محتوى مثير للقلق';
+
+  @override
+  String get alertCategoryCyberbullying => 'تنمّر';
+
+  @override
+  String get alertCategorySelfHarm => 'إيذاء النفس';
+
+  @override
+  String get alertCategoryGrooming => 'استدراج';
+
+  @override
+  String get alertCategoryTamper => 'الحماية';
+
+  @override
+  String get alertCategoryVpnDetected => 'VPN';
+
+  @override
   String get alertCategoryInstallRequest => 'طلب تثبيت تطبيق';
 
   @override
-  String get alertCategorySocialConcern => 'مخاوف اجتماعية';
-
-  @override
-  String get alertCategoryLocation => 'الموقع';
-
-  @override
-  String get alertCategoryDevice => 'الجهاز';
-
-  @override
-  String get alertCategorySafety => 'السلامة';
+  String get alertCategoryUnknownContact => 'جهة غير معروفة';
 
   @override
   String get tabScreenTime => 'وقت الشاشة';
@@ -663,12 +728,30 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String dailyLimit(int minutes) {
-    return 'الحد اليومي: $minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'الحد اليومي: $_temp0';
   }
 
   @override
   String weekendLimit(int minutes) {
-    return 'حد عطلة نهاية الأسبوع: $minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: $_temp0';
   }
 
   @override
@@ -915,7 +998,25 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String totalAverage(int total, int avg) {
-    return 'الإجمالي $total دقيقة · المتوسط $avg دقيقة/يوم';
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$total دقيقة',
+      many: '$total دقيقة',
+      few: '$total دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      avg,
+      locale: localeName,
+      other: '$avg دقيقة يوميًا',
+      many: '$avg دقيقة يوميًا',
+      few: '$avg دقائق يوميًا',
+      two: 'دقيقتان يوميًا',
+      one: 'دقيقة واحدة يوميًا',
+    );
+    return 'الإجمالي: $_temp0 · المتوسط: $_temp1';
   }
 
   @override
@@ -947,17 +1048,17 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'حُظر $count مرة',
-      many: 'حُظر $count مرة',
-      few: 'حُظر $count مرات',
-      two: 'حُظر مرتين',
-      one: 'حُظر مرة واحدة',
+      other: 'تم الحظر $count مرة',
+      many: 'تم الحظر $count مرة',
+      few: 'تم الحظر $count مرات',
+      two: 'تم الحظر مرتين',
+      one: 'تم الحظر مرة واحدة',
     );
     return '$_temp0';
   }
 
   @override
-  String get safeSearchForced => 'يُفرض البحث الآمن في بحث يوتيوب';
+  String get safeSearchForced => 'تفعيل البحث الآمن على YouTube';
 
   @override
   String get restrictedModeNote =>
@@ -1016,7 +1117,16 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String daysShort(int days) {
-    return '$days ي';
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days يوم',
+      many: '$days يومًا',
+      few: '$days أيام',
+      two: 'يومان',
+      one: 'يوم',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -1053,6 +1163,15 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String totalOverDays(int total, int count) {
     String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$total دقيقة',
+      many: '$total دقيقة',
+      few: '$total دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
       other: '$count يوم',
@@ -1061,7 +1180,7 @@ class AppLocalizationsAr extends AppLocalizations {
       two: 'يومين',
       one: 'يوم واحد',
     );
-    return 'الإجمالي $total دقيقة خلال $_temp0';
+    return 'الإجمالي: $_temp0 خلال $_temp1';
   }
 
   @override
@@ -1125,11 +1244,20 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String dayTooltip(String date, int minutes) {
-    return '$date: $minutes دقيقة';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return '$date: $_temp0';
   }
 
   @override
-  String get scanQr => 'امسح رمز QR هذا بتطبيق OSRA للطفل.';
+  String get scanQr => 'امسح رمز QR باستخدام تطبيق OSRA على جهاز الطفل.';
 
   @override
   String get typeSixDigit =>
@@ -1148,7 +1276,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String expiresIn(String time) {
-    return 'تنتهي الصلاحية خلال $time';
+    return 'تنتهي صلاحية الرمز خلال $time';
   }
 
   @override
@@ -1194,7 +1322,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appearanceDesc =>
-      'النظام يتبع هذا الجهاز. يُطبَّق الفاتح أو الداكن على OSRA فقط.';
+      'يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق OSRA فقط.';
 
   @override
   String followingDevice(String mode) {
@@ -1212,7 +1340,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get languageDesc =>
-      'النظام يتبع هذا الجهاز. تُطبَّق الإنجليزية أو العربية على OSRA فقط.';
+      'يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق OSRA فقط.';
 
   @override
   String followingLanguage(String language) {
@@ -1746,7 +1874,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String consentStatusSubtitle(String childName) {
-    return 'ما هو مسجّل حاليًا لدى الخادم عن $childName.';
+    return 'ما هو مسجّل حاليًا على الخادم بشأن $childName؟';
   }
 
   @override
@@ -1769,7 +1897,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentStateActiveDetail =>
-      'المراقبة وجمع البيانات مسموحان بموجب هذا السجل.';
+      'تسمح هذه الموافقة بالمراقبة وجمع البيانات.';
 
   @override
   String consentStateExpiringDetail(String date) {
@@ -1868,7 +1996,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String consentRevokeWarning(String childName) {
-    return 'سيؤدي هذا إلى إيقاف المراقبة لـ $childName. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.';
+    return 'سيؤدي هذا إلى إيقاف مراقبة $childName. يبقى الجهاز مقترنًا، ويمكن منح الموافقة مجددًا لاحقًا.';
   }
 
   @override
@@ -1899,7 +2027,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentRevokeDataRetention =>
-      'تُحذف بيانات الموقع الخام بواسطة مهمة الاحتفاظ بعد 30 يومًا افتراضيًا، وبيانات التطبيقات والويب والمحادثات الخام بعد 90 يومًا. تُحفظ ملخصات الاستخدام لمدة 365 يومًا. تبقى التنبيهات حتى تُحذف بيانات الطفل.';
+      'تُحذف بيانات الموقع الخام بواسطة مهمة الاحتفاظ بعد 30 يومًا افتراضيًا، وبيانات التطبيقات والويب والمحادثات الخام بعد 90 يومًا.\n\nتُحفظ ملخصات الاستخدام لمدة 365 يومًا. تبقى التنبيهات حتى تُحذف بيانات الطفل.';
 
   @override
   String get consentRevokeDataErase =>
@@ -1970,7 +2098,8 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get searchSafetyEmptyTitle => 'لم يُرصد أي بحث مُبلَّغ عنه';
+  String get searchSafetyEmptyTitle =>
+      'لم يتم رصد أي عمليات بحث تستدعي الإبلاغ عنها';
 
   @override
   String get searchSafetyEmptyBody =>
@@ -1978,7 +2107,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get searchSafetyVaultNotice =>
-      'تُحلَّل عبارات البحث للكشف عن مخاطر السلامة، وتُسجَّل المطابقات عالية الخطورة في خزنة العائلة المشفّرة.';
+      'تُحلَّل عبارات البحث للكشف عن مخاطر السلامة، وتُسجَّل النتائج عالية الخطورة في خزنة العائلة المشفّرة.';
 
   @override
   String searchSafetyFlaggedCount(int count) {
@@ -2023,11 +2152,13 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPrefsPushTitle => 'الإشعارات الفورية';
 
   @override
-  String get digestPrefsPushBody => 'التنبيهات الحرجة كرسائل فورية';
+  String get digestPrefsPushBody => 'إرسال التنبيهات الحرجة كإشعارات فورية';
 
   @override
-  String get digestPrefsEmailsLabel =>
-      'عناوين البريد للملخّص (افصل بينها بفاصلة)';
+  String get digestPrefsEmailsLabel => 'عناوين البريد الإلكتروني';
+
+  @override
+  String get digestPrefsEmailsHelper => 'لتلقي الملخّص (افصل بينها بفواصل)';
 
   @override
   String get digestPrefsTimezoneTitle =>
@@ -2041,7 +2172,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get digestPrefsSendHour =>
-      'يُرسَل الملخّص الساعة 18:00 بتوقيتك المحلي';
+      'يُرسَل الملخّص في الساعة الموضّحة أدناه بتوقيتك المحلي.';
 
   @override
   String get digestPrefsSavingSuffix => 'جارٍ الحفظ…';
@@ -2428,4 +2559,79 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get mfaResetStageWitnessBodyResumed =>
       'إذا ظهر رمز من 8 أرقام على هاتف طفلك، فأدخله أدناه. وإذا كان مالك آخر أو والد مشارك هو من يوافق بدلًا من ذلك، فعليه الموافقة من تطبيقه؛ ويتابع هذا الطلب عندما يحدث ذلك.';
+
+  @override
+  String get digestPrefsSendHourLabel => 'ساعة الإرسال';
+
+  @override
+  String get alertTitleSos => 'تم الضغط على زر الاستغاثة';
+
+  @override
+  String get alertTitleBlockedSite => 'تمت محاولة زيارة موقع محظور';
+
+  @override
+  String get alertTitleDailyLimit => 'تم بلوغ الحد اليومي';
+
+  @override
+  String get alertTitleAppBlocked => 'تم حظر تطبيق';
+
+  @override
+  String get alertTitleGeofence => 'تنبيه دخول أو مغادرة مكان';
+
+  @override
+  String get alertTitleAiConcern => 'محتوى مثير للقلق';
+
+  @override
+  String get alertTitleCyberbullying => 'تنمّر إلكتروني محتمل';
+
+  @override
+  String get alertTitleSelfHarm => 'مؤشرات محتملة لإيذاء النفس';
+
+  @override
+  String get alertTitleGrooming => 'استدراج محتمل من شخص بالغ';
+
+  @override
+  String get alertTitleTamper => 'محاولة تعطيل الحماية';
+
+  @override
+  String get alertTitleVpnDetected => 'تم اكتشاف شبكة VPN';
+
+  @override
+  String get alertTitleInstallRequest => 'طلب تثبيت تطبيق';
+
+  @override
+  String get alertTitleUnknownContact => 'تواصل من جهة غير معروفة';
+
+  @override
+  String get alertTitleGeneric => 'تنبيه';
+
+  @override
+  String get riskSelfHarm => 'إيذاء النفس';
+
+  @override
+  String get riskSubstanceUse => 'تعاطي المواد';
+
+  @override
+  String get riskSubstanceAbuse => 'إساءة استخدام المواد';
+
+  @override
+  String get riskAdultContent => 'محتوى للبالغين';
+
+  @override
+  String get riskSexualContent => 'محتوى جنسي';
+
+  @override
+  String get riskCyberbullying => 'تنمّر إلكتروني';
+
+  @override
+  String get riskGrooming => 'استدراج';
+
+  @override
+  String get riskViolence => 'العنف';
+
+  @override
+  String get riskHateSpeech => 'خطاب الكراهية';
+
+  @override
+  String get riskAiConcern => 'محتوى مثير للقلق';
 }

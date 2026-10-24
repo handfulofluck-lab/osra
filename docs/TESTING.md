@@ -246,6 +246,25 @@ harness trap, not a product bug.
 Rule: never make a check pass by loosening it. If a check is wrong, bring the evidence and fix the check
 explicitly, in its own commit, with the reasoning in the PR.
 
+### The idle-request budget (roadmap 5.8) — `P4`–`P6`
+
+`P4` asserts the agent cannot read its own request accounting (`403`) and `P5` asserts that the parent's view
+carries counts only: the window is named, and no route key contains an identifier. `P6` is the measurement
+itself — with `IDLE_BUDGET_M10` **unset** it prints the busiest 10-minute window as a `target`, and with the
+variable set to a number it becomes a gating `check`. It stays unset until the rate is measured on the Flip4;
+a threshold invented in code is a gate measuring the author's guess, which is the failure this row exists to
+stop. Read the number from `GET /v1/devices/:id/requests` (`busiestWindow.count`) — the busiest window, not
+an average, because the acceptance is a claim about the worst ten minutes.
+
+**The API has to be counting for that number to mean anything.** Counting is enabled with
+`IDLE_BUDGET_COUNTING=1` and is **off by default**: the harness sets it (`services/api/vitest.config.ts`) and
+so does staging (`infra/terraform/env/ecs.tf`, `environment == "staging"`), while production leaves it unset
+because a per-device hash does not deserve the cache node that carries flags and durable revocation. With it
+off, the read route still answers but returns `counting: false` and `withinBudget: null`, and `P6` is a
+`target` that says counting is disabled — a busiest window of `0` there would mean "nothing was written", not
+"the phone stayed idle". Start the API under test with the flag before running a measurement.
+
+
 ## 4. CI (GitHub Actions)
 
 | Workflow | Runs on | Purpose |
