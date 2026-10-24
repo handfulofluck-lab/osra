@@ -67,7 +67,7 @@ public struct PairingClient {
         request.timeoutInterval = 30.0 // 30s timeout so pairing never hangs indefinitely (IOS-07)
         var payload: [String: Any] = [
             "code": code,
-            "platform": "ios",
+            "platform": "android",
             "model": Self.deviceModel(),
             "osVersion": Self.osVersion(),
         ]
