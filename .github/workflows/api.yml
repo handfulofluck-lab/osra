@@ -5,8 +5,9 @@ name: API
 # nightly on main whatever changed (a new pnpm or runner image breaks main even when no PR touched the API).
 # The `paths:` lists below must stay identical, must name this file, and must cover every file outside
 # `services/api/` that an API test reads: `scripts/check-ci-paths.mjs` checks all three in workflow-lint.
-# The two Kotlin files are read by `services/api/test/device-silence.test.ts` (#166), which pins the
-# server's silence window to the agent's reporting cadence.
+# WorkScheduler.kt and LocationService.kt are read by `services/api/test/device-silence.test.ts` (#166),
+# which pins the server's silence window to the agent's reporting cadence; IdleCadence.kt is read by
+# `services/api/test/poll-cadence.test.ts` (#353), which pins X-Poll-After to the agent's clamps.
 on:
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - "turbo.json"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt"
+      - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
       - ".github/workflows/api.yml"
   pull_request:
     paths:
@@ -30,6 +32,7 @@ on:
       - "turbo.json"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/data/WorkScheduler.kt"
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt"
+      - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
       - ".github/workflows/api.yml"
   schedule:
     - cron: "11 2 * * *"

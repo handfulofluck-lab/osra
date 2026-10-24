@@ -67,7 +67,7 @@ release in §8 exist because of this table.
 | State | Where it lives | How the next holder checks it |
 |---|---|---|
 | OSRA lock / pause / pause-internet overlay | `osra_lock_state` SharedPreferences on the device | `adb -s R5CW116Y6GF shell dumpsys activity activities \| grep topResumedActivity` — `LockActivity` means a run is still in effect |
-| Queued restriction not yet delivered | `DeviceCommand` rows; the agent polls every 60 s | `GET /v1/devices/<id>/commands/history` — no `pending` or `delivered` `lock`/`pause`/`pause_internet`/`ring` from the previous owner (`docs/TESTING.md:154-157`; `AGENTS.md:248-251`) |
+| Queued restriction not yet delivered | `DeviceCommand` rows; a push wakes the agent at once, and it polls every 60 s while the screen is on or when the server has no push for it (up to 10 min when idle with push, #353) | `GET /v1/devices/<id>/commands/history` — no `pending` or `delivered` `lock`/`pause`/`pause_internet`/`ring` from the previous owner (`docs/TESTING.md:154-157`; `AGENTS.md:248-251`) |
 | Device Admin | Android device policy | the agent's status screen; `adb uninstall` succeeding is proof it is **off** |
 | Pairing and device revocation | agent secure store + the `Device` row + Redis `revoked:device:*` | the status screen says whether the device is paired; `GET /v1/devices` as the parent |
 | Seven onboarding grants | Android settings (accessibility, usage access, overlay, device admin, VPN consent, background location, Private DNS) | the status screen's "n of 7 required grants done" (`apps/child-android/app/src/main/java/com/familyshield/agent/setup/OnboardingPolicy.kt:18-28`; TR-16). Notification access is optional and not counted |
