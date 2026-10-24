@@ -233,7 +233,7 @@ void main() {
 
       // The zone is loaded from /v1/family/me and shown as the current value.
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
-      expect(find.textContaining('sent at 18:00 your local time'), findsOneWidget);
+      expect(find.text('18:00'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();
@@ -268,7 +268,7 @@ void main() {
         find.byKey(const ValueKey('digestTimezone')),
       );
       expect(dropdown.initialValue, 'Asia/Tokyo');
-      expect(find.textContaining('sent at 18:00 your local time'), findsOneWidget);
+      expect(find.text('18:00'), findsOneWidget);
       // The displayed value matches the server: no PATCH was needed to correct it.
       expect(api.calls('PATCH', '/v1/family/me'), isEmpty);
     });
@@ -286,6 +286,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(weekly).value, isTrue);
 
+      // The email field now carries a helper line (#344 review), so Save sits
+      // just below the 600 px default surface.
+      await tester.ensureVisible(find.text('Save preferences'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Save preferences'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
@@ -302,10 +306,120 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('a pending recipient is marked "confirmation sent" after a save (roadmap 2.7)', (tester) async {
+      // Roadmap 2.7 (osra-security#2): an address that is not a parent of the family gets nothing
+      // until it confirms, so the screen must not let it look like an address that will be mailed.
+      // Mutant: render the list without the `isPending` branch -> no "Confirmation sent" text.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['qa@familyshield.dev'],
+              'recipients': [
+                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+              ],
+            },
+        'PUT /v1/digests/prefs': (_) => {
+              'ok': true,
+              'recipients': [
+                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+                {'email': 'grandma@example.com', 'status': 'pending'},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Confirmation sent'), findsNothing);
+      expect(find.byKey(const ValueKey('digestRecipient-qa@familyshield.dev')), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'qa@familyshield.dev, grandma@example.com');
+      // The recipient rows push Save below the 600 px surface, so scroll it into view first.
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save preferences'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(api.calls('PUT', '/v1/digests/prefs').single.body['emails'],
+          ['qa@familyshield.dev', 'grandma@example.com']);
+      expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
+      expect(find.textContaining('Confirmation sent'), findsOneWidget);
+      // Run out the snackbar so no timer is left pending at test end.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an unsent confirmation says to save again (roadmap 2.7, #354 review)', (tester) async {
+      // The confirmation mail failed, so the address has no live link: the screen has to say the mail did
+      // not go, not that it did. Mutant: treat `unsent` as `pending` on the screen -> it claims
+      // "Confirmation sent" for a message the provider never accepted.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['grandma@example.com'],
+              'recipients': [
+                {'email': 'grandma@example.com', 'status': 'unsent'},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not sent. Save again to retry.'), findsOneWidget);
+      expect(find.textContaining('Confirmation sent'), findsNothing);
+    });
+
+    testWidgets('a limited address says nothing was sent, not that it was (roadmap 2.7, #354 review)',
+        (tester) async {
+      // The family already has the maximum confirmations waiting, so this save mailed nothing and the API
+      // says so with `limited: true`. The screen must not claim a mail it did not send.
+      // Mutant: drop the `isLimited` branch -> the row falls through to "Confirmation sent".
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/digests/prefs': (_) => {
+              'dailyEmail': true,
+              'weeklyEmail': false,
+              'pushEnabled': true,
+              'emails': ['grandma@example.com'],
+              'recipients': [
+                {'email': 'grandma@example.com', 'status': 'pending', 'limited': true},
+              ],
+            },
+        'GET /v1/family/me': (_) => {
+              'family': {'id': 'fam-1', 'name': 'Demo', 'region': 'US', 'timezone': 'UTC', 'children': []},
+            },
+      });
+      await pumpScreen(tester, const DigestPrefsScreen(), api);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Not sent yet: too many confirmations are waiting. Try again tomorrow.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Confirmation sent'), findsNothing);
+    });
+
     testWidgets('send-now POSTs and shows the returned markdown in a dialog', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
-
+      // The timezone section now has its own card, so the send-now button sits
+      // below the fold and the lazy ListView builds it only after scrolling.
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Send test digest now'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();

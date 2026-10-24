@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
+import { markDeviceRevoked } from "./deviceRevocation.js";
 
 /**
  * Phase 2c (ADR-0013): the durable usage model.
@@ -282,8 +283,10 @@ export interface EraseResult {
 /**
  * GDPR erasure cascade (ADR-0013 §erasure): every child-scoped row in one transaction, then the
  * Redis state that belongs to the child and its devices. Each deleted device's token is revoked the
- * same way an unpair does (the key is security state — #56), so an erased child's agent cannot keep
- * posting with its 10-year JWT.
+ * same way an unpair does (#56, ADR-0032): its `Device` row is gone, so the row's absence is the
+ * record and `markDeviceRevoked` publishes that verdict to the cache. It fails closed — a failure to
+ * write the cache after the rows are gone rejects the request rather than reporting an erasure whose
+ * revocation nobody can see.
  */
 export async function eraseChildData(childId: string, deviceTokenTtlSeconds: number): Promise<EraseResult> {
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
@@ -313,7 +316,7 @@ export async function eraseChildData(childId: string, deviceTokenTtlSeconds: num
   const redis = getRedis();
   const nowIso = new Date().toISOString();
   for (const id of deviceIds) {
-    await redis.set(`revoked:device:${id}`, nowIso, "EX", deviceTokenTtlSeconds).catch(() => {});
+    await markDeviceRevoked(id, nowIso, deviceTokenTtlSeconds);
     await redis.del(`device:${id}:telemetry`, `device:${id}:command-queue`).catch(() => {});
   }
   // Today's and yesterday's usage cache (the key carries a 2-day TTL).

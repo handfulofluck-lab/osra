@@ -1650,6 +1650,9 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     ["POST", `/v1/family/children/${Z}/consent/revoke`, {}, 403, "owner_role_required"],
     ["POST", "/v1/family/invites", { email: "q@example.invalid", role: "guardian", permissions: [] }, 403, "owner_role_required"],
     ["DELETE", `/v1/family/invites/${Z}`, undefined, 403, "owner_role_required"],
+    // #354: where the family's digest goes, and sending it, are owner actions.
+    ["PUT", "/v1/digests/prefs", { dailyEmail: false, weeklyEmail: false, pushEnabled: false, emails: ["q@example.invalid"] }, 403, "owner_role_required"],
+    ["POST", "/v1/digests/send-now", {}, 403, "owner_role_required"],
     ...(mrDeviceId ? [
       ["POST", `/v1/devices/${mrDeviceId}/telemetry`, { batteryPct: 50 }, 403, "device_role_required"],
       ["POST", `/v1/devices/${mrDeviceId}/activity`, { events: [] }, 403, "device_role_required"],
@@ -1719,7 +1722,118 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
   } else {
     target("Q8 another family's owner is refused on this family's scoped routes", "the no-witness family above has no live session");
   }
+
+  // Q9: outbound email cannot be steered by a family (plan 2.7, #354). Text that lands in
+  // a subject is bounded, the digest list is capped, and an address that isn't a parent of the family
+  // gets nothing until it confirms. Mutants: drop `.max(80)` on familyName -> Q9a 201; drop `.max(5)`
+  // -> Q9b 200; drop the confirmation filter in send-now -> Q9c lists the stranger. The 21st-invite 429
+  // is not probed: reaching it sends 20 real invites on a deployed API (test/invites.test.ts pins it).
+  const longName = await qcall("POST", "/v1/auth/register", {
+    body: { email: `qa-longname-${stamp}@example.com`, password: PASSWORD, displayName: "QA", familyName: "q".repeat(81), region: "US" },
+  });
+  check("Q9a an 81-character familyName is refused at registration (400)", longName.status === 400 && !!longName.data?.error?.fieldErrors?.familyName, `got ${longName.status} ${JSON.stringify(longName.data?.error?.fieldErrors ?? null)}`);
+  if (nwToken) {
+    const digestPrefs = (emails) => ({ dailyEmail: true, weeklyEmail: false, pushEnabled: false, emails });
+    const six = await qcall("PUT", "/v1/digests/prefs", { token: nwToken, body: digestPrefs(Array.from({ length: 6 }, (_, i) => `q${i}@example.invalid`)) });
+    check("Q9b a digest list of six addresses is refused (400)", six.status === 400 && !!six.data?.error?.fieldErrors?.emails, `got ${six.status}`);
+    const stranger = `qa-digest-stranger-${stamp}@example.invalid`;
+    const set = await qcall("PUT", "/v1/digests/prefs", { token: nwToken, body: digestPrefs([nwEmail, stranger]) });
+    const byEmail = Object.fromEntries((set.data?.recipients ?? []).map((r) => [r.email, r.status]));
+    const sent = await qcall("POST", "/v1/digests/send-now", { token: nwToken, body: {} });
+    const sentTo = Array.isArray(sent.data?.recipients) ? sent.data.recipients : null;
+    check(
+      "Q9c a non-parent digest address stays pending and send-now leaves it out; the parent's own address is confirmed",
+      set.status === 200 && byEmail[stranger] === "pending" && byEmail[nwEmail.toLowerCase()] === "confirmed" && sent.status === 200 && !!sentTo && !sentTo.includes(stranger),
+      `prefs=${set.status} statuses=${JSON.stringify(byEmail)} sendNow=${sent.status} recipients=${JSON.stringify(sentTo)}`,
+    );
+    // Leave the family's digest as it was: off, with only its own address.
+    await qcall("PUT", "/v1/digests/prefs", { token: nwToken, body: { dailyEmail: false, weeklyEmail: false, pushEnabled: false, emails: [nwEmail] } });
+  } else {
+    target("Q9b-c the digest list is capped and unconfirmed addresses get nothing", "the no-witness family above has no live session");
+  }
 }
+
+// ── R. digest confirmation page: the request a browser actually sends (#354) ────────────────────
+// The confirmation link is the one route a stranger reaches, from a mail client, with no session. On
+// #354 the button answered 415 for every press because Fastify has no form-body parser, and the unit
+// test missed it by posting without a content type. These rows send what a browser sends. The probe
+// has no mailbox and no DATABASE_URL (TESTING.md, device-silence row), so it never holds a live token:
+// a well-formed unknown token reaches the same handler and must get the 404 page, not a 415. The
+// confirmed case stays a unit test (test/digests-abuse.test.ts). Mutants, run against a live API:
+// delete the addContentTypeParser call in routes/digests.ts -> R2 fails (415); register that parser in
+// server.ts instead -> R5 fails (200 path, not 415); drop no-store from the GET page -> R1 fails;
+// raise its bodyLimit to 1 MB -> R6 fails.
+console.log("\n── R. digest confirmation page (#354) ──");
+/**
+ * A browser-shaped request: raw text back, no JSON assumed. Section Q above leaves the global limiter
+ * nearly spent by design, so this paces on the same headers qcall reads and waits out one window on a
+ * 429 rather than retrying inside it; a second 429 is throttling and aborts, as call() does.
+ */
+const rState = { remaining: Infinity, resetAt: 0 };
+async function browserRequest(method, path, { contentType, body } = {}, retried = false) {
+  if (rState.remaining <= 3) await new Promise((r) => setTimeout(r, Math.max(0, rState.resetAt - Date.now()) + 300));
+  const res = await fetch(`${API}${path}`, { method, headers: contentType ? { "content-type": contentType } : {}, body });
+  const remaining = Number(res.headers.get("x-ratelimit-remaining"));
+  const reset = Number(res.headers.get("x-ratelimit-reset"));
+  if (Number.isFinite(remaining)) rState.remaining = remaining;
+  if (Number.isFinite(reset)) rState.resetAt = Date.now() + reset * 1000;
+  if (res.status === 429) {
+    count429(`R ${method} ${path}`);
+    if (retried) abortRateLimited(`the retry after one limiter window was also 429 (${method} ${path})`);
+    rState.remaining = 0;
+    return browserRequest(method, path, { contentType, body }, true);
+  }
+  return { status: res.status, type: res.headers.get("content-type") ?? "", cache: res.headers.get("cache-control") ?? "", text: await res.text() };
+}
+const FORM = "application/x-www-form-urlencoded";
+const unknownToken = createHmac("sha256", `probe-${stamp}`).update("unknown-confirm-token").digest("hex");
+const confirmPath = `/v1/digests/confirm?token=${unknownToken}`;
+
+const confirmPage = await browserRequest("GET", confirmPath);
+const pageForms = confirmPage.text.match(/<form\b[^>]*>/g) ?? [];
+const formsPostBack = pageForms.length > 0 && pageForms.every((f) => /method="post"/i.test(f) && f.includes(`action="${confirmPath}"`));
+check(
+  "R1 GET of the mailed link is a page whose button posts the token back, and no cache keeps it (text/html, cache-control no-store)",
+  confirmPage.status === 200 && confirmPage.type.startsWith("text/html") && /no-store/.test(confirmPage.cache) && formsPostBack,
+  `got ${confirmPage.status} ${confirmPage.type} cache="${confirmPage.cache}" forms=${pageForms.length} postBack=${formsPostBack}`,
+);
+
+const pressed = await browserRequest("POST", confirmPath, { contentType: FORM, body: "" });
+check(
+  "R2 pressing the button (form POST, empty body, token in the URL) reaches the handler: an unknown token gets the 404 page, not 415",
+  pressed.status === 404 && pressed.type.startsWith("text/html") && /no-store/.test(pressed.cache),
+  `got ${pressed.status} ${pressed.type} cache="${pressed.cache}"`,
+);
+
+const malformedPress = await browserRequest("POST", "/v1/digests/confirm?token=not-a-token", { contentType: FORM, body: "" });
+check(
+  "R3 a form POST with a malformed token gets the 400 page",
+  malformedPress.status === 400 && malformedPress.type.startsWith("text/html"),
+  `got ${malformedPress.status} ${malformedPress.type}`,
+);
+
+const jsonPress = await browserRequest("POST", "/v1/digests/confirm", { contentType: "application/json", body: JSON.stringify({ token: unknownToken }) });
+let jsonPressBody = null;
+try { jsonPressBody = JSON.parse(jsonPress.text); } catch { /* not JSON: the check below says so */ }
+check(
+  "R4 a JSON caller keeps JSON: an unknown token is 404 confirmation_not_found_or_expired",
+  jsonPress.status === 404 && jsonPress.type.startsWith("application/json") && jsonPressBody?.error === "confirmation_not_found_or_expired",
+  `got ${jsonPress.status} ${jsonPress.type} ${jsonPress.text.slice(0, 80)}`,
+);
+
+const formElsewhere = await browserRequest("POST", "/v1/family/children", { contentType: FORM, body: "name=x" });
+check(
+  "R5 only /v1/digests reads form bodies: a form POST to another route is still 415",
+  formElsewhere.status === 415,
+  `POST /v1/family/children got ${formElsewhere.status}`,
+);
+
+const bigPress = await browserRequest("POST", confirmPath, { contentType: FORM, body: "a".repeat(4096) });
+check(
+  "R6 the confirmation form's body is bounded: a 4 KB form body is 413",
+  bigPress.status === 413,
+  `got ${bigPress.status}`,
+);
 
 console.log("\n── H. surface ──");
 const unknownRoute = await call("GET", `/v1/does-not-exist-${stamp}`);

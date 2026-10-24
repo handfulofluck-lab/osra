@@ -38,6 +38,14 @@ jobs:
         # deliberate `|| true` is ever needed; do not add one without saying why in the PR.
         run: node scripts/check-workflows.mjs --strict
 
+      - name: Each suite's path filter covers what the suite reads (2026-10-24)
+        # The build-and-test workflows run only when their paths change, so a path list that misses an
+        # input is a suite that silently stops running on the PRs that can break it. The self-test proves
+        # each rule fails on a fixture that breaks it.
+        run: |
+          node scripts/check-ci-paths.mjs --selftest
+          node scripts/check-ci-paths.mjs
+
       - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
         # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
         # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter
@@ -149,7 +157,31 @@ jobs:
           node scripts/check-verified-gate-signers.mjs --selftest
           node scripts/check-verified-gate-signers.mjs
 
+      - name: Carry-forward keeps a signature only when no hand-edited merge followed it (#357, #358 review)
+        # `git patch-id` hashes hunks with their context lines, so the old comparison refused a correctly
+        # folded merge when main edited a line near the PR's hunks (#349: default context DIFFER, -U0
+        # EQUAL). With context gone, position is not compared, so every merge after the signature must be
+        # a clean merge of its parents. The fixtures are real git repositories. Every rule that can change
+        # the answer has a fixture that fails without it: the -U0 comparison, the merge-only rule, the
+        # ancestor rule, the merge base, and rule (c)'s conflict, tree and parent-count checks (case 6 pins
+        # the gap -U0 alone opens: a hand rewrite that moves the PR's line into another function, with equal
+        # -U0 ids). The patch comparison is kept as a second layer; no fixture isolates it any more, because
+        # a clean fold cannot change it.
+        run: node scripts/verified-gate-carry.mjs --selftest
+
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
         # silently. Also catches links to files that were never committed.
         run: node scripts/check-docs-links.mjs
+
+      - name: Redis can lose revocation state — the ElastiCache settings that prevent it (ADR-0032)
+        # The API stores every revocation in Postgres and treats Redis as a cache, but two provider
+        # defaults still decide whether a key survives: `maxmemory-policy` (default allkeys-lru evicts
+        # the version/token/device revocation keys, and an evicted key reads as "nothing was revoked")
+        # and `snapshot_retention_limit` (default 0, so a restart returns an empty cache). This reads
+        # infra/terraform/env/elasticache.tf with comments stripped, so a sentence about the policy
+        # cannot stand in for the setting. Mutants, one per rule: drop the parameter block, switch it
+        # to allkeys-lru, or set retention back to 0 — each fails a named fixture in the self-test.
+        run: |
+          node scripts/check-redis-durability.mjs --selftest
+          node scripts/check-redis-durability.mjs

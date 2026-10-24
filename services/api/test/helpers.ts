@@ -24,6 +24,7 @@ function autoMockModel(): Record<string, ReturnType<typeof vi.fn>> {
 export const MOCKED_MODELS = [
   "family",
   "parent",
+  "revokedToken",
   "parentMfaRecoveryCode",
   "mfaResetRequest",
   "child",
@@ -36,6 +37,7 @@ export const MOCKED_MODELS = [
   "activityEvent",
   "socialEvent",
   "digestPrefs",
+  "digestRecipient",
   "digestSend",
   "familyInvite",
   "parentPushToken",
@@ -145,14 +147,25 @@ export class MockRedis {
  * Build a Fastify instance with jwt + the given route plugin mounted at prefix, and the production
  * error handler installed, so a route's status is what the server would send (a rethrow through the
  * handler is a 400 for anything Prisma-shaped, which is exactly what #167 had to stop doing).
+ *
+ * `opts.sessionGuard` mounts the production global auth gate (`middleware/sessionGuard.ts`, the
+ * preHandler `server.ts` installs) for an app whose routes are registered after it. Without it a
+ * test exercises a route without the gate in front of it, which is how the device-revocation rule
+ * came to be tested only through the one router that re-implemented it (ADR-0032). The import is
+ * dynamic so the files that never ask for the guard still do not load `src/db.ts`.
  */
 export async function buildApp(
   routes: (app: FastifyInstance) => Promise<void>,
   prefix: string,
+  opts: { sessionGuard?: boolean } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(fastifyJwt, { secret: "test-secret" });
   registerErrorHandler(app);
+  if (opts.sessionGuard) {
+    const { sessionGuardHook } = await import("../src/middleware/sessionGuard.js");
+    app.addHook("preHandler", sessionGuardHook);
+  }
   await app.register(routes, { prefix });
   await app.ready();
   return app;
@@ -214,6 +227,10 @@ export function resetPrismaMock(): void {
   prismaMock.device.findMany.mockResolvedValue([]);
   // Phase 2a: alert push fan-out reads parents + tokens; default to none so route tests stay quiet.
   prismaMock.parent.findMany.mockResolvedValue([]);
+  // ADR-0032: the durable revocation records. A parent with no row and no logout has nothing to
+  // restore, which is what almost every route test means; the tests that care set these explicitly.
+  prismaMock.revokedToken.findMany.mockResolvedValue([]);
+  prismaMock.revokedToken.deleteMany.mockResolvedValue({ count: 0 });
   prismaMock.parentPushToken.findMany.mockResolvedValue([]);
   prismaMock.parentPushToken.deleteMany.mockResolvedValue({ count: 0 });
   // Phase 2b: commands are rows. Default create echoes a pending row so enqueue callers work.

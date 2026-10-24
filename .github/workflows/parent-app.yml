@@ -1,0 +1,177 @@
+name: Parent app
+
+# The Flutter parent app. Until 2026-10-24 this was the `parent-app` job of ci.yml and ran on every pull
+# request; now it runs when the app changes, on main when it changes, and nightly on main whatever changed
+# (Flutter's stable channel moves under us, and that must show up on main, not on the next unrelated PR).
+# One file outside `apps/parent-app/` is read: the alert-category parity test (#344) reads the server's
+# category list, so a change to it must run this suite. `scripts/check-ci-paths.mjs` keeps the two lists
+# identical, makes sure they name this file, and fails when a test starts reading another outside file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/parent-app/**"
+      - "services/api/src/routes/alerts.ts"
+      - ".github/workflows/parent-app.yml"
+  pull_request:
+    paths:
+      - "apps/parent-app/**"
+      - "services/api/src/routes/alerts.ts"
+      - ".github/workflows/parent-app.yml"
+  schedule:
+    - cron: "11 2 * * *"
+  workflow_dispatch:
+
+# A push to main gets a group of its own, so it is never cancelled and never replaced while it waits.
+# `ios-scope` decides from that push's own `before..HEAD`, so a cancelled push's iOS inputs would not be
+# seen again until the nightly run: on 2026-10-24 the merge of #354 cancelled the run for #362's merge,
+# which had changed this file, and its own diff skipped iOS. A pull request diffs the whole PR against
+# its base on every run, so there a newer run covers the older one and cancelling it is safe.
+concurrency:
+  group: parent-app-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parent-app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/parent-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      # Store-readiness gate: a release build must compile, shrink and carry INTERNET + the Maps
+      # key placeholder. The Maps key is a repository secret (blank is tolerated for the build;
+      # the map simply renders empty). Signing: with OSRA_UPLOAD_KEYSTORE_B64 set this produces an
+      # upload-key-signed AAB; without it the debug key is used and the job still proves the build.
+      # NOTE: the `secrets` context is NOT available in a step `if:` — GitHub rejects the whole
+      # workflow file ("Unrecognized named-value: 'secrets'") and zero jobs run, which is exactly
+      # how the first push of this PR failed. Decide inside the run body instead.
+      - name: Materialise upload keystore (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release build will use the debug key (by design)"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
+          echo "OSRA_UPLOAD_KEYSTORE=upload.jks" >> "$GITHUB_ENV"
+          echo "upload keystore materialised"
+      - name: Release build (AAB)
+        env:
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          OSRA_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEYSTORE_PASSWORD }}
+          OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
+          OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
+        run: flutter build appbundle --release
+      - name: Release manifest must declare INTERNET
+        run: |
+          unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
+          # The AAB manifest is protobuf; the permission string survives as plain text.
+          grep -q "android.permission.INTERNET" /tmp/manifest.bin && echo "INTERNET present"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parent-app-release-aab
+          path: apps/parent-app/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 14
+
+  # Whether this run builds iOS. A macOS minute bills as ten Linux minutes once the repository is private,
+  # and most parent-app changes are Dart only, which the Android release build above already compiles. So a
+  # pull request or a push builds iOS only when it changes something the iOS build reads and the Android one
+  # does not: the `ios/` tree, `pubspec.yaml` or `pubspec.lock` (a plugin brings its own native code), or this
+  # file. The nightly and manual runs always build it, which is how a Dart change or a new Flutter stable that
+  # breaks only iOS reaches `main` within a day. When the diff cannot be read, it builds rather than skips.
+  ios-scope:
+    name: Does this change reach the iOS build?
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.scope.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) BASE=HEAD^1 ;;   # the merge commit's first parent is the base it was merged onto
+            push) BASE=$BEFORE ;;
+            *)
+              echo "build=true" >> "$GITHUB_OUTPUT"
+              echo "$EVENT run: the iOS build always runs"
+              exit 0 ;;
+          esac
+          if ! git diff --name-only "$BASE" HEAD > "$RUNNER_TEMP/changed.txt"; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "cannot diff against $BASE: building iOS rather than skipping it"
+            exit 0
+          fi
+          if grep -E '^apps/parent-app/ios/|^apps/parent-app/pubspec[.](yaml|lock)$|^[.]github/workflows/parent-app[.]yml$' \
+              "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/ios-inputs.txt"; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "iOS inputs changed ($(wc -l < "$RUNNER_TEMP/ios-inputs.txt")), the first 20:"
+            head -20 "$RUNNER_TEMP/ios-inputs.txt"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "no iOS input among $(wc -l < "$RUNNER_TEMP/changed.txt") changed file(s); the nightly run still builds iOS"
+          fi
+
+  # Roadmap 3.9: the iOS target exists in the same tree. This job is the *only*
+  # evidence the iOS build is real — no machine on the programme has Xcode, so
+  # nothing here was ever built locally (a `flutter build ios` on Windows fails
+  # with "Building for iOS is only supported on macOS", which proves nothing).
+  # `--no-codesign`: no certificate, no provisioning profile and no Apple
+  # account are involved, which is why this can run on a public repository for
+  # free. It is a simulator-target build, NOT an App Store build — signing,
+  # entitlements and archiving are separate work (docs/ROADMAP.md 3.9, 5.5, 5.6).
+  # It runs when `ios-scope` says so (above).
+  parent-app-ios:
+    name: iOS build (no code signing)
+    needs: ios-scope
+    if: needs.ios-scope.outputs.build == 'true'
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: apps/parent-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # This Flutter version wires plugins through Swift Package Manager
+      # (Runner.xcodeproj references Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage),
+      # so there is no Podfile to commit and none was generated. The build
+      # creates it on the runner if a plugin still needs CocoaPods, which the
+      # macos-14 image ships.
+      - name: Build the iOS target unsigned
+        run: flutter build ios --release --no-codesign
+      - name: The bundle identifier matches the shape of the Android application id
+        run: |
+          BID=$(grep -m1 -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //')
+          echo "iOS bundle id: $BID"
+          # Apple's grammar allows only alphanumerics, hyphens and periods, so
+          # Flutter drops the Android id's underscore rather than emitting an
+          # identifier App Store Connect would refuse: dev.familyshield.familyshield_parent
+          # -> dev.familyshield.familyshieldParent. Same org, same leaf name.
+          case "$BID" in
+            dev.familyshield.familyshieldParent) echo "ok"; ;;
+            *) echo "unexpected bundle id: $BID" >&2; exit 1; ;;
+          esac
+      - name: Info.plist declares the display name and both locales
+        run: |
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST" | grep -qx 'OSRA'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations:0' "$PLIST" | grep -qx 'en'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations:1' "$PLIST" | grep -qx 'ar'
+          echo "display name and en/ar localizations present"

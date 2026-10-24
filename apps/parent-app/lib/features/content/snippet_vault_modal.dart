@@ -204,7 +204,7 @@ class SnippetVaultModal extends StatelessWidget {
                 for (final c in concernTypes)
                   Chip(
                     visualDensity: VisualDensity.compact,
-                    label: Text(c, style: theme.textTheme.bodySmall),
+                    label: Text(l10n.searchRiskCategory(c), style: theme.textTheme.bodySmall),
                   ),
               ],
             ),

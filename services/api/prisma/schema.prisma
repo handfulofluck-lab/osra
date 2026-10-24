@@ -53,12 +53,34 @@ model Parent {
   // required, no authenticator bound": `/login` refuses it with 401 mfa_reenroll_required.
   mfaEnabled   Boolean         @default(false)
   mfaSecret    String?
+  /// ADR-0032 / roadmap 2.7: the parent's sessions version, the durable record behind
+  /// `auth:session-version:<parentId>`. Every revocation of this parent's sessions increments it;
+  /// Redis is a cache of this column and is rebuilt from it on a miss. `default(0)` means "nothing
+  /// revoked", so a parent that never revoked needs no row change and no migration backfill.
+  sessionVersion Int           @default(0)
   createdAt    DateTime        @default(now())
   family       Family          @relation(fields: [familyId], references: [id])
   consents     ConsentRecord[]
   pushTokens   ParentPushToken[]
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
+}
+
+/// ADR-0032 / roadmap 2.7: a single-logout revocation, the durable record behind
+/// `revoked:token:<jti>`. One row per ended session, written in the same request as that key, so a
+/// restarted or evicted Redis cannot make a logged-out access token work again.
+///
+/// `parentId` is denormalised with no FK, like `DigestSend.familyId`: the row is the record of a
+/// revocation and is deleted only by its own expiry. `expiresAt` is the access token's own end (the
+/// 8-day key TTL), so the nightly prune (`src/jobs/revokedTokenPrune.ts`) deletes only rows whose
+/// token has already expired. No `usedAt`/`reason`: a revocation has no lifecycle beyond "until the
+/// token would have expired".
+model RevokedToken {
+  jti       String   @id
+  parentId  String
+  expiresAt DateTime
+
+  @@index([parentId])
 }
 
 /// ADR-0023 Option A: one-time MFA recovery codes. Only the SHA-256 hash of the normalised code is
@@ -316,6 +338,26 @@ model DigestPrefs {
   weeklyEmail Boolean  @default(true)
   pushEnabled Boolean  @default(true)
   emails      String[] @default([])
+}
+
+/// Roadmap 2.7 (osra-security#2): an address that is not a parent of the family has to confirm before a
+/// digest is sent to it, so a family's recipient list cannot turn the sending domain into a relay.
+///
+/// One row per (family, address). `confirmedAt` is the durable proof that the address asked for the
+/// digest; `tokenHash` is the SHA-256 of the single-use 24-hour link token and `tokenExpiresAt` its
+/// deadline. Confirming clears both, so the link is spent. A parent's own address needs no row: it is
+/// trusted as that account's address (see lib/digestRecipients.ts).
+model DigestRecipient {
+  id             String    @id @default(uuid())
+  familyId       String
+  email          String
+  confirmedAt    DateTime?
+  tokenHash      String?   @unique
+  tokenExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([familyId, email])
+  @@index([familyId])
 }
 
 model InstallRequest {

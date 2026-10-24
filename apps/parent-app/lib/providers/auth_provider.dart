@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -5,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../api/push_api.dart';
+import '../push/push_registration.dart';
 import 'server_provider.dart';
 
 /// Injectable [ApiClient] source; overridden in tests with a fake.
@@ -74,10 +78,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final FlutterSecureStorage _storage;
   final ServerUrlNotifier? _serverUrl;
 
-  AuthNotifier(this._api, {FlutterSecureStorage? storage, ServerUrlNotifier? serverUrl})
-      : _storage = storage ?? const FlutterSecureStorage(),
+  /// The push seam. Injectable so a test can supply a token source and see the
+  /// forward happen; the default has no SDK behind it and therefore makes no
+  /// request (`lib/push/push_registration.dart`).
+  PushRegistration? _push;
+
+  AuthNotifier(
+    this._api, {
+    FlutterSecureStorage? storage,
+    ServerUrlNotifier? serverUrl,
+    PushRegistration? push,
+  })  : _storage = storage ?? const FlutterSecureStorage(),
         _serverUrl = serverUrl,
+        _push = push,
         super(const AuthState(restoring: true));
+
+  PushRegistration get _pushRegistration => _push ??= PushRegistration(api: PushApi(_api));
 
   bool _disposed = false;
 
@@ -164,6 +180,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final res = await _api.raw.get('/v1/family/me');
       final overview = FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
       _setState(AuthState(isAuthenticated: true, parent: overview.parent, family: overview.family));
+      // Fire-and-forget, deliberately: a push token is never a precondition for
+      // being signed in, and `register()` returns an outcome instead of throwing
+      // on every path. With no push SDK in the build it reports `unavailable`
+      // before the permission prompt, so it issues no request.
+      unawaited(_pushRegistration.register());
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
         try {
@@ -179,6 +200,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Deletes the stored tokens and resets to the logged-out state.
   Future<void> logout() async {
+    // Before logout: `/v1/auth/logout` revokes the access token issued with this
+    // refresh token (`services/api/src/routes/auth.ts:1442`, ADR-0014), and
+    // `DELETE /v1/me/push-token` authenticates with it — so the removal has to
+    // go first or it is a 401 and the row survives on a signed-out phone.
+    try {
+      await _push?.unregister();
+    } catch (_) {}
     // Handoff item 2: revoke the refresh token server-side before clearing locally.
     try {
       final refresh = await _storage.read(key: 'refresh');

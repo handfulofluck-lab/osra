@@ -126,6 +126,22 @@ class _UsageSection extends StatelessWidget {
                       },
                     ),
                   ),
+                  // NOTE: the default left axis drew bare minute numbers with no
+                  // unit — an unexplained "120" next to the tallest bar. Label
+                  // the ticks with the minute unit so the value is self-describing.
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 64,
+                      getTitlesWidget: (value, _) => value <= 0
+                          ? const SizedBox.shrink()
+                          : Text(
+                              l10n.minutesShort(value.toInt()),
+                              style: AppType.chartTick,
+                              textAlign: TextAlign.center,
+                            ),
+                    ),
+                  ),
                   topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 ),
