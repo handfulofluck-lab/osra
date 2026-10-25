@@ -13,6 +13,10 @@ class CommandPollerTokenWiringTest {
     fun `pollOnce passes the header and the token step hands it to the upload rule`() {
         assertTrue(source.contains("syncPushToken(deviceId, response.headers()[PushTokenUploadPolicy.PUSH_TOKEN_HEADER])"))
         assertTrue(source.contains("PushTokenUploadPolicy.serverHasToken(pushTokenHeader)"))
+        // A5 (Claude's review): computing the answer and then not passing it compiles, because the
+        // parameter defaults to null — and the phone goes back to trusting its own marker. The line
+        // above does not catch that; this one does.
+        assertTrue(source.contains("shouldUpload(stored, settings.uploadedPushToken(), deviceId, serverHasToken)"))
     }
 
     /** Walks up from the Gradle working directory (the `app` module), as LocationServiceCadenceWiringTest does. */
