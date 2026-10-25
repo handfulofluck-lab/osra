@@ -41,7 +41,12 @@ final class OSRAAgentAppDelegate: NSObject, UIApplicationDelegate {
                      didReceiveRemoteNotification userInfo: [AnyHashable: Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         Task {
-            let result = await CommandDrainer.drainNow()
+            // Under iOS's ~30 s budget for a woken app: past the deadline the drain is cancelled and the wake
+            // answers .failed, and the next wake or launch drains again (the queue keeps unacked commands).
+            guard let result = await CommandDrainer.drain(within: CommandDrainer.wakeDeadlineSeconds) else {
+                completionHandler(.failed)
+                return
+            }
             completionHandler(result.handled.isEmpty && result.refused.isEmpty && !result.consentWithdrawn ? .noData : .newData)
         }
     }

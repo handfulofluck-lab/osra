@@ -170,4 +170,88 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(outcome, .notPaired)
         XCTAssertTrue(StubProtocol.requests.isEmpty)
     }
+
+    // MARK: - A token the server cleared (#383)
+
+    private func uploadOnce(_ token: String) async {
+        StubProtocol.response = (204, Data())
+        let outcome = await PushTokenRegistrar.register(tokenHex: token, session: StubProtocol.session)
+        XCTAssertEqual(outcome, .uploaded)
+        StubProtocol.reset()
+    }
+
+    private func pushTokenPosts() -> [(request: URLRequest, body: Data)] {
+        StubProtocol.requests.filter { $0.request.url?.path.hasSuffix("/push-token") == true }
+    }
+
+    func testAPollSayingTheServerHoldsNoTokenSendsTheStoredOneAgainOnce() async throws {
+        pair()
+        let token = String(repeating: "ab", count: 32)
+        await uploadOnce(token)
+        StubProtocol.headers = ["X-Push-Token": "none"]
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true ? (200, self.json([])) : (204, Data())
+        }
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                                   tokenSession: StubProtocol.session) { .consentWithdrawn }
+        XCTAssertTrue(result.pushTokenResent)
+        let posts = pushTokenPosts()
+        XCTAssertEqual(posts.count, 1, "exactly one upload heals the cleared token")
+        XCTAssertEqual(posts.first?.request.url?.path, "/v1/devices/dev-1/push-token")
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: try XCTUnwrap(posts.first).body) as? [String: String])?["token"], token)
+    }
+
+    func testAPollSayingTheTokenIsOnFileSendsNothing() async {
+        pair()
+        await uploadOnce(String(repeating: "ab", count: 32))
+        StubProtocol.headers = ["X-Push-Token": "on-file"]
+        StubProtocol.response = (200, json([]))
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                                   tokenSession: StubProtocol.session) { .consentWithdrawn }
+        XCTAssertFalse(result.pushTokenResent)
+        XCTAssertTrue(pushTokenPosts().isEmpty)
+    }
+
+    func testAnOlderServerWithoutTheHeaderChangesNothing() async throws {
+        pair()
+        StubProtocol.response = (200, json([]))
+        let poll = try await CommandClient(session: StubProtocol.session).poll(try XCTUnwrap(AgentIdentityStore.load()))
+        XCTAssertTrue(poll.serverHasPushToken)
+    }
+
+    func testNothingIsResentWhenNothingWasUploadedForThisPairing() async {
+        pair(deviceId: "dev-1")
+        await uploadOnce(String(repeating: "ab", count: 32))
+        // "Re-pair this device" saves the new identity over the old one; the old row's token is not the new row's.
+        pair(deviceId: "dev-2")
+        StubProtocol.response = (204, Data())
+        let otherRow = await PushTokenRegistrar.resendAfterServerCleared(session: StubProtocol.session)
+        XCTAssertEqual(otherRow, .nothingToResend)
+        AgentIdentityStore.clear()
+        let unpaired = await PushTokenRegistrar.resendAfterServerCleared(session: StubProtocol.session)
+        XCTAssertEqual(unpaired, .notPaired)
+        XCTAssertTrue(StubProtocol.requests.isEmpty)
+    }
+
+    // MARK: - The wake deadline
+
+    func testTheWakeDrainAnswersByTheDeadline() async {
+        let start = Date()
+        let result = await CommandDrainer.drain(within: 0.2) {
+            // Work that ignores cancellation: the answer must not wait for it.
+            Thread.sleep(forTimeInterval: 3)
+            return CommandDrainer.Result(handled: ["rules_updated"])
+        }
+        XCTAssertNil(result, "past the deadline the wake answers without the drain")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2, "iOS allows about 30 s; the drain must not hold the answer")
+    }
+
+    func testAFastDrainAnswersWithItsResult() async {
+        let result = await CommandDrainer.drain(within: 5) { CommandDrainer.Result(refused: ["lock"]) }
+        XCTAssertEqual(result?.refused, ["lock"])
+    }
+
+    func testTheWakeDeadlineIsUnderIOSsThirtySeconds() {
+        XCTAssertLessThan(CommandDrainer.wakeDeadlineSeconds, 30)
+    }
 }

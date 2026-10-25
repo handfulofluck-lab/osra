@@ -208,6 +208,8 @@ final class RuleSyncTests: XCTestCase {
 final class StubProtocol: URLProtocol {
     static var response: (Int, Data)?
     static var responder: ((URLRequest) -> (Int, Data))?
+    /// Response headers for every answer (`X-Push-Token`, #383).
+    static var headers: [String: String]?
     static var requests: [(request: URLRequest, body: Data)] = []
     static var lastRequest: URLRequest? {
         get { requests.last?.request }
@@ -217,6 +219,7 @@ final class StubProtocol: URLProtocol {
     static func reset() {
         response = nil
         responder = nil
+        headers = nil
         requests = []
     }
 
@@ -226,7 +229,7 @@ final class StubProtocol: URLProtocol {
     override func startLoading() {
         Self.requests.append((request, Self.body(of: request)))
         let (status, body) = Self.responder?(request) ?? Self.response ?? (599, Data())
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: Self.headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
