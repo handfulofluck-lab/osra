@@ -51,12 +51,6 @@ public final class ScreenTimeController {
         store.application.blockedApplications = Set(packageIds.map { Application(bundleIdentifier: $0) })
     }
 
-    /// Persists the bedtime blocked bundle identifiers in the shared app group (IOS-05).
-    public func setBedtimeBlockedApps(packageIds: [String]) {
-        UserDefaults(suiteName: SelectionStore.suiteName)?
-            .set(packageIds, forKey: "bedtime.blockedBundleIdentifiers")
-    }
-
     /// Applies the web filter: `blockedDomains` feed the web-content filter policy while
     /// `blockedCategories` feed the web-domain and application category shields (IOS-03).
     public func applyWebFilter(blockedCategories: [String], blockedDomains: [String]) {
@@ -106,49 +100,75 @@ public final class ScreenTimeController {
     }
 
     /// Enforces a synced rule set (5.5 PR C): blocked apps, the web filter, bedtime and the routines.
-    /// Without Screen Time authorization each step logs and does nothing, as the methods above do.
+    /// Without Screen Time authorization each step logs and does nothing, as the methods above do. Any
+    /// bedtime or routine activity the system refuses is recorded in `RuleStore.unscheduled()`.
     public func applyRules(_ rules: RuleSet) {
         applyBlockedApps(packageIds: rules.blockedBundleIdentifiers)
         applyWebFilter(blockedCategories: rules.webFilter.blockedCategories,
                        blockedDomains: rules.webFilter.blockedDomains)
-        if let start = parseHHMM(rules.screenTime.bedtimeStart), let end = parseHHMM(rules.screenTime.bedtimeEnd) {
-            try? scheduleBedtime(start: DateComponents(hour: start.hour, minute: start.minute),
-                                 end: DateComponents(hour: end.hour, minute: end.minute))
-        }
-        scheduleRoutines(RuleStore.routineSchedules())
-    }
-
-    /// Registers each routine once per weekday it runs on, as a weekly repeating interval. Days arrive in
-    /// Foundation's numbering already (`RuleStore.RoutineSchedule.swiftWeekdays`).
-    public func scheduleRoutines(_ routines: [RuleStore.RoutineSchedule]) {
         guard ensureAuthorized(#function) else { return }
-        let center = DeviceActivityCenter()
-        let stale = center.activities.filter { $0.rawValue.hasPrefix("routine.") }
-        if !stale.isEmpty { center.stopMonitoring(stale) }
-        for (index, routine) in routines.enumerated() {
-            guard let start = parseHHMM(routine.startTime), let end = parseHHMM(routine.endTime) else { continue }
-            // A routine that ends earlier in the day than it starts runs past midnight: it ends the next day.
-            let overnight = (end.hour * 60 + end.minute) <= (start.hour * 60 + start.minute)
-            for weekday in routine.swiftWeekdays {
-                let schedule = DeviceActivitySchedule(
-                    intervalStart: DateComponents(hour: start.hour, minute: start.minute, weekday: weekday),
-                    intervalEnd: DateComponents(hour: end.hour, minute: end.minute,
-                                                weekday: overnight ? weekday % 7 + 1 : weekday),
-                    repeats: true
-                )
-                do {
-                    try center.startMonitoring(DeviceActivityName("routine.\(index).\(weekday)"), during: schedule)
-                } catch {
-                    Self.logger.error("routine '\(routine.name, privacy: .public)' day \(weekday): \(error.localizedDescription)")
-                }
+        var refused: [String] = []
+        if let start = parseHHMM(rules.screenTime.bedtimeStart), let end = parseHHMM(rules.screenTime.bedtimeEnd) {
+            do {
+                try scheduleBedtime(start: DateComponents(hour: start.hour, minute: start.minute),
+                                    end: DateComponents(hour: end.hour, minute: end.minute))
+            } catch {
+                refused.append("bedtime: \(error.localizedDescription)")
             }
         }
+        refused += scheduleRoutines(RuleStore.routineSchedules())
+        RuleStore.recordUnscheduled(refused)
+        if !refused.isEmpty {
+            Self.logger.error("\(refused.count) activities not monitored: \(refused.joined(separator: "; "), privacy: .public)")
+        }
     }
 
-    /// Removes every rule shield and schedule (consent withdrawn, or unpaired).
+    /// Registers one daily activity per routine (`RoutinePlan`); the monitor applies the shield only on the
+    /// routine's weekdays (`ShieldPolicy`). Stale routine activities are stopped first, their shields cleared.
+    /// Returns the routines the system refused.
+    @discardableResult
+    public func scheduleRoutines(_ routines: [RuleStore.RoutineSchedule]) -> [String] {
+        guard ensureAuthorized(#function) else { return [] }
+        let center = DeviceActivityCenter()
+        Self.stop(center.activities.filter { $0.rawValue.hasPrefix("routine.") }, center: center)
+        var refused: [String] = []
+        for (routine, name) in zip(routines, RoutinePlan.activityNames(for: routines)) {
+            guard let start = parseHHMM(routine.startTime), let end = parseHHMM(routine.endTime) else {
+                refused.append("\(routine.name): bad time")
+                continue
+            }
+            // Daily repeating; an end earlier than the start runs past midnight.
+            let schedule = DeviceActivitySchedule(
+                intervalStart: DateComponents(hour: start.hour, minute: start.minute),
+                intervalEnd: DateComponents(hour: end.hour, minute: end.minute),
+                repeats: true
+            )
+            do {
+                try center.startMonitoring(DeviceActivityName(name), during: schedule)
+            } catch {
+                refused.append("\(routine.name): \(error.localizedDescription)")
+            }
+        }
+        return refused
+    }
+
+    /// Removes every rule shield and schedule (consent withdrawn, or unpaired), including the shield of an
+    /// interval that is running right now.
     public func clearRules() {
+        let center = DeviceActivityCenter()
+        Self.stop(center.activities, center: center)
         ManagedSettingsStore(named: Self.rulesStoreName).clearAllSettings()
-        DeviceActivityCenter().stopMonitoring()
+        RuleStore.recordUnscheduled([])
+    }
+
+    /// Clears each activity's named store, then stops monitoring it (`ActivityTeardown`).
+    private static func stop(_ activities: [DeviceActivityName], center: DeviceActivityCenter) {
+        guard !activities.isEmpty else { return }
+        ActivityTeardown.stop(
+            activities.map(\.rawValue),
+            clearStore: { ManagedSettingsStore(named: ManagedSettingsStore.Name($0)).clearAllSettings() },
+            stopMonitoring: { center.stopMonitoring($0.map { DeviceActivityName($0) }) }
+        )
     }
 
     /// Logs a warning and returns false when Screen Time authorization is missing.

@@ -55,6 +55,11 @@ public struct RuleSet: Decodable, Equatable {
     public var blockedBundleIdentifiers: [String] {
         appRules.filter { $0.action == "block" }.map(\.packageId)
     }
+
+    /// Bundle identifiers the parent explicitly allowed (`action == "allow"`).
+    public var allowedBundleIdentifiers: [String] {
+        appRules.filter { $0.action == "allow" }.map(\.packageId)
+    }
 }
 
 /// Day-of-week conversion between the rules contract and Foundation.
@@ -104,17 +109,18 @@ public struct RuleSyncClient {
     }
 }
 
-/// Writes the synced rules into the app group, where the monitor and shield extensions read them
-/// (`DeviceActivityMonitor.swift`: `apps.blockedBundleIdentifiers`, `bedtime.blockedBundleIdentifiers`).
+/// Writes the synced rules into the app group, where the monitor and shield extensions read them.
 public enum RuleStore {
     enum Keys {
         static let blockedApps = "apps.blockedBundleIdentifiers"
-        static let bedtimeBlockedApps = "bedtime.blockedBundleIdentifiers"
+        static let allowedApps = "rules.allowedApps"
+        static let alwaysAllowedApps = "rules.alwaysAllowedApps"
         static let bedtimeStart = "rules.bedtimeStart"
         static let bedtimeEnd = "rules.bedtimeEnd"
         static let blockedDomains = "rules.blockedDomains"
         static let blockedCategories = "rules.blockedCategories"
         static let routineSchedules = "rules.routineSchedules"
+        static let unscheduled = "rules.unscheduledActivities"
         static let syncedAt = "rules.syncedAt"
     }
 
@@ -125,15 +131,15 @@ public enum RuleStore {
         public var endTime: String
         public var swiftWeekdays: [Int]
         public var blockedApps: [String]
+        public var allowedApps: [String]
     }
 
     @discardableResult
     public static func save(_ rules: RuleSet, now: Date = Date()) -> Bool {
         guard let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName) else { return false }
         defaults.set(rules.blockedBundleIdentifiers, forKey: Keys.blockedApps)
-        // During bedtime the monitor shields the parent's blocked apps. Shielding "everything except the
-        // always-allowed apps" needs opaque app tokens from the on-device picker, so it is not attempted here.
-        defaults.set(rules.blockedBundleIdentifiers, forKey: Keys.bedtimeBlockedApps)
+        defaults.set(rules.allowedBundleIdentifiers, forKey: Keys.allowedApps)
+        defaults.set(rules.alwaysAllowedApps, forKey: Keys.alwaysAllowedApps)
         defaults.set(rules.screenTime.bedtimeStart, forKey: Keys.bedtimeStart)
         defaults.set(rules.screenTime.bedtimeEnd, forKey: Keys.bedtimeEnd)
         defaults.set(rules.webFilter.blockedDomains, forKey: Keys.blockedDomains)
@@ -141,7 +147,7 @@ public enum RuleStore {
         let schedules = rules.routines.map {
             RoutineSchedule(name: $0.name, startTime: $0.startTime, endTime: $0.endTime,
                             swiftWeekdays: $0.days.compactMap(Weekday.swiftWeekday(ruleDay:)),
-                            blockedApps: $0.blockedApps)
+                            blockedApps: $0.blockedApps, allowedApps: $0.allowedApps)
         }
         defaults.set(try? JSONEncoder().encode(schedules), forKey: Keys.routineSchedules)
         defaults.set(now.timeIntervalSince1970, forKey: Keys.syncedAt)
@@ -149,18 +155,93 @@ public enum RuleStore {
     }
 
     public static func routineSchedules() -> [RoutineSchedule] {
-        guard let data = UserDefaults(suiteName: AgentIdentityStore.suiteName)?.data(forKey: Keys.routineSchedules)
-        else { return [] }
+        guard let data = defaults?.data(forKey: Keys.routineSchedules) else { return [] }
         return (try? JSONDecoder().decode([RoutineSchedule].self, from: data)) ?? []
     }
 
+    public static func allowedApps() -> [String] { defaults?.stringArray(forKey: Keys.allowedApps) ?? [] }
+    public static func alwaysAllowedApps() -> [String] { defaults?.stringArray(forKey: Keys.alwaysAllowedApps) ?? [] }
+
+    /// Records the bedtime or routine activities the system refused to monitor, in one place: the parent
+    /// would otherwise believe they apply. Empty when everything was registered.
+    public static func recordUnscheduled(_ names: [String]) {
+        defaults?.set(names, forKey: Keys.unscheduled)
+    }
+
+    public static func unscheduled() -> [String] { defaults?.stringArray(forKey: Keys.unscheduled) ?? [] }
+
     /// Removes every synced rule: on unpairing, and when the server answers 428 (consent withdrawn).
     public static func clear() {
-        guard let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName) else { return }
-        for key in [Keys.blockedApps, Keys.bedtimeBlockedApps, Keys.bedtimeStart, Keys.bedtimeEnd,
-                    Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.syncedAt] {
+        guard let defaults else { return }
+        for key in [Keys.blockedApps, Keys.allowedApps, Keys.alwaysAllowedApps, Keys.bedtimeStart, Keys.bedtimeEnd,
+                    Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.unscheduled, Keys.syncedAt] {
             defaults.removeObject(forKey: key)
         }
+    }
+
+    private static var defaults: UserDefaults? { UserDefaults(suiteName: AgentIdentityStore.suiteName) }
+}
+
+/// What a running bedtime or routine interval shields. A pure decision, so the SwiftPM tests can reach it;
+/// the monitor extension applies it (`FamilyShieldDeviceActivityMonitor.intervalDidStart`).
+///
+/// Android's rule (`RuleEngine.kt`): during bedtime, and during a routine that lists `allowedApps`,
+/// everything is blocked except what is allowed. A routine that only lists `blockedApps` blocks those.
+public enum ShieldPolicy: Equatable {
+    /// Shield every app except these bundle identifiers (`.all(except:)`).
+    case allExcept([String])
+    /// Shield exactly these bundle identifiers.
+    case only([String])
+    /// Shield nothing for this activity (not today, or nothing to block).
+    case none
+
+    /// Always reachable, as Android's essential-apps rule keeps the dialer (#165). Whether Phone stays
+    /// reachable under `.all(except:)` can only be confirmed on a signed device (5.1).
+    public static let essentialApps = ["com.apple.mobilephone"]
+
+    /// The decision for `activity` (`bedtime.<id>` or `routine.<index>`) starting on `weekday`
+    /// (Foundation numbering, 1=Sun..7=Sat). An overnight routine is judged by the day it started on,
+    /// which is the day `intervalDidStart` runs.
+    public static func decide(activity: String, weekday: Int, alwaysAllowed: [String], allowed: [String],
+                              routines: [RuleStore.RoutineSchedule]) -> ShieldPolicy {
+        let everywhere = alwaysAllowed + allowed + essentialApps
+        if activity.hasPrefix("bedtime.") { return .allExcept(unique(everywhere)) }
+        let parts = activity.split(separator: ".")
+        guard parts.count == 2, parts[0] == "routine", let index = Int(parts[1]), routines.indices.contains(index)
+        else { return .none }
+        let routine = routines[index]
+        guard routine.swiftWeekdays.contains(weekday) else { return .none }
+        if !routine.allowedApps.isEmpty { return .allExcept(unique(everywhere + routine.allowedApps)) }
+        return routine.blockedApps.isEmpty ? .none : .only(routine.blockedApps)
+    }
+
+    /// `decide` with the rules stored by the last sync.
+    public static func current(activity: String, weekday: Int) -> ShieldPolicy {
+        decide(activity: activity, weekday: weekday, alwaysAllowed: RuleStore.alwaysAllowedApps(),
+               allowed: RuleStore.allowedApps(), routines: RuleStore.routineSchedules())
+    }
+
+    private static func unique(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+}
+
+/// The activities to monitor for the synced routines: one daily activity per routine, whatever its days.
+/// The weekday check happens when an interval starts (`ShieldPolicy.decide`), so a seven-day routine costs
+/// one activity, not seven, against `DeviceActivityCenter`'s per-app cap (`excessiveActivities`).
+public enum RoutinePlan {
+    public static func activityNames(for routines: [RuleStore.RoutineSchedule]) -> [String] {
+        routines.indices.map { "routine.\($0)" }
+    }
+}
+
+/// Stopping activities without leaving a shield behind: a running interval keeps its shield in its own
+/// named store, which only `intervalDidEnd` would clear. So each store is cleared before monitoring stops.
+public enum ActivityTeardown {
+    public static func stop(_ names: [String], clearStore: (String) -> Void, stopMonitoring: ([String]) -> Void) {
+        names.forEach(clearStore)
+        stopMonitoring(names)
     }
 }
 
