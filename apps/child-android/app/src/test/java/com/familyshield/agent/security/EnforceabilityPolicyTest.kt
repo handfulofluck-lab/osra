@@ -54,15 +54,21 @@ class EnforceabilityPolicyTest {
         assertEquals("accessibility", via(outcome))
     }
 
+    /**
+     * #368 / ADR-0034: `lockNow()` succeeding is not an applied lock. The screen locks, nothing of ours
+     * shows, and the child's own unlock ends it — measured on the Flip4, where the parent was told
+     * "locked". Mutant: put `adminLocked ->` back first in `lockOutcome` and this row fails with
+     * `via=keyguard`.
+     */
     @Test
-    fun `lock is applied via the keyguard when lockNow succeeded`() {
+    fun `a keyguard-only lock is refused, because no OSRA screen can show`() {
         val outcome = EnforceabilityPolicy.lockOutcome(
             canOverlay = false,
             accessibilityRunning = false,
             adminLocked = true,
         )
 
-        assertEquals("keyguard", via(outcome))
+        assertEquals("lock_screen_unavailable", refusal(outcome))
     }
 
     @Test
@@ -78,13 +84,15 @@ class EnforceabilityPolicyTest {
 
     @Test
     fun `lock names the strongest available path when several can lock`() {
+        // #368: the keyguard no longer wins the naming — it cannot show our screen. With the overlay
+        // and the service both present the answer is the overlay the dispatcher starts itself.
         assertEquals(
-            "keyguard",
+            "overlay",
             via(EnforceabilityPolicy.lockOutcome(canOverlay = true, accessibilityRunning = true, adminLocked = true)),
         )
         assertEquals(
-            "overlay",
-            via(EnforceabilityPolicy.lockOutcome(canOverlay = true, accessibilityRunning = true, adminLocked = false)),
+            "accessibility",
+            via(EnforceabilityPolicy.lockOutcome(canOverlay = false, accessibilityRunning = true, adminLocked = true)),
         )
     }
 

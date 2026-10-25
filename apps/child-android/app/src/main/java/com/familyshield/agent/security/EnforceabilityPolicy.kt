@@ -66,14 +66,20 @@ object EnforceabilityPolicy {
     }
 
     /**
-     * `Applied(via=…)` when at least one path can lock; refused with
-     * [REASON_LOCK_SCREEN_UNAVAILABLE] otherwise. Precedence follows certainty, not cost: a keyguard
-     * lock is the strongest effect, then the overlay the dispatcher can start itself, then the
-     * event-driven re-raise.
+     * `Applied(via=…)` when a path can show **our** lock screen; refused with
+     * [REASON_LOCK_SCREEN_UNAVAILABLE] otherwise.
+     *
+     * Issue #368 (**ADR-0034**): a keyguard-only lock is **not** an applied lock. `lockNow()` does
+     * lock the screen, but nothing of ours appears, and the Flip4 measurement on 24 Oct showed the
+     * child's own unlock ends it — the parent was told "locked" while the phone was usable and no
+     * OSRA screen could be launched (`Background activity launch blocked`, result 102). So the
+     * keyguard alone no longer makes this an `Applied`: the overlay or the accessibility service has
+     * to be there. `adminLocked` is kept in the signature because the dispatcher still calls
+     * `lockNow()` on that path — it is a useful belt with `overlay`/`accessibility`, and the ack's
+     * `via` names whichever of those two existed.
      */
     fun lockOutcome(canOverlay: Boolean, accessibilityRunning: Boolean, adminLocked: Boolean): CommandOutcome =
         when {
-            adminLocked -> CommandOutcome.Applied(detail = mapOf("via" to LockPath.KEYGUARD.wire))
             canOverlay -> CommandOutcome.Applied(detail = mapOf("via" to LockPath.OVERLAY.wire))
             accessibilityRunning -> CommandOutcome.Applied(detail = mapOf("via" to LockPath.ACCESSIBILITY.wire))
             else -> CommandOutcome.Refused(REASON_LOCK_SCREEN_UNAVAILABLE)
