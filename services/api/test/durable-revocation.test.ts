@@ -3,6 +3,9 @@ import { authRoutes } from "../src/routes/auth.js";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { familyRoutes } from "../src/routes/family.js";
 import { rulesRoutes } from "../src/routes/rules.js";
+import { locationRoutes } from "../src/routes/location.js";
+import { registerRealtime } from "../src/realtime/gateway.js";
+import fastifyWebsocket from "@fastify/websocket";
 import { getRedis } from "../src/redis.js";
 import { currentSessionVersion, invalidateSessionsBefore, sessionVersionKey, revokedTokenKey, REVOKED_TOKEN_TTL_SECONDS } from "../src/lib/sessions.js";
 import { DEVICE_LIVE_TTL_SECONDS, liveDeviceKey, markDeviceRevoked, revokedDeviceKey } from "../src/lib/deviceRevocation.js";
@@ -513,4 +516,51 @@ describe("ADR-0032 claim 3 — a single logout survives an emptied Redis", () =>
     expect(prismaMock.revokedToken.deleteMany).toHaveBeenCalledWith({ where: { expiresAt: { lt: now } } });
     await app.close();
   });
+});
+
+describe("#351 — the global guard is the only device-revocation check on the three routes that used to repeat it", () => {
+  // The route-local `revoked:device:<id>` reads in routes/location.ts, routes/devices.ts and
+  // realtime/gateway.ts were deleted because `sessionGuardHook` answers first. These rows are what
+  // makes that deletion safe: with the row gone and Redis empty, the 401 must still arrive — and the
+  // control row shows the route itself no longer produces it.
+  // Mutants: `if (false && (await deviceVerdict(user.deviceId)) === "revoked")` in sessionGuard.ts makes
+  // the three "with the guard" rows red; making the guard skip one prefix (L1 for /v1/location/*, W1 for
+  // /v1/ws-ticket) makes exactly that row red.
+  const wsRoutes = async (a: import("fastify").FastifyInstance) => {
+    await a.register(fastifyWebsocket);
+    registerRealtime(a);
+  };
+  const cases = [
+    { name: "POST /v1/location/ping", routes: locationRoutes, prefix: "/v1/location", method: "POST" as const, url: "/v1/location/ping", payload: { lat: 40.7128, lng: -74.006, accuracyM: 5 } },
+    { name: "GET /v1/devices/:id", routes: deviceRoutes, prefix: "/v1/devices", method: "GET" as const, url: "/v1/devices/dev-1" },
+    { name: "POST /v1/ws-ticket", routes: wsRoutes, prefix: "", method: "POST" as const, url: "/v1/ws-ticket" },
+  ];
+
+  function unpairedState() {
+    emptyRedis();
+    prismaMock.device.findUnique.mockResolvedValue(null); // the row is gone: the device was unpaired
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    prismaMock.geofence.findMany.mockResolvedValue([]);
+    prismaMock.locationPing.create.mockResolvedValue({ id: "ping-1" });
+  }
+
+  for (const c of cases) {
+    it(`${c.name}: an unpaired device is 401 device_revoked with the guard, Redis empty`, async () => {
+      unpairedState();
+      const app = await buildApp(c.routes, c.prefix, { sessionGuard: true });
+      const res = await app.inject({ method: c.method, url: c.url, headers: deviceHeader(app), payload: c.payload });
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toEqual({ error: "device_revoked" });
+      expect(prismaMock.locationPing.create).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it(`${c.name}: the same request without the guard is not device_revoked — the route no longer checks`, async () => {
+      unpairedState();
+      const app = await buildApp(c.routes, c.prefix);
+      const res = await app.inject({ method: c.method, url: c.url, headers: deviceHeader(app), payload: c.payload });
+      expect(res.json()?.error).not.toBe("device_revoked");
+      await app.close();
+    });
+  }
 });
