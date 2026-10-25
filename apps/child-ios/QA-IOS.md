@@ -54,12 +54,53 @@ the system, and TestFlight (5.6). The device token and HMAC secret are in the Ke
 "Remaining pairing-related gaps"). Next PRs on this row: rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
 pairing-approval change lands, so it isn't ported twice.
 
+## Push and commands (updated 2026-10-25, roadmap 5.5 PR D, #372)
+
+- **Push token:** the app registers for remote notifications at launch and again after pairing.
+  `PushTokenRegistrar` uploads the APNs token as hex (`POST /v1/devices/:id/push-token`, device token, 204). It
+  uploads only when the token or the paired device changed, and a failed upload is retried next time. "Re-pair
+  this device" saves the new identity over the old one without unpairing, so the new device id alone triggers the
+  upload for the new row. Unpairing forgets the upload.
+- **Wake → drain:** a wake push (`{"w":"1"}`, no command in it, #319) runs `CommandDrainer.drainNow()` in
+  `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`. Opening the app does the same before it
+  fetches the rules.
+- **The drain:**
+  - It polls `GET /v1/devices/:id/commands?ack=1` and acks every command.
+  - `rules_updated`, `consent_revoked` and `consent_granted` fetch the rules, once per drain. A withdrawn consent
+    then answers 428 and clears everything.
+  - Any other command (lock, ring, …) is acked **`failed`** with `{"reason":"unsupported_on_ios"}`, so the parent
+    sees why, not a silent "delivered". This was checked against the local API: the parent's history shows
+    `lock: failed`, `rules_updated: acked`.
+  - A 428 on the poll also syncs, which clears the rules.
+- **App:** `UIBackgroundModes: remote-notification` in `Info.plist`, and `aps-environment` in the app's
+  entitlements.
+- **Server, fixed in this PR:**
+  - Before, the wake went to Apple as `apns-push-type: alert` at priority 10 with nothing to show, and Apple can
+    throttle or drop that. Now it goes as `apns-push-type: background` at priority 5, as Apple requires for
+    `content-available`.
+  - It goes to the child agent's topic (`APNS_DEVICE_BUNDLE_ID`), not the parent app's. Under the parent topic,
+    Apple answers `DeviceTokenNotForTopic`, which the server reads as a dead token and clears. Unset, iPhones are
+    not woken, which is better than losing their tokens.
+  - `test/push.test.ts` pins both.
+- **Bedtime refused (Claude on #380):** if iOS refuses a new bedtime window, the old bedtime activity is stopped
+  and its shield cleared, so the phone never keeps enforcing times the parent replaced.
+- **Tests:**
+  - `DeviceCommandsTests` (stubbed server): the command table; one fetch for several `rules_updated`, every
+    command acked, `unsupported_on_ios`, a failed sync acked failed, 428; the token hex; once per token and device,
+    re-pair the way the button does (no unpair in between), unpairing forgets the upload, retry after a failure,
+    unpaired.
+  - Live cases 7 (the token stored, then `alreadyUploaded`) and 8 (the ack-capable poll answers).
+- **5.1 device checklist:**
+  - a real APNs token is uploaded;
+  - a parent rule change wakes a backgrounded, locked iPhone and its shields update without opening the app;
+  - `APNS_DEVICE_BUNDLE_ID` is set to the permanent bundle id.
+
 ## Rule sync (updated 2026-10-25, roadmap 5.5 PR C, #372)
 
 The agent now fetches the parent's rules and stores them where the extensions read them.
 
-- **When:** `RuleSyncer.syncNow()` runs **only when the app opens and right after pairing**, and a child
-  rarely opens it. PR D (APNs `rules_updated`) closes that gap.
+- **When:** `RuleSyncer.syncNow()` runs when the app opens, right after pairing, and on a `rules_updated` command
+  (PR D: a wake push drains the command queue).
 - **How:** `GET /v1/rules/:childId` with the device token (`RuleSyncClient`), the same contract as the Android
   agent. `RuleSet` decodes the server's shape and ignores fields it doesn't use.
 - **Stored** (`RuleStore`, app-group `UserDefaults`):
@@ -127,6 +168,8 @@ against **our real API**, on every iOS change, on changes to the three server fi
    4. One changed body byte gets **401 `invalid_signature`**.
    5. A request signed 600 s ago gets **401 `stale_timestamp`**.
    6. The rules the parent set in `setup` sync with the device token into the app group (PR C).
+   7. The push token is stored (204), and a second registration is skipped (PR D).
+   8. The ack-capable command poll answers (PR D).
 4. `scripts/live-api.mjs verify` logs in as the parent. `GET /v1/alerts` must hold exactly one
    `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
    `GET /v1/devices` must list that device as `platform: "ios"`.
@@ -134,7 +177,7 @@ against **our real API**, on every iOS change, on changes to the three server fi
 The simulator is booted (`simctl bootstatus -b`) before the code is minted, and case 1 waits for `GET /health` before it claims: on a cold boot the first request once reached the API about 50 s late, after the client's 30 s timeout. The claim itself is never retried, because a code is single-use.
 
 It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
-it, as in a local run, the cases skip. And the job asserts that 6 cases passed and none were skipped.
+it, as in a local run, the cases skip. And the job asserts that 8 cases passed and none were skipped.
 `AlertReporter` gained `makeRequest`/`send` for the tests. `report` uses the same builder and keeps its
 fire-and-forget retry.
 
@@ -217,7 +260,7 @@ Remaining pairing-related gaps:
     app): the real Keychain with the production access group, including that the stored item is
     `AfterFirstUnlockThisDeviceOnly` in `group.dev.familyshield.agent` and that an overwrite leaves one item.
   Still needs a signed device build (5.1): an extension actually reading the item the app wrote.
-- After pairing, the agent does not yet register an APNs push token
-  (`POST /v1/devices/:id/push-token`) — needed for parent push notifications.
+- ~~After pairing, the agent does not yet register an APNs push token~~ — done 2026-10-25 (5.5 PR D): see
+  "Push and commands" above.
 - ~~Routine/rules sync to the app group is still written by "the main agent app"~~ — done 2026-10-25 (5.5 PR C,
   #372): see "Rule sync" above.

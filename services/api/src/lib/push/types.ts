@@ -34,6 +34,8 @@ export type PushResult =
 
 export interface PushProvider {
   readonly platform: PushPlatform;
+  /** APNs only: whether it can send the child device wake (`APNS_DEVICE_BUNDLE_ID` is set, 5.5 PR D). */
+  readonly canWakeDevices?: boolean;
   send(token: string, message: PushMessage): Promise<PushResult>;
 }
 

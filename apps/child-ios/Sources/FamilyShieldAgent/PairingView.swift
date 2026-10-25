@@ -1,5 +1,8 @@
 #if canImport(SwiftUI)
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Pairing form (spec §14.2 iOS flow): server URL + 6-digit parent-issued code,
 /// mirroring the Android agent's `PairingActivity`. On success the identity is
@@ -120,14 +123,19 @@ public struct AgentRootView: View {
                         identity = newIdentity
                         showRepair = false
                         Task { await RuleSyncer.syncNow() }
+                        // A new device id: ask iOS for the token again so it is uploaded for this pairing.
+                        UIApplication.shared.registerForRemoteNotifications()
                     }
                 )
             }
         }
         .onAppear { identity = AgentIdentityStore.load() }
-        // Rules are fetched when the app opens and right after pairing (5.5 PR C). A failed sync keeps the
-        // last stored rules in force.
-        .task { await RuleSyncer.syncNow() }
+        // On open: drain the command queue, then fetch the rules (5.5 PR C, D). A failed sync keeps the last
+        // stored rules in force. A wake push drains the queue the same way (`OSRAAgentAppDelegate`).
+        .task {
+            await CommandDrainer.drainNow()
+            await RuleSyncer.syncNow()
+        }
     }
 }
 #endif
