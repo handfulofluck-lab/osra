@@ -700,18 +700,6 @@ export async function deviceRoutes(app: FastifyInstance) {
     return { deleted: true, id };
   });
 
-  // Handoff item 4: device JWTs live 10 years — a revoked (unpaired) device must get 401s.
-  // This hook runs before route preHandlers, so it verifies the JWT itself (the decode is
-  // cached by @fastify/jwt, so the route's own verification stays cheap).
-  app.addHook("preHandler", async (req, reply) => {
-    try {
-      await req.jwtVerify();
-    } catch {
-      return; // unauthenticated requests are rejected by the route's own preHandler
-    }
-    const user = req.user as { role?: string; deviceId?: string } | undefined;
-    if (user?.role !== "device" || !user.deviceId) return;
-    const revoked = await getRedis().get(`revoked:device:${user.deviceId}`).catch(() => null);
-    if (revoked) await reply.code(401).send({ error: "device_revoked" });
-  });
+  // #351: the revoked-device refusal for a device JWT is the global sessionGuard hook's job
+  // (server.ts, before every route). This router used to repeat it with a Redis GET per request.
 }

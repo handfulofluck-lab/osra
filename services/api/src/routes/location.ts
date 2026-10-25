@@ -5,7 +5,6 @@ import { raiseAlert } from "../lib/alerts.js";
 import { geofenceTransition, pickTransitionPair, type GeofencePoint } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
-import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
@@ -77,12 +76,9 @@ async function pingAuth(req: FastifyRequest, reply: FastifyReply): Promise<void>
       return;
     }
     if (user?.role === "device" && user.deviceId && user.childId && user.familyId) {
-      const redis = getRedis();
-      const revoked = await redis.get(`revoked:device:${user.deviceId}`).catch(() => null);
-      if (revoked) {
-        await reply.code(401).send({ error: "device_revoked" });
-        return;
-      }
+      // #351: the revoked-device answer comes from the global sessionGuard hook (server.ts), which runs
+      // before this route. A local copy here was a second Redis GET per request that the hook had
+      // already answered.
       return;
     }
     await reply.code(401).send({ error: "unauthorized" });
