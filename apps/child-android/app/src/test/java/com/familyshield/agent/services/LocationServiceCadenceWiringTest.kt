@@ -27,6 +27,22 @@ class LocationServiceCadenceWiringTest {
     private val onStart get() = body("override fun onStartCommand(")
 
     /**
+     * #383 mutant: drop the token step from the service's poll and a token the server cleared is never
+     * sent again while the service runs — the worker skips its poll then (IdleCadence.workerShouldPoll),
+     * and no push can arrive without a token.
+     */
+    @Test
+    fun `the service poll hands X-Push-Token to the token step after a successful answer`() {
+        val poll = body("private suspend fun pollCommandsOnce()")
+        val step = poll.indexOf("commandPoller.syncPushToken(deviceId, response.headers()[PushTokenUploadPolicy.PUSH_TOKEN_HEADER])")
+        assertTrue("the service poll must run the #383 token step", step >= 0)
+        assertTrue(
+            "only after the 2xx check",
+            step > poll.indexOf("if (!response.isSuccessful) throw HttpException(response)"),
+        )
+    }
+
+    /**
      * Mutant: put back `delay(COMMAND_POLL_INTERVAL_MS); pollCommandsOnce()` and this fails — the
      * phone polls every 60 s whatever the server says, which is 10 of the 22 idle requests.
      */

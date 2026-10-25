@@ -20,17 +20,51 @@ package com.familyshield.agent.push
  *    one out, and posting `""` would be a 400 or, worse, an empty `Device.pushToken`.
  *  - stored == last uploaded: the server already has it. Re-sending every 15 minutes forever is a
  *    write per poll per device for no state change.
+ *
+ * Issue #383 adds a fourth state, and it is the one the rule above got wrong: **the server can clear
+ * the token it holds** without the phone knowing. A wake answered with a "dead token" error clears
+ * `Device.pushToken`, and the agent only ever uploads when its own marker differs — so push to that
+ * phone stays dead until Firebase happens to rotate the token, with no error anywhere. The server now
+ * says which it is on every poll (`X-Push-Token: on-file` / `none`), and `none` overrides the marker.
+ *
+ * [serverHasToken] is `null` when the header is absent — an older server — and then the marker decides,
+ * which is exactly the pre-#383 behaviour.
  */
 object PushTokenUploadPolicy {
+
+    /** Response header the server sets on the commands poll. Must match `PUSH_TOKEN_HEADER` in the API. */
+    const val PUSH_TOKEN_HEADER: String = "X-Push-Token"
+
+    private const val ON_FILE = "on-file"
+    private const val NONE = "none"
+
+    /**
+     * Reads [PUSH_TOKEN_HEADER] (#383): `on-file` is true, `none` is false, and anything else — including
+     * a server too old to send it — is null, which leaves the marker in charge. Pure, so the mapping is a
+     * JVM test rather than something only a phone can show; a mutant that maps `none` to null makes the
+     * cleared-token branch unreachable from a real poll.
+     */
+    fun serverHasToken(header: String?): Boolean? = when (header) {
+        ON_FILE -> true
+        NONE -> false
+        else -> null
+    }
 
     /**
      * True when [stored] should be POSTed to `v1/devices/{id}/push-token` for [deviceId]:
      * a token exists, it is not blank, the device is paired, and the server has not already accepted
      * exactly that value.
      */
-    fun shouldUpload(stored: String?, uploaded: String?, deviceId: String?): Boolean {
+    fun shouldUpload(
+        stored: String?,
+        uploaded: String?,
+        deviceId: String?,
+        serverHasToken: Boolean? = null,
+    ): Boolean {
         if (deviceId.isNullOrBlank()) return false
         if (stored.isNullOrBlank()) return false
+        // The server filled a null for a reason it never told us: it cleared the token. Send ours again.
+        if (serverHasToken == false) return true
         return stored != uploaded
     }
 }

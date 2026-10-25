@@ -13,6 +13,18 @@ import { canWakeDevice } from "./push/notify.js";
  * screen is on, so a child using the phone still gets a lock within a minute if a push is lost.
  */
 export const POLL_AFTER_HEADER = "X-Poll-After";
+
+/**
+ * Whether the server still holds this device's push token (#383), so the phone can re-upload one the
+ * server cleared. A wake that fails as "dead token" clears `Device.pushToken`, and the agent used to
+ * have no way to learn that: it uploads only when Firebase rotates the token, so push stayed dead
+ * until the next rotation. Two values, so the agent never has to guess from an absent header:
+ *  - `on-file` — the row holds a token;
+ *  - `none`    — it holds none, so the stored one should be sent again on this poll.
+ */
+export const PUSH_TOKEN_HEADER = "X-Push-Token";
+export const PUSH_TOKEN_ON_FILE = "on-file";
+export const PUSH_TOKEN_NONE = "none";
 /** No way to wake the device: poll every minute, as every agent did before #353. */
 export const POLL_FAST_SECONDS = 60;
 /** The server can wake the device: the poll is a safety net, once per idle 10 minutes. */
