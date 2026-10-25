@@ -11,8 +11,8 @@ struct AlertReporter {
     /// group at init; nil until the pairing flow writes `agent.apiBaseURL`.
     var apiBaseURL: URL?
 
-    /// Shared secret for X-FamilyShield-Signature; provisioned at device pairing and
-    /// stored in the shared app group. Must match the server's INTERNAL_HMAC_SECRET.
+    /// Per-device secret for X-FamilyShield-Signature; provisioned at device pairing and
+    /// stored in the shared Keychain group (`AgentIdentityStore`).
     var hmacSecret: String?
 
     /// Creates a reporter pointing at the paired API base URL, if configured.
@@ -31,13 +31,52 @@ struct AlertReporter {
         childId: String?,
         metadata: [String: Any] = [:]
     ) {
+        guard let request = makeRequest(category: category, severity: severity, title: title, body: body,
+                                        childId: childId, metadata: metadata)
+        else { return }
+        Self.sendWithRetry(request: request, category: category, attemptsLeft: 3)
+    }
+
+    /// Sends one alert and returns the server's status and body, once, without retrying. The same request
+    /// as `report` (built by `makeRequest`), for callers that need the answer: the live API tests (5.5 A2).
+    func send(
+        category: String,
+        severity: String = "warning",
+        title: String,
+        body: String,
+        childId: String?,
+        metadata: [String: Any] = [:]
+    ) async throws -> (status: Int, body: Data) {
+        guard let request = makeRequest(category: category, severity: severity, title: title, body: body,
+                                        childId: childId, metadata: metadata)
+        else { throw URLError(.cancelled) }
+        return try await Self.send(request)
+    }
+
+    /// Sends a prepared request once and returns the status and body.
+    static func send(_ request: URLRequest) async throws -> (status: Int, body: Data) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+    }
+
+    /// The signed `POST /v1/alerts/internal` request, or nil when the agent is not paired. `signedAt`
+    /// (Unix seconds) overrides the signing clock; only the live tests set it, to send a stale request.
+    func makeRequest(
+        category: String,
+        severity: String = "warning",
+        title: String,
+        body: String,
+        childId: String?,
+        metadata: [String: Any] = [:],
+        signedAt: Int? = nil
+    ) -> URLRequest? {
         guard let apiBaseURL else {
             AlertReporter.logger.error("alert '\(category)' skipped: agent.apiBaseURL missing from shared app group (agent not paired)")
-            return
+            return nil
         }
         guard let childId, !childId.isEmpty else {
             AlertReporter.logger.error("alert '\(category)' skipped: childId unknown (agent not paired)")
-            return
+            return nil
         }
         var payload: [String: Any] = [
             "childId": childId,
@@ -50,7 +89,7 @@ struct AlertReporter {
         if let deviceId = AlertReporter.pairedDeviceId() {
             payload["deviceId"] = deviceId
         }
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         var request = URLRequest(url: apiBaseURL.appendingPathComponent("v1/alerts/internal"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -58,13 +97,12 @@ struct AlertReporter {
         request.timeoutInterval = 15.0
         if let hmacSecret {
             // v2 internal signing (ADR-0014): timestamp + nonce + HMAC over "ts.nonce.body".
-            let headers = InternalSigner.sign(secret: hmacSecret, body: bodyData)
+            let headers = InternalSigner.sign(secret: hmacSecret, body: bodyData, unixSeconds: signedAt)
             for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         } else {
             AlertReporter.logger.warning("no HMAC secret configured; the API will reject this alert (401)")
         }
-
-        Self.sendWithRetry(request: request, category: category, attemptsLeft: 3)
+        return request
     }
 
     private static func sendWithRetry(request: URLRequest, category: String, attemptsLeft: Int) {
@@ -107,9 +145,9 @@ struct AlertReporter {
         return URL(string: raw)
     }
 
-    /// Reads the pairing HMAC secret from the shared app group, if any.
+    /// Reads the pairing HMAC secret from the shared Keychain group (5.5 PR B), if any.
     static func pairedHmacSecret() -> String? {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?.string(forKey: "agent.hmacSecret")
+        AgentIdentityStore.hmacSecret()
     }
 }
 
@@ -120,32 +158,49 @@ import ManagedSettings
 /// Device-activity monitor for FamilyShield (spec §6.4): applies the bedtime shield
 /// when a bedtime interval starts in a routine-specific named store, and clears only that
 /// routine store when it ends without unshielding parent rules (IOS-05).
-final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
+///
+/// The monitor extension target (`Extensions/Monitor`) names this class as its
+/// NSExtensionPrincipalClass. `@objc(...)` gives it that unqualified runtime name, and it is
+/// public so the extension can reference it, which keeps the static linker from dropping it.
+@objc(FamilyShieldDeviceActivityMonitor)
+public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Reporter rebuilt per use so it picks up the `agent.apiBaseURL` value the pairing
     /// flow writes into the shared app group (nil until then — reports are skipped).
     private var reporter: AlertReporter { AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret()) }
 
-    /// Shields the bedtime apps in a dedicated named store for this routine (IOS-05).
-    /// Using a routine-specific named store ensures overlapping routines do not clobber
-    /// each other, and rule-blocked apps managed in `parentRules` store remain shielded.
-    override func intervalDidStart(for activity: DeviceActivityName) {
+    /// Applies `ShieldPolicy` in a named store per activity (IOS-05), so overlapping intervals don't clobber
+    /// each other and the all-day `parentRules` shields stay. Bedtime, and a routine with `allowedApps`,
+    /// shield everything except the allowed apps; a routine with only `blockedApps` shields those; a routine
+    /// on a day it doesn't run shields nothing (5.5 PR C).
+    public override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
-        let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
-        let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.bedtimeBundleIdentifiers())
-        routineStore.shield.applications = tokens.isEmpty ? nil : tokens
+        let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
+        // The day the interval starts on decides, so an overnight routine is judged by its first day.
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        switch ShieldPolicy.current(activity: activity.rawValue, weekday: weekday) {
+        case .allExcept(let allowed):
+            // Everything but the allowed apps. A bundle id with no token stays shielded: fails closed.
+            let exceptions = Set(allowed.compactMap { Application(bundleIdentifier: $0).token })
+            store.shield.applicationCategories = .all(except: exceptions)
+        case .only(let blocked):
+            let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: blocked)
+            store.shield.applications = tokens.isEmpty ? nil : tokens
+        case .none:
+            break
+        }
     }
 
     /// Clears only the routine-specific named store when bedtime interval ends (IOS-05).
     /// Does NOT clear `parentRules` or other overlapping routines.
-    override func intervalDidEnd(for activity: DeviceActivityName) {
+    public override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         routineStore.clearAllSettings()
     }
 
     /// Reports a screen-time threshold breach with category "screen_time_exceeded".
-    override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
+    public override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
         reporter.report(
             category: "screen_time_exceeded",
@@ -155,12 +210,6 @@ final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
             childId: AlertReporter.pairedChildId(),
             metadata: ["event": event.rawValue, "activity": activity.rawValue]
         )
-    }
-
-    /// Bundle identifiers to shield during bedtime, read from the shared app-group store.
-    private static func bedtimeBundleIdentifiers() -> [String] {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?
-            .stringArray(forKey: "bedtime.blockedBundleIdentifiers") ?? []
     }
 
     /// Bundle identifiers blocked by the parent's app rules, read from the shared app-group store.

@@ -1,0 +1,153 @@
+# XcodeGen spec for the iOS child agent (roadmap 5.5, #372).
+#
+# The .xcodeproj is generated from this file and never committed: run `xcodegen generate` in this
+# directory (CI pins the XcodeGen version in .github/workflows/ios-ci.yml). Review changes here,
+# not in a project.pbxproj diff.
+#
+# Four app targets, all linking the FamilyShieldAgent package in this directory, plus two hosted test
+# targets run inside the simulator app: the Keychain tests (OSRAAgentHostedTests) and the live API tests
+# (FamilyShieldAgentIntegrationTests, scheme OSRAAgentIntegration):
+#   OSRAAgent                      the host app (App/)
+#   OSRAAgentMonitor               Device Activity monitor extension (Extensions/Monitor/)
+#   OSRAAgentShieldConfiguration   Shield configuration extension (Extensions/ShieldConfiguration/)
+#   OSRAAgentShieldAction          Shield action extension (Extensions/ShieldAction/)
+#
+# Bundle ids are placeholders under dev.familyshield.agent: the maintainer chooses the permanent
+# ids before App Store Connect. The repository is public, so DEVELOPMENT_TEAM stays empty and no
+# team id, provisioning profile or certificate is ever added here.
+name: OSRAAgent
+
+options:
+  deploymentTarget:
+    iOS: "16.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: NO
+    TARGETED_DEVICE_FAMILY: "1,2"
+    # Simulator builds are ad-hoc signed ("-", no team, no profile) so the app carries its entitlements and
+    # can reach the Keychain under the shared access group; the hosted tests depend on it (5.5 PR B). Device
+    # builds stay unsigned in CI (CODE_SIGNING_ALLOWED=NO) until the maintainer's account exists (5.1).
+    CODE_SIGN_STYLE: Manual
+    "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+
+packages:
+  FamilyShieldAgent:
+    path: .
+
+targets:
+  OSRAAgent:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_NAME: OSRAAgent
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/OSRAAgent.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+      # app-extension targets are embedded in the app's PlugIns/ folder.
+      - target: OSRAAgentMonitor
+      - target: OSRAAgentShieldConfiguration
+      - target: OSRAAgentShieldAction
+
+  OSRAAgentMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/Monitor
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.monitor
+        INFOPLIST_FILE: Extensions/Monitor/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/Monitor/Monitor.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+  OSRAAgentShieldConfiguration:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/ShieldConfiguration
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.shield-configuration
+        INFOPLIST_FILE: Extensions/ShieldConfiguration/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/ShieldConfiguration/ShieldConfiguration.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+  OSRAAgentShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/ShieldAction
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.shield-action
+        INFOPLIST_FILE: Extensions/ShieldAction/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extensions/ShieldAction/ShieldAction.entitlements
+    dependencies:
+      - package: FamilyShieldAgent
+
+  # The Keychain tests (HostedTests/). They run inside the simulator app, because the unsigned SwiftPM
+  # test bundle is refused by the Keychain (errSecMissingEntitlement, -34018).
+  OSRAAgentHostedTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HostedTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.hosted-tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OSRAAgent.app/OSRAAgent"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: OSRAAgent
+      - package: FamilyShieldAgent
+
+  # The live API tests (IntegrationTests/, 5.5 PR A2). Hosted by the simulator app like the Keychain tests,
+  # so the paired identity goes through the real Keychain. Run only by ios-ci.yml's live-api job, which
+  # starts the API first; without its inputs every case skips (OSRA_REQUIRE_LIVE=1 makes that a failure).
+  FamilyShieldAgentIntegrationTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: IntegrationTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.integration-tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OSRAAgent.app/OSRAAgent"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: OSRAAgent
+      - package: FamilyShieldAgent
+
+schemes:
+  OSRAAgentIntegration:
+    build:
+      targets:
+        OSRAAgent: all
+    test:
+      targets:
+        - FamilyShieldAgentIntegrationTests
+  OSRAAgent:
+    build:
+      targets:
+        OSRAAgent: all
+    test:
+      targets:
+        - OSRAAgentHostedTests

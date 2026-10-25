@@ -14,6 +14,8 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -52,14 +54,21 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import retrofit2.HttpException
 
 /**
  * Foreground location service: FusedLocationProviderClient with PRIORITY_BALANCED_POWER_ACCURACY
  * and an adaptive interval (30 s while moving > 5 m/s, 5 min stationary). Pings are batched in
- * memory, flushed to POST /v1/location/ping every 60 s; on failure they are persisted in Room and
- * re-uploaded by PendingPingWorker when the network is back. The same 60 s loop posts the
+ * memory and flushed to POST /v1/location/ping from a 60 s loop; on failure they are persisted in
+ * Room and re-uploaded by PendingPingWorker when the network is back. The same 60 s loop posts the
  * Feature #29 live-activity snapshot (foreground app + today's total minutes) and runs the
  * Feature #19/#20 tamper checks (accessibility-disabled, VPN routing).
+ *
+ * Roadmap 5.8 (#353): a foreground service keeps its network in Doze, so these loops are what an
+ * idle phone costs the server. [IdleCadence] decides when each one actually sends: the commands
+ * poll follows the server's `X-Poll-After` (at most 60 s apart while the screen is on), live
+ * activity goes up only while the screen is on, and a stationary batch waits until its oldest ping
+ * is 10 minutes old.
  */
 @AndroidEntryPoint
 class LocationService : Service() {
@@ -80,6 +89,12 @@ class LocationService : Service() {
     @Volatile private var intervalMs = STATIONARY_INTERVAL_MS
     @Volatile private var flushLoopStarted = false
     @Volatile private var commandLoopStarted = false
+
+    /** #353: the server's poll interval from the last answer; [IdleCadence.DEFAULT_POLL_MS] until then. */
+    @Volatile private var serverPollMs = IdleCadence.DEFAULT_POLL_MS
+
+    /** #353: when the oldest ping now in [memoryPings] was buffered (elapsedRealtime); guarded by [pingLock]. */
+    private var bufferedSinceMs: Long? = null
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -105,11 +120,18 @@ class LocationService : Service() {
         if (!flushLoopStarted) {
             flushLoopStarted = true
             serviceScope.launch {
+                var wasInteractive = isInteractive()
                 while (isActive) {
                     delay(FLUSH_INTERVAL_MS)
-                    runCatching { flushPings() }
-                    // Feature #29: 60 s live-activity heartbeat (foreground app + total minutes).
-                    runCatching { usage.postLiveActivity() }
+                    val interactive = isInteractive()
+                    // #353: a stationary batch waits until its oldest ping is 10 minutes old.
+                    runCatching { if (shouldFlushNow()) flushPings() }
+                    // Feature #29: live-activity heartbeat (foreground app + total minutes), only while
+                    // the screen is on, plus one "idle" snapshot on the tick after it turns off (#353).
+                    if (IdleCadence.shouldPostLiveActivity(interactive, wasInteractive)) {
+                        runCatching { usage.postLiveActivity(screenOn = interactive) }
+                    }
+                    wasInteractive = interactive
                     // Features #19/#20: 60 s tamper checks (accessibility disabled, VPN routing).
                     runCatching { tamperChecksOnce() }
                 }
@@ -118,12 +140,19 @@ class LocationService : Service() {
         if (!commandLoopStarted) {
             commandLoopStarted = true
             // Foreground-service poll loop: WorkManager periodic work is OS-clamped to
-            // 15 min, so device commands (rules_updated, ring, lock...) are polled here
-            // every COMMAND_POLL_INTERVAL_MS while the service runs.
+            // 15 min, so device commands (rules_updated, ring, lock...) are polled here while the
+            // service runs. #353: the interval is the server's X-Poll-After (600 s when it can wake
+            // this phone by push, else 60 s), capped at 60 s while the screen is on; the loop
+            // ticks every 15 s so turning the screen on brings the next poll forward.
             serviceScope.launch {
+                var lastPollAtMs: Long? = null
                 while (isActive) {
-                    delay(COMMAND_POLL_INTERVAL_MS)
-                    pollCommandsOnce()
+                    delay(IdleCadence.POLL_TICK_MS)
+                    val now = SystemClock.elapsedRealtime()
+                    if (IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive())) {
+                        lastPollAtMs = now
+                        pollCommandsOnce()
+                    }
                 }
             }
         }
@@ -216,7 +245,10 @@ class LocationService : Service() {
             accuracyM = location.accuracy,
             timestamp = Instant.ofEpochMilli(location.time).toString(),
         )
-        synchronized(pingLock) { memoryPings.add(ping) }
+        synchronized(pingLock) {
+            if (memoryPings.isEmpty()) bufferedSinceMs = SystemClock.elapsedRealtime()
+            memoryPings.add(ping)
+        }
         val moving = location.hasSpeed() && location.speed > MOVING_SPEED_MS
         val desired = if (moving) MOVING_INTERVAL_MS else STATIONARY_INTERVAL_MS
         if (desired != intervalMs) startUpdates(desired)
@@ -254,7 +286,7 @@ class LocationService : Service() {
     suspend fun flushPings(): Boolean = FLUSH_MUTEX.withLock {
         if (consentState.isPaused()) {
             // ADR-0008 §3: withdrawal stops collection — discard, do not buffer for later upload.
-            synchronized(pingLock) { memoryPings.clear() }
+            synchronized(pingLock) { memoryPings.clear(); bufferedSinceMs = null }
             runCatching { db.pendingPingDao().clear() }
             return@withLock false
         }
@@ -266,7 +298,7 @@ class LocationService : Service() {
         if (all.isEmpty()) return@withLock false
         try {
             api.postLocationPings(LocationPingBatchDto(all))
-            synchronized(pingLock) { memoryPings.removeAll(mem) }
+            dropBuffered(mem)
             db.pendingPingDao().clear()
             true
         } catch (e: CancellationException) {
@@ -275,10 +307,38 @@ class LocationService : Service() {
             db.pendingPingDao().insertAll(mem.map {
                 PendingPingEntity(lat = it.lat, lng = it.lng, accuracyM = it.accuracyM, timestamp = Instant.parse(it.timestamp).toEpochMilli())
             })
-            synchronized(pingLock) { memoryPings.removeAll(mem) }
+            dropBuffered(mem)
             false
         }
     }
+
+    /**
+     * Removes an uploaded (or Room-persisted) batch from memory. A ping that arrived during the
+     * upload stays, and its batch age restarts now, which can only delay that one ping's flush by
+     * the length of the upload.
+     */
+    private fun dropBuffered(sent: List<LocationPingDto>) {
+        synchronized(pingLock) {
+            memoryPings.removeAll(sent)
+            bufferedSinceMs = if (memoryPings.isEmpty()) null else SystemClock.elapsedRealtime()
+        }
+    }
+
+    /** #353: the flush rule from [IdleCadence.shouldFlushPings], fed with this service's state. */
+    private suspend fun shouldFlushNow(): Boolean {
+        val since = synchronized(pingLock) { bufferedSinceMs }
+        val stored = runCatching { db.pendingPingDao().all().isNotEmpty() }.getOrDefault(false)
+        return IdleCadence.shouldFlushPings(
+            moving = intervalMs == MOVING_INTERVAL_MS,
+            paused = consentState.isPaused(),
+            bufferedSinceMs = since,
+            hasStoredBatch = stored,
+            nowMs = SystemClock.elapsedRealtime(),
+        )
+    }
+
+    /** #353: screen on, so the child may be using the phone. Unknown counts as on (the old cadence). */
+    private fun isInteractive(): Boolean = getSystemService(PowerManager::class.java)?.isInteractive ?: true
 
     private fun hasLocationPermission(): Boolean {
         val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -330,9 +390,12 @@ class LocationService : Service() {
     private suspend fun pollCommandsOnce() {
         val deviceId = settings.deviceId() ?: return
         runCatching {
-            val commands = api.getCommands(deviceId)
+            val response = api.getCommandsWithCadence(deviceId)
+            if (!response.isSuccessful) throw HttpException(response) // keeps the 428 consent path
+            // #353: the server says how long to wait. An older server sends nothing: 60 s, as before.
+            serverPollMs = IdleCadence.pollAfterMs(response.headers()[IdleCadence.POLL_AFTER_HEADER])
             consentState.onPollStatus(200)
-            for (command in commands) {
+            for (command in response.body().orEmpty()) {
                 runCatching {
                     val data = (command.payload ?: emptyMap()).mapValues { it.value.toString() }
                     // Issue #132: the row id lets a refused locate_now report a `failed` ack.
@@ -340,6 +403,7 @@ class LocationService : Service() {
                 }.onFailure { Log.w(TAG, "command failed: ${command.type}", it) }
             }
         }.onFailure {
+            serverPollMs = IdleCadence.DEFAULT_POLL_MS // no answer to go by: back to 60 s
             consentState.onPollFailure(it) // ADR-0008 §3: 428 = consent withdrawn, pause collection
             // Issue #260: a 428 is the *expected* answer while consent is withdrawn, and ConsentState
             // already logs the transition once. Logging the whole HttpException stack every 60 seconds
@@ -514,7 +578,6 @@ class LocationService : Service() {
         private const val MOVING_INTERVAL_MS = 30L * 1000L
         private const val FASTEST_INTERVAL_MS = 30L * 1000L
         private const val FLUSH_INTERVAL_MS = 60L * 1000L
-        private const val COMMAND_POLL_INTERVAL_MS = 60L * 1000L
         private const val MOVING_SPEED_MS = 5f
     }
 }

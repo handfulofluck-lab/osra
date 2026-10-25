@@ -1,37 +1,63 @@
 name: iOS CI
 
 on:
+  # The three server files are the iOS agent's contract with the API (pairing, alerts, request signing):
+  # a server change that breaks the iPhone agent turns red on its own PR (5.5 PR A2, #372).
   push:
     paths:
       - 'apps/child-ios/**'
       - '.github/workflows/ios-ci.yml'
+      - 'services/api/src/routes/devices.ts'
+      - 'services/api/src/routes/alerts.ts'
+      - 'services/api/src/lib/internalAuth.ts'
   pull_request:
     paths:
       - 'apps/child-ios/**'
       - '.github/workflows/ios-ci.yml'
+      - 'services/api/src/routes/devices.ts'
+      - 'services/api/src/routes/alerts.ts'
+      - 'services/api/src/lib/internalAuth.ts'
+  # Nightly on main, whatever changed: the contract can also break through a dependency or an image.
+  schedule:
+    - cron: '23 1 * * *'
   workflow_dispatch:
 
 concurrency:
   group: ios-ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  # XcodeGen generates apps/child-ios/OSRAAgent.xcodeproj from project.yml (#372). Pinned by
+  # version and checksum: a new release changes the generated project, so it is a reviewed bump.
+  XCODEGEN_VERSION: '2.45.4'
+  XCODEGEN_SHA256: '090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef'
+
 jobs:
   test-ios:
-    name: Build & Test iOS Agent (Simulator + SwiftPM)
-    runs-on: macos-14
-    timeout-minutes: 15
+    name: Build & Test iOS Agent (Simulator + SwiftPM + app with extensions)
+    # The newest image: App Store uploads reject apps built with an old SDK.
+    runs-on: macos-26
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode Version
+      - name: Select the newest Xcode on the image
         run: |
-          sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+          # Newest release Xcode by version; betas and release candidates are skipped.
+          XCODE="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release_candidate' | sort -V | tail -1)"
+          echo "Selecting $XCODE"
+          sudo xcode-select -s "$XCODE"
           xcodebuild -version
           swift --version
 
-      - name: Build for iOS Simulator SDK
+      # The package steps run before the project is generated: with OSRAAgent.xcodeproj in the
+      # directory, `xcodebuild -scheme FamilyShieldAgent` would open the project, not the package.
+      - name: Build the package for the iOS Simulator SDK
         working-directory: apps/child-ios
         run: |
           xcodebuild \
@@ -43,9 +69,187 @@ jobs:
       - name: Run Headless iOS Simulator Tests
         working-directory: apps/child-ios
         run: |
+          # The first available iPhone simulator: device names change with each Xcode.
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $DEVICE_ID"
           xcodebuild test \
             -scheme FamilyShieldAgent \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination "id=$DEVICE_ID" \
             -derivedDataPath .build/derivedData
 
+      - name: Install XcodeGen ${{ env.XCODEGEN_VERSION }}
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
+      - name: Generate the Xcode project
+        working-directory: apps/child-ios
+        run: |
+          xcodegen --version
+          xcodegen generate --spec project.yml
+
+      # Unsigned: the repository holds no team id, profile or certificate (#372). Release, so each
+      # binary holds its own code (a Debug build moves it into a debug dylib the check can't read).
+      - name: Build the app with its extensions (unsigned, Simulator and device)
+        working-directory: apps/child-ios
+        run: |
+          for DEST in 'generic/platform=iOS Simulator' 'generic/platform=iOS'; do
+            echo "::group::xcodebuild $DEST"
+            xcodebuild \
+              -project OSRAAgent.xcodeproj \
+              -scheme OSRAAgent \
+              -configuration Release \
+              -destination "$DEST" \
+              -derivedDataPath .build/appDerivedData \
+              CODE_SIGNING_ALLOWED=NO \
+              build
+            echo "::endgroup::"
+          done
+
+      # The real Keychain, inside the simulator app: ad-hoc signed ("-", project.yml), so it carries its
+      # entitlements and the shared access group (5.5 PR B). Debug, as tests run.
+      - name: Run the Keychain tests inside the simulator app
+        working-directory: apps/child-ios
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $DEVICE_ID"
+          xcodebuild test \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgent \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/hostedDerivedData
+
+      - name: Check the built app holds its three extensions and the entitlements
+        working-directory: apps/child-ios
+        run: |
+          python3 scripts/check-app-bundle.py \
+            .build/appDerivedData/Build/Products/Release-iphonesimulator/OSRAAgent.app \
+            .build/appDerivedData/Build/Products/Release-iphoneos/OSRAAgent.app
+
+  # 5.5 PR A2 (#372): the agent against our real API. The API, Postgres and Redis run on this runner
+  # (no Docker on macOS), from this checkout, with secrets generated for the run and masked; nothing is
+  # shared or deployed. The simulator reaches the runner's 127.0.0.1.
+  live-api:
+    name: iOS agent against the real API (macOS runner)
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      API_BASE: http://127.0.0.1:3000
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/familyshield
+      REDIS_URL: redis://127.0.0.1:6379
+      JOBS_ENABLED: '0'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
+      # Handed to the test process without the prefix. OSRA_REQUIRE_LIVE=1 turns a missing input into a
+      # failure instead of a skip (#361).
+      TEST_RUNNER_OSRA_REQUIRE_LIVE: '1'
+      TEST_RUNNER_OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select the newest Xcode on the image
+        run: |
+          XCODE="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release_candidate' | sort -V | tail -1)"
+          echo "Selecting $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - uses: pnpm/action-setup@v4   # version from package.json "packageManager", as in api.yml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install the API
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -r --filter "./packages/*" run build
+          pnpm --filter @familyshield/api exec prisma generate
+          pnpm --filter @familyshield/api run build
+
+      - name: Start Postgres 16 and Redis
+        run: |
+          brew install postgresql@16 redis
+          PGBIN="$(brew --prefix postgresql@16)/bin"
+          "$PGBIN/initdb" -D "$RUNNER_TEMP/pg" -U postgres --auth=trust >/dev/null
+          "$PGBIN/pg_ctl" -D "$RUNNER_TEMP/pg" -l "$RUNNER_TEMP/pg.log" -o "-p 5432 -k $RUNNER_TEMP" -w start
+          "$PGBIN/createdb" -h 127.0.0.1 -U postgres familyshield
+          # noeviction, as staging (ADR-0032).
+          redis-server --daemonize yes --port 6379 --maxmemory-policy noeviction
+          redis-cli ping
+
+      - name: Generate this run's secrets
+        run: |
+          for NAME in JWT_SECRET INTERNAL_HMAC_SECRET; do
+            VALUE="$(openssl rand -hex 32)"
+            echo "::add-mask::$VALUE"
+            echo "$NAME=$VALUE" >> "$GITHUB_ENV"
+          done
+          VAULT_KEY="$(openssl rand -base64 32)"
+          echo "::add-mask::$VAULT_KEY"
+          echo "VAULT_KEY=$VAULT_KEY" >> "$GITHUB_ENV"
+
+      - name: Migrate, seed and start the API
+        working-directory: services/api
+        run: |
+          pnpm exec prisma migrate deploy
+          pnpm run db:seed > /dev/null
+          nohup node dist/server.js > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf "$API_BASE/health/deep" && break; sleep 1; done
+          echo
+          curl -sf "$API_BASE/health/deep" > /dev/null
+
+      - name: Install XcodeGen ${{ env.XCODEGEN_VERSION }}
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      # Built before the pairing code is minted: a code lives 600 s, and the build takes minutes.
+      - name: Build the integration tests
+        working-directory: apps/child-ios
+        run: |
+          xcodegen generate --spec project.yml
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcodebuild build-for-testing \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentIntegration \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/liveDerivedData
+          # Boot the simulator now and wait for it: on a cold boot its first request reached the API ~50 s late
+          # (after the client's 30 s timeout, run 40134997828), so it must be up before the code's clock starts.
+          xcrun simctl bootstatus "$DEVICE_ID" -b   # -b boots it first if it isn't booted
+
+      - name: Seed through the API (child with consent, pairing code)
+        run: node apps/child-ios/scripts/live-api.mjs setup
+
+      - name: Run the live API tests in the simulator
+        working-directory: apps/child-ios
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project OSRAAgent.xcodeproj \
+            -scheme OSRAAgentIntegration \
+            -destination "id=$DEVICE_ID" \
+            -derivedDataPath .build/liveDerivedData 2>&1 | tee "$RUNNER_TEMP/live-tests.log"
+          # Loud, not green-by-default (#361): all eight cases ran and passed, none skipped.
+          COUNT='index($0, "Test Case") && index($0, "-[FamilyShieldAgentIntegrationTests.LiveAPITests test") && index($0, word " (") { n++ } END { print n + 0 }'
+          PASSED="$(awk -v word=passed "$COUNT" "$RUNNER_TEMP/live-tests.log")"
+          SKIPPED="$(awk -v word=skipped "$COUNT" "$RUNNER_TEMP/live-tests.log")"
+          echo "live API cases passed: $PASSED, skipped: $SKIPPED"
+          test "$PASSED" -eq 8 && test "$SKIPPED" -eq 0
+
+      - name: The parent sees the alert (GET /v1/alerts)
+        run: node apps/child-ios/scripts/live-api.mjs verify
+
+      - name: API log on failure
+        if: failure()
+        run: tail -n 200 "$RUNNER_TEMP/api.log"

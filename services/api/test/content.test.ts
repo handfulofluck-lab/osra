@@ -192,7 +192,6 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
       id: "dev-a",
       childId: "child-a",
       internalSecret: devSecret,
-      revokedAt: null,
     });
 
     const body = {
@@ -222,7 +221,6 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
       id: "dev-a",
       childId: "child-a",
       internalSecret: devSecret,
-      revokedAt: null,
     });
 
     const body = {
