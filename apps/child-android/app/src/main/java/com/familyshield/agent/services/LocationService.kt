@@ -24,6 +24,8 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
 import com.familyshield.agent.commands.CommandDispatcher
+import com.familyshield.agent.commands.CommandPoller
+import com.familyshield.agent.push.PushTokenUploadPolicy
 import com.familyshield.agent.commands.LocateFix
 import com.familyshield.agent.data.ConsentPolicy
 import com.familyshield.agent.data.ConsentState
@@ -78,6 +80,9 @@ class LocationService : Service() {
     @Inject lateinit var db: FamilyShieldDatabase
     @Inject lateinit var dispatcher: CommandDispatcher
     @Inject lateinit var consentState: ConsentState
+    // #383: the service's own poll is the one that runs while the app is foregrounded, so the token
+    // step has to happen here too — the worker skips its poll while this service runs.
+    @Inject lateinit var commandPoller: CommandPoller
     @Inject lateinit var usage: UsageReporter
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -392,6 +397,9 @@ class LocationService : Service() {
         runCatching {
             val response = api.getCommandsWithCadence(deviceId)
             if (!response.isSuccessful) throw HttpException(response) // keeps the 428 consent path
+            // #383: a token the server cleared is re-sent from here, because this poll is the one that
+            // runs on a paired phone (the worker skips its own while this service is up).
+            commandPoller.syncPushToken(deviceId, response.headers()[PushTokenUploadPolicy.PUSH_TOKEN_HEADER])
             // #353: the server says how long to wait. An older server sends nothing: 60 s, as before.
             serverPollMs = IdleCadence.pollAfterMs(response.headers()[IdleCadence.POLL_AFTER_HEADER])
             consentState.onPollStatus(200)
