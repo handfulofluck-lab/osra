@@ -101,6 +101,10 @@ describe("FCM provider", () => {
         ...(fields
           ? {
               details: [
+                // FCM v1 puts its own FcmError entry first; the BadRequest naming the field comes
+                // after it. Without this entry a refactor that searched only details[0] passed every
+                // test and never cleared a dead token in production (Claude's F4).
+                { "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: "INVALID_ARGUMENT" },
                 {
                   "@type": "type.googleapis.com/google.rpc.BadRequest",
                   fieldViolations: fields.map((field) => ({ field, description: "bad" })),
@@ -350,10 +354,10 @@ describe("the child device wake (#319)", () => {
     err.mockRestore();
   });
 
-  // 5.5 PR D: a child iPhone's token is a raw APNs token. FCM cannot deliver it and answers 400
-  // INVALID_ARGUMENT, which fcm.ts reads as dead, so an FCM fallback would clear the token, and the agent,
-  // which uploads once per token and device, would never send it again. Mutant: let an iPhone fall back to
-  // FCM (as `providerFor` does for parents) and both cases fail.
+  // 5.5 PR D: a child iPhone's token is a raw APNs token, so an FCM fallback would send it to a service
+  // that cannot deliver it — and since #382 FCM would answer a 400 naming `message.token`, which fcm.ts
+  // reads as dead. Mutant: let an iPhone fall back to FCM (as `providerFor` does for parents) and both
+  // cases fail. This test uses a fake provider, so it pins the routing, not the mapping in #385.
   it("never wakes an iPhone through FCM, and keeps its token", async () => {
     const fcm = new FakeProvider(() => ({ ok: false, invalidToken: true, reason: "HTTP 400 INVALID_ARGUMENT" }));
     setPushProviders([fcm]);
