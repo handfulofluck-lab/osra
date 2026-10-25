@@ -137,11 +137,21 @@ final class DeviceCommandsTests: XCTestCase {
         StubProtocol.response = (204, Data())
         let token = String(repeating: "ab", count: 32)
         _ = await PushTokenRegistrar.register(tokenHex: token, session: StubProtocol.session)
-        AgentIdentityStore.clear()
+        // "Re-pair this device" saves the new identity over the old one without clear() (PairingView.pair),
+        // so only the device id tells the registrar that this pairing has no token on the server yet.
         pair(deviceId: "dev-2")
         let outcome = await PushTokenRegistrar.register(tokenHex: token, session: StubProtocol.session)
         XCTAssertEqual(outcome, .uploaded, "the new device row has no token yet")
         XCTAssertEqual(StubProtocol.lastRequest?.url?.path, "/v1/devices/dev-2/push-token")
+    }
+
+    func testUnpairingForgetsTheUploadedToken() async {
+        pair()
+        StubProtocol.response = (204, Data())
+        _ = await PushTokenRegistrar.register(tokenHex: String(repeating: "ab", count: 32), session: StubProtocol.session)
+        AgentIdentityStore.clear()
+        XCTAssertNil(defaults.string(forKey: PushTokenRegistrar.Keys.uploadedToken))
+        XCTAssertNil(defaults.string(forKey: PushTokenRegistrar.Keys.uploadedForDevice))
     }
 
     func testAFailedUploadIsRetriedNextTime() async {

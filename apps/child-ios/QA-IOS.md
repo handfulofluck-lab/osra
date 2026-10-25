@@ -58,8 +58,9 @@ pairing-approval change lands, so it isn't ported twice.
 
 - **Push token:** the app registers for remote notifications at launch and again after pairing.
   `PushTokenRegistrar` uploads the APNs token as hex (`POST /v1/devices/:id/push-token`, device token, 204). It
-  uploads only when the token or the paired device changed, and a failed upload is retried next time. Unpairing
-  forgets the upload, so a re-pair uploads again.
+  uploads only when the token or the paired device changed, and a failed upload is retried next time. "Re-pair
+  this device" saves the new identity over the old one without unpairing, so the new device id alone triggers the
+  upload for the new row. Unpairing forgets the upload.
 - **Wake → drain:** a wake push (`{"w":"1"}`, no command in it, #319) runs `CommandDrainer.drainNow()` in
   `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`. Opening the app does the same before it
   fetches the rules.
@@ -86,7 +87,8 @@ pairing-approval change lands, so it isn't ported twice.
 - **Tests:**
   - `DeviceCommandsTests` (stubbed server): the command table; one fetch for several `rules_updated`, every
     command acked, `unsupported_on_ios`, a failed sync acked failed, 428; the token hex; once per token and device,
-    re-pair, retry after a failure, unpaired.
+    re-pair the way the button does (no unpair in between), unpairing forgets the upload, retry after a failure,
+    unpaired.
   - Live cases 7 (the token stored, then `alreadyUploaded`) and 8 (the ack-capable poll answers).
 - **5.1 device checklist:**
   - a real APNs token is uploaded;
