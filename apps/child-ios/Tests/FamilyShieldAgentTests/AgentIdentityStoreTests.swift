@@ -64,6 +64,31 @@ final class AgentIdentityStoreTests: XCTestCase {
         XCTAssertFalse(AgentIdentityStore.isPaired())
     }
 
+    // MARK: - Secrets left behind by a previous install (5.5 PR C)
+
+    func testOrphanedSecretsAreClearedWhenNoIdentityOwnsThem() {
+        // A reinstall: the Keychain kept the secrets, the app group lost the ids.
+        store.write("old-jwt", for: AgentIdentityStore.Keys.deviceToken)
+        store.write("old-hmac", for: AgentIdentityStore.Keys.hmacSecret)
+        XCTAssertTrue(AgentIdentityStore.clearOrphanedSecrets())
+        XCTAssertNil(store.read(AgentIdentityStore.Keys.deviceToken))
+        XCTAssertNil(store.read(AgentIdentityStore.Keys.hmacSecret))
+        XCTAssertFalse(AgentIdentityStore.clearOrphanedSecrets(), "nothing left to clear")
+    }
+
+    func testAPairedPhonesSecretsAreKept() {
+        XCTAssertTrue(AgentIdentityStore.save(identity))
+        XCTAssertFalse(AgentIdentityStore.clearOrphanedSecrets())
+        XCTAssertEqual(AgentIdentityStore.load(), identity)
+    }
+
+    func testAnOlderBuildsPairingIsKeptToo() {
+        // Ids and plaintext secrets in UserDefaults, nothing in the Keychain yet: not orphaned.
+        writeLegacyIdentity()
+        XCTAssertFalse(AgentIdentityStore.clearOrphanedSecrets())
+        XCTAssertEqual(AgentIdentityStore.load(), identity)
+    }
+
     // MARK: - Migration from the plaintext keys of older builds
 
     /// What a build before 5.5 PR B left behind: every field, secrets included, in app-group UserDefaults.

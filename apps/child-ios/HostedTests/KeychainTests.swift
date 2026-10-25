@@ -78,6 +78,15 @@ final class KeychainTests: XCTestCase {
         XCTAssertNil(keychain.read(AgentIdentityStore.Keys.hmacSecret))
     }
 
+    /// A reinstall keeps the Keychain but not the app group: the launch-time clean-up removes the old items.
+    func testSecretsWithoutAnIdentityAreClearedAtLaunch() {
+        XCTAssertTrue(keychain.write("old-jwt", for: AgentIdentityStore.Keys.deviceToken))
+        XCTAssertTrue(keychain.write("old-hmac", for: AgentIdentityStore.Keys.hmacSecret))
+        XCTAssertTrue(AgentIdentityStore.clearOrphanedSecrets())
+        XCTAssertNil(keychain.read(AgentIdentityStore.Keys.deviceToken))
+        XCTAssertNil(keychain.read(AgentIdentityStore.Keys.hmacSecret))
+    }
+
     func testOlderBuildsPlaintextSecretsMoveIntoTheKeychain() {
         defaults.set("https://api.example.invalid", forKey: AgentIdentityStore.Keys.apiBaseURL)
         defaults.set("child-1", forKey: AgentIdentityStore.Keys.childId)

@@ -11,7 +11,7 @@ import XCTest
 /// stays offline. With `OSRA_REQUIRE_LIVE=1` (set in CI) a missing input fails instead: a job that
 /// silently skipped would read as green (#361).
 ///
-/// The cases run in name order and share the paired identity: claim first, then the alerts.
+/// The cases run in name order and share the paired identity: claim first, then the alerts, then the rules.
 final class LiveAPITests: XCTestCase {
 
     private static var lastAcceptedRequest: URLRequest?
@@ -125,6 +125,21 @@ final class LiveAPITests: XCTestCase {
         let (status, body) = try await AlertReporter.send(request)
         XCTAssertEqual(status, 401)
         XCTAssertEqual(reason(body), "stale_timestamp", String(decoding: body, as: UTF8.self))
+    }
+
+    // 6. The rules the parent set (scripts/live-api.mjs setup) sync to the app group with the device token.
+    func test6RulesSyncWithTheDeviceToken() async throws {
+        _ = try input("OSRA_TEST_API_BASE")
+        _ = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
+        let outcome = await RuleSyncer.syncNow(enforce: false)
+        guard case .synced(let rules) = outcome else { return XCTFail("rule sync ended with \(outcome)") }
+        XCTAssertEqual(rules.blockedBundleIdentifiers, ["com.example.blocked"])
+        XCTAssertEqual(rules.screenTime.bedtimeStart, "21:30")
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        XCTAssertEqual(defaults?.stringArray(forKey: "apps.blockedBundleIdentifiers"), ["com.example.blocked"])
+        let routine = try XCTUnwrap(RuleStore.routineSchedules().first)
+        XCTAssertEqual(routine.swiftWeekdays, [2, 1], "rules Mon,Sun (1,7) are Foundation weekdays 2,1")
+        XCTAssertEqual(routine.blockedApps, ["com.example.game"])
     }
 }
 

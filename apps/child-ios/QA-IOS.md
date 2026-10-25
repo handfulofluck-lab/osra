@@ -54,6 +54,57 @@ the system, and TestFlight (5.6). The device token and HMAC secret are in the Ke
 "Remaining pairing-related gaps"). Next PRs on this row: rule sync into the app group, and APNs token registration. The iOS pairing client is ported after the
 pairing-approval change lands, so it isn't ported twice.
 
+## Rule sync (updated 2026-10-25, roadmap 5.5 PR C, #372)
+
+The agent now fetches the parent's rules and stores them where the extensions read them.
+
+- **When:** `RuleSyncer.syncNow()` runs **only when the app opens and right after pairing**, and a child
+  rarely opens it. PR D (APNs `rules_updated`) closes that gap.
+- **How:** `GET /v1/rules/:childId` with the device token (`RuleSyncClient`), the same contract as the Android
+  agent. `RuleSet` decodes the server's shape and ignores fields it doesn't use.
+- **Stored** (`RuleStore`, app-group `UserDefaults`):
+  - the blocked apps (`action: "block"`), the allowed apps (`action: "allow"`) and `alwaysAllowedApps`;
+  - the bedtime window, blocked domains and categories;
+  - the routines, with their days converted and their own `blockedApps` / `allowedApps`.
+- **Days:** rules use 1=Mon..7=Sun and Foundation uses 1=Sun..7=Sat, so `Weekday.swiftWeekday(ruleDay:)` is
+  `ruleDay % 7 + 1`. Anything outside 1...7 is dropped.
+- **What a running interval shields** is a pure function, `ShieldPolicy.decide`, with SwiftPM rows. It follows
+  Android's `RuleEngine`:
+  - **bedtime**, and a routine with `allowedApps`, shield **everything except** the allowed apps:
+    `alwaysAllowedApps`, `action: "allow"`, the routine's own `allowedApps`, and the dialer
+    (`com.apple.mobilephone`, as Android's essential-apps rule #165);
+  - a routine with only `blockedApps` shields those;
+  - a routine shields nothing on a day it doesn't run.
+- **Enforcement** needs Screen Time authorization (`ScreenTimeController.applyRules`):
+  - The monitor applies the policy with `.all(except:)`. A bundle id with no token stays shielded, which fails
+    closed.
+  - Bedtime is one daily activity. Each routine is also **one daily activity** (`routine.<index>`,
+    `RoutinePlan`), and the weekday check runs when the interval starts. An overnight routine is judged by the day
+    it started on. So a seven-day routine costs one activity against `DeviceActivityCenter`'s per-app cap, not
+    seven.
+  - Any activity the system refuses is recorded in one place (`RuleStore.unscheduled()`) and logged once.
+- **Stopping never leaves a shield on.** A running interval keeps its shield in its own named store. Before
+  monitoring stops (stale routines, or a 428), each store is cleared first (`ActivityTeardown`).
+- **Failures:**
+  - **428** (consent withdrawn): every stored rule and every shield is removed.
+  - **401** (the device was removed) and any other failure: the last rules stay in force, as on Android
+    (`RuleRepository.refresh` keeps its cached rules on every failure).
+  - Unpairing clears the rules.
+- **Leftovers from a previous install:** Keychain items outlive deleting the app, while the app group does not. At
+  launch, `AgentIdentityStore.clearOrphanedSecrets()` deletes a token and secret that no identity owns. A paired
+  phone, including one paired by an older build, is never touched.
+- **Tests:**
+  - `RuleSyncTests`: the weekday table, the server shape, the stored keys, the `ShieldPolicy` rows (bedtime,
+    allow-list routine, block-list routine, off-day, overnight start day, unknown activity), one activity per
+    routine, clear-before-stop order, and sync outcomes 200 / 428 / 500 / not paired.
+  - `AgentIdentityStoreTests` and the hosted `KeychainTests`: the orphan clean-up.
+  - Live case 6: the rules the parent set through the API sync with the device token.
+- **5.1 device checklist** (needs a signed build):
+  - bedtime shields every app but the allowed ones, and the Phone app stays reachable under `.all(except:)`;
+  - a daily routine shields only on its weekdays, overnight included;
+  - a 428 during bedtime removes the shield;
+  - the on-device `FamilyActivityPicker` for category shields, which comes with the signed build (Claude, #380).
+
 ## Live API test (updated 2026-10-24, roadmap 5.5 PR A2, #372)
 
 A static review once missed that every iOS alert would be refused (400/401), so the agent is now tested
@@ -75,6 +126,7 @@ against **our real API**, on every iOS change, on changes to the three server fi
    3. The same bytes again get **401 `replay`**.
    4. One changed body byte gets **401 `invalid_signature`**.
    5. A request signed 600 s ago gets **401 `stale_timestamp`**.
+   6. The rules the parent set in `setup` sync with the device token into the app group (PR C).
 4. `scripts/live-api.mjs verify` logs in as the parent. `GET /v1/alerts` must hold exactly one
    `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
    `GET /v1/devices` must list that device as `platform: "ios"`.
@@ -82,7 +134,7 @@ against **our real API**, on every iOS change, on changes to the three server fi
 The simulator is booted (`simctl bootstatus -b`) before the code is minted, and case 1 waits for `GET /health` before it claims: on a cold boot the first request once reached the API about 50 s late, after the client's 30 s timeout. The claim itself is never retried, because a code is single-use.
 
 It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
-it, as in a local run, the cases skip. And the job asserts that 5 cases passed and none were skipped.
+it, as in a local run, the cases skip. And the job asserts that 6 cases passed and none were skipped.
 `AlertReporter` gained `makeRequest`/`send` for the tests. `report` uses the same builder and keeps its
 fire-and-forget retry.
 
@@ -124,8 +176,8 @@ job, so the iOS client gets ported in the same change.
   registry; domain-level filtering via `blockedByFilter = .specific(domains)` works.
 - Day encoding: FamilyShield rules use **1=Mon..7=Sun** (Android/API/desktop contract),
   while Foundation `DateComponents.weekday` is **1=Sun..7=Sat**. When routine schedules
-  land on iOS, map `swiftWeekday = ruleDay % 7 + 1`. Currently only bedtime schedules
-  (repeats daily, no weekday constraint) exist, so no runtime impact.
+  land on iOS, map `swiftWeekday = ruleDay % 7 + 1`. Done 2026-10-25 (5.5 PR C): `Weekday.swiftWeekday(ruleDay:)`,
+  with tests.
 - `scheduleBedtime` registers `bedtime.<id>` per routine ID; per-routine `ManagedSettingsStore(named:)`
   stores would avoid cross-rule clobbering (documented at `intervalDidStart/End`).
 - Extension targets (Shield UI, monitor) cannot be declared by SwiftPM — requires the
@@ -167,6 +219,5 @@ Remaining pairing-related gaps:
   Still needs a signed device build (5.1): an extension actually reading the item the app wrote.
 - After pairing, the agent does not yet register an APNs push token
   (`POST /v1/devices/:id/push-token`) — needed for parent push notifications.
-- Routine/rules sync to the app group (`apps.blockedBundleIdentifiers`,
-  `bedtime.blockedBundleIdentifiers`) is still written by "the main agent app"
-  per the existing NOTEs — the rules-sync port lands with the wrapper project.
+- ~~Routine/rules sync to the app group is still written by "the main agent app"~~ — done 2026-10-25 (5.5 PR C,
+  #372): see "Rule sync" above.
