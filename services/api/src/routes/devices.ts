@@ -10,11 +10,13 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
+import { POLL_AFTER_HEADER, pollAfterSeconds, touchLastSeen, type PolledDevice } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
+import { PAIR_CLAIM_RATE_LIMIT } from "../lib/rateLimits.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -284,7 +286,7 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Claim a pairing code (no auth: runs before any credentials exist) and mint a device JWT. */
-  app.post("/pair/claim", async (req, reply) => {
+  app.post("/pair/claim", { config: { rateLimit: PAIR_CLAIM_RATE_LIMIT } }, async (req, reply) => {
     const parsed = ClaimSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const key = `pair:${parsed.data.code}`;
@@ -296,7 +298,12 @@ export async function deviceRoutes(app: FastifyInstance) {
       key,
     )) as string | null;
     const payload = raw ? (JSON.parse(raw) as { childId: string; familyId: string }) : null;
-    if (!payload) return reply.code(404).send({ error: "invalid_or_expired_code" });
+    if (!payload) {
+      // A metric, not a brake: counted from the logs to see guessing, never used to refuse pairing for
+      // everyone. The code itself is not logged.
+      req.log.warn({ metric: "pair_claim_failed" }, "pairing claim with an unknown or expired code");
+      return reply.code(404).send({ error: "invalid_or_expired_code" });
+    }
     const consentCheck = await checkActiveConsent(payload.childId);
     if (!consentCheck.active) {
       return reply.code(428).send({ error: consentCheck.reason ?? "parental_consent_required" });
@@ -456,6 +463,9 @@ export async function deviceRoutes(app: FastifyInstance) {
    * (probe note B11); parents read `/commands/history` instead. `?ack=1` declares an ack-capable
    * agent: its delivered-but-unacked commands are re-offered after 120 s, up to 3 attempts.
    * Shape is unchanged for existing agents: an array of `{type, payload, ...}`.
+   *
+   * Issue #353 (5.8): the `X-Poll-After` header tells the agent when to poll next — 600 s when this
+   * server can wake the device by push, 60 s when it cannot — and a poll refreshes a stale `lastSeen`.
    */
   app.get("/:id/commands", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -463,10 +473,13 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (user.role !== "device") return reply.code(403).send({ error: "device_role_required", hint: "parents: GET /v1/devices/:id/commands/history" });
     if ((user.deviceId ?? user.sub) !== id) return reply.code(403).send({ error: "forbidden" });
     // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
-    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
-    return claimPendingCommands(id, { ackCapable });
+    const commands = await claimPendingCommands(id, { ackCapable });
+    reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
+    if (device) await touchLastSeen(device);
+    return commands;
   });
 
   /** Agent reports the outcome of a delivered command (Phase 2b). */

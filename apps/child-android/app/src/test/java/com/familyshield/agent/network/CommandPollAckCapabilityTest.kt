@@ -55,4 +55,22 @@ class CommandPollAckCapabilityTest {
         assertNotNull("the poll must stay a GET", get)
         assertEquals("v1/devices/{id}/commands", get!!.value)
     }
+
+    /**
+     * Roadmap 5.8 (#353): the foreground service polls through `getCommandsWithCadence`, which keeps the
+     * response headers for `X-Poll-After`. It is the same request, so it must declare the same
+     * ack-capability. Mutant: drop its `@Query("ack")` and every poll from the service is a
+     * non-ack-capable poll again, the #231 defect.
+     */
+    @Test
+    fun `the header-reading poll is the same request, ack-capable too`() {
+        val cadence = ApiService::class.java.declaredMethods
+            .firstOrNull { it.name == "getCommandsWithCadence" }
+            ?: error("ApiService.getCommandsWithCadence is missing")
+        val ack = cadence.parameters.firstOrNull { it.isAnnotationPresent(Query::class.java) }
+        assertNotNull("the cadence poll must carry the ack query parameter", ack)
+        assertEquals("ack", ack!!.getAnnotation(Query::class.java).value)
+        assertTrue(ack.type == Int::class.javaPrimitiveType)
+        assertEquals("v1/devices/{id}/commands", cadence.getAnnotation(GET::class.java)?.value)
+    }
 }

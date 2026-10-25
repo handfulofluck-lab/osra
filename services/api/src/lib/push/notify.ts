@@ -84,6 +84,30 @@ function providerFor(platform: PushPlatform, providers: Map<PushPlatform, PushPr
   return providers.get(platform);
 }
 
+/**
+ * The provider that can wake a child device. A child iPhone's token is a raw APNs token (5.5 PR D): only
+ * APNs can deliver it, and only under the child agent's topic. FCM answers 400 INVALID_ARGUMENT for it,
+ * which reads as a dead token and would clear it, so an iPhone never falls back to FCM here. Parents keep
+ * the fallback in [providerFor].
+ */
+function deviceWakeProviderFor(platform: PushPlatform, providers: Map<PushPlatform, PushProvider>): PushProvider | undefined {
+  if (platform === "ios") {
+    const apns = providers.get("ios");
+    return apns?.canWakeDevices ? apns : undefined;
+  }
+  return providerFor(platform, providers);
+}
+
+/**
+ * Could [notifyDeviceWake] reach this device right now: a token on file and a provider for its
+ * platform. It says nothing about delivery (#353 uses it to choose the poll cadence, and a token the
+ * provider rejects is cleared on the first failed wake, which flips this to false for the next poll).
+ */
+export function canWakeDevice(device: { platform?: string | null; pushToken?: string | null } | null | undefined): boolean {
+  if (!device?.pushToken) return false;
+  return deviceWakeProviderFor((device.platform ?? "android") as PushPlatform, getPushProviders()) !== undefined;
+}
+
 export interface NotifyOutcome {
   recipients: number;
   delivered: number;
@@ -205,7 +229,7 @@ export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
     }
     const device = await prisma.device.findUnique({ where: { id: deviceId }, select: { id: true, pushToken: true, platform: true } });
     if (!device?.pushToken) return { ...outcome, skipped: "no_token" };
-    const provider = providerFor(device.platform as PushPlatform, providers);
+    const provider = deviceWakeProviderFor(device.platform as PushPlatform, providers);
     if (!provider) return { ...outcome, skipped: "unsupported_platform" };
 
     const result = await provider.send(device.pushToken, buildDeviceWakeMessage());

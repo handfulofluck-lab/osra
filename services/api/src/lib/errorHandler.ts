@@ -18,6 +18,13 @@ export function registerErrorHandler(app: FastifyInstance): void {
       req.log.error(error);
       return reply.code(400).send({ error: "invalid_input" });
     }
+    // Redis unreachable: ioredis gave up retrying, or the connection was refused. Answer 503 without the
+    // driver's message. The fail-closed rate-limit buckets (auth, pairing claim) end here when they
+    // cannot count (plan 2.7), and a client retries a 5xx (#162).
+    if (error.name === "MaxRetriesPerRequestError" || (error as { code?: string }).code === "ECONNREFUSED") {
+      req.log.error(error);
+      return reply.code(503).send({ error: "temporarily_unavailable" });
+    }
     return reply.send(error);
   });
 }

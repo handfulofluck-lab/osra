@@ -110,9 +110,6 @@ export async function contentRoutes(app: FastifyInstance) {
     const { childId, deviceId, engine, query, url } = parsed.data;
 
     if (auth.device) {
-      if (auth.device.revokedAt) {
-        return reply.code(401).send({ error: "device_revoked" });
-      }
       if (auth.device.childId && auth.device.childId !== childId) {
         return reply.code(400).send({ error: "cross_child_content_forbidden" });
       }
@@ -202,9 +199,6 @@ export async function contentRoutes(app: FastifyInstance) {
     const { childId, deviceId, videoId, title, channel } = parsed.data;
 
     if (auth.device) {
-      if (auth.device.revokedAt) {
-        return reply.code(401).send({ error: "device_revoked" });
-      }
       if (auth.device.childId && auth.device.childId !== childId) {
         return reply.code(400).send({ error: "cross_child_content_forbidden" });
       }

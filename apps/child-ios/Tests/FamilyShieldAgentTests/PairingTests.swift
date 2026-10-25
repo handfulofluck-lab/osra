@@ -8,6 +8,18 @@ final class PairingTests: XCTestCase {
 
     private let base = URL(string: "http://192.168.1.5:3000")!
 
+    // The unsigned test bundle cannot reach the simulator Keychain (see AgentIdentityStoreTests).
+    override func setUp() {
+        super.setUp()
+        AgentIdentityStore.secrets = InMemorySecretStore()
+        AgentIdentityStore.clear()
+    }
+
+    override func tearDown() {
+        AgentIdentityStore.clear()
+        super.tearDown()
+    }
+
     // MARK: - normalizeServerURL
 
     func testNormalizeAddsSchemeAndTrimsSlashes() {

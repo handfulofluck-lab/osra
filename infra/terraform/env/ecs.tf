@@ -48,6 +48,10 @@ resource "aws_ecs_task_definition" "api" {
           { name = "NODE_ENV", value = "production" },
           { name = "PORT", value = "3000" },
           { name = "LOG_LEVEL", value = "info" },
+          # The ALB is one proxy hop: the API takes the client address from the X-Forwarded-For entry the ALB
+          # appends, so every rate limit keys on the client, not on the balancer. A hop count, never `true`
+          # (that trusts the entry the caller writes). A CDN in front of the ALB would make this 2.
+          { name = "TRUST_PROXY", value = "1" },
           # The API fail-closes parent sessions when Redis is unreachable, so this must point at
           # the ElastiCache node from elasticache.tf, never localhost.
           { name = "REDIS_URL", value = "redis://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" },

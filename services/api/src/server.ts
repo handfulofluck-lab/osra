@@ -1,7 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
-import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import { authRoutes } from "./routes/auth.js";
 import { blocklistRoutes } from "./routes/blocklists.js";
@@ -28,6 +27,8 @@ import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { healthRoutes } from "./routes/health.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
+import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/rateLimits.js";
+import { getRedis } from "./redis.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -55,7 +56,9 @@ try {
   console.warn(`[schema-sync] Database check skipped due to connectivity issue: ${err.message}`);
 }
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
+// Behind the ALB every request arrives from the balancer, so the client address comes from
+// X-Forwarded-For, trusted for TRUST_PROXY hops (1 in infra/terraform/env/ecs.tf). Unset trusts nothing.
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, trustProxy: trustProxyFromEnv() });
 
 // Review API-1: CORS allowlist via env (comma-separated); unset = reflect (dev/test only, NOTE).
 const corsOrigins = process.env.CORS_ORIGIN?.split(",").map((o) => o.trim()).filter(Boolean);
@@ -64,7 +67,7 @@ await app.register(cors, {
   credentials: true,
 });
 await app.register(jwt, { secret: JWT_SECRET ?? "dev-insecure-jwt-secret" });
-await app.register(rateLimit, { max: 200, timeWindow: "1 minute" });
+await registerRateLimits(app, getRedis());
 await app.register(websocket);
 
 // Global auth gate for every route: a revoked device token and a revoked parent session answer 401
@@ -93,7 +96,7 @@ await app.register(healthRoutes);
 // Auth routes get a stricter bucket (review API-11): brute-force protection on register/login/reset.
 await app.register(authRoutes, {
   prefix: "/v1/auth",
-  config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+  config: { rateLimit: AUTH_RATE_LIMIT },
 });
 await app.register(blocklistRoutes, { prefix: "/v1/blocklists" });
 await app.register(familyRoutes, { prefix: "/v1/family" });

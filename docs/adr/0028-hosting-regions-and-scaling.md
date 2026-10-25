@@ -21,6 +21,12 @@
   (fixes every 5 min still / 30 s moving, `LocationService.kt:474-477`), plus telemetry every 15 min
   (`WorkScheduler.kt`). The Windows agent polls rules every 60 s (`RuleSyncService.cs:9`). Child
   devices, not parents, set the backend's size.
+- Update 2026-10-24 (#353): counted on the Flip4 with #346's instrument, an idle phone sent **22 to 24
+  requests per 10 minutes**, screen off or dozing (a foreground service keeps its network in Doze). The
+  poll now follows the server's `X-Poll-After` (600 s when the server can wake the phone by push, 60 s
+  otherwise, never more than 60 s apart while the screen is on), live activity goes up only while the
+  screen is on, and a stationary phone uploads its fixes every 10 minutes. Design target: about 2
+  requests per idle 10 minutes; the measured number is in #353's PR.
 - iOS does not let an app run a 60-second loop in the background, so the iPhone agent cannot use the
   polling model at all; it needs APNs wake-ups.
 

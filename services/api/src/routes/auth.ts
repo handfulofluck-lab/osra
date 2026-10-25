@@ -36,6 +36,7 @@ import {
 } from "../lib/mfaRecovery.js";
 import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, revokeTokenOnce, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
+import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 
 const RegisterSchema = z.object({
   email: z.string().email().transform((e) => e.trim().toLowerCase()),
@@ -131,7 +132,7 @@ function timingSafeEq(a: string, b: string): boolean {
 
 export async function authRoutes(app: FastifyInstance) {
   // Review API-11: stricter bucket on auth endpoints (brute-force protection).
-  const RL = { rateLimit: { max: 20, timeWindow: "1 minute" } };
+  const RL = { rateLimit: AUTH_RATE_LIMIT };
   const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
   // --- Redis-backed refresh-token store (handoff items 1-3) ---

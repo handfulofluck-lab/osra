@@ -14,7 +14,10 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.services.IdleCadence
+import com.familyshield.agent.services.LocationService
 import dagger.hilt.android.EntryPointAccessors
 
 /**
@@ -22,6 +25,10 @@ import dagger.hilt.android.EntryPointAccessors
  * Decision 2). The fetch itself is [CommandPoller.pollOnce] — the same call the in-process wake-up
  * makes — so this worker only decides *when* it runs (the 60-second periodic job, or a one-shot
  * expedited [requestFetchNow]) and *what a failure means* (up to three retries).
+ *
+ * Roadmap 5.8 (#353): the periodic run is skipped while [LocationService] is running, since that
+ * service polls on the server's cadence ([IdleCadence.workerShouldPoll]); a run [requestFetchNow]
+ * enqueued carries [KEY_WAKE] and always fetches.
  */
 class CommandPollWorker(
     context: Context,
@@ -30,6 +37,8 @@ class CommandPollWorker(
 
     /** Runs one poll pass; a failed fetch is retried up to three attempts, then fails the work. */
     override suspend fun doWork(): Result {
+        val wake = inputData.getBoolean(KEY_WAKE, false)
+        if (!IdleCadence.workerShouldPoll(LocationService.isServiceRunning, wake)) return Result.success()
         val entryPoint = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
         return try {
             entryPoint.commandPoller().pollOnce()
@@ -73,6 +82,9 @@ class CommandPollWorker(
          */
         const val WAKE_WORK_NAME: String = "command_poll_wake"
 
+        /** Input-data flag set by [requestFetchNow]: a push woke this run, so it fetches even while [LocationService] runs. */
+        const val KEY_WAKE: String = "wake"
+
         private const val TAG: String = "CommandPollWorker"
         private const val WAKE_CHANNEL: String = "command_poll_wake"
         private const val WAKE_NOTIFICATION_ID: Int = 44
@@ -94,6 +106,7 @@ class CommandPollWorker(
                 ExistingWorkPolicy.KEEP,
                 OneTimeWorkRequestBuilder<CommandPollWorker>()
                     .setConstraints(network)
+                    .setInputData(workDataOf(KEY_WAKE to true))
                     .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                     .build(),
             )
