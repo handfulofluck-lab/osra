@@ -154,14 +154,17 @@ final class LiveAPITests: XCTestCase {
     }
 
     // 8. The command queue answers the device's ack-capable poll (5.5 PR D). Nothing is queued for a device
-    // paired after its rules were set, so the answer is an empty list, and the poll is what is proven.
+    // paired after its rules were set, so the answer is an empty list, and the poll is what is proven. Case 7
+    // stored a token, so the poll says the server holds one (`X-Push-Token: on-file`, #383) and nothing is resent.
     func test8CommandQueueAnswersThePoll() async throws {
         _ = try input("OSRA_TEST_API_BASE")
         let identity = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
-        let commands = try await CommandClient().poll(identity)
-        XCTAssertEqual(commands, [])
+        let poll = try await CommandClient().poll(identity)
+        XCTAssertEqual(poll.commands, [])
+        XCTAssertTrue(poll.serverHasPushToken, "case 7 stored a token, so the server answers on-file")
         let drained = await CommandDrainer.drainNow()
         XCTAssertFalse(drained.consentWithdrawn)
+        XCTAssertFalse(drained.pushTokenResent)
     }
 }
 

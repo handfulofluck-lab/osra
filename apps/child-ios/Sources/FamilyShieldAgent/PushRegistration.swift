@@ -21,6 +21,8 @@ public enum PushTokenRegistrar {
 
     public enum Outcome: Equatable {
         case notPaired
+        /// Nothing was uploaded for this pairing yet, so there is nothing to send again (#383).
+        case nothingToResend
         case alreadyUploaded
         case uploaded
         case failed(Int)
@@ -34,6 +36,25 @@ public enum PushTokenRegistrar {
            defaults?.string(forKey: Keys.uploadedForDevice) == identity.deviceId {
             return .alreadyUploaded
         }
+        return await upload(tokenHex, for: identity, session: session)
+    }
+
+    /// The poll answered `X-Push-Token: none` (#383): the server cleared this device's token, most likely after
+    /// a wake it read as a dead token. Sends the token uploaded for this pairing again, past the
+    /// "already uploaded" check; a token iOS has since rotated arrives through [register] as usual.
+    @discardableResult
+    public static func resendAfterServerCleared(session: URLSession = .shared) async -> Outcome {
+        guard let identity = AgentIdentityStore.load(), !identity.deviceId.isEmpty else { return .notPaired }
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        guard let token = defaults?.string(forKey: Keys.uploadedToken), !token.isEmpty,
+              defaults?.string(forKey: Keys.uploadedForDevice) == identity.deviceId else {
+            return .nothingToResend
+        }
+        return await upload(token, for: identity, session: session)
+    }
+
+    private static func upload(_ tokenHex: String, for identity: AgentIdentity, session: URLSession) async -> Outcome {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
         var request = URLRequest(url: identity.apiBaseURL.appendingPathComponent("v1/devices")
             .appendingPathComponent(identity.deviceId).appendingPathComponent("push-token"))
         request.httpMethod = "POST"

@@ -82,14 +82,23 @@ pairing-approval change lands, so it isn't ported twice.
     Apple answers `DeviceTokenNotForTopic`, which the server reads as a dead token and clears. Unset, iPhones are
     not woken, which is better than losing their tokens.
   - `test/push.test.ts` pins both.
+- **A token the server cleared (#383, roadmap 5.8):** the poll answers `X-Push-Token: on-file | none`. On `none`,
+  `CommandDrainer` sends the token uploaded for this pairing again (`PushTokenRegistrar.resendAfterServerCleared`),
+  past the "already uploaded" check, so push heals on the next drain instead of staying dead. Nothing is sent when
+  nothing was uploaded for this pairing, and an older server without the header changes nothing.
+- **Wake deadline (Claude's note 2 on #382):** iOS gives a woken app about 30 s. The wake path runs
+  `CommandDrainer.drain(within: 25)`: past the deadline the drain is cancelled and the wake answers `.failed`; the
+  next wake or launch drains again, because unacked commands stay in the queue.
 - **Bedtime refused (Claude on #380):** if iOS refuses a new bedtime window, the old bedtime activity is stopped
   and its shield cleared, so the phone never keeps enforcing times the parent replaced.
 - **Tests:**
   - `DeviceCommandsTests` (stubbed server): the command table; one fetch for several `rules_updated`, every
     command acked, `unsupported_on_ios`, a failed sync acked failed, 428; the token hex; once per token and device,
     re-pair the way the button does (no unpair in between), unpairing forgets the upload, retry after a failure,
-    unpaired.
-  - Live cases 7 (the token stored, then `alreadyUploaded`) and 8 (the ack-capable poll answers).
+    unpaired; `X-Push-Token: none` sends the stored token exactly once, `on-file` and an absent header send
+    nothing, nothing to resend for a new pairing; the wake drain answers by its deadline even when the work ignores
+    cancellation.
+  - Live cases 7 (the token stored, then `alreadyUploaded`) and 8 (the ack-capable poll answers, and says `on-file` after case 7).
 - **5.1 device checklist:**
   - a real APNs token is uploaded;
   - a parent rule change wakes a backgrounded, locked iPhone and its shields update without opening the app;

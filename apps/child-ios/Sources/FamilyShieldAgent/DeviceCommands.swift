@@ -25,6 +25,19 @@ public enum CommandAction: Equatable {
     }
 }
 
+/// One answer to the poll: the commands, and whether the server still holds this device's push token.
+public struct CommandPoll: Equatable {
+    public var commands: [DeviceCommand]
+    /// `X-Push-Token` (#383): false only on an explicit `none`. An older server sends no header, and then
+    /// nothing changes.
+    public var serverHasPushToken: Bool
+
+    public init(commands: [DeviceCommand], serverHasPushToken: Bool = true) {
+        self.commands = commands
+        self.serverHasPushToken = serverHasPushToken
+    }
+}
+
 public struct CommandClient {
     private let session: URLSession
 
@@ -38,7 +51,7 @@ public struct CommandClient {
     }
 
     /// Claims the pending commands (`ack=1`: they come back until acked, as Android's ack-capable poll).
-    public func poll(_ identity: AgentIdentity) async throws -> [DeviceCommand] {
+    public func poll(_ identity: AgentIdentity) async throws -> CommandPoll {
         var components = URLComponents(url: devicesURL(identity).appendingPathComponent("commands"),
                                        resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "ack", value: "1")]
@@ -52,7 +65,8 @@ public struct CommandClient {
         guard let commands = try? JSONDecoder().decode([DeviceCommand].self, from: data) else {
             throw CommandError.unusableResponse
         }
-        return commands
+        let pushToken = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "X-Push-Token")
+        return CommandPoll(commands: commands, serverHasPushToken: pushToken != "none")
     }
 
     /// Reports a command's outcome; `detail` says why when it failed.
@@ -84,16 +98,25 @@ public enum CommandDrainer {
         public var refused: [String] = []
         /// The poll answered 428: consent was withdrawn, and the rules were synced (and so cleared).
         public var consentWithdrawn = false
+        /// The poll said the server holds no push token, and the stored one was sent again (#383).
+        public var pushTokenResent = false
     }
 
     @discardableResult
     public static func drainNow(client: CommandClient = CommandClient(),
+                                tokenSession: URLSession = .shared,
                                 sync: () async -> RuleSyncer.Outcome = { await RuleSyncer.syncNow() }) async -> Result {
         var result = Result()
         guard let identity = AgentIdentityStore.load() else { return result }
         let commands: [DeviceCommand]
         do {
-            commands = try await client.poll(identity)
+            let poll = try await client.poll(identity)
+            commands = poll.commands
+            if !poll.serverHasPushToken {
+                // #383: without a token on file the server cannot wake this phone; heal it on this drain.
+                let resent = await PushTokenRegistrar.resendAfterServerCleared(session: tokenSession)
+                result.pushTokenResent = resent == .uploaded
+            }
         } catch CommandClient.CommandError.httpError(status: 428) {
             // ADR-0008 §2b: monitoring is paused. The rules endpoint answers 428 too, which clears them.
             result.consentWithdrawn = true
@@ -130,5 +153,44 @@ public enum CommandDrainer {
             }
         }
         return result
+    }
+}
+
+extension CommandDrainer {
+    /// iOS gives a woken app about 30 seconds to call its completion handler, and repeated overruns make it
+    /// hold back later wakes. A drain chains a poll, a rule sync and the acks, each with a 30-second timeout,
+    /// so the wake path drains under this deadline instead (Claude's note 2 on #382).
+    public static let wakeDeadlineSeconds: Double = 25
+
+    /// Drains, but answers by the deadline: the drain's result, or nil once `seconds` pass first. The drain is
+    /// then cancelled, and it answers nil even if the work ignores the cancellation.
+    public static func drain(within seconds: Double = wakeDeadlineSeconds,
+                             _ work: @escaping () async -> Result = { await drainNow() }) async -> Result? {
+        let first = FirstAnswer<Result?>()
+        return await withCheckedContinuation { continuation in
+            first.continuation = continuation
+            let drain = Task { first.answer(await work()) }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                drain.cancel()
+                first.answer(nil)
+            }
+        }
+    }
+}
+
+/// Resumes a continuation with whichever answer comes first, once.
+private final class FirstAnswer<T> {
+    private let lock = NSLock()
+    private var answered = false
+    var continuation: CheckedContinuation<T, Never>?
+
+    func answer(_ value: T) {
+        lock.lock()
+        guard !answered, let continuation else { lock.unlock(); return }
+        answered = true
+        self.continuation = nil
+        lock.unlock()
+        continuation.resume(returning: value)
     }
 }
