@@ -10,9 +10,12 @@ Controls key. None of those fail the build, so this script checks them after it 
 It checks, for each .app given:
   1. PlugIns/ holds exactly the three expected .appex bundles, and nothing else;
   2. each .appex Info.plist has the expected NSExtensionPointIdentifier and NSExtensionPrincipalClass;
-  3. on macOS (where `nm` reads Mach-O), each .appex binary defines its principal class.
+  3. on macOS (where `nm` reads Mach-O), each .appex binary defines its principal class;
+  4. the app's Info.plist asks for location with both usage strings, has them in English and Arabic
+     (en.lproj, ar.lproj), and has no `location` background mode (significant-change monitoring needs
+     none, and the entry draws App Review questions, 5.5 PR E).
 And once, from the source tree (an unsigned build embeds no entitlements):
-  4. every target's .entitlements file carries com.apple.developer.family-controls = true and the
+  5. every target's .entitlements file carries com.apple.developer.family-controls = true and the
      app group group.dev.familyshield.agent.
 
 It prints what it found, so the CI log shows the bundle list, and exits 1 on any mismatch.
@@ -35,6 +38,8 @@ EXTENSIONS = {
     ),
     "OSRAAgentShieldAction.appex": ("com.apple.ManagedSettings.shield-action-service", "FamilyShieldShieldActionDelegate"),
 }
+
+LOCATION_KEYS = ["NSLocationWhenInUseUsageDescription", "NSLocationAlwaysAndWhenInUseUsageDescription"]
 
 ENTITLEMENTS = [
     "App/OSRAAgent.entitlements",
@@ -75,6 +80,8 @@ def check_app(app):
         extra = sorted(set(found) - set(EXTENSIONS))
         fail(f"PlugIns/ mismatch: missing {missing or 'none'}, unexpected {extra or 'none'}")
 
+    check_location(app)
+
     for name, (point, principal) in EXTENSIONS.items():
         appex = os.path.join(plugins, name)
         info_path = os.path.join(appex, "Info.plist")
@@ -93,6 +100,51 @@ def check_app(app):
         else:
             fail(f"{name}: NSExtensionPrincipalClass = {got_principal!r}, expected {principal!r}")
         check_principal_linked(appex, name, principal)
+
+
+def check_location(app):
+    info_path = os.path.join(app, "Info.plist")
+    if not os.path.isfile(info_path):
+        fail("app: no Info.plist")
+        return
+    info = read_plist(info_path)
+    missing = [k for k in LOCATION_KEYS if not info.get(k)]
+    if missing:
+        fail(f"app: Info.plist lacks {missing}")
+    else:
+        ok("app: both location usage strings")
+    modes = info.get("UIBackgroundModes", [])
+    if "location" in modes:
+        fail(f"app: UIBackgroundModes has 'location' ({modes}); significant-change monitoring needs none")
+    else:
+        ok(f"app: UIBackgroundModes = {modes}, no 'location'")
+    for lang in ("en", "ar"):
+        strings = os.path.join(app, f"{lang}.lproj", "InfoPlist.strings")
+        if not os.path.isfile(strings):
+            fail(f"app: no {lang}.lproj/InfoPlist.strings")
+            continue
+        text = read_strings(strings)
+        absent = [k for k in LOCATION_KEYS if k not in text]
+        if absent:
+            fail(f"app: {lang}.lproj/InfoPlist.strings lacks {absent}")
+        else:
+            ok(f"app: {lang}.lproj/InfoPlist.strings has both location strings")
+
+
+def read_strings(path):
+    """A built .strings file may be binary plist or text, in UTF-8 or UTF-16."""
+    with open(path, "rb") as f:
+        data = f.read()
+    try:
+        return " ".join(plistlib.loads(data).keys())
+    except Exception:
+        pass
+    for encoding in ("utf-8", "utf-16"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return ""
 
 
 def check_principal_linked(appex, name, principal):

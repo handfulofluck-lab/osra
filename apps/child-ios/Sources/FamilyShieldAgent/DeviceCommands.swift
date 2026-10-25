@@ -14,12 +14,15 @@ public struct DeviceCommand: Decodable, Equatable {
 public enum CommandAction: Equatable {
     /// Fetch the rules again; a withdrawn consent then answers 428 and clears everything.
     case syncRules
+    /// A fresh point for the parent's map, uploaded before the ack (5.5 PR E).
+    case locateNow
     /// Not something this agent can do; acked `failed` with the reason.
     case unsupported
 
     public static func forType(_ type: String) -> CommandAction {
         switch type {
         case "rules_updated", "consent_revoked", "consent_granted": return .syncRules
+        case "locate_now": return .locateNow
         default: return .unsupported
         }
     }
@@ -90,6 +93,16 @@ public struct CommandClient {
 }
 
 /// One drain of the command queue: on a wake push, and when the app opens.
+/// Answers a `locate_now`; nil means no ack. The live one is [LocationController]; tests use a fake.
+public protocol LocateNowHandling {
+    func locateNow() async -> LocateAck?
+}
+
+public struct LiveLocateNow: LocateNowHandling {
+    public init() {}
+    public func locateNow() async -> LocateAck? { await LocationController.shared.locateNow() }
+}
+
 public enum CommandDrainer {
     private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Commands")
 
@@ -105,6 +118,7 @@ public enum CommandDrainer {
     @discardableResult
     public static func drainNow(client: CommandClient = CommandClient(),
                                 tokenSession: URLSession = .shared,
+                                locator: LocateNowHandling = LiveLocateNow(),
                                 sync: () async -> RuleSyncer.Outcome = { await RuleSyncer.syncNow() }) async -> Result {
         var result = Result()
         guard let identity = AgentIdentityStore.load() else { return result }
@@ -127,6 +141,8 @@ public enum CommandDrainer {
             return result
         }
         var firstSync: RuleSyncer.Outcome?
+        var located = false
+        var locateAck: LocateAck?
         for command in commands {
             switch CommandAction.forType(command.type) {
             case .syncRules:
@@ -146,6 +162,21 @@ public enum CommandDrainer {
                 try? await client.ack(identity, commandId: command.id, ok: ok,
                                       detail: ok ? [:] : ["reason": "rule_sync_failed"])
                 result.handled.append(command.type)
+            case .locateNow:
+                // Several in one drain share one fix and one upload.
+                if !located {
+                    locateAck = await locator.locateNow()
+                    located = true
+                }
+                switch locateAck {
+                case .ok(let fix)?:
+                    try? await client.ack(identity, commandId: command.id, ok: true, detail: ["fix": fix])
+                case .failed(let reason)?:
+                    try? await client.ack(identity, commandId: command.id, ok: false, detail: ["reason": reason])
+                case nil:
+                    break // the point was not stored: no ack, so the server offers the command again in 120 s
+                }
+                result.handled.append(command.type)
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,
                                       detail: ["reason": "unsupported_on_ios", "type": command.type])
@@ -163,17 +194,27 @@ extension CommandDrainer {
     public static let wakeDeadlineSeconds: Double = 25
 
     /// Drains, but answers by the deadline: the drain's result, or nil once `seconds` pass first. The drain is
-    /// then cancelled, and it answers nil even if the work ignores the cancellation.
+    /// then cancelled, and it answers nil even if the work ignores the cancellation. A drain that answers
+    /// first cancels the timer (Claude on #388).
     public static func drain(within seconds: Double = wakeDeadlineSeconds,
                              _ work: @escaping () async -> Result = { await drainNow() }) async -> Result? {
         let first = FirstAnswer<Result?>()
         return await withCheckedContinuation { continuation in
             first.continuation = continuation
-            let drain = Task { first.answer(await work()) }
-            Task {
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            let drain = Task { await work() }
+            let timer = Task {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                } catch {
+                    return // cancelled: the drain answered first
+                }
                 drain.cancel()
                 first.answer(nil)
+            }
+            Task {
+                let result = await drain.value
+                timer.cancel()
+                first.answer(result)
             }
         }
     }

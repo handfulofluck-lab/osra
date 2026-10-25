@@ -147,6 +147,12 @@ jobs:
       # failure instead of a skip (#361).
       TEST_RUNNER_OSRA_REQUIRE_LIVE: '1'
       TEST_RUNNER_OSRA_TEST_RUN_MARKER: run-${{ github.run_id }}-${{ github.run_attempt }}
+      # Live case 9 (5.5 PR E): the simulator is put here before the run, and verify expects the point back.
+      # A public city-centre coordinate, not anyone's location.
+      OSRA_TEST_LAT: '25.2854'
+      OSRA_TEST_LNG: '51.5310'
+      TEST_RUNNER_OSRA_TEST_LAT: '25.2854'
+      TEST_RUNNER_OSRA_TEST_LNG: '51.5310'
 
     steps:
       - name: Checkout repository
@@ -235,19 +241,23 @@ jobs:
         working-directory: apps/child-ios
         run: |
           set -o pipefail
+          # Case 9: install the app, grant Always and place the simulator, so Core Location has a fix to give.
+          xcrun simctl install "$DEVICE_ID" .build/liveDerivedData/Build/Products/Debug-iphonesimulator/OSRAAgent.app
+          xcrun simctl privacy "$DEVICE_ID" grant location-always dev.familyshield.agent
+          xcrun simctl location "$DEVICE_ID" set "$OSRA_TEST_LAT,$OSRA_TEST_LNG"
           xcodebuild test-without-building \
             -project OSRAAgent.xcodeproj \
             -scheme OSRAAgentIntegration \
             -destination "id=$DEVICE_ID" \
             -derivedDataPath .build/liveDerivedData 2>&1 | tee "$RUNNER_TEMP/live-tests.log"
-          # Loud, not green-by-default (#361): all eight cases ran and passed, none skipped.
+          # Loud, not green-by-default (#361): all nine cases ran and passed, none skipped.
           COUNT='index($0, "Test Case") && index($0, "-[FamilyShieldAgentIntegrationTests.LiveAPITests test") && index($0, word " (") { n++ } END { print n + 0 }'
           PASSED="$(awk -v word=passed "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           SKIPPED="$(awk -v word=skipped "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           echo "live API cases passed: $PASSED, skipped: $SKIPPED"
-          test "$PASSED" -eq 8 && test "$SKIPPED" -eq 0
+          test "$PASSED" -eq 9 && test "$SKIPPED" -eq 0
 
-      - name: The parent sees the alert (GET /v1/alerts)
+      - name: The parent sees the alert and the location (GET /v1/alerts, /v1/location/:childId/latest)
         run: node apps/child-ios/scripts/live-api.mjs verify
 
       - name: API log on failure

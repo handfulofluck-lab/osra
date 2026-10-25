@@ -11,7 +11,8 @@ import XCTest
 /// stays offline. With `OSRA_REQUIRE_LIVE=1` (set in CI) a missing input fails instead: a job that
 /// silently skipped would read as green (#361).
 ///
-/// The cases run in name order and share the paired identity: claim, the alerts, the rules, then push and commands.
+/// The cases run in name order and share the paired identity: claim, the alerts, the rules, push and commands,
+/// then location.
 final class LiveAPITests: XCTestCase {
 
     private static var lastAcceptedRequest: URLRequest?
@@ -165,6 +166,28 @@ final class LiveAPITests: XCTestCase {
         let drained = await CommandDrainer.drainNow()
         XCTAssertFalse(drained.consentWithdrawn)
         XCTAssertFalse(drained.pushTokenResent)
+    }
+}
+
+extension LiveAPITests {
+    // 9. Location (5.5 PR E). The job put the simulator at a known coordinate (`simctl location`) and granted
+    // Always (`simctl privacy`). The grant goes up in telemetry, and a locate_now through Core Location fetches
+    // the point and uploads it before it answers `ok`. `live-api.mjs verify` reads it back as the parent from
+    // `GET /v1/location/:childId/latest`.
+    @MainActor
+    func test9LocateNowUploadsAFixFromCoreLocation() async throws {
+        _ = try input("OSRA_TEST_API_BASE")
+        let lat = try XCTUnwrap(Double(try input("OSRA_TEST_LAT")))
+        let lng = try XCTUnwrap(Double(try input("OSRA_TEST_LNG")))
+        _ = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
+        let controller = LocationController.shared
+        XCTAssertEqual(controller.grant, .background, "the job grants location-always before the run")
+        let grantStatus = await controller.reportGrant()
+        XCTAssertEqual(grantStatus, 200)
+        let ack = await controller.locateNow()
+        guard case .ok(let fix)? = ack else { return XCTFail("locate_now answered \(String(describing: ack))") }
+        print("live case 9: locate_now fix=\(fix), the simulator sits at \(lat),\(lng)")
+        XCTAssertTrue(LocationBuffer.load().isEmpty, "the point was stored, so nothing is left to send")
     }
 }
 
