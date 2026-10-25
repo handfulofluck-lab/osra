@@ -15,8 +15,8 @@ vi.mock("ioredis", async () => {
 });
 
 const GLOBAL = "global-service-secret";
-const DEV = { id: "dev-1", childId: "child-1", internalSecret: "device-secret-1", revokedAt: null };
-const NOSECRET = { id: "dev-nosecret", childId: "child-1", internalSecret: null, revokedAt: null };
+const DEV = { id: "dev-1", childId: "child-1", internalSecret: "device-secret-1" };
+const NOSECRET = { id: "dev-nosecret", childId: "child-1", internalSecret: null };
 const env = { INTERNAL_HMAC_SECRET: GLOBAL } as NodeJS.ProcessEnv;
 const NOW = 1_800_000_000;
 
@@ -136,6 +136,24 @@ describe("internal signing v2 — replay, skew, callers (ADR-0014, closes J2/J6)
     expect((await authenticateInternalRequest(noSecretBody, v1Global, {}, NOW, env)).valid).toBe(false);
     const v1Sibling = createHmac("sha256", DEV.internalSecret).update(noSecretBody).digest("hex");
     expect((await authenticateInternalRequest(noSecretBody, v1Sibling, {}, NOW, env))).toEqual({ valid: false, reason: "device_has_no_secret" });
+  });
+
+  it("#351: an unpaired phone (its Device row is gone) is refused even when it signs with the secret it still holds", async () => {
+    // Unpair deletes the row (routes/devices.ts) — there is no revokedAt column — so the row's absence is the only thing
+    // that refuses the old phone on this path. findUnique answers null for any id but DEV and NOSECRET.
+    const goneBody = JSON.stringify({ childId: "child-1", deviceId: "dev-unpaired", severity: "info", category: "sos", title: "t", body: "b" });
+    const h = signV2("the-unpaired-phones-old-secret", goneBody, { timestamp: NOW, nonce: "nonce-unpaired-0123456" });
+    expect(await authenticateInternalRequest(goneBody, h["x-familyshield-signature"], h, NOW, env)).toEqual({ valid: false, reason: "device_has_no_secret" });
+
+    process.env.INTERNAL_HMAC_SECRET = GLOBAL;
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1" });
+    const live = signV2("the-unpaired-phones-old-secret", goneBody, { nonce: "nonce-unpaired-route-01" });
+    const res = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: { "content-type": "application/json", ...live }, payload: goneBody });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: "invalid_signature", reason: "device_has_no_secret" });
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    await app.close();
   });
 
   it("the route returns the reason code on 401 so a tester can tell replay from a bad key", async () => {

@@ -100,7 +100,8 @@ export async function alertsRoutes(app: FastifyInstance) {
     const { childId, deviceId, severity, category, title, body, metadata, dedupeKey, attemptCount } = parsed.data;
 
     if (auth.device) {
-      // P0-5: Verify device is not revoked
+      // Revocation is not checked here: sessionGuard refuses device JWTs, and an unpaired phone has no
+      // row to sign with (#351).
       // P0-4: Prevent cross-child injection: signing device must belong to this child
       if (auth.device.childId && auth.device.childId !== childId) {
         return reply.code(400).send({ error: "cross_child_alert_forbidden" });
