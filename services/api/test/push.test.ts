@@ -10,6 +10,7 @@ import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
 import {
   buildAlertMessage,
   buildDeviceWakeMessage,
+  canWakeDevice,
   notifyDeviceWake,
   notifyParentsOfAlert,
   setDeviceWakeSender,
@@ -305,6 +306,36 @@ describe("the child device wake (#319)", () => {
     expect(await notifyDeviceWake("dev-1")).toEqual({ delivered: 0, clearedToken: false, skipped: null });
     expect(err).toHaveBeenCalled();
     err.mockRestore();
+  });
+
+  // 5.5 PR D: a child iPhone's token is a raw APNs token. FCM cannot deliver it and answers 400
+  // INVALID_ARGUMENT, which fcm.ts reads as dead, so an FCM fallback would clear the token, and the agent,
+  // which uploads once per token and device, would never send it again. Mutant: let an iPhone fall back to
+  // FCM (as `providerFor` does for parents) and both cases fail.
+  it("never wakes an iPhone through FCM, and keeps its token", async () => {
+    const fcm = new FakeProvider(() => ({ ok: false, invalidToken: true, reason: "HTTP 400 INVALID_ARGUMENT" }));
+    setPushProviders([fcm]);
+    const iphone = { id: "ios-1", pushToken: "5a".repeat(32), platform: "ios" };
+    prismaMock.device.findUnique.mockResolvedValue(iphone);
+    prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
+    expect(await notifyDeviceWake("ios-1")).toEqual({ delivered: 0, clearedToken: false, skipped: "unsupported_platform" });
+    expect(fcm.sent).toHaveLength(0);
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    expect(canWakeDevice(iphone)).toBe(false);
+  });
+
+  it("an APNs provider without APNS_DEVICE_BUNDLE_ID cannot wake an iPhone; with it, it can", async () => {
+    const transport = vi.fn(async () => ({ status: 200, body: "" }));
+    const cfg = { keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" };
+    const iphone = { id: "ios-1", pushToken: "5a".repeat(32), platform: "ios" };
+    prismaMock.device.findUnique.mockResolvedValue(iphone);
+    setPushProviders([new ApnsProvider(cfg, transport)]);
+    expect((await notifyDeviceWake("ios-1")).skipped).toBe("unsupported_platform");
+    expect(canWakeDevice(iphone)).toBe(false);
+    setPushProviders([new ApnsProvider({ ...cfg, deviceBundleId: "dev.familyshield.agent" }, transport)]);
+    expect(await notifyDeviceWake("ios-1")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    expect(canWakeDevice(iphone)).toBe(true);
+    expect(transport).toHaveBeenCalledTimes(1);
   });
 
   it("a transient send failure keeps the token (only an invalid token clears it)", async () => {

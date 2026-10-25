@@ -150,6 +150,11 @@ export class ApnsProvider implements PushProvider {
     };
   }
 
+  /** A child iPhone's wake needs the child agent's topic; without it no wake is sent (5.5 PR D). */
+  get canWakeDevices(): boolean {
+    return Boolean(this.cfg.deviceBundleId);
+  }
+
   async send(token: string, message: PushMessage): Promise<PushResult> {
     // A data-only message is the child device's wake (`content-available`, no alert). Apple requires a
     // background push to say so and to go at priority 5; marked `alert` at 10 with nothing to show, it can

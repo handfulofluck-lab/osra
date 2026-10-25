@@ -86,8 +86,13 @@ describe("poll cadence header (#353)", () => {
     setPushProviders([fakeProvider("ios")]);
     const res = await poll(device({ platform: "android" }));
     expect(res.headers[POLL_AFTER_HEADER.toLowerCase()]).toBe(String(POLL_FAST_SECONDS));
-    // An iOS device rides the Android (FCM) provider when there is no APNs one, as notifyDeviceWake does.
+    // A child iPhone's token is a raw APNs token (5.5 PR D): FCM cannot wake it, and neither can an APNs
+    // provider without the child agent's topic (APNS_DEVICE_BUNDLE_ID), as notifyDeviceWake decides.
     setPushProviders([fakeProvider("android")]);
+    expect(pollAfterSeconds({ id: "d", platform: "ios", pushToken: TOKEN })).toBe(POLL_FAST_SECONDS);
+    setPushProviders([fakeProvider("ios")]);
+    expect(pollAfterSeconds({ id: "d", platform: "ios", pushToken: TOKEN })).toBe(POLL_FAST_SECONDS);
+    setPushProviders([{ ...fakeProvider("ios"), canWakeDevices: true } as PushProvider]);
     expect(pollAfterSeconds({ id: "d", platform: "ios", pushToken: TOKEN })).toBe(POLL_PUSH_SECONDS);
   });
 
