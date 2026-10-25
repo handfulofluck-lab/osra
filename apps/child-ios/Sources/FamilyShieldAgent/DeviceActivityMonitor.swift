@@ -169,14 +169,26 @@ public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
     /// flow writes into the shared app group (nil until then — reports are skipped).
     private var reporter: AlertReporter { AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret()) }
 
-    /// Shields the bedtime apps in a dedicated named store for this routine (IOS-05).
-    /// Using a routine-specific named store ensures overlapping routines do not clobber
-    /// each other, and rule-blocked apps managed in `parentRules` store remain shielded.
+    /// Applies `ShieldPolicy` in a named store per activity (IOS-05), so overlapping intervals don't clobber
+    /// each other and the all-day `parentRules` shields stay. Bedtime, and a routine with `allowedApps`,
+    /// shield everything except the allowed apps; a routine with only `blockedApps` shields those; a routine
+    /// on a day it doesn't run shields nothing (5.5 PR C).
     public override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
-        let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
-        let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: Self.bedtimeBundleIdentifiers())
-        routineStore.shield.applications = tokens.isEmpty ? nil : tokens
+        let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
+        // The day the interval starts on decides, so an overnight routine is judged by its first day.
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        switch ShieldPolicy.current(activity: activity.rawValue, weekday: weekday) {
+        case .allExcept(let allowed):
+            // Everything but the allowed apps. A bundle id with no token stays shielded: fails closed.
+            let exceptions = Set(allowed.compactMap { Application(bundleIdentifier: $0).token })
+            store.shield.applicationCategories = .all(except: exceptions)
+        case .only(let blocked):
+            let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: blocked)
+            store.shield.applications = tokens.isEmpty ? nil : tokens
+        case .none:
+            break
+        }
     }
 
     /// Clears only the routine-specific named store when bedtime interval ends (IOS-05).
@@ -198,12 +210,6 @@ public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
             childId: AlertReporter.pairedChildId(),
             metadata: ["event": event.rawValue, "activity": activity.rawValue]
         )
-    }
-
-    /// Bundle identifiers to shield during bedtime, read from the shared app-group store.
-    private static func bedtimeBundleIdentifiers() -> [String] {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?
-            .stringArray(forKey: "bedtime.blockedBundleIdentifiers") ?? []
     }
 
     /// Bundle identifiers blocked by the parent's app rules, read from the shared app-group store.
