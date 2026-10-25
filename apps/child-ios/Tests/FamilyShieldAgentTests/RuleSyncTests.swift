@@ -36,13 +36,12 @@ final class RuleSyncTests: XCTestCase {
         super.setUp()
         AgentIdentityStore.secrets = InMemorySecretStore()
         AgentIdentityStore.clear()
-        StubProtocol.response = nil
-        StubProtocol.lastRequest = nil
+        StubProtocol.reset()
     }
 
     override func tearDown() {
         AgentIdentityStore.clear()
-        StubProtocol.response = nil
+        StubProtocol.reset()
         super.tearDown()
     }
 
@@ -167,11 +166,7 @@ final class RuleSyncTests: XCTestCase {
             childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
     }
 
-    private var stubbedClient: RuleSyncClient {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [StubProtocol.self]
-        return RuleSyncClient(session: URLSession(configuration: config))
-    }
+    private var stubbedClient: RuleSyncClient { RuleSyncClient(session: StubProtocol.session) }
 
     func testSyncFetchesWithTheDeviceTokenAndStores() async throws {
         pair()
@@ -209,17 +204,28 @@ final class RuleSyncTests: XCTestCase {
     }
 }
 
-/// Answers every request with `response`, and remembers the last request.
+/// Answers every request with `responder` (or `response`), and records each request with its body.
 final class StubProtocol: URLProtocol {
     static var response: (Int, Data)?
-    static var lastRequest: URLRequest?
+    static var responder: ((URLRequest) -> (Int, Data))?
+    static var requests: [(request: URLRequest, body: Data)] = []
+    static var lastRequest: URLRequest? {
+        get { requests.last?.request }
+        set { if newValue == nil { requests = [] } }
+    }
+
+    static func reset() {
+        response = nil
+        responder = nil
+        requests = []
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.lastRequest = request
-        let (status, body) = Self.response ?? (599, Data())
+        Self.requests.append((request, Self.body(of: request)))
+        let (status, body) = Self.responder?(request) ?? Self.response ?? (599, Data())
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
@@ -227,4 +233,27 @@ final class StubProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    /// URLSession moves the body into a stream before a protocol sees it.
+    private static func body(of request: URLRequest) -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        return data
+    }
+
+    /// A session whose every request is answered by this protocol.
+    static var session: URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubProtocol.self]
+        return URLSession(configuration: config)
+    }
 }

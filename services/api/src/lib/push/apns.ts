@@ -5,7 +5,8 @@ import type { PushMessage, PushProvider, PushResult } from "./types.js";
 /**
  * Apple Push Notification service over HTTP/2 with token-based (p8) authentication — no SDK.
  *
- * Env: `APNS_KEY_P8` (PEM, or its base64), `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`,
+ * Env: `APNS_KEY_P8` (PEM, or its base64), `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` (the parent app),
+ * `APNS_DEVICE_BUNDLE_ID` (the iOS child agent, the topic of device wakes),
  * `APNS_ENV` = "production" | "sandbox" (default sandbox outside production). The provider JWT is
  * ES256 and is reused for 50 minutes (Apple accepts up to 60). One HTTP/2 session is kept open and
  * re-dialled on error.
@@ -19,7 +20,14 @@ export interface ApnsConfig {
   keyP8: string;
   keyId: string;
   teamId: string;
+  /** The parent app's bundle id: the topic of every alert push. */
   bundleId: string;
+  /**
+   * The iOS child agent's bundle id (`APNS_DEVICE_BUNDLE_ID`): the topic of the device wake (5.5 PR D).
+   * A child phone's token belongs to that app, so a wake sent under the parent topic is refused with
+   * `DeviceTokenNotForTopic`, which reads as a dead token and would clear it. Unset, wakes are not sent.
+   */
+  deviceBundleId?: string;
   host: string;
 }
 
@@ -69,6 +77,7 @@ export function loadApnsConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Apn
     keyId: APNS_KEY_ID,
     teamId: APNS_TEAM_ID,
     bundleId: APNS_BUNDLE_ID,
+    ...(env.APNS_DEVICE_BUNDLE_ID ? { deviceBundleId: env.APNS_DEVICE_BUNDLE_ID } : {}),
     host: production ? "https://api.push.apple.com" : "https://api.sandbox.push.apple.com",
   };
 }
@@ -142,11 +151,17 @@ export class ApnsProvider implements PushProvider {
   }
 
   async send(token: string, message: PushMessage): Promise<PushResult> {
+    // A data-only message is the child device's wake (`content-available`, no alert). Apple requires a
+    // background push to say so and to go at priority 5; marked `alert` at 10 with nothing to show, it can
+    // be throttled or dropped (5.5 PR D). It goes to the child agent's topic, never the parent app's.
+    if (message.dataOnly && !this.cfg.deviceBundleId) {
+      return { ok: false, invalidToken: false, reason: "APNS_DEVICE_BUNDLE_ID unset: device wake not sent" };
+    }
     const headers = {
       authorization: `bearer ${this.providerToken()}`,
-      "apns-topic": this.cfg.bundleId,
-      "apns-push-type": "alert",
-      "apns-priority": message.priority === "high" ? "10" : "5",
+      "apns-topic": message.dataOnly ? (this.cfg.deviceBundleId as string) : this.cfg.bundleId,
+      "apns-push-type": message.dataOnly ? "background" : "alert",
+      "apns-priority": message.dataOnly ? "5" : message.priority === "high" ? "10" : "5",
       ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),
     };
     let res: { status: number; body: string };

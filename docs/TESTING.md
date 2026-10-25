@@ -250,7 +250,8 @@ Six things to know before reading a failure:
 | Variable | Effect when set |
 |---|---|
 | `FCM_SERVICE_ACCOUNT_JSON` (JSON or base64) or `FCM_SERVICE_ACCOUNT_FILE` | Enables parent push via FCM HTTP v1 (Android, web, and iOS through Firebase). |
-| `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV` | Enables direct APNs for native iOS tokens. |
+| `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV` | Enables direct APNs for native iOS tokens. `APNS_BUNDLE_ID` is the parent app (alert pushes). |
+| `APNS_DEVICE_BUNDLE_ID` | The iOS child agent's bundle id, the topic of the silent device wake (5.5 PR D). Unset, wakes to iPhones are not sent: under the parent topic Apple would refuse them with `DeviceTokenNotForTopic` and the token would be cleared as dead. Wakes go as `apns-push-type: background`, priority 5. |
 | `PUSH_MIN_SEVERITY` (`info`\|`warning`\|`critical`, default `info`) | Severity floor; SOS and tamper always push. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Enables real email. Without them emails are logged (dev) or a warning is logged (production); invites then echo `acceptToken` in dev only. |
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |

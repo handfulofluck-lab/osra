@@ -86,9 +86,10 @@ public enum AgentIdentityStore {
     /// True when a pairing identity exists.
     public static func isPaired() -> Bool { load() != nil }
 
-    /// Clears the identity and the rules synced for it (re-pair flow, 5.5 PR C).
+    /// Clears the identity, the rules synced for it and the record of the uploaded push token (re-pair flow).
     public static func clear() {
         RuleStore.clear()
+        PushTokenRegistrar.forget()
         secrets.delete(Keys.deviceToken)
         secrets.delete(Keys.hmacSecret)
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }

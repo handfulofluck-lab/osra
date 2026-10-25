@@ -11,7 +11,7 @@ import XCTest
 /// stays offline. With `OSRA_REQUIRE_LIVE=1` (set in CI) a missing input fails instead: a job that
 /// silently skipped would read as green (#361).
 ///
-/// The cases run in name order and share the paired identity: claim first, then the alerts, then the rules.
+/// The cases run in name order and share the paired identity: claim, the alerts, the rules, then push and commands.
 final class LiveAPITests: XCTestCase {
 
     private static var lastAcceptedRequest: URLRequest?
@@ -140,6 +140,28 @@ final class LiveAPITests: XCTestCase {
         let routine = try XCTUnwrap(RuleStore.routineSchedules().first)
         XCTAssertEqual(routine.swiftWeekdays, [2, 1], "rules Mon,Sun (1,7) are Foundation weekdays 2,1")
         XCTAssertEqual(routine.blockedApps, ["com.example.game"])
+    }
+
+    // 7. The push token goes to the server with the device token (5.5 PR D). A simulator has no APNs token, so
+    // this is a well-formed stand-in; the server only stores it.
+    func test7PushTokenIsRegistered() async throws {
+        _ = try input("OSRA_TEST_API_BASE")
+        _ = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
+        let outcome = await PushTokenRegistrar.register(tokenHex: String(repeating: "5a", count: 32))
+        XCTAssertEqual(outcome, .uploaded)
+        let again = await PushTokenRegistrar.register(tokenHex: String(repeating: "5a", count: 32))
+        XCTAssertEqual(again, .alreadyUploaded)
+    }
+
+    // 8. The command queue answers the device's ack-capable poll (5.5 PR D). Nothing is queued for a device
+    // paired after its rules were set, so the answer is an empty list, and the poll is what is proven.
+    func test8CommandQueueAnswersThePoll() async throws {
+        _ = try input("OSRA_TEST_API_BASE")
+        let identity = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
+        let commands = try await CommandClient().poll(identity)
+        XCTAssertEqual(commands, [])
+        let drained = await CommandDrainer.drainNow()
+        XCTAssertFalse(drained.consentWithdrawn)
     }
 }
 

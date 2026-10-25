@@ -113,7 +113,11 @@ public final class ScreenTimeController {
                 try scheduleBedtime(start: DateComponents(hour: start.hour, minute: start.minute),
                                     end: DateComponents(hour: end.hour, minute: end.minute))
             } catch {
+                // The old bedtime would keep running with the times the parent replaced (Claude on #380):
+                // stop it, clearing its shield, so the phone never enforces a window nobody set.
                 refused.append("bedtime: \(error.localizedDescription)")
+                let center = DeviceActivityCenter()
+                Self.stop(center.activities.filter { $0.rawValue.hasPrefix("bedtime.") }, center: center)
             }
         }
         refused += scheduleRoutines(RuleStore.routineSchedules())
