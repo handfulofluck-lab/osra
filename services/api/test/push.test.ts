@@ -86,6 +86,52 @@ describe("FCM provider", () => {
     expect(await provider.send("dead", m)).toMatchObject({ ok: false, invalidToken: true });
     expect(await provider.send("flaky", m)).toMatchObject({ ok: false, invalidToken: false });
   });
+
+  /**
+   * #385: FCM v1 answers 400 INVALID_ARGUMENT for any malformed request, so the status alone cannot
+   * mean "this token is dead". Only a BadRequest violation naming `message.token` does; everything else
+   * keeps the token, because clearing it is how one payload bug erased every family's wake target.
+   * Mutant: put back `|| detail === "INVALID_ARGUMENT"` and the data-field and no-details cases go red.
+   */
+  const invalidArgument = (fields?: string[]) =>
+    jsonResponse(400, {
+      error: {
+        status: "INVALID_ARGUMENT",
+        message: "Request contains an invalid argument.",
+        ...(fields
+          ? {
+              details: [
+                // FCM v1 puts its own FcmError entry first; the BadRequest naming the field comes
+                // after it. Without this entry a refactor that searched only details[0] passed every
+                // test and never cleared a dead token in production (Claude's F4).
+                { "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: "INVALID_ARGUMENT" },
+                {
+                  "@type": "type.googleapis.com/google.rpc.BadRequest",
+                  fieldViolations: fields.map((field) => ({ field, description: "bad" })),
+                },
+              ],
+            }
+          : {}),
+      },
+    });
+
+  it("treats 400 INVALID_ARGUMENT as a dead token only when FCM names message.token", async () => {
+    const outcomes = [
+      invalidArgument(["message.token"]), // a token that was never valid (or an APNs token, #382)
+      invalidArgument(["message.data"]), // a payload bug: the token is fine
+      invalidArgument(), // no details at all: nothing says the token is the problem
+    ];
+    const fetchMock = vi.fn(async (url: string) => (url.endsWith("/token") ? jsonResponse(200, { access_token: "t", expires_in: 3600 }) : outcomes.shift()!));
+    const provider = new FcmProvider(sa, fetchMock as never);
+    const m = buildAlertMessage(alert);
+
+    expect(await provider.send("never-valid", m)).toMatchObject({ ok: false, invalidToken: true });
+    const dataField = await provider.send("payload-bug", m);
+    expect(dataField).toMatchObject({ ok: false, invalidToken: false });
+    // The reason names what FCM objected to, so the log shows the payload bug rather than a dead token.
+    expect(dataField.reason).toContain("INVALID_ARGUMENT");
+    expect(await provider.send("no-details", m)).toMatchObject({ ok: false, invalidToken: false });
+  });
 });
 
 describe("APNs provider", () => {
@@ -308,10 +354,10 @@ describe("the child device wake (#319)", () => {
     err.mockRestore();
   });
 
-  // 5.5 PR D: a child iPhone's token is a raw APNs token. FCM cannot deliver it and answers 400
-  // INVALID_ARGUMENT, which fcm.ts reads as dead, so an FCM fallback would clear the token, and the agent,
-  // which uploads once per token and device, would never send it again. Mutant: let an iPhone fall back to
-  // FCM (as `providerFor` does for parents) and both cases fail.
+  // 5.5 PR D: a child iPhone's token is a raw APNs token, so an FCM fallback would send it to a service
+  // that cannot deliver it — and since #382 FCM would answer a 400 naming `message.token`, which fcm.ts
+  // reads as dead. Mutant: let an iPhone fall back to FCM (as `providerFor` does for parents) and both
+  // cases fail. This test uses a fake provider, so it pins the routing, not the mapping in #385.
   it("never wakes an iPhone through FCM, and keeps its token", async () => {
     const fcm = new FakeProvider(() => ({ ok: false, invalidToken: true, reason: "HTTP 400 INVALID_ARGUMENT" }));
     setPushProviders([fcm]);
