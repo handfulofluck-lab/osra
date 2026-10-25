@@ -32,6 +32,24 @@ package com.familyshield.agent.push
  */
 object PushTokenUploadPolicy {
 
+    /** Response header the server sets on the commands poll. Must match `PUSH_TOKEN_HEADER` in the API. */
+    const val PUSH_TOKEN_HEADER: String = "X-Push-Token"
+
+    private const val ON_FILE = "on-file"
+    private const val NONE = "none"
+
+    /**
+     * Reads [PUSH_TOKEN_HEADER] (#383): `on-file` is true, `none` is false, and anything else — including
+     * a server too old to send it — is null, which leaves the marker in charge. Pure, so the mapping is a
+     * JVM test rather than something only a phone can show; a mutant that maps `none` to null makes the
+     * cleared-token branch unreachable from a real poll.
+     */
+    fun serverHasToken(header: String?): Boolean? = when (header) {
+        ON_FILE -> true
+        NONE -> false
+        else -> null
+    }
+
     /**
      * True when [stored] should be POSTed to `v1/devices/{id}/push-token` for [deviceId]:
      * a token exists, it is not blank, the device is paired, and the server has not already accepted

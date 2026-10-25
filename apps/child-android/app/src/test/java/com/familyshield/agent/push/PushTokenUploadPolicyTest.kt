@@ -1,6 +1,8 @@
 package com.familyshield.agent.push
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -81,6 +83,16 @@ class PushTokenUploadPolicyTest {
     fun `an absent header keeps the behaviour of a server that does not send it`() {
         assertFalse(PushTokenUploadPolicy.shouldUpload("fcm-token-1", "fcm-token-1", deviceId, serverHasToken = null))
         assertTrue(PushTokenUploadPolicy.shouldUpload("fcm-token-1", null, deviceId, serverHasToken = null))
+    }
+
+    @Test
+    fun `the poll header maps to what the server holds`() {
+        // #383 mutant: map "none" to null and the cleared-token branch is never reached from a real
+        // poll — the phone learns nothing and stays push-dead.
+        assertEquals(true, PushTokenUploadPolicy.serverHasToken("on-file"))
+        assertEquals(false, PushTokenUploadPolicy.serverHasToken("none"))
+        assertNull(PushTokenUploadPolicy.serverHasToken(null))
+        assertNull(PushTokenUploadPolicy.serverHasToken("maybe"))
     }
 
     @Test

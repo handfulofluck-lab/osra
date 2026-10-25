@@ -37,7 +37,7 @@ class CommandPoller @Inject constructor(
         if (!response.isSuccessful) throw retrofit2.HttpException(response)
         // Issue #319: the poll is also the retry path for a token minted before pairing. Never throws,
         // so a failed token upload does not turn a good poll red.
-        uploadStoredPushToken(deviceId, serverHasToken = serverHasPushToken(response))
+        syncPushToken(deviceId, response.headers()[PushTokenUploadPolicy.PUSH_TOKEN_HEADER])
         val commands = response.body().orEmpty()
         commands.forEach { command ->
             runCatching {
@@ -54,31 +54,16 @@ class CommandPoller @Inject constructor(
      * retried on the next poll instead of being forgotten — the exact failure the old `onNewToken`-only
      * path had no recovery from.
      */
-    private suspend fun uploadStoredPushToken(deviceId: String, serverHasToken: Boolean?) {
+    suspend fun syncPushToken(deviceId: String, pushTokenHeader: String?) {
         val stored = settings.pushToken() ?: return
+        val serverHasToken = PushTokenUploadPolicy.serverHasToken(pushTokenHeader)
         if (!PushTokenUploadPolicy.shouldUpload(stored, settings.uploadedPushToken(), deviceId, serverHasToken)) return
         runCatching { api.postPushToken(deviceId, PushTokenDto(stored)) }
             .onSuccess { settings.recordUploadedPushToken(stored) }
             .onFailure { Log.w(TAG, "push token upload failed; retried on the next poll", it) }
     }
 
-    /**
-     * Reads `X-Push-Token` (#383): `on-file` is true, `none` is false, anything else — including an
-     * older server that does not send it — is null, and the marker decides as it did before.
-     */
-    private fun serverHasPushToken(response: retrofit2.Response<*>): Boolean? =
-        when (response.headers()[PUSH_TOKEN_HEADER]) {
-            PUSH_TOKEN_ON_FILE -> true
-            PUSH_TOKEN_NONE -> false
-            else -> null
-        }
-
     companion object {
         private const val TAG: String = "CommandPoller"
-
-        /** Response header the server sets on the commands poll. Must match `PUSH_TOKEN_HEADER` in the API. */
-        const val PUSH_TOKEN_HEADER: String = "X-Push-Token"
-        private const val PUSH_TOKEN_ON_FILE = "on-file"
-        private const val PUSH_TOKEN_NONE = "none"
     }
 }
