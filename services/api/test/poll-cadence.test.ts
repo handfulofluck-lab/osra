@@ -21,6 +21,9 @@ import type { PushProvider } from "../src/lib/push/types.js";
 import {
   LAST_SEEN_REFRESH_MS,
   POLL_AFTER_HEADER,
+  PUSH_TOKEN_HEADER,
+  PUSH_TOKEN_NONE,
+  PUSH_TOKEN_ON_FILE,
   POLL_FAST_SECONDS,
   POLL_PUSH_SECONDS,
   lastSeenIsStale,
@@ -190,5 +193,31 @@ describe("the agent honours what this server sends (#353)", () => {
     expect(constMs("STATIONARY_FLUSH_AGE_MS")).toBeLessThan(SILENT_MIN_SAFE_MINUTES * 60_000);
     // And a poll refreshes lastSeen whenever it is at least this old, so the push cadence keeps it fresh.
     expect(LAST_SEEN_REFRESH_MS).toBeLessThan(POLL_PUSH_SECONDS * 1000);
+  });
+});
+
+/**
+ * #383: a wake that fails as a dead token clears `Device.pushToken`, and the agent could not find out —
+ * it uploads only when its own marker differs, so push stayed dead until Firebase rotated the token.
+ * The poll now says which it is, so the phone re-uploads what it still holds.
+ */
+describe("push-token header (#383)", () => {
+  beforeEach(() => resetPrismaMock());
+  afterEach(() => setPushProviders(null));
+
+  it("says on-file when the row holds a token", async () => {
+    const res = await poll(device());
+    expect(res.statusCode).toBe(200);
+    expect(res.headers[PUSH_TOKEN_HEADER.toLowerCase()]).toBe(PUSH_TOKEN_ON_FILE);
+  });
+
+  it("says none when the row holds none, which is how the phone learns a wake cleared it", async () => {
+    const res = await poll(device({ pushToken: null }));
+    expect(res.headers[PUSH_TOKEN_HEADER.toLowerCase()]).toBe(PUSH_TOKEN_NONE);
+  });
+
+  it("says none for a device that never registered one", async () => {
+    const res = await poll(device({ pushToken: "" }));
+    expect(res.headers[PUSH_TOKEN_HEADER.toLowerCase()]).toBe(PUSH_TOKEN_NONE);
   });
 });

@@ -61,4 +61,31 @@ class PushTokenUploadPolicyTest {
         // must publish the token again to the new enrolment.
         assertTrue(PushTokenUploadPolicy.shouldUpload("fcm-token-1", "", deviceId))
     }
+
+    @Test
+    fun `a token the server has cleared is sent again when the poll says the row is empty`() {
+        // #383: the wake path clears Device.pushToken on a "dead token" answer, and the marker still
+        // says "uploaded", so without this the phone is push-dead until Firebase rotates.
+        // Mutant: drop the `serverHasToken == false` branch -> this is false and the case is unpinned.
+        assertTrue(PushTokenUploadPolicy.shouldUpload("fcm-token-1", "fcm-token-1", deviceId, serverHasToken = false))
+    }
+
+    @Test
+    fun `the marker decides when the poll says the server still holds the token`() {
+        assertFalse(PushTokenUploadPolicy.shouldUpload("fcm-token-1", "fcm-token-1", deviceId, serverHasToken = true))
+        // A rotation is still uploaded: the header says only that *a* token is on file, not which one.
+        assertTrue(PushTokenUploadPolicy.shouldUpload("fcm-token-2", "fcm-token-1", deviceId, serverHasToken = true))
+    }
+
+    @Test
+    fun `an absent header keeps the behaviour of a server that does not send it`() {
+        assertFalse(PushTokenUploadPolicy.shouldUpload("fcm-token-1", "fcm-token-1", deviceId, serverHasToken = null))
+        assertTrue(PushTokenUploadPolicy.shouldUpload("fcm-token-1", null, deviceId, serverHasToken = null))
+    }
+
+    @Test
+    fun `a blank stored token stays unpublished even when the server has none`() {
+        assertFalse(PushTokenUploadPolicy.shouldUpload("", null, deviceId, serverHasToken = false))
+        assertFalse(PushTokenUploadPolicy.shouldUpload("   ", "x", deviceId, serverHasToken = false))
+    }
 }

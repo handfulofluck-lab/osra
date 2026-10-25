@@ -10,7 +10,15 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
-import { POLL_AFTER_HEADER, pollAfterSeconds, touchLastSeen, type PolledDevice } from "../lib/pollCadence.js";
+import {
+  POLL_AFTER_HEADER,
+  PUSH_TOKEN_HEADER,
+  PUSH_TOKEN_NONE,
+  PUSH_TOKEN_ON_FILE,
+  pollAfterSeconds,
+  touchLastSeen,
+  type PolledDevice,
+} from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
@@ -478,6 +486,9 @@ export async function deviceRoutes(app: FastifyInstance) {
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
     const commands = await claimPendingCommands(id, { ackCapable });
     reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
+    // #383: a wake that failed with a dead token cleared the row; say so, so the phone re-uploads the
+    // token it still holds instead of waiting for Firebase to rotate it.
+    reply.header(PUSH_TOKEN_HEADER, device?.pushToken ? PUSH_TOKEN_ON_FILE : PUSH_TOKEN_NONE);
     if (device) await touchLastSeen(device);
     return commands;
   });

@@ -30,11 +30,15 @@ class CommandPoller @Inject constructor(
     suspend fun pollOnce() {
         val deviceId = settings.deviceId()
             ?: return // NOTE: not paired yet — nothing to poll
-        // Issue #319: the poll is also the retry path for a token minted before pairing. Runs before
-        // the poll and never throws, so a failed token upload does not turn a good poll red (and a
-        // failed poll still gets its token attempt on the next tick).
-        uploadStoredPushToken(deviceId)
-        val commands = api.getCommands(deviceId)
+        // Issue #383: the poll is where the server says whether it still holds this phone's token, so
+        // the response is read before anything is uploaded. The cadence call keeps the headers; the
+        // body is what the dispatcher needs.
+        val response = api.getCommandsWithCadence(deviceId)
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+        // Issue #319: the poll is also the retry path for a token minted before pairing. Never throws,
+        // so a failed token upload does not turn a good poll red.
+        uploadStoredPushToken(deviceId, serverHasToken = serverHasPushToken(response))
+        val commands = response.body().orEmpty()
         commands.forEach { command ->
             runCatching {
                 // NOTE: server payload values are untyped JSON; dispatcher takes strings.
@@ -50,15 +54,31 @@ class CommandPoller @Inject constructor(
      * retried on the next poll instead of being forgotten — the exact failure the old `onNewToken`-only
      * path had no recovery from.
      */
-    private suspend fun uploadStoredPushToken(deviceId: String) {
+    private suspend fun uploadStoredPushToken(deviceId: String, serverHasToken: Boolean?) {
         val stored = settings.pushToken() ?: return
-        if (!PushTokenUploadPolicy.shouldUpload(stored, settings.uploadedPushToken(), deviceId)) return
+        if (!PushTokenUploadPolicy.shouldUpload(stored, settings.uploadedPushToken(), deviceId, serverHasToken)) return
         runCatching { api.postPushToken(deviceId, PushTokenDto(stored)) }
             .onSuccess { settings.recordUploadedPushToken(stored) }
             .onFailure { Log.w(TAG, "push token upload failed; retried on the next poll", it) }
     }
 
+    /**
+     * Reads `X-Push-Token` (#383): `on-file` is true, `none` is false, anything else — including an
+     * older server that does not send it — is null, and the marker decides as it did before.
+     */
+    private fun serverHasPushToken(response: retrofit2.Response<*>): Boolean? =
+        when (response.headers()[PUSH_TOKEN_HEADER]) {
+            PUSH_TOKEN_ON_FILE -> true
+            PUSH_TOKEN_NONE -> false
+            else -> null
+        }
+
     companion object {
         private const val TAG: String = "CommandPoller"
+
+        /** Response header the server sets on the commands poll. Must match `PUSH_TOKEN_HEADER` in the API. */
+        const val PUSH_TOKEN_HEADER: String = "X-Push-Token"
+        private const val PUSH_TOKEN_ON_FILE = "on-file"
+        private const val PUSH_TOKEN_NONE = "none"
     }
 }
