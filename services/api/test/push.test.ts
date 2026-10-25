@@ -86,6 +86,48 @@ describe("FCM provider", () => {
     expect(await provider.send("dead", m)).toMatchObject({ ok: false, invalidToken: true });
     expect(await provider.send("flaky", m)).toMatchObject({ ok: false, invalidToken: false });
   });
+
+  /**
+   * #385: FCM v1 answers 400 INVALID_ARGUMENT for any malformed request, so the status alone cannot
+   * mean "this token is dead". Only a BadRequest violation naming `message.token` does; everything else
+   * keeps the token, because clearing it is how one payload bug erased every family's wake target.
+   * Mutant: put back `|| detail === "INVALID_ARGUMENT"` and the data-field and no-details cases go red.
+   */
+  const invalidArgument = (fields?: string[]) =>
+    jsonResponse(400, {
+      error: {
+        status: "INVALID_ARGUMENT",
+        message: "Request contains an invalid argument.",
+        ...(fields
+          ? {
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.BadRequest",
+                  fieldViolations: fields.map((field) => ({ field, description: "bad" })),
+                },
+              ],
+            }
+          : {}),
+      },
+    });
+
+  it("treats 400 INVALID_ARGUMENT as a dead token only when FCM names message.token", async () => {
+    const outcomes = [
+      invalidArgument(["message.token"]), // a token that was never valid (or an APNs token, #382)
+      invalidArgument(["message.data"]), // a payload bug: the token is fine
+      invalidArgument(), // no details at all: nothing says the token is the problem
+    ];
+    const fetchMock = vi.fn(async (url: string) => (url.endsWith("/token") ? jsonResponse(200, { access_token: "t", expires_in: 3600 }) : outcomes.shift()!));
+    const provider = new FcmProvider(sa, fetchMock as never);
+    const m = buildAlertMessage(alert);
+
+    expect(await provider.send("never-valid", m)).toMatchObject({ ok: false, invalidToken: true });
+    const dataField = await provider.send("payload-bug", m);
+    expect(dataField).toMatchObject({ ok: false, invalidToken: false });
+    // The reason names what FCM objected to, so the log shows the payload bug rather than a dead token.
+    expect(dataField.reason).toContain("INVALID_ARGUMENT");
+    expect(await provider.send("no-details", m)).toMatchObject({ ok: false, invalidToken: false });
+  });
 });
 
 describe("APNs provider", () => {

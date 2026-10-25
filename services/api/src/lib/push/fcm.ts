@@ -135,15 +135,34 @@ export class FcmProvider implements PushProvider {
     );
     if (res.ok) return { ok: true };
     let detail = "";
+    let tokenFieldViolation = false;
     try {
-      const body = (await res.json()) as { error?: { status?: string; details?: Array<{ errorCode?: string }> } };
+      const body = (await res.json()) as {
+        error?: {
+          status?: string;
+          details?: Array<{
+            errorCode?: string;
+            "@type"?: string;
+            fieldViolations?: Array<{ field?: string }>;
+          }>;
+        };
+      };
       detail = body.error?.details?.find((d) => d.errorCode)?.errorCode ?? body.error?.status ?? "";
+      // #385: FCM v1 answers 400 INVALID_ARGUMENT for *any* malformed request — a wrong field, a data
+      // value that is not a string, a bad TTL — so the status alone cannot mean "this token is dead".
+      // The token case is the one Google reports as a BadRequest violation on `message.token`; an APNs
+      // token sent to FCM (#382) lands there too. Any other 400 keeps the token.
+      tokenFieldViolation = (body.error?.details ?? []).some((d) =>
+        (d.fieldViolations ?? []).some((v) => v.field === "message.token"),
+      );
     } catch {
       /* non-JSON error body */
     }
-    // 404 + UNREGISTERED is the documented "token no longer valid" signal; 400 INVALID_ARGUMENT on
-    // the token field means it was never valid. Both are grounds for pruning.
-    const dead = res.status === 404 || detail === "UNREGISTERED" || detail === "INVALID_ARGUMENT";
+    // 404 + UNREGISTERED is the documented "token no longer valid" signal; a 400 is about the token
+    // only when FCM names it. Getting the field name wrong here fails safe: the token is kept, and the
+    // reason says which field FCM objected to. The rule it replaces failed the other way — one payload
+    // bug cleared every token in the family.
+    const dead = res.status === 404 || detail === "UNREGISTERED" || (res.status === 400 && tokenFieldViolation);
     return { ok: false, invalidToken: dead, reason: `HTTP ${res.status} ${detail}`.trim() };
   }
 }
