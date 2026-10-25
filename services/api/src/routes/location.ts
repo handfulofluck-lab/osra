@@ -5,7 +5,6 @@ import { raiseAlert } from "../lib/alerts.js";
 import { geofenceTransition, pickTransitionPair, type GeofencePoint } from "../lib/geo.js";
 import { publishChildRules } from "../lib/ruleSync.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
-import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
