@@ -151,7 +151,7 @@ On the contract the Android agent already uses; no server change.
     under 5 minutes and refuses an older one, and refuses with the Android reasons; the drain acks the fix,
     acks a refusal, skips the ack for an unstored point, and serves several `locate_now` with one fix.
   - Live case 9: the simulator is placed with `simctl location` and granted Always with `simctl privacy`. The
-    grant is reported (200), a `locate_now` through Core Location answers `ok`, and `verify` reads the point
+    grant is reported (202), a `locate_now` through Core Location answers `ok`, and `verify` reads the point
     back as the parent, attributed to the iPhone, with the device's grant `background`.
 - **5.1 device checklist:**
   - significant-change updates on a real iPhone, moving between places;

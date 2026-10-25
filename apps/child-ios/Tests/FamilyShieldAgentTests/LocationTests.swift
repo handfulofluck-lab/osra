@@ -64,9 +64,9 @@ final class LocationTests: XCTestCase {
     func testTheTelemetryUploadCarriesTheGrant() async throws {
         pair()
         source.authorizationStatus = .authorizedWhenInUse
-        StubProtocol.response = (200, Data("{}".utf8))
+        StubProtocol.response = (202, Data(#"{"accepted":true}"#.utf8))
         let status = await controller.reportGrant()
-        XCTAssertEqual(status, 200)
+        XCTAssertEqual(status, 202)
         let request = try XCTUnwrap(StubProtocol.requests.first)
         XCTAssertEqual(request.request.url?.path, "/v1/devices/dev-1/telemetry")
         XCTAssertEqual(request.request.httpMethod, "POST")

@@ -183,7 +183,7 @@ extension LiveAPITests {
         let controller = LocationController.shared
         XCTAssertEqual(controller.grant, .background, "the job grants location-always before the run")
         let grantStatus = await controller.reportGrant()
-        XCTAssertEqual(grantStatus, 200)
+        XCTAssertEqual(grantStatus, 202, "the telemetry route answers 202 Accepted")
         let ack = await controller.locateNow()
         guard case .ok(let fix)? = ack else { return XCTFail("locate_now answered \(String(describing: ack))") }
         print("live case 9: locate_now fix=\(fix), the simulator sits at \(lat),\(lng)")
