@@ -86,12 +86,8 @@ export function registerRealtime(app: FastifyInstance) {
     if (!isBearerSession(user)) {
       return reply.code(401).send({ error: "unauthorized" });
     }
-    if (user.role === "device" && user.deviceId) {
-      const revoked = await getRedis().get(`revoked:device:${user.deviceId}`).catch(() => null);
-      if (revoked) {
-        return reply.code(401).send({ error: "device_revoked" });
-      }
-    }
+    // #351: revocation is sessionGuard's answer (server.ts), which runs before every route. The copy
+    // here was a second Redis GET for an answer the hook had already given.
     if (user.role !== "parent") {
       return reply.code(403).send({ error: "parent_role_required" });
     }

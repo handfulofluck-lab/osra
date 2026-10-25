@@ -186,7 +186,10 @@ describe("token hygiene — device JWT revocation (handoff item 4)", () => {
   });
 
   it("DELETE /v1/devices/:id revokes the device JWT", async () => {
-    const app = await buildApp(deviceRoutes, "/v1/devices");
+    // #351: this assertion used to be produced by a router-scoped hook in deviceRoutes that repeated the
+    // global guard with a Redis GET. That hook is gone, so the app mounts the production gate — and this
+    // test now pins the path production runs. Mutant: drop `{ sessionGuard: true }` and it fails with 200.
+    const app = await buildApp(deviceRoutes, "/v1/devices", { sessionGuard: true });
     prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", child: { familyId: "fam-1" } });
 
     const del = await app.inject({ method: "DELETE", url: "/v1/devices/dev-1", headers: authHeader(app) });
