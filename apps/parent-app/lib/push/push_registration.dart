@@ -20,10 +20,11 @@ enum PushPermission {
 /// APNs source and an FCM source differ in how they ask for permission and
 /// where the token comes from, not in what happens next.
 ///
-/// **No implementation backed by a real SDK exists in this repository.** The
-/// parent app depends on no push plugin (`apps/parent-app/pubspec.yaml`), so the
-/// only source that ships is [UnavailablePushTokenSource]; see
-/// `docs/ROADMAP.md` 3.9 for what that leaves open.
+/// Since #360 the shipped implementation is [FcmPushTokenSource], backed by
+/// `firebase_messaging` on Android and on iOS, and [defaultPushSource] is the
+/// seam a test replaces. [UnavailablePushTokenSource] remains for the case where
+/// Firebase has no configuration at all, so an unsupported build reports
+/// [PushTokenState.unavailable] instead of pretending a token exists.
 abstract class PushTokenSource {
   /// Ask the OS. Must not throw: a refusal is [PushPermission.denied].
   Future<PushPermission> requestPermission();
