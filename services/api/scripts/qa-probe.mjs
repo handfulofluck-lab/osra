@@ -1682,6 +1682,37 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     target("Q6b a co-parent with no permissions is refused (no live co-parent session)", "the O-section co-parent has no live session here");
   }
 
+  // Q6c: the positive half (matrix §6, "co-parent and guardian → 2xx"). The routes that name no permission
+  // must admit a guardian and a co-parent invited with NONE — reads of their own family, by its real ids.
+  // A refusal here is a parent locked out of what the matrix says they may see (#354 made the digest
+  // writes owner-only; this pins that the read stayed open). Same tokens as Q6/Q6b, so no extra logins.
+  // `404 no_pings` on the location reads is an admission: requireFamily passed and the family has no ping.
+  // Mutant: requireOwner (or any requirePermission) on GET /v1/digests/prefs -> that row is named, 403.
+  const readRows = mrKid && mrDeviceId ? [
+    ["GET", "/v1/alerts", undefined, 200], ["GET", "/v1/devices", undefined, 200],
+    ["GET", `/v1/devices/${mrDeviceId}`, undefined, 200], ["GET", `/v1/devices/${mrDeviceId}/commands/history`, undefined, 200],
+    ["GET", "/v1/family/me", undefined, 200], ["GET", `/v1/family/children/${mrKid}`, undefined, 200],
+    ["GET", `/v1/family/children/${mrKid}/consent`, undefined, 200], ["GET", "/v1/family/export", undefined, 200],
+    ["GET", "/v1/family/invites", undefined, 200],
+    ["GET", `/v1/location/${mrKid}/latest`, undefined, 404, "no_pings"], ["GET", `/v1/location/${mrKid}/history`, undefined, 200],
+    ["GET", `/v1/location/geofences/${mrKid}`, undefined, 200], ["GET", `/v1/rules/${mrKid}`, undefined, 200],
+    ["GET", `/v1/reports/activity?childId=${mrKid}`, undefined, 200], ["GET", `/v1/reports/summary?childId=${mrKid}`, undefined, 200],
+    ["GET", `/v1/reports/usage?childId=${mrKid}&days=1`, undefined, 200], ["GET", `/v1/reports/web?childId=${mrKid}&days=1`, undefined, 200],
+    ["GET", `/v1/reports/wellbeing/${mrKid}`, undefined, 200],
+    ["GET", `/v1/social/events?childId=${mrKid}`, undefined, 200], ["GET", `/v1/content/searches?childId=${mrKid}`, undefined, 200],
+    ["GET", "/v1/digests/prefs", undefined, 200], ["GET", "/v1/me/push-tokens", undefined, 200],
+    ["GET", "/v1/blocklists", undefined, 200], ["POST", "/v1/ws-ticket", undefined, 200],
+  ] : null;
+  for (const [label, tok] of [["Q6c a guardian", mrGuardianToken], ["Q6d a co-parent", mrCoParentToken]]) {
+    const live = readRows && tok ? (await qcall("GET", "/v1/family/me", { token: tok })).status === 200 : false;
+    if (live) {
+      const bad = await walk(tok, readRows);
+      check(`${label} with no permissions is admitted to every route that names no permission`, bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+    } else {
+      target(`${label} with no permissions is admitted (no live session or no family ids here)`, "the O-section family has no live session or no child/device here");
+    }
+  }
+
   // Q7: a live device token on every parent-only route is 403 parent_role_required (requireParent, or
   // the ws-ticket role check). Mutant: requireParent that skips the role test -> the reads answer 200.
   if (d2.token) {
