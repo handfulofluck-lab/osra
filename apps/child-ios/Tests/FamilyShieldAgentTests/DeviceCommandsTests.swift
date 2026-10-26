@@ -73,7 +73,7 @@ final class DeviceCommandsTests: XCTestCase {
         let acks = ackBodies()
         XCTAssertEqual(acks.count, 3, "every command is acked")
         XCTAssertEqual(acks.map { $0["status"] as? String }, ["ok", "ok", "failed"])
-        XCTAssertEqual((acks[2]["detail"] as? [String: String])?["reason"], "unsupported_on_ios",
+        XCTAssertEqual((acks[2]["detail"] as? [String: String])?["reason"], "not_supported",
                        "a parent sees why the iPhone did not lock, not a silent delivered")
         XCTAssertEqual(StubProtocol.requests[3].request.url?.path, "/v1/devices/dev-1/commands/c3/ack")
     }
