@@ -179,7 +179,7 @@ public enum CommandDrainer {
                 result.handled.append(command.type)
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,
-                                      detail: ["reason": "unsupported_on_ios", "type": command.type])
+                                      detail: ["reason": "not_supported", "type": command.type])
                 result.refused.append(command.type)
             }
         }
