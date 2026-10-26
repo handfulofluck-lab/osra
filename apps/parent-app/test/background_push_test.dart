@@ -1,5 +1,8 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:familyshield_parent/api/models.dart';
+import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/push/alert_notification.dart';
 import 'package:familyshield_parent/push/background_push.dart';
 import 'package:familyshield_parent/push/local_notifier.dart';
@@ -15,11 +18,12 @@ Alert alert(
   String? at = '2026-10-26T10:00:00.000Z',
   String title = 'Screen time',
   String body = 'Time is up for Alex',
+  String category = 'screen_time_exceeded',
 }) =>
     Alert.fromJson({
       'id': id,
       'severity': 'warning',
-      'category': 'screen_time_exceeded',
+      'category': category,
       'title': title,
       'body': body,
       'metadata': const <String, dynamic>{},
@@ -33,6 +37,10 @@ class RecordingNotifier implements LocalNotifier {
   @override
   Future<void> show(VisibleAlert alert) async => shown.add(alert);
 }
+
+/// The identity mapping, for the rows that are about the wake's flow rather than
+/// about what the lock screen says.
+VisibleAlert passthrough(Alert a) => VisibleAlert(alertId: a.id, title: a.title, body: a.body);
 
 void main() {
   group('planNotifications', () {
@@ -82,6 +90,9 @@ void main() {
       );
 
       expect(plan.toShow.map((a) => a.id), ['a5', 'a6', 'a7']);
+      // …and every fresh id is remembered, not only the three shown, so the
+      // dropped backlog cannot dribble back out on a later wake (#395 review).
+      expect(plan.remember, ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']);
     });
 
     test('treats an unparseable date as the oldest rather than the newest', () {
@@ -126,6 +137,7 @@ void main() {
             writes++;
             stored = {...ids};
           },
+          toVisible: passthrough,
         );
 
     test('shows nothing and fetches nothing when the parent is signed out', () async {
@@ -139,6 +151,7 @@ void main() {
         notifier: notifier,
         readShown: () async => {},
         writeShown: (_) async => writes++,
+        toVisible: passthrough,
       );
 
       expect(await w.run(), WakeOutcome.signedOut);
@@ -198,24 +211,100 @@ void main() {
         notifier: notifier,
         readShown: () async => many,
         writeShown: (ids) async => stored = {...ids},
+        toVisible: passthrough,
       ).run();
 
       expect(stored.length, BackgroundAlertWake.maxRememberedIds);
       expect(stored.contains('fresh'), isTrue);
     });
-  });
+    test('shows exactly the new alert when a capped backlog is followed by one more', () async {
+      // 8 waiting, cap 5: the first wake shows the newest 5 and remembers all 8.
+      final first = [for (var i = 0; i < 8; i++) alert('a$i', at: '2026-10-26T0$i:00:00.000Z')];
+      await wake(fetch: AlertFetchOk(first)).run();
+      expect(notifier.shown.length, 5);
 
-  group('VisibleAlert', () {
-    test('carries the server text, because the background isolate has no locale context', () {
-      final visible = VisibleAlert.from(alert('a', title: 'وقت الشاشة', body: 'انتهى وقت أليكس'));
-
-      expect(visible.alertId, 'a');
-      expect(visible.title, 'وقت الشاشة');
-      expect(visible.body, 'انتهى وقت أليكس');
+      // A 9th arrives. Only it is new — the three the cap dropped are not.
+      final second = [...first, alert('a8', at: '2026-10-26T09:00:00.000Z')];
+      notifier.shown.clear();
+      expect(await wake(fetch: AlertFetchOk(second)).run(), WakeOutcome.shown);
+      expect(notifier.shown.map((v) => v.alertId), ['a8']);
     });
 
-    test('falls back to the app name when an alert has no title', () {
-      expect(VisibleAlert.from(alert('a', title: '')).title, 'OSRA');
+    test('a 401 reads the session exactly once, so there is no refresh attempt', () async {
+      // #395 review claim 3: "no refresh" must be a test, not a grep. A refresh
+      // would have to read the stored refresh token, which means a second read
+      // of the session; one read and no write is the observable shape of
+      // "terminal".
+      var reads = 0;
+      final w = BackgroundAlertWake(
+        readJwt: () async {
+          reads++;
+          return 'expired-token';
+        },
+        fetchAlerts: (_) async => const AlertFetchUnauthorized(),
+        notifier: notifier,
+        readShown: () async => {},
+        writeShown: (_) async => writes++,
+        toVisible: passthrough,
+      );
+
+      expect(await w.run(), WakeOutcome.unauthorized);
+      expect(reads, 1);
+      expect(notifier.shown, isEmpty);
+      expect(writes, 0);
+    });
+  });
+
+  group('the lock screen speaks the parent\'s language, and only generic text', () {
+    final ar = lookupAppLocalizations(const Locale('ar'));
+    final en = lookupAppLocalizations(const Locale('en'));
+
+    test('an Arabic family gets the Arabic category title, not the server English', () {
+      final visible = VisibleAlert.from(alert('a', title: 'YouTube video flagged: cats'), l10n: ar, isEnglish: false);
+
+      expect(visible.title, ar.alertTitleDailyLimit);
+      expect(visible.title, isNot(contains('YouTube')));
+    });
+
+    test('an unknown category under Arabic gives the generic Arabic title, never the server text', () {
+      final visible = VisibleAlert.from(
+        alert('a', category: 'brand_new_type', title: 'Some new server wording'),
+        l10n: ar,
+        isEnglish: false,
+      );
+
+      expect(visible.title, ar.alertTitleGeneric);
+    });
+
+    test('the body is generic and never the alert body', () {
+      final visible = VisibleAlert.from(alert('a', body: 'searched: how to hide cuts'), l10n: en, isEnglish: true);
+
+      expect(visible.body, en.alertPushBodyGeneric);
+      expect(visible.body, isNot(contains('searched')));
+    });
+
+    test('resolveAlertLanguage: stored wins, system follows the device, unknown becomes English', () {
+      expect(resolveAlertLanguage('ar', const Locale('en')), 'ar');
+      expect(resolveAlertLanguage('en', const Locale('ar')), 'en');
+      expect(resolveAlertLanguage('system', const Locale('ar')), 'ar');
+      expect(resolveAlertLanguage(null, const Locale('ar')), 'ar');
+      expect(resolveAlertLanguage(null, const Locale('fr')), 'en');
+      expect(resolveAlertLanguage('klingon', const Locale('en')), 'en');
+    });
+  });
+
+  group('resolveBackgroundBaseUrl', () {
+    test('the URL the parent typed wins, normalized', () {
+      expect(resolveBackgroundBaseUrl(' 192.168.1.5:3000/ '), 'http://192.168.1.5:3000');
+    });
+
+    test('unusable input with no compile-time default is null, so the wake makes no request', () {
+      // kDefaultServerUrl is "" in a test build (it is a compile-time define and
+      // the app ships it blank on purpose), so this is the tester-build case the
+      // review measured: every wake used to fail on an empty base URL.
+      expect(resolveBackgroundBaseUrl(null), isNull);
+      expect(resolveBackgroundBaseUrl(''), isNull);
+      expect(resolveBackgroundBaseUrl('not a url'), isNull);
     });
   });
 }

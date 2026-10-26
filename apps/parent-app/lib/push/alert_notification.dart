@@ -14,8 +14,8 @@ class NotificationPlan {
   /// notification shade, so the newest alert is the one the parent sees first.
   final List<Alert> toShow;
 
-  /// The ids to remember as shown. Persisted after the notifications are
-  /// posted, so a wake that shows nothing writes nothing.
+  /// The ids to remember as shown. Every fresh id, not only the ones in
+  /// [toShow]: an id dropped by [max] must not come back on a later wake.
   final List<String> remember;
 
   const NotificationPlan({required this.toShow, required this.remember});
@@ -67,6 +67,10 @@ NotificationPlan planNotifications({
   final keep = fresh.length <= max ? fresh : fresh.sublist(fresh.length - max);
   return NotificationPlan(
     toShow: List.unmodifiable(keep),
-    remember: List.unmodifiable(keep.map((a) => a.id)),
+    // Every fresh id, not only the ones shown (#395 review). Remembering the
+    // cap's leftovers is what stops a backlog from dribbling back out over later
+    // wakes, out of order and late: with 8 waiting, the first wake shows the
+    // newest 5 and the next one must not treat the other 3 as new.
+    remember: List.unmodifiable(fresh.map((a) => a.id)),
   );
 }

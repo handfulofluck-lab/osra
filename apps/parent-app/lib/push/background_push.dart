@@ -1,4 +1,4 @@
-import 'dart:ui' show DartPluginRegistrant;
+import 'dart:ui' show DartPluginRegistrant, PlatformDispatcher, Locale;
 
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,6 +7,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/models.dart';
+import '../l10n/l10n.dart';
+import '../providers/locale_provider.dart' show kAppLocaleKey;
+import '../providers/server_provider.dart' show kDefaultServerUrl, kServerUrlKey, normalizeServerUrl;
 import 'alert_notification.dart';
 import 'local_notifier.dart';
 
@@ -23,14 +26,14 @@ enum WakeOutcome {
   /// next foreground launch refreshes normally and the alert is still there.
   unauthorized,
 
-  /// The fetch failed (offline, 5xx, timeout). Nothing is shown, nothing is
-  /// remembered, so the next wake tries again.
+  /// The fetch failed (offline, 5xx, timeout, no server URL). Nothing is shown,
+  /// nothing is remembered, so the next wake tries again.
   failed,
 
   /// The page held nothing the parent has not already seen.
   nothingNew,
 
-  /// Notifications were posted; [WakeOutcome] carries how many.
+  /// Notifications were posted.
   shown,
 }
 
@@ -59,7 +62,7 @@ class AlertFetchFailed {
 /// 1. read `jwt` — no session, no fetch, no notification;
 /// 2. `GET /v1/alerts?ack=false` — 401 ends the wake, never refreshes;
 /// 3. [planNotifications] drops acked, duplicated and surplus rows;
-/// 4. post one notification per alert, then persist the ids shown.
+/// 4. post one notification per alert, then persist the ids.
 ///
 /// Step 4 is after step 3 on purpose: a wake that shows nothing must not write,
 /// or a failed post would silence a real alert forever.
@@ -70,6 +73,7 @@ class BackgroundAlertWake {
     required this.notifier,
     required this.readShown,
     required this.writeShown,
+    required this.toVisible,
   });
 
   final Future<String?> Function() readJwt;
@@ -77,6 +81,10 @@ class BackgroundAlertWake {
   final LocalNotifier notifier;
   final Future<Set<String>> Function() readShown;
   final Future<void> Function(Set<String>) writeShown;
+
+  /// How an alert becomes a lock-screen row. A seam because the language comes
+  /// from the parent's stored choice, resolved outside this class (#395 review).
+  final VisibleAlert Function(Alert alert) toVisible;
 
   Future<WakeOutcome> run() async {
     String? jwt;
@@ -111,7 +119,7 @@ class BackgroundAlertWake {
     if (plan.isEmpty) return WakeOutcome.nothingNew;
 
     for (final alert in plan.toShow) {
-      await notifier.show(VisibleAlert.from(alert));
+      await notifier.show(toVisible(alert));
     }
 
     final merged = {...shown, ...plan.remember};
@@ -126,6 +134,30 @@ class BackgroundAlertWake {
   static const maxRememberedIds = 50;
 }
 
+/// Which language a lock-screen row speaks (#395 review).
+///
+/// The parent's stored choice wins; `system` or an unknown value follows the
+/// device; and anything that is not Arabic becomes English, because the app
+/// ships those two and English beats a title the app cannot render.
+String resolveAlertLanguage(String? stored, Locale deviceLocale) {
+  if (stored == 'en' || stored == 'ar') return stored!;
+  return deviceLocale.languageCode == 'ar' ? 'ar' : 'en';
+}
+
+/// The base URL a wake talks to (#395 review).
+///
+/// The parent types their server at first launch and it is persisted under
+/// [kServerUrlKey]; `kDefaultServerUrl` is blank on purpose. A wake that used
+/// only the compile-time define therefore had no base URL on every tester
+/// build, and every wake returned `failed`. Persisted first, then the define,
+/// and `null` when neither is usable — which the fetcher turns into a failure
+/// **without making a request**.
+String? resolveBackgroundBaseUrl(String? persisted) {
+  final normalized = normalizeServerUrl(persisted ?? '');
+  if (normalized != null) return normalized;
+  return kDefaultServerUrl.isEmpty ? null : kDefaultServerUrl;
+}
+
 /// The FCM background entry point (#360). Must be a top-level function with
 /// `@pragma('vm:entry-point')`, or the release build tree-shakes it and wakes
 /// stop arriving in production while working perfectly in debug.
@@ -136,17 +168,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // registrations, so secure storage and shared preferences would both fail.
   DartPluginRegistrant.ensureInitialized();
 
-  await buildWake().run();
+  await (await buildWake()).run();
 }
 
 const _shownKey = 'push.shownAlertIds';
 
 /// The real seams, in one place so [firebaseMessagingBackgroundHandler] stays a
 /// three-line entry point and a test can build the same object.
-BackgroundAlertWake buildWake() {
+Future<BackgroundAlertWake> buildWake() async {
   const storage = FlutterSecureStorage();
-  const base = String.fromEnvironment('API_BASE', defaultValue: '');
-  final dio = Dio(BaseOptions(baseUrl: base));
+  final prefs = await SharedPreferences.getInstance();
+
+  final base = resolveBackgroundBaseUrl(prefs.getString(kServerUrlKey));
+  final language = resolveAlertLanguage(prefs.getString(kAppLocaleKey), PlatformDispatcher.instance.locale);
+  final l10n = lookupAppLocalizations(Locale(language));
+  final dio = base == null ? null : Dio(BaseOptions(baseUrl: base));
 
   return BackgroundAlertWake(
     readJwt: () async {
@@ -157,6 +193,9 @@ BackgroundAlertWake buildWake() {
       }
     },
     fetchAlerts: (jwt) async {
+      // No server to ask: fail without a request, so the reason is visible in
+      // the outcome rather than as a DNS error.
+      if (dio == null) return const AlertFetchFailed('no_server');
       try {
         final res = await dio.get(
           '/v1/alerts',
@@ -173,12 +212,13 @@ BackgroundAlertWake buildWake() {
     },
     notifier: FlutterLocalNotifier(),
     readShown: () async {
-      final prefs = await SharedPreferences.getInstance();
-      return (prefs.getStringList(_shownKey) ?? const []).toSet();
+      final p = await SharedPreferences.getInstance();
+      return (p.getStringList(_shownKey) ?? const []).toSet();
     },
     writeShown: (ids) async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_shownKey, ids.toList(growable: false));
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_shownKey, ids.toList(growable: false));
     },
+    toVisible: (alert) => VisibleAlert.from(alert, l10n: l10n, isEnglish: language == 'en'),
   );
 }
