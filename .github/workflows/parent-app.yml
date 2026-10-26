@@ -43,6 +43,11 @@ jobs:
         with:
           channel: stable
           cache: true
+      # `firebase_messaging` has no Swift Package Manager support yet (Flutter says so in its own
+      # warning), and mixing it into an SPM project fails with "Include of non-modular header inside
+      # framework module". So this job resolves plugins through CocoaPods instead: the Flutter
+      # default, and the only path the Firebase plugins support today.
+      - run: flutter config --no-enable-swift-package-manager
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
