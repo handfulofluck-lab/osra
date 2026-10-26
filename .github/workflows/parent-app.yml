@@ -156,12 +156,23 @@ jobs:
         with:
           channel: stable
           cache: true
+      # Plugins link through CocoaPods, not Swift Package Manager (#392). A Flutter plugin picks its own
+      # integration, and `firebase_messaging` ships a podspec and no `Package.swift`, so an SPM-only
+      # target cannot compile it. The flag is global to the tool on the runner and must be set before
+      # any build; `ios/Podfile` is committed and pins `platform :ios, '15.0'` to match the project.
+      - name: Link plugins through CocoaPods
+        run: |
+          flutter config --no-enable-swift-package-manager
+          # The two halves of the migration must agree: a project that still references the ephemeral
+          # SPM package while the tool builds Pods fails to link, and that half-migration is what kept
+          # this job red on three heads (#392). Fail here, with the reason, rather than inside Xcode.
+          if grep -q 'FlutterGeneratedPluginSwiftPackage' ios/Runner.xcodeproj/project.pbxproj; then
+            echo "Runner.xcodeproj still references the SPM package; the migration is half done" >&2
+            exit 1
+          fi
+          test -f ios/Podfile || { echo "ios/Podfile is missing" >&2; exit 1; }
+          echo "CocoaPods target confirmed: no SPM reference, Podfile present"
       - run: flutter pub get
-      # This Flutter version wires plugins through Swift Package Manager
-      # (Runner.xcodeproj references Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage),
-      # so there is no Podfile to commit and none was generated. The build
-      # creates it on the runner if a plugin still needs CocoaPods, which the
-      # runner image ships (firebase_messaging does, and CocoaPods resolves it there).
       - name: Build the iOS target unsigned
         run: flutter build ios --release --no-codesign
       - name: The bundle identifier matches the shape of the Android application id
