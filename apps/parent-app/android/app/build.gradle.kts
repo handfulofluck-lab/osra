@@ -16,6 +16,13 @@ fun secret(name: String): String? = (localProps.getProperty(name) ?: System.gete
 val mapsApiKey = secret("MAPS_API_KEY") ?: ""
 val releaseStoreFile = secret("OSRA_UPLOAD_KEYSTORE")
 
+// #400 / #317: Firebase config is never committed. Without google-services.json the plugin must not be
+// applied — applying it unconditionally makes `:app:processDebugGoogleServices` fail the build — so the
+// build stays green and push is simply absent, which is what `FcmPushTokenSource` reports.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "dev.familyshield.familyshield_parent"
     compileSdk = flutter.compileSdkVersion
