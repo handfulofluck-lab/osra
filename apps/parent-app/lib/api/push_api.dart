@@ -8,10 +8,12 @@ import 'client.dart';
 enum PushPlatform {
   android('android'),
 
-  /// What an APNs token registers as. The server already accepts it
-  /// (`services/api/src/lib/push/notify.ts` falls back to the FCM provider for
-  /// `ios` when no APNs provider is configured), so an iOS registration is a
-  /// value this route already understood — not a new route.
+  /// A parent `ios` token is an **FCM** token: `firebase_messaging` mints it on
+  /// iOS too (#360). The server sends every parent platform through the FCM
+  /// provider (`services/api/src/lib/push/notify.ts`, `providerFor`), because
+  /// APNs answers `BadDeviceToken` for an FCM token and that would prune the row
+  /// on every alert (#391 review). Raw APNs tokens belong to the child iPhone's
+  /// wake only.
   ios('ios'),
   web('web');
 

@@ -82,7 +82,8 @@ class FcmPushTokenSource implements PushTokenSource {
 
 /// The source a running build should use (roadmap 3.9 / #360).
 ///
-/// FCM on the mobile targets, [UnavailablePushTokenSource] everywhere else — a web build has no
-/// `google-services.json` and no APNs, and reporting `android` for it would make the server route
-/// an APNs token to FCM.
+/// FCM on both mobile targets: `firebase_messaging` mints an FCM token on Android and on iOS, so a
+/// parent `ios` token is sent through the FCM provider and never through APNs (#391 review). The parent
+/// app has no web target, so there is no third case; [UnavailablePushTokenSource] remains for a build
+/// where Firebase has no configuration and a token cannot be minted at all.
 PushTokenSource defaultPushSource() => FcmPushTokenSource();
