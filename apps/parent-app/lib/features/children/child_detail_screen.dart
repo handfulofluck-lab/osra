@@ -15,6 +15,7 @@ import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
 import '../pairing/pair_qr_screen.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
 import 'command_history_screen.dart' show formatCommandTime;
+import '../../api/permission_errors.dart';
 
 /// Per-child detail view with Overview / Apps / Social / Location / Alerts tabs.
 class ChildDetailScreen extends ConsumerWidget {
@@ -637,7 +638,11 @@ class _HistoryScrubberState extends ConsumerState<_HistoryScrubber> {
     final history = ref.watch(locationHistoryProvider(widget.childId));
     return history.when(
       loading: () => const Card(child: Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator()))),
-      error: (e, _) => Card(child: ListTile(leading: const Icon(Icons.history), title: Text(l10n.locationHistoryLoadFailed('$e')))),
+      error: (e, _) => Card(
+          child: ListTile(
+        leading: const Icon(Icons.history),
+        title: Text(readErrorText(l10n, e, () => l10n.locationHistoryLoadFailed('$e'))),
+      )),
       data: (pings) {
         if (pings.isEmpty) {
           return Card(child: ListTile(leading: const Icon(Icons.history), title: Text(l10n.noLocationHistoryToday)));

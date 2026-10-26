@@ -19,6 +19,10 @@ class ReadPermissionRequired {
   /// Only a `403` with the server's own `permission_required` error counts. A plain `403` can also mean
   /// `cross_child_forbidden` or a revoked session, and telling a guardian to ask the owner for access
   /// when the real problem is a stale token would send them to the wrong person.
+  /// Whether [error] is a refusal at all, for a screen that wants to suppress the raw error text
+  /// without needing the permission name.
+  static bool isRefusal(Object error) => error is DioException && from(error) != null;
+
   static ReadPermissionRequired? from(DioException error) {
     if (error.response?.statusCode != 403) return null;
     final data = error.response?.data;
