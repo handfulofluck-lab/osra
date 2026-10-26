@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireOwner, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireFamily, requireOwner, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
@@ -98,7 +98,19 @@ export async function familyRoutes(app: FastifyInstance) {
     );
     const devices = children.flatMap((c) => c.devices);
     const { parents: _parents, ...familyRest } = family;
-    return { family: { ...familyRest, children }, parent, parents, children, devices };
+    // ADR-0014 amendment, decision 2: a guardian without `location` must not receive the family's
+    // geofences through this broad read after the narrow `GET /v1/location/geofences/:childId`
+    // refuses them. Owners, co-parents and device tokens are unwithheld (`guardianPermissions` is
+    // null for all of them).
+    const perms = await guardianPermissions(req);
+    const withholdGeofences = perms !== null && !perms.includes("location");
+    const childrenOut = withholdGeofences
+      ? children.map((c) => {
+          const { geofences: _g, ...rest } = c as Record<string, unknown>;
+          return rest;
+        })
+      : children;
+    return { family: { ...familyRest, children: childrenOut }, parent, parents, children: childrenOut, devices };
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */
@@ -298,7 +310,7 @@ export async function familyRoutes(app: FastifyInstance) {
   /** GDPR data export: JSON download of family, children, devices and consents. */
   // NOTE: simplest acceptable export per spec — a JSON attachment. Production should
   // deliver an encrypted archive and notify the parent out-of-band.
-  app.get("/export", { preHandler: requireParent }, async (req, reply) => {
+  app.get("/export", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const user = req.user as AuthedUser;
     const family = await prisma.family.findUnique({
       where: { id: user.familyId },

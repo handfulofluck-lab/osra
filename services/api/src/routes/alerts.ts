@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
+import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -55,7 +55,7 @@ export async function alertsRoutes(app: FastifyInstance) {
   registerRawBodyParser(app);
 
   /** Paginated, filterable list of alerts scoped to the authenticated family's children. */
-  app.get("/", { preHandler: requireParent }, async (req, reply) => {
+  app.get("/", { preHandler: [requireParent, requireGuardianRead("alerts")] }, async (req, reply) => {
     const user = req.user as AuthedUser;
     const parsed = ListQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

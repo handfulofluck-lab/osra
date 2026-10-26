@@ -5,7 +5,7 @@ import { raiseAlert } from "../lib/alerts.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 
 const SearchEventSchema = z.object({
@@ -257,7 +257,7 @@ export async function contentRoutes(app: FastifyInstance) {
   /** Parent-facing flagged search queries listing (Track 1 & 2). */
   app.get(
     "/searches",
-    { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] },
+    { preHandler: [requireParent, requireGuardianRead("social"), requireFamily({ param: "childId", model: "child", source: "query" })] },
     async (req, reply) => {
       const parsed = SearchHistoryQuerySchema.safeParse(req.query ?? {});
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });

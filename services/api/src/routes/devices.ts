@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
-import { requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
@@ -367,6 +367,14 @@ export async function deviceRoutes(app: FastifyInstance) {
     }
     const device = (req as unknown as { device: { id: string } }).device;
     const telemetry = await getJson(`device:${device.id}:telemetry`);
+    // ADR-0014 amendment, decision 2: the stored telemetry is already an allowlist of named fields
+    // (it is a parsed `TelemetrySchema`), but `urls` is browsing content, so a guardian without
+    // `social` must not receive it from this broad read either.
+    const perms = await guardianPermissions(req);
+    if (perms !== null && !perms.includes("social") && telemetry && typeof telemetry === "object") {
+      const { urls: _urls, ...rest } = telemetry as Record<string, unknown>;
+      return { device: sanitizeDevice(device), telemetry: rest };
+    }
     return { device: sanitizeDevice(device), telemetry };
   });
 
