@@ -53,5 +53,16 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+
+    # `firebase_messaging` 15.1.0's umbrella header imports a Firebase header that ships without a module
+    # map, so building the plugin as a framework stops at
+    # "Include of non-modular header inside framework module
+    #  'firebase_messaging.FLTFirebaseMessagingPlugin'" (#392, run 40263769898). Flutter requires
+    # `use_frameworks!` for Swift plugins, so the framework build cannot be dropped; this lets clang accept
+    # the include. It is a warning we are choosing to silence, so it is scoped here with the reason rather
+    # than exported through the project's build settings.
+    target.build_configurations.each do |config|
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
   end
 end
