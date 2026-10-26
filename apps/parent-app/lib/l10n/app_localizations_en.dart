@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -506,6 +507,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accuracyUnknown => 'accuracy unknown';
+
+  @override
+  String get readPermissionRequired =>
+      'Your family owner can give you access to this.';
 
   @override
   String alertsLoadFailed(String error) {
