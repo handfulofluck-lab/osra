@@ -22,7 +22,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0011](0011-parent-notifications-push-and-email.md) | Parent notifications: push (FCM/APNs) and email through one alert path; 0009/0010 reserved by the Android lane | accepted |
 | [0012](0012-durable-device-command-queue.md) | Durable device command queue: delivery state, acks, per-type expiry, device-only drain | accepted |
 | [0013](0013-usage-model-retention-and-erasure.md) | Durable usage model (`AppUsageDaily`, `WebVisit`), nightly rollup + retention, complete erasure cascade | accepted |
-| [0014](0014-signing-v2-sessions-and-family-roles.md) | Signing v2 (timestamp + nonce, service callers), revocable parent sessions, enforced family roles, MFA secret at rest | accepted |
+| [0014](0014-signing-v2-sessions-and-family-roles.md) | Signing v2 (timestamp + nonce, service callers), revocable parent sessions, enforced family roles, MFA secret at rest. Amended 2026-10-26: a guardian reads alerts, places and search/social/web history only with the `alerts`, `location` or `social` permission, and the family export is owner-only | accepted, amended |
 | [0015](0015-android-dns-sinkhole.md) | Android web filter as a local DNS sinkhole: DNS-only `VpnService`, SafeSearch/YouTube CNAME rewrites, pause-internet takes the default route, revocation is tamper | accepted |
 | [0016](0016-play-vs-full-flavors-and-notification-capture.md) | Two Android flavors (`play`, `full`): `NotificationListenerService` and its permission live in `full` only, decision logic shared in `main`, manifest difference tested | proposed |
 | [0017](0017-family-local-digest-time.md) | The weekly digest is sent at the family's local hour (`Family.timezone`, hourly wake, one send per week) | accepted |
