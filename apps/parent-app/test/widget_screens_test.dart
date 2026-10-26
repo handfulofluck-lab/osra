@@ -290,9 +290,10 @@ void main() {
       expect(find.textContaining('queued'), findsNothing);
     });
 
-    testWidgets('a lock refused because the lock screen cannot appear shows the reason', (tester) async {
-      // Issue #231 review D1: the agent refuses a lock when overlay, accessibility and the keyguard
-      // are all unavailable. The toast must name the fix ("Display over other apps"), never "queued".
+    testWidgets('a lock refused because the lock screen cannot hold shows the reason', (tester) async {
+      // Issue #231 review D1 and #389 review: the agent refuses a lock unless its accessibility service
+      // is running, because nothing re-raises the screen after Home. The toast must name that fix and
+      // must not offer the overlay alone, which cannot hold — and never "queued".
       final api = FakeApiClient({
         ...standardRoutes(),
         'POST /v1/devices/dev-1/command': (_) => {
@@ -306,7 +307,8 @@ void main() {
       await tester.tap(find.text('Lock'));
       await flushFakeHttp(tester);
 
-      expect(find.textContaining('Display over other apps'), findsOneWidget);
+      expect(find.textContaining("accessibility service"), findsOneWidget);
+      expect(find.textContaining('Display over other apps'), findsNothing);
       expect(find.textContaining('queued'), findsNothing);
     });
 
@@ -327,7 +329,7 @@ void main() {
       await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
 
       expect(
-        find.textContaining("The lock screen can't appear on your child's phone"),
+        find.textContaining("The lock can't hold on your child's phone"),
         findsOneWidget,
       );
     });

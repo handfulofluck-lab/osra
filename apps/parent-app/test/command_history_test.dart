@@ -120,7 +120,7 @@ void main() {
           tester, const CommandHistoryScreen(childId: 'child-1'), api);
 
       expect(
-        find.textContaining("The lock screen can't appear on your child's phone"),
+        find.textContaining("The lock can't hold on your child's phone"),
         findsOneWidget,
       );
       expect(find.text('Failed on device'), findsWidgets);

@@ -69,12 +69,17 @@ The agent sends a `capabilities` object, defined once in `packages/shared-types`
 - **The server never works a feature out from the grants.** Issue #221 set the rule that the server and
   the agent must not grow two vocabularies for one condition. A server that decided "overlay missing
   means the lock screen is unavailable" would be wrong on a phone where the accessibility service can
-  still show it (`EnforceabilityPolicy`'s third path), and would drift every time the agent's policy
-  changed.
+  still show it (`EnforceabilityPolicy`'s accessibility path), and would drift every time the agent's
+  policy changed.
 - **`degraded`** means the feature works by a weaker path that the agent's own policy still acknowledges
   as applied. A keyguard-only lock is **not** one: the Flip4 test on #368 (24 Oct, 16:39Z) showed that
   the child's own unlock ends it, so with no overlay grant and no accessibility service `lock_screen` is
   `unavailable`, whatever `lockNow()` returned.
+- **An overlay-only lock is not one either** (#389 review). `LockActivity.onPause` deliberately does not
+  re-raise itself, so with the accessibility service off the screen appears once and Home ends it — the
+  same lie one step later. Only `AccessibilityMonitorService.enforceLockState` brings it back, so
+  `lock_screen` and `pause_screen` are `ready` only while that service runs, and `via=overlay` names the
+  path the dispatcher starts while the service re-raises it.
 - **`not_supported`** means the build or the platform cannot do it at all. Examples: `call_sms_log` on
   the Play build, `uninstall_guard` on iOS. The parent app greys these out. It does not report them as a
   fault.
