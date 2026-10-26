@@ -1,0 +1,3 @@
+/* Location permission prompts (5.5 PR E). Arabic wording pending Karim's review, as in 3.1. */
+"NSLocationWhenInUseUsageDescription" = "يشارك OSRA موقع هذا الجهاز مع والديك، ليرياه على الخريطة ويتلقيا تنبيهات عن الأماكن التي حدداها.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "يشارك OSRA موقع هذا الجهاز مع والديك عندما يتغير موقعه بمسافة ملحوظة، حتى عندما يكون التطبيق مغلقًا، لتبقى الخريطة وتنبيهات الأماكن تعمل.";

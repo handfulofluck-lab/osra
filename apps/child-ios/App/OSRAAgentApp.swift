@@ -30,6 +30,16 @@ final class OSRAAgentAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         application.registerForRemoteNotifications()
+        LocationController.backgroundTask = { name, work in
+            let id = UIApplication.shared.beginBackgroundTask(withName: name)
+            await work()
+            UIApplication.shared.endBackgroundTask(id)
+        }
+        // Significant-change monitoring relaunches a suspended or terminated app with `.location` (5.5 PR E):
+        // the manager is recreated here and monitoring restarts, which delivers the new fix. Every launch
+        // also reports the grant, so the server can refuse a locate_now the phone cannot answer.
+        LocationController.shared.startIfAllowed()
+        Task { await LocationController.shared.reportGrant() }
         return true
     }
 
@@ -43,7 +53,13 @@ final class OSRAAgentAppDelegate: NSObject, UIApplicationDelegate {
         Task {
             // Under iOS's ~30 s budget for a woken app: past the deadline the drain is cancelled and the wake
             // answers .failed, and the next wake or launch drains again (the queue keeps unacked commands).
-            guard let result = await CommandDrainer.drain(within: CommandDrainer.wakeDeadlineSeconds) else {
+            let deadline = CommandDrainer.wakeDeadlineSeconds
+            guard let result = await CommandDrainer.drain(within: deadline, {
+                let drained = await CommandDrainer.drainNow()
+                if drained.consentWithdrawn { await LocationController.shared.stopForConsent() }
+                await LocationController.shared.flush()
+                return drained
+            }) else {
                 completionHandler(.failed)
                 return
             }

@@ -95,6 +95,7 @@ public struct PairingView: View {
 public struct AgentRootView: View {
     @State private var identity: AgentIdentity?
     @State private var showRepair = false
+    @State private var locationGrant: LocationGrant = .noAccess
 
     public init() {}
 
@@ -112,6 +113,16 @@ public struct AgentRootView: View {
                         }
                     }
                     Section {
+                        LabeledContent("Location", value: Self.label(locationGrant))
+                        if locationGrant != .background {
+                            Button("Allow location") { LocationController.shared.requestPermission() }
+                        }
+                    } header: {
+                        Text("Location")
+                    } footer: {
+                        Text("Your parents see this device on their map when it moves a noticeable distance, and get alerts for the places they set. Choose \"Allow While Using App\", then \"Change to Always Allow\".")
+                    }
+                    Section {
                         Button("Re-pair this device") { showRepair = true }
                     }
                 }
@@ -122,19 +133,41 @@ public struct AgentRootView: View {
                     onPaired: { newIdentity in
                         identity = newIdentity
                         showRepair = false
-                        Task { await RuleSyncer.syncNow() }
+                        Task {
+                            let synced = await RuleSyncer.syncNow()
+                            await LocationController.shared.apply(synced)
+                            await LocationController.shared.reportGrant()
+                        }
                         // A new device id: ask iOS for the token again so it is uploaded for this pairing.
                         UIApplication.shared.registerForRemoteNotifications()
                     }
                 )
             }
         }
-        .onAppear { identity = AgentIdentityStore.load() }
+        .onAppear {
+            identity = AgentIdentityStore.load()
+            locationGrant = LocationController.shared.grant
+        }
         // On open: drain the command queue, then fetch the rules (5.5 PR C, D). A failed sync keeps the last
         // stored rules in force. A wake push drains the queue the same way (`OSRAAgentAppDelegate`).
         .task {
-            await CommandDrainer.drainNow()
-            await RuleSyncer.syncNow()
+            let drained = await CommandDrainer.drainNow()
+            if drained.consentWithdrawn { await LocationController.shared.stopForConsent() }
+            let synced = await RuleSyncer.syncNow()
+            await LocationController.shared.apply(synced)
+            await LocationController.shared.flush()
+        }
+        // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            locationGrant = LocationController.shared.grant
+        }
+    }
+
+    private static func label(_ grant: LocationGrant) -> String {
+        switch grant {
+        case .background: return "Always"
+        case .whileInUse: return "While using the app (needs Always)"
+        case .noAccess: return "Off"
         }
     }
 }

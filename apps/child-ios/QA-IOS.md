@@ -102,7 +102,62 @@ pairing-approval change lands, so it isn't ported twice.
 - **5.1 device checklist:**
   - a real APNs token is uploaded;
   - a parent rule change wakes a backgrounded, locked iPhone and its shields update without opening the app;
-  - `APNS_DEVICE_BUNDLE_ID` is set to the permanent bundle id.
+  - `APNS_DEVICE_BUNDLE_ID` is set to the permanent bundle id;
+  - a wake whose drain runs past 25 s answers iOS `.failed` (the handler is in the App target, so no test pins
+    it; Claude on #388), and the next wake drains what was left.
+
+## Location (added 2026-10-25, roadmap 5.5 PR E, #372)
+
+On the contract the Android agent already uses; no server change.
+
+- **Collection:** `startMonitoringSignificantLocationChanges()` only. There is no continuous GPS and no
+  `location` entry in `UIBackgroundModes` (`check-app-bundle.py` fails the build if one appears).
+  Significant-change monitoring relaunches a suspended or terminated app with `.location`, and
+  `didFinishLaunching` recreates the manager and restarts monitoring.
+  - **Coarser than Android:** Android uploads every 30 s while moving and every 5 min when still. An iPhone
+    reports when it moves a noticeable distance, typically about 500 m, and not more often than every few
+    minutes. A parent sees the iPhone move in steps, not as a trail.
+- **Upload:** each fix goes into a buffer in the app group (500 pings, oldest dropped first: the server's
+  maximum batch) and is uploaded at once, inside `beginBackgroundTask`. The buffer is also flushed on the wake
+  drain and when the app opens. `POST /v1/location/ping`, device token, body
+  `{deviceId, childId, pings:[{lat, lng, accuracyM, timestamp}]}`, timestamps in ISO 8601 UTC.
+  - **200/201:** stored, so the batch leaves the buffer. The route answers 201.
+  - **428:** consent was withdrawn. Collection stops and the buffer is emptied. A rule sync answering 428 does
+    the same, and a successful sync starts collection again.
+  - **401:** kept, as the rest of the agent keeps its state.
+  - **400 and other refusals:** the batch is dropped, so one bad ping cannot wedge the buffer.
+  - **429, 5xx or offline:** kept for the next event.
+- **Grant:** `POST /v1/devices/:id/telemetry {"locationGrant"}` at launch, after pairing and on every
+  authorization change. Always maps to `background`, When In Use to `while_in_use`, and anything else to
+  `none`. Reduced accuracy is not a fourth state: the pings carry their real `accuracyM`. The server uses the
+  grant to fail a `locate_now` the phone cannot answer.
+- **Permission:** the status screen explains what the parents see and asks for When In Use, then the upgrade
+  to Always. The usage strings are in `Info.plist` and in `en.lproj` and `ar.lproj`. **The Arabic wording waits
+  for Karim's review**, as in 3.1.
+- **`locate_now`:** one `requestLocation()` at about 100 m, waiting up to 10 s. Without a fix, the last one
+  under 5 minutes old is used as `cached` (Android's `MAX_CACHED_AGE_MS`). The point is uploaded, and the
+  command is acked **`ok` with `detail.fix: fresh|cached` only after the server stored it**. A failed upload
+  sends no ack, and the server offers the command again after 120 s (#231). With no fix the ack is `failed`
+  with `location_unavailable`. Without permission it is `location_permission_missing`, or
+  `background_location_missing` for When In Use only. These are Android's strings (#132). Several
+  `locate_now` in one drain share one fix.
+- **Tests:**
+  - `LocationTests` (stubbed server, fake `LocationSource`): the grant for every authorization status; the
+    telemetry body; When In Use asks for Always and reports the change; the body shape and ISO timestamp;
+    428 stops collecting and empties the buffer; 400 drops the batch; 5xx, 429 and 401 keep it; the cap at
+    500, oldest first; a ping added during an upload stays, both in the buffer and through `flush` (Claude's fault on #390); a new fix is uploaded; nothing is recorded when
+    unpaired; monitoring starts only when paired and allowed; the rule sync drives collection; `locate_now`
+    acks `ok` only after the server stored the point, sends no ack when the upload fails, takes a cached fix
+    under 5 minutes and refuses an older one, and refuses with the Android reasons; the drain acks the fix,
+    acks a refusal, skips the ack for an unstored point, and serves several `locate_now` with one fix.
+  - Live case 9: the simulator is placed with `simctl location` and granted Always with `simctl privacy`. The
+    grant is reported (202), a `locate_now` through Core Location answers `ok`, and `verify` reads the point
+    back as the parent, attributed to the iPhone, with the device's grant `background`.
+- **5.1 device checklist:**
+  - significant-change updates on a real iPhone, moving between places;
+  - a relaunch after termination delivers the new fix (the simulator can't relaunch on a location event);
+  - the When In Use and Always prompts, in English and Arabic;
+  - `locate_now` on a locked iPhone answers within the wake deadline.
 
 ## Rule sync (updated 2026-10-25, roadmap 5.5 PR C, #372)
 
@@ -179,14 +234,17 @@ against **our real API**, on every iOS change, on changes to the three server fi
    6. The rules the parent set in `setup` sync with the device token into the app group (PR C).
    7. The push token is stored (204), and a second registration is skipped (PR D).
    8. The ack-capable command poll answers (PR D).
+   9. Location (PR E): the grant is reported, and a `locate_now` through Core Location uploads the point
+      the job placed the simulator at.
 4. `scripts/live-api.mjs verify` logs in as the parent. `GET /v1/alerts` must hold exactly one
    `screen_time_exceeded` alert from this run (`metadata.run`) for that child, with a `deviceId`, and
-   `GET /v1/devices` must list that device as `platform: "ios"`.
+   `GET /v1/devices` must list that device as `platform: "ios"` with `locationGrant: "background"`.
+   `GET /v1/location/:childId/latest` must hold the simulator's coordinate, attributed to that device.
 
 The simulator is booted (`simctl bootstatus -b`) before the code is minted, and case 1 waits for `GET /health` before it claims: on a cold boot the first request once reached the API about 50 s late, after the client's 30 s timeout. The claim itself is never retried, because a code is single-use.
 
 It fails loudly (#361) in two ways. `OSRA_REQUIRE_LIVE=1` turns a missing input into a test failure; without
-it, as in a local run, the cases skip. And the job asserts that 8 cases passed and none were skipped.
+it, as in a local run, the cases skip. And the job asserts that 9 cases passed and none were skipped.
 `AlertReporter` gained `makeRequest`/`send` for the tests. `report` uses the same builder and keeps its
 fire-and-forget retry.
 
