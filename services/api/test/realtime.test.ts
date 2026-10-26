@@ -5,8 +5,12 @@ import fastifyJwt from "@fastify/jwt";
 import fastifyWebsocket from "@fastify/websocket";
 import { registerRealtime } from "../src/realtime/gateway.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis } from "./helpers.js";
+import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 
+vi.mock("../src/db.js", async () => {
+  const { prismaMock } = await import("./helpers.js");
+  return { prisma: prismaMock };
+});
 vi.mock("ioredis", async () => {
   const { MockRedis } = await import("./helpers.js");
   return { Redis: MockRedis };
@@ -65,6 +69,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
   beforeEach(async () => {
     store.clear();
+    resetPrismaMock(); // the default caller is an owner, whose frames are never withheld
     const redis = getRedis() as unknown as MockRedis;
     redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
     redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
@@ -78,7 +83,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     const t = await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } });
     expect(t.statusCode).toBe(200);
     const ticket = t.json().ticket as string;
-    expect(store.get(`ws:ticket:${ticket}`)).toBe("fam-1");
+    expect(JSON.parse(store.get(`ws:ticket:${ticket}`) ?? "{}")).toMatchObject({ familyId: "fam-1", parentId: "parent-1" });
 
     const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
     await c.waitFor(() => c.frames.length >= 1);
@@ -164,5 +169,95 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     const res = await app.inject({ method: "GET", url: "/v1/ws" });
     expect(res.statusCode).toBe(401);
     expect(res.json()).toMatchObject({ error: "ticket_required" });
+  });
+
+  // ADR-0014 amendment, decision 3 second half (#402): the frame a guardian may not read is not sent.
+  const subscribe = async (sub: string) => {
+    const token = app.jwt.sign({ sub, familyId: "fam-1", role: "parent" });
+    const ticket = (await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } })).json().ticket as string;
+    const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    await c.waitFor(() => c.frames.length >= 1);
+    return c;
+  };
+
+  it("does not send an alert frame to a guardian without `alerts`, and still sends `ready`", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["location"] });
+    const c = await subscribe("guardian-1");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "not for you" } }));
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "location", payload: { lat: 1 } }));
+    await c.waitFor(() => c.frames.length >= 2);
+
+    // The `location` frame arrives because this guardian holds `location`; the `alert` one never does.
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "location"]);
+    c.ws.close();
+  });
+
+  it("sends an alert frame to a guardian that holds `alerts`, and to a co-parent with no permissions", async () => {
+    prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"] } : { role: "co-parent", permissions: [] },
+    );
+    const guardian = await subscribe("guardian-2");
+    const coparent = await subscribe("coparent-1");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "for you" } }));
+    await guardian.waitFor(() => guardian.frames.length >= 2);
+    await coparent.waitFor(() => coparent.frames.length >= 2);
+
+    expect(guardian.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    expect(coparent.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    guardian.ws.close();
+    coparent.ws.close();
+  });
+  // #402 ruling: a guardian socket is checked on every gated frame, and the check fails closed.
+  const settle = () => new Promise((r) => setTimeout(r, 50));
+
+  it("stops alert frames on an open socket as soon as the guardian's `alerts` is removed", async () => {
+    let permissions = ["alerts", "location"];
+    prismaMock.parent.findUnique.mockImplementation(async () => ({ role: "guardian", permissions }));
+    const c = await subscribe("guardian-3");
+    const pmessage = subscriberPmessageHandler();
+
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "before" } }));
+    await c.waitFor(() => c.frames.length >= 2);
+
+    permissions = ["location"]; // the owner edits the invite; the socket stays open
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "after" } }));
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "location", payload: { childId: "c" } }));
+    await c.waitFor(() => c.frames.length >= 3);
+    await settle();
+
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "alert", "location"]);
+    c.ws.close();
+  });
+
+  it("withholds a gated frame when the database cannot answer, and still sends an ungated one", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    const c = await subscribe("guardian-4");
+    prismaMock.parent.findUnique.mockRejectedValue(new Error("db down"));
+    const pmessage = subscriberPmessageHandler();
+
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "x" } }));
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "consent_revoked", payload: {} }));
+    await c.waitFor(() => c.frames.length >= 2);
+    await settle();
+
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "consent_revoked"]);
+    c.ws.close();
+  });
+
+  it("closes the socket with 4001 when the guardian's parent row no longer exists", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    const c = await subscribe("guardian-5");
+    prismaMock.parent.findUnique.mockResolvedValue(null);
+    const pmessage = subscriberPmessageHandler();
+
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "x" } }));
+    await c.waitFor(() => c.close() !== null);
+
+    expect(c.close()).toBe(4001);
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
   });
 });
