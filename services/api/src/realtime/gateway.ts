@@ -2,12 +2,60 @@ import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
+import { prisma } from "../db.js";
 import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
 
 // The gateway needs a DEDICATED subscriber connection (psubscribe switches a connection
 // into subscriber mode); publishing reuses the shared lazy publisher via getRedis().
 const subscriber = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
 const socketsByFamily = new Map<string, Set<any>>();
+
+/**
+ * The permission each family event type needs from a **guardian** (ADR-0014 amendment, decision 3).
+ * Owners and co-parents are unaffected, so only these two are listed; an event type absent here is
+ * never withheld.
+ */
+const EVENT_PERMISSION: Record<string, "alerts" | "location"> = { alert: "alerts", location: "location" };
+
+/**
+ * Who one socket belongs to, settled at connect. `open` means an owner or co-parent: their reads are
+ * not gated, so no frame is ever withheld from them. Everyone else (a guardian, a ticket from before
+ * this change, a parent the database could not answer for) is checked again on every gated frame.
+ */
+type SocketReader = { parentId: string | null; open: boolean };
+
+const socketReaders = new WeakMap<object, SocketReader>();
+
+async function readerFor(parentId: string | null): Promise<SocketReader> {
+  if (!parentId) return { parentId: null, open: false };
+  try {
+    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { role: true } });
+    if (row && row.role !== "guardian") return { parentId, open: true };
+  } catch {
+    // Unknown is not open: the frame-time check below decides, and it fails closed.
+  }
+  return { parentId, open: false };
+}
+
+/**
+ * The delivery-time check for a socket that is not `open` (#402 ruling): the parent row is read for
+ * each gated frame, so removing a guardian's permission stops frames on a socket that is already open.
+ * It fails closed: no parent id, a database error or a missing permission withholds the frame, and a
+ * parent row that no longer exists also closes the socket.
+ */
+async function mayRead(ws: { close: (code: number, reason: string) => void }, reader: SocketReader | undefined, permission: string): Promise<boolean> {
+  if (!reader?.parentId) return false;
+  try {
+    const row = await prisma.parent.findUnique({ where: { id: reader.parentId }, select: { role: true, permissions: true } });
+    if (!row) {
+      ws.close(4001, "unauthorized");
+      return false;
+    }
+    return row.role !== "guardian" || row.permissions.includes(permission);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Issue #350: a delivery miss on this path used to leave no evidence at all — the publish was a bare
@@ -98,7 +146,10 @@ export function registerRealtime(app: FastifyInstance) {
     }
     const ticket = randomUUID();
     const familyId = user.familyId ?? "";
-    await getRedis().set(`ws:ticket:${ticket}`, familyId, "EX", 60);
+    // ADR-0014 amendment, decision 3 (second half, #402): the ticket carries WHO is subscribing, so the
+    // fan-out can drop a frame this reader is not allowed to see. The app sends the same ticket either
+    // way; only the stored value changed.
+    await getRedis().set(`ws:ticket:${ticket}`, JSON.stringify({ familyId, parentId: (user as { sub?: string }).sub ?? null }), "EX", 60);
     return { ticket, expiresIn: 60 };
   });
 
@@ -128,9 +179,15 @@ export function registerRealtime(app: FastifyInstance) {
         const query = req.query as { ticket: string };
         // Single-use ticket: consumed on first presentment.
         const redis = getRedis();
-        const familyId = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
+        const raw = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
+        // A ticket minted by an older process is the bare familyId string; accept both, so a deploy
+        // mid-connection does not 4001 everybody.
+        const parsed = raw.startsWith("{") ? (JSON.parse(raw) as { familyId?: string; parentId?: string | null }) : { familyId: raw, parentId: null };
+        const familyId = parsed.familyId ?? "";
         if (!familyId) throw new Error("invalid ticket");
         await redis.del(`ws:ticket:${query.ticket}`).catch(() => {});
+        // Settled before the socket joins the set, so no frame can reach it while this is pending.
+        socketReaders.set(socket, await readerFor(parsed.parentId ?? null));
         const set = socketsByFamily.get(familyId) ?? new Set();
         set.add(socket);
         socketsByFamily.set(familyId, set);
@@ -164,15 +221,27 @@ export function registerRealtime(app: FastifyInstance) {
       return;
     }
     let written = 0;
+    // ADR-0014 amendment, decision 3 (second half, #402): a frame this socket may not read is not sent.
+    // `type` is already parsed above for the log line; an unknown type is never withheld, so a new event
+    // is open by default rather than silently dropped.
+    const needed = EVENT_PERMISSION[type];
+    let checked = 0;
     for (const ws of set) {
-      if (ws.readyState === 1) {
-        ws.send(message);
-        written += 1;
+      if (ws.readyState !== 1) continue;
+      const reader = socketReaders.get(ws);
+      if (needed && !reader?.open) {
+        checked += 1;
+        void mayRead(ws, reader, needed).then((ok) => {
+          if (ok && ws.readyState === 1) ws.send(message);
+        });
+        continue;
       }
+      ws.send(message);
+      written += 1;
     }
     // `sockets` is the set's size and `written` what actually left; a CLOSING/CLOSED socket is counted
     // in the first and not the second, which is the gap that makes a miss look like a delivery.
-    gatewayLog?.info({ familyId, type, listening: true, written, sockets: set.size }, "realtime fan-out");
+    gatewayLog?.info({ familyId, type, listening: true, written, checked, sockets: set.size }, "realtime fan-out");
   });
 }
 

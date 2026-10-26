@@ -1745,6 +1745,54 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     }
   }
 
+  // Q6f: the ADR-0014 amendment, decision 3 (#402). An `alert` frame carries the whole alert row, title and body
+  // (lib/alerts.ts), so the live socket must skip a guardian without `alerts` exactly as `GET /v1/alerts` does,
+  // and a `location` frame must skip one without `location`. The co-parent, whose reads are unchanged, is the
+  // control: its socket must receive both frames, or "the guardian saw nothing" proves nothing.
+  // Mutant: publish to every family socket again (drop the per-socket filter) -> the guardian's socket gets them.
+  if (mrKid && mrDeviceId && mrDeviceToken && mrGuardianToken && mrCoParentToken) {
+    const live = async (ticket) => {
+      const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+      OPEN_SOCKETS.add(ws);
+      const frames = [];
+      ws.addEventListener("message", (ev) => { try { frames.push(JSON.parse(ev.data)); } catch { /* not JSON */ } });
+      ws.addEventListener("close", () => OPEN_SOCKETS.delete(ws));
+      ws.addEventListener("error", () => {});
+      return { ws, frames };
+    };
+    const waitFor = async (pred, ms) => {
+      const deadline = Date.now() + ms;
+      while (!pred() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+      return pred();
+    };
+    const gTicket = (await qcall("POST", "/v1/ws-ticket", { token: mrGuardianToken })).data?.ticket;
+    const cTicket = (await qcall("POST", "/v1/ws-ticket", { token: mrCoParentToken })).data?.ticket;
+    if (gTicket && cTicket) {
+      const g = await live(gTicket);
+      const c = await live(cTicket);
+      const ready = await waitFor(() => g.frames.some((f) => f.type === "ready") && c.frames.some((f) => f.type === "ready"), 5000);
+      const title = `q6f-guardian-socket-${Date.now()}`;
+      const posted = await call("POST", "/v1/alerts/internal", { hmac: true, body: { childId: mrKid, deviceId: mrDeviceId, severity: "info", category: "sos", title, body: "q6f" } });
+      const pinged = await call("POST", "/v1/location/ping", { token: mrDeviceToken, body: { lat: 25.2854, lng: 51.531, accuracyM: 10 } });
+      const isAlert = (f) => f.type === "alert" && f.payload?.title === title;
+      const isLocation = (f) => f.type === "location" && f.payload?.childId === mrKid;
+      const control = await waitFor(() => c.frames.some(isAlert) && c.frames.some(isLocation), 10000);
+      await new Promise((r) => setTimeout(r, 500)); // the guardian's socket gets the same window after the control's frames land
+      const leaked = g.frames.filter((f) => isAlert(f) || isLocation(f)).map((f) => f.type);
+      check(
+        "Q6f a guardian with no permissions receives no alert or location frame on the live socket, while a co-parent does",
+        ready && [200, 201].includes(posted.status) && [200, 201].includes(pinged.status) && control && leaked.length === 0,
+        `ready=${ready} alert=${posted.status} ping=${pinged.status} coParentGotBoth=${control} guardianGot=${JSON.stringify(leaked)}`,
+      );
+      g.ws.close();
+      c.ws.close();
+    } else {
+      target("Q6f a guardian receives no alert or location frame (no ws-ticket here)", `guardianTicket=${!!gTicket} coParentTicket=${!!cTicket}`);
+    }
+  } else {
+    target("Q6f a guardian receives no alert or location frame (no live O-section family here)", "the O-section family has no live guardian, co-parent or device here");
+  }
+
   // Q7: a live device token on every parent-only route is 403 parent_role_required (requireParent, or
   // the ws-ticket role check). Mutant: requireParent that skips the role test -> the reads answer 200.
   if (d2.token) {
