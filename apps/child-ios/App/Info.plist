@@ -20,6 +20,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OSRA shares this device's location with your parents, so they can see it on their map and get alerts for the places they set.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>OSRA shares this device's location with your parents when it moves a noticeable distance, even when the app is closed, so their map and place alerts keep working.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIBackgroundModes</key>

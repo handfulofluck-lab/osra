@@ -4,7 +4,7 @@
  * the macOS runner from this checkout, never against a shared or deployed server.
  *
  *   node scripts/live-api.mjs setup    # seeded parent logs in, adds a child with consent, sets its rules, mints a code
- *   node scripts/live-api.mjs verify   # after the XCTest run: the parent sees the agent's alert
+ *   node scripts/live-api.mjs verify   # after the XCTest run: the parent sees the agent's alert and location
  *
  * `setup` seeds through the API itself, as services/api/scripts/e2e.mjs does, and hands the tests their
  * inputs through $GITHUB_ENV as TEST_RUNNER_* variables (xcodebuild strips the prefix for the test
@@ -100,7 +100,22 @@ async function verify() {
   const device = (devices.data?.devices ?? []).find((d) => d.id === mine[0].deviceId);
   console.log(`paired device as the parent sees it: platform=${device?.platform ?? "missing"}`);
   if (device?.platform !== "ios") fail(`the paired device's platform is ${JSON.stringify(device?.platform)}, expected "ios"`);
-  console.log("live-api: the parent sees the iOS agent's alert");
+  // Case 9 (5.5 PR E): the point the locate_now uploaded, from the coordinate the job gave the simulator, and
+  // the grant the telemetry upload reported.
+  const lat = Number(process.env.OSRA_TEST_LAT);
+  const lng = Number(process.env.OSRA_TEST_LNG);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) fail("OSRA_TEST_LAT/OSRA_TEST_LNG are not set");
+  const latest = await call("GET", `/v1/location/${encodeURIComponent(childId)}/latest`, { token });
+  const point = latest.data?.latest;
+  console.log(`latest location as the parent sees it: status=${latest.status} device=${point?.deviceId ?? "none"} lat=${point?.lat} lng=${point?.lng} accuracyM=${point?.accuracyM}`);
+  if (latest.status !== 200 || !point) fail(`GET /v1/location/:childId/latest answered ${latest.status}`);
+  if (point.deviceId !== mine[0].deviceId) fail("the point is not attributed to the paired iPhone");
+  if (Math.abs(point.lat - lat) > 0.001 || Math.abs(point.lng - lng) > 0.001) {
+    fail(`the point is ${point.lat},${point.lng}, expected the simulator's ${lat},${lng}`);
+  }
+  console.log(`paired device's location grant as the parent sees it: ${device?.locationGrant ?? "missing"}`);
+  if (device?.locationGrant !== "background") fail(`locationGrant is ${JSON.stringify(device?.locationGrant)}, expected "background"`);
+  console.log("live-api: the parent sees the iOS agent's alert and location");
 }
 
 const mode = process.argv[2];
