@@ -9,16 +9,28 @@ import com.familyshield.agent.commands.CommandOutcome
  * `pauseInternet()` returned `Applied()` even with no VPN to filter the traffic — both told the
  * parent "done" while the phone did nothing (measured on the Flip4, 2026-10-20).
  *
- * The three lock paths, in the order the outcome names them:
- * - **keyguard** — `DevicePolicyManager.lockNow()` returned true (device admin/owner). The screen is
- *   locked even if the overlay cannot be launched.
+ * The two lock paths, in the order the outcome names them:
  * - **overlay** — `Settings.canDrawOverlays` is granted. The holder of that app-op is exempt from the
- *   background-activity-launch rule, so the dispatcher's `startActivity` for `LockActivity` lands.
+ *   background-activity-launch rule, so the dispatcher's `startActivity` for `LockActivity` lands. On
+ *   its own it shows our screen **once**: `LockActivity.onPause` deliberately does not re-raise itself
+ *   (the emergency-dialer finding), so the child presses Home and the screen is gone.
  * - **accessibility** — our accessibility service is bound. It is exempt from the same rule and
- *   re-raises the overlay over the first non-exempt window, so the lock applies even without overlay.
+ *   re-raises the overlay over the first non-exempt window from
+ *   `AccessibilityMonitorService.enforceLockState`, which is what makes a lock *hold*. Without it
+ *   neither path survives Home, so it is required for either one (ADR-0034).
  *
- * `pause` has no keyguard path on purpose: it must stay resumable by `resume`, so it never calls
- * `lockNow()`. Its viable paths are the overlay and the accessibility service.
+ * `lockNow()` (device admin) is **not** a path. It locks the child's own keyguard, shows nothing of
+ * ours, and the child's unlock ends it — measured on the Flip4 on 24 Oct, where the parent was told
+ * "locked" while the phone was usable and no OSRA screen could be launched. `adminLocked` stays in
+ * the signature because the dispatcher still calls `lockNow()`: it is a belt with the other two, and
+ * the ack's `via` never names it.
+ *
+ * `pause` has the same two paths and the same requirement: it must stay resumable by `resume`, so it
+ * never calls `lockNow()`.
+ *
+ * ADR-0034 derives the capability report's `ready` for `lock_screen` and `pause_screen` from this
+ * same predicate, so both are `ready` only while the accessibility service runs — an overlay-only
+ * phone is neither `ready` nor `degraded`, because nothing re-raises the screen after Home.
  *
  * `unlock`/`resume` have no refusal: by the time the outcome is decided `LockState` is already
  * cleared, so nothing of ours is still supposed to be on screen. What the ack reports instead is
@@ -42,7 +54,6 @@ object EnforceabilityPolicy {
 
     /** The path that can actually make a `lock` visible; its wire value is the ack's `detail.via`. */
     enum class LockPath(val wire: String) {
-        KEYGUARD("keyguard"),
         OVERLAY("overlay"),
         ACCESSIBILITY("accessibility"),
     }
@@ -66,31 +77,34 @@ object EnforceabilityPolicy {
     }
 
     /**
-     * `Applied(via=…)` when a path can show **our** lock screen; refused with
+     * `Applied(via=…)` when a path can show **and hold** our lock screen; refused with
      * [REASON_LOCK_SCREEN_UNAVAILABLE] otherwise.
      *
-     * Issue #368 (**ADR-0034**): a keyguard-only lock is **not** an applied lock. `lockNow()` does
-     * lock the screen, but nothing of ours appears, and the Flip4 measurement on 24 Oct showed the
-     * child's own unlock ends it — the parent was told "locked" while the phone was usable and no
-     * OSRA screen could be launched (`Background activity launch blocked`, result 102). So the
-     * keyguard alone no longer makes this an `Applied`: the overlay or the accessibility service has
-     * to be there. `adminLocked` is kept in the signature because the dispatcher still calls
-     * `lockNow()` on that path — it is a useful belt with `overlay`/`accessibility`, and the ack's
-     * `via` names whichever of those two existed.
+     * Issue #368 (**ADR-0034**): a keyguard-only lock is not an applied lock — `lockNow()` locks the
+     * child's own keyguard, nothing of ours appears, and the child's unlock ends it (Flip4, 24 Oct:
+     * the parent was told "locked" while the phone was usable, `Background activity launch blocked`,
+     * result 102).
+     *
+     * An **overlay-only** lock is not an applied lock either, for the same reason one step later:
+     * `LockActivity.onPause` does not re-raise itself, so with the accessibility service off the
+     * screen shows once, Home takes it away, and the ack has already said `ok`. Only
+     * `AccessibilityMonitorService.enforceLockState` brings it back. So the service is required, and
+     * `via` names the overlay when the app-op is also granted, because that is the path the
+     * dispatcher starts and the service then re-raises.
      */
     fun lockOutcome(canOverlay: Boolean, accessibilityRunning: Boolean, adminLocked: Boolean): CommandOutcome =
-        when {
-            canOverlay -> CommandOutcome.Applied(detail = mapOf("via" to LockPath.OVERLAY.wire))
-            accessibilityRunning -> CommandOutcome.Applied(detail = mapOf("via" to LockPath.ACCESSIBILITY.wire))
-            else -> CommandOutcome.Refused(REASON_LOCK_SCREEN_UNAVAILABLE)
+        if (!accessibilityRunning) {
+            CommandOutcome.Refused(REASON_LOCK_SCREEN_UNAVAILABLE)
+        } else {
+            CommandOutcome.Applied(detail = mapOf("via" to (if (canOverlay) LockPath.OVERLAY else LockPath.ACCESSIBILITY).wire))
         }
 
-    /** `Applied(via=…)` when the pause screen can appear; refused with the same reason as `lock`. */
+    /** The same rule for `pause`: applied only while the service can re-raise the screen; refused otherwise. */
     fun pauseOutcome(canOverlay: Boolean, accessibilityRunning: Boolean): CommandOutcome =
-        when {
-            canOverlay -> CommandOutcome.Applied(detail = mapOf("via" to PausePath.OVERLAY.wire))
-            accessibilityRunning -> CommandOutcome.Applied(detail = mapOf("via" to PausePath.ACCESSIBILITY.wire))
-            else -> CommandOutcome.Refused(REASON_LOCK_SCREEN_UNAVAILABLE)
+        if (!accessibilityRunning) {
+            CommandOutcome.Refused(REASON_LOCK_SCREEN_UNAVAILABLE)
+        } else {
+            CommandOutcome.Applied(detail = mapOf("via" to (if (canOverlay) PausePath.OVERLAY else PausePath.ACCESSIBILITY).wire))
         }
 
     /**

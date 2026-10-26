@@ -271,7 +271,8 @@ class CommandDispatcher @Inject constructor(
      * Issue #231 review D1: `startActivity` does not fail when the OS blocks a background launch, so
      * the ack is decided by [EnforceabilityPolicy] from the paths that can actually lock, not by the
      * handler returning. `LockState` is written first in every case — including a refusal — so the
-     * lock lands the moment the parent grants overlay or accessibility.
+     * lock lands the moment the parent turns the accessibility service on, which is what makes the
+     * screen hold (#389 review).
      */
     private fun lock(): CommandOutcome {
         // ADR-0010: a real screen lock when admin/owner permits it; the overlay stays up either way
@@ -295,7 +296,8 @@ class CommandDispatcher @Inject constructor(
 
     /**
      * Shows the paused overlay (never device-owner lockNow — pause must be resumable via "resume").
-     * Same D1 rule as [lock]: `Applied` only when the overlay can actually appear.
+     * Same D1 rule as [lock], plus #389: `Applied` only while the accessibility service can re-raise the
+     * screen. An overlay alone shows the pause once and Home ends it.
      */
     private fun pause(): CommandOutcome {
         com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED)

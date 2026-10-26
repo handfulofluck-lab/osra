@@ -124,7 +124,7 @@
   "commandFailed": "فشل الأمر: {error}",
   "commandRefusedBackgroundLocation": "لم يُرسل «{command}» إلى {device}: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.",
   "commandRefusedLocationPermission": "لم يُرسل «{command}» إلى {device}: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح OSRA ومنح إذن الموقع.",
-  "commandRefusedLockScreen": "لا يمكن ظهور شاشة القفل على هاتف طفلك: فعّل «العرض فوق التطبيقات الأخرى» أو إمكانية الوصول في OSRA على ذلك الهاتف.",
+  "commandRefusedLockScreen": "لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق OSRA على ذلك الهاتف.",
   "commandRefusedWebFilter": "لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.",
   "commandRefusedUnsupportedCommand": "يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.",
   "commandRefusedInvalidPayload": "رفض الهاتف إعدادات هذا الأمر.",

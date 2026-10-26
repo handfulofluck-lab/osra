@@ -11,6 +11,26 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Android — a lock that cannot hold is refused, not acked `ok` (#368, #389 review)
+- `EnforceabilityPolicy` no longer treats any path that can *show* the screen as an applied lock. A keyguard-only
+  lock was already refused; an **overlay-only** lock is now refused for the same reason one step later —
+  `LockActivity.onPause` deliberately does not re-raise itself (the emergency-dialer finding), so the screen
+  appears once, Home ends it, and `ok`/`via=overlay` was the same lie. Only
+  `AccessibilityMonitorService.enforceLockState` brings it back, so the accessibility service is required for both
+  `lock` and `pause`: applied as `via=overlay` when the app-op is also granted, `via=accessibility` when it is not,
+  refused with `lock_screen_unavailable` otherwise.
+- `LockState` is still written before the policy runs, so the lock takes hold the moment the service comes back.
+  `adminLocked` stays in the signature (the dispatcher still calls `lockNow()` as a belt) but no longer decides the
+  ack, and `LockPath.KEYGUARD` is gone.
+- The parent's refusal text stops offering the overlay as the fix, in both languages: *"The lock can't hold on your
+  child's phone: turn on OSRA's accessibility service there."* / *"لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة
+  إمكانية الوصول لتطبيق OSRA على ذلك الهاتف."*
+- ADR-0034 records that an overlay-only lock is neither `ready` nor `degraded`: `lock_screen` and `pause_screen`
+  are `ready` only while the service runs.
+- Tests: the lock is applied in three rows with the service on (overlay, overlay+admin, service alone) and refused
+  in four with it off (admin only, overlay only, overlay+admin, nothing); `pause` gets the same two rules. Mutant:
+  drop the `!accessibilityRunning` guard and three rows go green with `via=overlay`.
+
 ### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
 - The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
   no prompt tuning) scored **Arabic recall 0.97 `self_harm`, 1.00 `grooming`, 1.00 `sexual_content`,

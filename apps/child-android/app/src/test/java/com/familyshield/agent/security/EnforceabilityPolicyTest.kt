@@ -33,14 +33,43 @@ class EnforceabilityPolicyTest {
     // ---- lock ---------------------------------------------------------------------------------
 
     @Test
-    fun `lock is applied via the overlay when the overlay permission is granted`() {
+    fun `lock is applied via the overlay when the service is running and the overlay is granted`() {
+        val outcome = EnforceabilityPolicy.lockOutcome(
+            canOverlay = true,
+            accessibilityRunning = true,
+            adminLocked = false,
+        )
+
+        assertEquals("overlay", via(outcome))
+    }
+
+    /**
+     * #389 review: the accessibility service is what makes a lock **hold**. `LockActivity.onPause`
+     * deliberately does not re-raise itself, so an overlay-only lock shows once, Home takes it away,
+     * and an `ok` would be the same lie as the keyguard-only one this PR removed. Mutant: drop the
+     * `!accessibilityRunning` guard from `lockOutcome` and this row, the next one and the admin-only
+     * row all go green with `via=overlay`.
+     */
+    @Test
+    fun `an overlay-only lock is refused, because nothing re-raises it after Home`() {
         val outcome = EnforceabilityPolicy.lockOutcome(
             canOverlay = true,
             accessibilityRunning = false,
             adminLocked = false,
         )
 
-        assertEquals("overlay", via(outcome))
+        assertEquals("lock_screen_unavailable", refusal(outcome))
+    }
+
+    @Test
+    fun `an overlay and admin lock is still refused while the service is off`() {
+        val outcome = EnforceabilityPolicy.lockOutcome(
+            canOverlay = true,
+            accessibilityRunning = false,
+            adminLocked = true,
+        )
+
+        assertEquals("lock_screen_unavailable", refusal(outcome))
     }
 
     @Test
@@ -99,10 +128,18 @@ class EnforceabilityPolicyTest {
     // ---- pause --------------------------------------------------------------------------------
 
     @Test
-    fun `pause is applied via the overlay when the overlay permission is granted`() {
-        val outcome = EnforceabilityPolicy.pauseOutcome(canOverlay = true, accessibilityRunning = false)
+    fun `pause is applied via the overlay when the service is running and the overlay is granted`() {
+        val outcome = EnforceabilityPolicy.pauseOutcome(canOverlay = true, accessibilityRunning = true)
 
         assertEquals("overlay", via(outcome))
+    }
+
+    /** Same rule as `lock`: with the service off the pause screen is shown once and Home ends it. */
+    @Test
+    fun `a pause with only the overlay granted is refused`() {
+        val outcome = EnforceabilityPolicy.pauseOutcome(canOverlay = true, accessibilityRunning = false)
+
+        assertEquals("lock_screen_unavailable", refusal(outcome))
     }
 
     @Test
@@ -206,7 +243,7 @@ class EnforceabilityPolicyTest {
     fun `an applied lock carries the path the parent can rely on`() {
         val ack = CommandAckPolicy.ackFor(
             "c1",
-            EnforceabilityPolicy.lockOutcome(canOverlay = true, accessibilityRunning = false, adminLocked = false),
+            EnforceabilityPolicy.lockOutcome(canOverlay = true, accessibilityRunning = true, adminLocked = false),
         )!!
 
         assertEquals("ok", ack.status)
