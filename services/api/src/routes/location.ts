@@ -6,7 +6,7 @@ import { geofenceTransition, pickTransitionPair, type GeofencePoint } from "../l
 import { publishChildRules } from "../lib/ruleSync.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { requireFamily, requireParent, requirePermission } from "../middleware/requireFamily.js";
+import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 
@@ -319,7 +319,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Return the child's most recent location ping. */
-  app.get("/:childId/latest", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req, reply) => {
+  app.get("/:childId/latest", { preHandler: [requireGuardianRead("location"), requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" })] }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     const latest = await prisma.locationPing.findFirst({
       where: { childId },
@@ -330,7 +330,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** Return the child's ping history within an optional from/to window. */
-  app.get("/:childId/history", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req, reply) => {
+  app.get("/:childId/history", { preHandler: [requireGuardianRead("location"), requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" })] }, async (req, reply) => {
     const { childId } = req.params as { childId: string };
     const parsed = HistoryQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -354,7 +354,7 @@ export async function locationRoutes(app: FastifyInstance) {
   });
 
   /** List geofences for a child. */
-  app.get("/geofences/:childId", { preHandler: requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" }) }, async (req) => {
+  app.get("/geofences/:childId", { preHandler: [requireGuardianRead("location"), requireFamily({ param: "childId", model: "child", deviceAccess: "own-child" })] }, async (req) => {
     const { childId } = req.params as { childId: string };
     const geofences = await prisma.geofence.findMany({ where: { childId } });
     return { geofences };
