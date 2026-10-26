@@ -17,6 +17,7 @@ dependencies:
   intl: ^0.20.3
   shared_preferences: ^2.2.3
   qr_flutter: ^4.1.0
+  firebase_messaging: ^15.1.0
 
 dev_dependencies:
   flutter_test: { sdk: flutter }
