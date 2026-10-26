@@ -16,6 +16,21 @@ fun secret(name: String): String? = (localProps.getProperty(name) ?: System.gete
 val mapsApiKey = secret("MAPS_API_KEY") ?: ""
 val releaseStoreFile = secret("OSRA_UPLOAD_KEYSTORE")
 
+// #400 / #317: Firebase config is never committed. Without google-services.json the plugin must not be
+// applied — applying it unconditionally makes `:app:processDebugGoogleServices` fail the build — so the
+// build stays green and push is simply absent, which is what `FcmPushTokenSource` reports.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+} else if (releaseStoreFile != null) {
+    // A signed release without Firebase config would ship with no push token at all, silently — the
+    // false-green pattern from #361 applied to push (#400). CI without the upload keystore keeps the
+    // debug key and is allowed to build; anything that produces an uploadable artefact is not.
+    throw GradleException(
+        "google-services.json is missing for a signed release build (OSRA_UPLOAD_KEYSTORE is set). " +
+            "Add android/app/google-services.json, or unset OSRA_UPLOAD_KEYSTORE for a config-less build.",
+    )
+}
+
 android {
     namespace = "dev.familyshield.familyshield_parent"
     compileSdk = flutter.compileSdkVersion
