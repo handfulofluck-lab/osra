@@ -98,6 +98,8 @@ describe("guardian reads (ADR-0014 amendment)", () => {
   describe("every other gated read refuses a guardian the same way", () => {
     const cases: Array<{ name: string; build: () => Promise<any>; url: string; permission: string }> = [
       { name: "GET /v1/location/:childId/latest needs `location`", build: () => buildApp(locationRoutes, "/v1/location"), url: "/v1/location/child-1/latest", permission: "location" },
+      { name: "GET /v1/location/:childId/history needs `location`", build: () => buildApp(locationRoutes, "/v1/location"), url: "/v1/location/child-1/history", permission: "location" },
+      { name: "GET /v1/location/geofences/:childId needs `location`", build: () => buildApp(locationRoutes, "/v1/location"), url: "/v1/location/geofences/child-1", permission: "location" },
       { name: "GET /v1/social/events needs `social`", build: () => buildApp(socialRoutes, "/v1/social"), url: "/v1/social/events?childId=child-1", permission: "social" },
       { name: "GET /v1/content/searches needs `social`", build: () => buildApp(contentRoutes, "/v1/content"), url: "/v1/content/searches?childId=child-1", permission: "social" },
       { name: "GET /v1/reports/web needs `social`", build: () => buildApp(reportsRoutes, "/v1/reports"), url: "/v1/reports/web?childId=child-1", permission: "social" },
@@ -246,6 +248,38 @@ describe("guardian reads (ADR-0014 amendment)", () => {
       expect(telemetry).not.toHaveProperty("urls");
       await app.close();
     });
+  });
+
+  describe("GET /v1/devices/:id returns only named telemetry fields, to every reader (decision 2)", () => {
+    it("drops a field the schema doesn't name, even for the owner, and keeps the named ones and receivedAt", async () => {
+      const app = await buildApp(deviceRoutes, "/v1/devices");
+      caller("owner", []);
+      prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", childId: "child-1", familyId: "fam-1", platform: "android", status: "online", lastSeen: new Date() });
+      const redis = MockRedis.instances[MockRedis.instances.length - 1];
+      redis.get.mockImplementation(async (key: string) =>
+        key === "device:dev-1:telemetry"
+          ? JSON.stringify({ batteryPct: 50, urls: ["https://example.com"], receivedAt: "2026-10-26T13:00:00.000Z", contacts: ["planted"] })
+          : null,
+      );
+
+      const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: authHeader(app) });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().telemetry).toEqual({ batteryPct: 50, urls: ["https://example.com"], receivedAt: "2026-10-26T13:00:00.000Z" });
+      await app.close();
+    });
+  });
+
+  describe("GET /v1/family/export is owner-only (decision 6)", () => {
+    for (const role of ["co-parent", "guardian"]) {
+      it(`refuses a ${role}, even one holding every permission`, async () => {
+        const app = await buildApp(familyRoutes, "/v1/family");
+        caller(role, ["rules", "alerts", "location", "social", "devices"]);
+        const res = await app.inject({ method: "GET", url: "/v1/family/export", headers: authHeader(app) });
+        expect(res.statusCode).toBe(403);
+        expect(res.json()).toEqual({ error: "owner_role_required" });
+        await app.close();
+      });
+    }
   });
 
   describe("the push fan-out skips a guardian without `alerts` (decision 3)", () => {
