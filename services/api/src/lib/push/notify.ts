@@ -77,18 +77,21 @@ export function getPushProviders(): Map<PushPlatform, PushProvider> {
   return registry;
 }
 
-/** Web tokens are FCM tokens too (Firebase JS SDK), so they ride the Android provider. */
-function providerFor(platform: PushPlatform, providers: Map<PushPlatform, PushProvider>): PushProvider | undefined {
-  if (platform === "web") return providers.get("android");
-  if (platform === "ios") return providers.get("ios") ?? providers.get("android");
-  return providers.get(platform);
+/**
+ * A parent's token is always an FCM token: the parent app mints it with `firebase_messaging` on Android and
+ * on iOS alike (#360), and the Firebase JS SDK mints web tokens too. So every parent platform rides the FCM
+ * provider. APNs would answer BadDeviceToken for an FCM token, which reads as dead and would prune the row
+ * on every alert (#391 review). Raw APNs tokens are the child iPhone's only ([deviceWakeProviderFor]).
+ */
+function providerFor(_platform: PushPlatform, providers: Map<PushPlatform, PushProvider>): PushProvider | undefined {
+  return providers.get("android");
 }
 
 /**
  * The provider that can wake a child device. A child iPhone's token is a raw APNs token (5.5 PR D): only
  * APNs can deliver it, and only under the child agent's topic. FCM answers 400 INVALID_ARGUMENT for it,
- * which reads as a dead token and would clear it, so an iPhone never falls back to FCM here. Parents keep
- * the fallback in [providerFor].
+ * which reads as a dead token and would clear it, so an iPhone never falls back to FCM here. Parents' tokens
+ * are FCM tokens on every platform, so they go through [providerFor] instead.
  */
 function deviceWakeProviderFor(platform: PushPlatform, providers: Map<PushPlatform, PushProvider>): PushProvider | undefined {
   if (platform === "ios") {
