@@ -6,7 +6,13 @@ import fastifyJwt from "@fastify/jwt";
 import fastifyWebsocket from "@fastify/websocket";
 import { publishFamilyEvent, registerRealtime, subscriberErrorCount } from "../src/realtime/gateway.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis } from "./helpers.js";
+import { MockRedis, resetPrismaMock } from "./helpers.js";
+
+// #402: the gateway reads the subscriber's parent row; the default caller is an owner (never withheld).
+vi.mock("../src/db.js", async () => {
+  const { prismaMock } = await import("./helpers.js");
+  return { prisma: prismaMock };
+});
 
 vi.mock("ioredis", async () => {
   const { MockRedis } = await import("./helpers.js");
@@ -103,6 +109,7 @@ describe("realtime gateway — publish and fan-out evidence (#350)", () => {
 
   beforeEach(async () => {
     store.clear();
+    resetPrismaMock();
     const redis = getRedis() as unknown as MockRedis;
     // The mock is module-scoped (one instance per test file), so call history carries over between tests.
     redis.publish.mockClear();

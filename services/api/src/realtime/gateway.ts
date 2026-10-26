@@ -17,28 +17,43 @@ const socketsByFamily = new Map<string, Set<any>>();
  */
 const EVENT_PERMISSION: Record<string, "alerts" | "location"> = { alert: "alerts", location: "location" };
 
-/** What one socket may receive. `guardian: false` means no frame is ever withheld from it. */
-type SocketGate = { guardian: boolean; allowed: Set<string> };
+/**
+ * Who one socket belongs to, settled at connect. `open` means an owner or co-parent: their reads are
+ * not gated, so no frame is ever withheld from them. Everyone else (a guardian, a ticket from before
+ * this change, a parent the database could not answer for) is checked again on every gated frame.
+ */
+type SocketReader = { parentId: string | null; open: boolean };
 
-const OPEN_GATE: SocketGate = { guardian: false, allowed: new Set() };
+const socketReaders = new WeakMap<object, SocketReader>();
 
-const socketGates = new WeakMap<object, SocketGate>();
+async function readerFor(parentId: string | null): Promise<SocketReader> {
+  if (!parentId) return { parentId: null, open: false };
+  try {
+    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { role: true } });
+    if (row && row.role !== "guardian") return { parentId, open: true };
+  } catch {
+    // Unknown is not open: the frame-time check below decides, and it fails closed.
+  }
+  return { parentId, open: false };
+}
 
 /**
- * Resolve a subscriber's gate once, at connect. A device or an unknown parent gets `OPEN_GATE`: the
- * ticket route already refuses anything that is not a live parent session, and the amendment gates
- * guardians, not absence.
+ * The delivery-time check for a socket that is not `open` (#402 ruling): the parent row is read for
+ * each gated frame, so removing a guardian's permission stops frames on a socket that is already open.
+ * It fails closed: no parent id, a database error or a missing permission withholds the frame, and a
+ * parent row that no longer exists also closes the socket.
  */
-async function gateFor(parentId: string | null): Promise<SocketGate> {
-  if (!parentId) return OPEN_GATE;
-  // A failure here is not a reason to refuse a socket: the ticket already proved a live parent
-  // session, and closing the stream on a transient database error would be a new outage path.
+async function mayRead(ws: { close: (code: number, reason: string) => void }, reader: SocketReader | undefined, permission: string): Promise<boolean> {
+  if (!reader?.parentId) return false;
   try {
-    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { role: true, permissions: true } });
-    if (!row || row.role !== "guardian") return OPEN_GATE;
-    return { guardian: true, allowed: new Set(row.permissions) };
+    const row = await prisma.parent.findUnique({ where: { id: reader.parentId }, select: { role: true, permissions: true } });
+    if (!row) {
+      ws.close(4001, "unauthorized");
+      return false;
+    }
+    return row.role !== "guardian" || row.permissions.includes(permission);
   } catch {
-    return OPEN_GATE;
+    return false;
   }
 }
 
@@ -171,9 +186,10 @@ export function registerRealtime(app: FastifyInstance) {
         const familyId = parsed.familyId ?? "";
         if (!familyId) throw new Error("invalid ticket");
         await redis.del(`ws:ticket:${query.ticket}`).catch(() => {});
+        // Settled before the socket joins the set, so no frame can reach it while this is pending.
+        socketReaders.set(socket, await readerFor(parsed.parentId ?? null));
         const set = socketsByFamily.get(familyId) ?? new Set();
         set.add(socket);
-        socketGates.set(socket, await gateFor(parsed.parentId ?? null));
         socketsByFamily.set(familyId, set);
         socket.on("close", () => set.delete(socket));
         // TR-05: tell the client its subscription is live. Until this frame arrives the client has
@@ -209,17 +225,23 @@ export function registerRealtime(app: FastifyInstance) {
     // `type` is already parsed above for the log line; an unknown type is never withheld, so a new event
     // is open by default rather than silently dropped.
     const needed = EVENT_PERMISSION[type];
+    let checked = 0;
     for (const ws of set) {
-      if (ws.readyState === 1) {
-        const gate = socketGates.get(ws);
-        if (needed && gate?.guardian && !gate.allowed.has(needed)) continue;
-        ws.send(message);
-        written += 1;
+      if (ws.readyState !== 1) continue;
+      const reader = socketReaders.get(ws);
+      if (needed && !reader?.open) {
+        checked += 1;
+        void mayRead(ws, reader, needed).then((ok) => {
+          if (ok && ws.readyState === 1) ws.send(message);
+        });
+        continue;
       }
+      ws.send(message);
+      written += 1;
     }
     // `sockets` is the set's size and `written` what actually left; a CLOSING/CLOSED socket is counted
     // in the first and not the second, which is the gap that makes a miss look like a delivery.
-    gatewayLog?.info({ familyId, type, listening: true, written, sockets: set.size }, "realtime fan-out");
+    gatewayLog?.info({ familyId, type, listening: true, written, checked, sockets: set.size }, "realtime fan-out");
   });
 }
 

@@ -5,7 +5,7 @@ import fastifyJwt from "@fastify/jwt";
 import fastifyWebsocket from "@fastify/websocket";
 import { registerRealtime } from "../src/realtime/gateway.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, prismaMock } from "./helpers.js";
+import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -69,6 +69,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
   beforeEach(async () => {
     store.clear();
+    resetPrismaMock(); // the default caller is an owner, whose frames are never withheld
     const redis = getRedis() as unknown as MockRedis;
     redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
     redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
@@ -194,9 +195,10 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
   });
 
   it("sends an alert frame to a guardian that holds `alerts`, and to a co-parent with no permissions", async () => {
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"] } : { role: "co-parent", permissions: [] },
+    );
     const guardian = await subscribe("guardian-2");
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "co-parent", permissions: [] });
     const coparent = await subscribe("coparent-1");
 
     const pmessage = subscriberPmessageHandler();
@@ -208,5 +210,54 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     expect(coparent.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
     guardian.ws.close();
     coparent.ws.close();
+  });
+  // #402 ruling: a guardian socket is checked on every gated frame, and the check fails closed.
+  const settle = () => new Promise((r) => setTimeout(r, 50));
+
+  it("stops alert frames on an open socket as soon as the guardian's `alerts` is removed", async () => {
+    let permissions = ["alerts", "location"];
+    prismaMock.parent.findUnique.mockImplementation(async () => ({ role: "guardian", permissions }));
+    const c = await subscribe("guardian-3");
+    const pmessage = subscriberPmessageHandler();
+
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "before" } }));
+    await c.waitFor(() => c.frames.length >= 2);
+
+    permissions = ["location"]; // the owner edits the invite; the socket stays open
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "after" } }));
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "location", payload: { childId: "c" } }));
+    await c.waitFor(() => c.frames.length >= 3);
+    await settle();
+
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "alert", "location"]);
+    c.ws.close();
+  });
+
+  it("withholds a gated frame when the database cannot answer, and still sends an ungated one", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    const c = await subscribe("guardian-4");
+    prismaMock.parent.findUnique.mockRejectedValue(new Error("db down"));
+    const pmessage = subscriberPmessageHandler();
+
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "x" } }));
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "consent_revoked", payload: {} }));
+    await c.waitFor(() => c.frames.length >= 2);
+    await settle();
+
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "consent_revoked"]);
+    c.ws.close();
+  });
+
+  it("closes the socket with 4001 when the guardian's parent row no longer exists", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    const c = await subscribe("guardian-5");
+    prismaMock.parent.findUnique.mockResolvedValue(null);
+    const pmessage = subscriberPmessageHandler();
+
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "x" } }));
+    await c.waitFor(() => c.close() !== null);
+
+    expect(c.close()).toBe(4001);
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
   });
 });
