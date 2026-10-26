@@ -69,6 +69,19 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
           echo "OSRA_UPLOAD_KEYSTORE=upload.jks" >> "$GITHUB_ENV"
           echo "upload keystore materialised"
+      # #400: the moment OSRA_UPLOAD_KEYSTORE_B64 exists, the Gradle build refuses a signed release that
+      # has no google-services.json (app/build.gradle.kts). This step has to materialise it first, or every
+      # release build fails with "google-services.json is missing for a signed release build".
+      - name: Materialise Firebase config (if configured)
+        env:
+          GOOGLE_SERVICES_B64: ${{ secrets.PARENT_GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_B64" ]; then
+            echo "PARENT_GOOGLE_SERVICES_JSON_B64 not set — push stays absent unless a config is committed for a local build"
+            exit 0
+          fi
+          echo "$GOOGLE_SERVICES_B64" | base64 -d > android/app/google-services.json
+          echo "google-services.json materialised"
       - name: Release build (AAB)
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
