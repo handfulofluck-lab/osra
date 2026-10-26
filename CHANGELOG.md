@@ -11,6 +11,25 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### Parent app — a push wake now becomes a notification (#360, roadmap 3.9)
+- The pushed payload is data-only (`{ "w": "1" }`): it says an alert exists, never what it says, because an OS
+  service sees the payload. So the wake reads `GET /v1/alerts?ack=false` and decides what the parent has not seen.
+- `BackgroundAlertWake` holds the whole rule and takes every side effect as a seam: no `jwt` → nothing is fetched or
+  shown; a `401` ends the wake and **never refreshes** (a background refresh could rotate a token under a live
+  session — the next foreground launch refreshes, and the alert is still there); a failed fetch shows nothing and
+  stores nothing, so the next wake retries.
+- `planNotifications` (pure, 7 rows) drops acknowledged alerts, drops ids already shown, drops a duplicate inside one
+  page, and keeps the **newest** when the backlog exceeds the cap — returned oldest-first so the newest wins the
+  shade. The shown-id store is bounded at 50.
+- Notifications are posted with a stable id per alert, so a redelivered wake replaces the row instead of stacking.
+  The plugin is `flutter_local_notifications` 21; the text is the server's own, because the background isolate has no
+  locale context. Nothing is requested from the OS there — registration already asked (#391).
+- `main.dart` registers the FCM background handler only when Firebase can initialise, so a build with no
+  `google-services.json` stays the three-shape case it was (#317) and skips this silently.
+- **⚠️ not measured:** Android delivery needs a device with the app installed and a real FCM send; that is Claude's
+  row. iOS delivery needs the APNs key in Firebase, which is Karim's queue — until then an iPhone `getToken()` returns
+  nothing and this path is unexercised, not broken. The tests cover the decisions, not the delivery.
+
 ### Android — a lock that cannot hold is refused, not acked `ok` (#368, #389 review)
 - `EnforceabilityPolicy` no longer treats any path that can *show* the screen as an applied lock. A keyguard-only
   lock was already refused; an **overlay-only** lock is now refused for the same reason one step later —

@@ -24,6 +24,12 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // `flutter_local_notifications` 21 uses java.time, which needs the desugared
+        // library on minSdk < 26. Without this the release build fails at
+        // `:app:checkReleaseAarMetadata` with "requires core library desugaring" —
+        // and `flutter test` never builds the bundle, so the suite cannot catch it
+        // (#395 review).
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -70,6 +76,11 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    // Pairs with isCoreLibraryDesugaringEnabled above (#395 review).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

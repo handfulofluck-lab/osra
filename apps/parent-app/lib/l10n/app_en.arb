@@ -1130,6 +1130,7 @@
   "alertTitleInstallRequest": "App install request",
   "alertTitleUnknownContact": "Unknown contact",
   "alertTitleGeneric": "Alert",
+  "alertPushBodyGeneric": "Open OSRA to see the details.",
   "riskSelfHarm": "Self-harm",
   "riskSubstanceUse": "Substance use",
   "riskSubstanceAbuse": "Substance abuse",
