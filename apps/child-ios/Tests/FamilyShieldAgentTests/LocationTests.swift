@@ -256,6 +256,54 @@ final class LocationTests: XCTestCase {
         XCTAssertTrue(StubProtocol.requests.isEmpty)
     }
 
+    func testAFixCoreLocationAlreadyHeldIsReportedCachedAndAStaleOneIsNoAnswer() async {
+        pair()
+        let now = Date()
+        StubProtocol.response = (201, Data("{}".utf8))
+        source.nextFix = location(ageSeconds: 30, now: now)
+        let recent = await controller.locateNow(now: now)
+        XCTAssertEqual(recent, .ok(fix: "fresh"), "under a minute old is fresh")
+
+        source.nextFix = location(ageSeconds: 120, now: now)
+        let held = await controller.locateNow(now: now)
+        XCTAssertEqual(held, .ok(fix: "cached"), "requestLocation() answered with a fix it already held (Claude on #390)")
+
+        StubProtocol.reset()
+        source.nextFix = location(ageSeconds: 6 * 60, now: now)
+        source.lastFix = nil
+        let stale = await controller.locateNow(now: now)
+        XCTAssertEqual(stale, .failed(reason: "location_unavailable"), "over five minutes is not where the child is now")
+        XCTAssertTrue(StubProtocol.requests.isEmpty)
+    }
+
+    // MARK: - One request for a fix at a time (Claude on #390)
+
+    func testATimerFromAnEarlierRequestDoesNotEndALaterOne() async throws {
+        let oneShot = OneShotFix()
+        let first = Task { await oneShot.wait(timeout: 0.3) {} }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let second = Task { await oneShot.wait(timeout: 5) {} }
+        let superseded = await first.value
+        XCTAssertNil(superseded, "a newer request supersedes the older one, which falls back to the cached fix")
+        // Past the first request's 0.3 s timer: the second must still be waiting for its own fix.
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertTrue(oneShot.isWaiting, "the earlier request's timer ended the later one")
+        let fix = location(ageSeconds: 0)
+        oneShot.resolve(fix)
+        let answered = await second.value
+        XCTAssertEqual(answered, fix)
+    }
+
+    func testARequestEndsOnItsOwnTimeoutAndAFixAnswersItOnce() async {
+        let oneShot = OneShotFix()
+        var started = 0
+        let timedOut = await oneShot.wait(timeout: 0.1) { started += 1 }
+        XCTAssertNil(timedOut)
+        XCTAssertEqual(started, 1)
+        XCTAssertFalse(oneShot.isWaiting)
+        oneShot.resolve(location(ageSeconds: 0)) // nothing waiting: ignored, no double resume
+    }
+
     func testLocateNowRefusesWithTheAndroidReasons() async {
         pair()
         source.nextFix = location(ageSeconds: 0)
