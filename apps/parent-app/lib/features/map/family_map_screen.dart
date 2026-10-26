@@ -8,9 +8,11 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../api/permission_errors.dart';
 
 /// Marker hue per device status.
 double _statusHue(String status) => switch (status) {
@@ -61,7 +63,7 @@ class FamilyMapScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load family: $e')),
+        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => 'Failed to load family: $e'))),
         data: (overview) => _MapBody(overview: overview),
       ),
     );
