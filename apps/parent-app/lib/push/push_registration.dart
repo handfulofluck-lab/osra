@@ -24,7 +24,7 @@ enum PushPermission {
 /// `firebase_messaging` on Android and on iOS, and [defaultPushSource] is the
 /// seam a test replaces. [UnavailablePushTokenSource] remains for the case where
 /// Firebase has no configuration at all, so an unsupported build reports
-/// [PushTokenState.unavailable] instead of pretending a token exists.
+/// [PushPermission.unavailable] instead of pretending a token exists.
 abstract class PushTokenSource {
   /// Ask the OS. Must not throw: a refusal is [PushPermission.denied].
   Future<PushPermission> requestPermission();
