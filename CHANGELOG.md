@@ -11,6 +11,20 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
+### iOS — the parent app links plugins through CocoaPods, so a plugin without SPM can build (#392)
+- The `parent-app-ios` job failed on three heads with three different symptoms and one cause: the Xcode target
+  links plugins only through Swift Package Manager, and `firebase_messaging` ships a podspec and no
+  `Package.swift`. Flutter's tool says so in its own warning ("has not adopted Swift Package Manager"), and
+  `flutter build ios` refuses the combination.
+- The target is conventional again: `Runner.xcodeproj` carries no `FlutterGeneratedPluginSwiftPackage`
+  reference, `ios/Podfile` is committed from the pinned SDK's stock `Podfile-ios` template with
+  `platform :ios, '15.0'` matching `IPHONEOS_DEPLOYMENT_TARGET`, and the job sets
+  `flutter config --no-enable-swift-package-manager` before any build.
+- The job now checks the two halves agree — no SPM reference **and** a Podfile — and fails with the reason
+  before Xcode runs, because a half-migration fails to link *inside* Xcode where the cause is invisible.
+- Acceptance for #392 is this job: it builds a plugin that has no SPM support, which is exactly the case
+  `flutter build ios` refuses off the CocoaPods path. Recorded in `docs/TESTING.md` §4.
+
 ### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
 - The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
   no prompt tuning) scored **Arabic recall 0.97 `self_harm`, 1.00 `grooming`, 1.00 `sexual_content`,

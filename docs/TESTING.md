@@ -418,6 +418,23 @@ nothing either way. What the job runs on `macos-14`:
 - `flutter pub get`, then `flutter build ios --release --no-codesign`. `--no-codesign` means no certificate, no
   provisioning profile and no Apple account; on a public repository the macOS runner minutes are free.
 
+**Which plugin system (2026-10-26, #392).** Plugins link through **CocoaPods**, not Swift Package Manager. A Flutter
+plugin chooses its own integration, and `firebase_messaging` ships a podspec and no `Package.swift`, so an SPM-only
+target cannot compile it: Flutter's tool warns the plugin "has not adopted Swift Package Manager" and
+`flutter build ios` refuses the combination. Three things hold that, and the job checks the first two before it
+builds:
+
+- `flutter config --no-enable-swift-package-manager`, run before any build (the flag is global to the tool);
+- `ios/Podfile` committed — the pinned SDK's stock `Podfile-ios` template, with `platform :ios, '15.0'` matching
+  `IPHONEOS_DEPLOYMENT_TARGET` in `Runner.xcodeproj`;
+- no `FlutterGeneratedPluginSwiftPackage` reference in `Runner.xcodeproj`.
+
+It fails with a named reason when either half is missing, because a project that still references the ephemeral
+package while the tool builds Pods fails to link *inside Xcode*, where the cause is invisible. Re-enabling SPM
+later is one change — flag, project migration (`XCLocalSwiftPackageReference` plus the product dependency) and
+Podfile removal together — never half. Mutant for the guard: re-add the `packageReferences` entry to
+`project.pbxproj` and the "half done" step fails before the build starts.
+
 **When it runs.** A macOS minute bills as ten Linux minutes once the repository is private, and the job takes 3–5
 minutes, so a small `ios-scope` job on `ubuntu-latest` decides first. A pull request or a push to `main` builds iOS
 only when it changes `apps/parent-app/ios/**`, `apps/parent-app/pubspec.yaml`, `apps/parent-app/pubspec.lock` or
