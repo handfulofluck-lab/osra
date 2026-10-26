@@ -42,6 +42,18 @@ class RecordingNotifier implements LocalNotifier {
 /// about what the lock screen says.
 VisibleAlert passthrough(Alert a) => VisibleAlert(alertId: a.id, title: a.title, body: a.body);
 
+/// Posts everything except one id, which throws — the shape of a platform
+/// channel that refuses mid-loop (#395 review F5).
+class ThrowingNotifier implements LocalNotifier {
+  ThrowingNotifier({required this.failOn});
+  final String failOn;
+
+  @override
+  Future<void> show(VisibleAlert alert) async {
+    if (alert.alertId == failOn) throw StateError('post failed');
+  }
+}
+
 void main() {
   group('planNotifications', () {
     test('shows unacknowledged alerts oldest first, so the newest wins the shade', () {
@@ -228,6 +240,26 @@ void main() {
       notifier.shown.clear();
       expect(await wake(fetch: AlertFetchOk(second)).run(), WakeOutcome.shown);
       expect(notifier.shown.map((v) => v.alertId), ['a8']);
+    });
+
+    test('a post that fails stores nothing and is a failure, not a crash, so the next wake shows it again', () async {
+      final w = BackgroundAlertWake(
+        readJwt: () async => 'session-token',
+        fetchAlerts: (_) async => AlertFetchOk([alert('a'), alert('b', at: '2026-10-26T11:00:00.000Z')]),
+        notifier: ThrowingNotifier(failOn: 'b'),
+        readShown: () async => {...stored},
+        writeShown: (ids) async {
+          writes++;
+          stored = {...ids};
+        },
+        toVisible: passthrough,
+      );
+
+      // #395 review F5: without this, moving writeShown before the posts survives
+      // the suite, and a throw escapes the background isolate.
+      expect(await w.run(), WakeOutcome.failed);
+      expect(writes, 0);
+      expect(stored, isEmpty);
     });
 
     test('a 401 reads the session exactly once, so there is no refresh attempt', () async {

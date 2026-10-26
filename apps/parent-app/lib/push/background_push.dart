@@ -118,8 +118,17 @@ class BackgroundAlertWake {
     final plan = planNotifications(alerts: alerts, alreadyShown: shown);
     if (plan.isEmpty) return WakeOutcome.nothingNew;
 
-    for (final alert in plan.toShow) {
-      await notifier.show(toVisible(alert));
+    try {
+      for (final alert in plan.toShow) {
+        await notifier.show(toVisible(alert));
+      }
+    } catch (_) {
+      // A post failed: write nothing, so the next wake shows these again. The
+      // stable notification id per alert means a row that did post is replaced,
+      // not stacked. Returning instead of throwing also matches [WakeOutcome]'s
+      // promise that no path throws, which is what a background isolate needs
+      // (#395 review F5).
+      return WakeOutcome.failed;
     }
 
     final merged = {...shown, ...plan.remember};
