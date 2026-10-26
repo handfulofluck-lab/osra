@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
-import { requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
@@ -111,6 +111,9 @@ const TelemetrySchema = z
     locationGrant: z.enum(LOCATION_GRANT_STATES).optional(),
   })
   .passthrough();
+
+/** What `GET /v1/devices/:id` returns from the stored telemetry: the named fields and `receivedAt`. */
+const TELEMETRY_READ_FIELDS = new Set<string>([...Object.keys(TelemetrySchema.shape), "receivedAt"]);
 
 const ActivityBatchSchema = z.object({
   events: z
@@ -366,7 +369,20 @@ export async function deviceRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: "forbidden" });
     }
     const device = (req as unknown as { device: { id: string } }).device;
-    const telemetry = await getJson(`device:${device.id}:telemetry`);
+    const stored = await getJson(`device:${device.id}:telemetry`);
+    // ADR-0014 amendment, decision 2. `TelemetrySchema` is `.passthrough()`, so the stored blob keeps
+    // whatever an agent sent; this read returns only the schema's named fields plus `receivedAt`, for
+    // every reader. `urls` is browsing content, so a guardian without `social` doesn't get it either.
+    const perms = await guardianPermissions(req);
+    const withholdUrls = perms !== null && !perms.includes("social");
+    const telemetry =
+      stored && typeof stored === "object"
+        ? Object.fromEntries(
+            Object.entries(stored as Record<string, unknown>).filter(
+              ([key]) => TELEMETRY_READ_FIELDS.has(key) && !(withholdUrls && key === "urls"),
+            ),
+          )
+        : stored;
     return { device: sanitizeDevice(device), telemetry };
   });
 

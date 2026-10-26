@@ -5,7 +5,7 @@ import { raiseAlert } from "../lib/alerts.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 
 const ScanSchema = z.object({
@@ -160,7 +160,7 @@ export async function socialRoutes(app: FastifyInstance) {
    * vault, e.g. "Message previews are encrypted at rest and only visible to parents" — the
    * vault exists to protect the child, and parents must know exactly who can read it.
    */
-  app.get("/events", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
+  app.get("/events", { preHandler: [requireParent, requireGuardianRead("social"), requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
     const parsed = EventsQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;

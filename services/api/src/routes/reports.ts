@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireFamily, requireParent } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { computeWellbeingScore, currentIsoWeek, summarizeChildActivity } from "../lib/activitySummary.js";
 import { usageSeries, webHistory } from "../lib/usageModel.js";
 
@@ -37,7 +37,7 @@ const WellbeingQuerySchema = z.object({
 
 export async function reportsRoutes(app: FastifyInstance) {
   /** Persisted device activity for a child, newest first, family-scoped (#4). */
-  app.get("/activity", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
+  app.get("/activity", { preHandler: [requireParent, requireGuardianRead("social"), requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
     const parsed = ActivityReportQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;
@@ -60,7 +60,13 @@ export async function reportsRoutes(app: FastifyInstance) {
     const parsed = SummaryQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const summary = await summarizeChildActivity(parsed.data.childId, parsed.data.days);
-    return { childId: parsed.data.childId, days: parsed.data.days, ...summary };
+    // ADR-0014 amendment, decision 5's exception: the counts stay for every family adult, but domain
+    // names are browsing content, and `GET /v1/reports/web?blocked=true` already refuses a guardian
+    // without `social`. The same reader must not get them here instead.
+    const perms = await guardianPermissions(req);
+    const body: Record<string, unknown> = { ...summary };
+    if (perms !== null && !perms.includes("social")) delete body.topBlockedDomains;
+    return { childId: parsed.data.childId, days: parsed.data.days, ...body };
   });
 
   /**
@@ -80,7 +86,7 @@ export async function reportsRoutes(app: FastifyInstance) {
   });
 
   /** Phase 2c: browsing history from `WebVisit`, newest first, filterable by blocked/domain. */
-  app.get("/web", { preHandler: [requireParent, requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
+  app.get("/web", { preHandler: [requireParent, requireGuardianRead("social"), requireFamily({ param: "childId", model: "child", source: "query" })] }, async (req, reply) => {
     const parsed = WebQuerySchema.safeParse(req.query ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const q = parsed.data;

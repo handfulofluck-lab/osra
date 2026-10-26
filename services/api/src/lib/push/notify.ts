@@ -140,7 +140,16 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     const prefs = await prisma.digestPrefs.findUnique({ where: { familyId } });
     if (prefs && prefs.pushEnabled === false) return { ...outcome, skipped: "prefs" };
 
-    const parents = await prisma.parent.findMany({ where: { familyId }, select: { id: true } });
+    // ADR-0014 amendment, decision 3: a guardian without `alerts` must not be pushed an alert either,
+    // or the gate on `GET /v1/alerts` would be cosmetic — the push *is* the alert text on a lock
+    // screen. Owners and co-parents are unaffected, which is why only guardians are filtered.
+    const parents = await prisma.parent.findMany({
+      where: {
+        familyId,
+        OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+      },
+      select: { id: true },
+    });
     const tokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
     if (tokens.length === 0) return { ...outcome, skipped: "no_tokens" };
 

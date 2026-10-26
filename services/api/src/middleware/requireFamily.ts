@@ -160,6 +160,61 @@ export function requirePermission(permission: Permission) {
   };
 }
 
+/**
+ * preHandler factory for a **read**, from the ADR-0014 amendment of 2026-10-26 (roadmap 2.7).
+ *
+ * A guardian reads what its invite permits; owners and co-parents are unchanged. This is deliberately
+ * not [requirePermission]: that one discriminates "owner" from everyone else and gates writes, while
+ * the amendment re-cut exactly one role — a co-parent keeps every read even with no permissions, and
+ * a guardian loses the reads its permissions do not cover.
+ *
+ * A device token is untouched (decision 4): the child's own device keeps its own-child location
+ * reads, which carry no `requireParent`, so the check has to skip a non-parent session rather than
+ * assume one. Without that, adding this to a location route would lock the child's agent out of the
+ * very reads the amendment says stay open.
+ */
+export function requireGuardianRead(permission: Permission) {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    // The location reads carry no `requireParent`, so `req.user` is not decoded yet when this runs
+    // first in their preHandler list. Without this the gate would be inert on exactly the routes
+    // decision 4 is about — silently letting a guardian through, which a test caught.
+    if (!req.user) {
+      try {
+        await req.jwtVerify();
+      } catch {
+        return;
+      }
+    }
+    const user = req.user as { role?: string } | undefined;
+    if (user?.role !== "parent") return;
+
+    const parent = await loadParentRole(req);
+    if (!parent) {
+      await reply.code(404).send({ error: "parent_not_found" });
+      return;
+    }
+    if (parent.role !== "guardian") return;
+    if (parent.permissions.includes(permission)) return;
+    await reply.code(403).send({ error: "permission_required", permission });
+  };
+}
+
+/**
+ * The permissions a guardian's invite granted, or `null` when the caller is not a guardian.
+ *
+ * For the **embedded** half of the amendment (decision 2): a route that returns a broad object has to
+ * omit a field a narrow read would refuse, and it needs the same role-and-permissions answer without
+ * turning a 200 into a 403. Owners, co-parents and device tokens all get `null`, which means "no
+ * field is withheld from you".
+ */
+export async function guardianPermissions(req: FastifyRequest): Promise<string[] | null> {
+  const user = req.user as { role?: string } | undefined;
+  if (user?.role !== "parent") return null;
+  const parent = await loadParentRole(req);
+  if (!parent || parent.role !== "guardian") return null;
+  return parent.permissions;
+}
+
 
 /**
  * preHandler factory: loads a family-scoped resource, verifies it belongs to the
