@@ -153,7 +153,7 @@ The digest row is keyed by **family**, not by parent, so since #354 writing it a
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `GET /v1/digests/prefs` | digests 158 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/digests/prefs` | digests 159 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `PUT /v1/digests/prefs` | digests 177 | 200 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/digests/send-now` | digests 271 | 200 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/me/push-token` | me 21 | 201 | 201 | 201 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
@@ -233,66 +233,66 @@ the probe environment, Q3 and Q4 report `target`, the way G18 does.
 `Co`/`Gu` count as covered when the refusal (`403p`/`403o`) is asserted for that role. The "with the
 permission → 2xx" half is listed separately where a test has it.
 
-- **`GET /v1/alerts`**: Ow t:alerts.test.ts:27 · Own dev. and sibling `403r` t:alerts.test.ts:462 · GAP: Co, Gu.
-- **`POST /v1/alerts/:id/ack`**: Ow t:alerts.test.ts:84 · Co with and without `alerts` t:sessions-and-roles.test.ts:351, p:N7 · OF t:alerts.test.ts:474 · GAP: Gu, devices.
+- **`GET /v1/alerts`**: Ow t:alerts.test.ts:27 · Own dev. and sibling `403r` t:alerts.test.ts:462 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`POST /v1/alerts/:id/ack`**: Ow t:alerts.test.ts:84 · Co with and without `alerts` t:sessions-and-roles.test.ts:351, p:N7 · OF t:alerts.test.ts:474 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/devices/register`**: Ow t:devices.test.ts:120 · Co without `devices` t:devices.test.ts:143, p:N6b · OF t:devices.test.ts:221, p:B8 · Own dev. `403r` t:devices.test.ts:245 · Consent t:consent.test.ts:434 · GAP: Gu.
 - **`POST /v1/devices/pair`**: Ow t:pairing.test.ts:65 · Co t:pairing.test.ts:95, p:N6c · OF t:pairing.test.ts:123 · Own dev. t:pairing.test.ts:145 · Consent t:consent.test.ts:417 · GAP: Gu.
 - **`POST /v1/devices/pair/claim`**: live code t:pairing.test.ts:159 · unknown or expired t:pairing.test.ts:301 · reuse t:pairing.test.ts:314 · GAP: the consent 428 at claim time.
-- **`GET /v1/devices`**: Ow t:devices.test.ts:258 · Own dev. p:G3 · GAP: Co, Gu.
-- **`GET /v1/devices/:id`**: Ow t:devices.test.ts:276 · Sibling `403f` p:G4, p:G5 (no secret leaked) · GAP: Own dev., Co, Gu, OF.
+- **`GET /v1/devices`**: Ow t:devices.test.ts:258 · Own dev. p:G3 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/devices/:id`**: Ow t:devices.test.ts:276 · Sibling `403f` p:G4, p:G5 (no secret leaked) · Co, Gu p:Q6c, p:Q6d · GAP: Own dev., OF.
 - **`GET /v1/devices/:id/apps`**: Ow t:device-apps.test.ts:206 · Co without and with `rules` t:device-apps.test.ts:263, p:N6f · OF t:device-apps.test.ts:246, p:G26 · devices `403r` t:device-apps.test.ts:246 · GAP: Gu.
 - **`POST /v1/devices/:id/apps`**: Ow and Gu `403d` t:device-apps.test.ts:164 · Own dev. t:device-apps.test.ts:32, p:G24 · Sibling t:device-apps.test.ts:137, p:G27 · OF t:device-apps.test.ts:137 · Consent t:device-apps.test.ts:184, p:J3e · GAP: Co.
-- **`POST /v1/devices/:id/command`**: Ow t:devices.test.ts:22 · Co without `devices` p:N6 · OF t:devices.test.ts:69, p:B3 · Consent t:consent.test.ts:239, p:J3c · GAP: Gu, own dev. `403r`.
+- **`POST /v1/devices/:id/command`**: Ow t:devices.test.ts:22 · Co without `devices` p:N6 · OF t:devices.test.ts:69, p:B3 · Consent t:consent.test.ts:239, p:J3c · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`GET /v1/devices/:id/commands`**: Own dev. t:devices.test.ts:45, p:K1 · Ow `403d` t:devices.test.ts:45, p:B11 · Consent t:consent.test.ts:211, p:J3b · GAP: Co, Gu, OF, sibling.
 - **`POST /v1/devices/:id/commands/:commandId/ack`**: Own dev. t:mfa-reset.test.ts:977, p:K3 · GAP: parents, OF, sibling. The e2e has "parent cannot ack a device command (403)" (`e2e.mjs`), but e2e isn't one of the coverage sources here.
-- **`GET /v1/devices/:id/commands/history`**: Ow t:devices.test.ts:816, p:B11b · GAP: Co, Gu, OF, devices.
+- **`GET /v1/devices/:id/commands/history`**: Ow t:devices.test.ts:816, p:B11b · Co, Gu p:Q6c, p:Q6d · OF p:Q8 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/devices/:id/push-token`**: Own dev. t:devices.test.ts:311, p:P1 · Sibling t:devices.test.ts:333, p:P2 · Ow and Co `403d` t:devices.test.ts:356, p:P3, p:N6d · GAP: Gu, OF.
 - **`POST /v1/devices/:id/telemetry`**: Ow `403d` t:devices.test.ts:607 · Own dev. t:devices.test.ts:542, p:G21 · Sibling t:devices.test.ts:607, p:G20 · OF t:devices.test.ts:590 · GAP: Co, Gu, Consent (p:J3b covers ping, rules and commands, not telemetry).
 - **`POST /v1/devices/:id/activity`**: Ow `403d` t:devices.test.ts:652 · Own dev. t:devices.test.ts:703 · Sibling t:devices.test.ts:652 · OF t:social.test.ts:311 · GAP: Co, Gu, Consent.
 - **`DELETE /v1/devices/:id`**: Ow t:devices.test.ts:768 · Own dev. `403r` t:devices.test.ts:768 · GAP: Co, Gu, OF.
-- **`GET /v1/family/me`**: Ow t:family.test.ts:92 · Own dev. t:family.test.ts:223, p:G6 · GAP: Co, Gu.
-- **`PATCH /v1/family/me`**: Ow t:timezone.test.ts:104 · GAP: Co, Gu `403o`, devices.
+- **`GET /v1/family/me`**: Ow t:family.test.ts:92 · Own dev. t:family.test.ts:223, p:G6 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`PATCH /v1/family/me`**: Ow t:timezone.test.ts:104 · Co, Gu `403o` p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/children`**: Ow t:family.test.ts:57 · Co `403o` t:sessions-and-roles.test.ts:362 · Own dev. t:pairing.test.ts:341 · Consent t:family.test.ts:23, :40, :76, p:C1 · GAP: Gu.
-- **`GET /v1/family/children/:id`**: Ow t:family.test.ts:127 · OF t:family.test.ts:149, p:B1 · GAP: Co, Gu, devices.
-- **`PATCH /v1/family/children/:id`**: Ow t:family.test.ts:280 · Gu without and with `rules` t:sessions-and-roles.test.ts:332 · Consent t:consent.test.ts:399 · GAP: Co, OF, devices.
-- **`DELETE /v1/family/children/:id`**: Ow t:family.test.ts:169, p:M4 · Co `403o` t:sessions-and-roles.test.ts:362, p:N6 · OF p:M3 · GAP: Gu, devices.
-- **`POST /v1/family/children/:id/consent`**: Ow t:family.test.ts:332 · GAP: Co, Gu, OF, devices.
-- **`GET /v1/family/children/:id/consent`**: Ow t:consent.test.ts:80 · GAP: Co, Gu, OF, devices.
-- **`POST /v1/family/children/:id/consent/revoke`**: Ow t:consent.test.ts:40 · Co t:sessions-and-roles.test.ts:362 · OF t:consent.test.ts:65 · GAP: Gu, devices.
-- **`GET /v1/family/export`**: Ow t:family.test.ts:392 · GAP: Co, Gu, devices.
-- **`POST /v1/family/invites`**: Ow t:invites.test.ts:52, p:N4 · non-owner t:invites.test.ts:88 · GAP: Gu (as a role), devices.
-- **`GET /v1/family/invites`**: Ow t:invites.test.ts:125 · GAP: Co, Gu, devices.
+- **`GET /v1/family/children/:id`**: Ow t:family.test.ts:127 · OF t:family.test.ts:149, p:B1 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`PATCH /v1/family/children/:id`**: Ow t:family.test.ts:280 · Gu without and with `rules` t:sessions-and-roles.test.ts:332 · Consent t:consent.test.ts:399 · Co p:Q6b · devices `403r` p:Q7 · GAP: OF.
+- **`DELETE /v1/family/children/:id`**: Ow t:family.test.ts:169, p:M4 · Co `403o` t:sessions-and-roles.test.ts:362, p:N6 · OF p:M3 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
+- **`POST /v1/family/children/:id/consent`**: Ow t:family.test.ts:332 · Co, Gu `403o` p:Q6, p:Q6b · devices `403r` p:Q7 · GAP: OF.
+- **`GET /v1/family/children/:id/consent`**: Ow t:consent.test.ts:80 · Co, Gu p:Q6c, p:Q6d · OF p:Q8 · devices `403r` p:Q7 · no GAP in these columns.
+- **`POST /v1/family/children/:id/consent/revoke`**: Ow t:consent.test.ts:40 · Co t:sessions-and-roles.test.ts:362 · OF t:consent.test.ts:65 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/family/export`**: Ow t:family.test.ts:392 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`POST /v1/family/invites`**: Ow t:invites.test.ts:52, p:N4 · non-owner t:invites.test.ts:88 · Gu (as a role) p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/family/invites`**: Ow t:invites.test.ts:125 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/invites/:id/accept`**: match t:invites.test.ts:139, p:N5 · mismatch t:invites.test.ts:226 · unknown t:invites.test.ts:243 · GAP: a device token (401).
-- **`DELETE /v1/family/invites/:id`**: Ow, non-owner, other family t:invites.test.ts:270 · GAP: devices.
+- **`DELETE /v1/family/invites/:id`**: Ow, non-owner, other family t:invites.test.ts:270 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/location/ping`**: every parent role `403d` t:location-auth.test.ts:64, :81, p:G15, p:G17 · Own dev. t:location-auth.test.ts:119, p:G7b, p:G7c · Sibling t:location-auth.test.ts:135, p:G16 · device of another family t:location-auth.test.ts:103 · Consent t:consent.test.ts:179, t:location-events.test.ts:93, p:J3b · no GAP in these columns.
-- **`GET /v1/location/:childId/latest`**: Ow t:geofence.test.ts:606 · OF t:geofence.test.ts:632 · Own dev. t:location-auth.test.ts:156 · Sibling t:location-auth.test.ts:170 · GAP: Co, Gu.
-- **`GET /v1/location/:childId/history`**: Ow t:geofence.test.ts:646 · Own dev. and sibling t:location-auth.test.ts:186, p:G13, p:G14 · GAP: Co, Gu, OF.
-- **`GET /v1/location/geofences/:childId`**: Ow t:geofence.test.ts:709 · Own dev. and sibling t:location-auth.test.ts:211 · GAP: Co, Gu, OF.
-- **`POST /v1/location/geofences`**: Ow t:geofence.test.ts:721 · OF t:geofence.test.ts:816, p:B4 · Consent t:consent.test.ts:468 · GAP: Co, Gu `403p:location`, devices.
+- **`GET /v1/location/:childId/latest`**: Ow t:geofence.test.ts:606 · OF t:geofence.test.ts:632 · Own dev. t:location-auth.test.ts:156 · Sibling t:location-auth.test.ts:170 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/location/:childId/history`**: Ow t:geofence.test.ts:646 · Own dev. and sibling t:location-auth.test.ts:186, p:G13, p:G14 · Co, Gu p:Q6c, p:Q6d · GAP: OF.
+- **`GET /v1/location/geofences/:childId`**: Ow t:geofence.test.ts:709 · Own dev. and sibling t:location-auth.test.ts:211 · Co, Gu p:Q6c, p:Q6d · GAP: OF.
+- **`POST /v1/location/geofences`**: Ow t:geofence.test.ts:721 · OF t:geofence.test.ts:816, p:B4 · Consent t:consent.test.ts:468 · Co, Gu `403p:location` p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
 - **`DELETE /v1/location/geofences/:id`**: Ow and OF t:geofence.test.ts:838 · Own dev. `403r` t:geofence.test.ts:861 · GAP: Co, Gu.
-- **`GET /v1/rules/:childId`**: Ow t:rules.test.ts:223 · Gu reads t:sessions-and-roles.test.ts:315 · OF t:rules.test.ts:187 · Own dev. t:rules.test.ts:459, p:G13 · Sibling t:rules.test.ts:473, p:G14 · Consent for the device only t:consent.test.ts:197, p:J3b · GAP: Co.
+- **`GET /v1/rules/:childId`**: Ow t:rules.test.ts:223 · Gu reads t:sessions-and-roles.test.ts:315 · OF t:rules.test.ts:187 · Own dev. t:rules.test.ts:459, p:G13 · Sibling t:rules.test.ts:473, p:G14 · Consent for the device only t:consent.test.ts:197, p:J3b · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
 - **`PUT /v1/rules/:childId`**: Ow t:rules.test.ts:74 · OF p:B2 · Own dev. t:pairing.test.ts:355 · Consent t:consent.test.ts:289, :324, :358, p:J3 · GAP: Co, Gu.
-- **`PATCH /v1/rules/:childId`**: Ow t:rules.test.ts:283 · Gu without `rules` t:sessions-and-roles.test.ts:315 · Co without `rules` p:N6 · GAP: OF, devices, Consent.
+- **`PATCH /v1/rules/:childId`**: Ow t:rules.test.ts:283 · Gu without `rules` t:sessions-and-roles.test.ts:315 · Co without `rules` p:N6 · devices `403r` p:Q7 · GAP: OF, Consent.
 - **`POST /v1/controls/children/:childId/pause-internet`**, **`/pause`**, **`/resume-internet`**, **`/resume`**, **`/bonus`**, **`/wind-down`**, **`GET …/status`**:
   - Ow: t:controls.test.ts:89, :122, :152, :212 (pause-internet, resume-internet, bonus, wind-down, status).
   - OF on every route: t:controls.test.ts:271.
   - Consent: t:consent.test.ts:452 (pause), :224 (resume stays open), p:J3, p:J3c.
-  - GAP: Co, Gu `403p:rules` on all seven, devices `403r` on all seven, and Ow on `/pause` and `/resume` (aliases).
-- **`GET /v1/reports/activity`**: Ow t:social.test.ts:325 · OF t:social.test.ts:357 · GAP: Co, Gu, devices.
-- **`GET /v1/reports/summary`**: Ow t:reports.test.ts:71 · OF t:reports.test.ts:120 · devices t:reports.test.ts:138 · GAP: Co, Gu.
-- **`GET /v1/reports/usage`**: Ow and OF t:usage-model.test.ts:315, p:B5, p:M2 · GAP: Co, Gu, devices.
-- **`GET /v1/reports/web`**: Ow and OF t:usage-model.test.ts:315, p:B5b · GAP: Co, Gu, devices.
-- **`GET /v1/reports/wellbeing/:childId`**: Ow t:reports.test.ts:181 · OF t:reports.test.ts:249, p:B6 · GAP: Co, Gu, devices.
-- **`GET /v1/social/events`**: Ow t:social.test.ts:222 · OF and devices t:social.test.ts:249, p:B9 (since F1) · GAP: Co, Gu.
-- **`GET /v1/content/searches`**: Ow, OF and devices t:content.test.ts:151, p:B7 (since F1) · GAP: Co, Gu.
-- **`GET /v1/digests/prefs`**: Ow t:reports.test.ts:271 · devices t:reports.test.ts:339 · GAP: Co, Gu.
-- **`PUT /v1/digests/prefs`**: Ow t:reports.test.ts:306, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · GAP: devices.
-- **`POST /v1/digests/send-now`**: Ow t:reports.test.ts:353, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · GAP: devices.
-- **`POST /v1/me/push-token`**, **`DELETE /v1/me/push-token`**: Ow t:email.test.ts:326 · GAP: Co, Gu, devices.
-- **`GET /v1/me/push-tokens`**: GAP in every column.
-- **`GET /v1/blocklists`**: parent t:blocklists.test.ts:46 · device t:blocklists.test.ts:66 · no GAP in these columns.
+  - Co, Gu `403p:rules` on all seven p:Q6, p:Q6b · devices `403r` on all seven p:Q7 · GAP: Ow on `/pause` and `/resume` (aliases).
+- **`GET /v1/reports/activity`**: Ow t:social.test.ts:325 · OF t:social.test.ts:357 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/reports/summary`**: Ow t:reports.test.ts:71 · OF t:reports.test.ts:120 · devices t:reports.test.ts:138 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/reports/usage`**: Ow and OF t:usage-model.test.ts:315, p:B5, p:M2 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/reports/web`**: Ow and OF t:usage-model.test.ts:315, p:B5b · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/reports/wellbeing/:childId`**: Ow t:reports.test.ts:181 · OF t:reports.test.ts:249, p:B6 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/social/events`**: Ow t:social.test.ts:222 · OF and devices t:social.test.ts:249, p:B9 (since F1) · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/content/searches`**: Ow, OF and devices t:content.test.ts:151, p:B7 (since F1) · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/digests/prefs`**: Ow t:reports.test.ts:271 · devices t:reports.test.ts:339 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`PUT /v1/digests/prefs`**: Ow t:reports.test.ts:306, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
+- **`POST /v1/digests/send-now`**: Ow t:reports.test.ts:353, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
+- **`POST /v1/me/push-token`**, **`DELETE /v1/me/push-token`**: Ow t:email.test.ts:326 · devices `403r` p:Q7 · GAP: Co, Gu.
+- **`GET /v1/me/push-tokens`**: Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · GAP: Ow.
+- **`GET /v1/blocklists`**: parent t:blocklists.test.ts:46 · device t:blocklists.test.ts:66 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
 - **`GET /v1/insights/apps`**: parent t:review-fixes.test.ts:101 · GAP: a device token.
-- **`POST /v1/ws-ticket`**: Ow t:realtime.test.ts:76, p:L1 · Own dev. `403r` p:G6b · GAP: Co, Gu.
+- **`POST /v1/ws-ticket`**: Ow t:realtime.test.ts:76, p:L1 · Own dev. `403r` p:G6b · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
 - **`GET /v1/ws`**: ticket flow t:realtime.test.ts:76, p:L1, p:L4, p:L5, p:L9 · `?token=` refused t:realtime.test.ts:117, :124, p:L6, p:L7, p:L7b.
 
 **Closed by probe section Q, for the columns above:**
@@ -303,6 +303,12 @@ permission → 2xx" half is listed separately where a test has it.
   above. The "with the permission → 2xx" half is still asserted only by p:N7 and the unit tests cited
   above. Adding it would need logins the probe can't afford (the `/v1/auth` bucket is 20 a minute, and the
   probe already uses it up).
+- **p:Q6c and p:Q6d:** the same no-permission guardian and co-parent are **admitted** to all 24 routes that
+  name no permission (the reads of their own family, by its real child and device ids, plus
+  `POST /v1/ws-ticket`). This is the positive half for every Co and Gu cell that is a plain 2xx, and it costs
+  no logins, because it reuses Q6's sessions. `404 no_pings` on `GET /v1/location/:childId/latest` counts as
+  admitted: the guard passed and the family has no ping. It pins that #354's owner-only digest writes left
+  the digest read open to every parent.
 - **p:Q7:** a live device token is refused with `403 parent_role_required` on all 47 parent-only routes.
   That closes the Own dev. and Sib. dev. cells marked GAP on those routes.
 - **p:Q8:** another family's owner is refused with `403 forbidden` on 16 family-scoped routes that name no
@@ -490,7 +496,8 @@ Probe section Q asserts every refusal column. These cells are still not asserted
 counted by Claude when verifying `d5218b9`):
 
 - **Co-parent and guardian with the permission → 2xx.** This is the positive half of every `403p` cell.
-  Today only p:N7 and the unit tests cited in §1a assert it.
+  Today only p:N7 and the unit tests cited in §1a assert it. (The routes that name **no** permission are
+  closed for Co and Gu by p:Q6c and p:Q6d.)
 - **Owner 2xx** on `/v1/controls/children/:childId/pause` and `/resume` (the aliases) and on
   `GET /v1/me/push-tokens`.
 - **Consent 428** on `POST /v1/devices/:id/telemetry`, `/activity`, `PATCH /v1/rules/:childId` and

@@ -68,7 +68,7 @@ pairing-approval change lands, so it isn't ported twice.
   - It polls `GET /v1/devices/:id/commands?ack=1` and acks every command.
   - `rules_updated`, `consent_revoked` and `consent_granted` fetch the rules, once per drain. A withdrawn consent
     then answers 428 and clears everything.
-  - Any other command (lock, ring, …) is acked **`failed`** with `{"reason":"unsupported_on_ios"}`, so the parent
+  - Any other command (lock, ring, …) is acked **`failed`** with `{"reason":"not_supported"}` (one reason for every agent, ADR-0034 amendment A6; it was `unsupported_on_ios` until 2026-10-26), so the parent
     sees why, not a silent "delivered". This was checked against the local API: the parent's history shows
     `lock: failed`, `rules_updated: acked`.
   - A 428 on the poll also syncs, which clears the rules.
@@ -93,7 +93,7 @@ pairing-approval change lands, so it isn't ported twice.
   and its shield cleared, so the phone never keeps enforcing times the parent replaced.
 - **Tests:**
   - `DeviceCommandsTests` (stubbed server): the command table; one fetch for several `rules_updated`, every
-    command acked, `unsupported_on_ios`, a failed sync acked failed, 428; the token hex; once per token and device,
+    command acked, `not_supported`, a failed sync acked failed, 428; the token hex; once per token and device,
     re-pair the way the button does (no unpair in between), unpairing forgets the upload, retry after a failure,
     unpaired; `X-Push-Token: none` sends the stored token exactly once, `on-file` and an absent header send
     nothing, nothing to resend for a new pairing; the wake drain answers by its deadline even when the work ignores
