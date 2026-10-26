@@ -9,6 +9,8 @@ import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/reports/usage_history_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
+import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'fake_api_client.dart';
 import 'package:familyshield_parent/providers/content_provider.dart';
 import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:familyshield_parent/providers/social_provider.dart';
@@ -83,4 +85,30 @@ void main() {
     expect(find.textContaining('DioException'), findsNothing);
   });
 
+
+  testWidgets('location history names the owner for a refused /v1/location/:id/history', (tester) async {
+    // The card is below the fold in a lazily-built list, so it is not constructed until it is scrolled
+    // to — which is why `find` alone saw nothing the first two times I tried this row.
+    final api = FakeApiClient(standardRoutes());
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        locationHistoryProvider.overrideWith((ref, id) => throw refusal()),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: const ChildDetailScreen(childId: 'child-1'),
+      ),
+    ));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    final target = find.textContaining(l10n.readPermissionRequired);
+    await tester.scrollUntilVisible(target, 300, scrollable: find.byType(Scrollable).first);
+
+    expect(target, findsWidgets);
+  });
 }
