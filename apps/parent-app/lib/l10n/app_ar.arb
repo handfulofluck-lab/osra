@@ -143,6 +143,7 @@
   "back15Tooltip": "رجوع 15 دقيقة",
   "forward15Tooltip": "تقدّم 15 دقيقة",
   "accuracyUnknown": "الدقة غير معروفة",
+  "readPermissionRequired": "يمكن لمالك العائلة منحك حق الوصول إلى هذا.",
   "alertsLoadFailed": "تعذّر تحميل التنبيهات: {error}",
   "noRecentAlerts": "لا توجد تنبيهات حديثة",
   "acknowledgeTooltip": "تأكيد الاستلام",

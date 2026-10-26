@@ -274,6 +274,7 @@
   "back15Tooltip": "Back 15 min",
   "forward15Tooltip": "Forward 15 min",
   "accuracyUnknown": "accuracy unknown",
+  "readPermissionRequired": "Your family owner can give you access to this.",
   "alertsLoadFailed": "Failed to load alerts: {error}",
   "@alertsLoadFailed": {
     "placeholders": {

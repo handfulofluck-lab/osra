@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+
+import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -28,6 +30,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   bool _loading = false;
   String? _error;
 
+  /// A read this guardian's invite does not cover (ADR-0014 amendment, decision 7). Kept apart
+  /// from [_error] so the screen names the fix instead of printing "failed to load".
+  ReadPermissionRequired? _refused;
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +45,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _refused = null;
     });
     try {
       final res = await ref.read(apiClientProvider).raw.get('/v1/alerts', queryParameters: {'page': _page + 1, 'limit': 20});
@@ -51,7 +58,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         _hasMore = pageData.items.isNotEmpty && _items.length < pageData.total;
       });
     } on DioException catch (e) {
-      setState(() => _error = e.message);
+      final refused = ReadPermissionRequired.from(e);
+      setState(() {
+        _refused = refused;
+        // `e.message` is null for a rejected response that carried no message — the fake in the tests
+        // does exactly that — and a null `_error` renders the EMPTY state, so a 500 looked like "no
+        // alerts yet". Name the status instead of trusting the message to exist.
+        _error = refused == null ? (e.message ?? 'HTTP ${e.response?.statusCode ?? e.type.name}') : null;
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -187,9 +201,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.alertsTitle)),
-      body: _error != null && _items.isEmpty
-          ? Center(child: Text(l10n.alertsLoadFailed('$_error')))
-          : RefreshIndicator(
+      body: _refused != null && _items.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(l10n.readPermissionRequired, textAlign: TextAlign.center),
+              ),
+            )
+          : _error != null && _items.isEmpty
+              ? Center(child: Text(l10n.alertsLoadFailed('$_error')))
+              : RefreshIndicator(
               onRefresh: () async {
                 setState(() {
                   _items.clear();
