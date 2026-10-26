@@ -2,12 +2,45 @@ import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
+import { prisma } from "../db.js";
 import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
 
 // The gateway needs a DEDICATED subscriber connection (psubscribe switches a connection
 // into subscriber mode); publishing reuses the shared lazy publisher via getRedis().
 const subscriber = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
 const socketsByFamily = new Map<string, Set<any>>();
+
+/**
+ * The permission each family event type needs from a **guardian** (ADR-0014 amendment, decision 3).
+ * Owners and co-parents are unaffected, so only these two are listed; an event type absent here is
+ * never withheld.
+ */
+const EVENT_PERMISSION: Record<string, "alerts" | "location"> = { alert: "alerts", location: "location" };
+
+/** What one socket may receive. `guardian: false` means no frame is ever withheld from it. */
+type SocketGate = { guardian: boolean; allowed: Set<string> };
+
+const OPEN_GATE: SocketGate = { guardian: false, allowed: new Set() };
+
+const socketGates = new WeakMap<object, SocketGate>();
+
+/**
+ * Resolve a subscriber's gate once, at connect. A device or an unknown parent gets `OPEN_GATE`: the
+ * ticket route already refuses anything that is not a live parent session, and the amendment gates
+ * guardians, not absence.
+ */
+async function gateFor(parentId: string | null): Promise<SocketGate> {
+  if (!parentId) return OPEN_GATE;
+  // A failure here is not a reason to refuse a socket: the ticket already proved a live parent
+  // session, and closing the stream on a transient database error would be a new outage path.
+  try {
+    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { role: true, permissions: true } });
+    if (!row || row.role !== "guardian") return OPEN_GATE;
+    return { guardian: true, allowed: new Set(row.permissions) };
+  } catch {
+    return OPEN_GATE;
+  }
+}
 
 /**
  * Issue #350: a delivery miss on this path used to leave no evidence at all — the publish was a bare
@@ -98,7 +131,10 @@ export function registerRealtime(app: FastifyInstance) {
     }
     const ticket = randomUUID();
     const familyId = user.familyId ?? "";
-    await getRedis().set(`ws:ticket:${ticket}`, familyId, "EX", 60);
+    // ADR-0014 amendment, decision 3 (second half, #402): the ticket carries WHO is subscribing, so the
+    // fan-out can drop a frame this reader is not allowed to see. The app sends the same ticket either
+    // way; only the stored value changed.
+    await getRedis().set(`ws:ticket:${ticket}`, JSON.stringify({ familyId, parentId: (user as { sub?: string }).sub ?? null }), "EX", 60);
     return { ticket, expiresIn: 60 };
   });
 
@@ -128,11 +164,16 @@ export function registerRealtime(app: FastifyInstance) {
         const query = req.query as { ticket: string };
         // Single-use ticket: consumed on first presentment.
         const redis = getRedis();
-        const familyId = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
+        const raw = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
+        // A ticket minted by an older process is the bare familyId string; accept both, so a deploy
+        // mid-connection does not 4001 everybody.
+        const parsed = raw.startsWith("{") ? (JSON.parse(raw) as { familyId?: string; parentId?: string | null }) : { familyId: raw, parentId: null };
+        const familyId = parsed.familyId ?? "";
         if (!familyId) throw new Error("invalid ticket");
         await redis.del(`ws:ticket:${query.ticket}`).catch(() => {});
         const set = socketsByFamily.get(familyId) ?? new Set();
         set.add(socket);
+        socketGates.set(socket, await gateFor(parsed.parentId ?? null));
         socketsByFamily.set(familyId, set);
         socket.on("close", () => set.delete(socket));
         // TR-05: tell the client its subscription is live. Until this frame arrives the client has
@@ -164,8 +205,14 @@ export function registerRealtime(app: FastifyInstance) {
       return;
     }
     let written = 0;
+    // ADR-0014 amendment, decision 3 (second half, #402): a frame this socket may not read is not sent.
+    // `type` is already parsed above for the log line; an unknown type is never withheld, so a new event
+    // is open by default rather than silently dropped.
+    const needed = EVENT_PERMISSION[type];
     for (const ws of set) {
       if (ws.readyState === 1) {
+        const gate = socketGates.get(ws);
+        if (needed && gate?.guardian && !gate.allowed.has(needed)) continue;
         ws.send(message);
         written += 1;
       }

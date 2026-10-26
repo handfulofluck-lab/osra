@@ -5,8 +5,12 @@ import fastifyJwt from "@fastify/jwt";
 import fastifyWebsocket from "@fastify/websocket";
 import { registerRealtime } from "../src/realtime/gateway.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis } from "./helpers.js";
+import { MockRedis, prismaMock } from "./helpers.js";
 
+vi.mock("../src/db.js", async () => {
+  const { prismaMock } = await import("./helpers.js");
+  return { prisma: prismaMock };
+});
 vi.mock("ioredis", async () => {
   const { MockRedis } = await import("./helpers.js");
   return { Redis: MockRedis };
@@ -78,7 +82,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     const t = await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } });
     expect(t.statusCode).toBe(200);
     const ticket = t.json().ticket as string;
-    expect(store.get(`ws:ticket:${ticket}`)).toBe("fam-1");
+    expect(JSON.parse(store.get(`ws:ticket:${ticket}`) ?? "{}")).toMatchObject({ familyId: "fam-1", parentId: "parent-1" });
 
     const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
     await c.waitFor(() => c.frames.length >= 1);
@@ -164,5 +168,45 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     const res = await app.inject({ method: "GET", url: "/v1/ws" });
     expect(res.statusCode).toBe(401);
     expect(res.json()).toMatchObject({ error: "ticket_required" });
+  });
+
+  // ADR-0014 amendment, decision 3 second half (#402): the frame a guardian may not read is not sent.
+  const subscribe = async (sub: string) => {
+    const token = app.jwt.sign({ sub, familyId: "fam-1", role: "parent" });
+    const ticket = (await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } })).json().ticket as string;
+    const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    await c.waitFor(() => c.frames.length >= 1);
+    return c;
+  };
+
+  it("does not send an alert frame to a guardian without `alerts`, and still sends `ready`", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["location"] });
+    const c = await subscribe("guardian-1");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "not for you" } }));
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "location", payload: { lat: 1 } }));
+    await c.waitFor(() => c.frames.length >= 2);
+
+    // The `location` frame arrives because this guardian holds `location`; the `alert` one never does.
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "location"]);
+    c.ws.close();
+  });
+
+  it("sends an alert frame to a guardian that holds `alerts`, and to a co-parent with no permissions", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    const guardian = await subscribe("guardian-2");
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "co-parent", permissions: [] });
+    const coparent = await subscribe("coparent-1");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "for you" } }));
+    await guardian.waitFor(() => guardian.frames.length >= 2);
+    await coparent.waitFor(() => coparent.frames.length >= 2);
+
+    expect(guardian.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    expect(coparent.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    guardian.ws.close();
+    coparent.ws.close();
   });
 });
