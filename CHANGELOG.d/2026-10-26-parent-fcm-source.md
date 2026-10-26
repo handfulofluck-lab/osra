@@ -12,6 +12,11 @@
   sign-in and every poll.
 - Tests: `unavailable` (never `denied`) when initialisation throws, no token in that case, and the
   latch (mutant: drop it and the count is 3). Parent app `flutter test` 403 passed.
+- **CI:** the iOS job moves from `macos-14` to `macos-15`, because `firebase_messaging` brings
+  `FirebaseCoreInternal`, whose Swift 6 concurrency (`sending`, access-level imports) does not compile
+  with the Xcode 15 that `macos-14` defaults to. The failing run pointed inside
+  `Pods/FirebaseCoreInternal`, not at our code — the first thing adding the SDK broke, and the reason
+  this job now pins a newer image.
 - **Not in this PR:** the background handler (wake → `GET /v1/alerts` → local notification, silent on
   401) and the conditional Gradle plugin. It needs `flutter_local_notifications` and a real
   `flutter build apk`, and it is the half that makes a notification appear.

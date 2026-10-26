@@ -138,7 +138,10 @@ jobs:
     name: iOS build (no code signing)
     needs: ios-scope
     if: needs.ios-scope.outputs.build == 'true'
-    runs-on: macos-14
+    # macOS 15 for Xcode 16. `firebase_messaging` brings FirebaseCoreInternal, whose Swift 6
+    # concurrency (`sending`, access-level imports) does not compile with the Xcode 15 that
+    # macos-14 defaults to: the run failed inside Pods/FirebaseCoreInternal, not in our code.
+    runs-on: macos-15
     defaults:
       run:
         working-directory: apps/parent-app
@@ -153,7 +156,7 @@ jobs:
       # (Runner.xcodeproj references Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage),
       # so there is no Podfile to commit and none was generated. The build
       # creates it on the runner if a plugin still needs CocoaPods, which the
-      # macos-14 image ships.
+      # runner image ships (firebase_messaging does, and CocoaPods resolves it there).
       - name: Build the iOS target unsigned
         run: flutter build ios --release --no-codesign
       - name: The bundle identifier matches the shape of the Android application id
