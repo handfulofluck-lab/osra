@@ -1,6 +1,6 @@
 # ADR-0034 — Each device reports what it can enforce, and every client says which build it is
 
-- **Status:** accepted (architecture); implementation not started
+- **Status:** accepted (architecture), amended 2026-10-26 (below); implementation not started
 - **Date:** 2026-10-24
 - **Deciders:** Claude (architecture + testing); to be implemented by Kimi Code (development lead)
 - **Related:** ADR-0028 decision 4 (the capability list and the version gate, named but not designed),
@@ -266,3 +266,126 @@ full-screen-intent permission to the parent") is this ADR's PR 2 and PR 3. #368 
 - `services/api/src/routes/me.ts` (the only version a client reports today).
 - Issue #368 (the Flip4 measurement of a lock acknowledged with no lock screen), issue #353 and PR #367
   (the idle budget).
+
+## Amendment 2026-10-26 — the server decides `not_supported`, and the gate never blocks a data right
+
+From Ahmed's security review on #371 (comment 6413718543), accepted by Claude on #371 (26 Oct, 10:33Z). It
+changes no decision's direction. It closes one gain a modified agent would have, makes the header a stated
+hint, fixes the freshness clock, keeps the data-rights routes outside the gate, and gives iOS its row.
+Implementation had not started, so PR 1 builds against this text. Where this section and the decisions
+above differ, this section wins.
+
+### A1. `not_supported` comes from the server, from a table of build facts
+
+- The server decides `not_supported` from a **static table keyed by (`client.app`, `client.flavour`)**. The
+  table lives in one module, and each row has a unit test. Examples: `call_sms_log` is `not_supported` for
+  `child-android/play` and for every `child-ios` build, and `uninstall_guard` is `not_supported` for every
+  `child-ios` build.
+- If a device reports `not_supported` for a feature outside its table row, the server stores it and shows
+  it as **`unavailable`**, which counts as a fault.
+- **Why:** decision 1 lets the parent app grey a `not_supported` feature out and not report it as a fault.
+  If the device chose that word, a modified agent could mark `lock_screen` or `web_filter` as
+  `not_supported` and turn a fault into a quiet grey row. The one-vocabulary rule is untouched:
+  `not_supported` is a fact about the build, not a verdict about this phone's state, so the server holds it.
+- **The table does not age.** A build fact is as true an hour later, so the 20-minute freshness guard of
+  decision 2 does not apply to it. A command whose feature the table marks `not_supported` is recorded as
+  failed at once, from the table, without waking the phone, whatever the report's age. This matters most on
+  iOS (A6).
+
+### A2. `capabilities` has a strict schema
+
+- The schema is `.strict()`: enum keys only, enum values only, and a cap of **4 KB** on the serialized
+  object.
+- Anything else is refused with `400` for the `capabilities` field. The rest of the telemetry upload is
+  still accepted. The outer telemetry object stays `.passthrough()`, as today (`devices.ts:113`).
+- **Why:** the report is stored as JSONB on `Device`. Device-authored data needs a shape and a size, even
+  though the device can only report for itself (`requireDeviceRole` + `requireOwnDevice()` on
+  `/:id/telemetry`).
+
+### A3. `X-OSRA-Client` is a hint, not a control
+
+- Any client can send any value, so a forged header can get an old parent app past the 426 gate. That is
+  acceptable only because the gate is an upgrade prompt: a forged header gets a client nothing its token
+  doesn't already allow.
+- **`min` must never be used to retire an insecure request shape or route.** That is done by removing the
+  shape or route on the server.
+- **Parser:**
+  - a length cap of **64 characters** before parsing;
+  - the pattern
+    `^(parent-app|child-android|child-ios|agent-desktop|agent-macos)/\d{1,4}\.\d{1,4}\.\d{1,4}\+\d{1,9} \([a-z0-9-]{1,16}\)$`;
+  - anything else is legacy (decision 4);
+  - only the parsed fields are logged, never the raw value.
+- **The build is written to `Device` only from a device-JWT request for that same device.** A parent's
+  request to a device route (for example `GET /v1/devices/:id`) passes the same family check, so a hook
+  that wrote "the client build" to whatever device the route resolves would let the parent app's header
+  overwrite the child's build.
+
+### A4. The server's receipt time is the only freshness clock
+
+- `capabilitiesReportedAt` is the time the server received the upload, as `locationGrantReportedAt` is
+  today.
+- No device-supplied timestamp inside `capabilities` is ever read. If one were, a modified agent could
+  future-date a report and keep it "fresh" forever.
+- On "Phone setup", **each row shows its age on the row**, so a stale `ready` does not reassure a parent
+  when it shouldn't.
+
+### A5. The 426 gate never blocks a data right
+
+The exemptions in decision 5 grow from `/health` and logout to these routes:
+
+- `GET /health`;
+- `POST /v1/auth/logout` and `POST /v1/auth/logout-all`;
+- `POST /v1/family/children/:id/consent/revoke`;
+- `DELETE /v1/family/children/:id`.
+
+A parent on an old app must always be able to withdraw consent and delete a child's data. Withdrawal has to
+stay as easy as consent was (ADR-0008), so a gate that blocked it until an app update would be a compliance
+failure, not a UX choice.
+
+### A6. iOS: one vocabulary, and its grants and features
+
+- **One refusal reason.** The wire reason for a feature the build cannot do is **`not_supported`** for every
+  agent. Until now the iPhone acked unsupported commands with `unsupported_on_ios` (#382). It renames to
+  `not_supported` with no alias, because no iOS build has reached anyone. The server's refusal under A1
+  carries the same string, as decision 3 requires.
+- **No 15-minute tick on iOS.** The iPhone uploads telemetry at launch, on an authorization change, and on
+  each app open or wake drain (#390). iOS has no reliable timer (`BGTaskScheduler` runs when it chooses), so
+  an iPhone's report will often be older than 20 minutes, and the freshness-gated refusal of decision 3 will
+  rarely apply to it. A1's table covers what matters most: `lock`, `unlock`, `ring` and `pause_internet` to
+  an iPhone are recorded as failed at once.
+- **iOS grant keys** for `grants`:
+  - `family_controls` (`AuthorizationCenter.authorizationStatus`);
+  - `location` (the existing `LocationGrant` mapping);
+  - `background_refresh` (`UIApplication.backgroundRefreshStatus`; when it's off, the wake drain can't run).
+
+  Silent push needs no notification permission, so there is no `notifications` key.
+- **iOS features today:**
+
+  | Feature | iOS value | Why |
+  |---|---|---|
+  | `lock_screen`, `pause_screen`, `pause_internet`, `uninstall_guard`, `notification_scan`, `call_sms_log` | `not_supported` (A1 table) | no public iOS API |
+  | `app_blocking`, `screen_time` | `degraded` until the category picker exists | Screen Time needs the parent's picker selection on a signed build (#380, advisories 2 and 3) |
+  | `location` | from `LocationGrant` | the same mapping as `locationGrant` (#390) |
+  | `web_filter` | `degraded` | blocked domains are applied through `WebContentSettings` (`ScreenTimeController.applyWebFilter`); blocked categories need the picker's tokens, like app blocking |
+
+### A7. Later, not in PR 1: the APNs host per device
+
+The iOS `flavour` (`dev`, `testflight`, `appstore`) tells the server which APNs environment a token belongs
+to. TestFlight and App Store tokens are production tokens, and dev builds are sandbox. Today `APNS_ENV` is
+one value per server (`apns.ts:74`), so a TestFlight iPhone on a sandbox server gets `BadDeviceToken` (one of
+#383's cases). With the flavour stored on `Device`, the provider can pick the host per device. This is a
+later PR in Ahmed's lane and belongs on the 5.1 checklist. It does not block PR 1.
+
+### Falsifiable claims added by this amendment
+
+8. A device reporting `features.lock_screen = "not_supported"` while its (`app`, `flavour`) row says
+   otherwise is stored and shown as `unavailable`.
+9. A `capabilities` object over 4 KB, or with an unknown key or value, is refused with `400`, and the rest of
+   the same telemetry upload is stored.
+10. A parent's `GET /v1/devices/:id` sent with any `X-OSRA-Client` leaves the device's stored build
+    unchanged.
+11. A `capabilities` object carrying a device timestamp does not change `capabilitiesReportedAt`.
+12. With the parent app's `min` above its build, the five routes in A5 still answer as without the gate.
+13. A `lock` to an iPhone is recorded `failed` with `not_supported` at once, whatever the age of its last
+    report, and the phone is not woken.
+
