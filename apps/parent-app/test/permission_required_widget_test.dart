@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
+import 'package:dio/dio.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/family_provider.dart';
 import 'fake_api_client.dart';
 
 /// ADR-0014 amendment, decision 7 (and Claude's review of #405): the alerts screen must name the
@@ -53,5 +55,30 @@ void main() {
     final l10n = lookupAppLocalizations(const Locale('en'));
     expect(find.textContaining('Failed to load alerts'), findsOneWidget);
     expect(find.text(l10n.readPermissionRequired), findsNothing);
+  });
+
+  group('dashboard badge', () {
+    test('a refused alerts read means no badge, not an error', () async {
+      final api = FakeApiClient({
+        'GET /v1/alerts': (_) => FakeHttpError(
+              403,
+              {'error': 'permission_required', 'permission': 'alerts'},
+            ),
+      });
+      final container = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(api)]);
+      addTearDown(container.dispose);
+
+      expect(await container.read(unacknowledgedCountProvider.future), 0);
+    });
+
+    test('any other failure still surfaces', () async {
+      final api = FakeApiClient({
+        'GET /v1/alerts': (_) => FakeHttpError(500, {'error': 'internal'}),
+      });
+      final container = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(api)]);
+      addTearDown(container.dispose);
+
+      await expectLater(container.read(unacknowledgedCountProvider.future), throwsA(isA<DioException>()));
+    });
   });
 }
