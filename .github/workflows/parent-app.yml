@@ -77,7 +77,7 @@ jobs:
           GOOGLE_SERVICES_B64: ${{ secrets.PARENT_GOOGLE_SERVICES_JSON_B64 }}
         run: |
           if [ -z "$GOOGLE_SERVICES_B64" ]; then
-            echo "PARENT_GOOGLE_SERVICES_JSON_B64 not set — push stays absent unless a config is committed for a local build"
+            echo "PARENT_GOOGLE_SERVICES_JSON_B64 not set — this build has no Firebase config, so push is absent (never commit google-services.json, #317)"
             exit 0
           fi
           echo "$GOOGLE_SERVICES_B64" | base64 -d > android/app/google-services.json
