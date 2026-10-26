@@ -142,3 +142,58 @@ permission set would be misled about what the invitee can do.
 (or invited again). Owners are unaffected. The parent app surfaces the server's `403` in the pairing
 dialog; `e2e.mjs` and `qa-probe.mjs` call both routes with owner tokens, and the Android/iOS/Windows
 agents only call the unauthenticated `/pair/claim`.
+
+## Amendment 2026-10-26 — a guardian reads a child's alerts, places and activity only with the permission
+
+**Decided by Karim on 26 Oct, 11:43Z** ("Gate by permission", the decision card in the team thread), from
+Ahmed's #394 advisory on #326. This supersedes "reads are never gated by this" in decision 5 for **guardians
+only**. Owners and co-parents are unchanged.
+
+**Context.** A guardian is an adult the owner invites, such as a grandparent or a babysitter. Until now
+`permissions` limited only what a guardian could change. A guardian invited with none could still read every
+alert, the family's geofences (home, school), the child's location history and the child's search and social
+activity. A babysitter rarely needs any of that, and least access is the safer default before real families
+join.
+
+**Decision.**
+
+1. For a parent whose `familyRole` is `guardian`, these reads need the named permission. Without it they
+   answer `403 permission_required` with `{ permission }`, the same body `requirePermission` already sends:
+
+   | Permission | Reads |
+   |---|---|
+   | `alerts` | `GET /v1/alerts`, and anything else that returns alert rows or alert text |
+   | `location` | `GET /v1/location/:childId/latest`, `GET /v1/location/:childId/history`, `GET /v1/location/geofences/:childId` |
+   | `social` | `GET /v1/social/events`, `GET /v1/content/searches`, `GET /v1/reports/web` |
+
+2. **Embedded copies follow the same rule.** `GET /v1/family/me` omits `geofences` for a guardian without
+   `location`. Any other response that embeds alert rows or alert text omits them for a guardian without
+   `alerts`. A guardian must never get through a broad read what the narrow read refuses.
+3. **Pushes and live events follow the same rule.** The parent push fan-out (#360) skips a guardian's tokens
+   without `alerts`. The realtime `alert` and `location` events skip a guardian without `alerts` or `location`
+   respectively.
+4. **Device tokens are unaffected.** The location reads stay open to the child's own device
+   (`deviceAccess: "own-child"`). The gate applies only to parent tokens.
+5. **Aggregates stay open.** Usage, summary and wellbeing reports carry no alert text, no coordinates and no
+   searches, so they stay readable by every family adult. If a report starts to embed any of those, decision 2
+   applies to it.
+6. **The family export is owner-only** (decided on #326 the same day). It is the data-rights request, and it
+   sits with consent revoke and child delete.
+7. **The parent app says why.** On `403 permission_required` for a read, the screen shows that the owner can
+   grant access (English and Arabic), never a generic error.
+
+**Why `social` for search, social and web history.** Karim's card named alerts and places. Searches, social
+events and browsing history are the content that alerts are made from, so leaving them open would make the
+`alerts` gate cosmetic. The invite already has a `social` permission, so no new permission is needed.
+
+**Cost.** A guardian who should see these must be invited with the permission (or invited again). No real family
+exists yet, so no stored invite needs migrating.
+
+**Proof owed by the implementation (Kimi; probe and matrix by Ahmed):**
+
+- a unit test per gated read: an owner gets 200, a co-parent with no permissions gets 200, a guardian with the
+  permission gets 200, and a guardian without it gets `403 permission_required`;
+- `GET /v1/family/me` for a guardian without `location` has no `geofences` key;
+- a push fan-out test where a guardian without `alerts` receives nothing;
+- probe Q6c keeps only the reads that stay open for a guardian, a new refusal row walks the gated reads, and
+  the matrix's guardian column changes to match.
