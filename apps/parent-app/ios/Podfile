@@ -1,0 +1,68 @@
+# The parent app's iOS target links its Flutter plugins through CocoaPods, not Swift Package Manager.
+#
+# Why (#392): a Flutter plugin chooses its own integration. `firebase_messaging` — the push source #391
+# adds — ships a CocoaPods podspec and no `Package.swift`, so an SPM-only target cannot compile it, and
+# Flutter's own tool warns that the plugin "has not adopted Swift Package Manager". `flutter build ios`
+# refuses the plugin in that state, which is what turned the `parent-app-ios` job red on three heads.
+#
+# So the target is conventional: this Podfile, `flutter config --no-enable-swift-package-manager` in CI,
+# and no `FlutterGeneratedPluginSwiftPackage` reference in Runner.xcodeproj. Re-enabling SPM later is
+# `flutter config --enable-swift-package-manager` plus the Xcode migration; do not do half of it, because
+# a project that references the ephemeral package while the tool builds Pods fails to link.
+#
+# `platform` matches IPHONEOS_DEPLOYMENT_TARGET in Runner.xcodeproj (15.0). The body is Flutter's stock
+# `Podfile-ios` template from the pinned SDK; keep it in step with the template rather than editing it.
+
+platform :ios, '15.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # `firebase_messaging` 15.1.0's umbrella header imports a Firebase header that ships without a module
+    # map, so building the plugin as a framework stops at
+    # "Include of non-modular header inside framework module
+    #  'firebase_messaging.FLTFirebaseMessagingPlugin'" (#392, run 40263769898). Flutter requires
+    # `use_frameworks!` for Swift plugins, so the framework build cannot be dropped; this lets clang accept
+    # the include. It is a warning we are choosing to silence, so it is scoped here with the reason rather
+    # than exported through the project's build settings.
+    target.build_configurations.each do |config|
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
+  end
+end

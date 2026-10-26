@@ -9,6 +9,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../api/push_api.dart';
 import '../push/push_registration.dart';
+import '../push/fcm_push_token_source.dart';
 import 'server_provider.dart';
 
 /// Injectable [ApiClient] source; overridden in tests with a fake.
@@ -93,7 +94,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _push = push,
         super(const AuthState(restoring: true));
 
-  PushRegistration get _pushRegistration => _push ??= PushRegistration(api: PushApi(_api));
+  PushRegistration get _pushRegistration =>
+      _push ??= PushRegistration(api: PushApi(_api), source: defaultPushSource());
 
   bool _disposed = false;
 

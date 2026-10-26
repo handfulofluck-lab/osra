@@ -418,6 +418,44 @@ nothing either way. What the job runs on `macos-14`:
 - `flutter pub get`, then `flutter build ios --release --no-codesign`. `--no-codesign` means no certificate, no
   provisioning profile and no Apple account; on a public repository the macOS runner minutes are free.
 
+**Which plugin system, and the Firebase header (2026-10-26, #392).** Plugins link through **CocoaPods**. That is
+not because Flutter refuses a plugin without Swift Package Manager support — I had that wrong when I filed #392.
+`flutter build ios` prints
+
+```
+The following plugins do not support Swift Package Manager for ios:
+  - firebase_core … firebase_messaging … flutter_secure_storage … google_maps_flutter_ios
+This will become an error in a future version of Flutter.
+```
+
+and then falls back to Pods for those plugins on its own (run `40263769898`: `Running pod install... 44.5s`). The
+target carries no SPM reference and a committed Podfile so there is **one** system rather than two — hygiene, not a
+cure, and the guard below exists because the half-state is genuinely fragile.
+
+What actually stopped the build, on all three heads, was the ordinary CocoaPods one:
+
+```
+Lexical or Preprocessor Issue (Xcode): Include of non-modular header inside framework module
+'firebase_messaging.FLTFirebaseMessagingPlugin'
+  …/firebase_messaging-15.1.0/ios/Classes/FLTFirebaseMessagingPlugin.h:11:8
+```
+
+Firebase's pods are `static_framework = true`, so `Firebase.h` has no module map, while `firebase_messaging` builds
+as a dynamic framework and its umbrella header imports it textually. `use_frameworks!` cannot be dropped (Flutter
+needs it for Swift plugins), so
+`CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES` is set in **both** places, and both are needed:
+
+- `ios/Podfile`'s `post_install`, for the pod targets — that alone was not enough (run `40264451326` failed
+  identically);
+- the **Runner** target's three configurations in `Runner.xcodeproj`, because the module that trips the check is
+  built for the app target and its own build settings govern the diagnostic (`729c365`, green run `40265276190`).
+
+The job checks the two halves of the plugin system before it builds and fails with the reason if they disagree: no
+`FlutterGeneratedPluginSwiftPackage` reference in `Runner.xcodeproj`, and `ios/Podfile` present. Mutant: re-add the
+`packageReferences` entry to `project.pbxproj` and the "half done" step exits 1 before Xcode runs (verified by
+running the same shell snippet against a file containing the string, and against the committed tree). Re-enabling
+SPM later is one change — flag, project migration and Podfile removal together — never half.
+
 **When it runs.** A macOS minute bills as ten Linux minutes once the repository is private, and the job takes 3–5
 minutes, so a small `ios-scope` job on `ubuntu-latest` decides first. A pull request or a push to `main` builds iOS
 only when it changes `apps/parent-app/ios/**`, `apps/parent-app/pubspec.yaml`, `apps/parent-app/pubspec.lock` or

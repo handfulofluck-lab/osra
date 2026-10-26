@@ -31,6 +31,24 @@ environment where it was written — see `docs/QA/` for the verification state.
   in four with it off (admin only, overlay only, overlay+admin, nothing); `pause` gets the same two rules. Mutant:
   drop the `!accessibilityRunning` guard and three rows go green with `via=overlay`.
 
+### iOS — the parent app builds with `firebase_messaging` again: the non-modular Firebase header (#392)
+- The `parent-app-ios` job had been red on three heads with three different symptoms. The cause was one CocoaPods
+  problem, not the plugin system I first blamed: Firebase's pods are `static_framework = true`, so `Firebase.h`
+  has no module map, while `firebase_messaging` builds as a dynamic framework whose umbrella header imports it
+  textually — *"Include of non-modular header inside framework module
+  'firebase_messaging.FLTFirebaseMessagingPlugin'"*. `use_frameworks!` cannot be dropped (Flutter needs it for
+  Swift plugins).
+- `CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES` now sits in **both** places, and both were needed:
+  the Podfile's `post_install` for pod targets (insufficient on its own — run `40264451326` failed identically),
+  and the Runner target's three configurations, because the module that trips the check is built for the app
+  target. Green run: `40265276190`.
+- **Corrected, and worth keeping:** the earlier theory that an SPM-only target "cannot compile" such a plugin was
+  wrong. Flutter prints a warning per plugin and falls back to Pods by itself. The SPM→CocoaPods cleanup stayed as
+  hygiene (one system, guard in CI), not as the cure.
+- The job now fails with the reason when the two halves of the plugin system disagree — an SPM reference left in
+  `Runner.xcodeproj` **and** a committed `ios/Podfile` — instead of failing inside Xcode. Recorded in
+  `docs/TESTING.md` §4 with the mutant.
+
 ### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
 - The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
   no prompt tuning) scored **Arabic recall 0.97 `self_harm`, 1.00 `grooming`, 1.00 `sexual_content`,

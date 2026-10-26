@@ -236,6 +236,31 @@ describe("notification policy", () => {
     expect(prismaMock.parentPushToken.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["t2"] } } });
   });
 
+  it("sends a parent iPhone's token through FCM even when APNs is configured, and keeps it (#391)", async () => {
+    // The parent app's iOS token comes from firebase_messaging, so it is an FCM token. APNs answers
+    // BadDeviceToken for it, which would read as dead and prune the row on every alert.
+    const fcm = new FakeProvider();
+    const apnsSent: string[] = [];
+    const apns: PushProvider = {
+      platform: "ios",
+      canWakeDevices: true,
+      async send(token: string): Promise<PushResult> {
+        apnsSent.push(token);
+        return { ok: false, invalidToken: true, reason: "HTTP 400 BadDeviceToken" };
+      },
+    };
+    setPushProviders([fcm, apns]);
+    prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+    prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "t1", parentId: "parent-1", token: "fcm-ios-token", platform: "ios" }]);
+
+    const outcome = await notifyParentsOfAlert("fam-1", alert, "Alex");
+    expect(outcome).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
+    expect(fcm.sent.map((s) => s.token)).toEqual(["fcm-ios-token"]);
+    expect(apnsSent).toEqual([]);
+    expect(prismaMock.parentPushToken.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("respects the family's pushEnabled=false preference", async () => {
     const provider = new FakeProvider();
     setPushProviders([provider]);
