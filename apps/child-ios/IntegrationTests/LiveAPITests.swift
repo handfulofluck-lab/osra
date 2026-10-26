@@ -186,8 +186,10 @@ extension LiveAPITests {
         XCTAssertEqual(grantStatus, 202, "the telemetry route answers 202 Accepted")
         let ack = await controller.locateNow()
         guard case .ok(let fix)? = ack else { return XCTFail("locate_now answered \(String(describing: ack))") }
+        // `ok` is only answered after the server stored the point; `verify` reads it back as the parent. The buffer
+        // is not asserted empty: a fix that arrives after the 10 s wait is recorded as an ordinary update and may
+        // be in flight at this line (run 40271149714, fix=cached on a slow runner).
         print("live case 9: locate_now fix=\(fix), the simulator sits at \(lat),\(lng)")
-        XCTAssertTrue(LocationBuffer.load().isEmpty, "the point was stored, so nothing is left to send")
     }
 }
 
