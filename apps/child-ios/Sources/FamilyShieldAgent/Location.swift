@@ -185,6 +185,8 @@ public final class LocationController {
     /// A cached fix older than this is not an answer to "where is the child now", as Android's
     /// `MAX_CACHED_AGE_MS`.
     public static let maxCachedAge: TimeInterval = 5 * 60
+    /// A fix `requestLocation()` returns older than this is reported `cached`, not `fresh`.
+    public static let maxFreshAge: TimeInterval = 60
     public static let fixTimeout: TimeInterval = 10
     /// Runs an upload so it can finish if iOS suspends the app; the host app wraps it in
     /// `beginBackgroundTask` (a package test has no UIApplication to ask).
@@ -281,6 +283,16 @@ public final class LocationController {
         }
         var fix = "fresh"
         var location = await source.requestOneFix(timeout: Self.fixTimeout)
+        // `requestLocation()` can answer with a recent fix Core Location already held (Claude on #390): over a
+        // minute old it is reported `cached`, so the parent's "fresh" means fresh; over five minutes it is no answer.
+        if let got = location {
+            let age = now.timeIntervalSince(got.timestamp)
+            if age > Self.maxCachedAge {
+                location = nil
+            } else if age > Self.maxFreshAge {
+                fix = "cached"
+            }
+        }
         if location == nil, let last = source.lastFix, now.timeIntervalSince(last.timestamp) < Self.maxCachedAge {
             location = last
             fix = "cached"
@@ -300,7 +312,7 @@ public final class LocationController {
 /// so its delegate calls arrive there.
 public final class CoreLocationSource: NSObject, LocationSource, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
-    private var pendingFix: CheckedContinuation<CLLocation?, Never>?
+    private let oneShot = OneShotFix()
     public var onLocations: (([CLLocation]) -> Void)?
     public var onAuthorizationChange: ((CLAuthorizationStatus) -> Void)?
 
@@ -328,38 +340,57 @@ public final class CoreLocationSource: NSObject, LocationSource, CLLocationManag
 
     @MainActor
     public func requestOneFix(timeout: TimeInterval) async -> CLLocation? {
-        resolveFix(nil)
-        return await withCheckedContinuation { continuation in
-            pendingFix = continuation
-            manager.requestLocation()
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                self?.resolveFix(nil)
-            }
-        }
-    }
-
-    // On the main thread: the delegate calls arrive there, and requestOneFix runs on the main actor.
-    private func resolveFix(_ location: CLLocation?) {
-        guard let continuation = pendingFix else { return }
-        pendingFix = nil
-        continuation.resume(returning: location)
+        await oneShot.wait(timeout: timeout) { manager.requestLocation() }
     }
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         // A fix a locate_now asked for answers it and is uploaded by it, not recorded a second time.
-        if pendingFix != nil, let last = locations.last {
-            resolveFix(last)
+        if oneShot.isWaiting, let last = locations.last {
+            oneShot.resolve(last)
             return
         }
         onLocations?(locations)
     }
 
     public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        resolveFix(nil)
+        oneShot.resolve(nil)
     }
 
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         onAuthorizationChange?(manager.authorizationStatus)
+    }
+}
+
+/// The one outstanding `requestLocation()`, answered once: by a fix, a failure, or its own timeout. Each request
+/// has a generation, so the timer of an earlier request cannot end a later one (Claude on #390: an app-open drain
+/// overlapping a wake drain). A new request supersedes an older one still waiting, which answers nil and falls
+/// back to the cached fix. Used on the main thread: the delegate calls arrive there, and the timer runs there.
+final class OneShotFix {
+    private var continuation: CheckedContinuation<CLLocation?, Never>?
+    private var generation = 0
+
+    var isWaiting: Bool { continuation != nil }
+
+    /// On the main actor, so `start` (`requestLocation()`) runs on the thread the manager's delegate calls use.
+    @MainActor
+    func wait(timeout: TimeInterval, start: () -> Void) async -> CLLocation? {
+        resolve(nil)
+        generation += 1
+        let mine = generation
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            start()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard let self, self.generation == mine else { return }
+                self.resolve(nil)
+            }
+        }
+    }
+
+    func resolve(_ location: CLLocation?) {
+        guard let continuation else { return }
+        self.continuation = nil
+        continuation.resume(returning: location)
     }
 }

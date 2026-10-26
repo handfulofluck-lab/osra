@@ -135,7 +135,10 @@ On the contract the Android agent already uses; no server change.
   to Always. The usage strings are in `Info.plist` and in `en.lproj` and `ar.lproj`. **The Arabic wording waits
   for Karim's review**, as in 3.1.
 - **`locate_now`:** one `requestLocation()` at about 100 m, waiting up to 10 s. Without a fix, the last one
-  under 5 minutes old is used as `cached` (Android's `MAX_CACHED_AGE_MS`). The point is uploaded, and the
+  under 5 minutes old is used as `cached` (Android's `MAX_CACHED_AGE_MS`). `requestLocation()` can answer with a
+  fix Core Location already held: over a minute old it is reported `cached`, and over five minutes it is no
+  answer. Only one request waits at a time (`OneShotFix`): a newer one supersedes it, and an earlier request's
+  timer cannot end a later one (both from Claude's review of #390). The point is uploaded, and the
   command is acked **`ok` with `detail.fix: fresh|cached` only after the server stored it**. A failed upload
   sends no ack, and the server offers the command again after 120 s (#231). With no fix the ack is `failed`
   with `location_unavailable`. Without permission it is `location_permission_missing`, or
@@ -148,7 +151,9 @@ On the contract the Android agent already uses; no server change.
     500, oldest first; a ping added during an upload stays, both in the buffer and through `flush` (Claude's fault on #390); a new fix is uploaded; nothing is recorded when
     unpaired; monitoring starts only when paired and allowed; the rule sync drives collection; `locate_now`
     acks `ok` only after the server stored the point, sends no ack when the upload fails, takes a cached fix
-    under 5 minutes and refuses an older one, and refuses with the Android reasons; the drain acks the fix,
+    under 5 minutes and refuses an older one, reports a held fix over a minute old as `cached`, and refuses with
+    the Android reasons; an earlier request's timer does not end a later one, and a request ends on its own
+    timeout; the drain acks the fix,
     acks a refusal, skips the ack for an unstored point, and serves several `locate_now` with one fix.
   - Live case 9: the simulator is placed with `simctl location` and granted Always with `simctl privacy`. The
     grant is reported (202), a `locate_now` through Core Location answers `ok`, and `verify` reads the point
