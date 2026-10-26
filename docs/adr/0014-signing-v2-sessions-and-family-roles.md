@@ -164,19 +164,23 @@ join.
    |---|---|
    | `alerts` | `GET /v1/alerts`, and anything else that returns alert rows or alert text |
    | `location` | `GET /v1/location/:childId/latest`, `GET /v1/location/:childId/history`, `GET /v1/location/geofences/:childId` |
-   | `social` | `GET /v1/social/events`, `GET /v1/content/searches`, `GET /v1/reports/web` |
+   | `social` | `GET /v1/social/events`, `GET /v1/content/searches`, `GET /v1/reports/web`, `GET /v1/reports/activity` (the raw rows: URLs, app use, calls and SMS) |
 
 2. **Embedded copies follow the same rule.** `GET /v1/family/me` omits `geofences` for a guardian without
    `location`. Any other response that embeds alert rows or alert text omits them for a guardian without
-   `alerts`. A guardian must never get through a broad read what the narrow read refuses.
+   `alerts`. `GET /v1/devices/:id` returns the stored telemetry through an allowlist of `TelemetrySchema`'s
+   named fields (no passthrough field reaches any reader), and omits `urls` for a guardian without `social`.
+   A guardian must never get through a broad read what the narrow read refuses.
 3. **Pushes and live events follow the same rule.** The parent push fan-out (#360) skips a guardian's tokens
    without `alerts`. The realtime `alert` and `location` events skip a guardian without `alerts` or `location`
    respectively.
 4. **Device tokens are unaffected.** The location reads stay open to the child's own device
    (`deviceAccess: "own-child"`). The gate applies only to parent tokens.
-5. **Aggregates stay open.** Usage, summary and wellbeing reports carry no alert text, no coordinates and no
-   searches, so they stay readable by every family adult. If a report starts to embed any of those, decision 2
-   applies to it.
+5. **Aggregates stay open.** Usage, summary and wellbeing reports are counts and minutes, so they stay readable
+   by every family adult. One exception: `GET /v1/reports/summary` omits `topBlockedDomains` for a guardian
+   without `social`, because domain names are browsing content, and `GET /v1/reports/web?blocked=true` already
+   refuses them. The visit, call, SMS and concern counts stay. If a report starts to embed alert text,
+   coordinates, searches or URLs, decision 2 applies to it.
 6. **The family export is owner-only** (decided on #326 the same day). It is the data-rights request, and it
    sits with consent revoke and child delete.
 7. **The parent app says why.** On `403 permission_required` for a read, the screen shows that the owner can
@@ -194,6 +198,8 @@ exists yet, so no stored invite needs migrating.
 - a unit test per gated read: an owner gets 200, a co-parent with no permissions gets 200, a guardian with the
   permission gets 200, and a guardian without it gets `403 permission_required`;
 - `GET /v1/family/me` for a guardian without `location` has no `geofences` key;
+- `GET /v1/devices/:id` drops a planted unknown telemetry field for every reader and `urls` for a guardian
+  without `social`, and `GET /v1/reports/summary` has no `topBlockedDomains` for that guardian;
 - a push fan-out test where a guardian without `alerts` receives nothing;
 - probe Q6c keeps only the reads that stay open for a guardian, a new refusal row walks the gated reads, and
   the matrix's guardian column changes to match.
