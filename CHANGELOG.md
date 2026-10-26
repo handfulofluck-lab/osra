@@ -11,19 +11,23 @@ environment where it was written — see `docs/QA/` for the verification state.
 
 ## [Unreleased]
 
-### iOS — the parent app links plugins through CocoaPods, so a plugin without SPM can build (#392)
-- The `parent-app-ios` job failed on three heads with three different symptoms and one cause: the Xcode target
-  links plugins only through Swift Package Manager, and `firebase_messaging` ships a podspec and no
-  `Package.swift`. Flutter's tool says so in its own warning ("has not adopted Swift Package Manager"), and
-  `flutter build ios` refuses the combination.
-- The target is conventional again: `Runner.xcodeproj` carries no `FlutterGeneratedPluginSwiftPackage`
-  reference, `ios/Podfile` is committed from the pinned SDK's stock `Podfile-ios` template with
-  `platform :ios, '15.0'` matching `IPHONEOS_DEPLOYMENT_TARGET`, and the job sets
-  `flutter config --no-enable-swift-package-manager` before any build.
-- The job now checks the two halves agree — no SPM reference **and** a Podfile — and fails with the reason
-  before Xcode runs, because a half-migration fails to link *inside* Xcode where the cause is invisible.
-- Acceptance for #392 is this job: it builds a plugin that has no SPM support, which is exactly the case
-  `flutter build ios` refuses off the CocoaPods path. Recorded in `docs/TESTING.md` §4.
+### iOS — the parent app builds with `firebase_messaging` again: the non-modular Firebase header (#392)
+- The `parent-app-ios` job had been red on three heads with three different symptoms. The cause was one CocoaPods
+  problem, not the plugin system I first blamed: Firebase's pods are `static_framework = true`, so `Firebase.h`
+  has no module map, while `firebase_messaging` builds as a dynamic framework whose umbrella header imports it
+  textually — *"Include of non-modular header inside framework module
+  'firebase_messaging.FLTFirebaseMessagingPlugin'"*. `use_frameworks!` cannot be dropped (Flutter needs it for
+  Swift plugins).
+- `CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES` now sits in **both** places, and both were needed:
+  the Podfile's `post_install` for pod targets (insufficient on its own — run `40264451326` failed identically),
+  and the Runner target's three configurations, because the module that trips the check is built for the app
+  target. Green run: `40265276190`.
+- **Corrected, and worth keeping:** the earlier theory that an SPM-only target "cannot compile" such a plugin was
+  wrong. Flutter prints a warning per plugin and falls back to Pods by itself. The SPM→CocoaPods cleanup stayed as
+  hygiene (one system, guard in CI), not as the cure.
+- The job now fails with the reason when the two halves of the plugin system disagree — an SPM reference left in
+  `Runner.xcodeproj` **and** a committed `ios/Podfile` — instead of failing inside Xcode. Recorded in
+  `docs/TESTING.md` §4 with the mutant.
 
 ### AI — the hosted scorer measured: Arabic recall 0.80–1.00 per category (plan 4.1)
 - The first billed evaluation run (`ai-eval-deepseek` workflow `39628473359`, all **1,179 rows**, `deepseek-chat`,
