@@ -166,6 +166,19 @@ final class LocationTests: XCTestCase {
         XCTAssertEqual(LocationBuffer.load(), [ping(1)])
     }
 
+    func testAFlushRemovesOnlyTheBatchItSentSoAFixRecordedDuringTheUploadStays() async {
+        pair()
+        LocationBuffer.append([ping(0)])
+        let late = ping(1)
+        StubProtocol.responder = { _ in
+            LocationBuffer.append([late]) // a new fix arrives while the batch is in flight
+            return (201, Data("{}".utf8))
+        }
+        let outcome = await controller.flush()
+        XCTAssertEqual(outcome, .stored)
+        XCTAssertEqual(LocationBuffer.load(), [late], "only the sent batch is removed; the late fix waits for the next upload")
+    }
+
     func testANewFixIsBufferedAndUploaded() async throws {
         pair()
         StubProtocol.response = (201, Data("{}".utf8))

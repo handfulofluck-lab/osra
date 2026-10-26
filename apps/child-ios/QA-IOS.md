@@ -145,7 +145,7 @@ On the contract the Android agent already uses; no server change.
   - `LocationTests` (stubbed server, fake `LocationSource`): the grant for every authorization status; the
     telemetry body; When In Use asks for Always and reports the change; the body shape and ISO timestamp;
     428 stops collecting and empties the buffer; 400 drops the batch; 5xx, 429 and 401 keep it; the cap at
-    500, oldest first; a ping added during an upload stays; a new fix is uploaded; nothing is recorded when
+    500, oldest first; a ping added during an upload stays, both in the buffer and through `flush` (Claude's fault on #390); a new fix is uploaded; nothing is recorded when
     unpaired; monitoring starts only when paired and allowed; the rule sync drives collection; `locate_now`
     acks `ok` only after the server stored the point, sends no ack when the upload fails, takes a cached fix
     under 5 minutes and refuses an older one, and refuses with the Android reasons; the drain acks the fix,

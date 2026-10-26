@@ -19,7 +19,7 @@
   usage strings are in English and Arabic; the Arabic awaits Karim's review.
 - **Wake deadline:** the timer is cancelled when the drain answers first (Claude on #388).
 - **Tests:**
-  - `LocationTests`: 20 cases.
+  - `LocationTests`: 21 cases.
   - `check-app-bundle.py` checks the location strings and the absence of the `location` background mode.
   - Live case 9 places the simulator, runs a real `locate_now`, and the parent reads the point back. The live
     job now requires 9 passed, 0 skipped.
