@@ -17,6 +17,7 @@ two realtime routes from `src/realtime/gateway.ts`). It has one column per calle
 |---|---|---|
 | `200` / `201` / `202` / `204` | allowed, with the route's success status | the handler |
 | `403p:<perm>` | `403 permission_required`, **unless** the invite granted `<perm>`, then the success status | `requirePermission`, `middleware/requireFamily.ts:151-161` |
+| `403p:<perm>` on a **read** in the Guardian column | since the ADR-0014 amendment (2026-10-26, #399/#401) a guardian needs `<perm>` for that read; owners and co-parents are unchanged | `requireGuardianRead`, `middleware/requireFamily.ts` |
 | `403o` | `403 owner_role_required` | `requireOwner`, `requireFamily.ts:135-144` |
 | `403r` | `403 parent_role_required` (a device token on a parent route) | `requireParent`, `requireFamily.ts:106-109` |
 | `403f` | `403 forbidden`: the resource is in another family, or a device that isn't the caller | `requireFamily.ts:229-232`, `requireOwnDevice` `:253-262` |
@@ -55,7 +56,7 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `GET /v1/alerts` | 58 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/alerts` | 58 | 200 | 200 | 403p:alerts | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/alerts/:id/ack` | 81 | 200 | 403p:alerts | 403p:alerts | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 ### `/v1/devices` (`routes/devices.ts`)
@@ -91,7 +92,7 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 | `POST /v1/family/children/:id/consent` | family 199 | 201 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/family/children/:id/consent` | family 236 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/children/:id/consent/revoke` | family 270 | 200 | 403o | 403o | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/family/export` | family 300 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/family/export` | family 300 | 200 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/invites` | invites 33 | 201 | 403o | 403o | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/family/invites` | invites 61 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/invites/:id/accept` | invites 71 | 200 if the token's email matches, else 403 `email_mismatch` | same | same | same | 401 (no Parent row, `:81`) | 401 | 401dr | 401s | 401 | 401 | 401 | — |
@@ -105,9 +106,9 @@ answers `403f`. A co-parent or guardian of another family would get `403o` first
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `POST /v1/location/ping` | 187 | 403d (F4) | 403d (F4) | 403d (F4) | 403d (F4) | 201 | 403c / 403 `device_mismatch` when the body names another child or device (`:243-247`) | 401dr (`:81-84`) | 401s | 401 | 401 | 401, unless the request is HMAC-signed (§2) | 428 (`:259`) |
-| `GET /v1/location/:childId/latest` | 330 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/location/:childId/history` | 341 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/location/geofences/:childId` | 365 | 200 | 200 | 200 | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/location/:childId/latest` | 330 | 200 | 200 | 403p:location | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/location/:childId/history` | 341 | 200 | 200 | 403p:location | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/location/geofences/:childId` | 365 | 200 | 200 | 403p:location | 403f | 200 | 403c | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/location/geofences` | 372 | 201 | 403p:location | 403p:location | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 |
 | `DELETE /v1/location/geofences/:id` | 381 | 200 | 403p:location | 403p:location | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
@@ -136,13 +137,13 @@ except `wellbeing`, which takes it from the path. None names a permission or the
 
 | Route | Line | Owner | Co-parent | Guardian | Other fam. | Own dev. | Sib. dev. | Revoked | Revoked session | Expired | Wrong purpose | None | Consent |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `GET /v1/reports/activity?childId=` | reports 40 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/reports/activity?childId=` | reports 40 | 200 | 200 | 403p:social | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/reports/summary?childId=` | reports 59 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/reports/usage?childId=` | reports 70 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/reports/web?childId=` | reports 83 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/reports/web?childId=` | reports 83 | 200 | 200 | 403p:social | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/reports/wellbeing/:childId` | reports 92 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/social/events?childId=` | social 166 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `GET /v1/content/searches?childId=` | content 264 | 200 | 200 | 200 | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/social/events?childId=` | social 166 | 200 | 200 | 403p:social | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `GET /v1/content/searches?childId=` | content 264 | 200 | 200 | 403p:social | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 A missing `childId` is `400 missing_childId` from `requireFamily` (`requireFamily.ts:220-223`), before any data is read.
 
@@ -233,7 +234,7 @@ the probe environment, Q3 and Q4 report `target`, the way G18 does.
 `Co`/`Gu` count as covered when the refusal (`403p`/`403o`) is asserted for that role. The "with the
 permission → 2xx" half is listed separately where a test has it.
 
-- **`GET /v1/alerts`**: Ow t:alerts.test.ts:27 · Own dev. and sibling `403r` t:alerts.test.ts:462 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/alerts`**: Ow t:alerts.test.ts:27 · Own dev. and sibling `403r` t:alerts.test.ts:462 · Co p:Q6d · Gu `403p:alerts` p:Q6e, t:guardian-reads.test.ts · no GAP in these columns.
 - **`POST /v1/alerts/:id/ack`**: Ow t:alerts.test.ts:84 · Co with and without `alerts` t:sessions-and-roles.test.ts:351, p:N7 · OF t:alerts.test.ts:474 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/devices/register`**: Ow t:devices.test.ts:120 · Co without `devices` t:devices.test.ts:143, p:N6b · OF t:devices.test.ts:221, p:B8 · Own dev. `403r` t:devices.test.ts:245 · Consent t:consent.test.ts:434 · GAP: Gu.
 - **`POST /v1/devices/pair`**: Ow t:pairing.test.ts:65 · Co t:pairing.test.ts:95, p:N6c · OF t:pairing.test.ts:123 · Own dev. t:pairing.test.ts:145 · Consent t:consent.test.ts:417 · GAP: Gu.
@@ -250,7 +251,7 @@ permission → 2xx" half is listed separately where a test has it.
 - **`POST /v1/devices/:id/telemetry`**: Ow `403d` t:devices.test.ts:607 · Own dev. t:devices.test.ts:542, p:G21 · Sibling t:devices.test.ts:607, p:G20 · OF t:devices.test.ts:590 · GAP: Co, Gu, Consent (p:J3b covers ping, rules and commands, not telemetry).
 - **`POST /v1/devices/:id/activity`**: Ow `403d` t:devices.test.ts:652 · Own dev. t:devices.test.ts:703 · Sibling t:devices.test.ts:652 · OF t:social.test.ts:311 · GAP: Co, Gu, Consent.
 - **`DELETE /v1/devices/:id`**: Ow t:devices.test.ts:768 · Own dev. `403r` t:devices.test.ts:768 · GAP: Co, Gu, OF.
-- **`GET /v1/family/me`**: Ow t:family.test.ts:92 · Own dev. t:family.test.ts:223, p:G6 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/family/me`**: Ow t:family.test.ts:92 · Own dev. t:family.test.ts:223, p:G6 · Co, Gu p:Q6c, p:Q6d · Gu without `location` gets no `geofences` p:Q6e, t:guardian-reads.test.ts · no GAP in these columns.
 - **`PATCH /v1/family/me`**: Ow t:timezone.test.ts:104 · Co, Gu `403o` p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/children`**: Ow t:family.test.ts:57 · Co `403o` t:sessions-and-roles.test.ts:362 · Own dev. t:pairing.test.ts:341 · Consent t:family.test.ts:23, :40, :76, p:C1 · GAP: Gu.
 - **`GET /v1/family/children/:id`**: Ow t:family.test.ts:127 · OF t:family.test.ts:149, p:B1 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
@@ -259,15 +260,15 @@ permission → 2xx" half is listed separately where a test has it.
 - **`POST /v1/family/children/:id/consent`**: Ow t:family.test.ts:332 · Co, Gu `403o` p:Q6, p:Q6b · devices `403r` p:Q7 · GAP: OF.
 - **`GET /v1/family/children/:id/consent`**: Ow t:consent.test.ts:80 · Co, Gu p:Q6c, p:Q6d · OF p:Q8 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/children/:id/consent/revoke`**: Ow t:consent.test.ts:40 · Co t:sessions-and-roles.test.ts:362 · OF t:consent.test.ts:65 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
-- **`GET /v1/family/export`**: Ow t:family.test.ts:392 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/family/export`**: Ow t:family.test.ts:392 · Co, Gu `403o` p:Q6, p:Q6b, t:guardian-reads.test.ts (owner-only since #326) · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/invites`**: Ow t:invites.test.ts:52, p:N4 · non-owner t:invites.test.ts:88 · Gu (as a role) p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`GET /v1/family/invites`**: Ow t:invites.test.ts:125 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/invites/:id/accept`**: match t:invites.test.ts:139, p:N5 · mismatch t:invites.test.ts:226 · unknown t:invites.test.ts:243 · GAP: a device token (401).
 - **`DELETE /v1/family/invites/:id`**: Ow, non-owner, other family t:invites.test.ts:270 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/location/ping`**: every parent role `403d` t:location-auth.test.ts:64, :81, p:G15, p:G17 · Own dev. t:location-auth.test.ts:119, p:G7b, p:G7c · Sibling t:location-auth.test.ts:135, p:G16 · device of another family t:location-auth.test.ts:103 · Consent t:consent.test.ts:179, t:location-events.test.ts:93, p:J3b · no GAP in these columns.
-- **`GET /v1/location/:childId/latest`**: Ow t:geofence.test.ts:606 · OF t:geofence.test.ts:632 · Own dev. t:location-auth.test.ts:156 · Sibling t:location-auth.test.ts:170 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
-- **`GET /v1/location/:childId/history`**: Ow t:geofence.test.ts:646 · Own dev. and sibling t:location-auth.test.ts:186, p:G13, p:G14 · Co, Gu p:Q6c, p:Q6d · GAP: OF.
-- **`GET /v1/location/geofences/:childId`**: Ow t:geofence.test.ts:709 · Own dev. and sibling t:location-auth.test.ts:211 · Co, Gu p:Q6c, p:Q6d · GAP: OF.
+- **`GET /v1/location/:childId/latest`**: Ow t:geofence.test.ts:606 · OF t:geofence.test.ts:632 · Own dev. t:location-auth.test.ts:156 · Sibling t:location-auth.test.ts:170 · Co p:Q6d · Gu `403p:location` p:Q6e, t:guardian-reads.test.ts · no GAP in these columns.
+- **`GET /v1/location/:childId/history`**: Ow t:geofence.test.ts:646 · Own dev. and sibling t:location-auth.test.ts:186, p:G13, p:G14 · Co p:Q6d · Gu `403p:location` p:Q6e, t:guardian-reads.test.ts · GAP: OF.
+- **`GET /v1/location/geofences/:childId`**: Ow t:geofence.test.ts:709 · Own dev. and sibling t:location-auth.test.ts:211 · Co p:Q6d · Gu `403p:location` p:Q6e, t:guardian-reads.test.ts · GAP: OF.
 - **`POST /v1/location/geofences`**: Ow t:geofence.test.ts:721 · OF t:geofence.test.ts:816, p:B4 · Consent t:consent.test.ts:468 · Co, Gu `403p:location` p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
 - **`DELETE /v1/location/geofences/:id`**: Ow and OF t:geofence.test.ts:838 · Own dev. `403r` t:geofence.test.ts:861 · GAP: Co, Gu.
 - **`GET /v1/rules/:childId`**: Ow t:rules.test.ts:223 · Gu reads t:sessions-and-roles.test.ts:315 · OF t:rules.test.ts:187 · Own dev. t:rules.test.ts:459, p:G13 · Sibling t:rules.test.ts:473, p:G14 · Consent for the device only t:consent.test.ts:197, p:J3b · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
@@ -278,13 +279,13 @@ permission → 2xx" half is listed separately where a test has it.
   - OF on every route: t:controls.test.ts:271.
   - Consent: t:consent.test.ts:452 (pause), :224 (resume stays open), p:J3, p:J3c.
   - Co, Gu `403p:rules` on all seven p:Q6, p:Q6b · devices `403r` on all seven p:Q7 · GAP: Ow on `/pause` and `/resume` (aliases).
-- **`GET /v1/reports/activity`**: Ow t:social.test.ts:325 · OF t:social.test.ts:357 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
-- **`GET /v1/reports/summary`**: Ow t:reports.test.ts:71 · OF t:reports.test.ts:120 · devices t:reports.test.ts:138 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/reports/activity`**: Ow t:social.test.ts:325 · OF t:social.test.ts:357 · Co p:Q6d · Gu `403p:social` p:Q6e, t:guardian-reads.test.ts · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/reports/summary`**: Ow t:reports.test.ts:71 · OF t:reports.test.ts:120 · devices t:reports.test.ts:138 · Co, Gu p:Q6c, p:Q6d · Gu without `social` gets no `topBlockedDomains` p:Q6e, t:guardian-reads.test.ts · no GAP in these columns.
 - **`GET /v1/reports/usage`**: Ow and OF t:usage-model.test.ts:315, p:B5, p:M2 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
-- **`GET /v1/reports/web`**: Ow and OF t:usage-model.test.ts:315, p:B5b · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
+- **`GET /v1/reports/web`**: Ow and OF t:usage-model.test.ts:315, p:B5b · Co p:Q6d · Gu `403p:social` p:Q6e, t:guardian-reads.test.ts · devices `403r` p:Q7 · no GAP in these columns.
 - **`GET /v1/reports/wellbeing/:childId`**: Ow t:reports.test.ts:181 · OF t:reports.test.ts:249, p:B6 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
-- **`GET /v1/social/events`**: Ow t:social.test.ts:222 · OF and devices t:social.test.ts:249, p:B9 (since F1) · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
-- **`GET /v1/content/searches`**: Ow, OF and devices t:content.test.ts:151, p:B7 (since F1) · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
+- **`GET /v1/social/events`**: Ow t:social.test.ts:222 · OF and devices t:social.test.ts:249, p:B9 (since F1) · Co p:Q6d · Gu `403p:social` p:Q6e, t:guardian-reads.test.ts · no GAP in these columns.
+- **`GET /v1/content/searches`**: Ow, OF and devices t:content.test.ts:151, p:B7 (since F1) · Co p:Q6d · Gu `403p:social` p:Q6e, t:guardian-reads.test.ts · no GAP in these columns.
 - **`GET /v1/digests/prefs`**: Ow t:reports.test.ts:271 · devices t:reports.test.ts:339 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
 - **`PUT /v1/digests/prefs`**: Ow t:reports.test.ts:306, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/digests/send-now`**: Ow t:reports.test.ts:353, t:digests-abuse.test.ts · Co, Gu p:Q6, p:Q6b · devices `403r` p:Q7 · no GAP in these columns.
@@ -303,8 +304,14 @@ permission → 2xx" half is listed separately where a test has it.
   above. The "with the permission → 2xx" half is still asserted only by p:N7 and the unit tests cited
   above. Adding it would need logins the probe can't afford (the `/v1/auth` bucket is 20 a minute, and the
   probe already uses it up).
-- **p:Q6c and p:Q6d:** the same no-permission guardian and co-parent are **admitted** to all 24 routes that
-  name no permission (the reads of their own family, by its real child and device ids, plus
+- **p:Q6e** (ADR-0014 amendment, #399/#401): the no-permission guardian is **refused** the eight gated reads
+  with `403 permission_required` naming the permission (`alerts`; the three location reads; social events,
+  searches, `/reports/web`, `/reports/activity`). The broad reads hold back the same data: `/v1/family/me`
+  carries no `geofences`, and `/v1/reports/summary` carries no `topBlockedDomains`. Q6c now walks only the
+  reads a guardian keeps, and Q6d (the co-parent) still walks all of them. The export is owner-only, so it
+  moved from Q6c/Q6d to Q6/Q6b (#326).
+- **p:Q6c and p:Q6d:** the same no-permission guardian and co-parent are **admitted** to the routes that
+  name no permission (24 when this was written; since #401, 15 for the guardian and 23 for the co-parent) (the reads of their own family, by its real child and device ids, plus
   `POST /v1/ws-ticket`). This is the positive half for every Co and Gu cell that is a plain 2xx, and it costs
   no logins, because it reuses Q6's sessions. `404 no_pings` on `GET /v1/location/:childId/latest` counts as
   admitted: the guard passed and the family has no ping. It pins that #354's owner-only digest writes left

@@ -1650,6 +1650,9 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     ["POST", `/v1/family/children/${Z}/consent/revoke`, {}, 403, "owner_role_required"],
     ["POST", "/v1/family/invites", { email: "q@example.invalid", role: "guardian", permissions: [] }, 403, "owner_role_required"],
     ["DELETE", `/v1/family/invites/${Z}`, undefined, 403, "owner_role_required"],
+    // #326 (26 Oct): the export is the GDPR Art. 15/20 request, so it is owner-only like consent revoke and
+    // child delete. It moved here from Q6c/Q6d's admitted reads.
+    ["GET", "/v1/family/export", undefined, 403, "owner_role_required"],
     // #354: where the family's digest goes, and sending it, are owner actions.
     ["PUT", "/v1/digests/prefs", { dailyEmail: false, weeklyEmail: false, pushEnabled: false, emails: ["q@example.invalid"] }, 403, "owner_role_required"],
     ["POST", "/v1/digests/send-now", {}, 403, "owner_role_required"],
@@ -1682,34 +1685,63 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     target("Q6b a co-parent with no permissions is refused (no live co-parent session)", "the O-section co-parent has no live session here");
   }
 
-  // Q6c: the positive half (matrix §6, "co-parent and guardian → 2xx"). The routes that name no permission
-  // must admit a guardian and a co-parent invited with NONE — reads of their own family, by its real ids.
-  // A refusal here is a parent locked out of what the matrix says they may see (#354 made the digest
-  // writes owner-only; this pins that the read stayed open). Same tokens as Q6/Q6b, so no extra logins.
-  // `404 no_pings` on the location reads is an admission: requireFamily passed and the family has no ping.
-  // Mutant: requireOwner (or any requirePermission) on GET /v1/digests/prefs -> that row is named, 403.
-  const readRows = mrKid && mrDeviceId ? [
-    ["GET", "/v1/alerts", undefined, 200], ["GET", "/v1/devices", undefined, 200],
+  // Q6c/Q6d: the positive half (matrix §6, "co-parent and guardian → 2xx"). A guardian and a co-parent invited
+  // with NONE must be admitted to the reads their role keeps: their own family, by its real ids. Same tokens as
+  // Q6/Q6b, so no extra logins. `404 no_pings` on `/location/:childId/latest` is an admission: the guards passed
+  // and the family has no ping. The family export is owner-only for both (#326), so it is in Q6/Q6b instead.
+  // Since the ADR-0014 amendment (2026-10-26, #399/#401) a guardian also needs `alerts`, `location` or `social`
+  // for the reads in `gatedReads`: a co-parent keeps them (Q6d), a guardian is refused them (Q6e).
+  // Mutant: requireOwner (or any requirePermission) on GET /v1/digests/prefs -> both Q6c and Q6d name it.
+  const openReads = mrKid && mrDeviceId ? [
+    ["GET", "/v1/devices", undefined, 200],
     ["GET", `/v1/devices/${mrDeviceId}`, undefined, 200], ["GET", `/v1/devices/${mrDeviceId}/commands/history`, undefined, 200],
     ["GET", "/v1/family/me", undefined, 200], ["GET", `/v1/family/children/${mrKid}`, undefined, 200],
-    ["GET", `/v1/family/children/${mrKid}/consent`, undefined, 200], ["GET", "/v1/family/export", undefined, 200],
-    ["GET", "/v1/family/invites", undefined, 200],
-    ["GET", `/v1/location/${mrKid}/latest`, undefined, 404, "no_pings"], ["GET", `/v1/location/${mrKid}/history`, undefined, 200],
-    ["GET", `/v1/location/geofences/${mrKid}`, undefined, 200], ["GET", `/v1/rules/${mrKid}`, undefined, 200],
-    ["GET", `/v1/reports/activity?childId=${mrKid}`, undefined, 200], ["GET", `/v1/reports/summary?childId=${mrKid}`, undefined, 200],
-    ["GET", `/v1/reports/usage?childId=${mrKid}&days=1`, undefined, 200], ["GET", `/v1/reports/web?childId=${mrKid}&days=1`, undefined, 200],
-    ["GET", `/v1/reports/wellbeing/${mrKid}`, undefined, 200],
-    ["GET", `/v1/social/events?childId=${mrKid}`, undefined, 200], ["GET", `/v1/content/searches?childId=${mrKid}`, undefined, 200],
+    ["GET", `/v1/family/children/${mrKid}/consent`, undefined, 200], ["GET", "/v1/family/invites", undefined, 200],
+    ["GET", `/v1/rules/${mrKid}`, undefined, 200],
+    ["GET", `/v1/reports/summary?childId=${mrKid}`, undefined, 200],
+    ["GET", `/v1/reports/usage?childId=${mrKid}&days=1`, undefined, 200], ["GET", `/v1/reports/wellbeing/${mrKid}`, undefined, 200],
     ["GET", "/v1/digests/prefs", undefined, 200], ["GET", "/v1/me/push-tokens", undefined, 200],
     ["GET", "/v1/blocklists", undefined, 200], ["POST", "/v1/ws-ticket", undefined, 200],
   ] : null;
-  for (const [label, tok] of [["Q6c a guardian", mrGuardianToken], ["Q6d a co-parent", mrCoParentToken]]) {
-    const live = readRows && tok ? (await qcall("GET", "/v1/family/me", { token: tok })).status === 200 : false;
+  // [method, path, the permission a guardian needs, the co-parent's status, its error]
+  const gatedReads = mrKid ? [
+    ["GET", "/v1/alerts", "alerts", 200],
+    ["GET", `/v1/location/${mrKid}/latest`, "location", 404, "no_pings"], ["GET", `/v1/location/${mrKid}/history`, "location", 200],
+    ["GET", `/v1/location/geofences/${mrKid}`, "location", 200],
+    ["GET", `/v1/social/events?childId=${mrKid}`, "social", 200], ["GET", `/v1/content/searches?childId=${mrKid}`, "social", 200],
+    ["GET", `/v1/reports/web?childId=${mrKid}&days=1`, "social", 200], ["GET", `/v1/reports/activity?childId=${mrKid}`, "social", 200],
+  ] : null;
+  const coParentReads = openReads && gatedReads ? [...openReads, ...gatedReads.map(([m, p, , st, err]) => [m, p, undefined, st, err])] : null;
+  for (const [label, tok, rows] of [["Q6c a guardian", mrGuardianToken, openReads], ["Q6d a co-parent", mrCoParentToken, coParentReads]]) {
+    const live = rows && tok ? (await qcall("GET", "/v1/family/me", { token: tok })).status === 200 : false;
     if (live) {
-      const bad = await walk(tok, readRows);
+      const bad = await walk(tok, rows);
       check(`${label} with no permissions is admitted to every route that names no permission`, bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
     } else {
       target(`${label} with no permissions is admitted (no live session or no family ids here)`, "the O-section family has no live session or no child/device here");
+    }
+  }
+  // Q6e: the ADR-0014 amendment's refusals. A guardian with no permissions is refused each gated read with
+  // `403 permission_required` naming the permission, and the broad reads hold back what the narrow ones refuse
+  // (decision 2): no `geofences` on `/v1/family/me`, no `topBlockedDomains` on `/v1/reports/summary`.
+  // Mutant: drop requireGuardianRead from any gated route, or the geofence omission -> Q6e names it.
+  {
+    const live = gatedReads && mrGuardianToken ? (await qcall("GET", "/v1/family/me", { token: mrGuardianToken })) : null;
+    if (live?.status === 200) {
+      const bad = [];
+      for (const [m, p, perm] of gatedReads) {
+        const r = await qcall(m, p, { token: mrGuardianToken });
+        if (r.status !== 403 || r.data?.error !== "permission_required" || r.data?.permission !== perm) {
+          bad.push(`${m} ${p} -> ${r.status} ${r.data?.error ?? ""} ${r.data?.permission ?? ""}`.trim());
+        }
+      }
+      const kids = live.data?.children ?? live.data?.family?.children ?? [];
+      if (kids.some((c) => c && "geofences" in c)) bad.push("GET /v1/family/me -> children carry geofences");
+      const summary = await qcall("GET", `/v1/reports/summary?childId=${mrKid}`, { token: mrGuardianToken });
+      if (summary.status !== 200 || (summary.data && "topBlockedDomains" in summary.data)) bad.push(`GET /v1/reports/summary -> ${summary.status}${summary.data && "topBlockedDomains" in summary.data ? " with topBlockedDomains" : ""}`);
+      check("Q6e a guardian with no permissions is refused the alert, location and social reads, and the broad reads withhold them", bad.length === 0, bad.slice(0, 8).join("; ") + (bad.length > 8 ? ` … +${bad.length - 8}` : ""));
+    } else {
+      target("Q6e a guardian with no permissions is refused the gated reads (no live guardian session or no family ids here)", "the O-section guardian has no live session or no child here");
     }
   }
 
