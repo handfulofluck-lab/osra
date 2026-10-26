@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -9,6 +10,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../api/models.dart';
 import 'auth_provider.dart';
 import 'world_class_provider.dart';
+
+import '../api/permission_errors.dart';
 
 /// Full family overview for the dashboard; refresh via `ref.invalidate(familyProvider)`.
 final familyProvider = FutureProvider<FamilyOverview>((ref) async {
@@ -59,7 +62,15 @@ final alertsProvider = FutureProvider.family<AlertsPage, AlertFilter>((ref, filt
 /// Unacknowledged alert count for the dashboard badge.
 final unacknowledgedCountProvider = FutureProvider<int>((ref) async {
   final api = ref.watch(apiClientProvider);
-  final res = await api.raw.get('/v1/alerts', queryParameters: {'ack': 'false', 'limit': 1});
+  final Response<dynamic> res;
+  try {
+    res = await api.raw.get('/v1/alerts', queryParameters: {'ack': 'false', 'limit': 1});
+  } on DioException catch (e) {
+    // ADR-0014 amendment, decision 7: a guardian whose invite lacks `alerts` is refused this read, and
+    // that must mean "no badge", not a dashboard error. Any other failure still surfaces as before.
+    if (ReadPermissionRequired.from(e) != null) return 0;
+    rethrow;
+  }
   final data = res.data;
   if (data is Map) {
     final meta = data['meta'];

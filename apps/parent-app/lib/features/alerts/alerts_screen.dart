@@ -61,7 +61,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       final refused = ReadPermissionRequired.from(e);
       setState(() {
         _refused = refused;
-        _error = refused == null ? e.message : null;
+        // `e.message` is null for a rejected response that carried no message — the fake in the tests
+        // does exactly that — and a null `_error` renders the EMPTY state, so a 500 looked like "no
+        // alerts yet". Name the status instead of trusting the message to exist.
+        _error = refused == null ? (e.message ?? 'HTTP ${e.response?.statusCode ?? e.type.name}') : null;
       });
     } finally {
       if (mounted) setState(() => _loading = false);
