@@ -1793,14 +1793,13 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     target("Q6f a guardian receives no alert or location frame (no live O-section family here)", "the O-section family has no live guardian, co-parent or device here");
   }
 
-  // Q2c: Q2 for the live socket. A ticket is checked once, when it is minted, so the socket it opens must
-  // not outlive the session behind it: after logout-all, that session's open socket gets no further family
-  // frame and is closed with 4001. It runs here, after Q6f, because it ends the co-parent's sessions and
-  // nothing after this reads them. The owner's socket is the control: it must receive the alert, or "the
-  // co-parent saw nothing" proves nothing. The alert is raised after the gateway's 5 s session cache has
-  // run out, so either the close on logout-all or the per-frame session check is enough to pass.
-  // Mutant: remove both (no close on revoke, no session re-check before a frame) -> the co-parent's socket
-  // stays open and receives the alert.
+  // Q2c: Q2 for the live socket (#414). The socket re-checks its session before every family frame, so after
+  // logout-all, a socket that session opened earlier gets no further frame and is closed with 4001. It runs
+  // here, after Q6f, because it ends the co-parent's sessions and nothing after this reads them. The owner's
+  // socket is the control: it must receive the alert, or "the co-parent saw nothing" proves nothing. The
+  // alert is raised after the gateway's 5 s session cache (SESSION_RECHECK_MS) has run out.
+  // Mutant: skip the `sessionLive` check in the gateway's fan-out -> the co-parent's socket stays open and
+  // receives the alert.
   // The owner's earlier sessions are spent by the MFA reset block, so the control logs in afresh.
   const q2cOwner = mrKid && mrDeviceId && mrCoParentToken && mrSecret
     ? (await call("POST", "/v1/auth/login", { body: { email: mrEmail, password: PASSWORD, code: totpCode(mrSecret) } })).data?.token
