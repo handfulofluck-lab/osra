@@ -96,12 +96,13 @@ export class FcmProvider implements PushProvider {
         token,
         // A data-only message has no `notification` block at all: Android would otherwise raise a
         // system notification for a wake-up, and the device would be showing command *metadata*.
-        ...(message.dataOnly ? {} : { notification: { title: message.title, body: message.body } }),
+        // An iOS loc-key alert (#410) has none either: its words come from the app bundle.
+        ...(message.dataOnly || message.locKeys ? {} : { notification: { title: message.title, body: message.body } }),
         data: message.data,
         android: {
           priority: message.priority === "high" ? "HIGH" : "NORMAL",
           ...(collapse ? { collapse_key: collapse } : {}),
-          ...(message.dataOnly
+          ...(message.dataOnly || message.locKeys
             ? {}
             : { notification: { channel_id: "osra_alerts", ...(collapse ? { tag: collapse } : {}) } }),
         },

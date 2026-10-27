@@ -259,6 +259,11 @@ describe("notification policy", () => {
     const outcome = await notifyParentsOfAlert("fam-1", alert, "Alex");
     expect(outcome).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
     expect(fcm.sent.map((s) => s.token)).toEqual(["fcm-ios-token"]);
+    // #410 on the real path: the iPhone gets loc-keys and the wake marker, never the name or the text.
+    expect(fcm.sent[0].message.locKeys).toEqual({ titleKey: "PUSH_ALERT_TITLE", bodyKey: "PUSH_ALERT_BODY" });
+    expect(fcm.sent[0].message.data).toEqual({ w: "1" });
+    const sent = JSON.stringify(fcm.sent[0].message);
+    for (const canary of ["Alex", "SOS", alert.id, alert.childId]) expect(sent).not.toContain(canary);
     expect(apnsSent).toEqual([]);
     expect(prismaMock.parentPushToken.deleteMany).not.toHaveBeenCalled();
   });
@@ -282,19 +287,23 @@ describe("notification policy", () => {
     const provider = new FakeProvider();
     setPushProviders([provider]);
     prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-9", createdAt: new Date(), acknowledged: false, ...data }));
-    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", displayName: "Alex" });
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", displayName: "Nazarene-Child" });
     prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
     prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
     prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "t1", parentId: "parent-1", token: "tok", platform: "android" }]);
 
-    const created = await raiseAlert({ childId: "child-1", familyId: "fam-1", severity: "warning", category: "ai_concern", title: "T", body: "B", metadata: { a: 1 } });
+    const created = await raiseAlert({ childId: "child-1", familyId: "fam-1", severity: "warning", category: "ai_concern", title: "TitleCanary", body: "BodyCanary", metadata: { a: 1 } });
     expect(created.id).toBe("alert-9");
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     expect(publishFamilyEvent).toHaveBeenCalledWith("fam-1", expect.objectContaining({ type: "alert", payload: expect.objectContaining({ id: "alert-9" }) }));
     expect(provider.sent).toHaveLength(1);
     // #410: the child's name and the alert text no longer reach a parent token at all.
     expect(provider.sent[0].message.title).toBeUndefined();
-    expect(provider.sent[0].message).toMatchObject({ dataOnly: true, data: { w: "1" } });
+    expect(provider.sent[0].message.dataOnly).toBe(true);
+    // Exact, not toMatchObject: a partial match let the child's name ride along in `data` (#413 review F2).
+    expect(provider.sent[0].message.data).toEqual({ w: "1" });
+    const sent = JSON.stringify(provider.sent[0].message);
+    for (const canary of ["Nazarene-Child", "TitleCanary", "BodyCanary", "alert-9", "child-1"]) expect(sent).not.toContain(canary);
     // #410 decision 1: every parent alert is HIGH — the app has to wake to fetch, whatever the severity.
     expect(provider.sent[0].message.priority).toBe("high");
   });
@@ -348,8 +357,15 @@ describe("the child device wake (#319)", () => {
 
   it("FCM: an ios parent alert is visible but built from loc-keys, with no literal text", () => {
     // #410 T3.
+    // The message itself carries no literal text either, so no provider can ever send one.
+    expect(buildParentAlertMessage("ios")).not.toHaveProperty("title");
+    expect(buildParentAlertMessage("ios")).not.toHaveProperty("body");
     const body = FcmProvider.buildMessage("tok", buildParentAlertMessage("ios"));
     const aps = body.message.apns.payload.aps;
+    // No `notification` block at all: an empty one is still a notification message to FCM, and the next
+    // field anyone adds to it would travel as literal text (#413 review).
+    expect(body.message).not.toHaveProperty("notification");
+    expect(body.message.android).not.toHaveProperty("notification");
     expect(aps.alert).toEqual({ "title-loc-key": "PUSH_ALERT_TITLE", "loc-key": "PUSH_ALERT_BODY" });
     expect(aps["content-available"]).toBe(1);
     expect(body.message.data).toEqual({ w: "1" });
