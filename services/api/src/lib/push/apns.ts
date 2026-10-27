@@ -141,7 +141,10 @@ export class ApnsProvider implements PushProvider {
     }
     return {
       aps: {
-        alert: { title: message.title, body: message.body },
+        // #410: a parent alert is built from localization keys, so no literal text reaches Apple.
+        alert: message.locKeys
+          ? { "title-loc-key": message.locKeys.titleKey, "loc-key": message.locKeys.bodyKey }
+          : { title: message.title, body: message.body },
         sound: message.priority === "high" ? "default" : undefined,
         ...(message.threadId ? { "thread-id": message.threadId } : {}),
         "mutable-content": 1,

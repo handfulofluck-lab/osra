@@ -1,0 +1,4 @@
+/* Parent alert push (#410). The server sends these keys and no text, so the child's name
+   and the alert detail never leave our infrastructure for Apple to process. */
+"PUSH_ALERT_TITLE" = "OSRA alert";
+"PUSH_ALERT_BODY" = "Open OSRA to see the details.";

@@ -90,18 +90,19 @@ export class FcmProvider implements PushProvider {
 
   /** The FCM v1 message body for one token. Exported shape so tests can assert it. */
   static buildMessage(token: string, message: PushMessage) {
-    const collapse = message.threadId;
+    const collapse = message.collapseKey ?? message.threadId;
     return {
       message: {
         token,
         // A data-only message has no `notification` block at all: Android would otherwise raise a
         // system notification for a wake-up, and the device would be showing command *metadata*.
-        ...(message.dataOnly ? {} : { notification: { title: message.title, body: message.body } }),
+        // An iOS loc-key alert (#410) has none either: its words come from the app bundle.
+        ...(message.dataOnly || message.locKeys ? {} : { notification: { title: message.title, body: message.body } }),
         data: message.data,
         android: {
           priority: message.priority === "high" ? "HIGH" : "NORMAL",
           ...(collapse ? { collapse_key: collapse } : {}),
-          ...(message.dataOnly
+          ...(message.dataOnly || message.locKeys
             ? {}
             : { notification: { channel_id: "osra_alerts", ...(collapse ? { tag: collapse } : {}) } }),
         },
@@ -111,7 +112,16 @@ export class FcmProvider implements PushProvider {
           payload: {
             aps: message.dataOnly
               ? { "content-available": 1 }
-              : { sound: "default", ...(collapse ? { "thread-id": collapse } : {}) },
+              : message.locKeys
+                // #410: a visible iOS alert whose text comes from the bundle's keys. No literal title or
+                // body, so `aps` carries no alert content at all.
+                ? {
+                    alert: { "title-loc-key": message.locKeys.titleKey, "loc-key": message.locKeys.bodyKey },
+                    "content-available": 1,
+                    sound: "default",
+                    ...(collapse ? { "thread-id": collapse } : {}),
+                  }
+                : { sound: "default", ...(collapse ? { "thread-id": collapse } : {}) },
           },
         },
       },

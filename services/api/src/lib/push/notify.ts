@@ -39,23 +39,38 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | nul
   return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];
 }
 
-/** One message for every recipient: the alert's own title/body plus a data payload the app deep-links on. */
-export function buildAlertMessage(alert: AlertLike, childName?: string): PushMessage {
-  const critical = alert.severity === "critical" || alert.category === "sos";
-  return {
-    title: childName ? `${childName}: ${alert.title}` : alert.title,
-    body: alert.body,
-    data: {
-      type: "alert",
-      alertId: alert.id,
-      childId: alert.childId,
-      category: alert.category,
-      severity: alert.severity,
-    },
-    threadId: `child-${alert.childId}`,
-    priority: critical ? "high" : "normal",
-  };
+/**
+ * The parent alert message for one platform (#410, decision 1 and 2).
+ *
+ * **No alert content leaves the server in a parent push, on any platform.** The app already fetches
+ * `/v1/alerts` and builds the notification locally (#395), and a payload carrying `<child name>: <title>`
+ * plus the alert body would put a child's name and their search or video title through Google and Apple —
+ * which is what the Flip4 run caught as a second, duplicate notification.
+ *
+ * - **Android**: `dataOnly`, `{ w: "1" }` and nothing else, `HIGH` priority because the app has to wake to
+ *   fetch, and a constant collapse key because one wake reads every unseen alert.
+ * - **iOS**: a visible alert built from localization keys, plus `content-available` and the same data. The
+ *   bundle decides the words, so `aps` carries no literal text either.
+ *
+ * The child-device wake keeps its own builder: it must never display anything, which is a different rule.
+ */
+export function buildParentAlertMessage(platform: PushPlatform): PushMessage {
+  const data = { w: "1" };
+  if (platform === "ios") {
+    return {
+      data,
+      locKeys: { titleKey: "PUSH_ALERT_TITLE", bodyKey: "PUSH_ALERT_BODY" },
+      priority: "high",
+      collapseKey: PARENT_WAKE_COLLAPSE_KEY,
+      // APNs takes the collapse id from `threadId`; FCM from `collapseKey`. Same constant for both.
+      threadId: PARENT_WAKE_COLLAPSE_KEY,
+    };
+  }
+  return { data, dataOnly: true, priority: "high", collapseKey: PARENT_WAKE_COLLAPSE_KEY, threadId: PARENT_WAKE_COLLAPSE_KEY };
 }
+
+/** One constant key: every unseen alert is read by the same wake, so a second pending wake is redundant. */
+export const PARENT_WAKE_COLLAPSE_KEY = "osra-wake";
 
 /** Registry of providers keyed by platform. Built lazily from env; replaceable in tests. */
 let registry: Map<PushPlatform, PushProvider> | null = null;
@@ -153,13 +168,14 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     const tokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
     if (tokens.length === 0) return { ...outcome, skipped: "no_tokens" };
 
-    const message = buildAlertMessage(alert, childName);
     outcome.recipients = tokens.length;
     const dead: string[] = [];
     await Promise.all(
       tokens.map(async (t) => {
         const provider = providerFor(t.platform as PushPlatform, providers);
         if (!provider) return;
+        // #410: per-platform, and never the alert's text. `childName` is deliberately unused here now.
+        const message = buildParentAlertMessage(t.platform as PushPlatform);
         const result = await provider.send(t.token, message);
         if (result.ok) outcome.delivered += 1;
         else if (result.invalidToken) dead.push(t.id);

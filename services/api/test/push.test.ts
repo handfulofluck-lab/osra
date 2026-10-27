@@ -8,7 +8,7 @@ vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async (
 import { FcmProvider, buildAssertion } from "../src/lib/push/fcm.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
 import {
-  buildAlertMessage,
+  buildParentAlertMessage,
   buildDeviceWakeMessage,
   canWakeDevice,
   notifyDeviceWake,
@@ -59,7 +59,7 @@ describe("FCM provider", () => {
       return jsonResponse(200, { name: "projects/osra-test/messages/1" });
     });
     const provider = new FcmProvider(sa, fetchMock as never);
-    const message = buildAlertMessage(alert, "Alex");
+    const message = buildParentAlertMessage("android");
     expect(await provider.send("tok-1", message)).toEqual({ ok: true });
     expect(await provider.send("tok-2", message)).toEqual({ ok: true });
     const tokenCalls = fetchMock.mock.calls.filter(([u]) => (u as string).endsWith("/token"));
@@ -68,10 +68,11 @@ describe("FCM provider", () => {
     expect(sendCall[0]).toBe("https://fcm.googleapis.com/v1/projects/osra-test/messages:send");
     const body = JSON.parse((sendCall[1] as RequestInit).body as string);
     expect(body.message.token).toBe("tok-1");
-    expect(body.message.notification).toEqual({ title: "Alex: SOS", body: "Alex pressed SOS" });
-    expect(body.message.data).toEqual({ type: "alert", alertId: "alert-1", childId: "child-1", category: "sos", severity: "critical" });
+    // #410: the parent payload carries the wake marker and nothing else.
+    expect(body.message).not.toHaveProperty("notification");
+    expect(body.message.data).toEqual({ w: "1" });
     expect(body.message.android.priority).toBe("HIGH");
-    expect(body.message.android.collapse_key).toBe("child-child-1");
+    expect(body.message.android.collapse_key).toBe("osra-wake");
     expect((sendCall[1] as RequestInit).headers).toMatchObject({ authorization: "Bearer ya29.test" });
   });
 
@@ -82,7 +83,7 @@ describe("FCM provider", () => {
     ];
     const fetchMock = vi.fn(async (url: string) => (url.endsWith("/token") ? jsonResponse(200, { access_token: "t", expires_in: 3600 }) : outcomes.shift()!));
     const provider = new FcmProvider(sa, fetchMock as never);
-    const m = buildAlertMessage(alert);
+    const m = buildParentAlertMessage("android");
     expect(await provider.send("dead", m)).toMatchObject({ ok: false, invalidToken: true });
     expect(await provider.send("flaky", m)).toMatchObject({ ok: false, invalidToken: false });
   });
@@ -123,7 +124,7 @@ describe("FCM provider", () => {
     ];
     const fetchMock = vi.fn(async (url: string) => (url.endsWith("/token") ? jsonResponse(200, { access_token: "t", expires_in: 3600 }) : outcomes.shift()!));
     const provider = new FcmProvider(sa, fetchMock as never);
-    const m = buildAlertMessage(alert);
+    const m = buildParentAlertMessage("android");
 
     expect(await provider.send("never-valid", m)).toMatchObject({ ok: false, invalidToken: true });
     const dataField = await provider.send("payload-bug", m);
@@ -151,14 +152,15 @@ describe("APNs provider", () => {
       return { status, body: status === 200 ? "" : JSON.stringify({ reason: "Unregistered" }) };
     };
     const provider = new ApnsProvider({ keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" }, transport);
-    expect(await provider.send("abc", buildAlertMessage(alert))).toEqual({ ok: true });
+    expect(await provider.send("abc", buildParentAlertMessage("ios"))).toEqual({ ok: true });
     expect(calls[0].path).toBe("/3/device/abc");
     expect(calls[0].headers["apns-topic"]).toBe("com.osra.parent");
     expect(calls[0].headers["apns-priority"]).toBe("10");
-    expect(calls[0].headers["apns-collapse-id"]).toBe("child-child-1");
-    expect(JSON.parse(calls[0].body).aps.alert).toEqual({ title: "SOS", body: "Alex pressed SOS" });
+    expect(calls[0].headers["apns-collapse-id"]).toBe("osra-wake");
+    // #410: the visible iOS alert carries localization keys, never literal text.
+    expect(JSON.parse(calls[0].body).aps.alert).toEqual({ "title-loc-key": "PUSH_ALERT_TITLE", "loc-key": "PUSH_ALERT_BODY" });
     status = 410;
-    expect(await provider.send("gone", buildAlertMessage(alert))).toMatchObject({ ok: false, invalidToken: true });
+    expect(await provider.send("gone", buildParentAlertMessage("ios"))).toMatchObject({ ok: false, invalidToken: true });
   });
 
   // 5.5 PR D: the child device wake is a background push to the child agent's topic. Mutants: push-type
@@ -177,7 +179,7 @@ describe("APNs provider", () => {
     expect(calls[0].headers["apns-topic"]).toBe("dev.familyshield.agent");
     expect(JSON.parse(calls[0].body).aps).toEqual({ "content-available": 1 });
     // The alert path is unchanged: parent topic, alert type.
-    await provider.send("parent-token", buildAlertMessage(alert));
+    await provider.send("parent-token", buildParentAlertMessage("ios"));
     expect(calls[1].headers["apns-push-type"]).toBe("alert");
     expect(calls[1].headers["apns-topic"]).toBe("com.osra.parent");
   });
@@ -257,6 +259,11 @@ describe("notification policy", () => {
     const outcome = await notifyParentsOfAlert("fam-1", alert, "Alex");
     expect(outcome).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
     expect(fcm.sent.map((s) => s.token)).toEqual(["fcm-ios-token"]);
+    // #410 on the real path: the iPhone gets loc-keys and the wake marker, never the name or the text.
+    expect(fcm.sent[0].message.locKeys).toEqual({ titleKey: "PUSH_ALERT_TITLE", bodyKey: "PUSH_ALERT_BODY" });
+    expect(fcm.sent[0].message.data).toEqual({ w: "1" });
+    const sent = JSON.stringify(fcm.sent[0].message);
+    for (const canary of ["Alex", "SOS", alert.id, alert.childId]) expect(sent).not.toContain(canary);
     expect(apnsSent).toEqual([]);
     expect(prismaMock.parentPushToken.deleteMany).not.toHaveBeenCalled();
   });
@@ -280,18 +287,25 @@ describe("notification policy", () => {
     const provider = new FakeProvider();
     setPushProviders([provider]);
     prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-9", createdAt: new Date(), acknowledged: false, ...data }));
-    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", displayName: "Alex" });
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", displayName: "Nazarene-Child" });
     prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
     prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
     prismaMock.parentPushToken.findMany.mockResolvedValue([{ id: "t1", parentId: "parent-1", token: "tok", platform: "android" }]);
 
-    const created = await raiseAlert({ childId: "child-1", familyId: "fam-1", severity: "warning", category: "ai_concern", title: "T", body: "B", metadata: { a: 1 } });
+    const created = await raiseAlert({ childId: "child-1", familyId: "fam-1", severity: "warning", category: "ai_concern", title: "TitleCanary", body: "BodyCanary", metadata: { a: 1 } });
     expect(created.id).toBe("alert-9");
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     expect(publishFamilyEvent).toHaveBeenCalledWith("fam-1", expect.objectContaining({ type: "alert", payload: expect.objectContaining({ id: "alert-9" }) }));
     expect(provider.sent).toHaveLength(1);
-    expect(provider.sent[0].message.title).toBe("Alex: T");
-    expect(provider.sent[0].message.priority).toBe("normal");
+    // #410: the child's name and the alert text no longer reach a parent token at all.
+    expect(provider.sent[0].message.title).toBeUndefined();
+    expect(provider.sent[0].message.dataOnly).toBe(true);
+    // Exact, not toMatchObject: a partial match let the child's name ride along in `data` (#413 review F2).
+    expect(provider.sent[0].message.data).toEqual({ w: "1" });
+    const sent = JSON.stringify(provider.sent[0].message);
+    for (const canary of ["Nazarene-Child", "TitleCanary", "BodyCanary", "alert-9", "child-1"]) expect(sent).not.toContain(canary);
+    // #410 decision 1: every parent alert is HIGH — the app has to wake to fetch, whatever the severity.
+    expect(provider.sent[0].message.priority).toBe("high");
   });
 });
 
@@ -325,15 +339,43 @@ describe("the child device wake (#319)", () => {
     expect(body.message.apns.payload.aps).toEqual({ "content-available": 1 });
   });
 
-  it("FCM: an ordinary alert still renders a notification (the data-only branch must not leak)", () => {
-    const body = FcmProvider.buildMessage("tok", buildAlertMessage(alert, "Alex"));
-    expect(body.message.notification).toEqual({ title: "Alex: SOS", body: "Alex pressed SOS" });
-    expect(body.message.android.notification.channel_id).toBe("osra_alerts");
+  it("FCM: an android parent alert is data-only, carries `{ w: 1 }` and nothing else, and never the child's name", () => {
+    // #410 T1/T2. This replaces a row that asserted `title: "Alex: SOS"` — the assertion that let the
+    // child's name and the alert text travel to Google unnoticed.
+    const body = FcmProvider.buildMessage("tok", buildParentAlertMessage("android"));
+    expect(body.message).not.toHaveProperty("notification");
+    expect(body.message.android).not.toHaveProperty("notification");
+    expect(body.message.data).toEqual({ w: "1" });
+    expect(body.message.android.priority).toBe("HIGH");
+    expect(body.message.android.collapse_key).toBe("osra-wake");
+
+    const wire = JSON.stringify(body);
+    for (const canary of ["Nazarene-Child", "TitleCanary", "BodyCanary", alert.id, alert.childId]) {
+      expect(wire).not.toContain(canary);
+    }
   });
 
-  it("APNs: a data-only payload has no alert, an alert payload still does", () => {
+  it("FCM: an ios parent alert is visible but built from loc-keys, with no literal text", () => {
+    // #410 T3.
+    // The message itself carries no literal text either, so no provider can ever send one.
+    expect(buildParentAlertMessage("ios")).not.toHaveProperty("title");
+    expect(buildParentAlertMessage("ios")).not.toHaveProperty("body");
+    const body = FcmProvider.buildMessage("tok", buildParentAlertMessage("ios"));
+    const aps = body.message.apns.payload.aps;
+    // No `notification` block at all: an empty one is still a notification message to FCM, and the next
+    // field anyone adds to it would travel as literal text (#413 review).
+    expect(body.message).not.toHaveProperty("notification");
+    expect(body.message.android).not.toHaveProperty("notification");
+    expect(aps.alert).toEqual({ "title-loc-key": "PUSH_ALERT_TITLE", "loc-key": "PUSH_ALERT_BODY" });
+    expect(aps["content-available"]).toBe(1);
+    expect(body.message.data).toEqual({ w: "1" });
+    const wire = JSON.stringify(body);
+    expect(wire).not.toContain("title\"");
+    for (const canary of ["Nazarene-Child", "TitleCanary", "BodyCanary"]) expect(wire).not.toContain(canary);
+  });
+
+  it("APNs: the child wake has no alert and stays unchanged (#410 T4)", () => {
     expect(ApnsProvider.buildPayload(buildDeviceWakeMessage()).aps).toEqual({ "content-available": 1 });
-    expect(ApnsProvider.buildPayload(buildAlertMessage(alert, "Alex")).aps.alert).toEqual({ title: "Alex: SOS", body: "Alex pressed SOS" });
   });
 
   it("wakes the device row's own token, and a dead token is cleared from the row", async () => {

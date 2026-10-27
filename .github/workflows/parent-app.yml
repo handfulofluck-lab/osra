@@ -207,3 +207,19 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations:0' "$PLIST" | grep -qx 'en'
           /usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations:1' "$PLIST" | grep -qx 'ar'
           echo "display name and en/ar localizations present"
+      # #410: an iOS parent alert is built from loc-keys, so these two files are the only words the parent
+      # sees. A pbxproj that compiles but never copies them shows the raw key on the lock screen, and no
+      # other gate can tell: there is no Xcode anywhere else on the programme.
+      - name: The push alert strings ship in the bundle, in both languages (#410)
+        run: |
+          APP=build/ios/iphoneos/Runner.app
+          for L in en ar; do
+            F="$APP/$L.lproj/Localizable.strings"
+            test -f "$F" || { echo "missing $F" >&2; ls "$APP" >&2; exit 1; }
+            plutil -lint "$F"
+            for K in PUSH_ALERT_TITLE PUSH_ALERT_BODY; do
+              V=$(plutil -extract "$K" raw -o - "$F") || { echo "$K missing in $L" >&2; exit 1; }
+              test -n "$V" || { echo "$K is empty in $L" >&2; exit 1; }
+            done
+          done
+          echo "en and ar Localizable.strings are in Runner.app with both keys"
