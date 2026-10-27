@@ -9,9 +9,19 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../auth/mfa_reset_messages.dart';
 
 /// The four grantable permission scopes for an invited member (#13).
 const kInvitePermissions = ['rules', 'location', 'alerts', 'social'];
+
+/// The permission scope as a label (#419). Unknown values are returned raw, like [mfaResetRoleName].
+String familyPermissionName(AppLocalizations l10n, String permission) => switch (permission) {
+      'rules' => l10n.familyPermRules,
+      'location' => l10n.familyPermLocation,
+      'alerts' => l10n.familyPermAlerts,
+      'social' => l10n.familyPermSocial,
+      _ => permission,
+    };
 
 /// Feature #13: family members screen — parents with roles from
 /// `/v1/family/me`, an 'Invite member' flow (`POST /v1/family/invites`) and
@@ -48,7 +58,7 @@ class FamilyScreen extends ConsumerWidget {
                       leading: CircleAvatar(child: Text(p.email.isEmpty ? '?' : p.email[0].toUpperCase())),
                       title: Text(p.displayName.isEmpty ? p.email : p.displayName),
                       subtitle: Text(p.email),
-                      trailing: Chip(visualDensity: VisualDensity.compact, label: Text(p.role)),
+                      trailing: Chip(visualDensity: VisualDensity.compact, label: Text(mfaResetRoleName(context.l10n, p.role))),
                     ),
                   ),
               const SizedBox(height: AppSpace.lg),
@@ -84,7 +94,7 @@ class FamilyScreen extends ConsumerWidget {
                           child: ListTile(
                             leading: const Icon(Icons.mail_outline),
                             title: Text(invite.email),
-                            subtitle: Text('${invite.role} · ${invite.permissions.join(', ')}'),
+                            subtitle: Text('${mfaResetRoleName(context.l10n, invite.role)} · ${invite.permissions.map((p) => familyPermissionName(context.l10n, p)).join(', ')}'),
                             trailing: IconButton(
                               tooltip: context.l10n.familyRevokeInvite,
                               icon: const Icon(Icons.delete_outline),
@@ -239,7 +249,7 @@ class _InviteMemberDialogState extends ConsumerState<InviteMemberDialog> {
                   for (final p in kInvitePermissions)
                     CheckboxListTile(
                       dense: true,
-                      title: Text(p[0].toUpperCase() + p.substring(1)),
+                      title: Text(familyPermissionName(context.l10n, p)),
                       value: _permissions[p] ?? true,
                       onChanged: (v) => setState(() => _permissions[p] = v ?? false),
                     ),

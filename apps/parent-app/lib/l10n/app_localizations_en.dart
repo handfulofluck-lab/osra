@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -588,6 +589,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get familyTokenCopied => 'Token copied';
+
+  @override
+  String get familyPermRules => 'Rules';
+
+  @override
+  String get familyPermLocation => 'Location';
+
+  @override
+  String get familyPermAlerts => 'Alerts';
+
+  @override
+  String get familyPermSocial => 'Social';
 
   @override
   String alertsLoadFailed(String error) {

@@ -304,6 +304,10 @@
   "familySendInvite": "Send invite",
   "familyCopyToken": "Copy token",
   "familyTokenCopied": "Token copied",
+  "familyPermRules": "Rules",
+  "familyPermLocation": "Location",
+  "familyPermAlerts": "Alerts",
+  "familyPermSocial": "Social",
   "alertsLoadFailed": "Failed to load alerts: {error}",
   "@alertsLoadFailed": {
     "placeholders": {
