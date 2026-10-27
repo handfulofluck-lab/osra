@@ -294,7 +294,7 @@ permission → 2xx" half is listed separately where a test has it.
 - **`GET /v1/blocklists`**: parent t:blocklists.test.ts:46 · device t:blocklists.test.ts:66 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
 - **`GET /v1/insights/apps`**: parent t:review-fixes.test.ts:101 · GAP: a device token.
 - **`POST /v1/ws-ticket`**: Ow t:realtime.test.ts:76, p:L1 · Own dev. `403r` p:G6b · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
-- **`GET /v1/ws`**: ticket flow t:realtime.test.ts:76, p:L1, p:L4, p:L5, p:L9 · `?token=` refused t:realtime.test.ts:117, :124, p:L6, p:L7, p:L7b · a guardian without `alerts`/`location` gets no `alert`/`location` frame while a co-parent does p:Q6f, t:realtime.test.ts (#404).
+- **`GET /v1/ws`**: ticket flow t:realtime.test.ts:76, p:L1, p:L4, p:L5, p:L9 · `?token=` refused t:realtime.test.ts:117, :124, p:L6, p:L7, p:L7b · a guardian without `alerts`/`location` gets no `alert`/`location` frame while a co-parent does p:Q6f, t:realtime.test.ts (#404). · a socket opened before `logout-all` gets no further frame and is closed `4001` p:Q2c, t:realtime.test.ts (#414).
 
 **Closed by probe section Q, for the columns above:**
 
@@ -307,6 +307,10 @@ permission → 2xx" half is listed separately where a test has it.
 - **p:Q6f** (ADR-0014 amendment decision 3, #402/#404): the no-permission guardian's live socket receives no
   `alert` and no `location` frame for its family's child, while the co-parent's socket (the control) receives
   both. Before #404 the guardian's socket got the whole alert row.
+- **p:Q2c** (#414): the Revoked-session column for the live socket. The co-parent opens `/v1/ws`, then runs
+  `logout-all`. Past the gateway's 5 s session cache, an alert is raised: the owner's socket (the control) receives
+  it, and the co-parent's socket does not and is closed with `4001`. Q2 covers the HTTP routes; a socket is
+  authorised at connect, so it needs its own row.
 - **p:Q6e** (ADR-0014 amendment, #399/#401): the no-permission guardian is **refused** the eight gated reads
   with `403 permission_required` naming the permission (`alerts`; the three location reads; social events,
   searches, `/reports/web`, `/reports/activity`). The broad reads hold back the same data: `/v1/family/me`
