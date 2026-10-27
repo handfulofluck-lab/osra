@@ -19,6 +19,10 @@ class ReadPermissionRequired {
   /// Only a `403` with the server's own `permission_required` error counts. A plain `403` can also mean
   /// `cross_child_forbidden` or a revoked session, and telling a guardian to ask the owner for access
   /// when the real problem is a stale token would send them to the wrong person.
+  /// Whether [error] is a refusal at all, for a screen that wants to suppress the raw error text
+  /// without needing the permission name.
+  static bool isRefusal(Object error) => error is DioException && from(error) != null;
+
   static ReadPermissionRequired? from(DioException error) {
     if (error.response?.statusCode != 403) return null;
     final data = error.response?.data;
@@ -36,3 +40,15 @@ class ReadPermissionRequired {
 /// `alerts` in the middle of an Arabic sentence reads as a bug. The permission is kept on
 /// [ReadPermissionRequired] for logging and for a future screen that explains each one.
 String permissionRequiredMessage(AppLocalizations l10n) => l10n.readPermissionRequired;
+
+
+/// The text a screen shows when a gated read fails: decision 7's sentence for a refusal, the screen's
+/// own message for anything else.
+///
+/// One helper rather than five copies, because the distinction that matters is *which* errors count as a
+/// refusal, and that is already decided in [ReadPermissionRequired.from]. The fallback is a callback so a
+/// screen that builds its message from the error does not pay for it on the refusal path.
+String readErrorText(AppLocalizations l10n, Object error, String Function() fallback) {
+  final refusal = error is DioException ? ReadPermissionRequired.from(error) : null;
+  return refusal == null ? fallback() : l10n.readPermissionRequired;
+}

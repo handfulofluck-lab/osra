@@ -6,6 +6,7 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../api/permission_errors.dart';
 
 /// Roadmap 3.5: the durable usage model in the parent app. One screen carries
 /// both reads, because they share the 7/14/30-day window:
@@ -290,9 +291,11 @@ class _BrowsingSection extends ConsumerWidget {
             height: 120,
             child: Center(child: CircularProgressIndicator(key: ValueKey('webLoading'))),
           ),
+          // ADR-0014 decision 7 (#406): a refusal says so and drops the raw DioException detail, so the
+          // owner sentence is not followed by "DioException [bad response]: ...".
           error: (e, _) => _ErrorBody(
-            message: l10n.couldNotLoadBrowsing,
-            detail: '$e',
+            message: readErrorText(l10n, e, () => l10n.couldNotLoadBrowsing),
+            detail: ReadPermissionRequired.isRefusal(e) ? '' : '$e',
             onRetry: () => ref.invalidate(webHistoryProvider(query)),
           ),
           data: (items) {
@@ -384,7 +387,9 @@ class _ErrorBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$message: $detail'),
+          // A refusal passes an empty detail: the message is the whole sentence, and appending a stray
+          // colon to it would look like a truncation bug.
+          Text(detail.isEmpty ? message : '$message: $detail'),
           const SizedBox(height: AppSpace.xs),
           TextButton(onPressed: onRetry, child: Text(context.l10n.tryAgain)),
         ],
