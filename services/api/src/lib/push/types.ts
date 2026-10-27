@@ -23,6 +23,14 @@ export interface PushMessage {
    * able to learn a command from a push, and the parent's lock screen must not show one.
    */
   dataOnly?: boolean;
+  /**
+   * iOS parent alerts (#410): the visible text is built from these localization keys, never from a literal
+   * string, so the child's name and the alert text never travel to Apple. The keys live in the parent app's
+   * `Runner/{en,ar}.lproj/Localizable.strings`.
+   */
+  locKeys?: { titleKey: string; bodyKey: string };
+  /** FCM `collapse_key` for Android; one wake reads every unseen alert, so repeated wakes are redundant. */
+  collapseKey?: string;
 }
 
 export type PushResult =

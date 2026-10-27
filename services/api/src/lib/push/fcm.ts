@@ -90,7 +90,7 @@ export class FcmProvider implements PushProvider {
 
   /** The FCM v1 message body for one token. Exported shape so tests can assert it. */
   static buildMessage(token: string, message: PushMessage) {
-    const collapse = message.threadId;
+    const collapse = message.collapseKey ?? message.threadId;
     return {
       message: {
         token,
@@ -111,7 +111,16 @@ export class FcmProvider implements PushProvider {
           payload: {
             aps: message.dataOnly
               ? { "content-available": 1 }
-              : { sound: "default", ...(collapse ? { "thread-id": collapse } : {}) },
+              : message.locKeys
+                // #410: a visible iOS alert whose text comes from the bundle's keys. No literal title or
+                // body, so `aps` carries no alert content at all.
+                ? {
+                    alert: { "title-loc-key": message.locKeys.titleKey, "loc-key": message.locKeys.bodyKey },
+                    "content-available": 1,
+                    sound: "default",
+                    ...(collapse ? { "thread-id": collapse } : {}),
+                  }
+                : { sound: "default", ...(collapse ? { "thread-id": collapse } : {}) },
           },
         },
       },
