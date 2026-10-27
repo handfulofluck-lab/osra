@@ -46,10 +46,10 @@ class FamilyMapScreen extends ConsumerWidget {
     final overview = family.valueOrNull;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Family map'),
+        title: Text(context.l10n.familyMapTitle),
         actions: [
           IconButton(
-            tooltip: 'Add geofence',
+            tooltip: context.l10n.familyMapAddGeofence,
             icon: const Icon(Icons.add),
             onPressed: overview == null || overview.children.isEmpty
                 ? null
@@ -63,7 +63,7 @@ class FamilyMapScreen extends ConsumerWidget {
       ),
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => 'Failed to load family: $e'))),
+        error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
         data: (overview) => _MapBody(overview: overview),
       ),
     );
@@ -88,26 +88,30 @@ class ChildMapSheet extends ConsumerWidget {
         children: [
           Text(child.displayName, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppSpace.sm),
-          Text('Last update: ${ping.timestamp == null ? 'unknown' : DateFormat.yMMMd().add_Hms().format(ping.timestamp!.toLocal())}'),
+          Text(context.l10n.familyMapLastUpdate(
+            ping.timestamp == null
+                ? context.l10n.familyMapLastUpdateUnknown
+                : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
+          )),
           const SizedBox(height: AppSpace.xs),
           // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
           Text('${ping.lat.toStringAsFixed(6)}, ${ping.lng.toStringAsFixed(6)}'),
           if (device != null && device!.batteryPct > 0) ...[
             const SizedBox(height: AppSpace.xs),
-            Text('Battery: ${device!.batteryPct}%'),
+            Text(context.l10n.familyMapBattery(device!.batteryPct)),
           ],
           const SizedBox(height: AppSpace.lg),
           Row(
             children: [
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.volume_up),
-                label: const Text('Ring device'),
+                label: Text(context.l10n.familyMapRing),
                 onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'ring'),
               ),
               const SizedBox(width: AppSpace.md),
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.lock),
-                label: const Text('Lock device'),
+                label: Text(context.l10n.familyMapLock),
                 onPressed: device == null ? null : () => _sendCommand(context, ref, device!, 'lock'),
               ),
             ],
@@ -122,15 +126,16 @@ class ChildMapSheet extends ConsumerWidget {
       await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
       ref.invalidate(deviceCommandHistoryProvider(device.id));
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${command[0].toUpperCase()}${command.substring(1)} queued for ${device.model} — the device has not confirmed it yet.'),
-        ));
+        // Two explicit keys rather than a capitalised command name (#419): upper-casing a
+        // localized word is not a translation.
+        final queued = command == 'lock' ? context.l10n.familyMapLockQueued : context.l10n.familyMapRingQueued;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(queued(device.model))));
       }
     } on DioException catch (e) {
       if (context.mounted) {
         final data = e.response?.data;
-        final msg = data is Map ? '${data['error'] ?? e.message}' : e.message;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Command failed: $msg')));
+        final msg = data is Map ? '${data['error'] ?? e.message}' : (e.message ?? '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.familyMapCommandFailed(msg))));
       }
     }
   }
@@ -227,7 +232,11 @@ class _MapBodyState extends ConsumerState<_MapBody> {
                   ),
         ),
         if (widget.overview.children.isEmpty)
-          const Center(child: Card(child: Padding(padding: EdgeInsets.all(AppSpace.lg), child: Text('No children to show')))),
+          Center(
+            child: Card(
+              child: Padding(padding: const EdgeInsets.all(AppSpace.lg), child: Text(context.l10n.familyMapNoChildren)),
+            ),
+          ),
         if (refused)
           SafeArea(
             child: Align(
@@ -336,7 +345,7 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
   Future<void> _create() async {
     final label = _label.text.trim();
     if (label.isEmpty) {
-      setState(() => _error = 'Enter a label');
+      setState(() => _error = context.l10n.familyMapEnterLabel);
       return;
     }
     setState(() {
@@ -353,8 +362,10 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
       });
       ref.invalidate(geofencesProvider(_childId));
       if (!mounted) return;
+      // Read the copy before the pop: the dialog's context is gone with it.
+      final added = context.l10n.familyMapGeofenceAdded(label);
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Geofence "$label" added')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(added)));
     } on DioException catch (e) {
       if (!mounted) return;
       final body = e.response?.data;
@@ -368,7 +379,7 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add geofence'),
+      title: Text(context.l10n.familyMapAddGeofence),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -378,26 +389,26 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
                 padding: const EdgeInsets.only(bottom: AppSpace.md),
                 child: DropdownButtonFormField<String>(
                   initialValue: _childId,
-                  decoration: const InputDecoration(labelText: 'Child', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: context.l10n.familyMapChild, border: const OutlineInputBorder()),
                   items: [for (final c in widget.children) DropdownMenuItem(value: c.id, child: Text(c.displayName))],
                   onChanged: (v) => setState(() => _childId = v ?? widget.children.first.id),
                 ),
               ),
             TextField(
               controller: _label,
-              decoration: const InputDecoration(labelText: 'Label (e.g. School)', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: context.l10n.familyMapLabelField, border: const OutlineInputBorder()),
             ),
             const SizedBox(height: AppSpace.md),
             Align(
               alignment: Alignment.centerLeft,
-              child: Text('Radius: ${_radiusM.round()} m'),
+              child: Text(context.l10n.familyMapRadius(_radiusM.round())),
             ),
             Slider(
               value: _radiusM,
               min: 100,
               max: 1000,
               divisions: 18,
-              label: '${_radiusM.round()} m',
+              label: context.l10n.familyMapMeters(_radiusM.round()),
               onChanged: (v) => setState(() => _radiusM = v),
             ),
             if (_error != null) ...[
@@ -408,12 +419,12 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(context.l10n.cancel)),
         FilledButton(
           onPressed: _saving ? null : _create,
           child: _saving
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Create'),
+              : Text(context.l10n.familyMapCreate),
         ),
       ],
     );
