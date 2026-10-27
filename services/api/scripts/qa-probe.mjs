@@ -1808,9 +1808,9 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     const live = async (ticket) => {
       const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
       OPEN_SOCKETS.add(ws);
-      const sock = { ws, frames: [], closeCode: null };
+      const sock = { ws, frames: [], closeCode: null, closedAt: null };
       ws.addEventListener("message", (ev) => { try { sock.frames.push(JSON.parse(ev.data)); } catch { /* not JSON */ } });
-      ws.addEventListener("close", (ev) => { OPEN_SOCKETS.delete(ws); sock.closeCode = ev?.code ?? -1; });
+      ws.addEventListener("close", (ev) => { OPEN_SOCKETS.delete(ws); sock.closeCode = ev?.code ?? -1; sock.closedAt = Date.now(); });
       ws.addEventListener("error", () => {});
       return sock;
     };
@@ -1829,6 +1829,11 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
       const logoutAll = await call("POST", "/v1/auth/logout-all", { token: mrCoParentToken });
       const after = await call("GET", "/v1/family/me", { token: mrCoParentToken });
       await waitFor(() => v.closeCode !== null, 6000);
+      // Q2d (#417), read here, before Q2c's alert: every session revocation also closes that parent's sockets at
+      // once, so the socket is closed before any family frame is raised, not on the first frame after the 5 s cache.
+      const earlyClose = v.closeCode;
+      const closeMs = v.closedAt ? v.closedAt - revokedAt : null;
+      const framesBeforeAlert = v.frames.map((f) => f.type);
       const wait = revokedAt + 5500 - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       const title = `q2c-revoked-socket-${Date.now()}`;
@@ -1843,13 +1848,26 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
         ready && logoutAll.status === 200 && after.status === 401 && [200, 201].includes(posted.status) && control && !leaked && v.closeCode === 4001,
         `ready=${ready} logoutAll=${logoutAll.status} tokenAfter=${after.status} alert=${posted.status} ownerGotAlert=${control} revokedSocketGotAlert=${leaked} close=${v.closeCode}`,
       );
+      // Q2d's second half: the revoke signal is a control message naming a parent id, never family data, so no
+      // socket receives it, the owner's (still live) included. Mutants: drop the publish in revokeAllRefreshTokens
+      // -> no close until a frame arrives (`close=null` here); forward the signal instead of handling it -> the
+      // owner's socket receives `session_revoked` (the per-frame check still closes the revoked socket, so only
+      // this half sees it).
+      const signalLeaked = o.frames.some((f) => f.type === "session_revoked");
+      check(
+        "Q2d logout-all closes the parent's open socket with 4001 within 2 s, before any family frame, and no socket receives the revoke signal",
+        logoutAll.status === 200 && earlyClose === 4001 && closeMs !== null && closeMs <= 2000 && framesBeforeAlert.every((t) => t === "ready") && !signalLeaked,
+        `logoutAll=${logoutAll.status} closedBeforeAnyFrame=${earlyClose !== null} close=${earlyClose} afterMs=${closeMs} revokedFrames=${JSON.stringify(framesBeforeAlert)} ownerGotSignal=${signalLeaked}`,
+      );
       v.ws.close();
       o.ws.close();
     } else {
       target("Q2c a socket opened before logout-all is closed (no ws-ticket here)", `coParentTicket=${!!vTicket} ownerTicket=${!!oTicket}`);
+      target("Q2d logout-all closes the parent's open socket at once (no ws-ticket here)", `coParentTicket=${!!vTicket} ownerTicket=${!!oTicket}`);
     }
   } else {
     target("Q2c a socket opened before logout-all is closed (no live O-section family here)", "the O-section family has no live co-parent or device here, or the owner could not log in again");
+    target("Q2d logout-all closes the parent's open socket at once (no live O-section family here)", "the O-section family has no live co-parent or device here, or the owner could not log in again");
   }
 
   // Q7: a live device token on every parent-only route is 403 parent_role_required (requireParent, or

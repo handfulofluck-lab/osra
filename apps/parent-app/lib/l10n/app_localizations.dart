@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -1105,6 +1105,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Social'**
   String get familyPermSocial;
+
+  /// No description provided for @familyMapTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Family map'**
+  String get familyMapTitle;
+
+  /// No description provided for @familyMapAddGeofence.
+  ///
+  /// In en, this message translates to:
+  /// **'Add geofence'**
+  String get familyMapAddGeofence;
+
+  /// No description provided for @familyMapLastUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Last update: {time}'**
+  String familyMapLastUpdate(String time);
+
+  /// No description provided for @familyMapLastUpdateUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'unknown'**
+  String get familyMapLastUpdateUnknown;
+
+  /// No description provided for @familyMapBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery: {pct}%'**
+  String familyMapBattery(int pct);
+
+  /// No description provided for @familyMapRing.
+  ///
+  /// In en, this message translates to:
+  /// **'Ring device'**
+  String get familyMapRing;
+
+  /// No description provided for @familyMapLock.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock device'**
+  String get familyMapLock;
+
+  /// No description provided for @familyMapRingQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Ring queued for {model} — the device has not confirmed it yet.'**
+  String familyMapRingQueued(String model);
+
+  /// No description provided for @familyMapLockQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock queued for {model} — the device has not confirmed it yet.'**
+  String familyMapLockQueued(String model);
+
+  /// No description provided for @familyMapCommandFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Command failed: {error}'**
+  String familyMapCommandFailed(String error);
+
+  /// No description provided for @familyMapNoChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'No children to show'**
+  String get familyMapNoChildren;
+
+  /// No description provided for @familyMapEnterLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a label'**
+  String get familyMapEnterLabel;
+
+  /// No description provided for @familyMapGeofenceAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Geofence \"{name}\" added'**
+  String familyMapGeofenceAdded(String name);
+
+  /// No description provided for @familyMapChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Child'**
+  String get familyMapChild;
+
+  /// No description provided for @familyMapLabelField.
+  ///
+  /// In en, this message translates to:
+  /// **'Label (e.g. School)'**
+  String get familyMapLabelField;
+
+  /// No description provided for @familyMapRadius.
+  ///
+  /// In en, this message translates to:
+  /// **'Radius: {meters} m'**
+  String familyMapRadius(int meters);
+
+  /// No description provided for @familyMapMeters.
+  ///
+  /// In en, this message translates to:
+  /// **'{meters} m'**
+  String familyMapMeters(int meters);
+
+  /// No description provided for @familyMapCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get familyMapCreate;
 
   /// No description provided for @alertsLoadFailed.
   ///
@@ -4392,9 +4500,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }

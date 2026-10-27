@@ -13,6 +13,7 @@ import 'package:familyshield_parent/features/auth/login_screen.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/children/consent_screen.dart';
 import 'package:familyshield_parent/features/content/search_safety_screen.dart';
+import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/features/settings/digest_prefs_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
@@ -196,6 +197,14 @@ void main() {
       await pumpArabic(tester, const FamilyScreen(), arabicApi());
       expect(find.text('أفراد العائلة'), findsOneWidget);
       expect(find.text('الدعوات المعلّقة'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
+
+    testWidgets('family map', (tester) async {
+      // #419 second half: the map screen was the last parent-app screen written in English. The
+      // title is the app bar's, so this row fails if the screen falls back to its English literal.
+      await pumpArabic(tester, const FamilyMapScreen(), arabicApi());
+      expect(find.text('خريطة العائلة'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 
