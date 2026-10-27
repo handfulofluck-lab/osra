@@ -53,6 +53,20 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > app/upload.jks
           echo "OSRA_UPLOAD_KEYSTORE=app/upload.jks" >> "$GITHUB_ENV"
           echo "upload keystore materialised"
+      # #409: the moment a release keystore exists, the Gradle build refuses a signed release with no
+      # google-services.json. Materialise it here, or every release job fails with that sentence.
+      - name: Materialise Firebase config (if configured)
+        env:
+          GOOGLE_SERVICES_B64: ${{ secrets.CHILD_GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_B64" ]; then
+            echo "CHILD_GOOGLE_SERVICES_JSON_B64 not set - a config-less release build is refused once a keystore exists (never commit google-services.json, #317)"
+            exit 0
+          fi
+          # The job's working-directory is apps/child-android and the module is app/ (#412 review).
+          echo "$GOOGLE_SERVICES_B64" | base64 -d > app/google-services.json
+          echo "google-services.json materialised"
+          echo "upload keystore materialised"
       - name: Unit tests & build (JVM + debug APK + minified release APK)
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}

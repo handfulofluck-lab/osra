@@ -28,8 +28,41 @@ val releaseKeystore = System.getenv("OSRA_UPLOAD_KEYSTORE")
 val releaseKeystorePassword = System.getenv("OSRA_UPLOAD_KEYSTORE_PASSWORD")
 val releaseKeyAlias = System.getenv("OSRA_UPLOAD_KEY_ALIAS")
 val releaseKeyPassword = System.getenv("OSRA_UPLOAD_KEY_PASSWORD")
+// #412 review: `file()` resolves against the APP module, not the project root, so `OSRA_UPLOAD_KEYSTORE=app/upload.jks`
+// (what the CI job exports) was looked up as `app/app/upload.jks` and never found — every "signed" release was
+// debug-signed. `rootProject.file()` is what the parent app uses and what the CI path means.
+val releaseKeystoreFile = releaseKeystore?.let { rootProject.file(it) }
 val hasReleaseKey = !releaseKeystore.isNullOrBlank() && !releaseKeystorePassword.isNullOrBlank() &&
-    !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() && file(releaseKeystore!!).exists()
+    !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() &&
+    releaseKeystoreFile != null && releaseKeystoreFile.exists()
+
+// #409 / #408's sibling: a **signed** release must not ship without Firebase config. Without the file the
+// Google Services plugin above is not applied, so there are no `google_app_id`/`gcm_defaultSenderId`
+// resources, `getToken()` returns nothing and no push token can register - silently, with no error. The
+// debug artefacts are allowed to build config-less on purpose (#317); only the upload path is refused.
+// A half-configured release is a mistake, not a choice: name what is missing rather than silently
+// falling back to the debug key, which is how the keystore-path bug above stayed invisible.
+val anyReleaseEnv = listOf(releaseKeystore, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword)
+    .any { !it.isNullOrBlank() }
+if (anyReleaseEnv && !hasReleaseKey) {
+    val missing = mutableListOf<String>()
+    if (releaseKeystore.isNullOrBlank()) missing.add("OSRA_UPLOAD_KEYSTORE")
+    if (releaseKeystorePassword.isNullOrBlank()) missing.add("OSRA_UPLOAD_KEYSTORE_PASSWORD")
+    if (releaseKeyAlias.isNullOrBlank()) missing.add("OSRA_UPLOAD_KEY_ALIAS")
+    if (releaseKeyPassword.isNullOrBlank()) missing.add("OSRA_UPLOAD_KEY_PASSWORD")
+    // All four set but the flag is still false: the file is the problem, so name the resolved path.
+    if (missing.isEmpty()) missing.add("a keystore file at ${releaseKeystoreFile?.absolutePath ?: "?"} (not found)")
+    throw GradleException("release signing is half configured; missing or unusable: ${missing.joinToString()}")
+}
+
+// #409: a **signed** release must not ship without Firebase config — no `google_app_id`, so `getToken()`
+// returns nothing and no token can register, silently. Debug variants stay config-less by design (#317).
+if (hasReleaseKey && !file("google-services.json").exists()) {
+    throw GradleException(
+        "google-services.json is missing for a signed release build (a release keystore is configured). " +
+            "Add app/google-services.json (the child agent's layout), or build a debug variant.",
+    )
+}
 
 android {
     namespace = "com.familyshield.agent"
@@ -47,7 +80,7 @@ android {
     signingConfigs {
         create("release") {
             if (hasReleaseKey) {
-                storeFile = file(releaseKeystore!!)
+                storeFile = releaseKeystoreFile
                 storePassword = releaseKeystorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
