@@ -15,3 +15,8 @@
   wording flagged for the reviewer: `رنين الجهاز` / `قفل الجهاز` (button labels, noun phrases rather than
   imperatives) and `نطاق جغرافي` for "geofence" (the rest of the app avoids the word — `alertTitleGeofence` says
   "تنبيه دخول أو مغادرة مكان").
+- `docs/TESTING.md` §7 gains the review checkpoint this screen's sibling PR (#420) proved was missing: a screen
+  that claims to be localized can still print a **wire value** (`Text(p.role)` → `owner`). The section names the
+  three shapes that got past a string-literal inventory, the label function that owns each value family, the
+  `grep` that lists every candidate on a screen, and the mutant that proves a row is asserting the rendered word
+  rather than a heading.

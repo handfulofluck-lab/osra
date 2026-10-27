@@ -1123,6 +1123,39 @@ interpolated forms, the demotion path, and the deleted-call case; its stated **m
 per-line matcher, under which the deleted multi-line call is reported as nothing (CLI exit `0`) and the
 self-test fails. On `68dd367` the fixed tool sees **141/141** call sites.
 
+### A screen that claims to be localized can still print an enum value
+
+A `grep` over string literals finds the words a screen writes. It cannot see a **wire value** reaching
+`Text()` from an API field — and three of those reached the Arabic family screen in #420. They were
+found by the reviewer (Claude, 14:47Z), not by any gate:
+
+| Shape | What an Arabic parent saw |
+|---|---|
+| `Text(p.role)` | `owner` |
+| `'${invite.role} · ${invite.permissions.join(', ')}'` | `guardian · location, alerts` |
+| `p[0].toUpperCase() + p.substring(1)` | `Rules`, `Location`, `Alerts`, `Social` |
+
+All three are the defect `alertTitleFor` exists to prevent for alert categories (#159): an **enum from
+the server** rendered as if it were copy. The #419 inventory was built from string literals, so it
+could not list them.
+
+**Review checkpoint** — on any PR whose claim is "this screen is localized", list every `Text(` whose
+argument is neither a literal nor an `l10n.` getter, and say which label function renders each one:
+
+```bash
+cd apps/parent-app
+grep -rn "Text(" lib/features/<screen>/ | grep -v "l10n\." | grep -v "'"
+```
+
+The labels live in one place per value family — `mfaResetRoleName` for member roles,
+`familyPermissionName` for invite scopes, `alertTitleFor` for alert categories, `webCategory` for
+filter categories — and each returns the **raw wire value** for anything it does not know, on
+purpose: an unmapped value is visible in a screenshot instead of silently disappearing.
+
+**The mutant**: delete one branch of the label function, or render the field directly. The Arabic row
+that asserts the rendered word (the role and permission rows in `test/family_screen_l10n_test.dart`)
+must go red. A row that stays green is asserting a heading, not the value.
+
 ### The live gates must run against a non-UTC database (issue #53)
 
 A clock or time-zone bug cannot show up when the author's database, API and test runner all sit in
