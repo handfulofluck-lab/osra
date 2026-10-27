@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -627,6 +626,76 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get familyPermSocial => 'التواصل';
+
+  @override
+  String get familyMapTitle => 'خريطة العائلة';
+
+  @override
+  String get familyMapAddGeofence => 'إضافة نطاق جغرافي';
+
+  @override
+  String familyMapLastUpdate(String time) {
+    return 'آخر تحديث: $time';
+  }
+
+  @override
+  String get familyMapLastUpdateUnknown => 'غير معروف';
+
+  @override
+  String familyMapBattery(int pct) {
+    return 'البطارية: $pct%';
+  }
+
+  @override
+  String get familyMapRing => 'رنين الجهاز';
+
+  @override
+  String get familyMapLock => 'قفل الجهاز';
+
+  @override
+  String familyMapRingQueued(String model) {
+    return 'أُرسل أمر الرنين إلى $model — ولم يؤكّده الجهاز بعد.';
+  }
+
+  @override
+  String familyMapLockQueued(String model) {
+    return 'أُرسل أمر القفل إلى $model — ولم يؤكّده الجهاز بعد.';
+  }
+
+  @override
+  String familyMapCommandFailed(String error) {
+    return 'فشل إرسال الأمر: $error';
+  }
+
+  @override
+  String get familyMapNoChildren => 'لا يوجد أطفال لعرضهم';
+
+  @override
+  String get familyMapEnterLabel => 'أدخل اسمًا للنطاق';
+
+  @override
+  String familyMapGeofenceAdded(String name) {
+    return 'أُضيف النطاق \"$name\"';
+  }
+
+  @override
+  String get familyMapChild => 'الطفل';
+
+  @override
+  String get familyMapLabelField => 'الاسم (مثل: المدرسة)';
+
+  @override
+  String familyMapRadius(int meters) {
+    return 'نصف القطر: $meters م';
+  }
+
+  @override
+  String familyMapMeters(int meters) {
+    return '$meters م';
+  }
+
+  @override
+  String get familyMapCreate => 'إنشاء';
 
   @override
   String alertsLoadFailed(String error) {

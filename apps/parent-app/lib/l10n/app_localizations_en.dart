@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -601,6 +600,76 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get familyPermSocial => 'Social';
+
+  @override
+  String get familyMapTitle => 'Family map';
+
+  @override
+  String get familyMapAddGeofence => 'Add geofence';
+
+  @override
+  String familyMapLastUpdate(String time) {
+    return 'Last update: $time';
+  }
+
+  @override
+  String get familyMapLastUpdateUnknown => 'unknown';
+
+  @override
+  String familyMapBattery(int pct) {
+    return 'Battery: $pct%';
+  }
+
+  @override
+  String get familyMapRing => 'Ring device';
+
+  @override
+  String get familyMapLock => 'Lock device';
+
+  @override
+  String familyMapRingQueued(String model) {
+    return 'Ring queued for $model — the device has not confirmed it yet.';
+  }
+
+  @override
+  String familyMapLockQueued(String model) {
+    return 'Lock queued for $model — the device has not confirmed it yet.';
+  }
+
+  @override
+  String familyMapCommandFailed(String error) {
+    return 'Command failed: $error';
+  }
+
+  @override
+  String get familyMapNoChildren => 'No children to show';
+
+  @override
+  String get familyMapEnterLabel => 'Enter a label';
+
+  @override
+  String familyMapGeofenceAdded(String name) {
+    return 'Geofence \"$name\" added';
+  }
+
+  @override
+  String get familyMapChild => 'Child';
+
+  @override
+  String get familyMapLabelField => 'Label (e.g. School)';
+
+  @override
+  String familyMapRadius(int meters) {
+    return 'Radius: $meters m';
+  }
+
+  @override
+  String familyMapMeters(int meters) {
+    return '$meters m';
+  }
+
+  @override
+  String get familyMapCreate => 'Create';
 
   @override
   String alertsLoadFailed(String error) {
