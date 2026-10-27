@@ -107,7 +107,7 @@ and defaults to the app locale.
 
 The four screens that used to be listed as missing are **done**, each with Arabic RTL rows at
 320×568: search & web safety (#275), digest preferences (#277), the family members screen
-(**#420**, `e60ad33`, 23 keys — roles and invite permissions render through
+(**#420**, `e60ad33`, 27 keys — roles and invite permissions render through
 `mfaResetRoleName` / `familyPermissionName` instead of the raw wire value), and the family map
 (**#424**, `bbd9745`, 18 keys — including the marker sheet's date, which now formats with
 `context.localeName`). The parent alert push wording is localised on both platforms in **#421**
@@ -126,5 +126,5 @@ The four screens that used to be listed as missing are **done**, each with Arabi
 
 Native-speaker review of the Arabic screenshots is the acceptance for roadmap item 3.1. Karim
 reviewed the first **14 screens** and that pass is closed (#159, 2026-10-23); the strings added since
-— 41 of them, on the family members and family map screens — are tracked in **#426**, together with
+— **45** of them (27 on the family members screen, 18 on the map) — are tracked in **#426**, together with
 the wording questions the implementation flagged.
