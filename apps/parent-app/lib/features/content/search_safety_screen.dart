@@ -7,6 +7,7 @@ import '../../providers/content_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../social/social_screen.dart' show formatRelativeTime;
 import 'snippet_vault_modal.dart';
+import '../../api/permission_errors.dart';
 
 /// Icon for search engines or platforms.
 IconData searchEngineIcon(String engine) => switch (engine.toLowerCase()) {
@@ -61,7 +62,7 @@ class SearchSafetyScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(AppSpace.xl),
             children: [
               Center(
-                child: Text(l10n.searchSafetyLoadFailed('$e'), textAlign: TextAlign.center),
+                child: Text(readErrorText(l10n, e, () => l10n.searchSafetyLoadFailed('$e')), textAlign: TextAlign.center),
               ),
               const SizedBox(height: AppSpace.lg),
               Center(

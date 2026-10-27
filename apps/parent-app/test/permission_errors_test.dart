@@ -59,4 +59,30 @@ void main() {
       expect(permissionRequiredMessage(ar), isNot(contains('alerts')));
     });
   });
+
+  group('readErrorText', () {
+    final en = lookupAppLocalizations(const Locale('en'));
+
+    test('a refusal becomes the owner sentence, whatever the screen would have said', () {
+      final text = readErrorText(en, refusal(403, {'error': 'permission_required', 'permission': 'social'}), () => 'screen says this');
+      expect(text, en.readPermissionRequired);
+    });
+
+    test('anything else falls through to the screen message', () {
+      expect(readErrorText(en, refusal(500, {'error': 'internal'}), () => 'screen says this'), 'screen says this');
+      final timeout = DioException(requestOptions: RequestOptions(path: '/x'), type: DioExceptionType.connectionTimeout);
+      expect(readErrorText(en, timeout, () => 'offline'), 'offline');
+      // A non-Dio error must not be mistaken for a refusal either.
+      expect(readErrorText(en, StateError('boom'), () => 'screen says this'), 'screen says this');
+    });
+
+    test('the fallback is not built on the refusal path', () {
+      var built = 0;
+      readErrorText(en, refusal(403, {'error': 'permission_required', 'permission': 'alerts'}), () {
+        built++;
+        return 'unused';
+      });
+      expect(built, 0);
+    });
+  });
 }

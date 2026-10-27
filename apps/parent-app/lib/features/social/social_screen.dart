@@ -12,6 +12,7 @@ import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../content/snippet_vault_modal.dart';
+import '../../api/permission_errors.dart';
 
 /// The eight social apps the Android agent can monitor via Accessibility
 /// (spec #2); apps absent from the RuleSet default to ON.
@@ -158,7 +159,7 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
         const SizedBox(height: AppSpace.xs),
         rules.when(
           loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
+          error: (e, _) => Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final draft = _draft!;
@@ -215,7 +216,7 @@ class ConcernsSection extends ConsumerWidget {
         const SizedBox(height: AppSpace.xs),
         events.when(
           loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
+          error: (e, _) => Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
           data: (items) => items.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
@@ -310,7 +311,7 @@ class CallsSmsSection extends ConsumerWidget {
         const SizedBox(height: AppSpace.xs),
         activity.when(
           loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
+          error: (e, _) => Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
           data: (items) {
             if (items.isEmpty) {
               return Padding(
@@ -446,7 +447,7 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
         const SizedBox(height: AppSpace.sm),
         rules.when(
           loading: () => const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Text(l10n.rulesLoadFailed('$e')),
+          error: (e, _) => Text(readErrorText(l10n, e, () => l10n.rulesLoadFailed('$e'))),
           data: (ruleSet) {
             _applyLoaded(ruleSet);
             final items = _items!;

@@ -7,6 +7,7 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../api/permission_errors.dart';
 
 /// Feature #4: per-child activity report — app-usage bar chart, web stats
 /// (visits + top blocked domains, with the YouTube SafeSearch NOTE #7) and
@@ -56,7 +57,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ),
       body: summary.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.reportLoadFailed('$e'))),
+        error: (e, _) => Center(child: Text(readErrorText(l10n, e, () => l10n.reportLoadFailed('$e')))),
         data: (data) => data.isEmpty
             ? Center(child: Text(l10n.noActivityDays(_days)))
             : ListView(
