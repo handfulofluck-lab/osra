@@ -4403,7 +4403,7 @@ abstract class AppLocalizations {
   /// No description provided for @alertPushBodyGeneric.
   ///
   /// In en, this message translates to:
-  /// **'Open OSRA to see the details.'**
+  /// **'Open OSRA to see the details.\nProtecting your family at all times.'**
   String get alertPushBodyGeneric;
 
   /// No description provided for @riskSelfHarm.
