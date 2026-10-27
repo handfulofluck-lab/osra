@@ -6,7 +6,7 @@ import fastifyJwt from "@fastify/jwt";
 import fastifyWebsocket from "@fastify/websocket";
 import { publishFamilyEvent, registerRealtime, subscriberErrorCount } from "../src/realtime/gateway.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, resetPrismaMock } from "./helpers.js";
+import { MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 
 // #402: the gateway reads the subscriber's parent row; the default caller is an owner (never withheld).
 vi.mock("../src/db.js", async () => {
@@ -98,6 +98,12 @@ describe("realtime gateway — publish and fan-out evidence (#350)", () => {
 
   /** Consume a ticket and wait for `ready`, so the socket is in the family's set. */
   async function openSocket(familyId: string) {
+    // osra-security#4: the socket re-checks that the parent still belongs to this family on every frame, so
+    // the fixture has to answer for the family the socket is being opened for.
+    prismaMock.parent.findUnique.mockResolvedValue({
+      role: "owner",
+      familyId,
+    });
     const token = app.jwt.sign({ sub: "parent-1", familyId, role: "parent" });
     const t = await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } });
     expect(t.statusCode).toBe(200);
@@ -180,6 +186,7 @@ describe("realtime gateway — publish and fan-out evidence (#350)", () => {
     expect(serverSockets).toHaveLength(2);
     for (const s of serverSockets) s.close();
     pmessage("family:*:events", "family:fam-2:events", JSON.stringify({ type: "alert", payload: {} }));
+    await new Promise((r) => setTimeout(r, 50));
     expect(logsOf(FANOUT).at(-1)).toMatchObject({
       familyId: "fam-2", type: "alert", listening: true, written: 0, sockets: 2,
     });
@@ -190,6 +197,7 @@ describe("realtime gateway — publish and fan-out evidence (#350)", () => {
     // 3. One open socket: written 1 of 1, so the two zeros above are distinguishable from a success.
     const c3 = await openSocket("fam-3");
     pmessage("family:*:events", "family:fam-3:events", JSON.stringify({ type: "alert", payload: { id: 1 } }));
+    await new Promise((r) => setTimeout(r, 50));
     expect(logsOf(FANOUT).at(-1)).toMatchObject({
       familyId: "fam-3", type: "alert", listening: true, written: 1, sockets: 1,
     });

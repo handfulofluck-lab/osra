@@ -181,7 +181,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
   };
 
   it("does not send an alert frame to a guardian without `alerts`, and still sends `ready`", async () => {
-    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["location"] });
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["location"], familyId: "fam-1" });
     const c = await subscribe("guardian-1");
 
     const pmessage = subscriberPmessageHandler();
@@ -196,7 +196,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
   it("sends an alert frame to a guardian that holds `alerts`, and to a co-parent with no permissions", async () => {
     prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"] } : { role: "co-parent", permissions: [] },
+      where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"], familyId: "fam-1" } : { role: "co-parent", permissions: [], familyId: "fam-1" },
     );
     const guardian = await subscribe("guardian-2");
     const coparent = await subscribe("coparent-1");
@@ -216,7 +216,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
   it("stops alert frames on an open socket as soon as the guardian's `alerts` is removed", async () => {
     let permissions = ["alerts", "location"];
-    prismaMock.parent.findUnique.mockImplementation(async () => ({ role: "guardian", permissions }));
+    prismaMock.parent.findUnique.mockImplementation(async () => ({ role: "guardian", permissions, familyId: "fam-1" }));
     const c = await subscribe("guardian-3");
     const pmessage = subscriberPmessageHandler();
 
@@ -234,22 +234,31 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
   });
 
   it("withholds a gated frame when the database cannot answer, and still sends an ungated one", async () => {
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
     const c = await subscribe("guardian-4");
     prismaMock.parent.findUnique.mockRejectedValue(new Error("db down"));
     const pmessage = subscriberPmessageHandler();
 
     pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "x" } }));
     pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "consent_revoked", payload: {} }));
-    await c.waitFor(() => c.frames.length >= 2);
     await settle();
 
-    expect(c.frames.map((f) => f.type)).toEqual(["ready", "consent_revoked"]);
+    // osra-security#4 tightened this row: the session check runs for EVERY frame, so a database that
+    // cannot answer withdraws everything, not only the gated types. Sending an ungated frame while the
+    // session is unconfirmed is the hole this change closes — `consent_revoked` used to arrive here.
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+    // Decision 3: an error withholds the frame but keeps the socket open, and the failure is not cached,
+    // so the next frame after the database recovers is delivered.
+    expect(c.close()).toBeNull();
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "after recovery" } }));
+    await c.waitFor(() => c.frames.length >= 2);
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
     c.ws.close();
   });
 
   it("closes the socket with 4001 when the guardian's parent row no longer exists", async () => {
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
     const c = await subscribe("guardian-5");
     prismaMock.parent.findUnique.mockResolvedValue(null);
     const pmessage = subscriberPmessageHandler();
@@ -259,5 +268,112 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
     expect(c.close()).toBe(4001);
     expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+  });
+
+  // osra-security#4: the socket re-checks the session on every frame. This is the invite-move variant — a
+  // parent re-homed to another family — which needs no session-internals mock and shows the same property:
+  // a frame the socket is no longer entitled to is not sent, and the socket is closed with 4001.
+  it("stops frames and closes 4001 when the parent no longer belongs to the socket's family", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "owner", familyId: "fam-1" });
+    const c = await subscribe("parent-9");
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-OTHER" });
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "must not arrive" } }));
+    await settle();
+
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+    expect(c.close()).toBe(4001);
+    c.ws.close();
+  });
+
+  // osra-security#4 decision 6 (#414 review): the rows below pin the session half of the check, which the
+  // family-move row above cannot see. Each one goes red when that half is removed or loosened.
+  const subscribeWithSession = async (sub: string, claims: { jti: string; sv: number }) => {
+    const token = app.jwt.sign({ sub, familyId: "fam-1", role: "parent", ...claims });
+    const ticket = (await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } })).json().ticket as string;
+    const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    await c.waitFor(() => c.frames.length >= 1);
+    return c;
+  };
+
+  it("an owner's open socket gets no frame and closes 4001 once its session is revoked (logout-all)", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
+    store.set("auth:session-version:owner-1", "1");
+    const c = await subscribeWithSession("owner-1", { jti: "e".repeat(32), sv: 1 });
+    const pmessage = subscriberPmessageHandler();
+
+    // Live session: the frame arrives (the control).
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "before" } }));
+    await c.waitFor(() => c.frames.length >= 2);
+
+    // logout-all bumps the counter. Past the cache window the next frame must not arrive.
+    store.set("auth:session-version:owner-1", "2");
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 5_001);
+    try {
+      pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "must not arrive" } }));
+      await c.waitFor(() => c.close() !== null);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    expect(c.close()).toBe(4001);
+  });
+
+  it("re-reads the session once per 5 s window per socket, however many frames arrive", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
+    store.set("auth:session-version:owner-2", "1");
+    const c = await subscribeWithSession("owner-2", { jti: "f".repeat(32), sv: 1 });
+    const pmessage = subscriberPmessageHandler();
+    const familyReads = () => prismaMock.parent.findUnique.mock.calls.filter((a) => a[0]?.select?.familyId).length;
+
+    // A burst of three frames: one read between them, and the frames arrive in publish order.
+    for (const n of [1, 2, 3]) pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { n } }));
+    await c.waitFor(() => c.frames.length >= 4);
+    expect(familyReads()).toBe(1);
+    expect(c.frames.slice(1).map((f) => (f.payload as { n: number }).n)).toEqual([1, 2, 3]);
+
+    // Past the window: a second read.
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 5_001);
+    try {
+      pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { n: 4 } }));
+      await c.waitFor(() => c.frames.length >= 5);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(familyReads()).toBe(2);
+    c.ws.close();
+  });
+
+  it("a token from before the session counter (no `sv`) is judged by its `iat`, so logout-all still closes it", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
+    const token = app.jwt.sign({ sub: "owner-3", familyId: "fam-1", role: "parent" });
+    const ticket = (await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } })).json().ticket as string;
+    const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    await c.waitFor(() => c.frames.length >= 1);
+    const pmessage = subscriberPmessageHandler();
+
+    // The legacy revocation epoch: every token issued at or before this second is dead.
+    store.set("auth:invalid-before:owner-3", String(Math.floor(Date.now() / 1000) + 1));
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 5_001);
+    try {
+      pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "must not arrive" } }));
+      await c.waitFor(() => c.close() !== null);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+    expect(c.close()).toBe(4001);
+  });
+
+  it("refuses a bare familyId ticket (decision 1: the ticket must carry the session)", async () => {
+    store.set("ws:ticket:legacy", "fam-1");
+    const c = connect(`ws://${base}/v1/ws?ticket=legacy`);
+    await c.waitFor(() => c.close() !== null);
+    expect(c.close()).toBe(4001);
+    expect(c.frames).toEqual([]);
   });
 });
