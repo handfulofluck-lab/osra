@@ -294,6 +294,28 @@ export function registerRealtime(app: FastifyInstance) {
       gatewayLog?.info({ familyId, type, listening: false, written: 0, sockets: 0 }, "realtime fan-out");
       return;
     }
+    // osra-security#4 item 3: a `session_revoked` signal closes that parent's sockets immediately and is
+    // never forwarded — it is a control frame, not family data.
+    if (type === "session_revoked") {
+      let revokedParent: string | null = null;
+      try {
+        const parsed = JSON.parse(message) as { payload?: { parentId?: unknown } };
+        revokedParent = typeof parsed.payload?.parentId === "string" ? parsed.payload.parentId : null;
+      } catch {
+        revokedParent = null;
+      }
+      let closed = 0;
+      if (revokedParent) {
+        for (const ws of set) {
+          if (socketReaders.get(ws)?.parentId !== revokedParent) continue;
+          if (ws.readyState === 1) ws.close(4001, "unauthorized");
+          closed += 1;
+        }
+      }
+      gatewayLog?.info({ familyId, type, listening: true, written: 0, closed, sockets: set.size }, "realtime fan-out");
+      return;
+    }
+
     let written = 0;
     // ADR-0014 amendment, decision 3 (second half, #402): a frame this socket may not read is not sent.
     // `type` is already parsed above for the log line; an unknown type is never withheld, so a new event

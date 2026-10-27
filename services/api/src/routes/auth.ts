@@ -34,6 +34,7 @@ import {
   hashRecoveryCode,
   normaliseRecoveryCode,
 } from "../lib/mfaRecovery.js";
+import { publishFamilyEvent } from "../realtime/gateway.js";
 import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, revokeTokenOnce, signParentToken } from "../lib/sessions.js";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
@@ -1462,8 +1463,14 @@ export async function authRoutes(app: FastifyInstance) {
 
   /** Revoke every refresh token of the authenticated parent (handoff item 2). */
   app.post("/logout-all", { preHandler: requireJwt, config: RL }, async (req) => {
-    const user = req.user as { sub: string };
+    const user = req.user as { sub: string; familyId?: string };
     await revokeAllRefreshTokens(user.sub);
+    // osra-security#4, Ahmed's optional item 3: the per-frame check already makes a revoked socket useless
+    // within five seconds, but the theft case should not get those seconds. The gateway closes this parent's
+    // sockets on receipt; the frame is a signal and is never forwarded to a client.
+    if (user.familyId) {
+      await publishFamilyEvent(user.familyId, { type: "session_revoked", payload: { parentId: user.sub } });
+    }
     return { ok: true };
   });
 }
