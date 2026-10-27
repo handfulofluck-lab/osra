@@ -513,6 +513,96 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your family owner can give you access to this.';
 
   @override
+  String get familyDone => 'Done';
+
+  @override
+  String get familyMembersTitle => 'Family members';
+
+  @override
+  String get familyParentsHeading => 'Parents';
+
+  @override
+  String get familyNoParents => 'No parents found';
+
+  @override
+  String get familyInviteMember => 'Invite member';
+
+  @override
+  String get familyPendingInvites => 'Pending invites';
+
+  @override
+  String familyInvitesLoadFailed(String error) {
+    return 'Failed to load invites: $error';
+  }
+
+  @override
+  String get familyNoPendingInvites => 'No pending invites';
+
+  @override
+  String get familyRevokeInvite => 'Revoke invite';
+
+  @override
+  String familyInviteRevoked(String email) {
+    return 'Invite to $email revoked';
+  }
+
+  @override
+  String familyRevokeFailed(String error) {
+    return 'Revoke failed: $error';
+  }
+
+  @override
+  String get familyEnterEmail => 'Enter an email address';
+
+  @override
+  String get familyInviteSent => 'Invite sent';
+
+  @override
+  String get familyEmailLabel => 'Email';
+
+  @override
+  String get familyRoleLabel => 'Role';
+
+  @override
+  String get familyRoleCoParent => 'Co-parent';
+
+  @override
+  String get familyRoleGuardian => 'Guardian';
+
+  @override
+  String get familyPermissions => 'Permissions';
+
+  @override
+  String familyInviteSentTo(String email) {
+    return 'Invite sent to $email.';
+  }
+
+  @override
+  String get familyTokenExplanation =>
+      '(test build: share this token — the invited parent registers, then POSTs accept with it)';
+
+  @override
+  String get familySendInvite => 'Send invite';
+
+  @override
+  String get familyCopyToken => 'Copy token';
+
+  @override
+  String get familyTokenCopied => 'Token copied';
+
+  @override
+  String get familyPermRules => 'Rules';
+
+  @override
+  String get familyPermLocation => 'Location';
+
+  @override
+  String get familyPermAlerts => 'Alerts';
+
+  @override
+  String get familyPermSocial => 'Social';
+
+  @override
   String alertsLoadFailed(String error) {
     return 'Failed to load alerts: $error';
   }

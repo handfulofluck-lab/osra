@@ -539,6 +539,96 @@ class AppLocalizationsAr extends AppLocalizations {
       'يمكن لمالك العائلة منحك حق الوصول إلى هذا.';
 
   @override
+  String get familyDone => 'تم';
+
+  @override
+  String get familyMembersTitle => 'أفراد العائلة';
+
+  @override
+  String get familyParentsHeading => 'الوالدان';
+
+  @override
+  String get familyNoParents => 'لا يوجد والدان';
+
+  @override
+  String get familyInviteMember => 'دعوة فرد';
+
+  @override
+  String get familyPendingInvites => 'الدعوات المعلّقة';
+
+  @override
+  String familyInvitesLoadFailed(String error) {
+    return 'تعذّر تحميل الدعوات: $error';
+  }
+
+  @override
+  String get familyNoPendingInvites => 'لا دعوات معلّقة';
+
+  @override
+  String get familyRevokeInvite => 'إلغاء الدعوة';
+
+  @override
+  String familyInviteRevoked(String email) {
+    return 'أُلغيت دعوة $email';
+  }
+
+  @override
+  String familyRevokeFailed(String error) {
+    return 'تعذّر الإلغاء: $error';
+  }
+
+  @override
+  String get familyEnterEmail => 'أدخل عنوان بريد إلكتروني';
+
+  @override
+  String get familyInviteSent => 'أُرسلت الدعوة';
+
+  @override
+  String get familyEmailLabel => 'البريد الإلكتروني';
+
+  @override
+  String get familyRoleLabel => 'الدور';
+
+  @override
+  String get familyRoleCoParent => 'والد مشارك';
+
+  @override
+  String get familyRoleGuardian => 'وصيّ';
+
+  @override
+  String get familyPermissions => 'الصلاحيات';
+
+  @override
+  String familyInviteSentTo(String email) {
+    return 'أُرسلت الدعوة إلى $email.';
+  }
+
+  @override
+  String get familyTokenExplanation =>
+      '(نسخة تجريبية: شارك هذا الرمز — يسجّل الوالد المدعوّ ثم يرسل accept به)';
+
+  @override
+  String get familySendInvite => 'إرسال الدعوة';
+
+  @override
+  String get familyCopyToken => 'نسخ الرمز';
+
+  @override
+  String get familyTokenCopied => 'تم نسخ الرمز';
+
+  @override
+  String get familyPermRules => 'القواعد';
+
+  @override
+  String get familyPermLocation => 'الموقع';
+
+  @override
+  String get familyPermAlerts => 'التنبيهات';
+
+  @override
+  String get familyPermSocial => 'التواصل';
+
+  @override
   String alertsLoadFailed(String error) {
     return 'تعذّر تحميل التنبيهات: $error';
   }
