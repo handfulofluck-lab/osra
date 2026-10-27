@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart' show AsyncValue;
 import 'dart:ui' show Locale;
 
 import 'package:dio/dio.dart';
@@ -83,6 +84,31 @@ void main() {
         return 'unused';
       });
       expect(built, 0);
+    });
+  });
+
+  group('anyReadRefused', () {
+    // Claude's ruling on #406: one banner for the whole map, because the permission belongs to the guardian
+    // rather than to a child. These rows pin what the helper counts as a refusal.
+    test('a refused location read is a refusal', () {
+      final v = AsyncValue<List<Object?>>.error(refusal(403, {'error': 'permission_required', 'permission': 'location'}), StackTrace.empty);
+      expect(anyReadRefused([v]), isTrue);
+    });
+
+    test('a refusal on the geofences alone is a refusal', () {
+      final ok = const AsyncValue<List<Object?>>.data([]);
+      final refused = AsyncValue<List<Object?>>.error(refusal(403, {'error': 'permission_required', 'permission': 'location'}), StackTrace.empty);
+      expect(anyReadRefused([ok, refused]), isTrue);
+    });
+
+    test('a plain 500 is not a refusal', () {
+      final v = AsyncValue<List<Object?>>.error(refusal(500, {'error': 'internal'}), StackTrace.empty);
+      expect(anyReadRefused([v]), isFalse);
+    });
+
+    test('loading and data are not refusals', () {
+      expect(anyReadRefused([const AsyncValue<List<Object?>>.loading(), const AsyncValue<List<Object?>>.data([])]), isFalse);
+      expect(anyReadRefused(const []), isFalse);
     });
   });
 }

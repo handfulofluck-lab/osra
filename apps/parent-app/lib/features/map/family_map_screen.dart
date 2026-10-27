@@ -197,6 +197,16 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     _points = points;
     _maybeFit();
 
+    // #406 / Claude's ruling: a refused location or geofence read shows ONE banner over the map, not an error
+    // screen and not one per child. The map, its markers and the long-press stay exactly as they are; other
+    // errors keep today's silent behaviour.
+    final refused = anyReadRefused([
+      for (final c in widget.overview.children) ...[
+        ref.watch(locationProvider(c.id)),
+        ref.watch(geofencesProvider(c.id)),
+      ],
+    ]);
+
     return Stack(
       children: [
         GoogleMap(
@@ -218,6 +228,30 @@ class _MapBodyState extends ConsumerState<_MapBody> {
         ),
         if (widget.overview.children.isEmpty)
           const Center(child: Card(child: Padding(padding: EdgeInsets.all(AppSpace.lg), child: Text('No children to show')))),
+        if (refused)
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpace.md),
+                child: Material(
+                  elevation: 2,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.sm),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.lock_outline, size: 18),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(context.l10n.readPermissionRequired)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
