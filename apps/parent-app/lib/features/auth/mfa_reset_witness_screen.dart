@@ -54,7 +54,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
     final code = _code.text.trim();
     if (!RegExp(r'^\d{8}$').hasMatch(code)) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(context.l10n.mfaResetWitnessRequired)));
+          .showSnackBar(SnackBar(content: Text(context.l10n.mfaResetWitnessEnterCode)));
       return;
     }
     setState(() {

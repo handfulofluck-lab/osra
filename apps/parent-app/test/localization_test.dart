@@ -298,6 +298,22 @@ void main() {
           reason: 'app_ar.arb has keys that app_en.arb does not');
     });
 
+    test('no key is defined twice in either file', () {
+      // jsonDecode keeps the LAST duplicate and says nothing, so the two tests above cannot see a
+      // repeated key — they read the file through the parser that hides it. Two keys shipped twice
+      // (#423): one identical (`familyLoadFailed`), one with two different sentences under one name
+      // (`mfaResetWitnessRequired`), where the shadowed definition was the correct failure message.
+      final definition = RegExp(r'^  "([^"]+)":', multiLine: true);
+      for (final name in ['app_en.arb', 'app_ar.arb']) {
+        final seen = <String, int>{};
+        for (final m in definition.allMatches(File('lib/l10n/$name').readAsStringSync())) {
+          seen.update(m.group(1)!, (n) => n + 1, ifAbsent: () => 1);
+        }
+        final twice = [for (final e in seen.entries) if (e.value > 1) e.key];
+        expect(twice, isEmpty, reason: '$name defines these keys more than once: ${twice.join(', ')}');
+      }
+    });
+
     test('placeholders match between English and Arabic', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');
