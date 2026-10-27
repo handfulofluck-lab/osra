@@ -1793,6 +1793,66 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     target("Q6f a guardian receives no alert or location frame (no live O-section family here)", "the O-section family has no live guardian, co-parent or device here");
   }
 
+  // Q2c: Q2 for the live socket. A ticket is checked once, when it is minted, so the socket it opens must
+  // not outlive the session behind it: after logout-all, that session's open socket gets no further family
+  // frame and is closed with 4001. It runs here, after Q6f, because it ends the co-parent's sessions and
+  // nothing after this reads them. The owner's socket is the control: it must receive the alert, or "the
+  // co-parent saw nothing" proves nothing. The alert is raised after the gateway's 5 s session cache has
+  // run out, so either the close on logout-all or the per-frame session check is enough to pass.
+  // Mutant: remove both (no close on revoke, no session re-check before a frame) -> the co-parent's socket
+  // stays open and receives the alert.
+  // The owner's earlier sessions are spent by the MFA reset block, so the control logs in afresh.
+  const q2cOwner = mrKid && mrDeviceId && mrCoParentToken && mrSecret
+    ? (await call("POST", "/v1/auth/login", { body: { email: mrEmail, password: PASSWORD, code: totpCode(mrSecret) } })).data?.token
+    : undefined;
+  if (mrKid && mrDeviceId && mrCoParentToken && q2cOwner) {
+    const live = async (ticket) => {
+      const ws = new WebSocket(`${API.replace(/^http/, "ws")}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+      OPEN_SOCKETS.add(ws);
+      const sock = { ws, frames: [], closeCode: null };
+      ws.addEventListener("message", (ev) => { try { sock.frames.push(JSON.parse(ev.data)); } catch { /* not JSON */ } });
+      ws.addEventListener("close", (ev) => { OPEN_SOCKETS.delete(ws); sock.closeCode = ev?.code ?? -1; });
+      ws.addEventListener("error", () => {});
+      return sock;
+    };
+    const waitFor = async (pred, ms) => {
+      const deadline = Date.now() + ms;
+      while (!pred() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+      return pred();
+    };
+    const vTicket = (await qcall("POST", "/v1/ws-ticket", { token: mrCoParentToken })).data?.ticket;
+    const oTicket = (await qcall("POST", "/v1/ws-ticket", { token: q2cOwner })).data?.ticket;
+    if (vTicket && oTicket) {
+      const v = await live(vTicket);
+      const o = await live(oTicket);
+      const ready = await waitFor(() => v.frames.some((f) => f.type === "ready") && o.frames.some((f) => f.type === "ready"), 5000);
+      const revokedAt = Date.now();
+      const logoutAll = await call("POST", "/v1/auth/logout-all", { token: mrCoParentToken });
+      const after = await call("GET", "/v1/family/me", { token: mrCoParentToken });
+      await waitFor(() => v.closeCode !== null, 6000);
+      const wait = revokedAt + 5500 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      const title = `q2c-revoked-socket-${Date.now()}`;
+      const posted = await call("POST", "/v1/alerts/internal", { hmac: true, body: { childId: mrKid, deviceId: mrDeviceId, severity: "info", category: "sos", title, body: "q2c" } });
+      const isAlert = (f) => f.type === "alert" && f.payload?.title === title;
+      const control = await waitFor(() => o.frames.some(isAlert), 10000);
+      await new Promise((r) => setTimeout(r, 500)); // the revoked socket gets the same window after the control's frame lands
+      await waitFor(() => v.closeCode !== null, 1000);
+      const leaked = v.frames.some(isAlert);
+      check(
+        "Q2c a socket opened before logout-all gets no further family frame and is closed with 4001",
+        ready && logoutAll.status === 200 && after.status === 401 && [200, 201].includes(posted.status) && control && !leaked && v.closeCode === 4001,
+        `ready=${ready} logoutAll=${logoutAll.status} tokenAfter=${after.status} alert=${posted.status} ownerGotAlert=${control} revokedSocketGotAlert=${leaked} close=${v.closeCode}`,
+      );
+      v.ws.close();
+      o.ws.close();
+    } else {
+      target("Q2c a socket opened before logout-all is closed (no ws-ticket here)", `coParentTicket=${!!vTicket} ownerTicket=${!!oTicket}`);
+    }
+  } else {
+    target("Q2c a socket opened before logout-all is closed (no live O-section family here)", "the O-section family has no live co-parent or device here, or the owner could not log in again");
+  }
+
   // Q7: a live device token on every parent-only route is 403 parent_role_required (requireParent, or
   // the ws-ticket role check). Mutant: requireParent that skips the role test -> the reads answer 200.
   if (d2.token) {
