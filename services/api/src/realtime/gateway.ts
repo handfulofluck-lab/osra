@@ -22,19 +22,64 @@ const EVENT_PERMISSION: Record<string, "alerts" | "location"> = { alert: "alerts
  * not gated, so no frame is ever withheld from them. Everyone else (a guardian, a ticket from before
  * this change, a parent the database could not answer for) is checked again on every gated frame.
  */
-type SocketReader = { parentId: string | null; open: boolean };
+type SocketReader = {
+  parentId: string | null;
+  /** From the ticket: what `isParentSessionLive` needs, and the family the socket subscribed to. */
+  familyId: string;
+  jti: string | null;
+  sv: number | null;
+  open: boolean;
+  /** When the session was last confirmed, for the short per-socket cache (osra-security#4). */
+  checkedAt: number;
+};
 
 const socketReaders = new WeakMap<object, SocketReader>();
 
-async function readerFor(parentId: string | null): Promise<SocketReader> {
-  if (!parentId) return { parentId: null, open: false };
+async function readerFor(ticket: { familyId: string; parentId: string | null; jti: string | null; sv: number | null }): Promise<SocketReader> {
+  const base = { parentId: ticket.parentId, familyId: ticket.familyId, jti: ticket.jti, sv: ticket.sv, checkedAt: 0 };
+  if (!ticket.parentId) return { ...base, open: false };
   try {
-    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { role: true } });
-    if (row && row.role !== "guardian") return { parentId, open: true };
+    const row = await prisma.parent.findUnique({ where: { id: ticket.parentId }, select: { role: true } });
+    if (row && row.role !== "guardian") return { ...base, open: true };
   } catch {
     // Unknown is not open: the frame-time check below decides, and it fails closed.
   }
-  return { parentId, open: false };
+  return { ...base, open: false };
+}
+
+/** How long a confirmed session is trusted before it is read again (osra-security#4). */
+const SESSION_RECHECK_MS = 5_000;
+
+/**
+ * osra-security#4: a socket re-checks its session **before every frame**, for every role.
+ *
+ * The ticket is authorised once at mint time, so `logout-all`, a password reset, an MFA change or an invite
+ * move used to leave an already-open socket subscribed — a stolen session kept receiving the family's live
+ * alerts, title and body, until the attacker closed it. Two facts are re-read here, cached for a few seconds
+ * so the cost is bounded: the session is still live (`jti`/`sv`), and the parent still belongs to the family
+ * the socket subscribed to.
+ *
+ * Fails closed: no reader, a dead session, a moved parent or a database error all mean no frame, and a socket
+ * whose session is gone is closed with 4001.
+ */
+async function sessionLive(ws: { close: (code: number, reason: string) => void }, reader: SocketReader | undefined): Promise<boolean> {
+  if (!reader?.parentId) return false;
+  if (Date.now() - reader.checkedAt < SESSION_RECHECK_MS) return true;
+  try {
+    if (!(await isParentSessionLive({ sub: reader.parentId, jti: reader.jti ?? undefined, sv: reader.sv ?? undefined }))) {
+      ws.close(4001, "unauthorized");
+      return false;
+    }
+    const row = await prisma.parent.findUnique({ where: { id: reader.parentId }, select: { familyId: true } });
+    if (!row || row.familyId !== reader.familyId) {
+      ws.close(4001, "unauthorized");
+      return false;
+    }
+    reader.checkedAt = Date.now();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -149,7 +194,16 @@ export function registerRealtime(app: FastifyInstance) {
     // ADR-0014 amendment, decision 3 (second half, #402): the ticket carries WHO is subscribing, so the
     // fan-out can drop a frame this reader is not allowed to see. The app sends the same ticket either
     // way; only the stored value changed.
-    await getRedis().set(`ws:ticket:${ticket}`, JSON.stringify({ familyId, parentId: (user as { sub?: string }).sub ?? null }), "EX", 60);
+    // osra-security#4: the ticket carries the session identity as well, because the socket re-checks it on
+    // every frame. Without `jti`/`sv` a socket could only be judged at connect, which is how a stolen
+    // session kept receiving alerts after `logout-all`.
+    const session = user as { sub?: string; jti?: string; sv?: number };
+    await getRedis().set(
+      `ws:ticket:${ticket}`,
+      JSON.stringify({ familyId, parentId: session.sub ?? null, jti: session.jti ?? null, sv: session.sv ?? null }),
+      "EX",
+      60,
+    );
     return { ticket, expiresIn: 60 };
   });
 
@@ -182,12 +236,14 @@ export function registerRealtime(app: FastifyInstance) {
         const raw = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
         // A ticket minted by an older process is the bare familyId string; accept both, so a deploy
         // mid-connection does not 4001 everybody.
-        const parsed = raw.startsWith("{") ? (JSON.parse(raw) as { familyId?: string; parentId?: string | null }) : { familyId: raw, parentId: null };
+        const parsed = raw.startsWith("{")
+          ? (JSON.parse(raw) as { familyId?: string; parentId?: string | null; jti?: string | null; sv?: number | null })
+          : { familyId: raw, parentId: null, jti: null, sv: null };
         const familyId = parsed.familyId ?? "";
         if (!familyId) throw new Error("invalid ticket");
         await redis.del(`ws:ticket:${query.ticket}`).catch(() => {});
         // Settled before the socket joins the set, so no frame can reach it while this is pending.
-        socketReaders.set(socket, await readerFor(parsed.parentId ?? null));
+        socketReaders.set(socket, await readerFor({ familyId, parentId: parsed.parentId ?? null, jti: parsed.jti ?? null, sv: parsed.sv ?? null }));
         const set = socketsByFamily.get(familyId) ?? new Set();
         set.add(socket);
         socketsByFamily.set(familyId, set);
@@ -210,7 +266,7 @@ export function registerRealtime(app: FastifyInstance) {
   );
 
   subscriber.psubscribe("family:*:events");
-  subscriber.on("pmessage", (_pattern, channel, message) => {
+  subscriber.on("pmessage", async (_pattern, channel, message) => {
     const familyId = channel.split(":")[1];
     const type = frameType(message);
     const set = socketsByFamily.get(familyId);
@@ -229,6 +285,12 @@ export function registerRealtime(app: FastifyInstance) {
     for (const ws of set) {
       if (ws.readyState !== 1) continue;
       const reader = socketReaders.get(ws);
+      // osra-security#4: the session is checked for EVERY socket and EVERY frame, not only gated ones.
+      // This is the line that makes `logout-all` reach an already-open socket.
+      if (!(await sessionLive(ws, reader))) {
+        checked += 1;
+        continue;
+      }
       if (needed && !reader?.open) {
         checked += 1;
         void mayRead(ws, reader, needed).then((ok) => {

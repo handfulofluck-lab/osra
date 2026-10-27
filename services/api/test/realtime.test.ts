@@ -181,7 +181,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
   };
 
   it("does not send an alert frame to a guardian without `alerts`, and still sends `ready`", async () => {
-    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["location"] });
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["location"], familyId: "fam-1" });
     const c = await subscribe("guardian-1");
 
     const pmessage = subscriberPmessageHandler();
@@ -196,7 +196,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
   it("sends an alert frame to a guardian that holds `alerts`, and to a co-parent with no permissions", async () => {
     prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"] } : { role: "co-parent", permissions: [] },
+      where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"], familyId: "fam-1" } : { role: "co-parent", permissions: [], familyId: "fam-1" },
     );
     const guardian = await subscribe("guardian-2");
     const coparent = await subscribe("coparent-1");
@@ -216,7 +216,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
   it("stops alert frames on an open socket as soon as the guardian's `alerts` is removed", async () => {
     let permissions = ["alerts", "location"];
-    prismaMock.parent.findUnique.mockImplementation(async () => ({ role: "guardian", permissions }));
+    prismaMock.parent.findUnique.mockImplementation(async () => ({ role: "guardian", permissions, familyId: "fam-1" }));
     const c = await subscribe("guardian-3");
     const pmessage = subscriberPmessageHandler();
 
@@ -234,22 +234,24 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
   });
 
   it("withholds a gated frame when the database cannot answer, and still sends an ungated one", async () => {
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
     const c = await subscribe("guardian-4");
     prismaMock.parent.findUnique.mockRejectedValue(new Error("db down"));
     const pmessage = subscriberPmessageHandler();
 
     pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "x" } }));
     pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "consent_revoked", payload: {} }));
-    await c.waitFor(() => c.frames.length >= 2);
     await settle();
 
-    expect(c.frames.map((f) => f.type)).toEqual(["ready", "consent_revoked"]);
+    // osra-security#4 tightened this row: the session check runs for EVERY frame, so a database that
+    // cannot answer withdraws everything, not only the gated types. Sending an ungated frame while the
+    // session is unconfirmed is the hole this change closes — `consent_revoked` used to arrive here.
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
     c.ws.close();
   });
 
   it("closes the socket with 4001 when the guardian's parent row no longer exists", async () => {
-    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"] });
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
     const c = await subscribe("guardian-5");
     prismaMock.parent.findUnique.mockResolvedValue(null);
     const pmessage = subscriberPmessageHandler();
@@ -259,5 +261,22 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
     expect(c.close()).toBe(4001);
     expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+  });
+
+  // osra-security#4: the socket re-checks the session on every frame. This is the invite-move variant — a
+  // parent re-homed to another family — which needs no session-internals mock and shows the same property:
+  // a frame the socket is no longer entitled to is not sent, and the socket is closed with 4001.
+  it("stops frames and closes 4001 when the parent no longer belongs to the socket's family", async () => {
+    prismaMock.parent.findUnique.mockResolvedValueOnce({ role: "owner", familyId: "fam-1" });
+    const c = await subscribe("parent-9");
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-OTHER" });
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "must not arrive" } }));
+    await settle();
+
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+    expect(c.close()).toBe(4001);
+    c.ws.close();
   });
 });
