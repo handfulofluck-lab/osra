@@ -26,6 +26,7 @@ import 'package:familyshield_parent/providers/locale_provider.dart';
 
 import 'fake_api_client.dart';
 import 'test_app.dart';
+import 'package:familyshield_parent/features/family/family_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -186,6 +187,15 @@ void main() {
       await pumpArabic(tester, const ReportsScreen(childId: 'child-1'), arabicApi());
       expect(find.text('التقارير'), findsOneWidget);
       expect(find.text('الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا'), findsOneWidget);
+      expectRtlAndNoOverflow(tester);
+    });
+
+    testWidgets('family members', (tester) async {
+      // 3.1 remainder / #419: the family screen was the last untranslated one, so these two assertions are
+      // the first time its Arabic has been rendered at all.
+      await pumpArabic(tester, const FamilyScreen(), arabicApi());
+      expect(find.text('أفراد العائلة'), findsOneWidget);
+      expect(find.text('الدعوات المعلّقة'), findsOneWidget);
       expectRtlAndNoOverflow(tester);
     });
 
