@@ -2467,7 +2467,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get mfaResetRequestCancelled => 'تم إلغاء هذا الطلب.';
 
   @override
-  String get mfaResetWitnessRequired => 'أدخل الرمز المكوّن من 8 أرقام.';
+  String get mfaResetWitnessRequired => 'لم تُستكمل خطوة الشاهد بعد.';
 
   @override
   String get mfaResetWindowOpen => 'لم ينتهِ الانتظار بعد. لم يتغيّر شيء.';
@@ -2502,6 +2502,9 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaResetWitnessSubmit => 'تحقّق من الرمز';
+
+  @override
+  String get mfaResetWitnessEnterCode => 'أدخل الرمز المكوّن من 8 أرقام.';
 
   @override
   String get mfaResetWitnessInvalid =>

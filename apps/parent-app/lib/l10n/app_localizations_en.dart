@@ -2319,7 +2319,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mfaResetRequestCancelled => 'This request was cancelled.';
 
   @override
-  String get mfaResetWitnessRequired => 'Enter the 8-digit code.';
+  String get mfaResetWitnessRequired =>
+      'The witness step has not been completed yet.';
 
   @override
   String get mfaResetWindowOpen =>
@@ -2355,6 +2356,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mfaResetWitnessSubmit => 'Check code';
+
+  @override
+  String get mfaResetWitnessEnterCode => 'Enter the 8-digit code.';
 
   @override
   String get mfaResetWitnessInvalid =>

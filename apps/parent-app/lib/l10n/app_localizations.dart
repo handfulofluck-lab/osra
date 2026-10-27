@@ -3887,7 +3887,7 @@ abstract class AppLocalizations {
   /// No description provided for @mfaResetWitnessRequired.
   ///
   /// In en, this message translates to:
-  /// **'Enter the 8-digit code.'**
+  /// **'The witness step has not been completed yet.'**
   String get mfaResetWitnessRequired;
 
   /// No description provided for @mfaResetWindowOpen.
@@ -3949,6 +3949,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Check code'**
   String get mfaResetWitnessSubmit;
+
+  /// No description provided for @mfaResetWitnessEnterCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 8-digit code.'**
+  String get mfaResetWitnessEnterCode;
 
   /// No description provided for @mfaResetWitnessInvalid.
   ///
