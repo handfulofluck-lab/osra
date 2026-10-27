@@ -26,6 +26,13 @@ export const AUTH_RATE_LIMIT = { max: 20, timeWindow: "1 minute", skipOnError: f
 /** `POST /v1/devices/pair/claim`: unauthenticated, and the only place a pairing code is tried. */
 export const PAIR_CLAIM_RATE_LIMIT = { max: 10, timeWindow: "1 minute", skipOnError: false } as const;
 
+/**
+ * `POST /v1/devices/pair/claims/:claimId/poll`: the claiming phone asks every 2 s whether the parent has
+ * decided (osra-security#3 PR 2). Nothing is guessed here (a random claim id plus a 256-bit secret), so the
+ * bucket only has to leave room for that cadence; it fails closed like the claim it follows.
+ */
+export const PAIR_POLL_RATE_LIMIT = { max: 60, timeWindow: "1 minute", skipOnError: false } as const;
+
 /** Redis key prefix for the limiter's counters; each key expires with its window. */
 export const RATE_LIMIT_KEY_PREFIX = "rl:";
 

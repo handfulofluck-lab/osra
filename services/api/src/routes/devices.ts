@@ -24,7 +24,8 @@ import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
-import { PAIR_CLAIM_RATE_LIMIT } from "../lib/rateLimits.js";
+import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
+import { decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -85,14 +86,17 @@ const PushTokenSchema = z.object({ token: z.string().min(20).max(4096) });
 
 const PairSchema = z.object({ childId: z.string().min(1) });
 
+// The parent reads `model` and `deviceName` on the Allow / Deny screen, so they are bounded here.
 const ClaimSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
   platform: PLATFORM,
-  model: z.string().min(1),
-  osVersion: z.string().min(1),
-  deviceName: z.string().optional(),
+  model: z.string().min(1).max(100),
+  osVersion: z.string().min(1).max(50),
+  deviceName: z.string().max(100).optional(),
   pushToken: z.string().optional(),
 });
+
+const PollSchema = z.object({ pollSecret: z.string().min(1).max(200) });
 
 const PAIR_TTL_SECONDS = 600;
 const PAIR_MAX_ATTEMPTS = 5;
@@ -296,54 +300,127 @@ export async function deviceRoutes(app: FastifyInstance) {
     return reply.code(201).send({ code, expiresAt });
   });
 
-  /** Claim a pairing code (no auth: runs before any credentials exist) and mint a device JWT. */
+  /**
+   * Claim a pairing code (no auth: runs before any credentials exist). Plan 2.7, osra-security#3 PR 2:
+   * the claim no longer mints anything. It records a pending claim that the parent's pairing screen shows
+   * as "<device> wants to join as <child>: Allow / Deny", and answers with the claim id and a poll secret
+   * that only this phone holds. The device row and its token are created by the poll, after Allow.
+   */
   app.post("/pair/claim", { config: { rateLimit: PAIR_CLAIM_RATE_LIMIT } }, async (req, reply) => {
     const parsed = ClaimSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const key = `pair:${parsed.data.code}`;
-    // Consume the code atomically (Redis 5.0 has no GETDEL): Lua GET+DEL in one script, so
-    // concurrent claims of the same code cannot both succeed.
-    const raw = (await getRedis().eval(
-      "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
-      1,
-      key,
-    )) as string | null;
-    const payload = raw ? (JSON.parse(raw) as { childId: string; familyId: string }) : null;
-    if (!payload) {
+    const { code, platform, model, osVersion, deviceName, pushToken } = parsed.data;
+    const reserved = await reserveClaim(code, { platform, model, osVersion, deviceName, pushToken });
+    if (reserved.kind === "unknown") {
       // A metric, not a brake: counted from the logs to see guessing, never used to refuse pairing for
       // everyone. The code itself is not logged.
       req.log.warn({ metric: "pair_claim_failed" }, "pairing claim with an unknown or expired code");
       return reply.code(404).send({ error: "invalid_or_expired_code" });
     }
-    const consentCheck = await checkActiveConsent(payload.childId);
+    if (reserved.kind === "pending_exists") {
+      return reply.code(409).send({ error: "claim_pending" });
+    }
+    // Consent is checked here too, so a phone learns at once that pairing cannot finish; the poll checks
+    // it again, because consent can be withdrawn while the parent decides.
+    const consentCheck = await checkActiveConsent(reserved.record.childId);
     if (!consentCheck.active) {
       return reply.code(428).send({ error: consentCheck.reason ?? "parental_consent_required" });
     }
-    const { code: _code, deviceName, ...rest } = parsed.data;
-    // NOTE: the Device table is child-scoped (no familyId column); familyId from the Redis
-    // payload is used for the JWT claims and response only — never sourced from the client.
-    // Handoff item 5: each device gets its OWN internal HMAC secret at claim time, so the
-    // global INTERNAL_HMAC_SECRET is never shipped to devices (it remains the ai-engine key).
+    return reply.code(202).send({ claimId: reserved.claimId, pollSecret: reserved.pollSecret, expiresAt: reserved.expiresAt });
+  });
+
+  /**
+   * The parent's pairing screen polls this while it shows the code. `waiting` until a phone claims it,
+   * then `pending` with what the phone says it is, then `approved`, `denied` or `paired`. A code from
+   * another family answers 404, exactly like a code that does not exist.
+   */
+  app.get("/pair/:code/claim", { preHandler: [requireParent, requirePermission("devices")] }, async (req, reply) => {
+    const { code } = req.params as { code: string };
+    if (!/^\d{6}$/.test(code)) return reply.code(404).send({ error: "invalid_or_expired_code" });
+    const user = req.user as AuthedUser;
+    const { codeLive, familyId, claim } = await readClaimForCode(code);
+    if (familyId !== user.familyId || (!codeLive && !claim)) {
+      return reply.code(404).send({ error: "invalid_or_expired_code" });
+    }
+    if (!claim) return { status: "waiting" };
+    return {
+      status: claim.status,
+      claimId: claim.claimId,
+      platform: claim.platform,
+      model: claim.model,
+      deviceName: claim.deviceName ?? null,
+      osVersion: claim.osVersion,
+      ...(claim.deviceId ? { deviceId: claim.deviceId } : {}),
+    };
+  });
+
+  /** Allow or Deny a pending claim: the parent's decision, from the screen that is showing the code. */
+  for (const [action, decision] of [["approve", "approved"], ["deny", "denied"]] as const) {
+    app.post(`/pair/claims/:claimId/${action}`, { preHandler: [requireParent, requirePermission("devices")] }, async (req, reply) => {
+      const { claimId } = req.params as { claimId: string };
+      const user = req.user as AuthedUser;
+      const current = await readClaim(claimId);
+      if (!current || current.record.familyId !== user.familyId) {
+        return reply.code(404).send({ error: "claim_not_found" });
+      }
+      if (!(await decideClaim(current, decision, user.sub))) {
+        return reply.code(409).send({ error: "claim_not_pending", status: current.record.status });
+      }
+      return { status: decision };
+    });
+  }
+
+  /**
+   * The claiming phone polls with its secret. Pending: 202. Denied: 410. Approved: the device row and its
+   * token are created now, and the answer is the body `/pair/claim` used to return (201), exactly once.
+   * An unknown claim and a wrong secret are the same 404.
+   */
+  app.post("/pair/claims/:claimId/poll", { config: { rateLimit: PAIR_POLL_RATE_LIMIT } }, async (req, reply) => {
+    const { claimId } = req.params as { claimId: string };
+    const parsed = PollSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const current = await readClaim(claimId);
+    if (!current || !pollSecretMatches(parsed.data.pollSecret, current.record.pollSecretHash)) {
+      return reply.code(404).send({ error: "claim_not_found" });
+    }
+    const record = current.record;
+    if (record.status === "pending") return reply.code(202).send({ status: "pending" });
+    if (record.status === "denied") return reply.code(410).send({ error: "claim_denied" });
+    if (record.status !== "approved" || !(await takeApprovedClaim(current))) {
+      // `paired`: this claim already produced its device. A token is handed out once.
+      return reply.code(404).send({ error: "claim_not_found" });
+    }
+    const consentCheck = await checkActiveConsent(record.childId);
+    if (!consentCheck.active) {
+      return reply.code(428).send({ error: consentCheck.reason ?? "parental_consent_required" });
+    }
+    // NOTE: the Device table is child-scoped (no familyId column); familyId from the claim record is
+    // used for the JWT claims and response only — never sourced from the client.
+    // Handoff item 5: each device gets its OWN internal HMAC secret, so the global INTERNAL_HMAC_SECRET
+    // is never shipped to devices (it remains the ai-engine key).
     const internalSecret = randomBytes(32).toString("hex");
     const device = await prisma.device.create({
       data: {
-        ...rest,
-        model: deviceName ?? parsed.data.model,
-        childId: payload.childId,
+        platform: record.platform as z.infer<typeof PLATFORM>,
+        model: record.deviceName ?? record.model,
+        osVersion: record.osVersion,
+        ...(record.pushToken ? { pushToken: record.pushToken } : {}),
+        childId: record.childId,
         status: "online",
         lastSeen: new Date(),
         internalSecret,
       },
     });
+    await markPaired(record, device.id);
     const token = app.jwt.sign(
-      { sub: device.id, deviceId: device.id, childId: payload.childId, familyId: payload.familyId, role: "device" },
+      { sub: device.id, deviceId: device.id, childId: record.childId, familyId: record.familyId, role: "device" },
       { expiresIn: DEVICE_TOKEN_TTL_SECONDS },
     );
     return reply.code(201).send({
       device,
       token,
-      childId: payload.childId,
-      familyId: payload.familyId,
+      childId: record.childId,
+      familyId: record.familyId,
       hmacSecret: internalSecret,
     });
   });
