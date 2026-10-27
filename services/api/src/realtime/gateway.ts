@@ -28,15 +28,23 @@ type SocketReader = {
   familyId: string;
   jti: string | null;
   sv: number | null;
+  /** A token from before the session counter has no `sv`; its revocation is judged by `iat` instead. */
+  iat: number | null;
   open: boolean;
   /** When the session was last confirmed, for the short per-socket cache (osra-security#4). */
   checkedAt: number;
+  /**
+   * The check in flight, shared by every frame that arrives while it runs. Without it each frame of a burst
+   * reads the database again, and two reads can settle out of order, so frames would reach the client out
+   * of order. Awaiting one promise keeps them in publish order.
+   */
+  inflight: Promise<boolean> | null;
 };
 
 const socketReaders = new WeakMap<object, SocketReader>();
 
-async function readerFor(ticket: { familyId: string; parentId: string | null; jti: string | null; sv: number | null }): Promise<SocketReader> {
-  const base = { parentId: ticket.parentId, familyId: ticket.familyId, jti: ticket.jti, sv: ticket.sv, checkedAt: 0 };
+async function readerFor(ticket: { familyId: string; parentId: string | null; jti: string | null; sv: number | null; iat: number | null }): Promise<SocketReader> {
+  const base = { parentId: ticket.parentId, familyId: ticket.familyId, jti: ticket.jti, sv: ticket.sv, iat: ticket.iat, checkedAt: 0, inflight: null };
   if (!ticket.parentId) return { ...base, open: false };
   try {
     const row = await prisma.parent.findUnique({ where: { id: ticket.parentId }, select: { role: true } });
@@ -65,12 +73,22 @@ const SESSION_RECHECK_MS = 5_000;
 async function sessionLive(ws: { close: (code: number, reason: string) => void }, reader: SocketReader | undefined): Promise<boolean> {
   if (!reader?.parentId) return false;
   if (Date.now() - reader.checkedAt < SESSION_RECHECK_MS) return true;
+  if (!reader.inflight) {
+    reader.inflight = checkSession(ws, reader, reader.parentId).finally(() => {
+      reader.inflight = null;
+    });
+  }
+  return reader.inflight;
+}
+
+async function checkSession(ws: { close: (code: number, reason: string) => void }, reader: SocketReader, parentId: string): Promise<boolean> {
   try {
-    if (!(await isParentSessionLive({ sub: reader.parentId, jti: reader.jti ?? undefined, sv: reader.sv ?? undefined }))) {
+    const claims = { sub: parentId, jti: reader.jti ?? undefined, sv: reader.sv ?? undefined, iat: reader.iat ?? undefined };
+    if (!(await isParentSessionLive(claims))) {
       ws.close(4001, "unauthorized");
       return false;
     }
-    const row = await prisma.parent.findUnique({ where: { id: reader.parentId }, select: { familyId: true } });
+    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { familyId: true } });
     if (!row || row.familyId !== reader.familyId) {
       ws.close(4001, "unauthorized");
       return false;
@@ -197,10 +215,10 @@ export function registerRealtime(app: FastifyInstance) {
     // osra-security#4: the ticket carries the session identity as well, because the socket re-checks it on
     // every frame. Without `jti`/`sv` a socket could only be judged at connect, which is how a stolen
     // session kept receiving alerts after `logout-all`.
-    const session = user as { sub?: string; jti?: string; sv?: number };
+    const session = user as { sub?: string; jti?: string; sv?: number; iat?: number };
     await getRedis().set(
       `ws:ticket:${ticket}`,
-      JSON.stringify({ familyId, parentId: session.sub ?? null, jti: session.jti ?? null, sv: session.sv ?? null }),
+      JSON.stringify({ familyId, parentId: session.sub ?? null, jti: session.jti ?? null, sv: session.sv ?? null, iat: session.iat ?? null }),
       "EX",
       60,
     );
@@ -234,16 +252,16 @@ export function registerRealtime(app: FastifyInstance) {
         // Single-use ticket: consumed on first presentment.
         const redis = getRedis();
         const raw = (await redis.get(`ws:ticket:${query.ticket}`).catch(() => null)) ?? "";
-        // A ticket minted by an older process is the bare familyId string; accept both, so a deploy
-        // mid-connection does not 4001 everybody.
-        const parsed = raw.startsWith("{")
-          ? (JSON.parse(raw) as { familyId?: string; parentId?: string | null; jti?: string | null; sv?: number | null })
-          : { familyId: raw, parentId: null, jti: null, sv: null };
+        // osra-security#4 decision 1: only the JSON ticket is accepted. The bare-familyId form carried no
+        // session, so it could never pass the per-frame check anyway; a ticket lives 60 s and a deploy
+        // restarts every socket, so nothing legitimate still holds one.
+        if (!raw.startsWith("{")) throw new Error("invalid ticket");
+        const parsed = JSON.parse(raw) as { familyId?: string; parentId?: string | null; jti?: string | null; sv?: number | null; iat?: number | null };
         const familyId = parsed.familyId ?? "";
         if (!familyId) throw new Error("invalid ticket");
         await redis.del(`ws:ticket:${query.ticket}`).catch(() => {});
         // Settled before the socket joins the set, so no frame can reach it while this is pending.
-        socketReaders.set(socket, await readerFor({ familyId, parentId: parsed.parentId ?? null, jti: parsed.jti ?? null, sv: parsed.sv ?? null }));
+        socketReaders.set(socket, await readerFor({ familyId, parentId: parsed.parentId ?? null, jti: parsed.jti ?? null, sv: parsed.sv ?? null, iat: parsed.iat ?? null }));
         const set = socketsByFamily.get(familyId) ?? new Set();
         set.add(socket);
         socketsByFamily.set(familyId, set);

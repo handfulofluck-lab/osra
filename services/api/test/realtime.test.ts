@@ -247,6 +247,13 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     // cannot answer withdraws everything, not only the gated types. Sending an ungated frame while the
     // session is unconfirmed is the hole this change closes — `consent_revoked` used to arrive here.
     expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+    // Decision 3: an error withholds the frame but keeps the socket open, and the failure is not cached,
+    // so the next frame after the database recovers is delivered.
+    expect(c.close()).toBeNull();
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "after recovery" } }));
+    await c.waitFor(() => c.frames.length >= 2);
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
     c.ws.close();
   });
 
@@ -278,5 +285,95 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
     expect(c.close()).toBe(4001);
     c.ws.close();
+  });
+
+  // osra-security#4 decision 6 (#414 review): the rows below pin the session half of the check, which the
+  // family-move row above cannot see. Each one goes red when that half is removed or loosened.
+  const subscribeWithSession = async (sub: string, claims: { jti: string; sv: number }) => {
+    const token = app.jwt.sign({ sub, familyId: "fam-1", role: "parent", ...claims });
+    const ticket = (await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } })).json().ticket as string;
+    const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    await c.waitFor(() => c.frames.length >= 1);
+    return c;
+  };
+
+  it("an owner's open socket gets no frame and closes 4001 once its session is revoked (logout-all)", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
+    store.set("auth:session-version:owner-1", "1");
+    const c = await subscribeWithSession("owner-1", { jti: "e".repeat(32), sv: 1 });
+    const pmessage = subscriberPmessageHandler();
+
+    // Live session: the frame arrives (the control).
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "before" } }));
+    await c.waitFor(() => c.frames.length >= 2);
+
+    // logout-all bumps the counter. Past the cache window the next frame must not arrive.
+    store.set("auth:session-version:owner-1", "2");
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 5_001);
+    try {
+      pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "must not arrive" } }));
+      await c.waitFor(() => c.close() !== null);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(c.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    expect(c.close()).toBe(4001);
+  });
+
+  it("re-reads the session once per 5 s window per socket, however many frames arrive", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
+    store.set("auth:session-version:owner-2", "1");
+    const c = await subscribeWithSession("owner-2", { jti: "f".repeat(32), sv: 1 });
+    const pmessage = subscriberPmessageHandler();
+    const familyReads = () => prismaMock.parent.findUnique.mock.calls.filter((a) => a[0]?.select?.familyId).length;
+
+    // A burst of three frames: one read between them, and the frames arrive in publish order.
+    for (const n of [1, 2, 3]) pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { n } }));
+    await c.waitFor(() => c.frames.length >= 4);
+    expect(familyReads()).toBe(1);
+    expect(c.frames.slice(1).map((f) => (f.payload as { n: number }).n)).toEqual([1, 2, 3]);
+
+    // Past the window: a second read.
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 5_001);
+    try {
+      pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { n: 4 } }));
+      await c.waitFor(() => c.frames.length >= 5);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(familyReads()).toBe(2);
+    c.ws.close();
+  });
+
+  it("a token from before the session counter (no `sv`) is judged by its `iat`, so logout-all still closes it", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
+    const token = app.jwt.sign({ sub: "owner-3", familyId: "fam-1", role: "parent" });
+    const ticket = (await app.inject({ method: "POST", url: "/v1/ws-ticket", headers: { authorization: `Bearer ${token}` } })).json().ticket as string;
+    const c = connect(`ws://${base}/v1/ws?ticket=${encodeURIComponent(ticket)}`);
+    await c.waitFor(() => c.frames.length >= 1);
+    const pmessage = subscriberPmessageHandler();
+
+    // The legacy revocation epoch: every token issued at or before this second is dead.
+    store.set("auth:invalid-before:owner-3", String(Math.floor(Date.now() / 1000) + 1));
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 5_001);
+    try {
+      pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "must not arrive" } }));
+      await c.waitFor(() => c.close() !== null);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
+    expect(c.close()).toBe(4001);
+  });
+
+  it("refuses a bare familyId ticket (decision 1: the ticket must carry the session)", async () => {
+    store.set("ws:ticket:legacy", "fam-1");
+    const c = connect(`ws://${base}/v1/ws?ticket=legacy`);
+    await c.waitFor(() => c.close() !== null);
+    expect(c.close()).toBe(4001);
+    expect(c.frames).toEqual([]);
   });
 });

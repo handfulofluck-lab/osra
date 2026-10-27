@@ -173,7 +173,10 @@ join.
    A guardian must never get through a broad read what the narrow read refuses.
 3. **Pushes and live events follow the same rule.** The parent push fan-out (#360) skips a guardian's tokens
    without `alerts`. The realtime `alert` and `location` events skip a guardian without `alerts` or `location`
-   respectively.
+   respectively. Before any frame, for every role, an open socket also re-checks that its session is still
+   live and that the parent still belongs to the socket's family. The answer is reused for at most 5 s per
+   socket, so a revocation reaches an open socket within 5 s. A dead session or a moved parent closes the socket
+   with 4001; a store that cannot answer withholds the frame and keeps the socket open.
 4. **Device tokens are unaffected.** The location reads stay open to the child's own device
    (`deviceAccess: "own-child"`). The gate applies only to parent tokens.
 5. **Aggregates stay open.** Usage, summary and wellbeing reports are counts and minutes, so they stay readable
