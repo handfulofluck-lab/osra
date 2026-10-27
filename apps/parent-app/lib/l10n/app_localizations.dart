@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -943,6 +943,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your family owner can give you access to this.'**
   String get readPermissionRequired;
+
+  /// No description provided for @familyDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get familyDone;
+
+  /// No description provided for @familyMembersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Family members'**
+  String get familyMembersTitle;
+
+  /// No description provided for @familyParentsHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Parents'**
+  String get familyParentsHeading;
+
+  /// No description provided for @familyNoParents.
+  ///
+  /// In en, this message translates to:
+  /// **'No parents found'**
+  String get familyNoParents;
+
+  /// No description provided for @familyInviteMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite member'**
+  String get familyInviteMember;
+
+  /// No description provided for @familyPendingInvites.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending invites'**
+  String get familyPendingInvites;
+
+  /// No description provided for @familyInvitesLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load invites: {error}'**
+  String familyInvitesLoadFailed(String error);
+
+  /// No description provided for @familyNoPendingInvites.
+  ///
+  /// In en, this message translates to:
+  /// **'No pending invites'**
+  String get familyNoPendingInvites;
+
+  /// No description provided for @familyRevokeInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke invite'**
+  String get familyRevokeInvite;
+
+  /// No description provided for @familyInviteRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite to {email} revoked'**
+  String familyInviteRevoked(String email);
+
+  /// No description provided for @familyRevokeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke failed: {error}'**
+  String familyRevokeFailed(String error);
+
+  /// No description provided for @familyEnterEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an email address'**
+  String get familyEnterEmail;
+
+  /// No description provided for @familyInviteSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite sent'**
+  String get familyInviteSent;
+
+  /// No description provided for @familyEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get familyEmailLabel;
+
+  /// No description provided for @familyRoleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Role'**
+  String get familyRoleLabel;
+
+  /// No description provided for @familyRoleCoParent.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-parent'**
+  String get familyRoleCoParent;
+
+  /// No description provided for @familyRoleGuardian.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get familyRoleGuardian;
+
+  /// No description provided for @familyPermissions.
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions'**
+  String get familyPermissions;
+
+  /// No description provided for @familyInviteSentTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite sent to {email}.'**
+  String familyInviteSentTo(String email);
+
+  /// No description provided for @familyTokenExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'(test build: share this token — the invited parent registers, then POSTs accept with it)'**
+  String get familyTokenExplanation;
+
+  /// No description provided for @familySendInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'Send invite'**
+  String get familySendInvite;
+
+  /// No description provided for @familyCopyToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy token'**
+  String get familyCopyToken;
+
+  /// No description provided for @familyTokenCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Token copied'**
+  String get familyTokenCopied;
 
   /// No description provided for @alertsLoadFailed.
   ///
@@ -4224,9 +4362,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }
