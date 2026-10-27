@@ -544,10 +544,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get familyMembersTitle => 'أفراد العائلة';
 
   @override
-  String get familyParentsHeading => 'الوالدان';
+  String get familyParentsHeading => 'أولياء الأمور';
 
   @override
-  String get familyNoParents => 'لا يوجد والدان';
+  String get familyNoParents => 'لا يوجد أولياء أمور';
 
   @override
   String get familyInviteMember => 'دعوة فرد';
@@ -592,7 +592,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get familyRoleCoParent => 'والد مشارك';
 
   @override
-  String get familyRoleGuardian => 'وصيّ';
+  String get familyRoleGuardian => 'ولي أمر';
 
   @override
   String get familyPermissions => 'الصلاحيات';
@@ -1638,7 +1638,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get vaultEncryptionDesc =>
-      'محميّ بتشفير AES-256-GCM. يُفكّ التشفير عند الطلب للأوصياء الموثّقين فقط.';
+      'محميّ بتشفير AES-256-GCM. يُفكّ التشفير عند الطلب لأولياء الأمور الموثّقين فقط.';
 
   @override
   String get decryptedContent => 'المحتوى بعد فك التشفير';

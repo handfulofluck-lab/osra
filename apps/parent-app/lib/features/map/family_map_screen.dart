@@ -91,7 +91,7 @@ class ChildMapSheet extends ConsumerWidget {
           Text(context.l10n.familyMapLastUpdate(
             ping.timestamp == null
                 ? context.l10n.familyMapLastUpdateUnknown
-                : DateFormat.yMMMd().add_Hms().format(ping.timestamp!.toLocal()),
+                : DateFormat.yMMMd(context.localeName).add_Hms().format(ping.timestamp!.toLocal()),
           )),
           const SizedBox(height: AppSpace.xs),
           // NOTE: reverse geocoding is a non-goal; show raw coordinates as the address placeholder.
