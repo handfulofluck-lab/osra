@@ -105,15 +105,26 @@ tabs and dialogs), reports, usage history, the pairing QR screen, and Settings �
 snippet-vault modal is translated too. The conversation-coach card is bilingual by design (EN/AR)
 and defaults to the app locale.
 
+The four screens that used to be listed as missing are **done**, each with Arabic RTL rows at
+320×568: search & web safety (#275), digest preferences (#277), the family members screen
+(**#420**, `e60ad33`, 27 keys — roles and invite permissions render through
+`mfaResetRoleName` / `familyPermissionName` instead of the raw wire value), and the family map
+(**#424**, `bbd9745`, 18 keys — including the marker sheet's date, which now formats with
+`context.localeName`). The parent alert push wording is localised on both platforms in **#421**
+(`71f20a1`).
+
 ## What is not translated yet
 
-- Family members, family map, search & web safety, and digest preferences screens.
 - The verifiable parental consent notice (`consentNotice`) is intentionally left in English:
-  legal wording needs a product/legal decision, tracked in issue #159.
+  legal wording needs a product/legal decision. It is the other open half of roadmap 3.1; the issue
+  that used to track it (**#159**) was closed on 2026-10-23 for the screen review, so this line is
+  currently its only written record.
 - Alert bodies, and the title of a category the app does not know yet in English, are displayed as
   the server sent them; titles for the server's 13 categories come from the mapping in `l10n.dart`.
   AI coach content is displayed as supplied; the coach content itself already has an Arabic version
   authored separately.
 
-Native-speaker review of the Arabic screenshots is the acceptance for roadmap item 3.1 and
-is tracked in issue #159.
+Native-speaker review of the Arabic screenshots is the acceptance for roadmap item 3.1. Karim
+reviewed the first **14 screens** and that pass is closed (#159, 2026-10-23); the strings added since
+— **45** of them (27 on the family members screen, 18 on the map) — are tracked in **#426**, together with
+the wording questions the implementation flagged.
