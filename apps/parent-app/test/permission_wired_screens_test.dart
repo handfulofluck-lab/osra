@@ -1,5 +1,3 @@
-import 'dart:ui' show Locale;
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +10,6 @@ import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'fake_api_client.dart';
 import 'package:familyshield_parent/providers/content_provider.dart';
-import 'package:familyshield_parent/providers/family_provider.dart';
 import 'package:familyshield_parent/providers/social_provider.dart';
 import 'package:familyshield_parent/providers/world_class_provider.dart';
 
