@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 
 import '../l10n/l10n.dart';
@@ -52,3 +53,12 @@ String readErrorText(AppLocalizations l10n, Object error, String Function() fall
   final refusal = error is DioException ? ReadPermissionRequired.from(error) : null;
   return refusal == null ? fallback() : l10n.readPermissionRequired;
 }
+
+
+/// Whether **any** of these reads was refused (ADR-0014 amendment, decision 7 + #406).
+///
+/// One banner for the whole map: the permission belongs to the guardian, not to a child, so a screen that
+/// renders several children must not show one notice per child. Loading and data are never a refusal, and a
+/// plain error stays the screen's own problem — only [ReadPermissionRequired.isRefusal] counts.
+bool anyReadRefused(Iterable<AsyncValue<Object?>> values) =>
+    values.any((v) => v.hasError && ReadPermissionRequired.isRefusal(v.error!));

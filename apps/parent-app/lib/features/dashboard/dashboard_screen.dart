@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+
+import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -236,7 +238,10 @@ class ChildCard extends ConsumerWidget {
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final device = overview?.devicesFor(child.id).firstOrNull;
-    final location = ref.watch(locationProvider(child.id)).valueOrNull;
+    final locationValue = ref.watch(locationProvider(child.id));
+    final location = locationValue.valueOrNull;
+    // #406: a refused location read is not "no location yet" — the child card says so (Claude's ruling).
+    final locationRefused = locationValue.hasError && ReadPermissionRequired.isRefusal(locationValue.error!);
     final rules = ref.watch(rulesProvider(child.id)).valueOrNull;
     final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final progress = dailyLimit > 0 ? (child.screenTimeTodayMinutes / dailyLimit).clamp(0.0, 1.0) : 0.0;
@@ -293,9 +298,12 @@ class ChildCard extends ConsumerWidget {
                   const SizedBox(width: AppSpace.xs),
                   Expanded(
                     child: Text(
-                      location == null
-                          ? l10n.noLocationYet
-                          : '${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}',
+                      // #406: a refusal names the owner; "no location yet" would read as a normal state.
+                      locationRefused
+                          ? l10n.readPermissionRequired
+                          : location == null
+                              ? l10n.noLocationYet
+                              : '${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}',
                       style: Theme.of(context).textTheme.bodySmall,
                       overflow: TextOverflow.ellipsis,
                     ),
