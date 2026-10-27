@@ -31,6 +31,17 @@ val releaseKeyPassword = System.getenv("OSRA_UPLOAD_KEY_PASSWORD")
 val hasReleaseKey = !releaseKeystore.isNullOrBlank() && !releaseKeystorePassword.isNullOrBlank() &&
     !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() && file(releaseKeystore!!).exists()
 
+// #409 / #408's sibling: a **signed** release must not ship without Firebase config. Without the file the
+// Google Services plugin above is not applied, so there are no `google_app_id`/`gcm_defaultSenderId`
+// resources, `getToken()` returns nothing and no push token can register - silently, with no error. The
+// debug artefacts are allowed to build config-less on purpose (#317); only the upload path is refused.
+if (!file("google-services.json").exists() && hasReleaseKey) {
+    throw GradleException(
+        "google-services.json is missing for a signed release build (a release keystore is configured). " +
+            "Add android/app/google-services.json, or build a debug variant.",
+    )
+}
+
 android {
     namespace = "com.familyshield.agent"
     // Plan 1.8: targetSdk 35 (Play's 2025 requirement). compileSdk 35 is one above what AGP 8.4 lists as
