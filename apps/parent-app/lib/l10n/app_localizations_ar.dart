@@ -2622,7 +2622,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleGeneric => 'تنبيه';
 
   @override
-  String get alertPushBodyGeneric => 'افتح أسرة لمعرفة التفاصيل.';
+  String get alertPushBodyGeneric =>
+      'افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات';
 
   @override
   String get riskSelfHarm => 'إيذاء النفس';

@@ -764,7 +764,7 @@
   "alertTitleInstallRequest": "طلب تثبيت تطبيق",
   "alertTitleUnknownContact": "تواصل من جهة غير معروفة",
   "alertTitleGeneric": "تنبيه",
-  "alertPushBodyGeneric": "افتح أسرة لمعرفة التفاصيل.",
+    "alertPushBodyGeneric": "افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات",
   "riskSelfHarm": "إيذاء النفس",
   "riskSubstanceUse": "تعاطي المواد",
   "riskSubstanceAbuse": "إساءة استخدام المواد",

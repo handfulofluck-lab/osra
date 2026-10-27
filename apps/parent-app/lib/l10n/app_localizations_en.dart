@@ -2467,7 +2467,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleGeneric => 'Alert';
 
   @override
-  String get alertPushBodyGeneric => 'Open OSRA to see the details.';
+  String get alertPushBodyGeneric =>
+      'Open OSRA to see the details.\nProtecting your family at all times.';
 
   @override
   String get riskSelfHarm => 'Self-harm';
