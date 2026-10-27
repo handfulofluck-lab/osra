@@ -7,16 +7,19 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/api/mfa_reset_api.dart';
 import 'package:familyshield_parent/api/mfa_reset_store.dart';
 import 'package:familyshield_parent/app.dart';
 import 'package:familyshield_parent/features/auth/mfa_recovery_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_approval_screen.dart';
+import 'package:familyshield_parent/features/auth/mfa_reset_messages.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_request_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_waiting_screen.dart';
 import 'package:familyshield_parent/features/auth/mfa_reset_witness_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/settings/mfa_enroll_screen.dart';
 import 'package:familyshield_parent/features/settings/mfa_settings_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/onboarding_provider.dart';
@@ -953,6 +956,18 @@ void main() {
   });
 
   group('Witness code (ADR-0031 decision 2.3)', () {
+    test('409 witness_required says the witness step is missing, never the code prompt (#423)', () {
+      // The two sentences shared one key until #425, and the prompt shadowed the failure message.
+      for (final locale in const [Locale('en'), Locale('ar')]) {
+        final l10n = lookupAppLocalizations(locale);
+        final text = mfaResetFailureText(l10n, MfaResetFailureKind.witnessRequired);
+        expect(text, l10n.mfaResetWitnessRequired);
+        expect(text, isNot(l10n.mfaResetWitnessEnterCode), reason: '$locale');
+      }
+      expect(lookupAppLocalizations(const Locale('en')).mfaResetWitnessRequired,
+          'The witness step has not been completed yet.');
+    });
+
     testWidgets('a code that is not 8 digits is refused before the API', (tester) async {
       final api = FakeApiClient(resetRoutes());
       await pumpScreen(tester, const MfaResetWitnessScreen(requestId: 'req-1'), api);
