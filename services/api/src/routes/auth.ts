@@ -192,6 +192,17 @@ export async function authRoutes(app: FastifyInstance) {
     // ADR-0014 / ADR-0025: the live access tokens die with the sessions, not 7 days later. The
     // counter bump also covers a token minted in this same second (#117).
     await invalidateSessionsBefore(parentId);
+    // osra-security#4 item 3: every path that ends a parent's sessions (logout-all, password reset, MFA
+    // enable / recover / reset, refresh-token theft) also closes that parent's open sockets now, instead of
+    // after the gateway's five-second session cache. The gateway closes them on receipt and never forwards
+    // the signal. Best effort: the per-frame check is the backstop, so a failed publish never fails the
+    // revocation that has already happened.
+    try {
+      const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { familyId: true } });
+      if (row?.familyId) await publishFamilyEvent(row.familyId, { type: "session_revoked", payload: { parentId } });
+    } catch (err) {
+      app.log.warn({ err, parentId }, "session_revoked signal not published; the per-frame check closes the sockets");
+    }
   };
 
   app.post("/register", { config: RL }, async (req, reply) => {
@@ -1463,14 +1474,8 @@ export async function authRoutes(app: FastifyInstance) {
 
   /** Revoke every refresh token of the authenticated parent (handoff item 2). */
   app.post("/logout-all", { preHandler: requireJwt, config: RL }, async (req) => {
-    const user = req.user as { sub: string; familyId?: string };
+    const user = req.user as { sub: string };
     await revokeAllRefreshTokens(user.sub);
-    // osra-security#4, Ahmed's optional item 3: the per-frame check already makes a revoked socket useless
-    // within five seconds, but the theft case should not get those seconds. The gateway closes this parent's
-    // sockets on receipt; the frame is a signal and is never forwarded to a client.
-    if (user.familyId) {
-      await publishFamilyEvent(user.familyId, { type: "session_revoked", payload: { parentId: user.sub } });
-    }
     return { ok: true };
   });
 }

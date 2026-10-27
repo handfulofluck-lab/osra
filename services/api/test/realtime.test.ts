@@ -383,6 +383,7 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
   it("closes the revoked parent's sockets immediately on a session_revoked signal, and forwards nothing", async () => {
     prismaMock.parent.findUnique.mockResolvedValue({ role: "owner", familyId: "fam-1" });
     const c = await subscribe("parent-7");
+    const other = await subscribe("parent-8"); // same family, not revoked
 
     const pmessage = subscriberPmessageHandler();
     pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "session_revoked", payload: { parentId: "parent-7" } }));
@@ -390,6 +391,12 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
 
     expect(c.frames.map((f) => f.type)).toEqual(["ready"]);
     expect(c.close()).toBe(4001);
+    // The other parent's socket stays open, never sees the signal, and still gets the family's next frame.
+    pmessage("family:*:events", "family:fam-1:events", JSON.stringify({ type: "alert", payload: { title: "after" } }));
+    await other.waitFor(() => other.frames.length >= 2);
+    expect(other.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    expect(other.close()).toBeNull();
     c.ws.close();
+    other.ws.close();
   });
 });

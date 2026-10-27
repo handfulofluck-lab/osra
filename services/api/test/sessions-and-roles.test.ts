@@ -36,6 +36,7 @@ function wireRedisStore() {
     return next;
   });
   redis.smembers.mockResolvedValue([]);
+  redis.publish.mockClear(); // the session_revoked rows count this test's signals only
   return store;
 }
 
@@ -74,6 +75,45 @@ describe("parent sessions — jti, sessions version / legacy epoch (ADR-0014, AD
     // A token issued AFTER the revocation is fine.
     const fresh = app.jwt.sign({ sub: "p1", familyId: "fam-1", role: "parent", jti: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", iat: Math.floor(Date.now() / 1000) + 2 }, { expiresIn: "7d" });
     expect((await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${fresh}` } })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  // osra-security#4 item 3: every revocation path closes the parent's open sockets at once. The signal is
+  // published from the shared revoke helper, so logout-all and the refresh-token theft response both send it.
+  const revokedSignals = () =>
+    (getRedis() as unknown as MockRedis).publish.mock.calls
+      .filter(([, msg]) => JSON.parse(msg).type === "session_revoked")
+      .map(([channel, msg]) => ({ channel, payload: JSON.parse(msg).payload }));
+
+  it("logout-all signals the gateway to close that parent's sockets now", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const token = app.jwt.sign({ sub: "p1", familyId: "fam-1", role: "parent", jti: "cccccccccccccccccccccccccccccccc" }, { expiresIn: "7d" });
+    const res = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(revokedSignals()).toEqual([{ channel: "family:fam-1:events", payload: { parentId: "p1" } }]);
+    await app.close();
+  });
+
+  it("the refresh-token theft response signals the gateway too, not only logout-all", async () => {
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.co", password: PASSWORD } });
+    const { refreshToken } = login.json() as { refreshToken: string };
+    expect((await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken } })).statusCode).toBe(200);
+    expect(revokedSignals()).toEqual([]);
+    const replay = await app.inject({ method: "POST", url: "/v1/auth/token/refresh", payload: { refreshToken } });
+    expect(replay.json().error).toBe("refresh_token_reused");
+    expect(revokedSignals()).toEqual([{ channel: "family:fam-1:events", payload: { parentId: "p1" } }]);
+    await app.close();
+  });
+
+  it("a failed signal never fails the revocation: logout-all still answers 200 and the token is dead", async () => {
+    (getRedis() as unknown as MockRedis).publish.mockRejectedValueOnce(new Error("redis down"));
+    const app = await buildApp(authRoutes, "/v1/auth");
+    const token = app.jwt.sign({ sub: "p1", familyId: "fam-1", role: "parent", jti: "dddddddddddddddddddddddddddddddd", iat: Math.floor(Date.now() / 1000) - 1 }, { expiresIn: "7d" });
+    const res = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    const after = await app.inject({ method: "POST", url: "/v1/auth/logout-all", headers: { authorization: `Bearer ${token}` } });
+    expect(after.statusCode).toBe(401);
     await app.close();
   });
 
