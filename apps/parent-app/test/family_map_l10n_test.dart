@@ -169,7 +169,7 @@ void main() {
     );
     expect(
       commandErrorText(ar, 'lock', 'Pixel 7',
-          http(428, {'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'})),
+          http(428, {'error': 'consent_jurisdiction_mismatch', 'childId': 'child-1'})),
       'لم يُرسل «قفل» إلى Pixel 7: لا تتطابق منطقة العائلة مع نطاق اختصاص الطفل. تحقّق من إعدادات العائلة.',
     );
     expect(commandErrorText(ar, 'lock', 'Pixel 7', http(428, {'error': 'something_else'})),

@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -827,13 +827,13 @@ abstract class AppLocalizations {
   /// No description provided for @commandErrorConsentWithdrawn.
   ///
   /// In en, this message translates to:
-  /// **'{command} was not sent to {device}: consent for this child has been withdrawn or has expired. Give consent again to resume.'**
+  /// **'{command} was not sent to {device}: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.'**
   String commandErrorConsentWithdrawn(String command, String device);
 
   /// No description provided for @commandErrorJurisdictionMismatch.
   ///
   /// In en, this message translates to:
-  /// **'{command} was not sent to {device}: the family\'s region and this child\'s jurisdiction do not match. Check the family settings.'**
+  /// **'{command} was not sent to {device}: this child\'s consent was given for a different region than your family\'s, so monitoring is paused. Open Parental consent on the child\'s page for details.'**
   String commandErrorJurisdictionMismatch(String command, String device);
 
   /// No description provided for @commandRefusedBackgroundLocation.
@@ -4536,9 +4536,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }

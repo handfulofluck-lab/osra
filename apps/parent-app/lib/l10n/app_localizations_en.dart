@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -441,12 +440,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commandErrorConsentWithdrawn(String command, String device) {
-    return '$command was not sent to $device: consent for this child has been withdrawn or has expired. Give consent again to resume.';
+    return '$command was not sent to $device: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.';
   }
 
   @override
   String commandErrorJurisdictionMismatch(String command, String device) {
-    return '$command was not sent to $device: the family\'s region and this child\'s jurisdiction do not match. Check the family settings.';
+    return '$command was not sent to $device: this child\'s consent was given for a different region than your family\'s, so monitoring is paused. Open Parental consent on the child\'s page for details.';
   }
 
   @override
