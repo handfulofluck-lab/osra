@@ -260,6 +260,12 @@ void main() {
       await nextRead(tester);
       await nextRead(tester);
       expect(api.calls('GET', '/v1/devices/pair/482916/claim'), hasLength(reads));
+
+      // A stranger's claim costs one tap: a new code from the card itself.
+      await tester.tap(find.byKey(const ValueKey('pairClaimNewCode')));
+      await flushFakeHttp(tester);
+      expect(api.calls('POST', '/v1/devices/pair'), hasLength(2));
+      expect(find.byKey(const ValueKey('pairClaimCard')), findsNothing);
       await unmount(tester);
     });
 

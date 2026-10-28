@@ -431,8 +431,21 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         Text(l10n.pairClaimAllowed, key: const ValueKey('pairClaimAllowed')),
       'paired' => Text(l10n.pairClaimPaired(device),
           key: const ValueKey('pairClaimPaired')),
-      'denied' =>
-        Text(l10n.pairClaimDenied, key: const ValueKey('pairClaimDenied')),
+      // A stranger's claim on this code costs the parent one tap: a new code, right here.
+      'denied' => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(l10n.pairClaimDenied,
+                key: const ValueKey('pairClaimDenied')),
+            const SizedBox(height: AppSpace.sm),
+            FilledButton.tonalIcon(
+              key: const ValueKey('pairClaimNewCode'),
+              onPressed: _loading ? null : _generate,
+              icon: const Icon(Icons.refresh),
+              label: Text(l10n.regenerate),
+            ),
+          ],
+        ),
       _ => null,
     };
     if (content == null) return const SizedBox.shrink();
