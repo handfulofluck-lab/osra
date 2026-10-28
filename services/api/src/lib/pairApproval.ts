@@ -179,9 +179,19 @@ export async function recordPollMiss(record: ClaimRecord): Promise<boolean> {
   const misses = await redis.incrby(missKey(record.claimId), 1);
   if (misses === 1) await redis.expire(missKey(record.claimId), 600);
   if (misses < MAX_POLL_MISSES) return false;
+  await releaseClaim(record);
+  return true;
+}
+
+/**
+ * Drop a claim and free its code: the code's claim slot is cleared only if it still names this claim.
+ * Used when ten wrong secrets burn a claim, and when the claim itself is refused (428), so the parent's
+ * screen goes back to `waiting` and the code can be claimed again.
+ */
+export async function releaseClaim(record: ClaimRecord): Promise<void> {
+  const redis = getRedis();
   await redis.eval(PAIR_SCRIPTS.compareAndDelete, 1, codeClaimKey(record.code), record.claimId);
   await redis.del(claimKey(record.claimId));
-  return true;
 }
 
 /** After the device exists: burn the code, and keep a short "paired" record for the parent's screen. */

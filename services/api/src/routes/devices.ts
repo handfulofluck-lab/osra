@@ -25,7 +25,7 @@ import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
-import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
+import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -323,9 +323,11 @@ export async function deviceRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: "claim_pending" });
     }
     // Consent is checked here too, so a phone learns at once that pairing cannot finish; the poll checks
-    // it again, because consent can be withdrawn while the parent decides.
+    // it again, because consent can be withdrawn while the parent decides. A refused claim is released, so
+    // the parent is never offered Allow for a phone already told no, and the code is free again.
     const consentCheck = await checkActiveConsent(reserved.record.childId);
     if (!consentCheck.active) {
+      await releaseClaim(reserved.record);
       return reply.code(428).send({ error: consentCheck.reason ?? "parental_consent_required" });
     }
     return reply.code(202).send({ claimId: reserved.claimId, pollSecret: reserved.pollSecret, expiresAt: reserved.expiresAt });

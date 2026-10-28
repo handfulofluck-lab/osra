@@ -432,6 +432,22 @@ describe("device pairing (spec §14.1)", () => {
     await app.close();
   });
 
+  // Claude's review, point 3. Mutant: drop releaseClaim before the 428 -> the parent sees a pending claim
+  // and the next claim on the code is 409.
+  it("a claim refused for missing consent (428) is released: the parent sees waiting and the code is free", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:181818", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    prismaMock.consentRecord.findFirst.mockResolvedValueOnce(null);
+    const refused = await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "181818", platform: "android", model: "A", osVersion: "1" } });
+    expect(refused.statusCode).toBe(428);
+    expect(refused.json()).not.toHaveProperty("pollSecret");
+    expect((await app.inject({ method: "GET", url: "/v1/devices/pair/181818/claim", headers: authHeader(app) })).json()).toEqual({ status: "waiting" });
+    expect([...store.keys()].filter((k) => k.startsWith("pairclaim:"))).toEqual([]);
+    const again = await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "181818", platform: "android", model: "A", osVersion: "1" } });
+    expect(again.statusCode).toBe(202);
+    await app.close();
+  });
+
   // Consent can be withdrawn while the parent decides; the device is created only if it still holds.
   it("consent withdrawn between Allow and the poll: 428 and no device", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
