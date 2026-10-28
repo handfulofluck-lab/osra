@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -463,6 +464,16 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String commandErrorRateLimited(String command, String device) {
     return 'لم يُرسل «$command» إلى $device: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.';
+  }
+
+  @override
+  String commandErrorConsentWithdrawn(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: موافقة هذا الطفل مسحوبة أو منتهية. أعد منح الموافقة للمتابعة.';
+  }
+
+  @override
+  String commandErrorJurisdictionMismatch(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: لا تتطابق منطقة العائلة مع نطاق اختصاص الطفل. تحقّق من إعدادات العائلة.';
   }
 
   @override

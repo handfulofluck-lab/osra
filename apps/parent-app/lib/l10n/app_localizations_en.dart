@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -436,6 +437,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String commandErrorRateLimited(String command, String device) {
     return '$command was not sent to $device: too many requests right now. Try again in a minute.';
+  }
+
+  @override
+  String commandErrorConsentWithdrawn(String command, String device) {
+    return '$command was not sent to $device: consent for this child has been withdrawn or has expired. Give consent again to resume.';
+  }
+
+  @override
+  String commandErrorJurisdictionMismatch(String command, String device) {
+    return '$command was not sent to $device: the family\'s region and this child\'s jurisdiction do not match. Check the family settings.';
   }
 
   @override
