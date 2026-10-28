@@ -1,4 +1,7 @@
+import 'package:dio/dio.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
+
+import '../../api/permission_errors.dart';
 
 /// Issue #231: the parent-facing text for a refused command, in one place.
 ///
@@ -37,32 +40,34 @@ String commandRefusalText(
 }
 
 /// Issue #434: the text for a command refused by an **HTTP error** rather than by a `200` with a
-/// `reason`. The body's `error` field is a different vocabulary from the agent's reason: it can carry
-/// a reason-shaped code (`not_supported` appears on a refused device ack as well), an authorisation
-/// refusal, or a rate limit.
+/// `reason`. The body's `error` field is a different vocabulary from the agent's reason.
 ///
-/// The order matters, and so does the fallback:
-/// 1. a reason the agent would have used is rendered by [commandRefusalText] — one command never has
-///    two sentences for the same cause;
-/// 2. `forbidden` / `not_owner` become "you do not have permission", which a parent can act on;
-/// 3. `rate_limited` / `too_many_requests` say to try again shortly, because "429" is not an action;
-/// 4. anything else stays **verbatim**. Hiding an unknown code behind a generic "failed" is the same
-///    mistake as reporting a refused command as queued: it removes the one clue a parent or we have.
+/// The keys are the shapes the routes actually send, checked against `services/api/src`:
+/// - `403 { error: "permission_required", permission }` from `requirePermission(...)`, detected by
+///   [ReadPermissionRequired.from] so the shape is decided in one place (#434 review);
+/// - `429` from `@fastify/rate-limit`, whose body is Fastify's own (`error: "Too Many Requests"`), so
+///   the status code is the key — the strings `rate_limited`/`too_many_requests` never arrive here;
+/// - otherwise a **reason** the agent would have used, rendered by [commandRefusalText] so one cause
+///   keeps one sentence whichever path refused;
+/// - and anything else **verbatim**, because hiding an unknown code behind a generic "failed" is the
+///   same mistake as reporting a refused command as queued — it removes the only clue anyone has.
 String commandErrorText(
   AppLocalizations l10n,
   String commandType,
   String deviceModel,
-  Object? error,
+  Object error,
 ) {
-  final code = error is String ? error : (error == null ? '' : '$error');
   final type = l10n.commandType(commandType);
+  if (error is DioException) {
+    // The permission is deliberately not named: a guardian does not know the invite vocabulary, and
+    // `devices` in an Arabic sentence reads as a bug (`readPermissionRequired`'s reasoning).
+    if (ReadPermissionRequired.from(error) != null) return l10n.commandErrorForbidden(type, deviceModel);
+    if (error.response?.statusCode == 429) return l10n.commandErrorRateLimited(type, deviceModel);
+  }
+  final body = error is DioException ? error.response?.data : null;
+  final code = body is Map ? (body['error'] ?? (error as DioException).message) : (error is DioException ? error.message : error);
+  final raw = '${code ?? 'unknown'}';
   final mapped = commandRefusalText(l10n, commandType, deviceModel, code);
-  // commandRefusalText falls back to `commandFailed(code)`; if it produced that, nothing knew the code.
-  if (mapped != l10n.commandFailed(code)) return mapped;
-  return switch (code) {
-    'forbidden' || 'not_owner' || 'insufficient_permission' =>
-      l10n.commandErrorForbidden(type, deviceModel),
-    'rate_limited' || 'too_many_requests' => l10n.commandErrorRateLimited(type, deviceModel),
-    _ => l10n.commandFailed(code),
-  };
+  if (mapped != l10n.commandFailed(raw)) return mapped;
+  return l10n.commandFailed(raw);
 }

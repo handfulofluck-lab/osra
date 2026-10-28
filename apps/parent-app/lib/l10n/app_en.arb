@@ -215,9 +215,9 @@
     }
   },
   "commandFailed": "Command failed: {error}",
-  "commandErrorForbidden": "You do not have permission to send {command} to {device}. Ask the family owner for the rules permission.",
+  "commandErrorForbidden": "You don't have permission to send {command} to {device}. Your family owner can give you access.",
   "@commandErrorForbidden": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
-  "commandErrorRateLimited": "{command} was not sent to {device}: too many commands in a minute. Try again shortly.",
+  "commandErrorRateLimited": "{command} was not sent to {device}: too many requests right now. Try again in a minute.",
   "@commandErrorRateLimited": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "@commandFailed": {
     "placeholders": {

@@ -461,10 +461,8 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
     );
   } on DioException catch (e) {
     if (context.mounted) {
-      final body = e.response?.data;
-      final code = body is Map ? (body['error'] ?? e.message) : (e.message ?? '');
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(commandErrorText(l10n, command, device.model, code))));
+          .showSnackBar(SnackBar(content: Text(commandErrorText(l10n, command, device.model, e))));
     }
   } catch (e) {
     if (context.mounted) {

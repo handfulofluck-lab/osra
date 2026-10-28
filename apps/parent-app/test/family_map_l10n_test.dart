@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -117,7 +118,8 @@ void main() {
   testWidgets('a 403 on ring reads as a permission sentence, not the raw code', (tester) async {
     const ping = LocationPing(deviceId: 'dev-1', lat: 25.3, lng: 51.5);
     final routes = standardRoutes()
-      ..['POST /v1/devices/dev-1/command'] = (_) => const FakeHttpError(403, {'error': 'forbidden'});
+      ..['POST /v1/devices/dev-1/command'] =
+          (_) => const FakeHttpError(403, {'error': 'permission_required', 'permission': 'devices'});
     final api = FakeApiClient(routes);
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
@@ -130,21 +132,80 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('رنين الجهاز'));
     await tester.pumpAndSettle();
-    expect(find.text('لا تملك صلاحية إرسال «رن» إلى Pixel 7. اطلب من مالك العائلة منحك صلاحية القواعد.'),
+    expect(find.text('لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمالك العائلة منحك حق الوصول.'),
         findsOneWidget);
-    expect(find.textContaining('forbidden'), findsNothing, reason: 'a mapped cause is not shown as a code');
+    expect(find.textContaining('permission_required'), findsNothing,
+        reason: 'a mapped cause is not shown as a code');
   });
 
-  test('commandErrorText maps a reason, a permission and a rate limit, and keeps the rest verbatim', () {
-    // a reason the agent would have used goes through the same sentence as a 200 refusal
+  test('commandErrorText keys on the shapes the routes send, and keeps the rest verbatim', () {
+    final options = RequestOptions(path: '/v1/devices/dev-1/command');
+    DioException http(int status, Map<String, dynamic> body) => DioException(
+          requestOptions: options,
+          response: Response(requestOptions: options, statusCode: status, data: body),
+          type: DioExceptionType.badResponse,
+        );
+
+    // the guard's real body: 403 permission_required, permission named on the wire, not in the sentence
+    expect(
+      commandErrorText(ar, 'ring', 'Pixel 7',
+          http(403, {'error': 'permission_required', 'permission': 'devices'})),
+      'لا تملك صلاحية إرسال «رن» إلى Pixel 7. يمكن لمالك العائلة منحك حق الوصول.',
+    );
+    // @fastify/rate-limit's own body — keyed on the status, not on a string it never sends
+    expect(
+      commandErrorText(ar, 'ring', 'Pixel 7',
+          http(429, {'statusCode': 429, 'error': 'Too Many Requests', 'message': 'Rate limit exceeded, retry in 1 minute'})),
+      'لم يُرسل «رن» إلى Pixel 7: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.',
+    );
+    // a reason the agent would have used keeps the same sentence as a 200 refusal
     expect(commandErrorText(ar, 'ring', 'Pixel 7', 'not_supported'),
         '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
-    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'forbidden'),
-        'لا تملك صلاحية إرسال «رن» إلى Pixel 7. اطلب من مالك العائلة منحك صلاحية القواعد.');
-    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'rate_limited'),
-        'لم تُرسل «رن» إلى Pixel 7: أوامر كثيرة خلال دقيقة. حاول بعد قليل.');
+    // anything else stays visible
     expect(commandErrorText(ar, 'ring', 'Pixel 7', 'some_new_code'), contains('some_new_code'),
         reason: 'an unknown code must stay visible rather than becoming a vague failure');
+  });
+
+  testWidgets('a 429 on lock reads as "try again in a minute", not as Too Many Requests', (tester) async {
+    const ping = LocationPing(deviceId: 'dev-1', lat: 25.3, lng: 51.5);
+    final routes = standardRoutes()
+      ..['POST /v1/devices/dev-1/command'] = (_) => const FakeHttpError(
+          429, {'statusCode': 429, 'error': 'Too Many Requests', 'message': 'Rate limit exceeded, retry in 1 minute'});
+    final api = FakeApiClient(routes);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const Scaffold(body: ChildMapSheet(child: child, ping: ping, device: device)),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('قفل الجهاز'));
+    await tester.pumpAndSettle();
+    expect(find.text('لم يُرسل «قفل» إلى Pixel 7: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.'), findsOneWidget);
+    expect(find.textContaining('Too Many Requests'), findsNothing);
+  });
+
+  testWidgets('a refused geofence reads as the owner sentence, not permission_required', (tester) async {
+    final routes = standardRoutes()
+      ..['POST /v1/location/geofences'] =
+          (_) => const FakeHttpError(403, {'error': 'permission_required', 'permission': 'location'});
+    final api = FakeApiClient(routes);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const Scaffold(body: GeofenceCreateDialog(children: [child], initialCenter: LatLng(25.3, 51.5))),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'المدرسة');
+    await tester.tap(find.text(ar.familyMapCreate));
+    await tester.pumpAndSettle();
+    expect(find.text('يمكن لمالك العائلة منحك حق الوصول إلى هذا.'), findsOneWidget);
+    expect(find.textContaining('permission_required'), findsNothing);
   });
 
   testWidgets('the add-geofence dialog reads in Arabic and asks for a label in Arabic', (tester) async {
