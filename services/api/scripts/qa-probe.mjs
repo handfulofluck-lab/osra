@@ -529,8 +529,8 @@ const d2 = await pairDevice(kidA2, "qa-dev-2");
 check("G1 pairing claim returns device token + per-device secret", !!d1.token && !!d1.secret, `status=${d1.status}`);
 check("G2 second device paired", !!d2.token && !!d2.deviceId, `status=${d2.status}`);
 
-// G2b–G2g: the parent approves each new device (plan 2.7, osra-security#3 PR 2). One code, three claims
-// (the /pair/claim bucket is 10 a minute and the whole run uses nine). Mutants, run against a live API:
+// G2b–G2i: the parent approves each new device (plan 2.7, osra-security#3 PR 2). Three codes, four claims
+// (the /pair/claim bucket is 10 a minute; the whole run uses ten, spread over its first minutes). Mutants, run against a live API:
 // mint the token in the claim handler again -> G2b fails (201, a token before anyone allowed it); drop
 // the SET NX on `pair:<code>:claim` -> G2c (202); skip pollSecretMatches -> G2d (201); drop the family
 // comparison in the approve route -> G2e (200); leave the code in place on Deny -> G2g (409).
@@ -546,12 +546,36 @@ check("G2 second device paired", !!d2.token && !!d2.deviceId, `status=${d2.statu
     // Family B tries while the claim is still pending, so a missing family check would let it through.
     const view = await call("GET", `/v1/devices/pair/${code}/claim`, { token: tokenB });
     const otherAllow = await call("POST", `/v1/devices/pair/claims/${claimId}/approve`, { token: tokenB });
+    const otherDeny = await call("POST", `/v1/devices/pair/claims/${claimId}/deny`, { token: tokenB });
     await call("POST", `/v1/devices/pair/claims/${claimId}/approve`, { token: tokenA });
     const wrong = await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret: "x".repeat(43) } });
     check("G2d an approved claim polled with the wrong secret gets no token (404)", wrong.status === 404 && !wrong.data?.token, `got ${wrong.status}`);
-    check("G2e another family's parent can neither see nor decide the claim (404, 404)", view.status === 404 && otherAllow.status === 404, `view=${view.status} approve=${otherAllow.status}`);
+    check("G2e another family's parent can neither see, allow nor deny the claim (404, 404, 404)", view.status === 404 && otherAllow.status === 404 && otherDeny.status === 404, `view=${view.status} approve=${otherAllow.status} deny=${otherDeny.status}`);
+    // G2h/G2i: ten wrong secrets burn the claim, wherever they come from. Half of the guesses carry another
+    // X-Forwarded-For (a rotated address when the API trusts one proxy hop; ignored otherwise, and the
+    // count is per claim either way). Mutant: drop recordPollMiss -> the right secret gets 201.
+    // G2d already sent one wrong secret, so eight more make nine.
+    for (let i = 0; i < 8; i++) {
+      await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret: `qa-wrong-${i}` }, headers: i % 2 ? { "x-forwarded-for": `198.51.100.${i}` } : {} });
+    }
+    const right = await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret } });
+    check("G2h nine wrong secrets leave an approved claim alone: the right secret still gets its token (201)", right.status === 201 && !!right.data?.token, `got ${right.status}`);
   } else {
     target("G2b–G2e a pending claim (no 202 claim here)", `pair code=${!!code} claim=${claim.status}`);
+  }
+  // G2i: the tenth wrong secret burns a claim, so the right one then gets 404 and no token.
+  const code3 = (await call("POST", "/v1/devices/pair", { token: tokenA, body: { childId: kidA } })).data?.code;
+  const claim3 = code3 ? await call("POST", "/v1/devices/pair/claim", { body: { code: code3, platform: "android", model: "qa-burned", osVersion: "14" } }) : { status: 0, data: null };
+  if (claim3.status === 202) {
+    await call("POST", `/v1/devices/pair/claims/${claim3.data.claimId}/approve`, { token: tokenA });
+    for (let i = 0; i < 10; i++) {
+      await call("POST", `/v1/devices/pair/claims/${claim3.data.claimId}/poll`, { body: { pollSecret: `qa-wrong-${i}` }, headers: i % 2 ? { "x-forwarded-for": `198.51.100.${i}` } : {} });
+    }
+    const right = await call("POST", `/v1/devices/pair/claims/${claim3.data.claimId}/poll`, { body: { pollSecret: claim3.data.pollSecret } });
+    const view = await call("GET", `/v1/devices/pair/${code3}/claim`, { token: tokenA });
+    check("G2i ten wrong secrets burn the claim: the right secret then gets 404 and the parent's screen is back to waiting", right.status === 404 && !right.data?.token && view.data?.status === "waiting", `poll=${right.status} view=${view.status}/${view.data?.status}`);
+  } else {
+    target("G2i the burn rule (no 202 claim here)", `pair code=${!!code3} claim=${claim3.status}`);
   }
   // Deny on a fresh claim: the phone is told, and the code is burned (a second try on it is 404).
   const code2 = (await call("POST", "/v1/devices/pair", { token: tokenA, body: { childId: kidA } })).data?.code;

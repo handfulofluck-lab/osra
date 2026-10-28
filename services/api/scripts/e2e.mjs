@@ -488,6 +488,7 @@ if (process.env.DATABASE_URL) {
       alert: await db.alert.count(where), device: await db.device.count(where), ruleSet: await db.ruleSet.count(where),
       geofence: await db.geofence.count(where), consentRecord: await db.consentRecord.count(where),
       deviceCommand: await db.deviceCommand.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),
+      pairingDecision: await db.pairingDecision.count(where),
       child: await db.child.count({ where: { id: sam.id } }),
     };
     check("erasure leaves ZERO child-scoped rows in every table (counted in Postgres)", Object.values(counts).every((n) => n === 0), JSON.stringify(counts));
