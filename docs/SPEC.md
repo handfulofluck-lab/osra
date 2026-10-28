@@ -612,14 +612,32 @@ POST /v1/devices/pair        (parent JWT + `devices` permission; requireFamily c
   Storage: Redis key `pair:<code>` = JSON { childId, familyId }, TTL 600 s.
   Collision: regenerate on SET NX failure (max 5 tries).
 
-POST /v1/devices/pair/claim  (NO auth)
+POST /v1/devices/pair/claim  (NO auth; 10 a minute per address)
   body: { code, platform, model, osVersion, deviceName?, pushToken? }
-  → 201 { device, token, childId, familyId }
+  → 202 { claimId, pollSecret, expiresAt }      (plan 2.7: the parent approves each new device)
+  No device and no token yet. model/osVersion/deviceName: control and bidi characters stripped,
+  64 characters at most; a model with nothing left → 400. A code holds one claim at a time:
+  a second claim → 409 { error: "claim_pending" }. Unknown/expired code → 404
+  { error: "invalid_or_expired_code" }. Consent missing → 428.
+
+GET  /v1/devices/pair/:code/claim               (parent JWT + `devices`, same family; else 404)
+  → { status: "waiting" } | { status: "pending" | "approved" | "denied" | "paired", claimId,
+      platform, model, deviceName, osVersion, deviceId? }   — the parent's pairing screen, every 2 s
+POST /v1/devices/pair/claims/:claimId/approve   (parent JWT + `devices`, same family; else 404)
+POST /v1/devices/pair/claims/:claimId/deny      (same; Deny also deletes the code)
+  → 200 { status }; 409 { error: "claim_not_pending" } once decided. Each writes a
+  PairingDecision row (who, which child, the phone's cleaned name).
+
+POST /v1/devices/pair/claims/:claimId/poll     (NO auth; the poll secret is the credential;
+  body: { pollSecret }                           60 a minute per claim)
+  → 202 { status: "pending" } | 410 { error: "claim_denied" } | 428 (consent withdrawn) |
+    201 { device, token, childId, familyId, hmacSecret }  — after Allow, exactly once
   token = device JWT, claims { sub: deviceId, deviceId, childId, familyId, role: "device" },
-  expiresIn "10y".
-  Consume code with GET then DEL (Redis 5.0 has no GETDEL). Unknown/expired code →
-  404 { error: "invalid_or_expired_code" }. Device row created with status "online",
-  lastSeen now. Family/child ids come from the Redis payload, never from the client.
+  expiresIn "10y". The device row (status "online", lastSeen now) is created by this poll, never
+  earlier. An unknown claim, an expired one and a wrong secret are one answer, 404
+  { error: "claim_not_found" }; the tenth wrong secret burns the claim and frees the code.
+  Family/child ids come from the Redis payload, never from the client; only a sha256 of the poll
+  secret is stored, and no device token or HMAC secret is ever written to Redis.
 ```
 
 Device JWTs must work on existing agent endpoints: `GET /v1/rules/:childId` (its own child
