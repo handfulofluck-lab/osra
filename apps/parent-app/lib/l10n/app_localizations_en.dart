@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -426,6 +427,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String commandFailed(String error) {
     return 'Command failed: $error';
+  }
+
+  @override
+  String commandErrorForbidden(String command, String device) {
+    return 'You do not have permission to send $command to $device. Ask the family owner for the rules permission.';
+  }
+
+  @override
+  String commandErrorRateLimited(String command, String device) {
+    return '$command was not sent to $device: too many commands in a minute. Try again shortly.';
   }
 
   @override

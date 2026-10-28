@@ -146,8 +146,12 @@ class ChildMapSheet extends ConsumerWidget {
     } on DioException catch (e) {
       if (context.mounted) {
         final data = e.response?.data;
-        final msg = data is Map ? '${data['error'] ?? e.message}' : (e.message ?? '');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.familyMapCommandFailed(msg))));
+        final code = data is Map ? (data['error'] ?? e.message) : (e.message ?? '');
+        // #434: an error body's `error` field is a different vocabulary from a `reason`; known
+        // causes become a sentence, an unknown one stays visible.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(commandErrorText(l10n, command, device.model, code))),
+        );
       }
     }
   }

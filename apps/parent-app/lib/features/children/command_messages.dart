@@ -35,3 +35,34 @@ String commandRefusalText(
     _ => l10n.commandFailed('${reason ?? 'unknown'}'),
   };
 }
+
+/// Issue #434: the text for a command refused by an **HTTP error** rather than by a `200` with a
+/// `reason`. The body's `error` field is a different vocabulary from the agent's reason: it can carry
+/// a reason-shaped code (`not_supported` appears on a refused device ack as well), an authorisation
+/// refusal, or a rate limit.
+///
+/// The order matters, and so does the fallback:
+/// 1. a reason the agent would have used is rendered by [commandRefusalText] — one command never has
+///    two sentences for the same cause;
+/// 2. `forbidden` / `not_owner` become "you do not have permission", which a parent can act on;
+/// 3. `rate_limited` / `too_many_requests` say to try again shortly, because "429" is not an action;
+/// 4. anything else stays **verbatim**. Hiding an unknown code behind a generic "failed" is the same
+///    mistake as reporting a refused command as queued: it removes the one clue a parent or we have.
+String commandErrorText(
+  AppLocalizations l10n,
+  String commandType,
+  String deviceModel,
+  Object? error,
+) {
+  final code = error is String ? error : (error == null ? '' : '$error');
+  final type = l10n.commandType(commandType);
+  final mapped = commandRefusalText(l10n, commandType, deviceModel, code);
+  // commandRefusalText falls back to `commandFailed(code)`; if it produced that, nothing knew the code.
+  if (mapped != l10n.commandFailed(code)) return mapped;
+  return switch (code) {
+    'forbidden' || 'not_owner' || 'insufficient_permission' =>
+      l10n.commandErrorForbidden(type, deviceModel),
+    'rate_limited' || 'too_many_requests' => l10n.commandErrorRateLimited(type, deviceModel),
+    _ => l10n.commandFailed(code),
+  };
+}

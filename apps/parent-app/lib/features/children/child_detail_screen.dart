@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -458,6 +459,13 @@ Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, St
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.commandQueued(l10n.commandType(command), device.model))),
     );
+  } on DioException catch (e) {
+    if (context.mounted) {
+      final body = e.response?.data;
+      final code = body is Map ? (body['error'] ?? e.message) : (e.message ?? '');
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(commandErrorText(l10n, command, device.model, code))));
+    }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));

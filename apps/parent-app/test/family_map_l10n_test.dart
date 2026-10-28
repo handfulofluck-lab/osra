@@ -111,6 +111,42 @@ void main() {
         reason: 'an unknown code stays visible rather than becoming a vague failure');
   });
 
+  // #434: an HTTP error is a different vocabulary from a `reason`. A known cause becomes a sentence
+  // the parent can act on; an unknown one stays verbatim, because hiding it is the "queued" mistake
+  // in another costume. Literals again, not getters (#429).
+  testWidgets('a 403 on ring reads as a permission sentence, not the raw code', (tester) async {
+    const ping = LocationPing(deviceId: 'dev-1', lat: 25.3, lng: 51.5);
+    final routes = standardRoutes()
+      ..['POST /v1/devices/dev-1/command'] = (_) => const FakeHttpError(403, {'error': 'forbidden'});
+    final api = FakeApiClient(routes);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const Scaffold(body: ChildMapSheet(child: child, ping: ping, device: device)),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('رنين الجهاز'));
+    await tester.pumpAndSettle();
+    expect(find.text('لا تملك صلاحية إرسال «رن» إلى Pixel 7. اطلب من مالك العائلة منحك صلاحية القواعد.'),
+        findsOneWidget);
+    expect(find.textContaining('forbidden'), findsNothing, reason: 'a mapped cause is not shown as a code');
+  });
+
+  test('commandErrorText maps a reason, a permission and a rate limit, and keeps the rest verbatim', () {
+    // a reason the agent would have used goes through the same sentence as a 200 refusal
+    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'not_supported'),
+        '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
+    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'forbidden'),
+        'لا تملك صلاحية إرسال «رن» إلى Pixel 7. اطلب من مالك العائلة منحك صلاحية القواعد.');
+    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'rate_limited'),
+        'لم تُرسل «رن» إلى Pixel 7: أوامر كثيرة خلال دقيقة. حاول بعد قليل.');
+    expect(commandErrorText(ar, 'ring', 'Pixel 7', 'some_new_code'), contains('some_new_code'),
+        reason: 'an unknown code must stay visible rather than becoming a vague failure');
+  });
+
   testWidgets('the add-geofence dialog reads in Arabic and asks for a label in Arabic', (tester) async {
     await pumpArabic(
       tester,
