@@ -25,9 +25,11 @@ String commandRefusalText(
     'lock_screen_unavailable' => l10n.commandRefusedLockScreen,
     'web_filter_not_set_up' => l10n.commandRefusedWebFilter,
     'unsupported_command' => l10n.commandRefusedUnsupportedCommand,
-    // ADR-0034 decision 3: the server refuses up front when the phone's own report says the
-    // feature is `not_supported` — the build or platform cannot do it at all. It is not a fault
-    // and not something the parent can fix by asking the child to open the app.
+    // ADR-0034 decision 3: `not_supported` means the build or platform cannot do the feature at
+    // all — not a fault, and not something the parent can fix by asking the child to open the app.
+    // Today it reaches the parent only as a **device-side** ack (the iOS agent, #397), which child
+    // detail and history already render here; the server-side up-front refusal arrives with
+    // ADR-0034 PRs 2–3, and the map branch below is ready for it.
     'not_supported' => l10n.commandRefusedNotSupported(type, deviceModel),
     'invalid_payload' => l10n.commandRefusedInvalidPayload,
     _ => l10n.commandFailed('${reason ?? 'unknown'}'),

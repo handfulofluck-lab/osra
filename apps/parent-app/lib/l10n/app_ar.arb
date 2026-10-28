@@ -124,7 +124,7 @@
   "commandRefusedLockScreen": "لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق OSRA على ذلك الهاتف.",
   "commandRefusedWebFilter": "لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.",
   "commandRefusedUnsupportedCommand": "يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.",
-  "commandRefusedNotSupported": "{command} غير متاح على {device}: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.",
+  "commandRefusedNotSupported": "«{command}» غير متاح على {device}: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.",
   "commandRefusedInvalidPayload": "رفض الهاتف إعدادات هذا الأمر.",
   "rulesLoadFailed": "تعذّر تحميل القواعد: {error}",
   "noPerAppRules": "لا توجد قواعد لكل تطبيق",

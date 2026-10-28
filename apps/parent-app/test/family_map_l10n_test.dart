@@ -91,17 +91,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.requests.where((r) => r.method == 'POST').length, 1);
     expect(
-      find.text('رن غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.'),
+      find.text('«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.'),
       findsOneWidget,
       reason: 'the refusal must be the mapped sentence, not the raw reason or a "queued" claim',
     );
+    // A second SnackBar waits in the queue behind the first, so let the refusal time out before
+    // asking whether a "queued" message followed it. Without this, F4 (refusal shown but no
+    // `return`, so both are queued) survives the row — Claude's planted fault, 7/7 green.
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
     expect(find.text('أُرسل أمر الرنين إلى Pixel 7 — ولم يؤكّده الجهاز بعد.'), findsNothing,
         reason: 'a refused command is not queued');
   });
 
   test('commandRefusalText maps not_supported and still falls back to the raw code', () {
     expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'not_supported'),
-        'رن غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
+        '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
     expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'something_new'), contains('something_new'),
         reason: 'an unknown code stays visible rather than becoming a vague failure');
   });
