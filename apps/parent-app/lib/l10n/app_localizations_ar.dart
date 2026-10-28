@@ -1482,6 +1482,31 @@ class AppLocalizationsAr extends AppLocalizations {
       'يحتاج الخادم إلى موافقة الوالدين لهذا الطفل قبل إنشاء رمز الإقران. ارجع وأضف الطفل مرة أخرى ثم حاول مجددًا.';
 
   @override
+  String get pairClaimTitle => 'جهاز يطلب الانضمام';
+
+  @override
+  String pairClaimBody(String device) {
+    return 'يطلب $device الإقران. اسمح به فقط إذا كان هو الهاتف الذي أمامك.';
+  }
+
+  @override
+  String get pairClaimDeny => 'رفض';
+
+  @override
+  String get pairClaimAllowed => 'تم السماح. يُكمل الهاتف الإقران الآن…';
+
+  @override
+  String pairClaimPaired(String device) {
+    return 'تم إقران $device.';
+  }
+
+  @override
+  String get pairClaimDenied => 'تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.';
+
+  @override
+  String get pairClaimError => 'لم يتم ذلك. حاول مرة أخرى.';
+
+  @override
   String get appearanceTitle => 'المظهر';
 
   @override

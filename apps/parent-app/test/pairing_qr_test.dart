@@ -27,7 +27,9 @@ void main() {
 
   setUp(() => currentNow = DateTime.utc(2026, 1, 1, 12, 0, 0));
 
-  FakeApiClient pairingApi({List<String> codes = const ['482916']}) {
+  FakeApiClient pairingApi(
+      {List<String> codes = const ['482916'],
+      Map<String, FakeRoute> extra = const {}}) {
     var call = 0;
     final routes = standardRoutes();
     routes['POST /v1/devices/pair'] = (_) {
@@ -38,6 +40,7 @@ void main() {
         'expiresAt': currentNow.add(kPairCodeTtl).toUtc().toIso8601String(),
       };
     };
+    routes.addAll(extra);
     return FakeApiClient(routes);
   }
 
@@ -186,6 +189,109 @@ void main() {
     expect(exceptions, isEmpty);
 
     await unmount(tester);
+  });
+
+  // Plan 2.7: the parent approves each new device. The screen reads the claim on its code every 2 s
+  // and only the parent's Allow lets the phone have its token.
+  group('the claim on the shown code', () {
+    FakeApiClient claimApi(Map<String, dynamic> Function() claim,
+        {Object? approve = const {'status': 'approved'}}) {
+      return pairingApi(extra: {
+        'GET /v1/devices/pair/482916/claim': (_) => claim(),
+        'POST /v1/devices/pair/claims/c-1/approve': (_) => approve,
+        'POST /v1/devices/pair/claims/c-1/deny': (_) => {'status': 'denied'},
+      });
+    }
+
+    const pending = {
+      'status': 'pending',
+      'claimId': 'c-1',
+      'platform': 'android',
+      'model': 'Pixel 8',
+      'deviceName': "Sam's phone",
+      'osVersion': '15',
+    };
+
+    Future<void> nextRead(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 2));
+      await flushFakeHttp(tester);
+    }
+
+    testWidgets('no card while no phone has claimed the code', (tester) async {
+      final api = claimApi(() => {'status': 'waiting'});
+      await pumpScreen(tester, api);
+      await nextRead(tester);
+
+      expect(api.calls('GET', '/v1/devices/pair/482916/claim'), isNotEmpty);
+      expect(find.byKey(const ValueKey('pairClaimCard')), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('a pending claim names the phone; Allow approves it', (tester) async {
+      final api = claimApi(() => pending);
+      await pumpScreen(tester, api);
+      await nextRead(tester);
+
+      expect(find.byKey(const ValueKey('pairClaimTitle')), findsOneWidget);
+      expect(find.textContaining("Sam's phone"), findsOneWidget);
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'), isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('pairClaimAllow')));
+      await flushFakeHttp(tester);
+
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'), hasLength(1));
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/deny'), isEmpty);
+      expect(find.byKey(const ValueKey('pairClaimAllowed')), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('Deny refuses the claim and stops reading it', (tester) async {
+      final api = claimApi(() => pending);
+      await pumpScreen(tester, api);
+      await nextRead(tester);
+
+      await tester.tap(find.byKey(const ValueKey('pairClaimDeny')));
+      await flushFakeHttp(tester);
+
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/deny'), hasLength(1));
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'), isEmpty);
+      expect(find.byKey(const ValueKey('pairClaimDenied')), findsOneWidget);
+      final reads = api.calls('GET', '/v1/devices/pair/482916/claim').length;
+      await nextRead(tester);
+      await nextRead(tester);
+      expect(api.calls('GET', '/v1/devices/pair/482916/claim'), hasLength(reads));
+      await unmount(tester);
+    });
+
+    testWidgets('a failed decision says so and keeps Allow and Deny', (tester) async {
+      final api = claimApi(() => pending,
+          approve: const FakeHttpError(409, {'error': 'claim_not_pending'}));
+      await pumpScreen(tester, api);
+      await nextRead(tester);
+
+      await tester.tap(find.byKey(const ValueKey('pairClaimAllow')));
+      await flushFakeHttp(tester);
+
+      expect(find.byKey(const ValueKey('pairClaimError')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairClaimAllow')), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('once the phone has its token the card says it is paired', (tester) async {
+      final api = claimApi(() => {...pending, 'status': 'paired', 'deviceId': 'dev-1'});
+      await pumpScreen(tester, api);
+      await nextRead(tester);
+
+      expect(find.byKey(const ValueKey('pairClaimPaired')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairClaimAllow')), findsNothing);
+      await unmount(tester);
+    });
+
+    test('the phone is named by its device name, or its model without one', () {
+      expect(pairClaimDeviceLabel({'deviceName': ' Sam ', 'model': 'Pixel'}), 'Sam');
+      expect(pairClaimDeviceLabel({'deviceName': '', 'model': 'Pixel'}), 'Pixel');
+      expect(pairClaimDeviceLabel({'model': 'Pixel'}), 'Pixel');
+    });
   });
 }
 

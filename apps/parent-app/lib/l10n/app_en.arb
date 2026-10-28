@@ -684,6 +684,23 @@
   "pairCodeError": "The server did not return a usable pairing code. Try Regenerate.",
   "pairCreateError": "Could not create a pairing code. Check the connection and try again.",
   "pairConsentError": "The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.",
+  "pairClaimTitle": "A device is asking to join",
+  "pairClaimBody": "{device} wants to be paired. Allow it only if it is the phone in front of you.",
+  "@pairClaimBody": {
+    "placeholders": {
+      "device": { "type": "String" }
+    }
+  },
+  "pairClaimDeny": "Deny",
+  "pairClaimAllowed": "Allowed. The phone is finishing pairing…",
+  "pairClaimPaired": "{device} is paired.",
+  "@pairClaimPaired": {
+    "placeholders": {
+      "device": { "type": "String" }
+    }
+  },
+  "pairClaimDenied": "Declined. Make a new code to pair a phone.",
+  "pairClaimError": "That did not go through. Try again.",
   "appearanceTitle": "Appearance",
   "themeLabel": "Theme",
   "appearanceDesc": "System follows this device. Light or Dark overrides it for OSRA only.",
