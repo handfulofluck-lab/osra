@@ -1176,9 +1176,10 @@ surfaces a parent actually reads:
 - the **dialog and sheet** copy, not only the scaffold's;
 - the **error path** — `readErrorText`'s fallback, and any `Text(_error!)` the form shows.
 
-**The mutant**, and it is the cheap one to run: put the English literal back on one surface at a time.
-One fault, one red row, one row per fault. If four faults leave the suite green, the rows are checking
-the scaffold. The count to beat is not "how many rows" but "how many faults each row catches".
+**The mutant**, and it is the cheap one to run. Plant one fault at a time. Each fault must turn at least
+one row red, and the row that goes red must be the one for the surface you broke; one row may catch
+several faults. If four faults leave the suite green, the rows are checking the scaffold. The count to
+beat is not "how many rows" but "how many faults the rows catch".
 
 ### The live gates must run against a non-UTC database (issue #53)
 
