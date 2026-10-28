@@ -3,7 +3,7 @@ import Foundation
 import UIKit
 #endif
 
-/// The identity returned by a successful `POST /v1/devices/pair/claim`
+/// The identity returned once a pairing claim is approved (`POST /v1/devices/pair/claims/:id/poll`, 201)
 /// (spec §14.2/§14.3). Persisted by `AgentIdentityStore`: the device token and
 /// HMAC secret in the shared Keychain group, the ids in the shared app group.
 /// `AlertReporter` and the Screen Time extensions read them from there.
@@ -42,10 +42,25 @@ public enum PairingError: Error, Equatable {
     case httpError(status: Int)
     /// The response was not the expected claim payload.
     case unusableResponse
+    /// Another phone already holds a pending claim on this code (409); the parent makes a new one.
+    case alreadyClaimed
+    /// The parent tapped Deny (410).
+    case denied
+    /// The claim ended before the parent allowed it: the code expired, or the server no longer knows it.
+    case expired
+    /// Consent for the child is missing or was withdrawn (428).
+    case consentRequired
 }
 
-/// Claims parent-issued 6-digit pairing codes against the OSRA API and parses
-/// the claim response into an [AgentIdentity].
+/// What one answer of the pairing poll means (plan 2.7: the parent approves each new device).
+public enum PairingPollStep: Equatable {
+    case pending
+    case approved(Data)
+    case failed(PairingError)
+}
+
+/// Claims parent-issued 6-digit pairing codes against the OSRA API, waits for the
+/// parent's Allow, and parses the approved poll's response into an [AgentIdentity].
 ///
 /// The network call needs UIKit/Darwin networking; the URL normalizer and the
 /// response parser are pure Foundation so the XCTest target exercises them on
@@ -57,10 +72,22 @@ public struct PairingClient {
         self.session = session
     }
 
-    /// Claims [code] at [baseURL] and returns the paired identity.
-    /// Throws `PairingError` for validation and HTTP/parse failures; network
-    /// errors propagate as thrown `Error` from URLSession.
-    public func claim(baseURL: URL, code: String, deviceName: String?) async throws -> AgentIdentity {
+    /// One poll every two seconds: the server's poll bucket is 60 a minute per address.
+    public static let pollIntervalNanoseconds: UInt64 = 2_000_000_000
+    /// A code lives 600 s, so a claim cannot outlive it; this bounds the wait if the server never says.
+    public static let maxPolls = 330
+
+    /// Claims [code] at [baseURL], waits for the parent to tap Allow, and returns the paired identity.
+    ///
+    /// Plan 2.7: the claim answers 202 with a claim id and a poll secret, and the device
+    /// token arrives on `POST /v1/devices/pair/claims/:claimId/poll` once the parent has allowed this phone.
+    /// Throws `PairingError` for every refusal (unknown code, code in use, Deny, expiry, consent) and parse
+    /// failure; network errors on the claim propagate as thrown `Error` from URLSession.
+    public func claim(
+        baseURL: URL,
+        code: String,
+        deviceName: String?
+    ) async throws -> AgentIdentity {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/devices/pair/claim"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -78,12 +105,78 @@ public struct PairingClient {
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw PairingError.unusableResponse }
-        // The API returns 201 on success and 404 for invalid_or_expired_code.
-        guard http.statusCode == 201 else { throw PairingError.httpError(status: http.statusCode) }
-        guard let identity = Self.parseClaimResponse(data, baseURL: baseURL) else {
+        if let refusal = Self.claimRefusal(status: http.statusCode) { throw refusal }
+        guard let ticket = Self.parseClaimTicket(data) else { throw PairingError.unusableResponse }
+
+        let pollURL = baseURL.appendingPathComponent("v1/devices/pair/claims/\(ticket.claimId)/poll")
+        let pollBody = try JSONSerialization.data(withJSONObject: ["pollSecret": ticket.pollSecret])
+        let session = self.session
+        let approved = try await Self.awaitDecision(
+            poll: {
+                var poll = URLRequest(url: pollURL)
+                poll.httpMethod = "POST"
+                poll.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                poll.timeoutInterval = 30.0
+                poll.httpBody = pollBody
+                let (body, response) = try await session.data(for: poll)
+                return ((response as? HTTPURLResponse)?.statusCode ?? 0, body)
+            },
+            sleep: { try await Task.sleep(nanoseconds: $0) }
+        )
+        guard let identity = Self.parseClaimResponse(approved, baseURL: baseURL) else {
             throw PairingError.unusableResponse
         }
         return identity
+    }
+
+    /// What the claim's status means: nil for 202 (waiting for the parent), the refusal otherwise.
+    public static func claimRefusal(status: Int) -> PairingError? {
+        switch status {
+        case 202: return nil
+        case 409: return .alreadyClaimed
+        case 428: return .consentRequired
+        default: return .httpError(status: status) // 404 = invalid_or_expired_code
+        }
+    }
+
+    /// What one poll answer means. 201 is the only one that carries the device token.
+    public static func pollStep(status: Int, body: Data) -> PairingPollStep {
+        switch status {
+        case 202: return .pending
+        case 201: return .approved(body)
+        case 410: return .failed(.denied)
+        case 404: return .failed(.expired) // unknown, expired and a wrong secret are one answer on purpose
+        case 428: return .failed(.consentRequired)
+        default: return .failed(.httpError(status: status))
+        }
+    }
+
+    /// Polls until the parent decides. A thrown network error is a missed poll, not an answer, so the loop
+    /// carries on; it gives up with `.expired` after [maxPolls].
+    public static func awaitDecision(
+        poll: () async throws -> (Int, Data),
+        sleep: (UInt64) async throws -> Void,
+        maxPolls: Int = PairingClient.maxPolls
+    ) async throws -> Data {
+        for attempt in 0..<maxPolls {
+            if attempt > 0 { try await sleep(pollIntervalNanoseconds) }
+            guard let answer = try? await poll() else { continue }
+            switch pollStep(status: answer.0, body: answer.1) {
+            case .pending: continue
+            case .approved(let data): return data
+            case .failed(let error): throw error
+            }
+        }
+        throw PairingError.expired
+    }
+
+    /// The claim's 202 body: what this phone polls with while the parent decides.
+    public static func parseClaimTicket(_ data: Data) -> (claimId: String, pollSecret: String)? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let claimId = obj["claimId"] as? String, !claimId.isEmpty,
+              let pollSecret = obj["pollSecret"] as? String, !pollSecret.isEmpty
+        else { return nil }
+        return (claimId, pollSecret)
     }
 
     /// Normalizes a user-entered server URL: trims whitespace, prepends
@@ -146,6 +239,14 @@ public struct PairingClient {
             return "The server rejected the request (HTTP \(status))."
         case PairingError.unusableResponse:
             return "Unexpected server response — check the server address."
+        case PairingError.alreadyClaimed:
+            return "This code is already being used by another phone. Ask your parent for a new code."
+        case PairingError.denied:
+            return "Your parent declined this phone. If that was a mistake, ask them for a new code."
+        case PairingError.expired:
+            return "The code expired before your parent allowed this phone. Ask them for a new code."
+        case PairingError.consentRequired:
+            return "Your parent needs to give consent in the OSRA app before this phone can be paired."
         default:
             return "Cannot reach the server — check the address and network."
         }
