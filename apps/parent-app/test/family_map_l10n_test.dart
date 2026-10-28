@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
+import 'package:familyshield_parent/features/children/command_messages.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -67,6 +68,48 @@ void main() {
       expect(find.text(queued), findsOneWidget);
     });
   }
+
+  // ADR-0034 decision 3 / #221: the server refuses up front when the phone's own report says the
+  // feature is not_supported. The map used to answer "queued" to those, so a parent whose ring was
+  // refused was told it had been sent. The literal is pinned, not the getter: a row comparing the
+  // screen to the value that feeds it passes whatever the ARB says (#429).
+  testWidgets('a not_supported refusal reads as unavailable, never as queued', (tester) async {
+    const ping = LocationPing(deviceId: 'dev-1', lat: 25.3, lng: 51.5);
+    final routes = standardRoutes()
+      ..['POST /v1/devices/dev-1/command'] = (_) => {'status': 'failed', 'reason': 'not_supported'};
+    final api = FakeApiClient(routes);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const Scaffold(body: ChildMapSheet(child: child, ping: ping, device: device)),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('رنين الجهاز'));
+    await tester.pumpAndSettle();
+    expect(api.requests.where((r) => r.method == 'POST').length, 1);
+    expect(
+      find.text('«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.'),
+      findsOneWidget,
+      reason: 'the refusal must be the mapped sentence, not the raw reason or a "queued" claim',
+    );
+    // A second SnackBar waits in the queue behind the first, so let the refusal time out before
+    // asking whether a "queued" message followed it. Without this, F4 (refusal shown but no
+    // `return`, so both are queued) survives the row — Claude's planted fault, 7/7 green.
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
+    expect(find.text('أُرسل أمر الرنين إلى Pixel 7 — ولم يؤكّده الجهاز بعد.'), findsNothing,
+        reason: 'a refused command is not queued');
+  });
+
+  test('commandRefusalText maps not_supported and still falls back to the raw code', () {
+    expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'not_supported'),
+        '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
+    expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'something_new'), contains('something_new'),
+        reason: 'an unknown code stays visible rather than becoming a vague failure');
+  });
 
   testWidgets('the add-geofence dialog reads in Arabic and asks for a label in Arabic', (tester) async {
     await pumpArabic(

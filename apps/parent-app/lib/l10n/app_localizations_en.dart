@@ -451,6 +451,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'This command needs a newer OSRA on your child\'s phone.';
 
   @override
+  String commandRefusedNotSupported(String command, String device) {
+    return '$command isn\'t available on $device: this phone or app version cannot do it, so nothing was sent.';
+  }
+
+  @override
   String get commandRefusedInvalidPayload =>
       'The phone rejected this command\'s settings.';
 

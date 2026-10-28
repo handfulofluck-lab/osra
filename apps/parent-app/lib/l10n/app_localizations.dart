@@ -842,6 +842,12 @@ abstract class AppLocalizations {
   /// **'This command needs a newer OSRA on your child\'s phone.'**
   String get commandRefusedUnsupportedCommand;
 
+  /// No description provided for @commandRefusedNotSupported.
+  ///
+  /// In en, this message translates to:
+  /// **'{command} isn\'t available on {device}: this phone or app version cannot do it, so nothing was sent.'**
+  String commandRefusedNotSupported(String command, String device);
+
   /// No description provided for @commandRefusedInvalidPayload.
   ///
   /// In en, this message translates to:
