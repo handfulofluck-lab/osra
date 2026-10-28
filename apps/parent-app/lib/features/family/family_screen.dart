@@ -94,7 +94,7 @@ class FamilyScreen extends ConsumerWidget {
                           child: ListTile(
                             leading: const Icon(Icons.mail_outline),
                             title: Text(invite.email),
-                            subtitle: Text('${mfaResetRoleName(context.l10n, invite.role)} · ${invite.permissions.map((p) => familyPermissionName(context.l10n, p)).join(', ')}'),
+                            subtitle: Text('${mfaResetRoleName(context.l10n, invite.role)} · ${invite.permissions.map((p) => familyPermissionName(context.l10n, p)).join(context.l10n.listSeparator)}'),
                             trailing: IconButton(
                               tooltip: context.l10n.familyRevokeInvite,
                               icon: const Icon(Icons.delete_outline),

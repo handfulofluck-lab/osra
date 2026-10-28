@@ -598,6 +598,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get familyPermissions => 'الصلاحيات';
 
   @override
+  String get listSeparator => '، ';
+
+  @override
   String familyInviteSentTo(String email) {
     return 'أُرسلت الدعوة إلى $email.';
   }

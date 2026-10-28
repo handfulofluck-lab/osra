@@ -72,7 +72,9 @@ void main() {
     await pumpFamily(tester, familyApi());
     // The owner's chip and the pending guardian invite.
     expect(find.widgetWithText(Chip, ar.mfaResetRoleOwner), findsOneWidget);
-    expect(find.text('${ar.mfaResetRoleGuardian} · ${ar.familyPermLocation}, ${ar.familyPermAlerts}'), findsOneWidget);
+    // The permissions are joined with the Arabic comma, not a Latin one (#426).
+    expect(find.text('${ar.mfaResetRoleGuardian} · ${ar.familyPermLocation}، ${ar.familyPermAlerts}'), findsOneWidget);
+    expect(find.textContaining('${ar.familyPermLocation}, '), findsNothing);
     expect(find.textContaining('guardian'), findsNothing);
 
     await tester.tap(find.text(ar.familyInviteMember));

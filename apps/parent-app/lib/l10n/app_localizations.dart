@@ -1052,6 +1052,12 @@ abstract class AppLocalizations {
   /// **'Permissions'**
   String get familyPermissions;
 
+  /// Joins the items of a short inline list, such as an invite's permissions. Arabic uses the Arabic comma.
+  ///
+  /// In en, this message translates to:
+  /// **', '**
+  String get listSeparator;
+
   /// No description provided for @familyInviteSentTo.
   ///
   /// In en, this message translates to:
