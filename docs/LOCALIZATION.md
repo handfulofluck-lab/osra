@@ -115,10 +115,11 @@ The four screens that used to be listed as missing are **done**, each with Arabi
 
 ## What is not translated yet
 
-- The verifiable parental consent notice (`consentNotice`) is intentionally left in English:
-  legal wording needs a product/legal decision. It is the other open half of roadmap 3.1; the issue
-  that used to track it (**#159**) was closed on 2026-10-23 for the screen review, so this line is
-  currently its only written record.
+- Nothing is left in English on a parent-facing screen. The verifiable parental consent notice
+  (`consentNotice`) was the last item: Karim approved its wording on 2026-10-28 and it now reads
+  *before you add a child, we need to confirm that you are their parent or guardian* / *قبل إضافة طفل،
+  نحتاج إلى التأكّد من أنك وليّ أمره*, with the law names (COPPA/GDPR-K) deliberately out of the app —
+  they belong in the privacy policy, not in a sentence a parent reads while adding a child.
 - Alert bodies, and the title of a category the app does not know yet in English, are displayed as
   the server sent them; titles for the server's 13 categories come from the mapping in `l10n.dart`.
   AI coach content is displayed as supplied; the coach content itself already has an Arabic version

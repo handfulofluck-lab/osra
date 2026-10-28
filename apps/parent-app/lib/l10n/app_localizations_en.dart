@@ -258,7 +258,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get consentNotice =>
-      'Verifiable parental consent is required before adding a child (COPPA/GDPR-K).';
+      'Before you add a child, we need to confirm that you are their parent or guardian.';
 
   @override
   String get consentMethodLabel => 'Consent method';

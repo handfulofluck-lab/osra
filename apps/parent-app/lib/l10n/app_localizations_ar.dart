@@ -280,7 +280,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get consentNotice =>
-      'Verifiable parental consent is required before adding a child (COPPA/GDPR-K).';
+      'قبل إضافة طفل، نحتاج إلى التأكّد من أنك وليّ أمره.';
 
   @override
   String get consentMethodLabel => 'طريقة الموافقة';

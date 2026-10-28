@@ -518,6 +518,27 @@ void main() {
       expectRtlAndNoOverflow(tester);
     });
 
+    testWidgets('the consent notice speaks Arabic and names no law (#426)', (tester) async {
+      // Roadmap 3.1's last half. The notice was deliberately English pending Karim's wording ("we need
+      // to confirm that you are their parent or guardian", 2026-10-28 09:02Z), which also decided that
+      // the law names leave the app — COPPA/GDPR-K belong in the privacy policy, not in a sentence a
+      // parent reads before adding a child.
+      //
+      // The assertion is the Arabic LITERAL, not `l10n.consentNotice`: a row that compares the screen to
+      // the getter that feeds it passes whatever the ARB says, which is the #429 lesson. Reverting the
+      // value to the old English text turns this row red.
+      final api = FakeApiClient(onboardingRoutes(children: [], devices: []));
+      await pumpStep(tester, const SetupChildScreen(), api);
+      expect(
+        find.text('قبل إضافة طفل، نحتاج إلى التأكّد من أنك وليّ أمره.'),
+        findsOneWidget,
+        reason: 'the consent notice must be the approved Arabic, not the old English sentence',
+      );
+      expect(find.textContaining('COPPA'), findsNothing, reason: 'law names stay out of the app');
+      expect(find.textContaining('Verifiable'), findsNothing, reason: 'no English notice text');
+      expectRtlAndNoOverflow(tester);
+    });
+
     testWidgets('pair their device', (tester) async {
       final api = FakeApiClient(onboardingRoutes(
         children: [childJson('child-1', 'Alex')],

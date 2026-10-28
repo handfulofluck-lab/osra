@@ -539,7 +539,7 @@ abstract class AppLocalizations {
   /// No description provided for @consentNotice.
   ///
   /// In en, this message translates to:
-  /// **'Verifiable parental consent is required before adding a child (COPPA/GDPR-K).'**
+  /// **'Before you add a child, we need to confirm that you are their parent or guardian.'**
   String get consentNotice;
 
   /// No description provided for @consentMethodLabel.
