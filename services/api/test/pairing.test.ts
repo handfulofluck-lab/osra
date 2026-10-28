@@ -301,7 +301,13 @@ describe("device pairing (spec §14.1)", () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     store.set("pair:333333", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
     let seq = 0;
-    prismaMock.device.create.mockImplementation(async () => ({ id: `dev-${seq++}`, childId: "child-1" }));
+    // A slow insert keeps the first poll inside its device creation while the second one reads the claim,
+    // which is the window a non-atomic take would let through.
+    prismaMock.device.create.mockImplementation(async () => {
+      const id = `dev-${seq++}`;
+      await new Promise((r) => setTimeout(r, 30));
+      return { id, childId: "child-1" };
+    });
     const claim = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "333333", platform: "android", model: "A", osVersion: "1" } })).json();
     await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${claim.claimId}/approve`, headers: authHeader(app) });
     const polls = await Promise.all([1, 2].map(() =>
