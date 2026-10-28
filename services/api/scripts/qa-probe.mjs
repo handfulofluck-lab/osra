@@ -558,8 +558,14 @@ check("G2 second device paired", !!d2.token && !!d2.deviceId, `status=${d2.statu
     for (let i = 0; i < 8; i++) {
       await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret: `qa-wrong-${i}` }, headers: i % 2 ? { "x-forwarded-for": `198.51.100.${i}` } : {} });
     }
-    const right = await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret } });
-    check("G2h nine wrong secrets leave an approved claim alone: the right secret still gets its token (201)", right.status === 201 && !!right.data?.token, `got ${right.status}`);
+    // G2j: two right polls at the same moment. Exactly one gets the token and one device exists: the Lua
+    // compare-and-delete, which the unit tests emulate by name and cannot see (Claude's review, S10).
+    // Mutant: drop the compare in PAIR_SCRIPTS.compareAndDelete -> two 201s and two devices.
+    const racing = await Promise.all([1, 2].map(() => call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret } })));
+    const winners = racing.filter((r) => r.status === 201 && r.data?.token);
+    check("G2h nine wrong secrets leave an approved claim alone: the right secret still gets its token (201)", winners.length >= 1, `polls=${racing.map((r) => r.status).join(",")}`);
+    const kidDevices = ((await call("GET", "/v1/devices", { token: tokenA })).data?.devices ?? []).filter((d) => d.model === "qa-unapproved");
+    check("G2j two polls of an approved claim at the same moment: exactly one token (201 + 404) and one device", racing.map((r) => r.status).sort().join(",") === "201,404" && winners.length === 1 && kidDevices.length === 1, `polls=${racing.map((r) => r.status).join(",")} devices=${kidDevices.length}`);
   } else {
     target("G2b–G2e a pending claim (no 202 claim here)", `pair code=${!!code} claim=${claim.status}`);
   }
