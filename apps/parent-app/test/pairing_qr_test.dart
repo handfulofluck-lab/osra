@@ -293,6 +293,35 @@ void main() {
       await unmount(tester);
     });
 
+    // Claude's review, point 2 (§7, #429): the Arabic the parent reads is pinned as literals, not looked
+    // up through the same ARB key, so a wrong or missing translation turns this red. Karim reviews the
+    // wording; if he changes a line, this row changes with the ARB.
+    testWidgets('in Arabic the pending and denied cards read as written (RTL)', (tester) async {
+      final api = claimApi(() => {...pending, 'deviceName': 'هاتف سام'});
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: localizedTestApp(
+          PairingQrScreen(childId: 'child-1', clock: () => currentNow),
+          locale: const Locale('ar'),
+          textDirection: TextDirection.rtl,
+        ),
+      ));
+      await flushFakeHttp(tester);
+      await nextRead(tester);
+
+      expect(find.text('جهاز يطلب الانضمام'), findsOneWidget);
+      expect(
+          find.text('يطلب هاتف سام الإقران. اسمح به فقط إذا كان هو الهاتف الذي أمامك.'),
+          findsOneWidget);
+      expect(find.text('رفض'), findsOneWidget);
+      expect(find.text('سماح'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('pairClaimDeny')));
+      await flushFakeHttp(tester);
+      expect(find.text('تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.'), findsOneWidget);
+      await unmount(tester);
+    });
+
     test('the phone is named by its device name, or its model without one', () {
       expect(pairClaimDeviceLabel({'deviceName': ' Sam ', 'model': 'Pixel'}), 'Sam');
       expect(pairClaimDeviceLabel({'deviceName': '', 'model': 'Pixel'}), 'Pixel');
