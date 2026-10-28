@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -449,6 +450,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedUnsupportedCommand =>
       'This command needs a newer OSRA on your child\'s phone.';
+
+  @override
+  String commandRefusedNotSupported(String command, String device) {
+    return '$command isn\'t available on $device: this phone or app version cannot do it, so nothing was sent.';
+  }
 
   @override
   String get commandRefusedInvalidPayload =>
