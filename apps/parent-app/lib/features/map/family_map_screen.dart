@@ -145,9 +145,11 @@ class ChildMapSheet extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(queued(device.model))));
     } on DioException catch (e) {
       if (context.mounted) {
-        final data = e.response?.data;
-        final msg = data is Map ? '${data['error'] ?? e.message}' : (e.message ?? '');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.familyMapCommandFailed(msg))));
+        // #434: the keys are the shapes the routes actually send — a `permission_required` 403,
+        // a Fastify 429, an agent reason, or a code nobody knows (kept verbatim).
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(commandErrorText(l10n, command, device.model, e))),
+        );
       }
     }
   }
@@ -383,7 +385,13 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
       final body = e.response?.data;
       setState(() {
         _saving = false;
-        _error = body is Map ? '${body['error'] ?? e.message}' : e.message;
+        // #434 review: this route is gated by `requirePermission("location")`, so a refusal here is
+        // the same `permission_required` 403 every gated read uses — one sentence, no new copy.
+        _error = readErrorText(
+          context.l10n,
+          e,
+          () => body is Map ? '${body['error'] ?? e.message}' : (e.message ?? ''),
+        );
       });
     }
   }

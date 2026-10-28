@@ -812,6 +812,18 @@ abstract class AppLocalizations {
   /// **'Command failed: {error}'**
   String commandFailed(String error);
 
+  /// No description provided for @commandErrorForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'You don\'t have permission to send {command} to {device}. Your family owner can give you access.'**
+  String commandErrorForbidden(String command, String device);
+
+  /// No description provided for @commandErrorRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'{command} was not sent to {device}: too many requests right now. Try again in a minute.'**
+  String commandErrorRateLimited(String command, String device);
+
   /// No description provided for @commandRefusedBackgroundLocation.
   ///
   /// In en, this message translates to:

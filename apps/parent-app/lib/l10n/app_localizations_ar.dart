@@ -456,6 +456,16 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String commandErrorForbidden(String command, String device) {
+    return 'لا تملك صلاحية إرسال «$command» إلى $device. يمكن لمالك العائلة منحك حق الوصول.';
+  }
+
+  @override
+  String commandErrorRateLimited(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.';
+  }
+
+  @override
   String commandRefusedBackgroundLocation(String command, String device) {
     return 'لم يُرسل «$command» إلى $device: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.';
   }

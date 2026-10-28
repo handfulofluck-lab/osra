@@ -190,6 +190,29 @@ void main() {
           findsNothing);
     });
 
+    testWidgets('a refused command on the device card names the fix, not permission_required (#435)', (tester) async {
+      // The third call site of commandErrorText: child detail's own `on DioException` branch. The map
+      // and the geofence dialog have rows; without this one the shared unit row would be the only
+      // evidence for a branch that decides what a parent sees when the API refuses.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        // both devices, because which card renders first depends on the family fixture
+        for (final id in ['dev-1', 'dev-2'])
+          'POST /v1/devices/$id/command': (_) =>
+              const FakeHttpError(403, {'error': 'permission_required', 'permission': 'devices'}),
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.widgetWithIcon(TextButton, Icons.notifications_active).first);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining("You don't have permission to send Ring to"), findsOneWidget,
+          reason: 'the refusal names the command and the device, in a sentence');
+      expect(find.textContaining('can give you access'), findsOneWidget);
+      expect(find.textContaining('permission_required'), findsNothing,
+          reason: 'a mapped refusal is not shown as a wire code');
+    });
+
     testWidgets('empty history shows an honest empty state per device',
         (tester) async {
       final api = historyApi();
