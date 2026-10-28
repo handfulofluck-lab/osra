@@ -1158,6 +1158,28 @@ purpose: an unmapped value is visible in a screenshot instead of silently disapp
 that asserts the rendered word (the role and permission rows in `test/family_screen_l10n_test.dart`)
 must go red. A row that stays green is asserting a heading, not the value.
 
+### A row can assert the right key and still prove nothing about the screen
+
+#424 shipped 18 keys and one Arabic row. Claude planted **four** faults on that head and all four passed
+457/457 — the two snackbars swapped, `Ring device` back to an English literal, the dialog title back to
+English, and `Enter a label` back to English. The row asserted the app-bar title, which was the one
+string it could not be wrong about. #415 and #414 had the same shape (F1/F2/F6, M6/M8): a row that checks
+a heading, an empty state, or "no overflow" is a **layout** claim wearing a translation test's name.
+
+So, on a localized screen, each row says which **value** it pins, and the set of rows covers the
+surfaces a parent actually reads:
+
+- the sentences with **placeholders** (`Battery: {pct}%`, `Last update: {time}`, `Geofence "{name}" added`) —
+  the placeholder is where a wrong key renders a plausible string;
+- the **branches** that pick a different key for a different state (the two queued snackbars by command,
+  `unknown` when the ping has no timestamp);
+- the **dialog and sheet** copy, not only the scaffold's;
+- the **error path** — `readErrorText`'s fallback, and any `Text(_error!)` the form shows.
+
+**The mutant**, and it is the cheap one to run: put the English literal back on one surface at a time.
+One fault, one red row, one row per fault. If four faults leave the suite green, the rows are checking
+the scaffold. The count to beat is not "how many rows" but "how many faults each row catches".
+
 ### The live gates must run against a non-UTC database (issue #53)
 
 A clock or time-zone bug cannot show up when the author's database, API and test runner all sit in
