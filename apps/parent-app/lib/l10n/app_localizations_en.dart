@@ -572,6 +572,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyPermissions => 'Permissions';
 
   @override
+  String get listSeparator => ', ';
+
+  @override
   String familyInviteSentTo(String email) {
     return 'Invite sent to $email.';
   }

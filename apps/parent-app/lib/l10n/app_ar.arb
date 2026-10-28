@@ -162,6 +162,7 @@
   "familyRoleCoParent": "والد مشارك",
   "familyRoleGuardian": "ولي أمر",
   "familyPermissions": "الصلاحيات",
+  "listSeparator": "، ",
   "familyInviteSentTo": "أُرسلت الدعوة إلى {email}.",
   "familyTokenExplanation": "(نسخة تجريبية: شارك هذا الرمز — يسجّل الوالد المدعوّ ثم يرسل accept به)",
   "familySendInvite": "إرسال الدعوة",

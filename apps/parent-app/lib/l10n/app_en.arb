@@ -296,6 +296,8 @@
   "familyRoleCoParent": "Co-parent",
   "familyRoleGuardian": "Guardian",
   "familyPermissions": "Permissions",
+  "listSeparator": ", ",
+  "@listSeparator": {"description": "Joins the items of a short inline list, such as an invite's permissions. Arabic uses the Arabic comma."},
   "familyInviteSentTo": "Invite sent to {email}.",
   "@familyInviteSentTo": {"placeholders": {"email": {"type": "String"}}},
   "familyTokenExplanation": "(test build: share this token — the invited parent registers, then POSTs accept with it)",
