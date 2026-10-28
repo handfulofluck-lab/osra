@@ -1630,12 +1630,15 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
   }
   const kid = kidA2;
   const dev = d2.deviceId;
-  // Every JWT route in matrix §1 (62): health, pair/claim, the ticket-only GET /v1/ws, the HMAC-only
+  // Every JWT route in matrix §1 (65): health, pair/claim and its poll, the ticket-only GET /v1/ws, the HMAC-only
   // ingest routes and the /v1/auth routes (matrix §3) are the only ones left out.
   const jwtRoutes = [
     ["GET", "/v1/alerts"], ["POST", `/v1/alerts/${Z}/ack`, {}],
     ["POST", "/v1/devices/register", { childId: Z, platform: "android", model: "q", osVersion: "1" }],
     ["POST", "/v1/devices/pair", { childId: Z }],
+    // Plan 2.7: the parent's side of a pairing claim.
+    ["GET", "/v1/devices/pair/000000/claim"],
+    ["POST", `/v1/devices/pair/claims/${Z}/approve`, {}], ["POST", `/v1/devices/pair/claims/${Z}/deny`, {}],
     ["GET", "/v1/devices"], ["GET", `/v1/devices/${dev}`], ["GET", `/v1/devices/${dev}/apps`],
     ["POST", `/v1/devices/${Z}/apps`, { version: 1, apps: [] }],
     ["POST", `/v1/devices/${Z}/command`, { command: "unlock" }],
@@ -1726,6 +1729,9 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     ["POST", `/v1/alerts/${Z}/ack`, {}, 403, "permission_required"],
     ["POST", "/v1/devices/register", { childId: Z, platform: "android", model: "q", osVersion: "1" }, 403, "permission_required"],
     ["POST", "/v1/devices/pair", { childId: Z }, 403, "permission_required"],
+    ["GET", "/v1/devices/pair/000000/claim", undefined, 403, "permission_required"],
+    ["POST", `/v1/devices/pair/claims/${Z}/approve`, {}, 403, "permission_required"],
+    ["POST", `/v1/devices/pair/claims/${Z}/deny`, {}, 403, "permission_required"],
     ["GET", `/v1/devices/${Z}/apps`, undefined, 403, "permission_required"],
     ["POST", `/v1/devices/${Z}/command`, { command: "unlock" }, 403, "permission_required"],
     ["DELETE", `/v1/devices/${Z}`, undefined, 403, "permission_required"],
