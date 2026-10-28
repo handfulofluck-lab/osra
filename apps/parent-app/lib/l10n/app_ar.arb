@@ -73,10 +73,7 @@
   "internetChangeFailed": "فشل تغيير حالة الإنترنت: {error}",
   "parentalConsent": "موافقة الوالدين",
   "childDetails": "بيانات الطفل",
-  "consentNotice": "Verifiable parental consent is required before adding a child (COPPA/GDPR-K).",
-  "@consentNotice": {
-    "description": "TODO(#159): deliberately left in English. Legal wording (COPPA/GDPR-K consent notice) needs a product/legal decision and a native-speaker review before translation."
-  },
+  "consentNotice": "قبل إضافة طفل، نحتاج إلى التأكّد من أنك وليّ أمره.",
   "consentMethodLabel": "طريقة الموافقة",
   "consentMethodSmsPlus": "رسالة نصية +",
   "consentMethodKba": "أسئلة معرفية",

@@ -120,7 +120,7 @@
   },
   "parentalConsent": "Parental consent",
   "childDetails": "Child details",
-  "consentNotice": "Verifiable parental consent is required before adding a child (COPPA/GDPR-K).",
+  "consentNotice": "Before you add a child, we need to confirm that you are their parent or guardian.",
   "consentMethodLabel": "Consent method",
   "consentMethodSmsPlus": "SMS +",
   "consentMethodKba": "Knowledge-based questions",
