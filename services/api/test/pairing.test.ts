@@ -6,7 +6,8 @@ import { rulesRoutes } from "../src/routes/rules.js";
 import { familyRoutes } from "../src/routes/family.js";
 import { locationRoutes } from "../src/routes/location.js";
 import { getRedis } from "../src/redis.js";
-import { PAIR_SCRIPTS } from "../src/lib/pairApproval.js";
+import { MAX_POLL_MISSES, PAIR_SCRIPTS } from "../src/lib/pairApproval.js";
+import { PAIR_POLL_RATE_LIMIT } from "../src/lib/rateLimits.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -56,6 +57,13 @@ function wireRedis(): MockRedis {
     }
     throw new Error(`unexpected script: ${script}`);
   });
+  // The wrong-secret counter (lib/pairApproval.ts recordPollMiss).
+  redis.incrby.mockImplementation(async (key: string, by: number) => {
+    const next = Number(store.get(key) ?? 0) + by;
+    store.set(key, String(next));
+    return next;
+  });
+  redis.expire.mockResolvedValue(1);
   redis.publish.mockResolvedValue(1);
   redis.lpush.mockResolvedValue(1);
   redis.ltrim.mockResolvedValue("OK");
@@ -437,6 +445,67 @@ describe("device pairing (spec §14.1)", () => {
     await app.close();
   });
 
+  // Claude's design review, point 2: the parent reads these strings and the phone chose them. Mutant:
+  // drop the transform in ClaimSchema -> the U+202E arrives on the parent's screen.
+  it("the phone's text arrives cleaned: bidi overrides and control characters stripped, 64 characters at most", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:141414", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    await app.inject({
+      method: "POST",
+      url: "/v1/devices/pair/claim",
+      payload: { code: "141414", platform: "android", model: "\u202Eenohp s'maS\u202C", osVersion: "15\u0000", deviceName: `\u2067Mum\u2069\u200F ${"x".repeat(80)}` },
+    });
+    const view = (await app.inject({ method: "GET", url: "/v1/devices/pair/141414/claim", headers: authHeader(app) })).json();
+    expect(view.model).toBe("enohp s'maS");
+    expect(view.osVersion).toBe("15");
+    expect(view.deviceName).toBe(`Mum ${"x".repeat(80)}`.slice(0, 64));
+    expect(JSON.stringify(view)).not.toMatch(/[\u0000-\u001F\u200E\u200F\u202A-\u202E\u2066-\u2069]/);
+    await app.close();
+  });
+
+  // Point 3: who let which phone in. Mutant: drop the pairingDecision write -> no row.
+  it("Allow and Deny each record who decided, for which child, and the phone's cleaned name", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    for (const code of ["151515", "161616"]) store.set(`pair:${code}`, JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    const a = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "151515", platform: "android", model: "Pixel\u202E", osVersion: "15" } })).json();
+    const d = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "161616", platform: "ios", model: "iPhone", osVersion: "18", deviceName: "Stranger" } })).json();
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${a.claimId}/approve`, headers: authHeader(app) });
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${d.claimId}/deny`, headers: authHeader(app) });
+    expect(prismaMock.pairingDecision.create.mock.calls.map(([arg]) => arg.data)).toEqual([
+      { familyId: "fam-1", childId: "child-1", parentId: "parent-1", claimId: a.claimId, decision: "approved", platform: "android", model: "Pixel" },
+      { familyId: "fam-1", childId: "child-1", parentId: "parent-1", claimId: d.claimId, decision: "denied", platform: "ios", model: "Stranger" },
+    ]);
+    await app.close();
+  });
+
+  // Point 1: ten wrong secrets burn the claim. Mutant: drop recordPollMiss -> the right secret still
+  // gets its token after the guesses.
+  it("ten wrong secrets burn the claim: the right one then gets 404, and the code can be claimed again", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:171717", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    const claim = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "171717", platform: "android", model: "A", osVersion: "1" } })).json();
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${claim.claimId}/approve`, headers: authHeader(app) });
+    for (let i = 0; i < MAX_POLL_MISSES - 1; i++) {
+      await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${claim.claimId}/poll`, payload: { pollSecret: `wrong-${i}` } });
+    }
+    // Nine misses leave the claim alone.
+    expect(store.has(`pairclaim:${claim.claimId}`)).toBe(true);
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${claim.claimId}/poll`, payload: { pollSecret: "wrong-last" } });
+    const right = await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${claim.claimId}/poll`, payload: { pollSecret: claim.pollSecret } });
+    expect(right.statusCode).toBe(404);
+    expect(prismaMock.device.create).not.toHaveBeenCalled();
+    expect((await app.inject({ method: "GET", url: "/v1/devices/pair/171717/claim", headers: authHeader(app) })).json()).toEqual({ status: "waiting" });
+    const again = await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "171717", platform: "android", model: "A", osVersion: "1" } });
+    expect(again.statusCode).toBe(202);
+    await app.close();
+  });
+
+  it("the poll bucket is per claim: two addresses polling one claim share it", () => {
+    const key = PAIR_POLL_RATE_LIMIT.keyGenerator;
+    expect(key({ params: { claimId: "c-1" }, ip: "10.0.0.1" })).toBe(key({ params: { claimId: "c-1" }, ip: "10.0.0.2" }));
+    expect(key({ params: { claimId: "c-1" }, ip: "10.0.0.1" })).not.toBe(key({ params: { claimId: "c-2" }, ip: "10.0.0.1" }));
+  });
+
   it("POST /pair/claim falls back to model when deviceName is absent", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     store.set("pair:654321", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
@@ -473,13 +542,13 @@ describe("device pairing (spec §14.1)", () => {
     });
     expect(missingFields.statusCode).toBe(400);
 
-    // The parent reads these on the Allow / Deny screen, so they are bounded.
-    const longName = await app.inject({
+    // A model with nothing left once control and bidi characters are stripped is refused.
+    const emptyModel = await app.inject({
       method: "POST",
       url: "/v1/devices/pair/claim",
-      payload: { code: "123456", platform: "android", model: "Pixel", osVersion: "14", deviceName: "x".repeat(101) },
+      payload: { code: "123456", platform: "android", model: "\u202E\u0007 ", osVersion: "14" },
     });
-    expect(longName.statusCode).toBe(400);
+    expect(emptyModel.statusCode).toBe(400);
     expect(prismaMock.device.create).not.toHaveBeenCalled();
     await app.close();
   });

@@ -167,6 +167,26 @@ model Child {
   geofences   Geofence[]
   alerts      Alert[]
   consents    ConsentRecord[]
+  pairingDecisions PairingDecision[]
+}
+
+/// Plan 2.7 (the parent approves each new device): who allowed or refused which phone. `model` is the
+/// device-supplied name after the server's cleaning (control and bidi characters stripped, 64 characters
+/// at most). Child data: the GDPR erasure deletes it with the child, and the family export includes it.
+model PairingDecision {
+  id        String   @id @default(uuid())
+  familyId  String
+  childId   String
+  parentId  String
+  claimId   String
+  decision  String
+  platform  String
+  model     String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  child     Child    @relation(fields: [childId], references: [id])
+
+  @@index([familyId, createdAt])
+  @@index([childId])
 }
 
 model Device {

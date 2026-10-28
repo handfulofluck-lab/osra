@@ -28,10 +28,17 @@ export const PAIR_CLAIM_RATE_LIMIT = { max: 10, timeWindow: "1 minute", skipOnEr
 
 /**
  * `POST /v1/devices/pair/claims/:claimId/poll`: the claiming phone asks every 2 s whether the parent has
- * decided (osra-security#3 PR 2). Nothing is guessed here (a random claim id plus a 256-bit secret), so the
- * bucket only has to leave room for that cadence; it fails closed like the claim it follows.
+ * decided (plan 2.7). The bucket is per claim, not per address, so polls for one claim from many
+ * addresses share it; it leaves room for the phone's cadence (30 a minute) and fails closed like the
+ * claim it follows. Wrong secrets are bounded separately: ten burn the claim (`lib/pairApproval.ts`).
  */
-export const PAIR_POLL_RATE_LIMIT = { max: 60, timeWindow: "1 minute", skipOnError: false } as const;
+export const PAIR_POLL_RATE_LIMIT = {
+  max: 60,
+  timeWindow: "1 minute",
+  skipOnError: false,
+  keyGenerator: (req: { params?: unknown; ip: string }) =>
+    `pairpoll:${(req.params as { claimId?: string } | undefined)?.claimId ?? req.ip}`,
+} as const;
 
 /** Redis key prefix for the limiter's counters; each key expires with its window. */
 export const RATE_LIMIT_KEY_PREFIX = "rl:";

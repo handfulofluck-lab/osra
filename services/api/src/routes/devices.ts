@@ -25,7 +25,7 @@ import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
-import { decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
+import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -86,13 +86,15 @@ const PushTokenSchema = z.object({ token: z.string().min(20).max(4096) });
 
 const PairSchema = z.object({ childId: z.string().min(1) });
 
-// The parent reads `model` and `deviceName` on the Allow / Deny screen, so they are bounded here.
+// The parent reads these on the Allow / Deny screen and the phone chose them: cleaned and capped
+// (`cleanDeviceText`), and a `model` or `osVersion` with nothing left is refused.
+const DeviceText = z.string().max(1000).transform(cleanDeviceText);
 const ClaimSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
   platform: PLATFORM,
-  model: z.string().min(1).max(100),
-  osVersion: z.string().min(1).max(50),
-  deviceName: z.string().max(100).optional(),
+  model: DeviceText.pipe(z.string().min(1)),
+  osVersion: DeviceText.pipe(z.string().min(1)),
+  deviceName: DeviceText.optional().transform((v) => (v ? v : undefined)),
   pushToken: z.string().optional(),
 });
 
@@ -366,6 +368,24 @@ export async function deviceRoutes(app: FastifyInstance) {
       if (!(await decideClaim(current, decision, user.sub))) {
         return reply.code(409).send({ error: "claim_not_pending", status: current.record.status });
       }
+      // The family's record of who let which phone in, or refused it. The decision already stands, so a
+      // failed write is logged as a metric rather than turning a completed Allow into an error.
+      const { record } = current;
+      try {
+        await prisma.pairingDecision.create({
+          data: {
+            familyId: record.familyId,
+            childId: record.childId,
+            parentId: user.sub,
+            claimId: record.claimId,
+            decision,
+            platform: record.platform,
+            model: record.deviceName ?? record.model,
+          },
+        });
+      } catch (err) {
+        req.log.error({ err, metric: "pairing_decision_not_recorded" }, "pairing decision not recorded");
+      }
       return { status: decision };
     });
   }
@@ -380,7 +400,9 @@ export async function deviceRoutes(app: FastifyInstance) {
     const parsed = PollSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const current = await readClaim(claimId);
-    if (!current || !pollSecretMatches(parsed.data.pollSecret, current.record.pollSecretHash)) {
+    if (!current) return reply.code(404).send({ error: "claim_not_found" });
+    if (!pollSecretMatches(parsed.data.pollSecret, current.record.pollSecretHash)) {
+      await recordPollMiss(current.record);
       return reply.code(404).send({ error: "claim_not_found" });
     }
     const record = current.record;

@@ -40,6 +40,23 @@ export interface ClaimRecord {
   deviceId?: string;
 }
 
+/**
+ * The parent reads the phone's `platform`, `model`, `deviceName` and `osVersion` on the Allow / Deny
+ * screen, and the phone chose them. Control characters and the bidi overrides, isolates and marks
+ * (U+202A–U+202E, U+2066–U+2069, U+200E/U+200F) are stripped: in Arabic an override can make a stranger's
+ * phone read as the family's own. Then the text is trimmed and cut to 64 characters.
+ */
+export const DEVICE_TEXT_MAX = 64;
+// eslint-disable-next-line no-control-regex
+const UNSAFE_DEVICE_TEXT = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+
+export function cleanDeviceText(value: string): string {
+  return value.replace(UNSAFE_DEVICE_TEXT, "").trim().slice(0, DEVICE_TEXT_MAX);
+}
+
+/** After this many polls with a wrong secret, the claim is burned: 404 from then on, even with the right one. */
+export const MAX_POLL_MISSES = 10;
+
 /** How long a finished claim stays readable, so the parent's screen can show "paired" or "denied". */
 export const CLAIM_RESULT_TTL_MS = 120_000;
 
@@ -66,6 +83,7 @@ export const PAIR_SCRIPTS = {
 const codeKey = (code: string) => `pair:${code}`;
 const codeClaimKey = (code: string) => `pair:${code}:claim`;
 const claimKey = (claimId: string) => `pairclaim:${claimId}`;
+const missKey = (claimId: string) => `pairclaim:${claimId}:misses`;
 
 export function hashPollSecret(secret: string): string {
   return createHash("sha256").update(secret).digest("hex");
@@ -148,6 +166,22 @@ export async function decideClaim(current: { record: ClaimRecord; raw: string },
 export async function takeApprovedClaim(current: { record: ClaimRecord; raw: string }): Promise<boolean> {
   if (current.record.status !== "approved") return false;
   return (await getRedis().eval(PAIR_SCRIPTS.compareAndDelete, 1, claimKey(current.record.claimId), current.raw)) === 1;
+}
+
+/**
+ * A poll with the wrong secret. The count is per claim, whatever address sent it, so rotating addresses
+ * does not spread guesses. At {@link MAX_POLL_MISSES} the claim is burned: its record goes, and the code
+ * is free again, so the parent's screen goes back to `waiting` and the real phone can claim it anew.
+ * Returns true when this miss burned the claim.
+ */
+export async function recordPollMiss(record: ClaimRecord): Promise<boolean> {
+  const redis = getRedis();
+  const misses = await redis.incrby(missKey(record.claimId), 1);
+  if (misses === 1) await redis.expire(missKey(record.claimId), 600);
+  if (misses < MAX_POLL_MISSES) return false;
+  await redis.eval(PAIR_SCRIPTS.compareAndDelete, 1, codeClaimKey(record.code), record.claimId);
+  await redis.del(claimKey(record.claimId));
+  return true;
 }
 
 /** After the device exists: burn the code, and keep a short "paired" record for the parent's screen. */
