@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import com.familyshield.agent.enforcement.BypassAlertFloor
 import com.familyshield.agent.enforcement.CallAction
 import com.familyshield.agent.enforcement.CallAudioMode
 import com.familyshield.agent.enforcement.CallBlockPolicy
@@ -34,8 +35,9 @@ class CallEnforcer(
     private val service: AccessibilityService,
     private val isBlocked: (String) -> Boolean,
     private val isEssential: (String) -> Boolean,
+    floor: BypassAlertFloor,
 ) {
-    private val policy = CallBlockPolicy()
+    private val policy = CallBlockPolicy(floor = floor)
     private val audio = service.getSystemService(AudioManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private val declineIntents = HashMap<String, PendingIntent>()
@@ -77,6 +79,8 @@ class CallEnforcer(
     /** A `TYPE_NOTIFICATION_STATE_CHANGED` event. */
     fun onNotification(event: AccessibilityEvent) {
         val pkg = event.packageName?.toString() ?: return
+        // Our own foreground-service notifications are neither a ring nor an allowed app's post.
+        if (pkg == service.packageName) return
         val notification = runCatching { event.parcelableData as? Notification }.getOrNull()
         val parcel = notification?.let { n ->
             val extras = n.extras
@@ -97,8 +101,13 @@ class CallEnforcer(
         apply(policy.onNotification(CallNotice(pkg, parcel), isBlocked, isEssential, now()))
     }
 
-    /** Any other event: follow the audio mode (below API 31 this is the only source). */
-    fun onEvent() = apply(policy.onAudioMode(currentMode(), isBlocked, now()))
+    /**
+     * Any other event: below API 31 this is the only source of the audio mode. From 31 the mode listener
+     * and the tick cover it, so the binder read is skipped on the window-content hot path (#449 review).
+     */
+    fun onEvent() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) apply(policy.onAudioMode(currentMode(), isBlocked, now()))
+    }
 
     private fun apply(actions: List<CallAction>) {
         for (action in actions) {

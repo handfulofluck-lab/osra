@@ -42,35 +42,40 @@ sealed interface CallAction {
 /**
  * Issue #444, Karim's rule (29 Oct): "when i have google meet blocked it should not be able to make or receive
  * calls … applying the block in the middle of a call should not terminate the call but the app should not be
- * usable afterwards." Claude chose the mechanisms from the #446 measurements:
+ * usable afterwards." Claude chose the mechanisms from the #446 measurements; the #449 review fixed four gaps.
  *
- * - **C1, a blocked app rings.** Unlocked: its `CallStyle` decline intent is sent once per ring, and a
- *   full-screen cover sits over the ringing UI until the audio mode leaves RINGTONE (the block screen alone
- *   was answered through in 1.1 s on the Flip4). Locked, the event has no parcel: when the **last**
- *   notification before RINGTONE came from a blocked package, the cover goes up; it is dropped at once if an
- *   essential package (dialer, emergency) posts during the ring, so a real phone call is never covered.
- * - **C2, a blocked call connects anyway.** When the mode becomes IN_COMMUNICATION for a blocked package
- *   with a cached hang-up intent, the hang-up is sent; with none cached (locked), the first parcel that
- *   carries one sends it. A call still up after [reportAfterMs] is reported once per [reportFloorMs].
+ * - **C1, a blocked app rings.** Unlocked: its `CallStyle` decline intent is sent once per ring (the Flip4's
+ *   Meet ring is `ongoing=true`, so "incoming" means *not yet in a call*, never `!ongoing`), and a full-screen
+ *   cover sits over the ringing UI. The cover lasts [shortCoverMs] until RINGTONE is seen (the decline often
+ *   ends the ring before the app ever sets it) and at most [coverMaxMs] after; it comes down when the mode
+ *   leaves RINGTONE. Locked, the event has no parcel: the cover goes up at RINGTONE only when a **blocked**
+ *   package posted within [freshMs] before it. Any non-blocked post during the ring drops it at once, so an
+ *   allowed or a real phone call is never covered.
+ * - **C2, a blocked call connects anyway.** The call belongs to the package that rang (RINGTONE → call), or,
+ *   for an outgoing call, to a call notification posted within [freshMs] of the mode change. Never to an older
+ *   or unstamped poster. The cached hang-up is sent; with none cached (locked), the first parcel that carries
+ *   one sends it. A call still up after [reportAfterMs] is reported through the shared [floor].
  * - **C3, the block arrives mid-call.** A call whose package was **not** blocked when it connected is left
  *   alone until the mode returns to NORMAL; the window block still applies.
  *
- * Essential packages are never blocked (`RuleRepository.decide` answers ALLOW for them), so the caller's
- * `isBlocked` already leaves the dialer alone; the cover drop above is the one extra rule for them.
  * Pure, with the clock as a parameter: every row is a JVM test.
  */
 class CallBlockPolicy(
+    private val floor: BypassAlertFloor = BypassAlertFloor(),
     private val reportAfterMs: Long = DEFAULT_REPORT_AFTER_MS,
-    private val reportFloorMs: Long = BlockRaisePolicy.DEFAULT_BYPASS_FLOOR_MS,
     private val coverMaxMs: Long = DEFAULT_COVER_MAX_MS,
+    private val shortCoverMs: Long = DEFAULT_SHORT_COVER_MS,
+    private val freshMs: Long = DEFAULT_FRESH_MS,
 ) {
+    private data class Posted(val pkg: String, val blocked: Boolean, val atMs: Long)
+
     private var mode = CallAudioMode.NORMAL
-    private var lastPoster: String? = null
-    private var lastPosterBlocked = false
-    /** The last package whose parcel said `CATEGORY_CALL`, blocked or not: the call's owner when it connects. */
-    private var lastCallPoster: String? = null
-    private var essentialPostedDuringRing = false
+    private var lastPost: Posted? = null
+    private var lastCallPost: Posted? = null
+    private var ringPkg: String? = null
+    private var nonBlockedPostedDuringRing = false
     private var coverUntilMs: Long? = null
+    private var ringSeenWithCover = false
     private val declined = HashSet<String>()
     private val hangUpCached = HashSet<String>()
     private var callPkg: String? = null
@@ -78,11 +83,10 @@ class CallBlockPolicy(
     private var callExempt = false
     private var hangUpSent = false
     private var callReported = false
-    private val lastReportMs = HashMap<String, Long>()
 
     val coverShown: Boolean get() = coverUntilMs != null
 
-    /** One accessibility notification event. [isEssential] is the facts-aware essential check. */
+    /** One accessibility notification event (the agent's own package is filtered out by the caller). */
     fun onNotification(
         notice: CallNotice,
         isBlocked: (String) -> Boolean,
@@ -91,24 +95,26 @@ class CallBlockPolicy(
     ): List<CallAction> {
         val out = ArrayList<CallAction>()
         val pkg = notice.pkg
-        val essential = isEssential(pkg)
-        val blocked = !essential && isBlocked(pkg)
-        lastPoster = pkg
-        lastPosterBlocked = blocked
-        if (essential && (mode == CallAudioMode.RINGTONE || coverShown)) {
-            // A real phone call (or an emergency) is ringing too: never cover it.
-            essentialPostedDuringRing = true
+        val blocked = !isEssential(pkg) && isBlocked(pkg)
+        if (!blocked) {
+            // An allowed app, the dialer or an emergency app posted: whatever is ringing may be theirs.
+            if (mode == CallAudioMode.RINGTONE) nonBlockedPostedDuringRing = true
             if (coverShown) out += removeCover()
         }
+        val posted = Posted(pkg, blocked, nowMs)
+        lastPost = posted
         val parcel = notice.parcel ?: return out
-        if (parcel.isCall) lastCallPoster = pkg
-        if (!parcel.isCall || !blocked) return out
+        if (!parcel.isCall) return out
+        lastCallPost = posted
+        if (!blocked) return out
         if (parcel.hasHangUp) hangUpCached += pkg
-        val exempt = callExempt && callPkg == pkg
-        if (exempt) return out
-        if (parcel.hasDecline && !parcel.ongoing && declined.add("$pkg|${parcel.postedAt}")) {
+        // C3: the one guard for a call that connected before its block (the #449 fault F3 removes it).
+        if (callExempt && callPkg == pkg) return out
+        // Outgoing call: the call mode came first and its notification follows within freshMs.
+        if (inCall() && callPkg == null && nowMs - callStartMs in 0..freshMs) adopt(pkg, isBlocked)
+        if (parcel.hasDecline && !inCall() && declined.add("$pkg|${parcel.postedAt}")) {
             out += CallAction.Decline(pkg)
-            if (!essentialPostedDuringRing && !coverShown) out += showCover(nowMs)
+            if (!nonBlockedPostedDuringRing && !coverShown) out += showCover(nowMs)
         }
         if (inCall() && parcel.hasHangUp && callPkg == pkg && !hangUpSent) {
             hangUpSent = true
@@ -117,31 +123,34 @@ class CallBlockPolicy(
         return out
     }
 
-    /** The audio mode, read on every event and from the mode listener. Repeats are ignored. */
+    /** The audio mode, read from the mode listener (and on events below API 31). Repeats only tick. */
     fun onAudioMode(next: CallAudioMode, isBlocked: (String) -> Boolean, nowMs: Long): List<CallAction> {
-        val out = ArrayList<CallAction>()
         val previous = mode
         if (next == previous) return tick(nowMs)
+        val out = ArrayList<CallAction>()
         mode = next
         if (previous == CallAudioMode.RINGTONE && coverShown) out += removeCover()
         when (next) {
             CallAudioMode.RINGTONE -> {
-                essentialPostedDuringRing = false
-                // Locked: no parcel, so the last poster before the ring is the only name we have.
-                if (lastPosterBlocked && !coverShown) out += showCover(nowMs)
-            }
-            CallAudioMode.IN_COMMUNICATION, CallAudioMode.IN_CALL -> {
-                val pkg = lastCallPoster ?: lastPoster
-                if (callPkg == null && pkg != null) {
-                    callPkg = pkg
-                    callStartMs = nowMs
-                    // C3: a call that connected before its package was blocked is left alone until NORMAL.
-                    callExempt = !isBlocked(pkg)
-                    hangUpSent = false
-                    callReported = false
+                nonBlockedPostedDuringRing = false
+                val ringer = fresh(lastCallPost, nowMs) ?: fresh(lastPost, nowMs)
+                ringPkg = ringer?.pkg
+                if (coverShown) {
+                    ringSeenWithCover = true
+                    coverUntilMs = nowMs + coverMaxMs
+                } else if (ringer != null && ringer.blocked) {
+                    ringSeenWithCover = true
+                    out += showCover(nowMs)
                 }
+            }
+            CallAudioMode.IN_COMMUNICATION, CallAudioMode.IN_CALL -> if (callPkg == null) {
+                callStartMs = nowMs
+                hangUpSent = false
+                callReported = false
+                val owner = if (previous == CallAudioMode.RINGTONE) ringPkg else fresh(lastCallPost, nowMs)?.pkg
+                if (owner != null) adopt(owner, isBlocked)
                 val call = callPkg
-                if (call != null && !callExempt && call in hangUpCached && !hangUpSent) {
+                if (call != null && !callExempt && call in hangUpCached) {
                     hangUpSent = true
                     out += CallAction.HangUp(call)
                 }
@@ -149,10 +158,10 @@ class CallBlockPolicy(
             CallAudioMode.NORMAL -> endCall()
             CallAudioMode.OTHER -> Unit
         }
-        return out
+        return out + tick(nowMs)
     }
 
-    /** Called on every event and by the service's timer: the cover's time limit and the C2 report. */
+    /** Called on every mode reading and by the service's timer: the cover's limit and the C2 report. */
     fun tick(nowMs: Long): List<CallAction> {
         val out = ArrayList<CallAction>()
         val until = coverUntilMs
@@ -160,24 +169,30 @@ class CallBlockPolicy(
         val call = callPkg
         if (call != null && inCall() && !callExempt && !callReported && nowMs - callStartMs >= reportAfterMs) {
             callReported = true
-            val last = lastReportMs[call]
-            if (last == null || nowMs - last !in 0 until reportFloorMs) {
-                lastReportMs[call] = nowMs
-                out += CallAction.ReportCall(call, callStartMs)
-            }
+            if (floor.tryReport(call, nowMs)) out += CallAction.ReportCall(call, callStartMs)
         }
         return out
     }
 
+    private fun adopt(pkg: String, isBlocked: (String) -> Boolean) {
+        callPkg = pkg
+        // C3: a call that connected before its package was blocked is left alone until NORMAL.
+        callExempt = !isBlocked(pkg)
+    }
+
+    private fun fresh(posted: Posted?, nowMs: Long): Posted? =
+        posted?.takeIf { nowMs - it.atMs in 0..freshMs }
+
     private fun inCall() = mode == CallAudioMode.IN_COMMUNICATION || mode == CallAudioMode.IN_CALL
 
     private fun showCover(nowMs: Long): CallAction {
-        coverUntilMs = nowMs + coverMaxMs
+        coverUntilMs = nowMs + if (ringSeenWithCover) coverMaxMs else shortCoverMs
         return CallAction.ShowRingCover
     }
 
     private fun removeCover(): CallAction {
         coverUntilMs = null
+        ringSeenWithCover = false
         return CallAction.RemoveRingCover
     }
 
@@ -186,16 +201,23 @@ class CallBlockPolicy(
         callExempt = false
         hangUpSent = false
         callReported = false
+        ringPkg = null
         hangUpCached.clear()
-        lastCallPoster = null
-        essentialPostedDuringRing = false
+        declined.clear()
+        nonBlockedPostedDuringRing = false
     }
 
     companion object {
         /** "If the call still lasts more than 15 s" (Claude, #444). */
         const val DEFAULT_REPORT_AFTER_MS: Long = 15_000L
 
-        /** A ring with no RINGTONE mode (silent, vibrate) must not leave the cover up for good. */
+        /** Once RINGTONE was seen, the cover still never outlives a minute. */
         const val DEFAULT_COVER_MAX_MS: Long = 60_000L
+
+        /** Before RINGTONE is seen (the decline may end the ring first): about five seconds (#449 review). */
+        const val DEFAULT_SHORT_COVER_MS: Long = 5_000L
+
+        /** A poster counts for a ring or a call only within this long before it (#449 review). */
+        const val DEFAULT_FRESH_MS: Long = 5_000L
     }
 }

@@ -17,6 +17,7 @@ import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.BlockRaisePolicy
+import com.familyshield.agent.enforcement.BypassAlertFloor
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
@@ -62,12 +63,15 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private val lockRetryBudget = OverlayRetryBudget()
 
+    /** One `block_bypass` alert per app per ten minutes, shared by the window path and the call path (#449). */
+    private val bypassFloor = BypassAlertFloor()
+
     /**
      * Issue #175 (reopened): the block overlay's own rule. In the normal layout a blocked app that comes
      * back on top (the Meet call screen) is sent Home and covered again every time, a second apart; in
      * PiP and split screen two raises, then one `tamper` alert to the parent.
      */
-    private val blockRaisePolicy = BlockRaisePolicy()
+    private val blockRaisePolicy = BlockRaisePolicy(floor = bypassFloor)
 
     /** Issue #175: the cover over a blocked PiP window, which stays above the block screen otherwise. */
     private val pipCover by lazy { PipCoverOverlay(this) }
@@ -78,6 +82,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             this,
             isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW },
             isEssential = { EssentialPackages.isEssential(it, packageFacts) },
+            floor = bypassFloor,
         )
     }
 
