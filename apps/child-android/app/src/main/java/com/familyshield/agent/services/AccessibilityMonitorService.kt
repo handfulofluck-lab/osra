@@ -82,6 +82,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             addDataScheme("package")
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
+        CallProbe.onConnected(this)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -94,10 +95,16 @@ class AccessibilityMonitorService : AccessibilityService() {
     override fun onDestroy() {
         isRunning = false
         runCatching { unregisterReceiver(packageChangeReceiver) }
+        CallProbe.onDisconnected(this)
         super.onDestroy()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Issue #444 measurement: only a debug build subscribes to notification events (CallProbe).
+        if (event?.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            CallProbe.onNotification(this, event, ::probeIsBlocked)
+            return
+        }
         val eventPkg = event?.packageName?.toString() ?: return
         // Issue #284: our own block screen is in front and this stream never records our package, so
         // the blocked app's interval would stay open and the next real event would charge it the stay.
@@ -109,6 +116,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // cannot name a PiP video or the blocked app in the other split pane, and #171's active-only
         // decision therefore never judged them.
         val snapshot = windowSnapshot()
+        CallProbe.onWindows(this, snapshot.windows.mapNotNull { it.packageName }, ::probeIsBlocked)
         // Issue #165 (reopened): the event's package is a hint, not "the app in front". On the Flip4,
         // WM-Shell reports the Home transition under the framework package `android`; deciding from
         // that name answered BLOCK for a screen that is not an app and the overlay covered the launcher.
@@ -407,6 +415,9 @@ class AccessibilityMonitorService : AccessibilityService() {
             }
         }
     }
+
+    /** Issue #444 probe: the same decision the block path makes, for logging only. */
+    private fun probeIsBlocked(pkg: String): Boolean = rules.evaluate(pkg) != RuleRepository.Decision.ALLOW
 
     override fun onInterrupt() = Unit
 
