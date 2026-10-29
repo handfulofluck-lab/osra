@@ -59,6 +59,10 @@ class PairingStringsTest {
         "pair_qr_invalid" to "رمز QR هذا ليس رمز إقران صالحًا من OSRA. أدخل التفاصيل يدويًا أو امسح مرة أخرى.",
         "pair_scan_empty" to "لم يُرجع الماسح أي رمز. أدخل التفاصيل يدويًا أو امسح مرة أخرى.",
         "pair_network_error" to "خطأ في الشبكة",
+        // Karim, 2026-10-29 13:07Z (#440 follow-up): the title and the two field hints.
+        "pair_title" to "OSRA على هاتف الطفل",
+        "pair_server_hint" to "https://your-server أو 192.168.1.5:3000",
+        "pair_code_hint" to "رمز الإقران المكوّن من 6 أرقام",
     )
 
     @Test

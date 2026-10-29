@@ -64,4 +64,7 @@
     <string name="pair_qr_invalid">That QR code is not a valid OSRA pairing code. Enter the details manually or scan again.</string>
     <string name="pair_scan_empty">The scanner did not return a code. Enter the details manually or scan again.</string>
     <string name="pair_network_error">network error</string>
+    <string name="pair_title">OSRA Child Agent</string>
+    <string name="pair_server_hint">https://your-server or 192.168.1.5:3000</string>
+    <string name="pair_code_hint">6-digit pairing code</string>
 </resources>
