@@ -22,4 +22,39 @@
     <string name="reset_code_safety">إذا طلبه منك أي شخص آخر، فارفض وأخبر شخصًا كبيرًا تثق به. لن تطلب منك OSRA هذا الرمز أبدًا.</string>
     <string name="reset_code_notification_text">اضغط لعرض الرمز، واعرضه على والدك أو والدتك فقط.</string>
     <string name="reset_code_close">إغلاق</string>
+
+    <!-- Plan 2.7 (#433, #439): the pairing screen and the parent-PIN step, Arabic approved by Karim on
+         #439 (2026-10-29 08:54Z). "Your parent" is والدك أو والدتك, as in the reset-code strings. -->
+    <string name="pair_intro">أقرن هذا الجهاز بخادم OSRA الخاص بك.</string>
+    <string name="pair_server_label">عنوان الخادم</string>
+    <string name="pair_code_label">رمز الإقران</string>
+    <string name="pair_name_label">اسم الجهاز</string>
+    <string name="pair_name_hint">اسم الجهاز (اختياري)</string>
+    <string name="pair_button">أقرن هذا الجهاز</string>
+    <string name="pair_scan_button">امسح رمز QR</string>
+    <string name="pair_scan_description">امسح رمز QR للإقران من تطبيق الوالدين</string>
+    <string name="pair_scanned_title">تفاصيل الإقران الممسوحة</string>
+    <string name="pair_scanned_server">الخادم: %1$s</string>
+    <string name="pair_scanned_code">الرمز: %1$s</string>
+    <string name="pair_scanned_check">تأكد من أنها تطابق ما يظهر على شاشة والدك أو والدتك. لن يتم الإقران حتى تؤكد.</string>
+    <string name="pair_confirm_button">أكّد وأقرن</string>
+    <string name="pair_cancel">إلغاء</string>
+    <string name="pair_error_server">أدخل عنوان الخادم الذي أعطاك إياه والدك أو والدتك.</string>
+    <string name="pair_error_code">أدخل رمز الإقران المكوّن من 6 أرقام.</string>
+    <string name="pair_error_rescan">امسح رمز QR مرة أخرى قبل التأكيد.</string>
+    <string name="pair_no_camera">الكاميرا غير متاحة على هذا الجهاز. أدخل عنوان الخادم والرمز يدويًا.</string>
+    <string name="pair_waiting">بانتظار أن يضغط والدك أو والدتك على «سماح» في هاتفه…</string>
+    <string name="pair_denied">رفض والدك أو والدتك هذا الهاتف. إذا كان ذلك خطأ، فاطلب رمزًا جديدًا.</string>
+    <string name="pair_expired">انتهت صلاحية الرمز قبل أن يسمح والدك أو والدتك بهذا الهاتف. اطلب رمزًا جديدًا.</string>
+    <string name="pair_in_use">هذا الرمز مستخدم بالفعل على هاتف آخر. اطلب من والدك أو والدتك رمزًا جديدًا.</string>
+    <string name="pair_consent">يجب أن يمنح والدك أو والدتك الموافقة في تطبيق OSRA قبل إقران هذا الهاتف.</string>
+    <string name="pair_invalid_code">رمز الإقران غير صالح أو منتهي الصلاحية.</string>
+    <string name="pair_failed">فشل الإقران: %1$s</string>
+    <string name="pair_pin_title">تم الإقران. عيّن الآن رمز PIN الخاص بالوالدين</string>
+    <string name="pair_pin_body">يُطلب هذا الرمز كلما حاول أحد إزالة حماية OSRA عن هذا الجهاز (إيقاف مشرف الجهاز، أو إلغاء التثبيت، أو إعادة الإقران). احتفظ به لنفسك، ولا تُطلع طفلك عليه.</string>
+    <string name="pair_pin_label">رمز PIN للوالدين</string>
+    <string name="pair_pin_hint">من 4 إلى 8 أرقام</string>
+    <string name="pair_pin_repeat">أعد إدخال الرمز</string>
+    <string name="pair_pin_save">احفظ الرمز</string>
+    <string name="pair_pin_mismatch">الرمزان غير متطابقين.</string>
 </resources>

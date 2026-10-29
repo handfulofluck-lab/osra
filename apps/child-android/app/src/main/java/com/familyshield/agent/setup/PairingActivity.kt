@@ -1,6 +1,7 @@
 package com.familyshield.agent.setup
 
 import com.familyshield.agent.BuildConfig
+import com.familyshield.agent.R
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -272,7 +273,7 @@ class PairingActivity : ComponentActivity() {
     ) {
         replaceWith {
             addView(label("OSRA Child Agent"))
-            addView(label("Pair this device with your OSRA server."))
+            addView(label(getString(R.string.pair_intro)))
 
             if (scanError != null) {
                 addView(
@@ -283,13 +284,11 @@ class PairingActivity : ComponentActivity() {
                 )
             }
             if (scanned != null) {
-                addView(label("Scanned pairing details").apply { setTextColor(0xFF2E7D32.toInt()) })
-                addView(label("Server: ${scanned.apiBaseUrl}"))
-                addView(label("Code: ${scanned.maskedCode()}"))
+                addView(label(getString(R.string.pair_scanned_title)).apply { setTextColor(0xFF2E7D32.toInt()) })
+                addView(label(getString(R.string.pair_scanned_server, scanned.apiBaseUrl)))
+                addView(label(getString(R.string.pair_scanned_code, scanned.maskedCode())))
                 addView(
-                    label(
-                        "Check these match the parent's screen. Nothing is paired until you confirm.",
-                    ),
+                    label(getString(R.string.pair_scanned_check)),
                 )
             }
 
@@ -302,7 +301,7 @@ class PairingActivity : ComponentActivity() {
                 hint = "6-digit pairing code"
                 isEnabled = scanned == null
             }
-            val name = editText(prefillName, InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { hint = "Device name (optional)" }
+            val name = editText(prefillName, InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { hint = getString(R.string.pair_name_hint) }
             formServer = server
             formCode = code
             formName = name
@@ -311,12 +310,12 @@ class PairingActivity : ComponentActivity() {
                 visibility = View.GONE
             }
             val pairButton = Button(this@PairingActivity).apply {
-                text = if (scanned == null) "Pair this device" else "Confirm and pair"
+                text = getString(if (scanned == null) R.string.pair_button else R.string.pair_confirm_button)
             }
             val progress = ProgressBar(this@PairingActivity).apply { visibility = View.GONE }
             val scanButton = Button(this@PairingActivity).apply {
-                text = "Scan QR code"
-                contentDescription = "Scan the pairing QR code from the parent app"
+                text = getString(R.string.pair_scan_button)
+                contentDescription = getString(R.string.pair_scan_description)
             }
             scanButton.setOnClickListener { startScan() }
 
@@ -328,7 +327,7 @@ class PairingActivity : ComponentActivity() {
                     // exit to a request, and it returns null if the screen no longer holds a scan.
                     val request = scanFlow.confirm(name.text.toString())
                     if (request == null) {
-                        error.text = "Scan the QR code again before confirming."
+                        error.text = getString(R.string.pair_error_rescan)
                         error.visibility = View.VISIBLE
                     } else {
                         startPair(request.serverUrl, request.code, request.deviceName, pairButton, progress, error)
@@ -336,16 +335,16 @@ class PairingActivity : ComponentActivity() {
                 }
             }
 
-            addView(labeled("Server URL", server))
-            addView(labeled("Pairing code", code))
-            addView(labeled("Device name", name))
+            addView(labeled(getString(R.string.pair_server_label), server))
+            addView(labeled(getString(R.string.pair_code_label), code))
+            addView(labeled(getString(R.string.pair_name_label), name))
             addView(pairButton)
             addView(progress)
             addView(scanButton)
             if (scanned != null) {
                 addView(
                     Button(this@PairingActivity).apply {
-                        text = "Cancel"
+                        text = getString(R.string.pair_cancel)
                         setOnClickListener {
                             scanFlow.cancel()
                             showForm()
@@ -365,7 +364,7 @@ class PairingActivity : ComponentActivity() {
                     formServer?.text?.toString().orEmpty(),
                     formCode?.text?.toString().orEmpty(),
                     formName?.text?.toString().orEmpty(),
-                    scanError = "The camera is not available on this device. Enter the server URL and code manually.",
+                    scanError = getString(R.string.pair_no_camera),
                 )
             }
     }
@@ -381,13 +380,13 @@ class PairingActivity : ComponentActivity() {
     ) {
         val serverUrl = enteredServer.trim()
         if (serverUrl.isBlank()) {
-            error.text = "Enter the server URL from your parent."
+            error.text = getString(R.string.pair_error_server)
             error.visibility = View.VISIBLE
             return
         }
         val code = enteredCode.trim()
         if (!code.matches(Regex("\\d{6}"))) {
-            error.text = "Enter the 6-digit pairing code."
+            error.text = getString(R.string.pair_error_code)
             error.visibility = View.VISIBLE
             return
         }
@@ -400,7 +399,7 @@ class PairingActivity : ComponentActivity() {
                 claim(serverUrl, code, name) {
                     // Plan 2.7: the code is claimed; nothing is paired until the parent taps Allow.
                     error.setTextColor(0xFF444444.toInt())
-                    error.text = "Waiting for your parent to tap Allow on their phone…"
+                    error.text = getString(R.string.pair_waiting)
                     error.visibility = View.VISIBLE
                 }
             }
@@ -424,30 +423,27 @@ class PairingActivity : ComponentActivity() {
     /** ADR-0010 step 1: the parent chooses the PIN (4–8 digits, not a weak one). */
     private fun showSetPin() {
         replaceWith {
-            addView(label("Paired. Now set the parent PIN · أسرة"))
+            addView(label("${getString(R.string.pair_pin_title)} · ${getString(R.string.app_name_ar)}"))
             addView(
-                label(
-                    "This PIN is asked for whenever someone tries to remove OSRA's protection on this device " +
-                        "(turn off device admin, uninstall, re-pair). Keep it to yourself — your child must not know it.",
-                ),
+                label(getString(R.string.pair_pin_body)),
             )
             val pin = editText("", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply {
-                hint = "4–8 digits"
+                hint = getString(R.string.pair_pin_hint)
                 filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
             }
             val again = editText("", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply {
-                hint = "Repeat the PIN"
+                hint = getString(R.string.pair_pin_repeat)
                 filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
             }
             val error = TextView(this@PairingActivity).apply { setTextColor(0xFFB00020.toInt()); visibility = View.GONE }
-            addView(labeled("Parent PIN", pin))
-            addView(labeled("Repeat", again))
+            addView(labeled(getString(R.string.pair_pin_label), pin))
+            addView(labeled(getString(R.string.pair_pin_repeat), again))
             addView(
                 Button(this@PairingActivity).apply {
-                    text = "Save PIN"
+                    text = getString(R.string.pair_pin_save)
                     setOnClickListener {
                         val p = pin.text.toString()
-                        val reason = ParentPin.validationError(p) ?: if (p != again.text.toString()) "The two PINs differ." else null
+                        val reason = ParentPin.validationError(p) ?: if (p != again.text.toString()) getString(R.string.pair_pin_mismatch) else null
                         if (reason != null) {
                             error.text = reason
                             error.visibility = View.VISIBLE
@@ -863,9 +859,9 @@ class PairingActivity : ComponentActivity() {
                     }
                     PairingApproval.ClaimStep.INVALID_CODE -> throw InvalidCodeException()
                     PairingApproval.ClaimStep.ALREADY_CLAIMED ->
-                        throw PairingRefusedException("This code is already being used by another phone. Ask your parent for a new code.")
+                        throw PairingRefusedException(getString(R.string.pair_in_use))
                     PairingApproval.ClaimStep.CONSENT_REQUIRED ->
-                        throw PairingRefusedException("Your parent needs to give consent in the OSRA app before this phone can be paired.")
+                        throw PairingRefusedException(getString(R.string.pair_consent))
                     PairingApproval.ClaimStep.FAILED -> throw IllegalStateException("server returned HTTP ${response.code}")
                 }
             }
@@ -904,20 +900,20 @@ class PairingActivity : ComponentActivity() {
                     )
                 }
                 PairingApproval.PollStep.DENIED ->
-                    throw PairingRefusedException("Your parent declined this phone. If that was a mistake, ask them for a new code.")
+                    throw PairingRefusedException(getString(R.string.pair_denied))
                 PairingApproval.PollStep.EXPIRED, PairingApproval.PollStep.TIMED_OUT ->
-                    throw PairingRefusedException("The code expired before your parent allowed this phone. Ask them for a new code.")
+                    throw PairingRefusedException(getString(R.string.pair_expired))
                 PairingApproval.PollStep.CONSENT_REQUIRED ->
-                    throw PairingRefusedException("Your parent needs to give consent in the OSRA app before this phone can be paired.")
+                    throw PairingRefusedException(getString(R.string.pair_consent))
                 PairingApproval.PollStep.PENDING, PairingApproval.PollStep.FAILED ->
                     throw IllegalStateException("pairing did not finish")
             }
         }
 
     private fun userMessage(e: Throwable): String = when (e) {
-        is InvalidCodeException -> "Invalid or expired pairing code."
+        is InvalidCodeException -> getString(R.string.pair_invalid_code)
         is PairingRefusedException -> e.message.orEmpty()
-        else -> "Pairing failed: ${e.message ?: "network error"}"
+        else -> getString(R.string.pair_failed, e.message ?: "network error")
     }
 
     private fun requestLocationPermission() {
