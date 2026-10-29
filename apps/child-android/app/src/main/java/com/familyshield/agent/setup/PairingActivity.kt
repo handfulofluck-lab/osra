@@ -251,7 +251,7 @@ class PairingActivity : ComponentActivity() {
 
     private fun showLoading() {
         replaceWith {
-            addView(label("OSRA Child Agent"))
+            addView(label(getString(R.string.pair_title)))
             addView(ProgressBar(this@PairingActivity))
         }
     }
@@ -270,7 +270,7 @@ class PairingActivity : ComponentActivity() {
         scanError: String? = null,
     ) {
         replaceWith {
-            addView(label("OSRA Child Agent"))
+            addView(label(getString(R.string.pair_title)))
             addView(label(getString(R.string.pair_intro)))
 
             if (scanError != null) {
@@ -291,12 +291,12 @@ class PairingActivity : ComponentActivity() {
             }
 
             val server = editText(scanned?.apiBaseUrl ?: prefillServer, InputType.TYPE_TEXT_VARIATION_URI).apply {
-                hint = "https://your-server or 192.168.1.5:3000"
+                hint = getString(R.string.pair_server_hint)
                 isEnabled = scanned == null
             }
             val code = editText(scanned?.code ?: prefillCode, InputType.TYPE_CLASS_NUMBER).apply {
                 filters = arrayOf(InputFilter.LengthFilter(6))
-                hint = "6-digit pairing code"
+                hint = getString(R.string.pair_code_hint)
                 isEnabled = scanned == null
             }
             val name = editText(prefillName, InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { hint = getString(R.string.pair_name_hint) }
