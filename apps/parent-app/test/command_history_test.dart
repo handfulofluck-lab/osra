@@ -213,6 +213,31 @@ void main() {
           reason: 'a mapped refusal is not shown as a wire code');
     });
 
+    testWidgets('a refused pause says why, and the exception is not stringified (#437 A2)', (tester) async {
+      // The provider used to rethrow the DioException and the screen stringified it, so the 428 body was
+      // lost. It now throws ControlsRefusal, and this row fails if that mapping is skipped.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/controls/children/child-1/pause': (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.widgetWithIcon(TextButton, Icons.wifi_off).first);
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1),
+          reason: 'the tap must actually reach the endpoint, or the row proves nothing');
+      // this file pumps the default locale, so the sentence is the English one
+      expect(
+          find.text(
+              "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+          findsOneWidget);
+      expect(find.textContaining('DioException'), findsNothing,
+          reason: 'the refusal must be a sentence, not the exception');
+      expect(find.textContaining('parental_consent_required'), findsNothing);
+    });
+
     testWidgets('empty history shows an honest empty state per device',
         (tester) async {
       final api = historyApi();

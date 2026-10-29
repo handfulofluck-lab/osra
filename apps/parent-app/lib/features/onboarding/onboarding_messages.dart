@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 
 /// Turns the API's raw auth error into what the parent can act on.
@@ -25,7 +26,13 @@ String onboardingAuthError(AppLocalizations l10n, String raw) {
 /// One honest sentence for a failed `POST /v1/family/children`.
 String onboardingChildError(AppLocalizations l10n, DioException error) {
   final status = error.response?.statusCode;
-  if (status == 428) return l10n.onboardingConsentRequired;
+  if (status == 428) {
+    // #437 A2: a region mismatch is the one 428 the wizard can act on; collapsing it into
+    // "consent required" sent a parent to ask for a consent the region had already refused.
+    final region = consentRefusalRegionLabel(l10n, error);
+    if (region != null) return l10n.addChildConsentRegion(region);
+    return l10n.onboardingConsentRequired;
+  }
   if (status == 403) return l10n.onboardingOwnerOnly;
   if (status == 400 || status == 422) return l10n.onboardingChildInvalid;
   if (error.type == DioExceptionType.connectionError ||

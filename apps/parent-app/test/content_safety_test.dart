@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/content/snippet_vault_modal.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
+import 'package:familyshield_parent/features/onboarding/onboarding_messages.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -252,6 +253,26 @@ void main() {
 
     expect(addChildConsentRegionError(arLocalizations, refusal({'error': 'parental_consent_required'})), isNull,
         reason: 'the dialog has nothing to act on when consent is simply missing');
+  });
+
+  // #437 A2: the same region sentence on the onboarding wizard's create, which used to collapse every
+  // 428 into "consent required" — sending a parent to ask for a consent the region had refused.
+  test('the onboarding child error names the region on a 428 mismatch', () {
+    final options = RequestOptions(path: '/v1/family/children');
+    DioException refusal(Map<String, dynamic> body) => DioException(
+          requestOptions: options,
+          response: Response(requestOptions: options, statusCode: 428, data: body),
+          type: DioExceptionType.badResponse,
+        );
+    final arLocalizations = AppLocalizationsAr();
+    final text = onboardingChildError(
+        arLocalizations, refusal({'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'}));
+    expect(text, contains(arLocalizations.regionEU));
+    expect(text, isNot(equals(arLocalizations.onboardingConsentRequired)),
+        reason: 'a region mismatch is actionable; "consent required" is not the same sentence');
+    expect(
+        onboardingChildError(arLocalizations, refusal({'error': 'parental_consent_required'})),
+        arLocalizations.onboardingConsentRequired);
   });
 
   // #437 part A: the add-child dialog shows the region sentence when the create route refuses the

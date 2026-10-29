@@ -493,6 +493,14 @@ Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId
         SnackBar(content: Text(l10n.netQueued(paused ? l10n.resume : l10n.pause, device.model))),
       );
     }
+  } on ControlsRefusal catch (r) {
+    // Issue #437 A2: a refused pause/resume says why, through the same mapping every write uses;
+    // anything unmapped keeps the old message rather than inventing one.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(readErrorText(l10n, r.error, () => l10n.commandFailed('${r.error}'))),
+      ));
+    }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.commandFailed('$e'))));

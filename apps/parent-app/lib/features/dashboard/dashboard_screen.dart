@@ -491,19 +491,8 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
 /// yet, so "open Parental consent on the child's page" would point at a page that is not there — the
 /// fix is the dialog's own region dropdown, and the sentence names the region the server expected.
 String? addChildConsentRegionError(AppLocalizations l10n, DioException e) {
-  if (e.response?.statusCode != 428) return null;
-  final body = e.response?.data;
-  if (body is! Map || body['error'] != 'consent_jurisdiction_mismatch') return null;
-  final region = body['jurisdiction'];
-  if (region is! String || region.isEmpty) return null;
-  // The server sends a code; an Arabic sentence must not read «EU» inside it (review point 1).
-  final label = switch (region) {
-    'US' => l10n.regionUS,
-    'EU' => l10n.regionEU,
-    'UK' => l10n.regionUK,
-    _ => region,
-  };
-  return l10n.addChildConsentRegion(label);
+  final region = consentRefusalRegionLabel(l10n, e);
+  return region == null ? null : l10n.addChildConsentRegion(region);
 }
 
 class AddChildDialog extends ConsumerStatefulWidget {
