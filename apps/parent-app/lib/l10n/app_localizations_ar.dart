@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -551,6 +552,14 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get readPermissionRequired =>
       'يمكن لمالك العائلة منحك حق الوصول إلى هذا.';
+
+  @override
+  String get readErrorConsentMissing =>
+      'لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.';
+
+  @override
+  String get readErrorConsentRegion =>
+      'لم يُحفظ هذا التغيير: مُنحت موافقة هذا الطفل لمنطقة تختلف عن منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.';
 
   @override
   String get familyDone => 'تم';

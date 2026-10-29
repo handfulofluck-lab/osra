@@ -535,9 +535,14 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
       ref.invalidate(familyProvider);
       if (mounted) Navigator.of(context).pop();
     } on DioException catch (e) {
-      // Consent gate: surface the API's 428 message when consent is missing.
+      // Issue #437: the consent gate's 428 is a sentence now, not the wire code; anything else keeps
+      // the API's own message.
       final data = e.response?.data;
-      setState(() => _error = data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : e.message);
+      setState(() => _error = readErrorText(
+            context.l10n,
+            e,
+            () => data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? ''),
+          ));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
