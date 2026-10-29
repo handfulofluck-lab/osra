@@ -51,7 +51,10 @@ String permissionRequiredMessage(AppLocalizations l10n) => l10n.readPermissionRe
 /// screen that builds its message from the error does not pay for it on the refusal path.
 String readErrorText(AppLocalizations l10n, Object error, String Function() fallback) {
   final refusal = error is DioException ? ReadPermissionRequired.from(error) : null;
-  return refusal == null ? fallback() : l10n.readPermissionRequired;
+  if (refusal != null) return l10n.readPermissionRequired;
+  // Issue #437: a write refused for consent says which consent problem it is, and the screen's own
+  // message stays for everything else.
+  return consentWriteError(l10n, error) ?? fallback();
 }
 
 
@@ -62,3 +65,24 @@ String readErrorText(AppLocalizations l10n, Object error, String Function() fall
 /// plain error stays the screen's own problem — only [ReadPermissionRequired.isRefusal] counts.
 bool anyReadRefused(Iterable<AsyncValue<Object?>> values) =>
     values.any((v) => v.hasError && ReadPermissionRequired.isRefusal(v.error!));
+
+/// Issue #437: a **write** refused because the child has no active consent.
+///
+/// The routes gated by `requireConsent` (`geofences`, `rules`, the `controls` writes, the child
+/// `PATCH`) answer `428 {error: parental_consent_required | consent_jurisdiction_mismatch, jurisdiction?}`.
+/// Both are the parent's problem to fix, and they are different problems — re-give consent, or a
+/// region mismatch — so two sentences rather than one "consent error".
+///
+/// Returns null when [error] is not a known consent refusal, so the caller keeps its own message for
+/// everything else; a bare `428` with an unknown code stays **verbatim** through that fallback.
+String? consentWriteError(AppLocalizations l10n, Object error) {
+  if (error is! DioException) return null;
+  if (error.response?.statusCode != 428) return null;
+  final body = error.response?.data;
+  final code = body is Map ? body['error'] : null;
+  return switch (code) {
+    'parental_consent_required' => l10n.readErrorConsentMissing,
+    'consent_jurisdiction_mismatch' => l10n.readErrorConsentRegion,
+    _ => null,
+  };
+}

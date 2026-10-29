@@ -487,6 +487,25 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
 
 /// Two-step add-child dialog: parental consent first (method + jurisdiction
 /// matching the family region), then the child's details.
+/// Issue #437 review: the one consent refusal a *creation* dialog can act on. The child does not exist
+/// yet, so "open Parental consent on the child's page" would point at a page that is not there — the
+/// fix is the dialog's own region dropdown, and the sentence names the region the server expected.
+String? addChildConsentRegionError(AppLocalizations l10n, DioException e) {
+  if (e.response?.statusCode != 428) return null;
+  final body = e.response?.data;
+  if (body is! Map || body['error'] != 'consent_jurisdiction_mismatch') return null;
+  final region = body['jurisdiction'];
+  if (region is! String || region.isEmpty) return null;
+  // The server sends a code; an Arabic sentence must not read «EU» inside it (review point 1).
+  final label = switch (region) {
+    'US' => l10n.regionUS,
+    'EU' => l10n.regionEU,
+    'UK' => l10n.regionUK,
+    _ => region,
+  };
+  return l10n.addChildConsentRegion(label);
+}
+
 class AddChildDialog extends ConsumerStatefulWidget {
   const AddChildDialog({super.key});
 
@@ -535,9 +554,13 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
       ref.invalidate(familyProvider);
       if (mounted) Navigator.of(context).pop();
     } on DioException catch (e) {
-      // Consent gate: surface the API's 428 message when consent is missing.
+      // Issue #437 review: this is child *creation*, so the child's own Parental consent page does not
+      // exist yet — the generic consent sentences would point at a page that is not there. The one case
+      // worth a sentence is the region mismatch, because the dialog has a region dropdown and the fix
+      // is to pick the family's.
       final data = e.response?.data;
-      setState(() => _error = data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : e.message);
+      setState(() => _error = addChildConsentRegionError(context.l10n, e) ??
+          (data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? '')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

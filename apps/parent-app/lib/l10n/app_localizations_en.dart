@@ -537,6 +537,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your family owner can give you access to this.';
 
   @override
+  String get readErrorConsentMissing =>
+      'This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.';
+
+  @override
+  String get readErrorConsentRegion =>
+      'This change was not saved: this child\'s consent was given for a different region than your family\'s. Open Parental consent on the child\'s page for details.';
+
+  @override
+  String addChildConsentRegion(String region) {
+    return 'The consent region must match your family\'s region ($region). Choose $region and try again.';
+  }
+
+  @override
   String get familyDone => 'Done';
 
   @override

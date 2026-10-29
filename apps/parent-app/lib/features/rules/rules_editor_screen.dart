@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
+
+import '../../api/permission_errors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
@@ -69,8 +71,14 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
     } on DioException catch (e) {
+      // Issue #437: a rule write can be refused for consent (`428`), and that sentence names no
+      // command because this is an edit. `readErrorText` decides; the raw code stays for anything else.
       final data = e.response?.data;
-      setState(() => _error = data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : e.message);
+      setState(() => _error = readErrorText(
+            l10n,
+            e,
+            () => data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? ''),
+          ));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
