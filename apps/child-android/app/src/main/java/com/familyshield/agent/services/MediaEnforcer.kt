@@ -71,6 +71,9 @@ class MediaEnforcer(
         val template = notification.extras?.getString(Notification.EXTRA_TEMPLATE).orEmpty()
         val isMedia = notification.category == Notification.CATEGORY_TRANSPORT || template.contains("MediaStyle")
         if (!isMedia) return
+        // #444 C4 review: does the media-session token reach the accessibility event? A boolean only. If it does,
+        // a MediaController on the blocked app's own session is the targeted fallback should C4-4 fail.
+        Log.d(TAG, "token=${notification.extras?.containsKey(Notification.EXTRA_MEDIA_SESSION)}")
         // The policy's windows use the monotonic clock: a wall-clock change must not open or close them.
         apply(policy.onMediaNotification(pkg, isBlocked(pkg), SystemClock.elapsedRealtime()))
     }
