@@ -86,3 +86,21 @@ String? consentWriteError(AppLocalizations l10n, Object error) {
     _ => null,
   };
 }
+
+/// Issue #437 A2: the region a consent refusal names, already mapped to the app's own label.
+///
+/// The server sends a code (`EU`); an Arabic sentence must not carry it. Null when the refusal is not a
+/// region mismatch, so a caller can fall back to its own sentence.
+String? consentRefusalRegionLabel(AppLocalizations l10n, Object error) {
+  if (error is! DioException || error.response?.statusCode != 428) return null;
+  final body = error.response?.data;
+  if (body is! Map || body['error'] != 'consent_jurisdiction_mismatch') return null;
+  final region = body['jurisdiction'];
+  if (region is! String || region.isEmpty) return null;
+  return switch (region) {
+    'US' => l10n.regionUS,
+    'EU' => l10n.regionEU,
+    'UK' => l10n.regionUK,
+    _ => region,
+  };
+}

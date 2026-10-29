@@ -332,6 +332,13 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
           SnackBar(content: Text(l10n.bonusGranted(minutes))),
         );
       }
+    } on DioException catch (e) {
+      // #441 review: the bonus route runs `requireConsent` too, so a 428 needs the sentence, not '$e'.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(readErrorText(l10n, e, () => l10n.bonusFailed('$e'))),
+        ));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.bonusFailed('$e'))));
@@ -402,6 +409,13 @@ class _WindDownCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.windDownConfirm(minutes))),
         );
+      }
+    } on DioException catch (e) {
+      // #441 review: wind-down is a `controls.ts` write like the others.
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(readErrorText(l10n, e, () => l10n.windDownFailed('$e'))),
+        ));
       }
     } catch (e) {
       if (context.mounted) {
@@ -492,6 +506,14 @@ Future<void> _toggleInternet(BuildContext context, WidgetRef ref, String childId
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.netQueued(paused ? l10n.resume : l10n.pause, device.model))),
       );
+    }
+  } on ControlsRefusal catch (r) {
+    // Issue #437 A2: a refused pause/resume says why, through the same mapping every write uses;
+    // anything unmapped keeps the old message rather than inventing one.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(readErrorText(l10n, r.error, () => l10n.commandFailed('${r.error}'))),
+      ));
     }
   } catch (e) {
     if (context.mounted) {
