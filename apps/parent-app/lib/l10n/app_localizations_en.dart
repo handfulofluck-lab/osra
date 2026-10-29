@@ -2086,6 +2086,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get consentGrantBusy => 'Saving…';
 
   @override
+  String get consentRenewTitle => 'Renew consent';
+
+  @override
+  String get consentRenewNote =>
+      'Consent ends soon. Renewing now keeps monitoring running without a gap.';
+
+  @override
+  String get consentRegrantNotice =>
+      'Confirm how you checked that you are this child\'s parent or guardian.';
+
+  @override
   String get consentWithdrawAction => 'Withdraw consent';
 
   @override

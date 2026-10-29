@@ -3500,6 +3500,24 @@ abstract class AppLocalizations {
   /// **'Saving…'**
   String get consentGrantBusy;
 
+  /// No description provided for @consentRenewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Renew consent'**
+  String get consentRenewTitle;
+
+  /// No description provided for @consentRenewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent ends soon. Renewing now keeps monitoring running without a gap.'**
+  String get consentRenewNote;
+
+  /// No description provided for @consentRegrantNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm how you checked that you are this child\'s parent or guardian.'**
+  String get consentRegrantNotice;
+
   /// No description provided for @consentWithdrawAction.
   ///
   /// In en, this message translates to:

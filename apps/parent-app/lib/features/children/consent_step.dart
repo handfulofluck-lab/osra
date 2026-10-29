@@ -31,10 +31,17 @@ class ConsentStep extends StatelessWidget {
   /// Called with the new code when the parent picks another method.
   final ValueChanged<String> onMethodChanged;
 
+  /// The notice above the picker. Defaults to the add-child wording, which says
+  /// "before you add a child" — true there, false on the re-grant dialog where
+  /// the child already exists with a record. Claude's #448 review: that screen
+  /// passes [AppLocalizations.consentRegrantNotice] instead.
+  final String? notice;
+
   const ConsentStep({
     super.key,
     required this.method,
     required this.onMethodChanged,
+    this.notice,
   });
 
   @override
@@ -46,7 +53,7 @@ class ConsentStep extends StatelessWidget {
       children: [
         // TODO(#159): legal consent wording needs a product/legal
         // decision before it can be translated; it stays English.
-        Text(l10n.consentNotice),
+        Text(notice ?? l10n.consentNotice),
         const SizedBox(height: AppSpace.md),
         DropdownButtonFormField<String>(
           key: const ValueKey('consentMethod'),

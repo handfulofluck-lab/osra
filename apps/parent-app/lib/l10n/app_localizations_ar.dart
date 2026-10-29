@@ -2238,6 +2238,17 @@ class AppLocalizationsAr extends AppLocalizations {
   String get consentGrantBusy => 'جارٍ الحفظ…';
 
   @override
+  String get consentRenewTitle => 'تجديد الموافقة';
+
+  @override
+  String get consentRenewNote =>
+      'تنتهي الموافقة قريبًا. التجديد الآن يُبقي المراقبة مستمرة دون انقطاع.';
+
+  @override
+  String get consentRegrantNotice =>
+      'أكّد الطريقة التي تحقّقت بها من أنك وليّ أمر هذا الطفل.';
+
+  @override
   String get consentWithdrawAction => 'سحب الموافقة';
 
   @override

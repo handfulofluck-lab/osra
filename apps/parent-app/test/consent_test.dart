@@ -501,12 +501,17 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('consentGrantButton')));
       await tester.pumpAndSettle();
 
-      // The shared step, not a second copy of the notice.
+      // The shared step, not a second copy of the notice — and the notice is the
+      // re-grant line, because this child already exists (#448 review).
       expect(find.byType(ConsentStep), findsOneWidget);
       expect(
           find.text(
-              'Before you add a child, we need to confirm that you are their parent or guardian.'),
+              "Confirm how you checked that you are this child's parent or guardian."),
           findsOneWidget);
+      expect(
+          find.text(
+              'Before you add a child, we need to confirm that you are their parent or guardian.'),
+          findsNothing);
       // The family's own region, named — and not offered as a choice, because the route refuses
       // anything else (`428 consent_jurisdiction_mismatch`). Mutant for the body: hardcode "US".
       expect(
@@ -514,6 +519,8 @@ void main() {
               "Recorded with your family's region (European Union)"),
           findsOneWidget);
       expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+
+      expect(api.calls('GET', '/v1/family/me'), hasLength(1));
 
       await tester.tap(find.byKey(const ValueKey('consentGrantConfirm')));
       await flushFakeHttp(tester);
@@ -524,6 +531,9 @@ void main() {
       expect(post.body, {'method': 'sms_plus', 'jurisdiction': 'EU'});
       expect(stateLabel(tester), 'Active');
       expect(find.textContaining('Consent recorded'), findsOneWidget);
+      // #448 review item 3: the overview carries the child's consent record id, so a grant must
+      // refetch it. Mutant: comment out `ref.invalidate(familyProvider)` and this reads 1.
+      expect(api.calls('GET', '/v1/family/me'), hasLength(2));
     });
 
     testWidgets('a co-parent gets no action, because the route answers 403',
@@ -558,7 +568,8 @@ void main() {
       expect(find.byKey(const ValueKey('consentGrantButton')), findsOneWidget);
     });
 
-    testWidgets('an active record offers no grant action', (tester) async {      // Mutant: show it whenever a record exists (`needsConsentGrant` true for every state).
+    testWidgets('an active record offers no grant action', (tester) async {
+      // Mutant: show it whenever a record exists (`needsConsentGrant` true for every state).
       final api = grantApi(status: activeStatus());
       await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
 
@@ -566,10 +577,11 @@ void main() {
       expect(find.byKey(const ValueKey('consentGrantButton')), findsNothing);
     });
 
-    testWidgets('an expiring record is warned about, not treated as lapsed',
+    testWidgets('the owner of an expiring record renews it before the gap',
         (tester) async {
-      // `expiring` is still active: collection continues, so the card would claim monitoring had
-      // stopped when it had not. Mutant: include `expiring` in `needsConsentGrant`.
+      // #448 review item 1: `expiring` must get the action. Renewing only after the record lapses is
+      // a guaranteed gap — `requireConsent` starts answering 428 at that moment.
+      // Mutant: put `expiring` back in the false set and this finds no button.
       final api = grantApi(
         status: consentStatusPayload(
           jurisdiction: 'EU',
@@ -584,7 +596,40 @@ void main() {
       await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
 
       expect(stateLabel(tester), 'Expiring soon');
-      expect(find.byKey(const ValueKey('consentGrantButton')), findsNothing);
+      expect(find.byKey(const ValueKey('consentGrantButton')), findsOneWidget);
+      // The renew wording, not the lapsed one: collection is still running.
+      // Mutant: pass `renewal: false` and this reads the "Monitoring stays stopped" note.
+      expect(find.text('Renew consent'), findsOneWidget);
+      expect(find.textContaining('Renewing now keeps monitoring running'),
+          findsOneWidget);
+      expect(find.textContaining('Monitoring stays stopped'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('consentGrantButton')));
+      await tester.pumpAndSettle();
+      // The dialog carries the renew wording too (title + confirm); the card behind it still shows
+      // its own copy, so the assertion is scoped to the dialog rather than counted across the tree.
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Renew consent'),
+        ),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining("Recorded with your family's region"),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('consentGrantConfirm')));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final post =
+          api.calls('POST', '/v1/family/children/child-1/consent').single;
+      expect(post.body, {'method': 'sms_plus', 'jurisdiction': 'EU'});
+      expect(stateLabel(tester), 'Active');
     });
 
     testWidgets('a refusal keeps the dialog open with a sentence and no refresh',
