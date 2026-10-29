@@ -468,6 +468,14 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     final remaining = _remaining;
     final mm = remaining.inMinutes.toString().padLeft(2, '0');
     final ss = (remaining.inSeconds % 60).toString().padLeft(2, '0');
+    // #433 review (a): Deny burns the code on the server, so its QR, digits and countdown are dead. Once
+    // the claim is declined the screen shows only the Declined card, whose button makes a new code.
+    if (_claim?['status'] == 'denied') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_buildClaim(context)],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
