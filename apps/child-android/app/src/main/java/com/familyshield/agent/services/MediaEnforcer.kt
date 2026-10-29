@@ -44,7 +44,9 @@ class MediaEnforcer(
             val media = configs.orEmpty().count { it.audioAttributes.usage == AudioAttributes.USAGE_MEDIA }
             val started = media > activeMedia
             activeMedia = media
-            if (started) apply(policy.onPlaybackStarted(System.currentTimeMillis()))
+            // #444 C4 review B2: does a resume raise the count on the Flip4? Counts only, no packages.
+            Log.d(TAG, "media=$media started=$started")
+            if (started) apply(policy.onPlaybackStarted(SystemClock.elapsedRealtime()))
         }
     }
 
@@ -69,7 +71,8 @@ class MediaEnforcer(
         val template = notification.extras?.getString(Notification.EXTRA_TEMPLATE).orEmpty()
         val isMedia = notification.category == Notification.CATEGORY_TRANSPORT || template.contains("MediaStyle")
         if (!isMedia) return
-        apply(policy.onMediaNotification(pkg, isBlocked(pkg), System.currentTimeMillis()))
+        // The policy's windows use the monotonic clock: a wall-clock change must not open or close them.
+        apply(policy.onMediaNotification(pkg, isBlocked(pkg), SystemClock.elapsedRealtime()))
     }
 
     private fun apply(actions: List<MediaAction>) {

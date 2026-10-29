@@ -23,8 +23,9 @@ sealed interface MediaAction {
  * does not name the package for a normal app). Claude's mechanism (#444, 15:12Z):
  *
  * 1. When the block screen goes up for a package, take audio focus.
- * 2. When media playback starts within [windowMs] of a media post by a **blocked** package, take focus again
- *    and send one pause.
+ * 2. When media playback starts and a media post by a **blocked** package lands within [windowMs] of it, in
+ *    **either order**, take focus again and send one pause. Play in the shade, a headset button and the lock
+ *    screen usually start the player first and update the notification after (#444 C4 review, B1).
  * 3. Never when the last media poster is allowed, so a child's allowed music app keeps playing.
  * 4. Give focus back once the last media poster is an allowed package.
  *
@@ -34,6 +35,7 @@ class MediaBlockPolicy(private val windowMs: Long = DEFAULT_WINDOW_MS) {
     private data class Poster(val pkg: String, val blocked: Boolean, val atMs: Long)
 
     private var lastMediaPoster: Poster? = null
+    private var lastPlaybackStartMs: Long? = null
     private var holdingFocus = false
 
     /** The block (or time-limit) screen was raised for a package. */
@@ -42,20 +44,32 @@ class MediaBlockPolicy(private val windowMs: Long = DEFAULT_WINDOW_MS) {
     /** A media notification was posted or updated (Play pressed in the shade updates it). */
     fun onMediaNotification(pkg: String, blocked: Boolean, nowMs: Long): List<MediaAction> {
         lastMediaPoster = Poster(pkg, blocked, nowMs)
-        if (!blocked && holdingFocus) {
+        if (!blocked) {
+            if (!holdingFocus) return emptyList()
             holdingFocus = false
             return listOf(MediaAction.AbandonFocus)
         }
-        return emptyList()
+        // B1: the player started first and this is its "Playing" update.
+        val started = lastPlaybackStartMs ?: return emptyList()
+        if (nowMs - started !in 0..windowMs) return emptyList()
+        lastPlaybackStartMs = null
+        return pause()
     }
 
     /** Media-usage playback became active (the count of active media players went up). */
     fun onPlaybackStarted(nowMs: Long): List<MediaAction> {
-        val poster = lastMediaPoster ?: return emptyList()
-        if (!poster.blocked || nowMs - poster.atMs !in 0..windowMs) return emptyList()
-        holdingFocus = false // a new request, whatever we held: the player may have just taken it back
-        return requestFocus() + MediaAction.SendPause
+        val poster = lastMediaPoster
+        if (poster == null || !poster.blocked || nowMs - poster.atMs !in 0..windowMs) {
+            // Remember it: the blocked app's notification update may follow (B1).
+            lastPlaybackStartMs = nowMs
+            return emptyList()
+        }
+        lastPlaybackStartMs = null
+        return pause()
     }
+
+    /** A new request, whatever we held: the player has just taken focus back. */
+    private fun pause(): List<MediaAction> = requestFocus() + MediaAction.SendPause
 
     private fun requestFocus(): List<MediaAction> {
         holdingFocus = true

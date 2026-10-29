@@ -50,4 +50,22 @@ class MediaBlockPolicyTest {
         p.onMediaNotification(spotify, blocked = false, nowMs = 100L)
         assertEquals(emptyList<MediaAction>(), p.onPlaybackStarted(nowMs = 200L))
     }
+
+    @Test
+    fun `B1 - playback first, then the blocked app's Playing update within two seconds, is paused`() {
+        val p = MediaBlockPolicy()
+        p.onMediaNotification(youtube, blocked = true, nowMs = 0L) // the old Paused post, minutes ago
+        assertEquals(emptyList<MediaAction>(), p.onPlaybackStarted(nowMs = 10_000L))
+        assertEquals(
+            listOf(MediaAction.RequestFocus, MediaAction.SendPause),
+            p.onMediaNotification(youtube, blocked = true, nowMs = 10_300L),
+        )
+    }
+
+    @Test
+    fun `B1 - a blocked app's post more than two seconds after playback does nothing`() {
+        val p = MediaBlockPolicy()
+        p.onPlaybackStarted(nowMs = 0L)
+        assertEquals(emptyList<MediaAction>(), p.onMediaNotification(youtube, blocked = true, nowMs = 2_500L))
+    }
 }
