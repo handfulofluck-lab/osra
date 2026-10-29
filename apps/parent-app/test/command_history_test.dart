@@ -213,6 +213,78 @@ void main() {
           reason: 'a mapped refusal is not shown as a wire code');
     });
 
+    testWidgets('a refused pause says why, and the exception is not stringified (#437 A2)', (tester) async {
+      // The provider used to rethrow the DioException and the screen stringified it, so the 428 body was
+      // lost. It now throws ControlsRefusal, and this row fails if that mapping is skipped.
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/controls/children/child-1/pause': (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.widgetWithIcon(TextButton, Icons.wifi_off).first);
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1),
+          reason: 'the tap must actually reach the endpoint, or the row proves nothing');
+      // this file pumps the default locale, so the sentence is the English one
+      expect(
+          find.text(
+              "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+          findsOneWidget);
+      expect(find.textContaining('DioException'), findsNothing,
+          reason: 'the refusal must be a sentence, not the exception');
+      expect(find.textContaining('parental_consent_required'), findsNothing);
+    });
+
+    testWidgets('a refused bonus says why, and the POST fired (#441)', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/controls/children/child-1/bonus': (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      // the real label is "+15", not "+15 min" — read, not guessed — and it sits below the fold
+      await tester.ensureVisible(find.text('+15'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+15'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/controls/children/child-1/bonus'), hasLength(1));
+      expect(
+          find.text(
+              "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+          findsOneWidget);
+      expect(find.textContaining('parental_consent_required'), findsNothing);
+    });
+
+    testWidgets('a refused wind-down says why, and the POST fired (#441)', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/controls/children/child-1/wind-down': (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+      });
+      // a taller surface, because the card sits in a lazy list that is not built at 800x600
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api,
+          surface: const Size(420, 2600));
+
+      final windDown = find.widgetWithIcon(OutlinedButton, Icons.bedtime_outlined);
+      expect(windDown, findsOneWidget, reason: 'the taller surface must build the card');
+      await tester.tap(windDown);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('15 min'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/controls/children/child-1/wind-down'), hasLength(1));
+      expect(
+          find.text(
+              "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+          findsOneWidget);
+      expect(find.textContaining('parental_consent_required'), findsNothing);
+    });
+
     testWidgets('empty history shows an honest empty state per device',
         (tester) async {
       final api = historyApi();

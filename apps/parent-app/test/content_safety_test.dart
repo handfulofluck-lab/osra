@@ -12,6 +12,7 @@ import 'package:familyshield_parent/features/content/snippet_vault_modal.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
+import 'package:familyshield_parent/features/onboarding/onboarding_messages.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -252,6 +253,52 @@ void main() {
 
     expect(addChildConsentRegionError(arLocalizations, refusal({'error': 'parental_consent_required'})), isNull,
         reason: 'the dialog has nothing to act on when consent is simply missing');
+  });
+
+  // #437 A2: the family-link pill is the main entry to pause/resume, so its refusal must read as a
+  // sentence and never as our own type name (`ControlsRefusal(428)`).
+  testWidgets('a refused pause from the family-link pill says why (#441)', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/controls/children/child-1/pause': (_) =>
+          const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+    });
+    await pumpScreen(tester, const DashboardScreen(), api);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Internet').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Pause'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
+    expect(
+        find.text(
+            "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+        findsOneWidget);
+    expect(find.textContaining('ControlsRefusal'), findsNothing);
+  });
+
+  // #437 A2: the same region sentence on the onboarding wizard's create, which used to collapse every
+  // 428 into "consent required" — sending a parent to ask for a consent the region had refused.
+  test('the onboarding child error names the region on a 428 mismatch', () {
+    final options = RequestOptions(path: '/v1/family/children');
+    DioException refusal(Map<String, dynamic> body) => DioException(
+          requestOptions: options,
+          response: Response(requestOptions: options, statusCode: 428, data: body),
+          type: DioExceptionType.badResponse,
+        );
+    final arLocalizations = AppLocalizationsAr();
+    final text = onboardingChildError(
+        arLocalizations, refusal({'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'}));
+    expect(text, contains(arLocalizations.regionEU));
+    expect(text, isNot(equals(arLocalizations.onboardingConsentRequired)),
+        reason: 'a region mismatch is actionable; "consent required" is not the same sentence');
+    expect(
+        onboardingChildError(arLocalizations, refusal({'error': 'parental_consent_required'})),
+        arLocalizations.onboardingConsentRequired);
   });
 
   // #437 part A: the add-child dialog shows the region sentence when the create route refuses the

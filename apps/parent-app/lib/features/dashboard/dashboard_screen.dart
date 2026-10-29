@@ -478,6 +478,14 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     } else {
       await pauseInternet(ref, child.id);
     }
+  } on ControlsRefusal catch (r) {
+    // #441 review: the pill is the main entry to pause/resume, so it needs the same sentence as the
+    // device card — and it must not print `ControlsRefusal(428)`, which is what '$e' became.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(readErrorText(l10n, r.error, () => l10n.internetChangeFailed('${r.error}'))),
+      ));
+    }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
@@ -491,19 +499,8 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
 /// yet, so "open Parental consent on the child's page" would point at a page that is not there — the
 /// fix is the dialog's own region dropdown, and the sentence names the region the server expected.
 String? addChildConsentRegionError(AppLocalizations l10n, DioException e) {
-  if (e.response?.statusCode != 428) return null;
-  final body = e.response?.data;
-  if (body is! Map || body['error'] != 'consent_jurisdiction_mismatch') return null;
-  final region = body['jurisdiction'];
-  if (region is! String || region.isEmpty) return null;
-  // The server sends a code; an Arabic sentence must not read «EU» inside it (review point 1).
-  final label = switch (region) {
-    'US' => l10n.regionUS,
-    'EU' => l10n.regionEU,
-    'UK' => l10n.regionUK,
-    _ => region,
-  };
-  return l10n.addChildConsentRegion(label);
+  final region = consentRefusalRegionLabel(l10n, e);
+  return region == null ? null : l10n.addChildConsentRegion(region);
 }
 
 class AddChildDialog extends ConsumerStatefulWidget {
