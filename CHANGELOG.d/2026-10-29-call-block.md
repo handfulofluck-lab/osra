@@ -15,5 +15,5 @@
 - The accessibility service now also receives notification events. From another app's notification the
   agent reads only the category, the ongoing flag, the post time and the three `CallStyle` intents, never
   the title, text or people. No NotificationListener is needed, so this works in the Play build.
-- `CallBlockPolicy` is pure; `CallBlockPolicyTest` has 15 rows for C1–C3, including the Flip4's
-  `ongoing=true` ring, the stale-poster case, the short cover, the dialer and the shared floor.
+- `CallBlockPolicy` is pure; `CallBlockPolicyTest` has 16 rows for C1–C3, including the Flip4's
+  `ongoing=true` ring, either order of ring event and RINGTONE, the stale-poster case, the short cover, the dialer and the shared floor.

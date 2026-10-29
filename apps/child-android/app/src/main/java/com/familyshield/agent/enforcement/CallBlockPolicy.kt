@@ -103,6 +103,12 @@ class CallBlockPolicy(
         }
         val posted = Posted(pkg, blocked, nowMs)
         lastPost = posted
+        // B5 (#449 review): the mode listener may report RINGTONE before the ring's own notification event.
+        // A blocked post that arrives during a ring nobody owns yet takes it, and the cover goes up.
+        if (blocked && mode == CallAudioMode.RINGTONE && ringPkg == null && !nonBlockedPostedDuringRing) {
+            ringPkg = pkg
+            if (!coverShown) out += showCover(nowMs)
+        }
         val parcel = notice.parcel ?: return out
         if (!parcel.isCall) return out
         lastCallPost = posted
@@ -186,7 +192,8 @@ class CallBlockPolicy(
     private fun inCall() = mode == CallAudioMode.IN_COMMUNICATION || mode == CallAudioMode.IN_CALL
 
     private fun showCover(nowMs: Long): CallAction {
-        coverUntilMs = nowMs + if (ringSeenWithCover) coverMaxMs else shortCoverMs
+        val ringing = ringSeenWithCover || mode == CallAudioMode.RINGTONE
+        coverUntilMs = nowMs + if (ringing) coverMaxMs else shortCoverMs
         return CallAction.ShowRingCover
     }
 

@@ -94,6 +94,16 @@ class CallBlockPolicyTest {
     }
 
     @Test
+    fun `B5 - RINGTONE before the ring's own event - the blocked post takes the ring, covers it, and its call is hung up`() {
+        val p = CallBlockPolicy()
+        assertEquals("nobody fresh yet", emptyList<CallAction>(), p.mode(CallAudioMode.RINGTONE, now = 0L))
+        assertEquals(listOf(CallAction.ShowRingCover), p.post(meet, parcel = null, now = 300L))
+        assertEquals("ringing: the long limit, not five seconds", emptyList<CallAction>(), p.tick(10_000L))
+        assertEquals(listOf(CallAction.RemoveRingCover), p.mode(CallAudioMode.IN_COMMUNICATION, now = 12_000L))
+        assertEquals(listOf(CallAction.HangUp(meet)), p.post(meet, ongoing, now = 13_000L))
+    }
+
+    @Test
     fun `M5 - a stale blocked poster never covers, hangs up or reports a later allowed call`() {
         val p = CallBlockPolicy()
         p.post(youtube, parcel = null, now = 0L)
