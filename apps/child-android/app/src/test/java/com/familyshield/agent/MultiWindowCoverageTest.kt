@@ -43,7 +43,8 @@ class MultiWindowCoverageTest {
 
     private val engine = RuleEngine()
 
-    private val own = "com.familyshield.agent"
+    // Derived, so a future applicationId cannot make these rows assert about a package that is not us.
+    private val own = EssentialPackages.OWN_PACKAGE
     private val launcher = "com.sec.android.app.launcher"
     private val chrome = "com.android.chrome"
     private val youtube = "com.google.android.youtube"

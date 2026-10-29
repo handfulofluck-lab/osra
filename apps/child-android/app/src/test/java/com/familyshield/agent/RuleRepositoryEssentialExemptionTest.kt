@@ -217,9 +217,9 @@ class RuleRepositoryEssentialExemptionTest {
             decide("com.familyshield.notanapp", rules(), at(DayOfWeek.MONDAY, 22)),
         )
         assertEquals(
-            "com.familyshield.agent",
+            EssentialPackages.OWN_PACKAGE,
             Decision.ALLOW,
-            decide("com.familyshield.agent", rules(), at(DayOfWeek.MONDAY, 22)),
+            decide(EssentialPackages.OWN_PACKAGE, rules(), at(DayOfWeek.MONDAY, 22)),
         )
     }
 

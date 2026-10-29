@@ -544,7 +544,7 @@ base URL, the paired device id and the test family's parent token.
 adb shell dumpsys window | grep isKeyguardShowing   # true: the human unlocks it; see below
 adb shell dumpsys activity activities | grep -i "topResumedActivity=.*LockActivity"   # no output = no overlay
 adb reverse --list                                  # empty, or forwards you know are yours
-adb shell pidof com.familyshield.agent              # a live process is the previous run's, not yours
+adb shell pidof com.osratech.child              # a live process is the previous run's, not yours
 curl -s "$API/v1/devices/$DEV/commands/history?limit=10" -H "Authorization: Bearer $TOKEN"
 # no pending/delivered lock, pause, pause_internet or ring from the previous owner: the queue is
 # durable and a lock waits 24 h (services/api/src/lib/deviceCommands.ts:41), so it can land on you
@@ -570,7 +570,7 @@ adb shell dumpsys activity activities | grep -i "topResumedActivity=.*LockActivi
 system to dismiss the keyguard as well; it does not bypass a secure keyguard, and agents must never try
 the human's PIN. If the keyguard is showing, the takeover stops there and waits for the human.
 
-Last resort when the API or agent is unreachable: `adb shell am force-stop com.familyshield.agent`
+Last resort when the API or agent is unreachable: `adb shell am force-stop com.osratech.child`
 removes the overlay with the process, but it also leaves the app in the stopped state — no receiver, job
 or accessibility rebinding until it is launched again (measured by probe row 3, §5f). Record that you
 did it; the next owner relaunches and re-grants.
@@ -602,9 +602,9 @@ adb install -r apps/child-android/app/build/outputs/apk/full/release/app-full-re
 # A DEBUG build is `android:testOnly` since #170, so adb refuses it without -t:
 #   adb install -t -r apps/child-android/app/build/outputs/apk/full/debug/app-full-debug.apk
 # pair with a code minted by the API, then verify what the build claims:
-adb logcat -c && adb shell monkey -p com.familyshield.agent -c android.intent.category.LAUNCHER 1
+adb logcat -c && adb shell monkey -p com.osratech.child -c android.intent.category.LAUNCHER 1
 adb logcat -d | grep -c "FATAL EXCEPTION"                       # must be 0
-adb shell dumpsys activity services com.familyshield.agent      # isForeground=true types=0x8 (location)
+adb shell dumpsys activity services com.osratech.child      # isForeground=true types=0x8 (location)
 adb logcat -d | grep "location/ping"                            # <-- 201 Created is the proof of upload
 psql -c 'SELECT count(*) FROM "LocationPing"'                   # a row means it really persisted
 ```
@@ -625,7 +625,7 @@ makes. Paste the raw evidence into the issue.
 # keyguard PIN.
 # THEN confirm no OSRA admin is left, and uninstall, and clear the reverse mapping:
 adb shell dumpsys device_policy | grep -i familyshield    # no output = the admin is gone
-adb uninstall com.familyshield.agent && adb reverse --remove-all
+adb uninstall com.osratech.child && adb reverse --remove-all
 psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql
 psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # expect 1 / 1
 node services/api/scripts/cleanup-test-redis.mjs            # dry run: lists orphaned per-device keys
@@ -640,7 +640,7 @@ component). Use it only when the app itself cannot run, and record that you did:
 
 ```bash
 # LAST RESORT ONLY — never on a Samsung whose admin came from the system sheet.
-adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.GuardianAdminReceiver
+adb shell dpm remove-active-admin --user 0 com.osratech.child/com.familyshield.agent.security.GuardianAdminReceiver
 ```
 
 On a debug (`testOnly`) build this command still exits 0 without the app PIN (#170), but that
@@ -659,12 +659,12 @@ still exists, because that key is the control that makes an unpaired device's 10
 ## 5a. Tamper protection on hardware (ADR-0010, plan 1.1/1.2)
 
 With the agent paired and a parent PIN set (the pairing flow asks for it), activate Device Admin from the
-status screen (or, for a test, `adb shell dpm set-active-admin com.familyshield.agent/.security.GuardianAdminReceiver`).
+status screen (or, for a test, `adb shell dpm set-active-admin com.osratech.child/com.familyshield.agent.security.GuardianAdminReceiver`).
 Then prove each line of the acceptance:
 
 ```bash
-adb uninstall com.familyshield.agent          # must FAIL: Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]
-adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.familyshield.agent
+adb uninstall com.osratech.child          # must FAIL: Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]
+adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.osratech.child
 #   -> within ~1 s the OSRA "Protected" PIN screen is on top (uiautomator dump shows "Parent PIN");
 #      the API log shows POST /v1/alerts/internal 201 (category tamper, type protection_screen_opened)
 # Revoke admin the only way the OS allows (the shell refuses: `dpm remove-active-admin` throws
@@ -684,12 +684,12 @@ and the next activation through the system sheet fails with `Admin is already ad
 Clean up the way a parent would:
 
 ```
-status screen → Remove protection (parent PIN) → adb uninstall com.familyshield.agent
+status screen → Remove protection (parent PIN) → adb uninstall com.osratech.child
 ```
 
 The PIN-gated path is Knox-aware since #186 and is the route the product itself uses. If the app
 cannot be driven,
-`adb shell dpm remove-active-admin --user 0 com.familyshield.agent/.security.GuardianAdminReceiver` is
+`adb shell dpm remove-active-admin --user 0 com.osratech.child/com.familyshield.agent.security.GuardianAdminReceiver` is
 allowed **only** off Samsung or for an admin set with `dpm set-active-admin`, and must be recorded.
 
 `testOnly` is deliberately **debug-only**: it makes an APK replaceable without the parent's consent, so
@@ -745,8 +745,8 @@ Fresh install, pair, set the PIN, then revoke one required grant at a time and c
 **Finish protection** button must open the checklist with that row red, its button must open the
 screen that grants it, and coming back without granting must leave the row red. Quick toggles from the
 shell: accessibility `settings put secure enabled_accessibility_services ""`; overlay `appops set
-com.familyshield.agent SYSTEM_ALERT_WINDOW deny`; usage `appops set com.familyshield.agent
-GET_USAGE_STATS deny`; background location `pm revoke com.familyshield.agent
+com.osratech.child SYSTEM_ALERT_WINDOW deny`; usage `appops set com.osratech.child
+GET_USAGE_STATS deny`; background location `pm revoke com.osratech.child
 android.permission.ACCESS_BACKGROUND_LOCATION`; Private DNS `settings put global private_dns_mode
 hostname` + `settings put global private_dns_specifier dns.google` (restore with `off`). "Setup
 complete" must not be reachable from a fresh pairing while any of the seven is missing.
@@ -775,14 +775,14 @@ distinct from exit `1` for "a check failed". Rotate the PIN if it has ever been 
 **Cleanup on a debug build is the app's PIN-gated removal too (issue #217).** The probe is run against a
 debug APK, which is `android:testOnly`; that does **not** make `dpm remove-active-admin` the procedure.
 End the run with the status screen's **REMOVE PROTECTION (PARENT PIN)** and then `adb uninstall
-com.familyshield.agent` (§5). On Samsung the shell command strands Knox's admin record and blocks the
+com.osratech.child` (§5). On Samsung the shell command strands Knox's admin record and blocks the
 next sheet activation, so it is a last resort there, not a shortcut. The `-Pin` above is still needed
 for the probe's in-app steps (the lock and ring gates). A **release** build has no `testOnly` and keeps
 the same PIN-gated removal; that is the intended difference, not a bug.
 
 **A testOnly/debuggable build cannot produce gate evidence (issue #178, `QA/TESTING-STRATEGY.md` §3b).**
-Before the first row the probe reads `adb shell dumpsys package com.familyshield.agent` and inspects
-`flags=[ … TEST_ONLY … DEBUGGABLE … ]`; `adb shell run-as com.familyshield.agent true` is the second
+Before the first row the probe reads `adb shell dumpsys package com.osratech.child` and inspects
+`flags=[ … TEST_ONLY … DEBUGGABLE … ]`; `adb shell run-as com.osratech.child true` is the second
 signal (a debug package exits 0, anything else prints `run-as: package not debuggable: …` and exits 1).
 On a `test-only` or `debuggable` build the probe exits **3 without measuring a row**. A development run
 may pass `-AllowTestBuild`: every row's evidence is then prefixed
@@ -956,7 +956,7 @@ code; both are measurements, and neither decides the row.
 It reads the launchable third-party packages the **device** reports (`pm list packages -3`
 intersected with `cmd package query-activities` for `MAIN`/`LAUNCHER`), reads the list the **API
 stored** (`GET /v1/devices/:id/apps`, parent token with the `rules` permission), and compares them
-as sets. `com.familyshield.agent` is excluded from the device set because the collector skips
+as sets. `com.osratech.child` is excluded from the device set because the collector skips
 itself. The two gated directions are: a launchable user app on the device but not stored, and a
 stored package the device no longer has. The documented tolerance is `-ToleranceSeconds` (default
 60 s of clock skew): an app whose `firstInstallTime` is at or after `reportedAt` minus that margin
@@ -1023,7 +1023,7 @@ after its parent dies.
 
 | Trap | What happened | Rule |
 |---|---|---|
-| `settings put secure enabled_accessibility_services` with the short component (`pkg/.services.X`) | One UI (Android 16) accepted the write and silently dropped it: the status screen said "Missing: Accessibility service" and the guard/lock re-raise were off for the rest of the run | Always write the **full** class name: `com.familyshield.agent/com.familyshield.agent.services.AccessibilityMonitorService`; read it back with `settings get` before trusting it |
+| `settings put secure enabled_accessibility_services` with the short component (`pkg/.services.X`) | One UI (Android 16) accepted the write and silently dropped it: the status screen said "Missing: Accessibility service" and the guard/lock re-raise were off for the rest of the run | Always write the **full** class name: `com.osratech.child/com.familyshield.agent.services.AccessibilityMonitorService`; read it back with `settings get` before trusting it |
 | `am start-foreground-service` from `adb shell` on a non-exported service | Android 14+ answers `Requires permission not exported from uid …`; the service looked "started" (`ServiceRecord … app=null`) and nothing polled | Start the agent through its launcher activity (`am start -n …/.setup.PairingActivity`) or by enabling the accessibility service; never rely on a shell service start |
 | `media volume` is not on One UI | `ping`-style scripts that read the alarm stream got blank values | Use `cmd media_session volume --stream 4 --get` / `--set N` |
 | A PowerShell wrapper around `adb` eats `-c`, `-d`, `-s` | `adb shell ping -c 1` and `adb logcat -d` inside a function ran without their flags (logcat then streamed forever) | Call the exe directly for anything with dash arguments; `$host` is a reserved variable |
@@ -1034,7 +1034,7 @@ after its parent dies.
 | A bedtime / school / allow-list rule covers the **home screen**, and Home does nothing on the phone | The rule is evaluated for whatever is in the foreground, so "block" was answered for the launcher too. Before issue #165 only the empty-cache path consulted the essential list, and the JVM suite was green because it never asked what the launcher package is. Seen on the Flip4 during TR-22 (relaunch after midnight, seeded bedtime 21:00–07:00; evidence in `C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-ROW3.md`) | The essential set (`enforcement/EssentialPackages.kt`) is consulted before any rule, and `AppBlocker` re-checks with `PackageFacts` (HOME role + system dialer). Verify on hardware with the #165 check: after Home, `dumpsys window \| grep mCurrentFocus` names the launcher, `adb shell am start -a android.intent.action.DIAL` reaches the dialer, and a named blocked app still shows the overlay. Do not add one package name to the table to fix one device without checking the role path, and never "fix" the report by removing the bedtime rule |
 | An accessibility event's **package is not always the app in front** — the launcher is blocked although its name is in the essential set | The fix for #165 held in JVM and failed on the phone: with bedtime active on the Flip4 (Android 16, WM-Shell), the Home transition arrives as a `TYPE_WINDOW_STATE_CHANGED` event whose `packageName` is **`android`** (the framework), not `com.sec.android.app.launcher`. The overlay's subtitle showed the evidence — the package handed to `showBlockScreen` was `android` — and `EssentialPackages` never had that name (`C:\KARIM\tr-kimi\hw-2026-10-19\RESULTS-165.md`, rows 3a/3b) | Decide from the window in front, not from the event: `EssentialPackages.foregroundPackage(eventPackage, windowPackage)` takes the event's package as a **hint** and the active window's package (event source, else `rootInActiveWindow`) as the authority. `AccessibilityMonitorService` resolves once per event and uses the result for the guard, the lock, the usage counter and the block decision; `android` alone resolves to `null` and raises no overlay. Do **not** add `android` to `EssentialPackages.EXACT` — it fronts dialogs and shell surfaces, so it would exempt far more than Home. Check every consumer of "which app is in front" when touching this |
 | A block/lock decision is JVM-green and the blocked app still **shows beside or above** the overlay | #171 decided from `rootInActiveWindow` alone, so an app that was visible but not active was never named: a YouTube video in PiP over Home made the launcher (essential → ALLOW) the only decision, and the other half of a split screen did the same (issue #175) | `AccessibilityMonitorService.windowSnapshot()` reads every `TYPE_APPLICATION` window including `isInPictureInPictureMode`, and `EssentialPackages.blockCandidates` runs the same rules on the active app **and** the other visible ones; `LockEnforcementPolicy` answers from the same snapshot. The overlay activities are `resizeableActivity="false"` (the public way to leave split) and `supportsPictureInPicture="false"`. There is **no** public way to close another app's PiP window: `setPictureInPictureParams` belongs to the target, so a PiP video stays above the overlay; since the #175 follow-up the accessibility service also draws its own opaque `TYPE_ACCESSIBILITY_OVERLAY` cover over the blocked PiP window's bounds (`PipCoverDecision`, removed when the window goes) and tries `ACTION_DISMISS` on its root (logged as accepted / not supported). `BlockRaisePolicy` owns the block path: in the **normal** layout there is no budget — a blocked app that comes back on top (the Meet call screen) is sent Home and covered again every time, at most once a second; in PiP and split screen two raises, then one `tamper` alert `block_bypass` with the app and layout — only when the PiP or split state **survives** both raises (on the Flip4 the first raise already clears a split, so R2 correctly sends none), and at most once per app per ten minutes however often the episode restarts. `GLOBAL_ACTION_HOME` is never sent while the active window is essential (`VisibleBlockStep`): a blocked video in PiP over a call is covered and raised, the call is not sent Home. The lock path keeps `OverlayRetryBudget` (3 per window-state signature). Whether the cover sits above the pinned PiP task on One UI, and whether a background activity start right after Home is delayed, are **hardware** rows, not JVM claims. Measure both things on a clean phone: the overlay is up, and whether the video keeps playing over it. Do not "fix" this by adding an audio-focus pause without the measurement (ADR-0026) |
-| A security exemption is written as `startsWith("<our own package namespace>.")` | `EssentialPackages` exempted every `com.familyshield.*` name from every block rule, so a sideloaded app could call itself `com.familyshield.notanapp` (or exactly `com.familyshield.`) and escape bedtime, blocklists, pause, screen time and the overlay. The Full build is the sideloaded artefact and Android does not reserve a namespace; the prefix was meant for "our own components", which is a finite set (issue #192, found in the 2026-10-19 ledger review) | Exempt **exactly** the package(s) the app is built under (`applicationId` in `apps/child-android/app/build.gradle.kts`, currently `com.familyshield.agent` for both flavours) as an explicit allow-list — never a namespace prefix or a `startsWith` on a shorter string. Keep the OS-assigned roles (HOME, dialer) as dynamic tests; those are surfaces, not names. The JVM pin is `EssentialPackagesTest`: the agent package is essential, while `com.familyshield.notanapp`, `com.familyshield.agent.notanapp` and the prefix-equal `com.familyshield.` stay blockable through both `isEssential` overloads |
+| A security exemption is written as `startsWith("<our own package namespace>.")` | `EssentialPackages` exempted every `com.familyshield.*` name from every block rule, so a sideloaded app could call itself `com.familyshield.notanapp` (or exactly `com.familyshield.`) and escape bedtime, blocklists, pause, screen time and the overlay. The Full build is the sideloaded artefact and Android does not reserve a namespace; the prefix was meant for "our own components", which is a finite set (issue #192, found in the 2026-10-19 ledger review) | Exempt **exactly** the package(s) the app is built under (`applicationId` in `apps/child-android/app/build.gradle.kts`, currently `com.osratech.child` for both flavours) as an explicit allow-list — never a namespace prefix or a `startsWith` on a shorter string. Keep the OS-assigned roles (HOME, dialer) as dynamic tests; those are surfaces, not names. The JVM pin is `EssentialPackagesTest`: the agent package is essential, while `com.familyshield.notanapp`, `com.familyshield.agent.notanapp` and the prefix-equal `com.familyshield.` stay blockable through both `isEssential` overloads |
 | Probe row S1 reads "LockActivity on top" on a phone with a secure lock | `lock` is a real `lockNow()` (ADR-0010): the OS keyguard sits above `LockActivity` **and** above anything `am start` launches, so the dialer can never reach the front whatever the policy does | Unlock the phone (swipe or PIN) with the lock overlay up before measuring. The probe now reports the row as **NOT MEASURED** and exits non-zero instead of FAIL (`scripts/hardware/android-bypass-probe.ps1`, 2026-10-17) |
 | `FATAL EXCEPTION: main … ForegroundServiceDidNotStartInTimeException` in a receiver, although the service saw the missing permission and called `stopSelf()` | `startForegroundService()` starts a clock that only `startForeground()` stops: returning `START_NOT_STICKY` and stopping **without** ever calling `startForeground()` still trips the deadline. "Check the permission inside the service and bail" is therefore not a safe pattern | Guard **before** `startForegroundService()` — `BootStartPolicy` (issue #128). A service that cannot legally start foreground must not be requested at all |
 | A new `ContextCompat.startForegroundService(… LocationService::class.java)` call site is added with a fine/coarse check only | #128 fixed boot, but `AccessibilityMonitorService` and `locate_now` kept starting the location FGS on a while-in-use grant alone; Android 14+ refuses a location FGS created from the background without `ACCESS_BACKGROUND_LOCATION` (issue #132). A JVM test of the policy proves the rule, not that the new call site asks it | Route background starts through `LocationStartPolicy` (fine **or** coarse plus the background grant on API 29+). Foreground-activity starts go in `LocationServiceStartSitesTest.FOREGROUND_START_SITES` with the reason; the test fails for any unlisted site without a policy reference. A refused `locate_now` must ack `failed` with `detail.reason = background_location_missing` so `/commands/history` shows it |

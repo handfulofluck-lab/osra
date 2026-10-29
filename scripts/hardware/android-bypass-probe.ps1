@@ -51,7 +51,7 @@ if ([string]::IsNullOrWhiteSpace($Pin)) {
         "(#151); it is the app PIN for the test family, not the phone's keyguard PIN.")
     exit 2
 }
-$PKG = "com.familyshield.agent"; $BASE = "http://127.0.0.1:$Port"
+$PKG = "com.osratech.child"; $BASE = "http://127.0.0.1:$Port"
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
 $LOG = Join-Path $Out "bypass-probe.log"; if (Test-Path $LOG) { Remove-Item $LOG }
 $S = @(); if ($Serial) { $S = @("-s", $Serial) }
