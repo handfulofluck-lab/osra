@@ -4,6 +4,7 @@
  * the macOS runner from this checkout, never against a shared or deployed server.
  *
  *   node scripts/live-api.mjs setup    # seeded parent logs in, adds a child with consent, sets its rules, mints a code
+ *   node scripts/live-api.mjs approve  # in the background during the XCTest run: the parent taps Allow (plan 2.7)
  *   node scripts/live-api.mjs verify   # after the XCTest run: the parent sees the agent's alert and location
  *
  * `setup` seeds through the API itself, as services/api/scripts/e2e.mjs does, and hands the tests their
@@ -79,6 +80,8 @@ async function setup() {
   exportEnv("TEST_RUNNER_OSRA_TEST_API_BASE", API);
   exportEnv("TEST_RUNNER_OSRA_TEST_CHILD_ID", childId);
   exportEnv("TEST_RUNNER_OSRA_TEST_PAIR_CODE", pair.data.code, { secret: true });
+  // The approver (below) reads the same code to find the claim on the parent's side.
+  exportEnv("OSRA_TEST_PAIR_CODE", pair.data.code, { secret: true });
   exportEnv("OSRA_TEST_CHILD_ID", childId);
 }
 
@@ -118,7 +121,34 @@ async function verify() {
   console.log("live-api: the parent sees the iOS agent's alert and location");
 }
 
+/**
+ * Plan 2.7: the parent approves each new device. Case 1's claim waits for this: it watches the code from
+ * the parent's side, checks the pending claim is the simulator's (`platform: "ios"`, the case's device
+ * name), taps Allow, and exits 0. It fails rather than approving anything else, and gives up after 5 min.
+ */
+async function approve() {
+  const code = process.env.OSRA_TEST_PAIR_CODE;
+  if (!code) fail("OSRA_TEST_PAIR_CODE is not set (run setup first)");
+  const token = await login();
+  const deadline = Date.now() + 300_000;
+  while (Date.now() < deadline) {
+    const res = await call("GET", `/v1/devices/pair/${code}/claim`, { token });
+    if (res.status !== 200) fail(`GET /v1/devices/pair/:code/claim answered ${res.status}`);
+    if (res.data?.status === "pending") {
+      console.log(`pending claim as the parent sees it: platform=${res.data.platform} deviceName=${res.data.deviceName}`);
+      if (res.data.platform !== "ios" || res.data.deviceName !== "iOS live test") fail("the pending claim is not the simulator's");
+      const allow = await call("POST", `/v1/devices/pair/claims/${encodeURIComponent(res.data.claimId)}/approve`, { token });
+      if (allow.status !== 200) fail(`approving the claim answered ${allow.status}`);
+      console.log("live-api: the parent allowed the iPhone");
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  fail("no claim arrived within 5 minutes");
+}
+
 const mode = process.argv[2];
 if (mode === "setup") await setup();
+else if (mode === "approve") await approve();
 else if (mode === "verify") await verify();
-else fail("usage: live-api.mjs setup|verify");
+else fail("usage: live-api.mjs setup|approve|verify");

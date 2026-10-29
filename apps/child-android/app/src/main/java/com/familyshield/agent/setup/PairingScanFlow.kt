@@ -15,7 +15,10 @@ data class PairingRequest(
  * The confirm step is therefore reachable without a camera — it is plain state, not a camera callback —
  * and the typed form keeps its own path next to it.
  */
-class PairingScanFlow {
+class PairingScanFlow(
+    /** Release builds pass true: a scanned server must be an OSRA host ([PairingApproval.isReleasePairingHost]). */
+    private val releaseHostsOnly: Boolean = false,
+) {
 
     sealed interface State {
         data object Idle : State
@@ -29,7 +32,7 @@ class PairingScanFlow {
     /** Decodes [raw] and moves to [State.Review] or [State.Rejected]; never returns a request. */
     fun scan(raw: String): State {
         state = try {
-            State.Review(PairQrPayload.decode(raw))
+            State.Review(PairQrPayload.decode(raw, releaseHostsOnly))
         } catch (e: PairQrFormatException) {
             State.Rejected(e.message ?: "not an OSRA pairing code")
         }

@@ -120,9 +120,32 @@ wording here said `VAULT_KEY=<same>`, which supplies the 64-character secret and
 in all 13 tables, ADR-0013) instead of printing a `NOTE` that the count was skipped — that skip is not a
 pass. The probe does not need it, and deliberately has no database connection (§6).
 
+### Pairing waits for the parent's Allow (plan 2.7) — probe `G2b`–`G2i`
+
+Since plan 2.7 a pairing code alone gets no device token. `POST /v1/devices/pair/claim` answers `202`
+with a claim id and a poll secret; the parent allows the claim (`POST /v1/devices/pair/claims/:id/approve`),
+and the phone's next `POST /v1/devices/pair/claims/:id/poll` gets the token (`201`, once). Every script
+that pairs a device does all three steps as the parent it already logs in as: `claimApproved()` in
+`qa-probe.mjs` and `e2e.mjs`, and `live-api.mjs approve` in the iOS live job, which runs alongside the
+simulator and allows only the simulator's own claim. A script that still expects `201` from the claim
+itself is out of date.
+
+| Row | What fails if the guard goes |
+|---|---|
+| `G2b` | a claim the parent has not allowed gets no token |
+| `G2c` | a second claim on a code with a pending one is `409 claim_pending` (the Lua `SET NX`; only a real Redis exercises it) |
+| `G2d` | a wrong poll secret gets no token |
+| `G2e` | another family's parent can neither see, allow nor deny the claim |
+| `G2f`, `G2g` | Deny gives `410` and burns the code |
+| `G2h`, `G2i` | nine wrong secrets leave a claim alone; the tenth burns it, wherever the guesses come from |
+
+Before section Q the run sends close to 200 requests in its first minute, so `call()` reads the global
+limiter's headers and waits out the window when it is nearly spent, as `qcall` does in Q. A full run takes
+about three minutes and reports `rate limit: 0 x 429`.
+
 ### The authorization matrix, column by column (plan 2.7) — probe `Q1`–`Q9`
 
-Section Q walks the columns of `docs/QA/security/authz-matrix.md` across every JWT route the API registers (62).
+Section Q walks the columns of `docs/QA/security/authz-matrix.md` across every JWT route the API registers (65).
 It covers:
 
 - a revoked device (`Q1`) and a revoked parent session (`Q2`);

@@ -149,7 +149,20 @@ const retryAfterMs = (res) => {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : 1000;
 };
 
+/**
+ * The global limiter's window as the last response reported it (200 a minute per address, server.ts).
+ * Before Q, the run sends close to 200 requests inside one minute, so `call` waits out the window when
+ * it is nearly spent, as section Q's `qcall` does, instead of tripping the 429 abort. Only the global
+ * bucket is read (x-ratelimit-limit 200): the auth and pairing buckets are what some checks test.
+ */
+const globalWindow = { remaining: Infinity, resetAt: 0 };
+const GLOBAL_LIMIT = "200";
+
 async function call(method, path, { token, body, hmac, secret, rawBody, headers } = {}) {
+  if (globalWindow.remaining <= 3 && globalWindow.resetAt > Date.now()) {
+    await new Promise((r) => setTimeout(r, globalWindow.resetAt - Date.now() + 300));
+    globalWindow.remaining = Infinity;
+  }
   const raw = rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body);
   const send = () => fetch(`${API}${path}`, {
     method,
@@ -162,6 +175,12 @@ async function call(method, path, { token, body, hmac, secret, rawBody, headers 
     body: raw,
   });
   let res = await send();
+  if (res.headers.get("x-ratelimit-limit") === GLOBAL_LIMIT) {
+    const remaining = Number(res.headers.get("x-ratelimit-remaining"));
+    const reset = Number(res.headers.get("x-ratelimit-reset"));
+    if (Number.isFinite(remaining)) globalWindow.remaining = remaining;
+    if (Number.isFinite(reset)) globalWindow.resetAt = Date.now() + reset * 1000;
+  }
   // The API's own 429s are answers, not throttling: ADR-0031 decision 7 refuses a fourth reset request
   // in 30 days with `429 reset_limit_reached`. Only the codes in APP_429_ERRORS go back to the check that
   // asked; any other 429 (the rate limiter's "Too Many Requests", a proxy's) is throttling, as before (#112).
@@ -476,13 +495,24 @@ if (deviceIdA) scanSecrets("F7 /devices/:id", (await call("GET", `/v1/devices/${
 
 // ── G. device lifecycle, per-device secrets, revocation (verified 2026-10-11) ─
 console.log("\n── G. device lifecycle (pairing claim flow) ──");
-/** Parent mints a code, the device claims it — returns a real device JWT + per-device secret. */
+/**
+ * The device claims `code` and the family's parent (`parentToken`) taps Allow; the device's poll then
+ * gets the token (plan 2.7, osra-security#3 PR 2). Answers with the poll's response, which has the body
+ * `/pair/claim` used to return. A claim that is not 202 comes back as it is.
+ */
+async function claimApproved(code, body, parentToken) {
+  const claim = await call("POST", "/v1/devices/pair/claim", { body: { code, ...body } });
+  if (claim.status !== 202) return claim;
+  const approve = await call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/approve`, { token: parentToken });
+  if (approve.status !== 200) return approve;
+  return call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/poll`, { body: { pollSecret: claim.data.pollSecret } });
+}
+
+/** Parent mints a code, the device claims it and the parent allows it — a real device JWT + per-device secret. */
 async function pairDevice(childId, label) {
   const code = (await call("POST", "/v1/devices/pair", { token: tokenA, body: { childId } })).data?.code;
   if (!code) return { status: 0 };
-  const claim = await call("POST", "/v1/devices/pair/claim", {
-    body: { code, platform: "android", model: label, osVersion: "14", deviceName: label },
-  });
+  const claim = await claimApproved(code, { platform: "android", model: label, osVersion: "14", deviceName: label }, tokenA);
   return {
     token: claim.data?.token,
     secret: claim.data?.hmacSecret,
@@ -498,6 +528,77 @@ const d1 = await pairDevice(kidA, "qa-dev-1");
 const d2 = await pairDevice(kidA2, "qa-dev-2");
 check("G1 pairing claim returns device token + per-device secret", !!d1.token && !!d1.secret, `status=${d1.status}`);
 check("G2 second device paired", !!d2.token && !!d2.deviceId, `status=${d2.status}`);
+
+// G2b–G2i: the parent approves each new device (plan 2.7, osra-security#3 PR 2). Three codes, four claims
+// (the /pair/claim bucket is 10 a minute; the whole run uses ten, spread over its first minutes). Mutants, run against a live API:
+// mint the token in the claim handler again -> G2b fails (201, a token before anyone allowed it); drop
+// the SET NX on `pair:<code>:claim` -> G2c (202); skip pollSecretMatches -> G2d (201); drop the family
+// comparison in the approve route -> G2e (200); leave the code in place on Deny -> G2g (409).
+{
+  const code = (await call("POST", "/v1/devices/pair", { token: tokenA, body: { childId: kidA } })).data?.code;
+  const claim = code ? await call("POST", "/v1/devices/pair/claim", { body: { code, platform: "android", model: "qa-unapproved", osVersion: "14" } }) : { status: 0, data: null };
+  const { claimId, pollSecret } = claim.data ?? {};
+  if (claim.status === 202 && claimId && pollSecret) {
+    const poll = await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret } });
+    check("G2b a pairing claim the parent has not allowed gets no token (claim 202, poll 202 pending)", poll.status === 202 && !poll.data?.token && !claim.data?.token, `claim=${claim.status} poll=${poll.status} token=${!!(poll.data?.token ?? claim.data?.token)}`);
+    const second = await call("POST", "/v1/devices/pair/claim", { body: { code, platform: "android", model: "qa-second", osVersion: "14" } });
+    check("G2c a second claim on a code with a pending claim is refused (409 claim_pending)", second.status === 409 && second.data?.error === "claim_pending", `got ${second.status} ${second.data?.error ?? ""}`);
+    // Family B tries while the claim is still pending, so a missing family check would let it through.
+    const view = await call("GET", `/v1/devices/pair/${code}/claim`, { token: tokenB });
+    const otherAllow = await call("POST", `/v1/devices/pair/claims/${claimId}/approve`, { token: tokenB });
+    const otherDeny = await call("POST", `/v1/devices/pair/claims/${claimId}/deny`, { token: tokenB });
+    await call("POST", `/v1/devices/pair/claims/${claimId}/approve`, { token: tokenA });
+    const wrong = await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret: "x".repeat(43) } });
+    check("G2d an approved claim polled with the wrong secret gets no token (404)", wrong.status === 404 && !wrong.data?.token, `got ${wrong.status}`);
+    check("G2e another family's parent can neither see, allow nor deny the claim (404, 404, 404)", view.status === 404 && otherAllow.status === 404 && otherDeny.status === 404, `view=${view.status} approve=${otherAllow.status} deny=${otherDeny.status}`);
+    // G2h/G2i: ten wrong secrets burn the claim, wherever they come from. Half of the guesses carry another
+    // X-Forwarded-For (a rotated address when the API trusts one proxy hop; ignored otherwise, and the
+    // count is per claim either way). Mutant: drop recordPollMiss -> the right secret gets 201.
+    // G2d already sent one wrong secret, so eight more make nine.
+    for (let i = 0; i < 8; i++) {
+      await call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret: `qa-wrong-${i}` }, headers: i % 2 ? { "x-forwarded-for": `198.51.100.${i}` } : {} });
+    }
+    // G2j: six right polls at the same moment. Exactly one gets the token and one device exists: the Lua
+    // compare-and-delete, which the unit tests emulate by name and cannot see (Claude's review, S10).
+    // The pool is warmed first: a batch that has to open its connections arrives one request at a time
+    // and never races (measured: a cold race of 2 or 6 gave 1 token under the mutant every time; warm, 6
+    // gave 3-6 tokens in each of 5 runs). Mutant: drop the compare -> several 201s and several devices.
+    await Promise.all(Array.from({ length: 6 }, () => fetch(`${API}/health`).then((r) => r.arrayBuffer())));
+    const racing = await Promise.all(Array.from({ length: 6 }, () => call("POST", `/v1/devices/pair/claims/${claimId}/poll`, { body: { pollSecret } })));
+    const winners = racing.filter((r) => r.status === 201 && r.data?.token);
+    check("G2h nine wrong secrets leave an approved claim alone: the right secret still gets its token (201)", winners.length >= 1, `polls=${racing.map((r) => r.status).join(",")}`);
+    const kidDevices = ((await call("GET", "/v1/devices", { token: tokenA })).data?.devices ?? []).filter((d) => d.model === "qa-unapproved");
+    check("G2j six polls of an approved claim at the same moment: exactly one token (one 201, five 404) and one device", racing.map((r) => r.status).sort().join(",") === "201,404,404,404,404,404" && winners.length === 1 && kidDevices.length === 1, `polls=${racing.map((r) => r.status).join(",")} devices=${kidDevices.length}`);
+  } else {
+    target("G2b–G2e a pending claim (no 202 claim here)", `pair code=${!!code} claim=${claim.status}`);
+  }
+  // G2i: the tenth wrong secret burns a claim, so the right one then gets 404 and no token.
+  const code3 = (await call("POST", "/v1/devices/pair", { token: tokenA, body: { childId: kidA } })).data?.code;
+  const claim3 = code3 ? await call("POST", "/v1/devices/pair/claim", { body: { code: code3, platform: "android", model: "qa-burned", osVersion: "14" } }) : { status: 0, data: null };
+  if (claim3.status === 202) {
+    await call("POST", `/v1/devices/pair/claims/${claim3.data.claimId}/approve`, { token: tokenA });
+    for (let i = 0; i < 10; i++) {
+      await call("POST", `/v1/devices/pair/claims/${claim3.data.claimId}/poll`, { body: { pollSecret: `qa-wrong-${i}` }, headers: i % 2 ? { "x-forwarded-for": `198.51.100.${i}` } : {} });
+    }
+    const right = await call("POST", `/v1/devices/pair/claims/${claim3.data.claimId}/poll`, { body: { pollSecret: claim3.data.pollSecret } });
+    const view = await call("GET", `/v1/devices/pair/${code3}/claim`, { token: tokenA });
+    check("G2i ten wrong secrets burn the claim: the right secret then gets 404 and the parent's screen is back to waiting", right.status === 404 && !right.data?.token && view.data?.status === "waiting", `poll=${right.status} view=${view.status}/${view.data?.status}`);
+  } else {
+    target("G2i the burn rule (no 202 claim here)", `pair code=${!!code3} claim=${claim3.status}`);
+  }
+  // Deny on a fresh claim: the phone is told, and the code is burned (a second try on it is 404).
+  const code2 = (await call("POST", "/v1/devices/pair", { token: tokenA, body: { childId: kidA } })).data?.code;
+  const claim2 = code2 ? await call("POST", "/v1/devices/pair/claim", { body: { code: code2, platform: "android", model: "qa-denied", osVersion: "14" } }) : { status: 0, data: null };
+  if (claim2.status === 202) {
+    const deny = await call("POST", `/v1/devices/pair/claims/${claim2.data.claimId}/deny`, { token: tokenA });
+    const poll = await call("POST", `/v1/devices/pair/claims/${claim2.data.claimId}/poll`, { body: { pollSecret: claim2.data.pollSecret } });
+    check("G2f a denied claim gets no token (deny 200, poll 410 claim_denied)", deny.status === 200 && poll.status === 410 && poll.data?.error === "claim_denied", `deny=${deny.status} poll=${poll.status} ${poll.data?.error ?? ""}`);
+    const again = await call("POST", "/v1/devices/pair/claim", { body: { code: code2, platform: "android", model: "qa-denied", osVersion: "14" } });
+    check("G2g Deny burns the code: claiming it again is 404", again.status === 404, `got ${again.status} ${again.data?.error ?? ""}`);
+  } else {
+    target("G2f–G2g a denied claim (no 202 claim here)", `pair code=${!!code2} claim=${claim2.status}`);
+  }
+}
 
 if (d1.token) {
   // A device must not enumerate the family's devices or read a sibling's signing secret.
@@ -1282,7 +1383,7 @@ const mrKid = mrChild.data?.child?.id;
 // Paired, not merely registered: the witness code has to be readable from a real device queue.
 const mrPair = mrKid ? await call("POST", "/v1/devices/pair", { token: mrToken, body: { childId: mrKid } }) : { status: 0 };
 const mrClaim = mrPair.data?.code
-  ? await call("POST", "/v1/devices/pair/claim", { body: { code: mrPair.data.code, platform: "android", model: "qa-mfa-reset-dev", osVersion: "14", deviceName: "qa-mfa-reset-dev" } })
+  ? await claimApproved(mrPair.data.code, { platform: "android", model: "qa-mfa-reset-dev", osVersion: "14", deviceName: "qa-mfa-reset-dev" }, mrToken)
   : { status: 0 };
 const mrDeviceId = mrClaim.data?.device?.id ?? mrClaim.data?.deviceId;
 const mrDeviceToken = mrClaim.data?.token;
@@ -1487,7 +1588,7 @@ const nwChild = nwToken
   : { status: 0, data: {} };
 const nwPair = nwChild.data?.child?.id ? await call("POST", "/v1/devices/pair", { token: nwToken, body: { childId: nwChild.data.child.id } }) : { status: 0, data: {} };
 const nwClaim = nwPair.data?.code
-  ? await call("POST", "/v1/devices/pair/claim", { body: { code: nwPair.data.code, platform: "android", model: "qa-mfa-nowitness-dev", osVersion: "14", deviceName: "qa-mfa-nowitness-dev" } })
+  ? await claimApproved(nwPair.data.code, { platform: "android", model: "qa-mfa-nowitness-dev", osVersion: "14", deviceName: "qa-mfa-nowitness-dev" }, nwToken)
   : { status: 0, data: {} };
 const nwAfter = await call("POST", "/v1/auth/mfa/reset/request", { body: { email: nwEmail, password: PASSWORD } });
 check("O23 a family with no paired device and no other owner/co-parent is refused 409 no_witness, and the refusals store nothing (after three refusals and a newly paired device, the next request is an ordinary 200, not 429)", nwVerify.status === 200 && nwRefusals.every((r) => r.status === 409 && r.data?.error === "no_witness" && r.data?.requestId === undefined) && !!nwClaim.data?.token && nwAfter.status === 200 && !!nwAfter.data?.requestId, `verify=${nwVerify.status} refusals=${nwRefusals.map((r) => `${r.status}/${r.data?.error}`).join(",")} login=${nwLogin.status} claim=${nwClaim.status} after=${nwAfter.status}/${nwAfter.data?.error ?? "ok"}`);
@@ -1538,12 +1639,15 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
   }
   const kid = kidA2;
   const dev = d2.deviceId;
-  // Every JWT route in matrix §1 (62): health, pair/claim, the ticket-only GET /v1/ws, the HMAC-only
+  // Every JWT route in matrix §1 (65): health, pair/claim and its poll, the ticket-only GET /v1/ws, the HMAC-only
   // ingest routes and the /v1/auth routes (matrix §3) are the only ones left out.
   const jwtRoutes = [
     ["GET", "/v1/alerts"], ["POST", `/v1/alerts/${Z}/ack`, {}],
     ["POST", "/v1/devices/register", { childId: Z, platform: "android", model: "q", osVersion: "1" }],
     ["POST", "/v1/devices/pair", { childId: Z }],
+    // Plan 2.7: the parent's side of a pairing claim.
+    ["GET", "/v1/devices/pair/000000/claim"],
+    ["POST", `/v1/devices/pair/claims/${Z}/approve`, {}], ["POST", `/v1/devices/pair/claims/${Z}/deny`, {}],
     ["GET", "/v1/devices"], ["GET", `/v1/devices/${dev}`], ["GET", `/v1/devices/${dev}/apps`],
     ["POST", `/v1/devices/${Z}/apps`, { version: 1, apps: [] }],
     ["POST", `/v1/devices/${Z}/command`, { command: "unlock" }],
@@ -1634,6 +1738,9 @@ console.log("\n── Q. plan 2.7 authorization matrix ──");
     ["POST", `/v1/alerts/${Z}/ack`, {}, 403, "permission_required"],
     ["POST", "/v1/devices/register", { childId: Z, platform: "android", model: "q", osVersion: "1" }, 403, "permission_required"],
     ["POST", "/v1/devices/pair", { childId: Z }, 403, "permission_required"],
+    ["GET", "/v1/devices/pair/000000/claim", undefined, 403, "permission_required"],
+    ["POST", `/v1/devices/pair/claims/${Z}/approve`, {}, 403, "permission_required"],
+    ["POST", `/v1/devices/pair/claims/${Z}/deny`, {}, 403, "permission_required"],
     ["GET", `/v1/devices/${Z}/apps`, undefined, 403, "permission_required"],
     ["POST", `/v1/devices/${Z}/command`, { command: "unlock" }, 403, "permission_required"],
     ["DELETE", `/v1/devices/${Z}`, undefined, 403, "permission_required"],

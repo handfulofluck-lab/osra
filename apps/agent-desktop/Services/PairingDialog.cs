@@ -115,7 +115,8 @@ internal static class PairingDialog
             _status.Text = "Pairing…";
             try
             {
-                var config = await PairingService.ClaimAsync(apiBase, code, platform: "windows", parentPin: pin);
+                var config = await PairingService.ClaimAsync(apiBase, code, platform: "windows", parentPin: pin,
+                    onWaiting: () => _status.Text = "Waiting for your parent to tap Allow on their phone…");
                 if (config is null)
                 {
                     _status.ForeColor = Color.Firebrick;
@@ -126,6 +127,11 @@ internal static class PairingDialog
                 PairingService.Save(config);
                 PairCompleted?.Invoke(config);
                 Close();
+            }
+            catch (PairingRefusedException ex)
+            {
+                _status.ForeColor = Color.Firebrick;
+                _status.Text = ex.Message;
             }
             catch (Exception ex)
             {

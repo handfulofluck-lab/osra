@@ -56,9 +56,12 @@ This package contains tester-installable builds of the OSRA MVP.
    appears (valid 10 minutes).
 2. Install `OSRA-ChildAgent.apk` on the child's phone, open it, enter the
    backend **Server URL** + the code, tap **Pair this device**.
-3. Follow the on-screen step: enable the **OSRA** accessibility service
+3. The phone says it is waiting for the parent. On the parent app's pairing screen a card names
+   the phone ("… wants to be paired"): tap **Allow**. Tap **Deny** for a phone you don't
+   recognise, then **Regenerate** for a new code.
+4. Follow the on-screen step: enable the **OSRA** accessibility service
    (Settings → Accessibility). Enforcement starts immediately.
-4. The device shows up in the parent app (child page / dashboard) within a minute.
+5. The device shows up in the parent app (child page / dashboard) within a minute.
 
 ## 4. Pair a Windows PC
 
@@ -66,7 +69,8 @@ This package contains tester-installable builds of the OSRA MVP.
 2. Copy the `OSRA-Agent-Windows` folder to the child's PC and run
    `OSRA.Agent.exe`. On first run a pairing window asks for the **server
    URL**, the **code**, and the **parent PIN** for this PC (4–8 digits; there is
-   no default and `0000` is refused).
+   no default and `0000` is refused). After **Pair**, tap **Allow** on the parent app's pairing
+   screen, as for a phone.
 3. The agent then runs in the background (system tray/console): local web-filter
    proxy on `127.0.0.1:8877`, process blocking per rules, screen-time limits,
    bedtime lock. It auto-starts via the host (run it from shell:startup for

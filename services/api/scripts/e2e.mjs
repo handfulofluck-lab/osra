@@ -157,6 +157,15 @@ async function call(method, path, { token, body, hmac, secret } = {}) {
   return { status: res.status, data };
 }
 
+/** The device claims `code`, the parent allows it, and the device's poll gets the token (plan 2.7). */
+async function claimApproved(code, body, parentToken) {
+  const claim = await call("POST", "/v1/devices/pair/claim", { body: { code, ...body } });
+  if (claim.status !== 202) return claim;
+  const approve = await call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/approve`, { token: parentToken });
+  if (approve.status !== 200) return approve;
+  return call("POST", `/v1/devices/pair/claims/${claim.data.claimId}/poll`, { body: { pollSecret: claim.data.pollSecret } });
+}
+
 const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
 const nextMessage = (channel) =>
   new Promise((resolve, reject) => {
@@ -201,7 +210,7 @@ const deviceId = dev.data?.device?.id;
 // Phase 2b: an agent-side device with its own JWT, because the command drain is device-only
 // (probe note B11 — a parent token must never consume the queue).
 const AGENT_CODE = (await call("POST", "/v1/devices/pair", { token, body: { childId: sam.id } })).data?.code;
-const AGENT = await call("POST", "/v1/devices/pair/claim", { body: { code: AGENT_CODE, platform: "android", model: "E2EAgent", osVersion: "15" } });
+const AGENT = await claimApproved(AGENT_CODE, { platform: "android", model: "E2EAgent", osVersion: "15" }, token);
 const agentId = AGENT.data?.device?.id;
 const agentToken = AGENT.data?.token;
 check("agent device paired with a device JWT", AGENT.status === 201 && !!agentId && !!agentToken, `got ${AGENT.status}`);
@@ -436,10 +445,10 @@ await call("POST", `/v1/controls/children/${sam.id}/resume`, { token });
 
 // --- 11b. Token hygiene live: per-device HMAC (item 5) + device revocation (item 4) ---
 const CODE2 = (await call("POST", "/v1/devices/pair", { token, body: { childId: sam.id } })).data?.code;
-const CLAIM2 = await call("POST", "/v1/devices/pair/claim", { body: { code: CODE2, platform: "android", model: "HygienePhone", osVersion: "14" } });
+const CLAIM2 = await claimApproved(CODE2, { platform: "android", model: "HygienePhone", osVersion: "14" }, token);
 const devSecret = CLAIM2.data?.hmacSecret;
 const dev2 = CLAIM2.data?.device?.id;
-check("pair/claim mints a per-device HMAC secret", CLAIM2.status === 201 && typeof devSecret === "string" && devSecret.length === 64);
+check("the approved pairing mints a per-device HMAC secret", CLAIM2.status === 201 && typeof devSecret === "string" && devSecret.length === 64);
 const bodyWithDev = JSON.stringify({ childId: sam.id, deviceId: dev2, severity: "info", category: "web_threat", title: "hygiene", body: "x", metadata: {} });
 const devHeaders = signV2(devSecret, bodyWithDev);
 check("alert signed with the DEVICE secret (v2) -> 201", (await fetch(`${API}/v1/alerts/internal`, { method: "POST", headers: { "content-type": "application/json", ...devHeaders }, body: bodyWithDev })).status === 201);
@@ -479,6 +488,7 @@ if (process.env.DATABASE_URL) {
       alert: await db.alert.count(where), device: await db.device.count(where), ruleSet: await db.ruleSet.count(where),
       geofence: await db.geofence.count(where), consentRecord: await db.consentRecord.count(where),
       deviceCommand: await db.deviceCommand.count({ where: { deviceId: { in: erased.data?.deletedDevices ?? [] } } }),
+      pairingDecision: await db.pairingDecision.count(where),
       child: await db.child.count({ where: { id: sam.id } }),
     };
     check("erasure leaves ZERO child-scoped rows in every table (counted in Postgres)", Object.values(counts).every((n) => n === 0), JSON.stringify(counts));

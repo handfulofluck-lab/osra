@@ -1382,6 +1382,31 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.';
 
   @override
+  String get pairClaimTitle => 'A device is asking to join';
+
+  @override
+  String pairClaimBody(String device) {
+    return '$device wants to be paired. Allow it only if it is the phone in front of you.';
+  }
+
+  @override
+  String get pairClaimDeny => 'Deny';
+
+  @override
+  String get pairClaimAllowed => 'Allowed. The phone is finishing pairing…';
+
+  @override
+  String pairClaimPaired(String device) {
+    return '$device is paired.';
+  }
+
+  @override
+  String get pairClaimDenied => 'Declined. Make a new code to pair a phone.';
+
+  @override
+  String get pairClaimError => 'That did not go through. Try again.';
+
+  @override
   String get appearanceTitle => 'Appearance';
 
   @override

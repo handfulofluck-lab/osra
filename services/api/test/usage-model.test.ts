@@ -196,7 +196,7 @@ describe("usage model — reads and rollup", () => {
     // If a child-scoped model is added to prisma/schema.prisma this list must grow with it.
     expect([...CHILD_SCOPED_DELETE_ORDER]).toEqual([
       "deviceCommand", "deviceApp", "locationPing", "alert", "activityEvent", "socialEvent", "installRequest",
-      "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord", "child",
+      "webVisit", "appUsageDaily", "device", "ruleSet", "geofence", "consentRecord", "pairingDecision", "child",
     ]);
   });
 });

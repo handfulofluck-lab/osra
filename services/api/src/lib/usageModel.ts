@@ -270,6 +270,8 @@ export const CHILD_SCOPED_DELETE_ORDER = [
   "ruleSet",
   "geofence",
   "consentRecord",
+  // Plan 2.7: who allowed or refused which phone for this child.
+  "pairingDecision",
   "child",
 ] as const;
 
@@ -305,6 +307,7 @@ export async function eraseChildData(childId: string, deviceTokenTtlSeconds: num
     prisma.ruleSet.deleteMany({ where: { childId } }),
     prisma.geofence.deleteMany({ where: { childId } }),
     prisma.consentRecord.deleteMany({ where: { childId } }),
+    prisma.pairingDecision.deleteMany({ where: { childId } }),
     prisma.child.delete({ where: { id: childId } }),
   ]);
   const rows: Record<string, number> = {};
