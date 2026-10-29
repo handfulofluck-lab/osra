@@ -32,6 +32,14 @@ object TamperAlertDedupe {
      */
     fun guardPostKey(deviceId: String?, window: GuardAttemptWindow.State): String =
         "${guardAggregateKey(deviceId, window.windowStartMs)}|${window.count}"
+
+    /**
+     * Issue #175: one blocked app that stayed visible in picture-in-picture or split screen after the
+     * agent's raises. The episode (package + layout + when it began) is the identity, so the parent
+     * hears once per episode and a WorkManager retry is a no-op.
+     */
+    fun blockBypassKey(deviceId: String?, app: String, layout: String, episodeStartMs: Long): String =
+        "${deviceId ?: "unknown"}|${TamperAlertWorker.TYPE_BLOCK_BYPASS}|$app|$layout|$episodeStartMs"
 }
 
 /**

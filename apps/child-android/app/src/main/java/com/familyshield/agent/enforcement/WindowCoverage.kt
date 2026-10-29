@@ -12,6 +12,8 @@ package com.familyshield.agent.enforcement
 data class VisibleWindow(
     val packageName: String?,
     val inPictureInPicture: Boolean = false,
+    /** Where the window is on screen; the PiP cover is drawn over it ([PipCoverDecision]). */
+    val bounds: WindowBounds? = null,
 )
 
 /** The arrangement of the application windows visible in one accessibility event. */
