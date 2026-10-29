@@ -254,6 +254,30 @@ void main() {
         reason: 'the dialog has nothing to act on when consent is simply missing');
   });
 
+  // #437 part A: the add-child dialog shows the region sentence when the create route refuses the
+  // consent region (`family.ts:148`), not the wire code.
+  testWidgets('a region refusal on add child names the family region in the dialog', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/family/children': (_) =>
+          const FakeHttpError(428, {'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'}),
+    });
+    await pumpScreen(tester, const Scaffold(body: AddChildDialog()), api);
+
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Child name'), 'Alex');
+    await tester.enterText(find.widgetWithText(TextField, 'Birth year'), '2014');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add child'));
+    await flushFakeHttp(tester);
+
+    expect(
+        find.text("The consent region must match your family's region (European Union). "
+            'Choose European Union and try again.'),
+        findsOneWidget);
+    expect(find.textContaining('consent_jurisdiction_mismatch'), findsNothing);
+  });
+
   // #437 part A: a rule save refused for consent shows the sentence in the editor's banner, not the
   // wire code. The body is the one `requireConsent` sends (`middleware/requireConsent.ts:51`).
   testWidgets('a 428 on a rule save says why in the banner, not the raw code', (tester) async {

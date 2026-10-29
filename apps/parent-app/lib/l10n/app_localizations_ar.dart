@@ -558,7 +558,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get readErrorConsentRegion =>
-      'لم يُحفظ هذا التغيير: مُنحت موافقة هذا الطفل لمنطقة تختلف عن منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.';
+      'لم يُحفظ هذا التغيير: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.';
 
   @override
   String addChildConsentRegion(String region) {

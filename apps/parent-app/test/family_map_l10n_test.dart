@@ -248,7 +248,7 @@ void main() {
         'لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.');
     expect(
         readErrorText(ar, http(428, {'error': 'consent_jurisdiction_mismatch'}), () => 'fallback'),
-        'لم يُحفظ هذا التغيير: مُنحت موافقة هذا الطفل لمنطقة تختلف عن منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.');
+        'لم يُحفظ هذا التغيير: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.');
     expect(readErrorText(ar, http(428, {'error': 'something_else'}), () => 'fallback'), 'fallback',
         reason: "a bare 428 with an unknown code stays the screen's message, not an invented sentence");
   });
