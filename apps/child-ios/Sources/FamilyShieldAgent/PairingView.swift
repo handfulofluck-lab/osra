@@ -56,7 +56,10 @@ public struct PairingView: View {
                 }
                 .disabled(pairing || code.count != 6)
             } footer: {
-                Text("Ask your parent for the pairing code shown in the OSRA parent app.")
+                // Plan 2.7: after the claim, nothing is paired until the parent taps Allow on their phone.
+                Text(pairing
+                    ? "Waiting for your parent to tap Allow on their phone…"
+                    : "Ask your parent for the pairing code shown in the OSRA parent app.")
             }
         }
         .navigationTitle("Pair device")

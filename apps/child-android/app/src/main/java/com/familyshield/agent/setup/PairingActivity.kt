@@ -40,6 +40,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -190,7 +191,8 @@ class PairingActivity : ComponentActivity() {
     private val grants: GrantChecks by lazy { GrantChecks(this, deviceAdmin) }
 
     /** Roadmap 3.2: scan → review → confirm, with no pairing request until [PairingScanFlow.confirm]. */
-    private val scanFlow = PairingScanFlow()
+    // Plan 2.7: a release build pairs only with OSRA's own servers (PairingApproval.isReleasePairingHost).
+    private val scanFlow = PairingScanFlow(releaseHostsOnly = !BuildConfig.DEBUG)
 
     /** The live form fields, so a scanner cancel restores exactly what the parent had typed. */
     private var formServer: EditText? = null
@@ -211,7 +213,7 @@ class PairingActivity : ComponentActivity() {
         // Roadmap 3.2: a rotation must not lose a scanned review; the encoded payload is re-validated
         // through the same state machine, so a tampered bundle cannot smuggle a different code in.
         val restoredScan = savedInstanceState?.getString(KEY_SCANNED_QR)
-            ?.let { runCatching { PairQrPayload.decode(it) }.getOrNull() }
+            ?.let { runCatching { PairQrPayload.decode(it, releaseHostsOnly = !BuildConfig.DEBUG) }.getOrNull() }
         restoredScan?.let { scanFlow.scan(it.encode()) }
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm(scanned = restoredScan) }
@@ -383,9 +385,18 @@ class PairingActivity : ComponentActivity() {
         error.visibility = View.GONE
         val name = deviceName.trim()
         lifecycleScope.launch {
-            val result = runCatching { claim(serverUrl, code, name) }
+            val result = runCatching {
+                claim(serverUrl, code, name) {
+                    // Plan 2.7: the code is claimed; nothing is paired until the parent taps Allow.
+                    error.setTextColor(0xFF444444.toInt())
+                    error.text = "Waiting for your parent to tap Allow on their phone…"
+                    error.visibility = View.VISIBLE
+                }
+            }
             pairButton.isEnabled = true
             progress.visibility = View.GONE
+            error.setTextColor(0xFFB00020.toInt())
+            error.visibility = View.GONE
             result.onSuccess { pairing ->
                 settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)
                 startAgent()
@@ -809,8 +820,13 @@ class PairingActivity : ComponentActivity() {
 
     // ---- pairing request ----
 
-    /** Posts the claim request on IO; throws [InvalidCodeException] on 404. */
-    private suspend fun claim(serverUrl: String, code: String, deviceName: String): PairingResult =
+    /**
+     * Claims the code, then waits for the parent's decision (plan 2.7): the claim answers 202 with a
+     * claim id and a poll secret, and the device token arrives on the poll after the parent taps Allow.
+     * [onWaiting] runs on the main thread once the claim is accepted. Throws [InvalidCodeException] for
+     * an unknown code and [PairingRefusedException] with a message for every other ending.
+     */
+    private suspend fun claim(serverUrl: String, code: String, deviceName: String, onWaiting: () -> Unit): PairingResult =
         withContext(Dispatchers.IO) {
             // NOTE: testers type "192.168.1.5:3000" without a scheme; OkHttp would reject it.
             // Fail closed when blank — the form requires a server URL (no built-in default).
@@ -828,32 +844,68 @@ class PairingActivity : ComponentActivity() {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build()
             val request = Request.Builder().url("$base/v1/devices/pair/claim").post(body).build()
-            client.newCall(request).execute().use { response ->
-                when (response.code) {
-                    201 -> {
+            val (claimId, pollSecret) = client.newCall(request).execute().use { response ->
+                when (PairingApproval.claimStep(response.code)) {
+                    PairingApproval.ClaimStep.WAITING_FOR_PARENT -> {
                         val json = JSONObject(response.body!!.string())
-                        val deviceId = when (val device = json.opt("device")) {
-                            is JSONObject -> device.getString("id")
-                            is String -> device
-                            else -> throw IllegalStateException("pairing response has no device id")
-                        }
-                        PairingResult(
-                            baseUrl = base,
-                            token = json.getString("token"),
-                            deviceId = deviceId,
-                            childId = json.getString("childId"),
-                            // BUG-001: without the paired secret every /internal alert is a 401.
-                            hmacSecret = json.optString("hmacSecret").ifBlank { null },
-                        )
+                        json.getString("claimId") to json.getString("pollSecret")
                     }
-                    404 -> throw InvalidCodeException()
-                    else -> throw IllegalStateException("server returned HTTP ${response.code}")
+                    PairingApproval.ClaimStep.INVALID_CODE -> throw InvalidCodeException()
+                    PairingApproval.ClaimStep.ALREADY_CLAIMED ->
+                        throw PairingRefusedException("This code is already being used by another phone. Ask your parent for a new code.")
+                    PairingApproval.ClaimStep.CONSENT_REQUIRED ->
+                        throw PairingRefusedException("Your parent needs to give consent in the OSRA app before this phone can be paired.")
+                    PairingApproval.ClaimStep.FAILED -> throw IllegalStateException("server returned HTTP ${response.code}")
                 }
+            }
+            withContext(Dispatchers.Main) { onWaiting() }
+
+            val pollBody = JSONObject().put("pollSecret", pollSecret).toString()
+            var approved: String? = null
+            val step = PairingApproval.awaitDecision(
+                poll = {
+                    val poll = Request.Builder()
+                        .url("$base/v1/devices/pair/claims/$claimId/poll")
+                        .post(pollBody.toRequestBody(JSON_MEDIA_TYPE))
+                        .build()
+                    client.newCall(poll).execute().use { response ->
+                        if (response.code == 201) approved = response.body!!.string()
+                        response.code
+                    }
+                },
+                sleep = { delay(it) },
+            )
+            when (step) {
+                PairingApproval.PollStep.APPROVED -> {
+                    val json = JSONObject(approved!!)
+                    val deviceId = when (val device = json.opt("device")) {
+                        is JSONObject -> device.getString("id")
+                        is String -> device
+                        else -> throw IllegalStateException("pairing response has no device id")
+                    }
+                    PairingResult(
+                        baseUrl = base,
+                        token = json.getString("token"),
+                        deviceId = deviceId,
+                        childId = json.getString("childId"),
+                        // BUG-001: without the paired secret every /internal alert is a 401.
+                        hmacSecret = json.optString("hmacSecret").ifBlank { null },
+                    )
+                }
+                PairingApproval.PollStep.DENIED ->
+                    throw PairingRefusedException("Your parent declined this phone. If that was a mistake, ask them for a new code.")
+                PairingApproval.PollStep.EXPIRED, PairingApproval.PollStep.TIMED_OUT ->
+                    throw PairingRefusedException("The code expired before your parent allowed this phone. Ask them for a new code.")
+                PairingApproval.PollStep.CONSENT_REQUIRED ->
+                    throw PairingRefusedException("Your parent needs to give consent in the OSRA app before this phone can be paired.")
+                PairingApproval.PollStep.PENDING, PairingApproval.PollStep.FAILED ->
+                    throw IllegalStateException("pairing did not finish")
             }
         }
 
     private fun userMessage(e: Throwable): String = when (e) {
         is InvalidCodeException -> "Invalid or expired pairing code."
+        is PairingRefusedException -> e.message.orEmpty()
         else -> "Pairing failed: ${e.message ?: "network error"}"
     }
 
@@ -953,6 +1005,9 @@ class PairingActivity : ComponentActivity() {
         }
 
     private class InvalidCodeException : Exception()
+
+    /** A pairing that ended for a reason the person can act on; [message] says what to do. */
+    private class PairingRefusedException(message: String) : Exception(message)
 
     private data class PairingResult(
         val baseUrl: String,

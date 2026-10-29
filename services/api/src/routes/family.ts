@@ -317,7 +317,7 @@ export async function familyRoutes(app: FastifyInstance) {
       include: {
         parents: true,
         children: {
-          include: { devices: true, ruleSet: true, consents: true, geofences: true, alerts: true },
+          include: { devices: true, ruleSet: true, consents: true, geofences: true, alerts: true, pairingDecisions: true },
         },
       },
     });

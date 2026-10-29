@@ -2294,6 +2294,48 @@ abstract class AppLocalizations {
   /// **'The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.'**
   String get pairConsentError;
 
+  /// No description provided for @pairClaimTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A device is asking to join'**
+  String get pairClaimTitle;
+
+  /// No description provided for @pairClaimBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} wants to be paired. Allow it only if it is the phone in front of you.'**
+  String pairClaimBody(String device);
+
+  /// No description provided for @pairClaimDeny.
+  ///
+  /// In en, this message translates to:
+  /// **'Deny'**
+  String get pairClaimDeny;
+
+  /// No description provided for @pairClaimAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed. The phone is finishing pairing…'**
+  String get pairClaimAllowed;
+
+  /// No description provided for @pairClaimPaired.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} is paired.'**
+  String pairClaimPaired(String device);
+
+  /// No description provided for @pairClaimDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined. Make a new code to pair a phone.'**
+  String get pairClaimDenied;
+
+  /// No description provided for @pairClaimError.
+  ///
+  /// In en, this message translates to:
+  /// **'That did not go through. Try again.'**
+  String get pairClaimError;
+
   /// No description provided for @appearanceTitle.
   ///
   /// In en, this message translates to:
