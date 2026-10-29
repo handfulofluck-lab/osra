@@ -669,6 +669,11 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun showStatus() {
+        // ADR-0010 §2 (#440 Flip4 follow-up): no status screen, and so no ungated action, before a PIN exists.
+        if (SetupResumePolicy.pairedScreen(pinStore.isConfigured()) == PairedScreen.SET_PIN) {
+            showSetPin()
+            return
+        }
         lifecycleScope.launch {
             val childId = settings.childId() ?: "-"
             val deviceId = settings.deviceId() ?: "-"
@@ -736,15 +741,6 @@ class PairingActivity : ComponentActivity() {
                         )
                     }
                 }
-                if (!pinStore.isConfigured()) {
-                    addView(
-                        Button(this@PairingActivity).apply {
-                            text = "Set parent PIN"
-                            setOnClickListener { showSetPin() }
-                        },
-                    )
-                }
-
                 val locationStatus = LocationStatusPolicy.classify(
                     LocationStartPolicy.decide(hasFine, hasCoarse, hasBackground, Build.VERSION.SDK_INT),
                     isRunning,

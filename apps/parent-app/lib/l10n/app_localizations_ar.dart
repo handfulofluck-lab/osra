@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -2212,6 +2211,46 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get consentLoadFailed =>
       'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+
+  @override
+  String get consentGrantTitle => 'منح الموافقة مجددًا';
+
+  @override
+  String get consentGrantAction => 'منح الموافقة';
+
+  @override
+  String get consentGrantNote =>
+      'تبقى المراقبة متوقفة حتى يوجد سجل موافقة جديد. منح الموافقة مجددًا يستأنف الجمع على أجهزة هذا الطفل.';
+
+  @override
+  String consentGrantRegion(String region) {
+    return 'يُسجَّل السجل بمنطقة عائلتك ($region). السجل من منطقة أخرى لا يمكنه السماح بالمراقبة.';
+  }
+
+  @override
+  String get consentGrantDone =>
+      'سُجِّلت الموافقة. تستأنف المراقبة على أجهزة هذا الطفل.';
+
+  @override
+  String get consentGrantFailed =>
+      'لم تُسجَّل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+
+  @override
+  String get consentGrantForbidden => 'مالك العائلة فقط يمكنه منح الموافقة.';
+
+  @override
+  String get consentGrantBusy => 'جارٍ الحفظ…';
+
+  @override
+  String get consentRenewTitle => 'تجديد الموافقة';
+
+  @override
+  String get consentRenewNote =>
+      'تنتهي الموافقة قريبًا. التجديد الآن يُبقي المراقبة مستمرة دون انقطاع.';
+
+  @override
+  String get consentRegrantNotice =>
+      'أكّد الطريقة التي تحقّقت بها من أنك وليّ أمر هذا الطفل.';
 
   @override
   String get consentWithdrawAction => 'سحب الموافقة';

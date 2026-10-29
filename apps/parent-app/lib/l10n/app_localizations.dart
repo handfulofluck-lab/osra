@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -3458,6 +3458,72 @@ abstract class AppLocalizations {
   /// **'Could not load the consent record. Check your connection and try again.'**
   String get consentLoadFailed;
 
+  /// No description provided for @consentGrantTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Give consent again'**
+  String get consentGrantTitle;
+
+  /// No description provided for @consentGrantAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Grant consent'**
+  String get consentGrantAction;
+
+  /// No description provided for @consentGrantNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Monitoring stays stopped until a new consent record exists. Granting consent again resumes collection on this child\'s devices.'**
+  String get consentGrantNote;
+
+  /// No description provided for @consentGrantRegion.
+  ///
+  /// In en, this message translates to:
+  /// **'Recorded with your family\'s region ({region}). A record from another region cannot authorise monitoring.'**
+  String consentGrantRegion(String region);
+
+  /// No description provided for @consentGrantDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent recorded. Monitoring resumes on this child\'s devices.'**
+  String get consentGrantDone;
+
+  /// No description provided for @consentGrantFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent was not recorded. Check your connection and try again.'**
+  String get consentGrantFailed;
+
+  /// No description provided for @consentGrantForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the family owner can grant consent.'**
+  String get consentGrantForbidden;
+
+  /// No description provided for @consentGrantBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get consentGrantBusy;
+
+  /// No description provided for @consentRenewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Renew consent'**
+  String get consentRenewTitle;
+
+  /// No description provided for @consentRenewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent ends soon. Renewing now keeps monitoring running without a gap.'**
+  String get consentRenewNote;
+
+  /// No description provided for @consentRegrantNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm how you checked that you are this child\'s parent or guardian.'**
+  String get consentRegrantNotice;
+
   /// No description provided for @consentWithdrawAction.
   ///
   /// In en, this message translates to:
@@ -4602,9 +4668,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }

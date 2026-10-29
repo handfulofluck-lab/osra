@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -2059,6 +2058,47 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get consentLoadFailed =>
       'Could not load the consent record. Check your connection and try again.';
+
+  @override
+  String get consentGrantTitle => 'Give consent again';
+
+  @override
+  String get consentGrantAction => 'Grant consent';
+
+  @override
+  String get consentGrantNote =>
+      'Monitoring stays stopped until a new consent record exists. Granting consent again resumes collection on this child\'s devices.';
+
+  @override
+  String consentGrantRegion(String region) {
+    return 'Recorded with your family\'s region ($region). A record from another region cannot authorise monitoring.';
+  }
+
+  @override
+  String get consentGrantDone =>
+      'Consent recorded. Monitoring resumes on this child\'s devices.';
+
+  @override
+  String get consentGrantFailed =>
+      'Consent was not recorded. Check your connection and try again.';
+
+  @override
+  String get consentGrantForbidden =>
+      'Only the family owner can grant consent.';
+
+  @override
+  String get consentGrantBusy => 'Saving…';
+
+  @override
+  String get consentRenewTitle => 'Renew consent';
+
+  @override
+  String get consentRenewNote =>
+      'Consent ends soon. Renewing now keeps monitoring running without a gap.';
+
+  @override
+  String get consentRegrantNotice =>
+      'Confirm how you checked that you are this child\'s parent or guardian.';
 
   @override
   String get consentWithdrawAction => 'Withdraw consent';

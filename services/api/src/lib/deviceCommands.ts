@@ -98,7 +98,16 @@ export async function enqueueDeviceCommand(
     const existing = await prisma.deviceCommand.findFirst({
       where: { deviceId, type, status: "pending", expiresAt: { gt: new Date() } },
     });
-    if (existing) return toMessage(existing);
+    if (existing) {
+      // Wake again even though no row is added. The pending row may come from a wake that FCM delayed
+      // or dropped, or from a change made while push was off; returning silently would leave every
+      // later change waiting for the 15-minute poll (Flip4, 29 Oct). Duplicates are free: the wake
+      // carries collapse key "wake" and the agent drains the queue, not the message.
+      const message = toMessage(existing);
+      await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
+      wakeDeviceDetached(deviceId);
+      return message;
+    }
   }
   const ttl = opts.ttlSeconds ?? ttlFor(type);
   const row = await prisma.deviceCommand.create({
