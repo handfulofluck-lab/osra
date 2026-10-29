@@ -16,13 +16,16 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.enforcement.AppBlocker
+import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.OverlayRetryBudget
 import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.enforcement.RetryDecision
+import com.familyshield.agent.enforcement.VisibleBlockStep
 import com.familyshield.agent.enforcement.VisibleWindow
+import com.familyshield.agent.enforcement.WindowBounds
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.GuardAttemptWindow
@@ -54,12 +57,20 @@ class AccessibilityMonitorService : AccessibilityService() {
     private var lastGuardMs = 0L
 
     /**
-     * Issue #175: bounded re-raises for a PiP / split screen state the platform may refuse to change.
-     * One budget for the lock overlay, one for the block overlay; each resets when the visible window
-     * state changes (see [WindowSnapshot.signature]).
+     * Issue #175: bounded re-raises of the lock overlay for a PiP / split screen state the platform may
+     * refuse to change; resets when the visible window state changes (see [WindowSnapshot.signature]).
      */
     private val lockRetryBudget = OverlayRetryBudget()
-    private val blockRetryBudget = OverlayRetryBudget()
+
+    /**
+     * Issue #175 (reopened): the block overlay's own rule. In the normal layout a blocked app that comes
+     * back on top (the Meet call screen) is sent Home and covered again every time, a second apart; in
+     * PiP and split screen two raises, then one `tamper` alert to the parent.
+     */
+    private val blockRaisePolicy = BlockRaisePolicy()
+
+    /** Issue #175: the cover over a blocked PiP window, which stays above the block screen otherwise. */
+    private val pipCover by lazy { PipCoverOverlay(this) }
 
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
     private var loggedStartDecision: LocationStartPolicy.Decision? = null
@@ -93,6 +104,7 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     override fun onDestroy() {
         isRunning = false
+        pipCover.remove()
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
     }
@@ -122,7 +134,10 @@ class AccessibilityMonitorService : AccessibilityService() {
         enforceLockState(snapshot, foreground ?: eventPkg)
         // ADR-0008 §3: consent withdrawn — the service keeps polling (to learn about a re-grant) but
         // records, captures and enforces nothing.
-        if (consentState.isPaused()) return
+        if (consentState.isPaused()) {
+            pipCover.remove()
+            return
+        }
         // Usage and social capture belong to the app actually in front; our own overlay and the
         // unresolved framework package are neither.
         if (foreground != null && foreground != packageName) {
@@ -145,27 +160,65 @@ class AccessibilityMonitorService : AccessibilityService() {
     /**
      * Issue #175: run the same [RuleRepository.evaluate] over every visible application package —
      * [EssentialPackages.blockCandidates] returns the active app first and then the rest. The first
-     * non-ALLOW answer gets the overlay; [blockRetryBudget] stops a fixed PiP/split state from
-     * starting an activity on every accessibility event.
+     * non-ALLOW answer is handed to [blockRaisePolicy], which says whether to go Home, raise the
+     * overlay again, or tell the parent the app stayed on screen. A blocked app in PiP is also covered
+     * by [pipCover], because a PiP window stays above the block screen.
      */
     private fun enforceVisibleBlocks(snapshot: WindowSnapshot, active: String?) {
-        val candidates = EssentialPackages.blockCandidates(active, snapshot.windows)
-        if (candidates.isEmpty()) return
-        for (pkg in candidates) {
-            when (rules.evaluate(pkg)) {
-                RuleRepository.Decision.BLOCK -> {
-                    if (allowOverlay(blockRetryBudget, snapshot.signature, snapshot.layout, "block $pkg")) {
-                        blocker.showBlockScreen(pkg)
-                    }
-                    return
+        val found = VisibleBlockStep.decide(
+            snapshot,
+            active,
+            evaluate = rules::evaluate,
+            isEssential = { EssentialPackages.isEssential(it, packageFacts) },
+            policy = blockRaisePolicy,
+            nowMs = System.currentTimeMillis(),
+        )
+        if (found == null) {
+            pipCover.update(null)
+            return
+        }
+        val (pkg, decision, step) = found
+        val layout = snapshot.layout
+        val pipWindow = snapshot.windows.firstOrNull { it.inPictureInPicture && it.packageName == pkg }
+        pipCover.update(pipWindow?.bounds)
+        if (step.goHome) performGlobalAction(GLOBAL_ACTION_HOME)
+        if (step.raise) {
+            if (pipWindow != null) dismissPictureInPicture(pkg)
+            // The policy owns the spacing now (1 s); AppBlocker's own 2 s debounce would halve it.
+            blocker.clearDebounce(pkg)
+            if (decision == RuleRepository.Decision.BLOCK) blocker.showBlockScreen(pkg)
+            else blocker.showTimeLimitScreen(pkg)
+        }
+        if (step.reportBypass) {
+            Log.w(TAG, "block overlay: $pkg still visible in ${layout.name.lowercase()} after the raises; telling the parent (#175)")
+            TamperAlertWorker.enqueue(
+                this,
+                TamperAlertWorker.TYPE_BLOCK_BYPASS,
+                eventAtMs = step.episodeStartMs,
+                app = pkg,
+                layout = layout.name.lowercase(),
+            )
+        }
+    }
+
+    /**
+     * Issue #175: best effort. Some PiP windows expose `ACTION_DISMISS` on their root; most do not,
+     * which is why the cover exists. The result is logged so the hardware row can say which it was.
+     */
+    private fun dismissPictureInPicture(pkg: String) {
+        for (window in runCatching { windows }.getOrNull().orEmpty()) {
+            try {
+                if (!runCatching { window.isInPictureInPictureMode }.getOrDefault(false)) continue
+                val root = runCatching { window.root }.getOrNull() ?: continue
+                try {
+                    if (runCatching { root.packageName?.toString() }.getOrNull() != pkg) continue
+                    val dismissed = runCatching { root.performAction(AccessibilityNodeInfo.ACTION_DISMISS) }.getOrDefault(false)
+                    Log.i(TAG, "PiP dismiss for $pkg: ${if (dismissed) "accepted" else "not supported"} (#175)")
+                } finally {
+                    runCatching { root.recycle() }
                 }
-                RuleRepository.Decision.TIME_LIMIT_REACHED -> {
-                    if (allowOverlay(blockRetryBudget, snapshot.signature, snapshot.layout, "time-limit $pkg")) {
-                        blocker.showTimeLimitScreen(pkg)
-                    }
-                    return
-                }
-                RuleRepository.Decision.ALLOW -> Unit
+            } finally {
+                runCatching { window.recycle() }
             }
         }
     }
@@ -255,6 +308,11 @@ class AccessibilityMonitorService : AccessibilityService() {
                             VisibleWindow(
                                 packageName = pkg,
                                 inPictureInPicture = runCatching { window.isInPictureInPictureMode }.getOrDefault(false),
+                                bounds = runCatching {
+                                    val r = android.graphics.Rect()
+                                    window.getBoundsInScreen(r)
+                                    WindowBounds(r.left, r.top, r.right, r.bottom)
+                                }.getOrNull(),
                             ),
                         )
                     }

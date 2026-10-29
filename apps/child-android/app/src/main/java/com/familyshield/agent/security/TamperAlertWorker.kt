@@ -36,6 +36,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         val type = inputData.getString(KEY_TYPE) ?: return Result.success()
         val detail = inputData.getString(KEY_DETAIL) ?: ""
+        val app = inputData.getString(KEY_APP).orEmpty()
+        val layout = inputData.getString(KEY_LAYOUT).orEmpty()
         val entry = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
         val settings = entry.agentSettings()
         val childId = settings.childId() ?: return Result.success() // not paired: nobody to tell
@@ -46,6 +48,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_GUARD_TRIGGERED -> guardWindow?.let {
                 TamperAlertDedupe.guardAggregateKey(deviceId, it.windowStartMs)
             }
+            // Not eventTimestamp(): its fallback stamps the admin-disable time, which is not this event's.
+            TYPE_BLOCK_BYPASS -> TamperAlertDedupe.blockBypassKey(deviceId, app, layout, inputData.getLong(KEY_EVENT_AT_MS, 0L))
             else -> null
         }
         // The window key is stable across attempts; the local key adds the count so attempt N+1 is
@@ -69,7 +73,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         category = "tamper",
                         title = TITLES[type] ?: "Protection was changed",
                         body = bodyFor(type, detail, guardWindow?.count),
-                        metadata = mapOf("type" to type),
+                        metadata = metadataFor(type, app, layout),
                         dedupeKey = dedupeKey,
                         attemptCount = if (type == TYPE_GUARD_TRIGGERED) guardWindow?.count else null,
                     ),
@@ -122,23 +126,33 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         const val TYPE_ADMIN_REMOVED = "device_admin_removed"
         const val TYPE_GUARD_TRIGGERED = "protection_screen_opened"
         const val TYPE_VPN_REVOKED = "content_filter_disconnected"
+        const val TYPE_BLOCK_BYPASS = "block_bypass"
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
         private const val KEY_EVENT_AT_MS = "event_at_ms"
         private const val KEY_WINDOW_START_MS = "window_start_ms"
         private const val KEY_ATTEMPT_COUNT = "attempt_count"
+        private const val KEY_APP = "app"
+        private const val KEY_LAYOUT = "layout"
         private const val TAG = "TamperAlertWorker"
 
         private val TITLES = mapOf(
             TYPE_ADMIN_REMOVED to "Device admin was removed",
             TYPE_GUARD_TRIGGERED to "Someone tried to remove protection",
             TYPE_VPN_REVOKED to "Content filter was disconnected",
+            TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
         )
         private val BODIES = mapOf(
             TYPE_ADMIN_REMOVED to "OSRA's device-admin rights were turned off on this device. Uninstall is no longer blocked.",
             TYPE_GUARD_TRIGGERED to "A protection-removal screen was opened on this device and the PIN was asked for.",
             TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
+            TYPE_BLOCK_BYPASS to "A blocked app stayed visible in picture-in-picture or split screen after the block screen was shown twice.",
         )
+
+        /** Issue #175: a block bypass also names the app and the layout, so the parent knows what stayed on screen. */
+        internal fun metadataFor(type: String, app: String, layout: String): Map<String, String> =
+            if (type == TYPE_BLOCK_BYPASS) mapOf("type" to type, "app" to app, "layout" to layout)
+            else mapOf("type" to type)
 
         /**
          * Enqueues one expedited alert of [type]; a second enqueue of the same type replaces the
@@ -152,9 +166,12 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
          * therefore unique per window: REPLACE still coalesces inside a window (newest count wins),
          * and a new window no longer cancels the old one. Every other type keeps the old name.
          */
-        internal fun uniqueWorkName(type: String, windowStartMs: Long): String =
-            if (type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L) "tamper_alert_${type}_$windowStartMs"
-            else "tamper_alert_$type"
+        internal fun uniqueWorkName(type: String, windowStartMs: Long, app: String = ""): String = when {
+            type == TYPE_GUARD_TRIGGERED && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
+            // Issue #175: one bypass per episode; a second app's episode must not cancel the first's retry.
+            type == TYPE_BLOCK_BYPASS -> "tamper_alert_${type}_${app}_$windowStartMs"
+            else -> "tamper_alert_$type"
+        }
 
         fun enqueue(
             context: Context,
@@ -163,6 +180,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             eventAtMs: Long = 0L,
             windowStartMs: Long = 0L,
             attemptCount: Int = 0,
+            app: String = "",
+            layout: String = "",
         ) {
             val request = OneTimeWorkRequestBuilder<TamperAlertWorker>()
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
@@ -173,10 +192,12 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         KEY_EVENT_AT_MS to eventAtMs,
                         KEY_WINDOW_START_MS to windowStartMs,
                         KEY_ATTEMPT_COUNT to attemptCount,
+                        KEY_APP to app,
+                        KEY_LAYOUT to layout,
                     ),
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(uniqueWorkName(type, windowStartMs), ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(uniqueWorkName(type, if (type == TYPE_BLOCK_BYPASS) eventAtMs else windowStartMs, app), ExistingWorkPolicy.REPLACE, request)
         }
     }
 }
