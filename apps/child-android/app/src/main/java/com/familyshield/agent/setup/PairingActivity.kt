@@ -215,14 +215,25 @@ class PairingActivity : ComponentActivity() {
         val restoredScan = savedInstanceState?.getString(KEY_SCANNED_QR)
             ?.let { runCatching { PairQrPayload.decode(it, releaseHostsOnly = !BuildConfig.DEBUG) }.getOrNull() }
         restoredScan?.let { scanFlow.scan(it.encode()) }
+        // #433 review (c): the fields are built in code and save no state of their own, so a fold or a
+        // rotation used to bring the form back empty — on the QR review, the typed device name was lost
+        // and the phone registered under its model. What was typed comes back with the form.
+        val typedServer = savedInstanceState?.getString(KEY_TYPED_SERVER).orEmpty()
+        val typedCode = savedInstanceState?.getString(KEY_TYPED_CODE).orEmpty()
+        val typedName = savedInstanceState?.getString(KEY_TYPED_NAME).orEmpty()
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
-        lifecycleScope.launch { if (settings.isPaired()) showStatus() else showForm(scanned = restoredScan) }
+        lifecycleScope.launch {
+            if (settings.isPaired()) showStatus() else showForm(typedServer, typedCode, typedName, scanned = restoredScan)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         val review = scanFlow.state as? PairingScanFlow.State.Review
         if (review != null) outState.putString(KEY_SCANNED_QR, review.payload.encode())
+        formServer?.let { outState.putString(KEY_TYPED_SERVER, it.text.toString()) }
+        formCode?.let { outState.putString(KEY_TYPED_CODE, it.text.toString()) }
+        formName?.let { outState.putString(KEY_TYPED_NAME, it.text.toString()) }
     }
 
     override fun onResume() {
@@ -1022,6 +1033,11 @@ class PairingActivity : ComponentActivity() {
 
         /** Roadmap 3.2: the reviewed payload survives an activity recreation. */
         private const val KEY_SCANNED_QR = "scanned_pair_qr"
+
+        /** #433 review (c): what the person typed survives a fold or a rotation. */
+        private const val KEY_TYPED_SERVER = "typed_pair_server"
+        private const val KEY_TYPED_CODE = "typed_pair_code"
+        private const val KEY_TYPED_NAME = "typed_pair_name"
 
         /** Feature #6 runtime permissions (declared in the manifest; prompted, not required). */
         private val COMMS_PERMISSIONS = arrayOf(
