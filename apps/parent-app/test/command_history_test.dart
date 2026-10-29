@@ -238,6 +238,28 @@ void main() {
       expect(find.textContaining('parental_consent_required'), findsNothing);
     });
 
+    testWidgets('a refused bonus says why, and the POST fired (#441)', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/controls/children/child-1/bonus': (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+      });
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api);
+
+      // the real label is "+15", not "+15 min" — read, not guessed — and it sits below the fold
+      await tester.ensureVisible(find.text('+15'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+15'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/controls/children/child-1/bonus'), hasLength(1));
+      expect(
+          find.text(
+              "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+          findsOneWidget);
+      expect(find.textContaining('parental_consent_required'), findsNothing);
+    });
+
     testWidgets('empty history shows an honest empty state per device',
         (tester) async {
       final api = historyApi();
