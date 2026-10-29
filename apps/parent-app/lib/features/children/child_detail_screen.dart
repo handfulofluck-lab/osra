@@ -332,6 +332,13 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
           SnackBar(content: Text(l10n.bonusGranted(minutes))),
         );
       }
+    } on DioException catch (e) {
+      // #441 review: the bonus route runs `requireConsent` too, so a 428 needs the sentence, not '$e'.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(readErrorText(l10n, e, () => l10n.bonusFailed('$e'))),
+        ));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.bonusFailed('$e'))));
@@ -402,6 +409,13 @@ class _WindDownCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.windDownConfirm(minutes))),
         );
+      }
+    } on DioException catch (e) {
+      // #441 review: wind-down is a `controls.ts` write like the others.
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(readErrorText(l10n, e, () => l10n.windDownFailed('$e'))),
+        ));
       }
     } catch (e) {
       if (context.mounted) {

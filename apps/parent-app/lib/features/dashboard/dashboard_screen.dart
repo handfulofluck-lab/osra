@@ -478,6 +478,14 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     } else {
       await pauseInternet(ref, child.id);
     }
+  } on ControlsRefusal catch (r) {
+    // #441 review: the pill is the main entry to pause/resume, so it needs the same sentence as the
+    // device card — and it must not print `ControlsRefusal(428)`, which is what '$e' became.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(readErrorText(l10n, r.error, () => l10n.internetChangeFailed('${r.error}'))),
+      ));
+    }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
