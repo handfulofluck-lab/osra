@@ -219,7 +219,6 @@
   "@commandErrorForbidden": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "commandErrorRateLimited": "{command} was not sent to {device}: too many requests right now. Try again in a minute.",
   "@commandErrorRateLimited": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
-
   "commandErrorConsentWithdrawn": "{command} was not sent to {device}: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why.",
   "commandErrorJurisdictionMismatch": "{command} was not sent to {device}: this child's consent was given for a different region than your family's, so monitoring is paused. Open Parental consent on the child's page for details.",
   "@commandErrorConsentWithdrawn": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},

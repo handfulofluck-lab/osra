@@ -165,12 +165,12 @@ void main() {
     expect(
       commandErrorText(ar, 'lock', 'Pixel 7',
           http(428, {'error': 'parental_consent_required', 'childId': 'child-1'})),
-      'لم يُرسل «قفل» إلى Pixel 7: موافقة هذا الطفل مسحوبة أو منتهية. أعد منح الموافقة للمتابعة.',
+      'لم يُرسل «قفل» إلى Pixel 7: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.',
     );
     expect(
       commandErrorText(ar, 'lock', 'Pixel 7',
           http(428, {'error': 'consent_jurisdiction_mismatch', 'childId': 'child-1'})),
-      'لم يُرسل «قفل» إلى Pixel 7: لا تتطابق منطقة العائلة مع نطاق اختصاص الطفل. تحقّق من إعدادات العائلة.',
+      'لم يُرسل «قفل» إلى Pixel 7: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.',
     );
     expect(commandErrorText(ar, 'lock', 'Pixel 7', http(428, {'error': 'something_else'})),
         contains('something_else'),
@@ -242,7 +242,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('قفل الجهاز'));
     await tester.pumpAndSettle();
-    expect(find.text('لم يُرسل «قفل» إلى Pixel 7: موافقة هذا الطفل مسحوبة أو منتهية. أعد منح الموافقة للمتابعة.'),
+    expect(find.text('لم يُرسل «قفل» إلى Pixel 7: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.'),
         findsOneWidget);
     expect(find.textContaining('parental_consent_required'), findsNothing);
   });

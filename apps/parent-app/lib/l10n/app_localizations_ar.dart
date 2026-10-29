@@ -467,12 +467,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String commandErrorConsentWithdrawn(String command, String device) {
-    return 'لم يُرسل «$command» إلى $device: موافقة هذا الطفل مسحوبة أو منتهية. أعد منح الموافقة للمتابعة.';
+    return 'لم يُرسل «$command» إلى $device: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.';
   }
 
   @override
   String commandErrorJurisdictionMismatch(String command, String device) {
-    return 'لم يُرسل «$command» إلى $device: لا تتطابق منطقة العائلة مع نطاق اختصاص الطفل. تحقّق من إعدادات العائلة.';
+    return 'لم يُرسل «$command» إلى $device: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.';
   }
 
   @override
