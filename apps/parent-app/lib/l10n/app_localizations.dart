@@ -824,6 +824,18 @@ abstract class AppLocalizations {
   /// **'{command} was not sent to {device}: too many requests right now. Try again in a minute.'**
   String commandErrorRateLimited(String command, String device);
 
+  /// No description provided for @commandErrorConsentWithdrawn.
+  ///
+  /// In en, this message translates to:
+  /// **'{command} was not sent to {device}: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.'**
+  String commandErrorConsentWithdrawn(String command, String device);
+
+  /// No description provided for @commandErrorJurisdictionMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'{command} was not sent to {device}: this child\'s consent was given for a different region than your family\'s, so monitoring is paused. Open Parental consent on the child\'s page for details.'**
+  String commandErrorJurisdictionMismatch(String command, String device);
+
   /// No description provided for @commandRefusedBackgroundLocation.
   ///
   /// In en, this message translates to:

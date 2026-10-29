@@ -439,6 +439,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String commandErrorConsentWithdrawn(String command, String device) {
+    return '$command was not sent to $device: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.';
+  }
+
+  @override
+  String commandErrorJurisdictionMismatch(String command, String device) {
+    return '$command was not sent to $device: this child\'s consent was given for a different region than your family\'s, so monitoring is paused. Open Parental consent on the child\'s page for details.';
+  }
+
+  @override
   String commandRefusedBackgroundLocation(String command, String device) {
     return '$command was not sent to $device: the phone has not granted “Allow all the time” location, so Locate and geofence alerts cannot reach it. Ask your child to open OSRA and grant it.';
   }
