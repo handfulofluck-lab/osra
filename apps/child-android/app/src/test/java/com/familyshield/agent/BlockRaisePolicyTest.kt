@@ -91,9 +91,11 @@ class BlockRaisePolicyTest {
         val policy = BlockRaisePolicy()
         repeat(4) { policy.decide(youtube, WindowLayout.PICTURE_IN_PICTURE, false, it * 1_000L) }
         policy.noBlockedWindow()
-        val again = (0 until 3).map { policy.decide(youtube, WindowLayout.PICTURE_IN_PICTURE, false, 60_000L + it * 1_000L) }
+        // Past the ten-minute alert floor, so the new episode may report too (the floor has its own row).
+        val restart = 11 * 60_000L
+        val again = (0 until 3).map { policy.decide(youtube, WindowLayout.PICTURE_IN_PICTURE, false, restart + it * 1_000L) }
         assertEquals(2, again.count { it.raise })
-        assertEquals(60_000L, again.single { it.reportBypass }.episodeStartMs)
+        assertEquals(restart, again.single { it.reportBypass }.episodeStartMs)
     }
 
     @Test
