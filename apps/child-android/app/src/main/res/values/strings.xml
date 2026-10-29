@@ -27,4 +27,41 @@
          It must never carry the code. -->
     <string name="reset_code_notification_text">Tap to see it. Show it only to your parent, in person.</string>
     <string name="reset_code_close">Close</string>
+
+    <!-- Plan 2.7 (#433, #439): the pairing screen and the parent-PIN step after it. -->
+    <string name="pair_intro">Pair this device with your OSRA server.</string>
+    <string name="pair_server_label">Server URL</string>
+    <string name="pair_code_label">Pairing code</string>
+    <string name="pair_name_label">Device name</string>
+    <string name="pair_name_hint">Device name (optional)</string>
+    <string name="pair_button">Pair this device</string>
+    <string name="pair_scan_button">Scan QR code</string>
+    <string name="pair_scan_description">Scan the pairing QR code from the parent app</string>
+    <string name="pair_scanned_title">Scanned pairing details</string>
+    <string name="pair_scanned_server">Server: %1$s</string>
+    <string name="pair_scanned_code">Code: %1$s</string>
+    <string name="pair_scanned_check">Check these match the parent\'s screen. Nothing is paired until you confirm.</string>
+    <string name="pair_confirm_button">Confirm and pair</string>
+    <string name="pair_cancel">Cancel</string>
+    <string name="pair_error_server">Enter the server URL from your parent.</string>
+    <string name="pair_error_code">Enter the 6-digit pairing code.</string>
+    <string name="pair_error_rescan">Scan the QR code again before confirming.</string>
+    <string name="pair_no_camera">The camera is not available on this device. Enter the server URL and code manually.</string>
+    <string name="pair_waiting">Waiting for your parent to tap Allow on their phone…</string>
+    <string name="pair_denied">Your parent declined this phone. If that was a mistake, ask them for a new code.</string>
+    <string name="pair_expired">The code expired before your parent allowed this phone. Ask them for a new code.</string>
+    <string name="pair_in_use">This code is already being used by another phone. Ask your parent for a new code.</string>
+    <string name="pair_consent">Your parent needs to give consent in the OSRA app before this phone can be paired.</string>
+    <string name="pair_invalid_code">Invalid or expired pairing code.</string>
+    <string name="pair_failed">Pairing failed: %1$s</string>
+    <string name="pair_pin_title">Paired. Now set the parent PIN</string>
+    <string name="pair_pin_body">This PIN is asked for whenever someone tries to remove OSRA\'s protection on this device (turn off device admin, uninstall, re-pair). Keep it to yourself — your child must not know it.</string>
+    <string name="pair_pin_label">Parent PIN</string>
+    <string name="pair_pin_hint">4–8 digits</string>
+    <string name="pair_pin_repeat">Repeat the PIN</string>
+    <string name="pair_pin_save">Save PIN</string>
+    <string name="pair_pin_mismatch">The two PINs differ.</string>
+    <string name="pair_qr_invalid">That QR code is not a valid OSRA pairing code. Enter the details manually or scan again.</string>
+    <string name="pair_scan_empty">The scanner did not return a code. Enter the details manually or scan again.</string>
+    <string name="pair_network_error">network error</string>
 </resources>
