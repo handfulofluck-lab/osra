@@ -485,4 +485,27 @@ describe("the child device wake (#319)", () => {
     });
     expect((await enqueueDeviceCommand("dev-1", "ring", {}, { requestedBy: "parent-1" })).type).toBe("ring");
   });
+
+  it("wakes the device again when a rules change coalesces onto a pending row", async () => {
+    // Flip4, 29 Oct: a rules_updated row created while push was off (or whose wake FCM delayed) stayed
+    // pending, and the next rules PATCH coalesced onto it without a wake, so the phone waited for the
+    // 15-minute poll. Every enqueue must wake, coalesced or not.
+    const wakes: string[] = [];
+    setDeviceWakeSender(async (id) => {
+      wakes.push(id);
+      return { delivered: 1, clearedToken: false, skipped: null };
+    });
+    const pending = {
+      id: "c-old", deviceId: "dev-1", type: "rules_updated", payload: {}, status: "pending",
+      createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000), attempts: 0,
+    };
+    prismaMock.deviceCommand.findFirst.mockResolvedValue(pending);
+
+    const first = await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "a" });
+    const second = await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "b" });
+
+    expect([first.id, second.id]).toEqual(["c-old", "c-old"]);
+    expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
+    expect(wakes).toEqual(["dev-1", "dev-1"]);
+  });
 });
