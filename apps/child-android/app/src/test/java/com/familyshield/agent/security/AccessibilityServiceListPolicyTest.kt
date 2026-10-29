@@ -30,6 +30,34 @@ class AccessibilityServiceListPolicyTest {
         assertTrue(AccessibilityServiceListPolicy.isEnabled(shortForm, fullyQualified))
     }
 
+    // 2026-10-29 (decision 2B): package and namespace are now different things — the installed
+    // applicationId is `com.osratech.child` while every class stays in `com.familyshield.agent`. The
+    // accessibility gate is the surface that depends on the split, because the OS reports the
+    // component as `<applicationId>/<class>`. Claude's R1 row.
+    //
+    // Mutant: make `fullyQualified` resolve a relative class against the *namespace* (or drop the
+    // package half of the comparison) and the second assertion below flips to true — which is the
+    // bug this row exists to stop, because `com.osratech.child/.services.X` names a class that
+    // does not exist.
+    @Test
+    fun `the component is package-from-the-build and class-from-the-namespace`() {
+        val installed = "com.osratech.child"
+        val monitor = "com.familyshield.agent.services.AccessibilityMonitorService"
+
+        assertTrue(
+            "the OS form is applicationId/fully-qualified-class",
+            AccessibilityServiceListPolicy.isEnabled("$installed/$monitor", installed, monitor),
+        )
+        assertFalse(
+            "the old pkg/.Class shorthand cannot resolve once package and namespace differ",
+            AccessibilityServiceListPolicy.isEnabled(
+                "$installed/.services.AccessibilityMonitorService",
+                installed,
+                monitor,
+            ),
+        )
+    }
+
     @Test
     fun `our service is found among other services and packages`() {
         val services = "com.android.talkback/.TalkBackService:$shortForm:com.example.other/.OtherService"
