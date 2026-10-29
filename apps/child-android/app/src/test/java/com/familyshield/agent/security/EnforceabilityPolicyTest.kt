@@ -3,6 +3,7 @@ package com.familyshield.agent.security
 import com.familyshield.agent.commands.CommandAckPolicy
 import com.familyshield.agent.commands.CommandOutcome
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -207,16 +208,72 @@ class EnforceabilityPolicyTest {
 
     @Test
     fun `pause_internet is refused when no web filter is set up`() {
-        val outcome = EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = false)
+        val outcome = EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = false, tunnelRunning = false)
 
         assertEquals("web_filter_not_set_up", refusal(outcome))
     }
 
     @Test
-    fun `pause_internet is applied when the web filter is set up`() {
-        val outcome = EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = true)
+    fun `pause_internet is applied only when the sinkhole is actually running`() {
+        val outcome = EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = true, tunnelRunning = true)
 
         assertTrue("a running sinkhole is the effect, no detail is needed", outcome is CommandOutcome.Applied)
+    }
+
+    // Issue #234: `FilterVpnService.start` returns once the intent is posted, so a consented,
+    // prepared filter whose service never came up used to ack `ok` while every packet still passed.
+    // Mutant for the row below: `pauseInternetOutcome` returning `Applied` whenever the filter is set
+    // up — the row goes red, and with it the claim that the ack describes a running tunnel.
+    @Test
+    fun `pause_internet is refused when the tunnel never comes up`() {
+        val outcome = EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = true, tunnelRunning = false)
+
+        assertEquals("web_filter_start_failed", refusal(outcome))
+    }
+
+    @Test
+    fun `awaitFilterRunning does not sleep when the tunnel is already up`() {
+        var slept = 0L
+        val up = EnforceabilityPolicy.awaitFilterRunning(
+            isRunning = { true },
+            sleep = { slept += it },
+            now = { 0L },
+        )
+
+        assertTrue(up)
+        assertEquals("the common case must not pay the wait", 0L, slept)
+    }
+
+    @Test
+    fun `awaitFilterRunning polls until the service reports running`() {
+        var clock = 0L
+        var polls = 0
+        val up = EnforceabilityPolicy.awaitFilterRunning(
+            isRunning = { polls++ >= 2 },
+            timeoutMs = 400,
+            intervalMs = 25,
+            sleep = { clock += it },
+            now = { clock },
+        )
+
+        assertTrue(up)
+        assertEquals("two intervals of 25 ms, then the third poll sees it", 50L, clock)
+    }
+
+    @Test
+    fun `awaitFilterRunning gives up at the deadline instead of blocking the worker`() {
+        // Mutant: `while (true)` — the worker stops draining every other command.
+        var clock = 0L
+        val up = EnforceabilityPolicy.awaitFilterRunning(
+            isRunning = { false },
+            timeoutMs = 100,
+            intervalMs = 25,
+            sleep = { clock += it },
+            now = { clock },
+        )
+
+        assertFalse(up)
+        assertEquals(100L, clock)
     }
 
     // ---- the reason reaches the wire ----------------------------------------------------------
@@ -234,9 +291,14 @@ class EnforceabilityPolicyTest {
         assertEquals("failed", pause.status)
         assertEquals(mapOf("reason" to "lock_screen_unavailable"), pause.detail)
 
-        val internet = CommandAckPolicy.ackFor("c3", EnforceabilityPolicy.pauseInternetOutcome(false))!!
+        val internet = CommandAckPolicy.ackFor("c3", EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = false, tunnelRunning = false))!!
         assertEquals("failed", internet.status)
         assertEquals(mapOf("reason" to "web_filter_not_set_up"), internet.detail)
+
+        // Issue #234: the second refusal reaches the parent with its own reason, not `not_set_up`.
+        val neverUp = CommandAckPolicy.ackFor("c4", EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp = true, tunnelRunning = false))!!
+        assertEquals("failed", neverUp.status)
+        assertEquals(mapOf("reason" to "web_filter_start_failed"), neverUp.detail)
     }
 
     @Test

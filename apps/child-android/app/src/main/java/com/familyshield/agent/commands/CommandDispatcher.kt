@@ -367,12 +367,19 @@ class CommandDispatcher @Inject constructor(
         if (webFilterSetUp) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
         }
+        // Issue #234: `start` only posts the intent, so ask the service whether the tunnel is up
+        // before telling the parent the internet is paused. Named, because `now` is also a lambda
+        // and a trailing one would silently bind to it.
+        val tunnelRunning = webFilterSetUp &&
+            com.familyshield.agent.security.EnforceabilityPolicy.awaitFilterRunning(
+                isRunning = { com.familyshield.agent.vpn.FilterVpnService.isRunning },
+            )
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_PAUSED_INTERNET),
         )
-        return EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp)
+        return EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp, tunnelRunning)
     }
 
     /** Clears pause-the-internet and dismisses the paused-internet overlay (single-task onNewIntent). */
