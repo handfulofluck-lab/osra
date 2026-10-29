@@ -3,11 +3,13 @@ package com.familyshield.agent
 import com.familyshield.agent.data.RuleEngine
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.RuleRepository.Decision
+import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.EssentialPackages
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.OverlayRetryBudget
 import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.enforcement.RetryDecision
+import com.familyshield.agent.enforcement.VisibleBlockStep
 import com.familyshield.agent.enforcement.VisibleWindow
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
@@ -203,6 +205,44 @@ class MultiWindowCoverageTest {
             listOf(VisibleWindow(dialer), VisibleWindow(own, inPictureInPicture = true)),
         )
         assertFalse(LockEnforcementPolicy.shouldReraise("locked", callPip, own, dialerFacts))
+    }
+
+    /** The service's per-event block step over [snapshot], with the dialer a system app as on the Flip4. */
+    private fun step(snapshot: WindowSnapshot, policy: BlockRaisePolicy, nowMs: Long) =
+        FakeFacts(system = setOf(dialer)).let { facts ->
+            VisibleBlockStep.decide(
+                snapshot,
+                snapshot.activePackage,
+                evaluate = { decide(it, facts) },
+                isEssential = { EssentialPackages.isEssential(it, facts) },
+                policy = policy,
+                nowMs = nowMs,
+            )
+        }
+
+    @Test
+    fun `a call at bedtime is never sent Home - the dialer is not a block candidate`() {
+        val policy = BlockRaisePolicy()
+        val call = WindowSnapshot(dialer, listOf(VisibleWindow(dialer)))
+        repeat(10) { i -> assertNull("event $i", step(call, policy, 1_000L * i)) }
+    }
+
+    @Test
+    fun `a blocked video in PiP over a call is covered and raised, but Home is not sent over the call`() {
+        val policy = BlockRaisePolicy()
+        val callWithPip = WindowSnapshot(dialer, listOf(VisibleWindow(dialer), VisibleWindow(youtube, inPictureInPicture = true)))
+        val found = step(callWithPip, policy, 0L)!!
+
+        assertEquals(youtube, found.pkg)
+        assertTrue(found.step.raise)
+        assertFalse("Home would end the call's screen", found.step.goHome)
+    }
+
+    @Test
+    fun `Home is still sent when the blocked app itself is in front`() {
+        val found = step(WindowSnapshot(chrome, listOf(VisibleWindow(chrome))), BlockRaisePolicy(), 0L)!!
+        assertEquals(chrome, found.pkg)
+        assertTrue(found.step.goHome)
     }
 
     @Test
