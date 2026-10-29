@@ -466,6 +466,16 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String commandErrorConsentWithdrawn(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.';
+  }
+
+  @override
+  String commandErrorJurisdictionMismatch(String command, String device) {
+    return 'لم يُرسل «$command» إلى $device: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.';
+  }
+
+  @override
   String commandRefusedBackgroundLocation(String command, String device) {
     return 'لم يُرسل «$command» إلى $device: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.';
   }
@@ -1508,6 +1518,31 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get pairConsentError =>
       'يحتاج الخادم إلى موافقة الوالدين لهذا الطفل قبل إنشاء رمز الإقران. ارجع وأضف الطفل مرة أخرى ثم حاول مجددًا.';
+
+  @override
+  String get pairClaimTitle => 'جهاز يطلب الانضمام';
+
+  @override
+  String pairClaimBody(String device) {
+    return 'يطلب $device الإقران. اسمح به فقط إذا كان هو الهاتف الذي أمامك.';
+  }
+
+  @override
+  String get pairClaimDeny => 'رفض';
+
+  @override
+  String get pairClaimAllowed => 'تم السماح. يُكمل الهاتف الإقران الآن…';
+
+  @override
+  String pairClaimPaired(String device) {
+    return 'تم إقران $device.';
+  }
+
+  @override
+  String get pairClaimDenied => 'تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.';
+
+  @override
+  String get pairClaimError => 'لم يتم ذلك. حاول مرة أخرى.';
 
   @override
   String get appearanceTitle => 'المظهر';

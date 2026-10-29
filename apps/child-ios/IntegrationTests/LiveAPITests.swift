@@ -69,6 +69,8 @@ final class LiveAPITests: XCTestCase {
         // /health before claiming: the code is single-use, so the claim itself is never retried.
         try await waitUntilReachable(base)
         AgentIdentityStore.clear()
+        // Plan 2.7: the claim waits for the parent's Allow, which `live-api.mjs approve` gives from the
+        // parent's side once it sees this claim (`platform: "ios"`, this device name).
         let identity = try await PairingClient().claim(baseURL: base, code: code, deviceName: "iOS live test")
         XCTAssertEqual(identity.childId, childId)
         XCTAssertFalse(identity.deviceId.isEmpty)

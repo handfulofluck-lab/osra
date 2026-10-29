@@ -245,6 +245,9 @@ jobs:
           xcrun simctl install "$DEVICE_ID" .build/liveDerivedData/Build/Products/Debug-iphonesimulator/OSRAAgent.app
           xcrun simctl privacy "$DEVICE_ID" grant location-always dev.familyshield.agent
           xcrun simctl location "$DEVICE_ID" set "$OSRA_TEST_LAT,$OSRA_TEST_LNG"
+          # Plan 2.7: case 1's claim waits for the parent's Allow, so the parent side runs alongside it.
+          node scripts/live-api.mjs approve > "$RUNNER_TEMP/approve.log" 2>&1 &
+          APPROVER=$!
           xcodebuild test-without-building \
             -project OSRAAgent.xcodeproj \
             -scheme OSRAAgentIntegration \
@@ -255,6 +258,8 @@ jobs:
           PASSED="$(awk -v word=passed "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           SKIPPED="$(awk -v word=skipped "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           echo "live API cases passed: $PASSED, skipped: $SKIPPED"
+          cat "$RUNNER_TEMP/approve.log"
+          wait "$APPROVER"
           test "$PASSED" -eq 9 && test "$SKIPPED" -eq 0
 
       - name: The parent sees the alert and the location (GET /v1/alerts, /v1/location/:childId/latest)

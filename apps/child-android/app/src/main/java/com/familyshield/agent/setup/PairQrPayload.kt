@@ -18,7 +18,8 @@ import java.net.URLEncoder
  * * the scheme is `osra`, the authority is `pair`, and the path is empty or `/`;
  * * `v` is exactly `1` — an unknown version is refused, never guessed;
  * * `code` is exactly six digits;
- * * `host` is an absolute `http(s)` URL with a non-empty host and no query or fragment.
+ * * `host` is an absolute `http(s)` URL with a non-empty host and no query or fragment; on a release
+ *   build it must also be `https` on `osratech.com` (plan 2.7).
  *
  * Pure JVM code (no `android.net.Uri`) so [PairQrPayloadTest] runs as a plain unit test.
  */
@@ -49,8 +50,11 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
          * Decodes [raw], throwing [PairQrFormatException] with a reason a person can act on.
          * There is no lenient path: a scanner that cannot name why a code is invalid must not
          * fall back to pairing with whatever it happened to read.
+         *
+         * With [releaseHostsOnly] (every release build, plan 2.7) the server must also be one of OSRA's
+         * own: `https` on `osratech.com` ([PairingApproval.isReleasePairingHost]).
          */
-        fun decode(raw: String): PairQrPayload {
+        fun decode(raw: String, releaseHostsOnly: Boolean = false): PairQrPayload {
             val uri = try {
                 URI(raw)
             } catch (e: Exception) {
@@ -77,6 +81,9 @@ data class PairQrPayload(val code: String, val apiBaseUrl: String) {
             val host = params["host"]
             if (host == null || !isApiBaseUrl(host)) {
                 throw PairQrFormatException("the server address in the QR code is not an http(s) URL")
+            }
+            if (releaseHostsOnly && !PairingApproval.isReleasePairingHost(host)) {
+                throw PairQrFormatException("the QR code points to a server that is not OSRA's")
             }
             return PairQrPayload(code = code, apiBaseUrl = host)
         }

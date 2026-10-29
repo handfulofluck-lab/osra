@@ -65,7 +65,10 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `POST /v1/devices/register` | 234 | 201 | 403p:devices | 403p:devices | 403f (child check, `:242`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:245`) |
 | `POST /v1/devices/pair` | 262 | 201 | 403p:devices | 403p:devices | 403f (`:270`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | 428 (`:273`) |
-| `POST /v1/devices/pair/claim` | 285 | — | — | — | — | — | — | — | — | — | — | 201 with a live code, else 404 | 428 (`:298`) |
+| `POST /v1/devices/pair/claim` | 311 | — | — | — | — | — | — | — | — | — | — | 202 pending claim with a live code (no token), 409 if the code already has one, else 404 | 428 (`:329`) |
+| `GET /v1/devices/pair/:code/claim` | 339 | 200 | 403p:devices | 403p:devices | 404 (family check, `:344`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/devices/pair/claims/:claimId/approve`, `/deny` | 361 | 200 (409 once decided) | 403p:devices | 403p:devices | 404 (family check, `:365`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `POST /v1/devices/pair/claims/:claimId/poll` | 398 | — | — | — | — | — | — | — | — | — | — | the poll secret is the credential: 202 pending, 201 token once after Allow, 410 denied, else 404 (ten wrong secrets burn the claim) | 428 (`:417`) |
 | `GET /v1/devices` | 332 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/devices/:id` | 345 | 200 | 200 | 200 | 403f | 200 | 403f (`:348`) | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/devices/:id/apps` | 368 | 200 | 403p:rules | 403p:rules | 403f | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
@@ -216,7 +219,7 @@ whose route relies on the hook. Only the probe, against a live server, can.
 | None | each guard's verify → 401 | `GET /v1/alerts` (t:alerts.test.ts:462), `GET /v1/devices` (t:devices.test.ts:258), `GET /v1/family/children/:id` (t:family.test.ts:162), `GET /v1/family/me` (t:family.test.ts:223), `GET /v1/rules/:childId` and `PUT` (t:rules.test.ts:267), the three controls in t:controls.test.ts:291, `GET /v1/reports/summary` (t:reports.test.ts:120), `GET /v1/reports/activity` (t:social.test.ts:357), `GET /v1/social/events` (t:social.test.ts:249), `GET /v1/digests/prefs` (t:reports.test.ts:339), `POST /v1/digests/send-now` (t:reports.test.ts:376), `POST /v1/me/push-token`, `DELETE` (t:email.test.ts:326), `GET /v1/blocklists` (t:blocklists.test.ts:38), `GET /v1/insights/apps` (t:review-fixes.test.ts:101), `GET /v1/devices/:id/apps` (t:device-apps.test.ts:246), `GET /v1/ws` (t:realtime.test.ts:147) | **GAP** on the rest |
 
 **Closed by probe section Q** (`services/api/scripts/qa-probe.mjs`, "Q. plan 2.7 authorization matrix").
-Each check walks one column across all 62 JWT routes of §1, and names every route whose answer is wrong:
+Each check walks one column across all 65 JWT routes of §1, and names every route whose answer is wrong:
 
 | Check | Column | Caller | Expected on every route |
 |---|---|---|---|
@@ -238,7 +241,9 @@ permission → 2xx" half is listed separately where a test has it.
 - **`POST /v1/alerts/:id/ack`**: Ow t:alerts.test.ts:84 · Co with and without `alerts` t:sessions-and-roles.test.ts:351, p:N7 · OF t:alerts.test.ts:474 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/devices/register`**: Ow t:devices.test.ts:120 · Co without `devices` t:devices.test.ts:143, p:N6b · OF t:devices.test.ts:221, p:B8 · Own dev. `403r` t:devices.test.ts:245 · Consent t:consent.test.ts:434 · GAP: Gu.
 - **`POST /v1/devices/pair`**: Ow t:pairing.test.ts:65 · Co t:pairing.test.ts:95, p:N6c · OF t:pairing.test.ts:123 · Own dev. t:pairing.test.ts:145 · Consent t:consent.test.ts:417 · GAP: Gu.
-- **`POST /v1/devices/pair/claim`**: live code t:pairing.test.ts:159 · unknown or expired t:pairing.test.ts:301 · reuse t:pairing.test.ts:314 · GAP: the consent 428 at claim time.
+- **`POST /v1/devices/pair/claim`** (plan 2.7, the parent approves each new device): pending claim, no token t:pairing.test.ts, p:G2b · second claim 409 t:pairing.test.ts, p:G2c · unknown or expired 404 t:pairing.test.ts · device text cleaned t:pairing.test.ts · GAP: the consent 428 at claim time.
+- **`GET /v1/devices/pair/:code/claim`**, **`POST /v1/devices/pair/claims/:claimId/approve`**, **`/deny`**: Ow t:pairing.test.ts · Co without `devices` t:pairing.test.ts · OF 404 t:pairing.test.ts, p:G2e (all three) · Deny 410 and the code burned p:G2f, p:G2g · Revoked session, Expired, Wrong purpose, None p:Q2–Q5 · Gu, Co p:Q6 · devices p:Q7 · audit row t:pairing.test.ts.
+- **`POST /v1/devices/pair/claims/:claimId/poll`**: token once after Allow t:pairing.test.ts · wrong secret 404 t:pairing.test.ts, p:G2d · nine wrong secrets leave it p:G2h, ten burn it t:pairing.test.ts, p:G2i · consent withdrawn 428 t:pairing.test.ts.
 - **`GET /v1/devices`**: Ow t:devices.test.ts:258 · Own dev. p:G3 · Co, Gu p:Q6c, p:Q6d · no GAP in these columns.
 - **`GET /v1/devices/:id`**: Ow t:devices.test.ts:276 · Sibling `403f` p:G4, p:G5 (no secret leaked) · Co, Gu p:Q6c, p:Q6d · GAP: Own dev., OF.
 - **`GET /v1/devices/:id/apps`**: Ow t:device-apps.test.ts:206 · Co without and with `rules` t:device-apps.test.ts:263, p:N6f · OF t:device-apps.test.ts:246, p:G26 · devices `403r` t:device-apps.test.ts:246 · GAP: Gu.

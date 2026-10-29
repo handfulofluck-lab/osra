@@ -62,6 +62,13 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   bool _loading = true;
   Timer? _timer;
 
+  /// Plan 2.7: the parent approves each new device. The phone's claim on [_code] as the server reports it
+  /// (`GET /v1/devices/pair/:code/claim`), read every two seconds while the code is shown.
+  Map<String, dynamic>? _claim;
+  Timer? _claimTimer;
+  bool _deciding = false;
+  bool _decisionFailed = false;
+
   /// Wizard-only: the result of the last "my child has finished" check.
   bool _checking = false;
   bool _notPairedYet = false;
@@ -78,15 +85,19 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _claimTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _generate() async {
+    _claimTimer?.cancel();
     setState(() {
       _loading = true;
       _errorKind = null;
       _notPairedYet = false;
       _checkFailed = false;
+      _claim = null;
+      _decisionFailed = false;
     });
     try {
       final res = await ref.read(apiClientProvider).raw.post(
@@ -114,6 +125,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         _loading = false;
       });
       _startCountdown();
+      _startClaimWatch();
     } on DioException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -142,6 +154,67 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       if (_remaining == Duration.zero) _timer?.cancel();
       setState(() {});
     });
+  }
+
+  void _startClaimWatch() {
+    _claimTimer?.cancel();
+    _claimTimer =
+        Timer.periodic(const Duration(seconds: 2), (_) => _readClaim());
+  }
+
+  /// One read of the claim on the shown code. A failed read (including the 404 of an expired or used
+  /// code) is a missed tick, not an answer; the next tick tries again.
+  Future<void> _readClaim() async {
+    final code = _code;
+    final status = _claim?['status'];
+    if (code == null || _expired || _deciding) return;
+    if (status == 'paired' || status == 'denied') {
+      _claimTimer?.cancel();
+      return;
+    }
+    try {
+      final res = await ref
+          .read(apiClientProvider)
+          .raw
+          .get('/v1/devices/pair/$code/claim');
+      if (!mounted || code != _code || _deciding) return;
+      final data = Map<String, dynamic>.from(res.data as Map);
+      setState(() => _claim = data);
+      if (data['status'] == 'paired') {
+        _claimTimer?.cancel();
+        ref.invalidate(familyProvider);
+      }
+    } catch (_) {
+      // Missed tick.
+    }
+  }
+
+  /// Allow or Deny the pending claim. Only after Allow does the phone get its device token.
+  Future<void> _decide({required bool allow}) async {
+    final claimId = _claim?['claimId'] as String?;
+    if (claimId == null) return;
+    setState(() {
+      _deciding = true;
+      _decisionFailed = false;
+    });
+    try {
+      await ref
+          .read(apiClientProvider)
+          .raw
+          .post('/v1/devices/pair/claims/$claimId/${allow ? 'approve' : 'deny'}');
+      if (!mounted) return;
+      setState(() {
+        _deciding = false;
+        _claim = {...?_claim, 'status': allow ? 'approved' : 'denied'};
+      });
+      if (!allow) _claimTimer?.cancel();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deciding = false;
+        _decisionFailed = true;
+      });
+    }
   }
 
   /// Time left until the server-side expiry, clamped at zero.
@@ -308,6 +381,86 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     );
   }
 
+  /// Plan 2.7: the claim card above the code. Pending: who is asking, with Allow and Deny. Then what
+  /// the parent decided, and finally that the phone is paired.
+  Widget _buildClaim(BuildContext context) {
+    final l10n = context.l10n;
+    final claim = _claim!;
+    final device = pairClaimDeviceLabel(claim);
+    final Widget? content = switch (claim['status']) {
+      'pending' => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.pairClaimTitle,
+              key: const ValueKey('pairClaimTitle'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpace.xs),
+            Text(l10n.pairClaimBody(device),
+                key: const ValueKey('pairClaimBody')),
+            if (_decisionFailed) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                l10n.pairClaimError,
+                key: const ValueKey('pairClaimError'),
+                style: TextStyle(color: context.tokens.danger),
+              ),
+            ],
+            const SizedBox(height: AppSpace.md),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
+              children: [
+                OutlinedButton(
+                  key: const ValueKey('pairClaimDeny'),
+                  onPressed: _deciding ? null : () => _decide(allow: false),
+                  child: Text(l10n.pairClaimDeny),
+                ),
+                FilledButton(
+                  key: const ValueKey('pairClaimAllow'),
+                  onPressed: _deciding ? null : () => _decide(allow: true),
+                  child: Text(l10n.allowAction),
+                ),
+              ],
+            ),
+          ],
+        ),
+      'approved' =>
+        Text(l10n.pairClaimAllowed, key: const ValueKey('pairClaimAllowed')),
+      'paired' => Text(l10n.pairClaimPaired(device),
+          key: const ValueKey('pairClaimPaired')),
+      // A stranger's claim on this code costs the parent one tap: a new code, right here.
+      'denied' => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(l10n.pairClaimDenied,
+                key: const ValueKey('pairClaimDenied')),
+            const SizedBox(height: AppSpace.sm),
+            FilledButton.tonalIcon(
+              key: const ValueKey('pairClaimNewCode'),
+              onPressed: _loading ? null : _generate,
+              icon: const Icon(Icons.refresh),
+              label: Text(l10n.regenerate),
+            ),
+          ],
+        ),
+      _ => null,
+    };
+    if (content == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: Card(
+        key: const ValueKey('pairClaimCard'),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpace.md),
+          child: content,
+        ),
+      ),
+    );
+  }
+
   Widget _buildCode(BuildContext context) {
     final l10n = context.l10n;
     final code = _code!;
@@ -315,9 +468,18 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     final remaining = _remaining;
     final mm = remaining.inMinutes.toString().padLeft(2, '0');
     final ss = (remaining.inSeconds % 60).toString().padLeft(2, '0');
+    // #433 review (a): Deny burns the code on the server, so its QR, digits and countdown are dead. Once
+    // the claim is declined the screen shows only the Declined card, whose button makes a new code.
+    if (_claim?['status'] == 'denied') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_buildClaim(context)],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_claim != null) _buildClaim(context),
         if (_expired)
           Card(
             child: Padding(
@@ -404,6 +566,13 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       ],
     );
   }
+}
+
+/// What the phone that claimed the code says it is: its name if it gave one, its model otherwise.
+String pairClaimDeviceLabel(Map<String, dynamic> claim) {
+  final name = claim['deviceName'] as String?;
+  if (name != null && name.trim().isNotEmpty) return name.trim();
+  return (claim['model'] as String?) ?? '';
 }
 
 /// The QR symbol itself, split out so tests can read the encoded [data] (the

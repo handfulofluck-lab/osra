@@ -43,6 +43,7 @@ export const MOCKED_MODELS = [
   "parentPushToken",
   "deviceCommand",
   "deviceApp",
+  "pairingDecision",
   "installRequest",
   "appUsageDaily",
   "webVisit",

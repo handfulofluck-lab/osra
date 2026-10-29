@@ -439,6 +439,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String commandErrorConsentWithdrawn(String command, String device) {
+    return '$command was not sent to $device: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.';
+  }
+
+  @override
+  String commandErrorJurisdictionMismatch(String command, String device) {
+    return '$command was not sent to $device: this child\'s consent was given for a different region than your family\'s, so monitoring is paused. Open Parental consent on the child\'s page for details.';
+  }
+
+  @override
   String commandRefusedBackgroundLocation(String command, String device) {
     return '$command was not sent to $device: the phone has not granted “Allow all the time” location, so Locate and geofence alerts cannot reach it. Ask your child to open OSRA and grant it.';
   }
@@ -1383,6 +1393,31 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get pairConsentError =>
       'The server needs parental consent for this child before it can create a pairing code. Go back and add the child again, then retry.';
+
+  @override
+  String get pairClaimTitle => 'A device is asking to join';
+
+  @override
+  String pairClaimBody(String device) {
+    return '$device wants to be paired. Allow it only if it is the phone in front of you.';
+  }
+
+  @override
+  String get pairClaimDeny => 'Deny';
+
+  @override
+  String get pairClaimAllowed => 'Allowed. The phone is finishing pairing…';
+
+  @override
+  String pairClaimPaired(String device) {
+    return '$device is paired.';
+  }
+
+  @override
+  String get pairClaimDenied => 'Declined. Make a new code to pair a phone.';
+
+  @override
+  String get pairClaimError => 'That did not go through. Try again.';
 
   @override
   String get appearanceTitle => 'Appearance';

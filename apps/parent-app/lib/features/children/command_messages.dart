@@ -63,6 +63,17 @@ String commandErrorText(
     // `devices` in an Arabic sentence reads as a bug (`readPermissionRequired`'s reasoning).
     if (ReadPermissionRequired.from(error) != null) return l10n.commandErrorForbidden(type, deviceModel);
     if (error.response?.statusCode == 429) return l10n.commandErrorRateLimited(type, deviceModel);
+    // #434 follow-up: an enforcement command is refused with `428` when consent is gone. Two shapes,
+    // two problems for the parent — re-give consent, or fix the region — so two sentences, keyed on
+    // the body's `error` and not on the status alone (a bare 428 without a code stays verbatim).
+    if (error.response?.statusCode == 428) {
+      final body = error.response?.data;
+      final code = body is Map ? body['error'] : null;
+      if (code == 'parental_consent_required') return l10n.commandErrorConsentWithdrawn(type, deviceModel);
+      if (code == 'consent_jurisdiction_mismatch') {
+        return l10n.commandErrorJurisdictionMismatch(type, deviceModel);
+      }
+    }
   }
   final body = error is DioException ? error.response?.data : null;
   final code = body is Map ? (body['error'] ?? (error as DioException).message) : (error is DioException ? error.message : error);
