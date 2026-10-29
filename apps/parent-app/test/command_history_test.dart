@@ -260,6 +260,31 @@ void main() {
       expect(find.textContaining('parental_consent_required'), findsNothing);
     });
 
+    testWidgets('a refused wind-down says why, and the POST fired (#441)', (tester) async {
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'POST /v1/controls/children/child-1/wind-down': (_) =>
+            const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+      });
+      // a taller surface, because the card sits in a lazy list that is not built at 800x600
+      await pumpScreen(tester, const ChildDetailScreen(childId: 'child-1'), api,
+          surface: const Size(420, 2600));
+
+      final windDown = find.widgetWithIcon(OutlinedButton, Icons.bedtime_outlined);
+      expect(windDown, findsOneWidget, reason: 'the taller surface must build the card');
+      await tester.tap(windDown);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('15 min'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls('POST', '/v1/controls/children/child-1/wind-down'), hasLength(1));
+      expect(
+          find.text(
+              "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+          findsOneWidget);
+      expect(find.textContaining('parental_consent_required'), findsNothing);
+    });
+
     testWidgets('empty history shows an honest empty state per device',
         (tester) async {
       final api = historyApi();

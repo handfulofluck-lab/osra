@@ -255,6 +255,32 @@ void main() {
         reason: 'the dialog has nothing to act on when consent is simply missing');
   });
 
+  // #437 A2: the family-link pill is the main entry to pause/resume, so its refusal must read as a
+  // sentence and never as our own type name (`ControlsRefusal(428)`).
+  testWidgets('a refused pause from the family-link pill says why (#441)', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/controls/children/child-1/pause': (_) =>
+          const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+    });
+    await pumpScreen(tester, const DashboardScreen(), api);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Internet').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Pause'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
+    expect(
+        find.text(
+            "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+        findsOneWidget);
+    expect(find.textContaining('ControlsRefusal'), findsNothing);
+  });
+
   // #437 A2: the same region sentence on the onboarding wizard's create, which used to collapse every
   // 428 into "consent required" — sending a parent to ask for a consent the region had refused.
   test('the onboarding child error names the region on a 428 mismatch', () {
