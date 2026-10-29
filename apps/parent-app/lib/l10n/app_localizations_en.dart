@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -465,6 +466,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedWebFilter =>
       'The web filter is not set up on your child\'s phone, so the internet was not paused.';
+
+  @override
+  String get commandRefusedWebFilterStart =>
+      'The internet pause couldn\'t start on your child\'s phone. Open OSRA there and try again.';
 
   @override
   String get commandRefusedUnsupportedCommand =>

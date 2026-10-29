@@ -167,10 +167,14 @@ object EnforceabilityPolicy {
      * [isRunning] is deliberately **not** last: a trailing lambda would bind to [now], which is also a
      * function type, and the call would compile into the wrong parameter. Named arguments are how the
      * dispatcher calls it, and the compiler now enforces that it names one.
+     *
+     * **Never call this on the main thread.** The work it waits for (`onCreate` → `openTunnel`) runs
+     * there, so blocking main would make the wait time out every time. All three callers today
+     * (`CommandPoller`, `LocationService`, `TamperAlertWorker`) are off it.
      */
     fun awaitFilterRunning(
         isRunning: () -> Boolean,
-        timeoutMs: Long = 400,
+        timeoutMs: Long = 1500,
         intervalMs: Long = 25,
         sleep: (Long) -> Unit = { Thread.sleep(it) },
         now: () -> Long = { System.currentTimeMillis() },
@@ -183,4 +187,18 @@ object EnforceabilityPolicy {
         }
         return false
     }
+
+    /**
+     * Issue #234 review: is a sinkhole-all tunnel the one that is **established**?
+     *
+     * [tunnelMode] is `FilterVpnService.tunnelMode`, which is written only after `establish()` returned
+     * a descriptor and cleared by `stopTunnel` on every re-mode. The older check asked whether the
+     * service object existed, which is true from `onCreate` onwards — before, and even without, a
+     * tunnel — so it acked "paused" for a phone that was still passing packets.
+     *
+     * Kept pure (two strings compared) so the semantic boundary has a JVM row: a null mode, a `dns`
+     * mode and the sinkhole mode each read as what they are.
+     */
+    fun isSinkholeEstablished(tunnelMode: String?, sinkholeMode: String): Boolean =
+        tunnelMode == sinkholeMode
 }

@@ -232,6 +232,19 @@ class EnforceabilityPolicyTest {
     }
 
     @Test
+    fun `a sinkhole is established only when the service says that mode is up`() {
+        // #234 review: the old wait asked whether the service object existed (`onCreate` sets that
+        // before `establish()`), so it passed for a service with no fd. These three rows are the
+        // semantic boundary; the reset in `stopTunnel` is service wiring, covered by inspection and
+        // by the Flip4 rows, not by these (there is no Robolectric in this project to drive it).
+        assertTrue(EnforceabilityPolicy.isSinkholeEstablished("sinkhole_all", "sinkhole_all"))
+        // Mutant: `tunnelMode != null` → the dns and null rows below stay green only by accident, and
+        // a re-mode to dns would ack "paused".
+        assertFalse(EnforceabilityPolicy.isSinkholeEstablished("dns", "sinkhole_all"))
+        assertFalse("no tunnel at all", EnforceabilityPolicy.isSinkholeEstablished(null, "sinkhole_all"))
+    }
+
+    @Test
     fun `awaitFilterRunning does not sleep when the tunnel is already up`() {
         var slept = 0L
         val up = EnforceabilityPolicy.awaitFilterRunning(

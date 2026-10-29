@@ -367,12 +367,17 @@ class CommandDispatcher @Inject constructor(
         if (webFilterSetUp) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
         }
-        // Issue #234: `start` only posts the intent, so ask the service whether the tunnel is up
-        // before telling the parent the internet is paused. Named, because `now` is also a lambda
-        // and a trailing one would silently bind to it.
+        // Issue #234 review: `isRunning` only says the service object exists — `onCreate` sets it
+        // before `establish()`, and it stays true when `establish()` returns null. Wait for the mode
+        // of a tunnel that is actually established instead.
         val tunnelRunning = webFilterSetUp &&
             com.familyshield.agent.security.EnforceabilityPolicy.awaitFilterRunning(
-                isRunning = { com.familyshield.agent.vpn.FilterVpnService.isRunning },
+                isRunning = {
+                    com.familyshield.agent.security.EnforceabilityPolicy.isSinkholeEstablished(
+                        com.familyshield.agent.vpn.FilterVpnService.tunnelMode,
+                        com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL,
+                    )
+                },
             )
         context.startActivity(
             Intent(context, LockActivity::class.java)
