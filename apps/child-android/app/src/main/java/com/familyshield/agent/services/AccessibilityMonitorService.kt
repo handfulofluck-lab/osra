@@ -72,6 +72,15 @@ class AccessibilityMonitorService : AccessibilityService() {
     /** Issue #175: the cover over a blocked PiP window, which stays above the block screen otherwise. */
     private val pipCover by lazy { PipCoverOverlay(this) }
 
+    /** Issue #444: a blocked app's calls are declined, covered, hung up or reported ([CallBlockPolicy]). */
+    private val calls by lazy {
+        CallEnforcer(
+            this,
+            isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW },
+            isEssential = { EssentialPackages.isEssential(it, packageFacts) },
+        )
+    }
+
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
     private var loggedStartDecision: LocationStartPolicy.Decision? = null
 
@@ -93,6 +102,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             addDataScheme("package")
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
+        calls.onConnected()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -104,13 +114,21 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     override fun onDestroy() {
         isRunning = false
+        calls.onDestroy()
         pipCover.remove()
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Issue #444: notification events carry calls only; they never feed the window logic below.
+        // RuleRepository.evaluate already answers ALLOW for everything while consent is paused.
+        if (event?.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            calls.onNotification(event)
+            return
+        }
         val eventPkg = event?.packageName?.toString() ?: return
+        calls.onEvent()
         // Issue #284: our own block screen is in front and this stream never records our package, so
         // the blocked app's interval would stay open and the next real event would charge it the stay.
         if (eventPkg == packageName) {
