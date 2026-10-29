@@ -496,7 +496,14 @@ String? addChildConsentRegionError(AppLocalizations l10n, DioException e) {
   if (body is! Map || body['error'] != 'consent_jurisdiction_mismatch') return null;
   final region = body['jurisdiction'];
   if (region is! String || region.isEmpty) return null;
-  return l10n.addChildConsentRegion(region);
+  // The server sends a code; an Arabic sentence must not read «EU» inside it (review point 1).
+  final label = switch (region) {
+    'US' => l10n.regionUS,
+    'EU' => l10n.regionEU,
+    'UK' => l10n.regionUK,
+    _ => region,
+  };
+  return l10n.addChildConsentRegion(label);
 }
 
 class AddChildDialog extends ConsumerStatefulWidget {
