@@ -256,6 +256,10 @@ void main() {
       expect(api.calls('POST', '/v1/devices/pair/claims/c-1/deny'), hasLength(1));
       expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'), isEmpty);
       expect(find.byKey(const ValueKey('pairClaimDenied')), findsOneWidget);
+      // The burned code's QR, digits, countdown and copy action are gone (#433 review (a)).
+      for (final key in ['pairingQr', 'pairingCode', 'pairingCountdown', 'pairingCopy']) {
+        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+      }
       final reads = api.calls('GET', '/v1/devices/pair/482916/claim').length;
       await nextRead(tester);
       await nextRead(tester);
@@ -266,6 +270,7 @@ void main() {
       await flushFakeHttp(tester);
       expect(api.calls('POST', '/v1/devices/pair'), hasLength(2));
       expect(find.byKey(const ValueKey('pairClaimCard')), findsNothing);
+      expect(find.byKey(const ValueKey('pairingQr')), findsOneWidget);
       await unmount(tester);
     });
 
