@@ -812,6 +812,18 @@ abstract class AppLocalizations {
   /// **'Command failed: {error}'**
   String commandFailed(String error);
 
+  /// No description provided for @commandErrorForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'You don\'t have permission to send {command} to {device}. Your family owner can give you access.'**
+  String commandErrorForbidden(String command, String device);
+
+  /// No description provided for @commandErrorRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'{command} was not sent to {device}: too many requests right now. Try again in a minute.'**
+  String commandErrorRateLimited(String command, String device);
+
   /// No description provided for @commandRefusedBackgroundLocation.
   ///
   /// In en, this message translates to:
@@ -841,6 +853,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This command needs a newer OSRA on your child\'s phone.'**
   String get commandRefusedUnsupportedCommand;
+
+  /// No description provided for @commandRefusedNotSupported.
+  ///
+  /// In en, this message translates to:
+  /// **'{command} isn\'t available on {device}: this phone or app version cannot do it, so nothing was sent.'**
+  String commandRefusedNotSupported(String command, String device);
 
   /// No description provided for @commandRefusedInvalidPayload.
   ///

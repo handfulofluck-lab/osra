@@ -13,6 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../../api/permission_errors.dart';
+import '../children/command_messages.dart';
 
 /// Marker hue per device status.
 double _statusHue(String status) => switch (status) {
@@ -122,20 +123,33 @@ class ChildMapSheet extends ConsumerWidget {
   }
 
   Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
+    // Issue #221 / ADR-0034 decision 3: the server answers a command it will not queue with
+    // `{status: "failed", reason}`. The map used to report "queued" for those, so a parent whose
+    // ring or lock was refused up front was told it had been sent. Both refusals now read the same
+    // mapping as child detail (`commandRefusalText`), so one command never has two stories.
+    final l10n = context.l10n;
     try {
-      await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
+      final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});
       ref.invalidate(deviceCommandHistoryProvider(device.id));
-      if (context.mounted) {
-        // Two explicit keys rather than a capitalised command name (#419): upper-casing a
-        // localized word is not a translation.
-        final queued = command == 'lock' ? context.l10n.familyMapLockQueued : context.l10n.familyMapRingQueued;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(queued(device.model))));
+      if (!context.mounted) return;
+      final body = response.data;
+      if (body is Map && body['status'] == 'failed') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(commandRefusalText(l10n, command, device.model, body['reason']))),
+        );
+        return;
       }
+      // Two explicit keys rather than a capitalised command name (#419): upper-casing a
+      // localized word is not a translation.
+      final queued = command == 'lock' ? l10n.familyMapLockQueued : l10n.familyMapRingQueued;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(queued(device.model))));
     } on DioException catch (e) {
       if (context.mounted) {
-        final data = e.response?.data;
-        final msg = data is Map ? '${data['error'] ?? e.message}' : (e.message ?? '');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.familyMapCommandFailed(msg))));
+        // #434: the keys are the shapes the routes actually send — a `permission_required` 403,
+        // a Fastify 429, an agent reason, or a code nobody knows (kept verbatim).
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(commandErrorText(l10n, command, device.model, e))),
+        );
       }
     }
   }
@@ -371,7 +385,13 @@ class _GeofenceCreateDialogState extends ConsumerState<GeofenceCreateDialog> {
       final body = e.response?.data;
       setState(() {
         _saving = false;
-        _error = body is Map ? '${body['error'] ?? e.message}' : e.message;
+        // #434 review: this route is gated by `requirePermission("location")`, so a refusal here is
+        // the same `permission_required` 403 every gated read uses — one sentence, no new copy.
+        _error = readErrorText(
+          context.l10n,
+          e,
+          () => body is Map ? '${body['error'] ?? e.message}' : (e.message ?? ''),
+        );
       });
     }
   }

@@ -429,6 +429,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String commandErrorForbidden(String command, String device) {
+    return 'You don\'t have permission to send $command to $device. Your family owner can give you access.';
+  }
+
+  @override
+  String commandErrorRateLimited(String command, String device) {
+    return '$command was not sent to $device: too many requests right now. Try again in a minute.';
+  }
+
+  @override
   String commandRefusedBackgroundLocation(String command, String device) {
     return '$command was not sent to $device: the phone has not granted “Allow all the time” location, so Locate and geofence alerts cannot reach it. Ask your child to open OSRA and grant it.';
   }
@@ -449,6 +459,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedUnsupportedCommand =>
       'This command needs a newer OSRA on your child\'s phone.';
+
+  @override
+  String commandRefusedNotSupported(String command, String device) {
+    return '$command isn\'t available on $device: this phone or app version cannot do it, so nothing was sent.';
+  }
 
   @override
   String get commandRefusedInvalidPayload =>
