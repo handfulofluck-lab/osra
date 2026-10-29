@@ -161,6 +161,20 @@ void main() {
     // a reason the agent would have used keeps the same sentence as a 200 refusal
     expect(commandErrorText(ar, 'ring', 'Pixel 7', 'not_supported'),
         '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
+    // the two 428 shapes, keyed on the body's `error`; a bare 428 with no code stays verbatim
+    expect(
+      commandErrorText(ar, 'lock', 'Pixel 7',
+          http(428, {'error': 'parental_consent_required', 'childId': 'child-1'})),
+      'لم يُرسل «قفل» إلى Pixel 7: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.',
+    );
+    expect(
+      commandErrorText(ar, 'lock', 'Pixel 7',
+          http(428, {'error': 'consent_jurisdiction_mismatch', 'childId': 'child-1'})),
+      'لم يُرسل «قفل» إلى Pixel 7: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.',
+    );
+    expect(commandErrorText(ar, 'lock', 'Pixel 7', http(428, {'error': 'something_else'})),
+        contains('something_else'),
+        reason: 'a 428 without a known code is a bug report, not a sentence we invented');
     // anything else stays visible
     expect(commandErrorText(ar, 'ring', 'Pixel 7', 'some_new_code'), contains('some_new_code'),
         reason: 'an unknown code must stay visible rather than becoming a vague failure');
@@ -206,6 +220,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('يمكن لمالك العائلة منحك حق الوصول إلى هذا.'), findsOneWidget);
     expect(find.textContaining('permission_required'), findsNothing);
+  });
+
+  // #434 follow-up: an enforcement command is refused with 428 when consent is gone. The body's `error`
+  // decides which of the two sentences, because "give consent again" and "the regions do not match" send a
+  // parent to different places. Literals again (#429).
+  testWidgets('a 428 on lock says the consent is withdrawn, not the raw code', (tester) async {
+    const ping = LocationPing(deviceId: 'dev-1', lat: 25.3, lng: 51.5);
+    final routes = standardRoutes()
+      ..['POST /v1/devices/dev-1/command'] =
+          (_) => const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'});
+    final api = FakeApiClient(routes);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const Scaffold(body: ChildMapSheet(child: child, ping: ping, device: device)),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('قفل الجهاز'));
+    await tester.pumpAndSettle();
+    expect(find.text('لم يُرسل «قفل» إلى Pixel 7: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.'),
+        findsOneWidget);
+    expect(find.textContaining('parental_consent_required'), findsNothing);
   });
 
   testWidgets('the add-geofence dialog reads in Arabic and asks for a label in Arabic', (tester) async {
