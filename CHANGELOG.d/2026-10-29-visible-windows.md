@@ -8,8 +8,12 @@
   whether the phone accepted it.
 - **PiP and split screen:** two raises per episode. If the blocked app is still visible after that, the
   parent gets one `tamper` alert, "A blocked app stayed on screen", with `metadata.type = block_bypass`
-  and the app and layout. There is one alert per episode (dedupe key: device, app, layout, episode start).
+  and the app and layout. There is one alert per episode (dedupe key: device, app, layout, episode start), and at
+  most one per app per ten minutes, so a PiP window that blinks out of the window list and back cannot page the
+  parent again and again.
+- Home is never sent while the window in front is essential (the dialer, emergency, the launcher): a blocked
+  video in PiP over a phone call is covered and the block screen is raised, but the call is not thrown to Home.
 - The lock overlay keeps its own bounded retry budget; only the block and time-limit screens changed.
-- JVM: `BlockRaisePolicyTest` covers 13 cases: no budget in the normal layout, the one-second spacing,
+- JVM: `BlockRaisePolicyTest` covers 14 cases, and `MultiWindowCoverageTest` adds three Home rows: no budget in the normal layout, the one-second spacing,
   exactly one bypass per episode, the cover added, moved and removed, and the alert key and metadata.
   On hardware (the Flip4 row, run by Claude): whether the cover sits above the PiP window on One UI.

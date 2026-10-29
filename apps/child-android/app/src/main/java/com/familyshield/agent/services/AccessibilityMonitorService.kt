@@ -23,6 +23,7 @@ import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.OverlayRetryBudget
 import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.enforcement.RetryDecision
+import com.familyshield.agent.enforcement.VisibleBlockStep
 import com.familyshield.agent.enforcement.VisibleWindow
 import com.familyshield.agent.enforcement.WindowBounds
 import com.familyshield.agent.enforcement.WindowLayout
@@ -164,35 +165,40 @@ class AccessibilityMonitorService : AccessibilityService() {
      * by [pipCover], because a PiP window stays above the block screen.
      */
     private fun enforceVisibleBlocks(snapshot: WindowSnapshot, active: String?) {
-        for (pkg in EssentialPackages.blockCandidates(active, snapshot.windows)) {
-            val decision = rules.evaluate(pkg)
-            if (decision == RuleRepository.Decision.ALLOW) continue
-            val layout = snapshot.layout
-            val pipWindow = snapshot.windows.firstOrNull { it.inPictureInPicture && it.packageName == pkg }
-            pipCover.update(pipWindow?.bounds)
-            val step = blockRaisePolicy.decide(pkg, layout, blockedIsActive = pkg == active, nowMs = System.currentTimeMillis())
-            if (step.goHome) performGlobalAction(GLOBAL_ACTION_HOME)
-            if (step.raise) {
-                if (pipWindow != null) dismissPictureInPicture(pkg)
-                // The policy owns the spacing now (1 s); AppBlocker's own 2 s debounce would halve it.
-                blocker.clearDebounce(pkg)
-                if (decision == RuleRepository.Decision.BLOCK) blocker.showBlockScreen(pkg)
-                else blocker.showTimeLimitScreen(pkg)
-            }
-            if (step.reportBypass) {
-                Log.w(TAG, "block overlay: $pkg still visible in ${layout.name.lowercase()} after the raises; telling the parent (#175)")
-                TamperAlertWorker.enqueue(
-                    this,
-                    TamperAlertWorker.TYPE_BLOCK_BYPASS,
-                    eventAtMs = step.episodeStartMs,
-                    app = pkg,
-                    layout = layout.name.lowercase(),
-                )
-            }
+        val found = VisibleBlockStep.decide(
+            snapshot,
+            active,
+            evaluate = rules::evaluate,
+            isEssential = { EssentialPackages.isEssential(it, packageFacts) },
+            policy = blockRaisePolicy,
+            nowMs = System.currentTimeMillis(),
+        )
+        if (found == null) {
+            pipCover.update(null)
             return
         }
-        blockRaisePolicy.noBlockedWindow()
-        pipCover.update(null)
+        val (pkg, decision, step) = found
+        val layout = snapshot.layout
+        val pipWindow = snapshot.windows.firstOrNull { it.inPictureInPicture && it.packageName == pkg }
+        pipCover.update(pipWindow?.bounds)
+        if (step.goHome) performGlobalAction(GLOBAL_ACTION_HOME)
+        if (step.raise) {
+            if (pipWindow != null) dismissPictureInPicture(pkg)
+            // The policy owns the spacing now (1 s); AppBlocker's own 2 s debounce would halve it.
+            blocker.clearDebounce(pkg)
+            if (decision == RuleRepository.Decision.BLOCK) blocker.showBlockScreen(pkg)
+            else blocker.showTimeLimitScreen(pkg)
+        }
+        if (step.reportBypass) {
+            Log.w(TAG, "block overlay: $pkg still visible in ${layout.name.lowercase()} after the raises; telling the parent (#175)")
+            TamperAlertWorker.enqueue(
+                this,
+                TamperAlertWorker.TYPE_BLOCK_BYPASS,
+                eventAtMs = step.episodeStartMs,
+                app = pkg,
+                layout = layout.name.lowercase(),
+            )
+        }
     }
 
     /**

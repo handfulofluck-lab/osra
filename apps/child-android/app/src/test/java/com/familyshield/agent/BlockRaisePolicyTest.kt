@@ -97,6 +97,18 @@ class BlockRaisePolicyTest {
     }
 
     @Test
+    fun `a PiP window that blinks out and back tells the parent once per ten minutes, not once per episode`() {
+        val policy = BlockRaisePolicy()
+        fun episode(start: Long) =
+            (0 until 3).map { policy.decide(youtube, WindowLayout.PICTURE_IN_PICTURE, false, start + it * 1_000L) }
+                .also { policy.noBlockedWindow() }
+        assertEquals(1, episode(0L).count { it.reportBypass })
+        assertEquals("the raises restart, the alert does not", 2, episode(30_000L).count { it.raise })
+        assertEquals(0, episode(60_000L).count { it.reportBypass })
+        assertEquals(1, episode(11 * 60_000L).count { it.reportBypass })
+    }
+
+    @Test
     fun `leaving PiP for the normal layout is a new episode with no budget`() {
         val policy = BlockRaisePolicy()
         repeat(4) { policy.decide(youtube, WindowLayout.PICTURE_IN_PICTURE, false, it * 1_000L) }
