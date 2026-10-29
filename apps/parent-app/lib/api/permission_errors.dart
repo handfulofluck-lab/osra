@@ -97,10 +97,22 @@ String? consentRefusalRegionLabel(AppLocalizations l10n, Object error) {
   if (body is! Map || body['error'] != 'consent_jurisdiction_mismatch') return null;
   final region = body['jurisdiction'];
   if (region is! String || region.isEmpty) return null;
-  return switch (region) {
-    'US' => l10n.regionUS,
-    'EU' => l10n.regionEU,
-    'UK' => l10n.regionUK,
-    _ => region,
-  };
+  return regionLabel(l10n, region);
 }
+
+/// The app's own label for a region code (`EU` → "European Union").
+///
+/// The server stores and sends codes, and a sentence — Arabic especially — must
+/// not carry one. An unrecognised code passes through unchanged rather than
+/// becoming an empty string, so a region added on the server still reads as
+/// something rather than nothing.
+///
+/// Extracted for issue #437 part B: the grant dialog names the region the new
+/// record will carry, which is the same code-to-label mapping a refusal names.
+String regionLabel(AppLocalizations l10n, String code) => switch (code) {
+      'US' => l10n.regionUS,
+      'EU' => l10n.regionEU,
+      'UK' => l10n.regionUK,
+      'OTHER' => l10n.regionOther,
+      _ => code,
+    };

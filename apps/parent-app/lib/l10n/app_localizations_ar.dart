@@ -2209,6 +2209,35 @@ class AppLocalizationsAr extends AppLocalizations {
       'تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
 
   @override
+  String get consentGrantTitle => 'منح الموافقة مجددًا';
+
+  @override
+  String get consentGrantAction => 'منح الموافقة';
+
+  @override
+  String get consentGrantNote =>
+      'تبقى المراقبة متوقفة حتى يوجد سجل موافقة جديد. منح الموافقة مجددًا يستأنف الجمع على أجهزة هذا الطفل.';
+
+  @override
+  String consentGrantRegion(String region) {
+    return 'يُسجَّل السجل بمنطقة عائلتك ($region). السجل من منطقة أخرى لا يمكنه السماح بالمراقبة.';
+  }
+
+  @override
+  String get consentGrantDone =>
+      'سُجِّلت الموافقة. تستأنف المراقبة على أجهزة هذا الطفل.';
+
+  @override
+  String get consentGrantFailed =>
+      'لم تُسجَّل الموافقة. تحقّق من اتصالك وحاول مجددًا.';
+
+  @override
+  String get consentGrantForbidden => 'مالك العائلة فقط يمكنه منح الموافقة.';
+
+  @override
+  String get consentGrantBusy => 'جارٍ الحفظ…';
+
+  @override
   String get consentWithdrawAction => 'سحب الموافقة';
 
   @override

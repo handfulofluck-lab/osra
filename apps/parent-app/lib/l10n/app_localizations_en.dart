@@ -2056,6 +2056,36 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load the consent record. Check your connection and try again.';
 
   @override
+  String get consentGrantTitle => 'Give consent again';
+
+  @override
+  String get consentGrantAction => 'Grant consent';
+
+  @override
+  String get consentGrantNote =>
+      'Monitoring stays stopped until a new consent record exists. Granting consent again resumes collection on this child\'s devices.';
+
+  @override
+  String consentGrantRegion(String region) {
+    return 'Recorded with your family\'s region ($region). A record from another region cannot authorise monitoring.';
+  }
+
+  @override
+  String get consentGrantDone =>
+      'Consent recorded. Monitoring resumes on this child\'s devices.';
+
+  @override
+  String get consentGrantFailed =>
+      'Consent was not recorded. Check your connection and try again.';
+
+  @override
+  String get consentGrantForbidden =>
+      'Only the family owner can grant consent.';
+
+  @override
+  String get consentGrantBusy => 'Saving…';
+
+  @override
   String get consentWithdrawAction => 'Withdraw consent';
 
   @override

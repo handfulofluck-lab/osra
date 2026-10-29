@@ -1012,6 +1012,19 @@
   },
   "consentHistoryActive": "active",
   "consentLoadFailed": "Could not load the consent record. Check your connection and try again.",
+  "consentGrantTitle": "Give consent again",
+  "consentGrantAction": "Grant consent",
+  "consentGrantNote": "Monitoring stays stopped until a new consent record exists. Granting consent again resumes collection on this child's devices.",
+  "consentGrantRegion": "Recorded with your family's region ({region}). A record from another region cannot authorise monitoring.",
+  "@consentGrantRegion": {
+    "placeholders": {
+      "region": { "type": "String" }
+    }
+  },
+  "consentGrantDone": "Consent recorded. Monitoring resumes on this child's devices.",
+  "consentGrantFailed": "Consent was not recorded. Check your connection and try again.",
+  "consentGrantForbidden": "Only the family owner can grant consent.",
+  "consentGrantBusy": "Saving…",
   "consentWithdrawAction": "Withdraw consent",
   "consentWithdrawOnlyOwner": "Only the family owner can withdraw consent.",
   "consentWithdrawUnavailable": "There is no active consent record to withdraw.",

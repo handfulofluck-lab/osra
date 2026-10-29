@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/children/consent_screen.dart';
+import 'package:familyshield_parent/features/children/consent_step.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -422,6 +423,227 @@ void main() {
             'Could not withdraw consent. Nothing was changed. Check your connection and try again.'),
         findsOneWidget,
       );
+    });
+  });
+
+  // Issue #437 part B: the owner can restore a lapsed record. Claude's decision of 2026-10-29 chose
+  // option 1, a narrow `ConsentStep`, so the notice a parent reads here is the same widget the
+  // add-child flow renders (its own row lives in `content_safety_test.dart`).
+  //
+  // Every row names the mutant that must turn it red; the suite is the whole point of the extraction,
+  // and a row that cannot fail would only print a number (§3).
+  group('ConsentScreen — give consent again (#437 part B)', () {
+    Future<void> flushFakeHttp(WidgetTester tester) async {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    /// The family fixture at [region] with [role]. The shipped one is US/owner, so these rows run on
+    /// EU: a body that hardcodes `US` fails instead of coinciding with the default.
+    Map<String, dynamic> family({String region = 'EU', String role = 'owner'}) {
+      final me = familyMeTwoChildren();
+      (me['family'] as Map<String, dynamic>)['region'] = region;
+      (me['parent'] as Map<String, dynamic>)['role'] = role;
+      return me;
+    }
+
+    Map<String, dynamic> expiredStatus() => consentStatusPayload(
+          active: false,
+          reason: 'parental_consent_required',
+          jurisdiction: 'EU',
+          records: [
+            consentRecordJson(
+              jurisdiction: 'EU',
+              expiresAt: DateTime.now().subtract(const Duration(days: 1)),
+            ),
+          ],
+        );
+
+    Map<String, dynamic> activeStatus() => consentStatusPayload(
+          jurisdiction: 'EU',
+          records: [
+            consentRecordJson(jurisdiction: 'EU', grantedAt: DateTime.now()),
+          ],
+        );
+
+    /// The status stays expired until a grant is recorded, so an `Active` a row reads afterwards is
+    /// produced by the screen's own invalidation and not by the fixture. Mutant for that: drop the
+    /// `ref.invalidate(consentStatusProvider(...))`, and the label stays `Expired`.
+    FakeApiClient grantApi({
+      Map<String, dynamic>? status,
+      Object? postResult,
+      String region = 'EU',
+      String role = 'owner',
+    }) {
+      late FakeApiClient api;
+      api = FakeApiClient({
+        ...standardRoutes(familyMe: family(region: region, role: role)),
+        'GET /v1/family/children/child-1/consent': (_) =>
+            api.calls('POST', '/v1/family/children/child-1/consent').isEmpty
+                ? (status ?? expiredStatus())
+                : activeStatus(),
+        'POST /v1/family/children/child-1/consent': (_) =>
+            postResult ?? {'consent': consentRecordJson(jurisdiction: region)},
+      });
+      return api;
+    }
+
+    testWidgets(
+        'the owner of an expired record grants it again with the family region',
+        (tester) async {
+      final api = grantApi();
+      await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
+
+      expect(stateLabel(tester), 'Expired');
+      expect(find.byKey(const ValueKey('consentGrantButton')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('consentGrantButton')));
+      await tester.pumpAndSettle();
+
+      // The shared step, not a second copy of the notice.
+      expect(find.byType(ConsentStep), findsOneWidget);
+      expect(
+          find.text(
+              'Before you add a child, we need to confirm that you are their parent or guardian.'),
+          findsOneWidget);
+      // The family's own region, named — and not offered as a choice, because the route refuses
+      // anything else (`428 consent_jurisdiction_mismatch`). Mutant for the body: hardcode "US".
+      expect(
+          find.textContaining(
+              "Recorded with your family's region (European Union)"),
+          findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('consentGrantConfirm')));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+
+      final post =
+          api.calls('POST', '/v1/family/children/child-1/consent').single;
+      expect(post.body, {'method': 'sms_plus', 'jurisdiction': 'EU'});
+      expect(stateLabel(tester), 'Active');
+      expect(find.textContaining('Consent recorded'), findsOneWidget);
+    });
+
+    testWidgets('a co-parent gets no action, because the route answers 403',
+        (tester) async {
+      // Mutant: drop the `isOwner` guard in `ConsentScreen` and this finds the button.
+      final api = grantApi(role: 'co-parent');
+      await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
+
+      expect(stateLabel(tester), 'Expired');
+      expect(find.byKey(const ValueKey('consentGrantButton')), findsNothing);
+      expect(find.text('Only the family owner can withdraw consent.'),
+          findsOneWidget);
+    });
+
+    testWidgets('a withdrawn record can be granted again too', (tester) async {
+      // Withdrawal is reversible by design (`consentRevokeWarning` says so), so the same action is
+      // offered. Mutant: restrict `needsConsentGrant` to `expired`, and this finds nothing.
+      final api = grantApi(
+        status: consentStatusPayload(
+          active: false,
+          reason: 'parental_consent_required',
+          jurisdiction: 'EU',
+          records: [
+            consentRecordJson(
+                jurisdiction: 'EU', revokedAt: DateTime.utc(2026, 10, 1)),
+          ],
+        ),
+      );
+      await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
+
+      expect(stateLabel(tester), 'Withdrawn');
+      expect(find.byKey(const ValueKey('consentGrantButton')), findsOneWidget);
+    });
+
+    testWidgets('an active record offers no grant action', (tester) async {      // Mutant: show it whenever a record exists (`needsConsentGrant` true for every state).
+      final api = grantApi(status: activeStatus());
+      await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
+
+      expect(stateLabel(tester), 'Active');
+      expect(find.byKey(const ValueKey('consentGrantButton')), findsNothing);
+    });
+
+    testWidgets('an expiring record is warned about, not treated as lapsed',
+        (tester) async {
+      // `expiring` is still active: collection continues, so the card would claim monitoring had
+      // stopped when it had not. Mutant: include `expiring` in `needsConsentGrant`.
+      final api = grantApi(
+        status: consentStatusPayload(
+          jurisdiction: 'EU',
+          records: [
+            consentRecordJson(
+              jurisdiction: 'EU',
+              expiresAt: DateTime.now().add(const Duration(days: 5)),
+            ),
+          ],
+        ),
+      );
+      await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
+
+      expect(stateLabel(tester), 'Expiring soon');
+      expect(find.byKey(const ValueKey('consentGrantButton')), findsNothing);
+    });
+
+    testWidgets('a refusal keeps the dialog open with a sentence and no refresh',
+        (tester) async {
+      // Mutant: swallow the error (an empty catch) and the dialog closes claiming success.
+      final api = grantApi(
+        postResult: const FakeHttpError(500, {'error': 'boom'}),
+      );
+      await pumpScreen(tester, const ConsentScreen(childId: 'child-1'), api);
+
+      await tester.tap(find.byKey(const ValueKey('consentGrantButton')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('consentGrantConfirm')));
+      await flushFakeHttp(tester);
+
+      expect(find.byKey(const ValueKey('consentGrantConfirm')), findsOneWidget);
+      expect(find.byKey(const ValueKey('consentGrantError')), findsOneWidget);
+      expect(
+          find.text(
+              'Consent was not recorded. Check your connection and try again.'),
+          findsOneWidget);
+      expect(find.textContaining('boom'), findsNothing);
+      // Nothing was granted, so nothing is refetched and no success is claimed.
+      expect(api.calls('GET', '/v1/family/children/child-1/consent'),
+          hasLength(1));
+      expect(find.textContaining('Consent recorded'), findsNothing);
+    });
+
+    testWidgets('Arabic RTL at 320x568: the card and its dialog do not overflow',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final api = grantApi();
+      await pumpScreen(
+        tester,
+        const ConsentScreen(childId: 'child-1'),
+        api,
+        locale: const Locale('ar'),
+        direction: TextDirection.rtl,
+        tall: false,
+      );
+
+      expect(stateLabel(tester), 'منتهية');
+      await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('consentGrantButton')), 200);
+      await tester.pumpAndSettle();
+      expect(find.text('منح الموافقة مجددًا'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('consentGrantButton')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('يُسجَّل السجل بمنطقة عائلتك'), findsOneWidget);
+      expect(Directionality.of(tester.element(find.byType(AlertDialog))),
+          TextDirection.rtl);
+      expect(drainExceptions(tester), isEmpty);
     });
   });
 
