@@ -478,6 +478,14 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
     } else {
       await pauseInternet(ref, child.id);
     }
+  } on ControlsRefusal catch (r) {
+    // #441 review: the pill is the main entry to pause/resume, so it needs the same sentence as the
+    // device card — and it must not print `ControlsRefusal(428)`, which is what '$e' became.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(readErrorText(l10n, r.error, () => l10n.internetChangeFailed('${r.error}'))),
+      ));
+    }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.internetChangeFailed('$e'))));
@@ -487,6 +495,14 @@ Future<void> toggleInternetWithConfirm(BuildContext context, WidgetRef ref, Chil
 
 /// Two-step add-child dialog: parental consent first (method + jurisdiction
 /// matching the family region), then the child's details.
+/// Issue #437 review: the one consent refusal a *creation* dialog can act on. The child does not exist
+/// yet, so "open Parental consent on the child's page" would point at a page that is not there — the
+/// fix is the dialog's own region dropdown, and the sentence names the region the server expected.
+String? addChildConsentRegionError(AppLocalizations l10n, DioException e) {
+  final region = consentRefusalRegionLabel(l10n, e);
+  return region == null ? null : l10n.addChildConsentRegion(region);
+}
+
 class AddChildDialog extends ConsumerStatefulWidget {
   const AddChildDialog({super.key});
 
@@ -535,9 +551,13 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
       ref.invalidate(familyProvider);
       if (mounted) Navigator.of(context).pop();
     } on DioException catch (e) {
-      // Consent gate: surface the API's 428 message when consent is missing.
+      // Issue #437 review: this is child *creation*, so the child's own Parental consent page does not
+      // exist yet — the generic consent sentences would point at a page that is not there. The one case
+      // worth a sentence is the region mismatch, because the dialog has a region dropdown and the fix
+      // is to pick the family's.
       final data = e.response?.data;
-      setState(() => _error = data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : e.message);
+      setState(() => _error = addChildConsentRegionError(context.l10n, e) ??
+          (data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? '')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -9,6 +10,9 @@ import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/content/snippet_vault_modal.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
+import 'package:familyshield_parent/features/onboarding/onboarding_messages.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -224,6 +228,128 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('كيف تتحدث مع طفلك عن هذا'), findsOneWidget);
     });
+  });
+
+
+  // #437 review point 1: the add-child dialog creates the child, so the generic consent sentences would
+  // point at a page that does not exist yet. Its own sentence names the region the server expected, and
+  // the code is mapped to a label so an Arabic sentence does not read «EU».
+  test("the add-child consent refusal names the region, with the create route's real body", () {
+    final options = RequestOptions(path: '/v1/family/children');
+    DioException refusal(Map<String, dynamic> body) => DioException(
+          requestOptions: options,
+          response: Response(requestOptions: options, statusCode: 428, data: body),
+          type: DioExceptionType.badResponse,
+        );
+
+    final arLocalizations = AppLocalizationsAr();
+    final text = addChildConsentRegionError(
+        arLocalizations, refusal({'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'}));
+    expect(text, isNotNull);
+    expect(text, contains('يجب أن تطابق منطقة الموافقة منطقة عائلتك'));
+    expect(text, contains(arLocalizations.regionEU),
+        reason: 'the code is mapped to a label, so an Arabic sentence does not read «EU»');
+    expect(text, isNot(contains('EU')));
+
+    expect(addChildConsentRegionError(arLocalizations, refusal({'error': 'parental_consent_required'})), isNull,
+        reason: 'the dialog has nothing to act on when consent is simply missing');
+  });
+
+  // #437 A2: the family-link pill is the main entry to pause/resume, so its refusal must read as a
+  // sentence and never as our own type name (`ControlsRefusal(428)`).
+  testWidgets('a refused pause from the family-link pill says why (#441)', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/controls/children/child-1/pause': (_) =>
+          const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'}),
+    });
+    await pumpScreen(tester, const DashboardScreen(), api);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Internet').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Pause'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('POST', '/v1/controls/children/child-1/pause'), hasLength(1));
+    expect(
+        find.text(
+            "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+        findsOneWidget);
+    expect(find.textContaining('ControlsRefusal'), findsNothing);
+  });
+
+  // #437 A2: the same region sentence on the onboarding wizard's create, which used to collapse every
+  // 428 into "consent required" — sending a parent to ask for a consent the region had refused.
+  test('the onboarding child error names the region on a 428 mismatch', () {
+    final options = RequestOptions(path: '/v1/family/children');
+    DioException refusal(Map<String, dynamic> body) => DioException(
+          requestOptions: options,
+          response: Response(requestOptions: options, statusCode: 428, data: body),
+          type: DioExceptionType.badResponse,
+        );
+    final arLocalizations = AppLocalizationsAr();
+    final text = onboardingChildError(
+        arLocalizations, refusal({'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'}));
+    expect(text, contains(arLocalizations.regionEU));
+    expect(text, isNot(equals(arLocalizations.onboardingConsentRequired)),
+        reason: 'a region mismatch is actionable; "consent required" is not the same sentence');
+    expect(
+        onboardingChildError(arLocalizations, refusal({'error': 'parental_consent_required'})),
+        arLocalizations.onboardingConsentRequired);
+  });
+
+  // #437 part A: the add-child dialog shows the region sentence when the create route refuses the
+  // consent region (`family.ts:148`), not the wire code.
+  testWidgets('a region refusal on add child names the family region in the dialog', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/family/children': (_) =>
+          const FakeHttpError(428, {'error': 'consent_jurisdiction_mismatch', 'jurisdiction': 'EU'}),
+    });
+    await pumpScreen(tester, const Scaffold(body: AddChildDialog()), api);
+
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Child name'), 'Alex');
+    await tester.enterText(find.widgetWithText(TextField, 'Birth year'), '2014');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add child'));
+    await flushFakeHttp(tester);
+
+    expect(
+        find.text("The consent region must match your family's region (European Union). "
+            'Choose European Union and try again.'),
+        findsOneWidget);
+    expect(find.textContaining('consent_jurisdiction_mismatch'), findsNothing);
+  });
+
+  // #437 part A: a rule save refused for consent shows the sentence in the editor's banner, not the
+  // wire code. The body is the one `requireConsent` sends (`middleware/requireConsent.ts:51`).
+  testWidgets('a 428 on a rule save says why in the banner, not the raw code', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'PUT /v1/rules/child-1': (_) => const FakeHttpError(428, {'error': 'parental_consent_required'}),
+    });
+    await pumpScreen(tester, const RulesEditorScreen(childId: 'child-1'), api);
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save'));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.calls('PUT', '/v1/rules/child-1'), hasLength(1));
+    expect(
+      find.descendant(
+        of: find.byType(MaterialBanner),
+        matching: find.text(
+            "This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child's page to see why."),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('parental_consent_required'), findsNothing);
   });
 
   group('YouTube Restricted Mode in RulesEditorScreen', () {

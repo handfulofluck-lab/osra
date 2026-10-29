@@ -974,6 +974,24 @@ abstract class AppLocalizations {
   /// **'Your family owner can give you access to this.'**
   String get readPermissionRequired;
 
+  /// No description provided for @readErrorConsentMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'This change was not saved: this child has no active consent, so monitoring is paused. Open Parental consent on the child\'s page to see why.'**
+  String get readErrorConsentMissing;
+
+  /// No description provided for @readErrorConsentRegion.
+  ///
+  /// In en, this message translates to:
+  /// **'This change was not saved: this child\'s consent was given for a different region than your family\'s. Open Parental consent on the child\'s page for details.'**
+  String get readErrorConsentRegion;
+
+  /// No description provided for @addChildConsentRegion.
+  ///
+  /// In en, this message translates to:
+  /// **'The consent region must match your family\'s region ({region}). Choose {region} and try again.'**
+  String addChildConsentRegion(String region);
+
   /// No description provided for @familyDone.
   ///
   /// In en, this message translates to:

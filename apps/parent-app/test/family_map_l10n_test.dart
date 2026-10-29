@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart';
 import 'package:familyshield_parent/features/children/command_messages.dart';
+import 'package:familyshield_parent/api/permission_errors.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -222,6 +223,32 @@ void main() {
     expect(find.textContaining('permission_required'), findsNothing);
   });
 
+  // #437 part A: a write refused for consent is not a command refusal — the sentence must not name a
+  // command, and it must send the parent to the page that can explain it. Literals again (#429).
+  testWidgets('a geofence write refused for consent says why, not the raw 428', (tester) async {
+    final routes = standardRoutes()
+      ..['POST /v1/location/geofences'] =
+          (_) => const FakeHttpError(428, {'error': 'parental_consent_required', 'childId': 'child-1'});
+    final api = FakeApiClient(routes);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(
+        const Scaffold(body: GeofenceCreateDialog(children: [child], initialCenter: LatLng(25.3, 51.5))),
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'المدرسة');
+    await tester.tap(find.text(ar.familyMapCreate));
+    await tester.pumpAndSettle();
+    expect(
+        find.text(
+            'لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.'),
+        findsOneWidget);
+    expect(find.textContaining('parental_consent_required'), findsNothing);
+  });
+
   // #434 follow-up: an enforcement command is refused with 428 when consent is gone. The body's `error`
   // decides which of the two sentences, because "give consent again" and "the regions do not match" send a
   // parent to different places. Literals again (#429).
@@ -245,6 +272,24 @@ void main() {
     expect(find.text('لم يُرسل «قفل» إلى Pixel 7: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.'),
         findsOneWidget);
     expect(find.textContaining('parental_consent_required'), findsNothing);
+  });
+
+  test('readErrorText maps both consent codes and leaves a bare 428 to the screen', () {
+    final options = RequestOptions(path: '/v1/rules/child-1');
+    DioException http(int status, Map<String, dynamic> body) => DioException(
+          requestOptions: options,
+          response: Response(requestOptions: options, statusCode: status, data: body),
+          type: DioExceptionType.badResponse,
+        );
+
+    expect(
+        readErrorText(ar, http(428, {'error': 'parental_consent_required', 'childId': 'child-1'}), () => 'fallback'),
+        'لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.');
+    expect(
+        readErrorText(ar, http(428, {'error': 'consent_jurisdiction_mismatch'}), () => 'fallback'),
+        'لم يُحفظ هذا التغيير: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.');
+    expect(readErrorText(ar, http(428, {'error': 'something_else'}), () => 'fallback'), 'fallback',
+        reason: "a bare 428 with an unknown code stays the screen's message, not an invented sentence");
   });
 
   testWidgets('the add-geofence dialog reads in Arabic and asks for a label in Arabic', (tester) async {

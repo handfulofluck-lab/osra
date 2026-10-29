@@ -563,6 +563,19 @@ class AppLocalizationsAr extends AppLocalizations {
       'يمكن لمالك العائلة منحك حق الوصول إلى هذا.';
 
   @override
+  String get readErrorConsentMissing =>
+      'لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.';
+
+  @override
+  String get readErrorConsentRegion =>
+      'لم يُحفظ هذا التغيير: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.';
+
+  @override
+  String addChildConsentRegion(String region) {
+    return 'يجب أن تطابق منطقة الموافقة منطقة عائلتك ($region). اختر $region وحاول مرة أخرى.';
+  }
+
+  @override
   String get familyDone => 'تم';
 
   @override

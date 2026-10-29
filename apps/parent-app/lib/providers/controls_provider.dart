@@ -38,10 +38,26 @@ Future<void> _setPaused(WidgetRef ref, String childId, bool paused) async {
   overrides.update((m) => {...m, childId: paused});
   try {
     await ref.read(apiClientProvider).raw.post('/v1/controls/children/$childId/${paused ? 'pause' : 'resume'}');
-  } catch (_) {
+  } catch (e) {
     overrides.update((m) => {...m}..remove(childId));
+    // #437 A2: a refused write keeps its shape so the screen can say why.
+    if (e is DioException) throw ControlsRefusal(e);
     rethrow;
   }
   overrides.update((m) => {...m}..remove(childId));
   ref.invalidate(internetPausedProvider(childId));
+}
+
+/// Issue #437 A2: a pause/resume the server refused, with the original exception intact.
+///
+/// The provider used to `rethrow` and every caller then did `commandFailed('$e')` — which stringifies a
+/// `DioException` and loses the very thing the screen needs: the status and the body's `error`. A typed
+/// wrapper keeps the contract small while letting the caller map one refusal, one sentence
+/// (`readErrorText`), and leave everything else as it was.
+class ControlsRefusal implements Exception {
+  final DioException error;
+  const ControlsRefusal(this.error);
+
+  @override
+  String toString() => 'ControlsRefusal(${error.response?.statusCode})';
 }
