@@ -57,4 +57,7 @@
     <string name="pair_pin_repeat">أعد إدخال الرمز</string>
     <string name="pair_pin_save">احفظ الرمز</string>
     <string name="pair_pin_mismatch">الرمزان غير متطابقين.</string>
+    <string name="pair_qr_invalid">رمز QR هذا ليس رمز إقران صالحًا من OSRA. أدخل التفاصيل يدويًا أو امسح مرة أخرى.</string>
+    <string name="pair_scan_empty">لم يُرجع الماسح أي رمز. أدخل التفاصيل يدويًا أو امسح مرة أخرى.</string>
+    <string name="pair_network_error">خطأ في الشبكة</string>
 </resources>

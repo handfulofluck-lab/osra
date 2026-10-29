@@ -167,13 +167,11 @@ class PairingActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK && raw != null) {
             when (val state = scanFlow.scan(raw)) {
                 is PairingScanFlow.State.Review -> showForm(prefillName = prefillName, scanned = state.payload)
-                is PairingScanFlow.State.Rejected -> showForm(
-                    prefillServer,
-                    prefillCode,
-                    prefillName,
-                    scanError = "That QR code is not a valid OSRA pairing code — ${state.reason}. " +
-                        "Enter the details manually or scan again.",
-                )
+                is PairingScanFlow.State.Rejected -> {
+                    // The reason is a technical message, and the Arabic line has no placeholder for it: log it.
+                    android.util.Log.w("PairingActivity", "QR rejected: ${state.reason}")
+                    showForm(prefillServer, prefillCode, prefillName, scanError = getString(R.string.pair_qr_invalid))
+                }
                 PairingScanFlow.State.Idle -> showForm(prefillServer, prefillCode, prefillName)
             }
             return@registerForActivityResult
@@ -181,7 +179,7 @@ class PairingActivity : ComponentActivity() {
         scanFlow.cancel()
         val message = result.data?.getStringExtra(PairQrScanActivity.EXTRA_ERROR)
             ?: if (result.resultCode == RESULT_OK) {
-                "The scanner did not return a code. Enter the details manually or scan again."
+                getString(R.string.pair_scan_empty)
             } else {
                 null
             }
@@ -913,7 +911,7 @@ class PairingActivity : ComponentActivity() {
     private fun userMessage(e: Throwable): String = when (e) {
         is InvalidCodeException -> getString(R.string.pair_invalid_code)
         is PairingRefusedException -> e.message.orEmpty()
-        else -> getString(R.string.pair_failed, e.message ?: "network error")
+        else -> getString(R.string.pair_failed, e.message ?: getString(R.string.pair_network_error))
     }
 
     private fun requestLocationPermission() {

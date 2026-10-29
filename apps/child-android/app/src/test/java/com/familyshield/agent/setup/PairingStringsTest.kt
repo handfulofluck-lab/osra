@@ -55,6 +55,10 @@ class PairingStringsTest {
         "pair_pin_repeat" to "أعد إدخال الرمز",
         "pair_pin_save" to "احفظ الرمز",
         "pair_pin_mismatch" to "الرمزان غير متطابقين.",
+        // Karim, 2026-10-29 11:43Z (#440): the scanner and network lines.
+        "pair_qr_invalid" to "رمز QR هذا ليس رمز إقران صالحًا من OSRA. أدخل التفاصيل يدويًا أو امسح مرة أخرى.",
+        "pair_scan_empty" to "لم يُرجع الماسح أي رمز. أدخل التفاصيل يدويًا أو امسح مرة أخرى.",
+        "pair_network_error" to "خطأ في الشبكة",
     )
 
     @Test

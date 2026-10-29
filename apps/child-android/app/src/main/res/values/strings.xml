@@ -61,4 +61,7 @@
     <string name="pair_pin_repeat">Repeat the PIN</string>
     <string name="pair_pin_save">Save PIN</string>
     <string name="pair_pin_mismatch">The two PINs differ.</string>
+    <string name="pair_qr_invalid">That QR code is not a valid OSRA pairing code. Enter the details manually or scan again.</string>
+    <string name="pair_scan_empty">The scanner did not return a code. Enter the details manually or scan again.</string>
+    <string name="pair_network_error">network error</string>
 </resources>

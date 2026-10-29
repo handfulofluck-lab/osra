@@ -214,3 +214,10 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
+
+// #440 review: PairingStringsTest and ResetCodeStringsTest read src/main/res/values*/strings.xml from
+// disk, so the resource files were not inputs of the test task and an edited translation left it
+// UP-TO-DATE locally. Declaring the directory makes Gradle rerun the tests when a string changes.
+tasks.withType<Test>().configureEach {
+    inputs.dir("src/main/res").withPathSensitivity(PathSensitivity.RELATIVE)
+}
