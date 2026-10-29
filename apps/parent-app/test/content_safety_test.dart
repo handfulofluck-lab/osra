@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/features/children/consent_step.dart';
 import 'package:familyshield_parent/features/content/search_safety_screen.dart';
 import 'package:familyshield_parent/features/content/snippet_vault_modal.dart';
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
@@ -299,6 +300,41 @@ void main() {
     expect(
         onboardingChildError(arLocalizations, refusal({'error': 'parental_consent_required'})),
         arLocalizations.onboardingConsentRequired);
+  });
+
+  // #437 part B: the add-child dialog asks for consent through the shared `ConsentStep`, so the
+  // notice cannot drift from the consent screen's copy. Claude's fault 4: reverting to an inline
+  // text block with the notice removed must turn this red (`find.byType(ConsentStep)` finds nothing),
+  // which is what makes the row evidence that the shared widget is the one on screen.
+  testWidgets('the add-child dialog asks for consent through the shared ConsentStep',
+      (tester) async {
+    final api = FakeApiClient({...standardRoutes()});
+    await pumpScreen(tester, const Scaffold(body: AddChildDialog()), api);
+
+    expect(find.byType(ConsentStep), findsOneWidget);
+    expect(
+        find.text(
+            'Before you add a child, we need to confirm that you are their parent or guardian.'),
+        findsOneWidget);
+
+    // The method chosen through the shared widget is the one that gets posted, so the extraction
+    // did not sever the wiring between the step and the dialog's own state.
+    await tester.tap(find.byKey(const ValueKey('consentMethod')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Face match').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Child name'), 'Alex');
+    await tester.enterText(find.widgetWithText(TextField, 'Birth year'), '2014');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add child'));
+    await flushFakeHttp(tester);
+
+    expect(
+      api.calls('POST', '/v1/family/children').single.body['consent'],
+      {'method': 'face_match', 'jurisdiction': 'US'},
+    );
   });
 
   // #437 part A: the add-child dialog shows the region sentence when the create route refuses the

@@ -17,6 +17,7 @@ import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
+import '../children/consent_step.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -511,10 +512,9 @@ class AddChildDialog extends ConsumerStatefulWidget {
 }
 
 class _AddChildDialogState extends ConsumerState<AddChildDialog> {
-  static const _methods = ['sms_plus', 'kba', 'face_match', 'credit_card'];
   final _name = TextEditingController();
   final _birthYear = TextEditingController();
-  String _method = _methods.first;
+  String _method = kConsentMethods.first;
   late String _jurisdiction;
   bool _consentDone = false;
   bool _busy = false;
@@ -574,15 +574,12 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (!_consentDone) ...[
-              // TODO(#159): legal consent wording needs a product/legal
-              // decision before it can be translated; it stays English.
-              Text(l10n.consentNotice),
-              const SizedBox(height: AppSpace.md),
-              DropdownButtonFormField<String>(
-                initialValue: _method,
-                decoration: InputDecoration(labelText: l10n.consentMethodLabel, border: const OutlineInputBorder()),
-                items: [for (final m in _methods) DropdownMenuItem(value: m, child: Text(l10n.consentMethod(m)))],
-                onChanged: (v) => setState(() => _method = v ?? _methods.first),
+              // The notice and the method picker are shared with the consent
+              // screen's "give consent again" action (#437 part B), so the
+              // wording cannot drift between the two places a parent consents.
+              ConsentStep(
+                method: _method,
+                onMethodChanged: (m) => setState(() => _method = m),
               ),
               const SizedBox(height: AppSpace.md),
               DropdownButtonFormField<String>(
