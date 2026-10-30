@@ -158,4 +158,61 @@ class BlockRaisePolicyTest {
         val second = TamperAlertWorker.uniqueWorkName(TamperAlertWorker.TYPE_BLOCK_BYPASS, 50_000L, meet)
         assertNotEquals(first, second)
     }
+
+    // ---- Issue #460: the deferred raise after GLOBAL_ACTION_HOME --------------------------------
+
+    /**
+     * On the Flip4 the launch order came out `BlockActivity`, then Home, so the launcher landed on top
+     * and the child saw no block screen — 4 of 4 on #452's run and the same on #457's. Both calls are
+     * asynchronous and nothing ordered them. The raise now waits for the launcher's own event.
+     */
+    @Test
+    fun `H1 - after Home the raise waits for the launcher`() {
+        val policy = BlockRaisePolicy()
+        policy.noteHomeSent(youtube, blocked = true, nowMs = 1_000L)
+
+        // Nothing to raise on an event that is not the launcher, however soon it arrives.
+        assertEquals(null, policy.launcherFront(launcherFront = false, nowMs = 1_100L))
+        // Mutant: raise on the pending flag instead of on the launcher, and this row goes red.
+        val raised = policy.launcherFront(launcherFront = true, nowMs = 1_120L)
+        assertEquals(BlockRaisePolicy.PendingRaise(youtube, blocked = true, sinceMs = 1_000L), raised)
+    }
+
+    @Test
+    fun `H2 - no launcher event still raises at the fallback`() {
+        val policy = BlockRaisePolicy()
+        policy.noteHomeSent(youtube, blocked = false, nowMs = 1_000L)
+
+        assertEquals("one millisecond short of the fallback is still a wait", null,
+            policy.launcherFront(launcherFront = false, nowMs = 1_000L + BlockRaisePolicy.DEFAULT_HOME_FALLBACK_MS - 1))
+        // Mutant: drop the fallback and a launcher that reports nothing leaves the app blocked forever.
+        val raised = policy.launcherFront(launcherFront = false, nowMs = 1_000L + BlockRaisePolicy.DEFAULT_HOME_FALLBACK_MS)
+        assertEquals(BlockRaisePolicy.PendingRaise(youtube, blocked = false, sinceMs = 1_000L), raised)
+    }
+
+    @Test
+    fun `H3 - a launcher event raises once, not on every event`() {
+        val policy = BlockRaisePolicy()
+        policy.noteHomeSent(youtube, blocked = true, nowMs = 1_000L)
+        assertNotEquals(null, policy.launcherFront(launcherFront = true, nowMs = 1_010L))
+
+        // Mutant: keep the pending raise after it fires and every launcher event re-raises the screen.
+        assertEquals(null, policy.launcherFront(launcherFront = true, nowMs = 1_500L))
+        assertEquals(null, policy.launcherFront(launcherFront = true, nowMs = 9_000L))
+        assertEquals(null, policy.pendingRaise())
+    }
+
+    @Test
+    fun `H4 - without Home the raise is immediate, as before`() {
+        // The issue named the PiP case here, but PiP does send Home by #175's design ("each sending Home
+        // first in PiP"), so deferral applies there too. The case that really has no Home is a blocked
+        // window that is NOT the active one in the normal layout — the other split pane — and there the
+        // service raises straight away because nothing is deferred.
+        val policy = BlockRaisePolicy()
+        val step = policy.decide(youtube, WindowLayout.NORMAL, blockedIsActive = false, nowMs = 1_000L)
+
+        assertTrue(step.raise)
+        assertFalse("no Home in this case, so nothing is deferred", step.goHome)
+        assertEquals("and no pending raise is created", null, policy.pendingRaise())
+    }
 }
