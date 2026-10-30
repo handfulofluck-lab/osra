@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -135,7 +137,33 @@ void main() {
     expect(find.byKey(const ValueKey('deleteAccountSubmit')), findsOneWidget);
   });
 
-  testWidgets('R5 while the role is unknown there is a spinner and neither copy', (tester) async {
+  testWidgets('R5 while the overview is in flight the screen shows a spinner and neither copy', (tester) async {
+    // Through the real screen and provider: the overview answers only when the row says so. Mutant:
+    // default the overview (or the scope) while loading and a deletion copy appears before the role
+    // is known. The request is answered before the row ends, so no Timer is left pending (#469 review).
+    final overview = Completer<Object?>();
+    final client = FakeApiClient({
+      ...standardRoutes(familyMe: familyMeTwoChildren()),
+      'GET /v1/family/me': (_) => FakeDeferred(overview.future),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(client)],
+      child: localizedTestApp(const DeleteAccountScreen()),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.textContaining('deletes your whole family'), findsNothing);
+    expect(find.textContaining('deletes your account and signs you out'), findsNothing);
+    expect(find.byKey(const ValueKey('deleteAccountConfirm')), findsNothing);
+
+    overview.complete(familyMeTwoChildren());
+    await tester.pumpAndSettle();
+    expect(find.textContaining('deletes your whole family'), findsOneWidget);
+  });
+
+  testWidgets('R5b OverviewNotLoaded with no overview is a spinner and neither copy', (tester) async {
     // At the widget, deliberately: the `FakePending` sentinel leaves a pending Timer and Flutter's test
     // binding fails the row for it, so a screen-level version cannot pass. Claude's fault m7 (a scope
     // defaulted while loading) is still caught here, because this is the widget that would be edited.
@@ -147,6 +175,7 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.textContaining('deletes your whole family'), findsNothing);
+    expect(find.textContaining('deletes your account and signs you out'), findsNothing);
   });
 
   testWidgets('R6 a failed overview shows the error and a Retry, not a spinner forever', (tester) async {
