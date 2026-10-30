@@ -54,6 +54,7 @@ class DashboardScreen extends ConsumerWidget {
               'family' => '/family',
               'appearance' => '/settings/appearance',
               'mfa' => '/settings/mfa',
+              'delete-account' => '/settings/delete-account',
               _ => '/settings/digests',
             }),
             itemBuilder: (_) => [
@@ -61,6 +62,7 @@ class DashboardScreen extends ConsumerWidget {
               PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
               PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
               PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
+              PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
             ],
           ),
           IconButton(

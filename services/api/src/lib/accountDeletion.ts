@@ -69,6 +69,7 @@ export const FAMILY_SCOPED_DELETES: Record<string, (s: FamilyScope) => unknown> 
   mfaResetRequest: (s) => ({ parentId: { in: s.parentIds } }),
   parentPushToken: (s) => ({ parentId: { in: s.parentIds } }),
   parentMfaRecoveryCode: (s) => ({ parentId: { in: s.parentIds } }),
+  accountDeletionToken: (s) => ({ parentId: { in: s.parentIds } }),
   parent: (s) => ({ familyId: s.familyId }),
 };
 
@@ -83,6 +84,7 @@ export const PARENT_SCOPED_DELETES: Record<string, (s: ParentScope) => unknown> 
   parentPushToken: (s) => ({ parentId: s.parentId }),
   parentMfaRecoveryCode: (s) => ({ parentId: s.parentId }),
   familyInvite: (s) => ({ familyId: s.familyId, email: s.email }),
+  accountDeletionToken: (s) => ({ parentId: s.parentId }),
   parent: (s) => ({ id: s.parentId }),
 };
 

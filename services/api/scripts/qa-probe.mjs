@@ -29,6 +29,12 @@ const HMAC_SECRET = process.env.INTERNAL_HMAC_SECRET ?? "";
 const PASS = [];
 const FAIL = [];
 const NOTE = [];
+/**
+ * Whether the API under test really sends mail, as the API itself reports it: `POST /v1/family/invites`
+ * answers `emailed: sent.ok && emailConfigured()` (routes/invites.ts). Set in section N; `null` until then.
+ * A row whose meaning depends on real mail (AD2) is a check only when this is `true`, and a note otherwise.
+ */
+let mailIsReal = null;
 
 const check = (name, ok, extra = "") => {
   (ok ? PASS : FAIL).push(name);
@@ -1144,6 +1150,7 @@ console.log("\n── N. sessions & roles ──");
   // N4–N6: invite family B's parent into family A as a co-parent with only the "alerts" permission.
   const invite = await call("POST", "/v1/family/invites", { token: tokenA3, body: { email: emailB, role: "co-parent", permissions: ["alerts"] } });
   const inviteId = invite.data?.invite?.id;
+  mailIsReal = invite.data?.emailed === true;
   check("N4 owner can invite a co-parent (201 with id)", invite.status === 201 && !!inviteId, `got ${invite.status}`);
   const accept = inviteId ? await call("POST", `/v1/family/invites/${inviteId}/accept`, { token: tokenB }) : { status: 0 };
   const coTok = accept.data?.token;
@@ -2173,6 +2180,60 @@ check("H1 unknown route -> 404 JSON", unknownRoute.status === 404, `got ${unknow
 
 const healthDeep = await call("GET", "/health/deep");
 check("H2 /health/deep reports db+redis", healthDeep.status === 200 && healthDeep.data?.db === "up" && healthDeep.data?.redis === "up", JSON.stringify(healthDeep.data));
+
+// ── AD. account deletion request: no account oracle (#442 PR 3, #467) ───────────────────────────
+// `POST /v1/account/deletion-request` is public, so it must not tell anyone whether an address has an
+// account: the same status and body, and the same time within noise, for a known and an unknown address.
+// The route answers 202 before the lookup (routes/account.ts), so the work behind a known address (the
+// token write and, on staging, the mail provider's round trip) cannot show in the response time.
+// Only an address's FIRST request does that work: a repeat inside the minute is the mail cooldown and
+// returns early. So each sample is a first request: five fresh registered addresses against five fresh
+// unknown ones, alternating, after one discarded warm-up. 11 requests stay inside the route's own
+// 20-a-minute bucket; the five registrations use /register's.
+{
+  const adKnown = [];
+  const adRegs = [];
+  for (let i = 0; i < 5; i++) {
+    const email = `qa-ad-${stamp}-${i}@example.com`;
+    adRegs.push((await call("POST", "/v1/auth/register", {
+      body: { email, password: PASSWORD, displayName: "QA AD", familyName: "QA Family AD", region: "US" },
+    })).status);
+    adKnown.push(email);
+  }
+  const timed = async (email) => {
+    const t0 = performance.now();
+    const r = await call("POST", "/v1/account/deletion-request", { body: { email } });
+    return { ...r, ms: performance.now() - t0 };
+  };
+  await timed(`qa-ad-warmup-${stamp}@example.com`);
+  const known = [];
+  const unknown = [];
+  for (let i = 0; i < 5; i++) {
+    known.push(await timed(adKnown[i]));
+    unknown.push(await timed(`qa-ad-none-${stamp}-${i}@example.com`));
+  }
+  const all = [...known, ...unknown];
+  const bodies = new Set(all.map((r) => JSON.stringify(r.data)));
+  const median = (xs) => xs.map((r) => r.ms).sort((x, y) => x - y)[2];
+  const mk = median(known);
+  const mu = median(unknown);
+  check(
+    "AD1 /v1/account/deletion-request answers a known and an unknown address alike: 202 and one identical body",
+    adRegs.every((s) => s === 201) && all.every((r) => r.status === 202) && bodies.size === 1,
+    `register=${adRegs.join(",")} statuses=${all.map((r) => r.status).join(",")} bodies=${[...bodies].join(" | ")}`,
+  );
+  // 25 ms is far above local jitter for one small JSON answer and below a mail provider's round trip,
+  // which is what a reply that waited for the work would leak. With the console stub the work behind a
+  // known address costs well under 1 ms, so the row cannot fail there: it is a check only where the API
+  // reports real mail (`mailIsReal`, from section N), and a NOT EVIDENCE note anywhere else (#468 review).
+  const adTiming = `known=[${known.map((r) => r.ms.toFixed(1)).join(",")}] unknown=[${unknown.map((r) => r.ms.toFixed(1)).join(",")}] ms, median diff ${(mk - mu).toFixed(1)} ms`;
+  const adName = "AD2 ... and in the same time within noise (first request per address, median known vs unknown within 25 ms)";
+  if (mailIsReal === true) {
+    check(adName, Math.abs(mk - mu) <= 25, adTiming);
+  } else {
+    note(adName, `NOT EVIDENCE (the API sends no real mail: invite answered emailed=${mailIsReal}), so this row cannot fail here; measured ${adTiming}`);
+  }
+}
 
 // ── summary ─────────────────────────────────────────────────────────────────
 console.log(`\n───────────  ${PASS.length} passed · ${FAIL.length} failed · ${TARGETS.length} targets · ${NOTE.length} notes · rate limit: ${rateLimited429} x 429  ───────────`);

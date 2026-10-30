@@ -35,6 +35,13 @@ class FakeNetworkError {
   const FakeNetworkError();
 }
 
+/// A response that arrives when the row says so, for "still loading" rows. Complete [result] before
+/// the row ends, so no request is left in flight when the tree is disposed (#469 review).
+class FakeDeferred {
+  final Future<Object?> result;
+  const FakeDeferred(this.result);
+}
+
 /// Handler for one fake route; return the JSON body or a [FakeHttpError].
 typedef FakeRoute = Object? Function(RecordedRequest request);
 
@@ -69,6 +76,10 @@ class FakeApiClient extends ApiClient {
         return;
       }
       final result = route(record);
+      if (result is FakeDeferred) {
+        result.result.then((data) => handler.resolve(Response(requestOptions: options, data: data)));
+        return;
+      }
       if (result is FakeHttpError) {
         handler.reject(DioException(
           requestOptions: options,

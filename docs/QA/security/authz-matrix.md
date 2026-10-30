@@ -190,11 +190,26 @@ The digest row is keyed by **family**, not by parent, so since #354 writing it a
 | `GET /health/deep` | 14 | 200 while the DB and Redis are up |
 | `GET /v1/digests/confirm` | digests 203 | 200 page for a well-formed token, and nothing is spent; 400 for a malformed one |
 | `POST /v1/digests/confirm` | digests 239 | 200 for a live token, which spends it; 404 for an unknown, expired or used one; 400 for a malformed one. A form POST gets the HTML page, a JSON caller gets JSON |
+| `GET /v1/account/delete` (#442 PR 3) | account 280 | 200 page (the in-app steps and the email form) |
+| `POST /v1/account/deletion-request` (#442 PR 3) | account 288 | 202 with one body for every well-formed address, known or not, answered before the lookup; 400 for a malformed one. `AUTH_RATE_LIMIT` |
+| `GET /v1/account/delete/confirm?token=` (#442 PR 3) | account 305 | 200 password page for a live token, and nothing is spent; 404 page for an unknown, expired or used one; 400 page for a malformed one |
+| `POST /v1/account/delete/confirm` (#442 PR 3) | account 323 | 200 for a live token **and** the right password (and MFA code): spends it and erases (owner: the family; anyone else: themselves); 401 page on a wrong password or code, the token not spent; 409 `consent_records_held`, not spent; 404/400 page for a dead or malformed token. `AUTH_RATE_LIMIT` |
 
 The two confirmation routes (#354) take no session: the token in the mailed link is the credential, and
 the answers say nothing about which addresses are on a list. Covered by t:digests-abuse.test.ts:497 (GET
 spends nothing), :306 (the browser's form POST), :341 (expired and never issued), :531 (a spent link is
 404), and by p:R1–R6, which send the requests a browser sends against a live server.
+
+The four account-deletion routes (#442 PR 3, the Play web link) take no session either, and the mailed
+token is **not** enough on its own: the confirm POST needs the password, and the MFA code when MFA is on,
+through the same `checkReauth` as `DELETE /v1/family` and `DELETE /v1/me`. Covered by
+t:account-deletion-web.test.ts W1–W2 (known and unknown addresses answer alike, before the lookup), W4 (hash
+only at rest), W5 (a newer link kills the older), W8 (GET spends nothing; `no-store`, `no-referrer`, no
+account secret on the page), W9–W10 (expired, used, unknown, malformed), W11–W12 (owner erases the family,
+a co-parent only themselves), W13–W14 (wrong password or code: nothing erased, token kept), W15–W16 (single
+use, also under two racing submits), W18 (`AUTH_RATE_LIMIT` on both POSTs), W19 (no token in the request
+log). GAP: the probe rows (the same answer and timing for unknown and known emails against a live server),
+Ahmed's per the #442 design.
 
 ## 1a. Coverage of the §1 cells
 
