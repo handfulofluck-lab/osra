@@ -1239,6 +1239,8 @@
   "alertTitleSelfHarm": "Possible self-harm risk",
   "alertTitleGrooming": "Possible grooming",
   "alertTitleTamper": "Protection tampered with",
+  "alertTitleBlockBypass": "An app got around the block",
+  "alertTitleDataCleared": "OSRA's data was cleared on a phone",
   "alertTitleVpnDetected": "VPN detected",
   "alertTitleInstallRequest": "App install request",
   "alertTitleUnknownContact": "Unknown contact",

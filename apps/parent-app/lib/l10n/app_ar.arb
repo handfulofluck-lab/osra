@@ -836,6 +836,8 @@
   "alertTitleSelfHarm": "مؤشرات محتملة لإيذاء النفس",
   "alertTitleGrooming": "استدراج محتمل من شخص بالغ",
   "alertTitleTamper": "محاولة تعطيل الحماية",
+  "alertTitleBlockBypass": "تطبيق تجاوز الحظر",
+  "alertTitleDataCleared": "تم مسح بيانات OSRA على هاتف",
   "alertTitleVpnDetected": "تم اكتشاف شبكة VPN",
   "alertTitleInstallRequest": "طلب تثبيت تطبيق",
   "alertTitleUnknownContact": "تواصل من جهة غير معروفة",

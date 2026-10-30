@@ -4556,6 +4556,18 @@ abstract class AppLocalizations {
   /// **'Protection tampered with'**
   String get alertTitleTamper;
 
+  /// No description provided for @alertTitleBlockBypass.
+  ///
+  /// In en, this message translates to:
+  /// **'An app got around the block'**
+  String get alertTitleBlockBypass;
+
+  /// No description provided for @alertTitleDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA's data was cleared on a phone'**
+  String get alertTitleDataCleared;
+
   /// No description provided for @alertTitleVpnDetected.
   ///
   /// In en, this message translates to:

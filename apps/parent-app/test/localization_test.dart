@@ -647,6 +647,19 @@ void main() {
       expect(ar.alertTitleGeneric, 'تنبيه');
     });
 
+    test('a tamper alert is titled by its metadata.type: block bypass and data cleared, else the generic one', () async {
+      final ar = await arabic();
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'block_bypass'), 'An app got around the block');
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'agent_data_cleared'), "OSRA's data was cleared on a phone");
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true, tamperType: 'protection_screen_opened'), en.alertTitleTamper);
+      expect(en.alertTitleFor('tamper', 'x', isEnglish: true), en.alertTitleTamper);
+      expect(ar.alertTitleFor('tamper', 'x', isEnglish: false, tamperType: 'block_bypass'), ar.alertTitleBlockBypass);
+      expect(ar.alertTitleBlockBypass, isNot(en.alertTitleBlockBypass));
+      // The type only refines a tamper alert; another category ignores it.
+      expect(en.alertTitleFor('sos', 'x', isEnglish: true, tamperType: 'block_bypass'), en.alertTitleSos);
+    });
+
     /// The drift guard for the blocking finding: the fixture, the mapping and
     /// the screenshot all use the server's categories, and a category the app
     /// stops mapping renders the generic title — which fails here.

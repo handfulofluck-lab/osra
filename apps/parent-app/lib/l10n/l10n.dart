@@ -109,7 +109,7 @@ extension AppLocalizationsLabels on AppLocalizations {
    * server's own [serverTitle] (it is already English, and it beats a bare "Alert"), any other locale shows
    * the translated generic, so English never leaks onto an Arabic screen. Hence [isEnglish].
    */
-  String alertTitleFor(String category, String serverTitle, {required bool isEnglish}) => switch (category) {
+  String alertTitleFor(String category, String serverTitle, {required bool isEnglish, String? tamperType}) => switch (category) {
         'web_threat' => alertTitleBlockedSite,
         'app_blocked' => alertTitleAppBlocked,
         'screen_time_exceeded' => alertTitleDailyLimit,
@@ -119,7 +119,13 @@ extension AppLocalizationsLabels on AppLocalizations {
         'cyberbullying' => alertTitleCyberbullying,
         'self_harm' => alertTitleSelfHarm,
         'grooming' => alertTitleGrooming,
-        'tamper' => alertTitleTamper,
+        // #443 / #453: a tamper alert's `metadata.type` names what happened, where a title says more than
+        // "protection tampered with". Unknown types keep the generic tamper title.
+        'tamper' => switch (tamperType) {
+            'block_bypass' => alertTitleBlockBypass,
+            'agent_data_cleared' => alertTitleDataCleared,
+            _ => alertTitleTamper,
+          },
         'vpn_detected' => alertTitleVpnDetected,
         'install_request' => alertTitleInstallRequest,
         'unknown_contact' => alertTitleUnknownContact,
