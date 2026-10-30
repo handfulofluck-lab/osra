@@ -63,6 +63,7 @@ void main() {
   }
 
   testWidgets('R1 the owner is shown the family deletion and DELETE /v1/family is sent', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({'refresh': 'refresh-token-1'});
     final api = fakeApi();
     await pumpScreen(tester, api);
 
@@ -75,12 +76,18 @@ void main() {
     expect(api.client.calls('DELETE', '/v1/family'), hasLength(1));
     expect(api.client.calls('DELETE', '/v1/me'), isEmpty);
     expect(api.client.calls('DELETE', '/v1/family').single.body['password'], 'good-password');
+    // The success path: `logout()` revokes the refresh token server-side when one is stored (#464's
+    // ADR-0014 ordering), and nothing is reported as failed. Mutant: drop the `logout()` call and the
+    // first line goes red; the guarded navigation means a missing router no longer shows an error.
+    expect(api.client.calls('POST', '/v1/auth/logout'), hasLength(1));
+    expect(find.byKey(const ValueKey('deleteAccountError')), findsNothing);
 
   });
 
   testWidgets('R2 a co-parent is shown the self deletion and DELETE /v1/me is sent', (tester) async {
     final me = familyMeTwoChildren();
     (me['parent'] as Map<String, dynamic>)['role'] = 'co-parent';
+    FlutterSecureStorage.setMockInitialValues({'refresh': 'refresh-token-1'});
     final api = fakeApi(familyMe: me);
     await pumpScreen(tester, api);
 
@@ -91,6 +98,8 @@ void main() {
 
     expect(api.client.calls('DELETE', '/v1/me'), hasLength(1));
     expect(api.client.calls('DELETE', '/v1/family'), isEmpty);
+    expect(api.client.calls('POST', '/v1/auth/logout'), hasLength(1));
+    expect(find.byKey(const ValueKey('deleteAccountError')), findsNothing);
 
     // Mutant: decide the scope from anything but the role and this pair of rows swaps.
   });
