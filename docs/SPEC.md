@@ -98,7 +98,7 @@ that withdrawal deletes or anonymises data.
 **Account deletion (#442).** `DELETE /v1/family` (owner) deletes the whole family: every child through
 the same erasure as `DELETE /v1/family/children/:id`, then the family's rows, every parent and the family.
 `DELETE /v1/me` (co-parent or guardian) deletes only the caller's account. Both take
-`{ password, mfaCode? }` and answer `401 reauth_failed` on a wrong value; `403 owner_only` and
+`{ password, mfaCode? }` and answer `401 reauth_failed` on a wrong value; `403 owner_role_required` and
 `409 owner_must_delete_family` route each role to its operation. Nothing is kept except `RevokedToken`
 ids until their tokens would have expired (at most 8 days) and the database backups until they rotate
 out. A deleted parent's tokens answer `401 session_revoked` from then on.

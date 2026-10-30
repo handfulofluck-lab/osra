@@ -129,7 +129,7 @@ describe("DELETE /v1/family — the owner deletes the whole family", () => {
     expect(store.get(sessionVersionKey(CO.id))).toBe("deleted");
   });
 
-  it("D2 a co-parent or guardian gets 403 owner_only and nothing is touched", async () => {
+  it("D2 a co-parent or guardian gets 403 owner_role_required and nothing is touched", async () => {
     // Mutant: drop the `role !== "owner"` check, and the co-parent deletes the family.
     wireRedisStore();
     seedFamily(CO);
@@ -138,7 +138,7 @@ describe("DELETE /v1/family — the owner deletes the whole family", () => {
       prismaMock.parent.findUnique.mockResolvedValue({ ...CO, role });
       const res = await app.inject({ method: "DELETE", url: "/v1/family", headers: tokenFor(app, CO, 3), payload: BODY });
       expect(res.statusCode).toBe(403);
-      expect(res.json()).toEqual({ error: "owner_only" });
+      expect(res.json()).toEqual({ error: "owner_role_required" });
     }
     expect(prismaMock.family.delete).not.toHaveBeenCalled();
     expect(prismaMock.parent.update).not.toHaveBeenCalled();

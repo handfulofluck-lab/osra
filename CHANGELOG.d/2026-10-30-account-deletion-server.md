@@ -3,7 +3,7 @@
   ADR-0013 erasure (`eraseChildData`, which also revokes each phone's token), then the family's own
   rows (invites, digest prefs, recipients and sends), then every parent's rows (push tokens, MFA
   recovery codes, MFA-reset requests), every `Parent`, and the `Family`. A co-parent or guardian gets
-  `403 owner_only`.
+  `403 owner_role_required`.
 - **`DELETE /v1/me` (co-parent or guardian):** deletes only that person: their `Parent` row, their push
   tokens, recovery codes and reset requests, and the invite that carried their address. The family and
   the children stay. The owner gets `409 owner_must_delete_family` (ownership transfer is later).

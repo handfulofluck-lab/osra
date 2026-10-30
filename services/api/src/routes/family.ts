@@ -339,7 +339,7 @@ export async function familyRoutes(app: FastifyInstance) {
   /**
    * #442 (Play account deletion): the owner deletes the whole family — every child, every parent and
    * the family itself (`lib/accountDeletion.ts`). A co-parent or guardian deletes only their own account
-   * with `DELETE /v1/me`, so here they get `403 owner_only`.
+   * with `DELETE /v1/me`, so here they get `403 owner_role_required`.
    *
    * The body is required: `{ password, mfaCode? }`, the code when MFA is on. A wrong value is
    * `401 reauth_failed`, counted with the auth routes' limits (`AUTH_RATE_LIMIT`, fails closed), so a
@@ -352,7 +352,7 @@ export async function familyRoutes(app: FastifyInstance) {
     const user = req.user as AuthedUser;
     const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
     if (!parent) return reply.code(404).send({ error: "parent_not_found" });
-    if (parent.role !== "owner") return reply.code(403).send({ error: "owner_only" });
+    if (parent.role !== "owner") return reply.code(403).send({ error: "owner_role_required" });
     const refusal = await checkReauth(parent, parsed.data);
     if (refusal) return reply.code(401).send({ error: refusal });
     const parentIds = (await prisma.parent.findMany({ where: { familyId: parent.familyId }, select: { id: true } })).map((p) => p.id);

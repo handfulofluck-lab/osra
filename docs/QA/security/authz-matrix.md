@@ -100,7 +100,7 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 | `GET /v1/family/invites` | invites 61 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/invites/:id/accept` | invites 71 | 200 if the token's email matches, else 403 `email_mismatch` | same | same | same | 401 (no Parent row, `:81`) | 401 | 401dr | 401s | 401 | 401 | 401 | — |
 | `DELETE /v1/family/invites/:id` | invites 115 | 200 | 403o | 403o | 403f (`:120`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
-| `DELETE /v1/family` (#442: re-auth body, `401 reauth_failed`) | family 349 | 200 | 403 `owner_only` | 403 `owner_only` | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `DELETE /v1/family` (#442: re-auth body, `401 reauth_failed`) | family 349 | 200 | 403 `owner_role_required` | 403 `owner_role_required` | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 On the owner-only routes, the "Other fam." caller is an owner, so `requireOwner` passes and `requireFamily`
 answers `403f`. A co-parent or guardian of another family would get `403o` first.
