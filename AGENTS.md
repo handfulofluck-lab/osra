@@ -155,8 +155,8 @@ carries its documentation **in the same PR**:
 - **`docs/TESTING.md`** — when a suite, a gate, a procedure or an environment trap changes.
 - **`docs/README.md`** — when a document is added or moves.
 - **`README.md`** — when the product surface, suite list/status, security model or limitations change.
-- **`docs/QA/`** — the verifying agent owns the report, the queue and the discussion log; the
-  implementing agent answers in the log rather than rewriting the report.
+- **`docs/QA/`** — the verifying agent owns the report and the queue; the implementing agent answers
+  in the PR's comments rather than rewriting the report (the discussion log is frozen, §6.2).
 
 **Writing rules.** Prefer the concrete over the general (a command, a status code, a `file:line`); state
 what you verified and where; keep the *why* next to the *what*; and never delete a record of a past
@@ -321,9 +321,9 @@ else reaches — leave the PR open, state under its own heading what was *not* v
 human decide. Never merge on the author's assurance, and never relabel an author's run as verification.
 
 **Maintainer override** (deliberate, rare), as in §6: the human may direct a merge these conditions do
-not cover. The deviation is then named in the merge message and recorded in
-`docs/QA/DISCUSSION-LOG.md` with the reason, so the next reader sees an exception that was decided rather
-than a rule that was forgotten.
+not cover. The deviation is then named in the merge message and recorded, with the reason, in the
+#50 digest (§6.2), so the next reader sees an exception that was decided rather than a rule that was
+forgotten.
 
 Merging is not approval of the other agent's competence — it is a claim that the evidence in the PR
 justifies the change.
@@ -470,7 +470,7 @@ One label, one meaning, set by the **author** and read from a single API call (`
 | `state:verifying` | A tester holds it | Author: no force-push, no rebase. Others: stay off it |
 | `state:verified` | Gates re-run by someone other than the author, numbers and a signed `Verified-sha:` line on the PR (§6.5 rule 6) | The development lead merges on it once `verified-gate` is green |
 | `state:changes-requested` | Verification failed, or the restatement was wrong | Author fixes and returns it to `ready-for-verification` |
-| `state:needs-arch` | Waiting on an architecture decision (KCL lead) | Everyone else waits; the decision is recorded in an ADR or the log |
+| `state:needs-arch` | Waiting on an architecture decision (KCL lead) | Everyone else waits; the decision is recorded in an ADR or on #50 |
 | `state:blocked` | Needs something outside the repo — a key, a phone, a merge, an entitlement | Say what, and who has it, in the PR and on the board |
 
 Rules:
