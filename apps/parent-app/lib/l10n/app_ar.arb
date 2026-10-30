@@ -285,6 +285,7 @@
   "starts": "يبدأ",
   "ends": "ينتهي",
   "schoolHours": "الساعات المدرسية",
+  "blockedNowBy": "محجوب الآن بسبب {reason} (حتى {time})",
   "weekdayMon": "الاثنين",
   "weekdayTue": "الثلاثاء",
   "weekdayWed": "الأربعاء",
