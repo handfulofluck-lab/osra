@@ -86,6 +86,11 @@ class AccessibilityMonitorService : AccessibilityService() {
         )
     }
 
+    /** Issue #444 C4: a blocked app's media audio is paused, however it was started ([MediaBlockPolicy]). */
+    private val media by lazy {
+        MediaEnforcer(this, isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW })
+    }
+
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
     private var loggedStartDecision: LocationStartPolicy.Decision? = null
 
@@ -108,6 +113,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
         calls.onConnected()
+        media.onConnected()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -120,6 +126,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     override fun onDestroy() {
         isRunning = false
         calls.onDestroy()
+        media.onDestroy()
         pipCover.remove()
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
@@ -130,6 +137,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // RuleRepository.evaluate already answers ALLOW for everything while consent is paused.
         if (event?.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             calls.onNotification(event)
+            media.onNotification(event)
             return
         }
         val eventPkg = event?.packageName?.toString() ?: return
@@ -209,6 +217,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             if (pipWindow != null) dismissPictureInPicture(pkg)
             // The policy owns the spacing now (1 s); AppBlocker's own 2 s debounce would halve it.
             blocker.clearDebounce(pkg)
+            media.onRaise(pkg)
             if (decision == RuleRepository.Decision.BLOCK) blocker.showBlockScreen(pkg)
             else blocker.showTimeLimitScreen(pkg)
         }
