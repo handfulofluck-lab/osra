@@ -845,7 +845,7 @@ class AlertTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(Icons.circle, color: severityColor(alert.severity, context), size: 14),
-        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en')), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: context.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text('${l10n.alertCategory(alert.category)} · $when'),
         trailing: onAck == null ? null : IconButton(icon: const Icon(Icons.check), tooltip: l10n.acknowledgeTooltip, onPressed: onAck),
         onTap: onTap,

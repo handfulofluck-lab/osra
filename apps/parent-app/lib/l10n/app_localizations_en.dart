@@ -2733,6 +2733,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleTamper => 'Protection tampered with';
 
   @override
+  String get alertTitleBlockBypass => 'An app got around the block';
+
+  @override
+  String get alertTitleDataCleared => 'OSRA\'s data was cleared on a phone';
+
+  @override
   String get alertTitleVpnDetected => 'VPN detected';
 
   @override
