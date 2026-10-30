@@ -6,5 +6,5 @@
   notification stays generic, as #360 decided.
 - The two Arabic lines are drafts for Karim. A new `localization_test` row pins both English titles, the
   fallback, and that the type is ignored outside `tamper`.
-- `tamper_title_tile_test.dart` pumps `AlertTile` with a `block_bypass` alert, so dropping the type at that call
-  site turns a test red.
+- `tamper_title_tile_test.dart` pumps `AlertTile` and opens the alert dialog in the feed with a `block_bypass`
+  alert, so dropping the type at either call site turns a test red.
