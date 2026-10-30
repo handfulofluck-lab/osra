@@ -47,6 +47,7 @@ export const MOCKED_MODELS = [
   "installRequest",
   "appUsageDaily",
   "webVisit",
+  "accountDeletionToken",
 ] as const;
 
 /** Build the mocked PrismaClient shape used by all route tests. */

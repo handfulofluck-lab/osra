@@ -102,6 +102,24 @@ the same erasure as `DELETE /v1/family/children/:id`, then the family's rows, ev
 `409 owner_must_delete_family` route each role to its operation. Nothing is kept except `RevokedToken`
 ids until their tokens would have expired (at most 8 days) and the database backups until they rotate
 out. A deleted parent's tokens answer `401 session_revoked` from then on.
+**Account deletion from a web link (#442 PR 3, Play).** The API serves the page the Play listing names,
+`GET /v1/account/delete`: the in-app steps, what is deleted and kept, and a form for the account's email
+(English and Arabic, the Arabic right-to-left). The form posts `POST /v1/account/deletion-request {email}`
+(JSON or form-encoded; the email is normalised as `/login` does). A well-formed address **always** gets
+`202` with the same body (`{ "accepted": true }`, or the same "check your email" page for a form), and the
+answer is sent before the address is looked up, so neither the status, the body nor the time says whether
+an account exists; a malformed one is `400`. A known address is mailed a link to
+`GET /v1/account/delete/confirm?token=`: 32 random bytes, only the SHA-256 stored
+(`AccountDeletionToken`), 30 minutes, single use; a new request deletes the parent's older links, and a
+request within a minute of the last mail sends nothing. Opening the link spends nothing; the page asks for
+the password, and the authenticator code when MFA is on. `POST /v1/account/delete/confirm` checks them with
+the same `checkReauth` as the in-app routes (a wrong value shows the form again, `401`, and the link stays
+usable), refuses with the same `409 consent_records_held`, then spends the link with one conditional update
+and runs the same erase: the owner deletes the whole family (`DELETE /v1/family`'s `eraseFamilyData`),
+anyone else only their own account (`DELETE /v1/me`'s `eraseParentAccount`). An unknown, used, expired or
+malformed link gets one "expired" page. Both POSTs carry `AUTH_RATE_LIMIT` (20 a minute, fails closed).
+Every page is `Cache-Control: no-store`, `Referrer-Policy: no-referrer` and never framed, and the request
+log redacts `?token=` and `?ticket=` values (`lib/logRedaction.ts`).
 Alerts carry **no coordinates**: a geofence alert names the fence (`metadata.geofenceId` and `label`),
 because alert rows sit outside the retention job and exact positions there would outlive the 30-day
 location window. Migration `0022` scrubs the coordinates written before #242.
