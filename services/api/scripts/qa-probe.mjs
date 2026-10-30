@@ -29,6 +29,12 @@ const HMAC_SECRET = process.env.INTERNAL_HMAC_SECRET ?? "";
 const PASS = [];
 const FAIL = [];
 const NOTE = [];
+/**
+ * Whether the API under test really sends mail, as the API itself reports it: `POST /v1/family/invites`
+ * answers `emailed: sent.ok && emailConfigured()` (routes/invites.ts). Set in section N; `null` until then.
+ * A row whose meaning depends on real mail (AD2) is a check only when this is `true`, and a note otherwise.
+ */
+let mailIsReal = null;
 
 const check = (name, ok, extra = "") => {
   (ok ? PASS : FAIL).push(name);
@@ -1144,6 +1150,7 @@ console.log("\n── N. sessions & roles ──");
   // N4–N6: invite family B's parent into family A as a co-parent with only the "alerts" permission.
   const invite = await call("POST", "/v1/family/invites", { token: tokenA3, body: { email: emailB, role: "co-parent", permissions: ["alerts"] } });
   const inviteId = invite.data?.invite?.id;
+  mailIsReal = invite.data?.emailed === true;
   check("N4 owner can invite a co-parent (201 with id)", invite.status === 201 && !!inviteId, `got ${invite.status}`);
   const accept = inviteId ? await call("POST", `/v1/family/invites/${inviteId}/accept`, { token: tokenB }) : { status: 0 };
   const coTok = accept.data?.token;
@@ -2216,13 +2223,16 @@ check("H2 /health/deep reports db+redis", healthDeep.status === 200 && healthDee
     `register=${adRegs.join(",")} statuses=${all.map((r) => r.status).join(",")} bodies=${[...bodies].join(" | ")}`,
   );
   // 25 ms is far above local jitter for one small JSON answer and below a mail provider's round trip,
-  // which is what a reply that waited for the work would leak. On the local stack the token write alone
-  // costs well under 1 ms, so this row is meant for staging, where the provider is real.
-  check(
-    "AD2 ... and in the same time within noise (first request per address, median known vs unknown within 25 ms)",
-    Math.abs(mk - mu) <= 25,
-    `known=[${known.map((r) => r.ms.toFixed(1)).join(",")}] unknown=[${unknown.map((r) => r.ms.toFixed(1)).join(",")}] ms, median diff ${(mk - mu).toFixed(1)} ms`,
-  );
+  // which is what a reply that waited for the work would leak. With the console stub the work behind a
+  // known address costs well under 1 ms, so the row cannot fail there: it is a check only where the API
+  // reports real mail (`mailIsReal`, from section N), and a NOT EVIDENCE note anywhere else (#468 review).
+  const adTiming = `known=[${known.map((r) => r.ms.toFixed(1)).join(",")}] unknown=[${unknown.map((r) => r.ms.toFixed(1)).join(",")}] ms, median diff ${(mk - mu).toFixed(1)} ms`;
+  const adName = "AD2 ... and in the same time within noise (first request per address, median known vs unknown within 25 ms)";
+  if (mailIsReal === true) {
+    check(adName, Math.abs(mk - mu) <= 25, adTiming);
+  } else {
+    note(adName, `NOT EVIDENCE (the API sends no real mail: invite answered emailed=${mailIsReal}), so this row cannot fail here; measured ${adTiming}`);
+  }
 }
 
 // ── summary ─────────────────────────────────────────────────────────────────
