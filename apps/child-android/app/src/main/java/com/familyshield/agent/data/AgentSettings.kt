@@ -78,6 +78,14 @@ class AgentSettings @Inject constructor(
     /** Returns the persisted rule set JSON, or null. */
     suspend fun rulesJson(): String? = read(KEY_RULES_JSON)
 
+    /**
+     * Issue #465: drop the cached rule set when this phone is no longer linked to a family. The last
+     * rules the server sent are the ones a deleted family's phone would otherwise keep enforcing.
+     */
+    suspend fun forgetRules() {
+        store.edit { it.remove(KEY_RULES_JSON) }
+    }
+
     /** Persists the merged default-category blocklist (packageId -> category JSON). */
     suspend fun saveBlocklistJson(json: String) {
         store.edit { it[KEY_BLOCKLIST_JSON] = json }

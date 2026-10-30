@@ -2,6 +2,9 @@ package com.familyshield.agent.commands
 
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.network.DeviceRevoked
+import com.familyshield.agent.network.DeviceUnlinker
+import com.familyshield.agent.network.UnlinkPolicy
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.PushTokenDto
 import com.familyshield.agent.push.PushTokenUploadPolicy
@@ -24,6 +27,8 @@ class CommandPoller @Inject constructor(
     private val api: ApiService,
     private val settings: AgentSettings,
     private val dispatcher: CommandDispatcher,
+    private val unlinkPolicy: UnlinkPolicy,
+    private val unlinker: DeviceUnlinker,
 ) {
 
     /** Fetches and dispatches pending commands; per-command failures are swallowed and logged. */
@@ -34,7 +39,19 @@ class CommandPoller @Inject constructor(
         // the response is read before anything is uploaded. The cadence call keeps the headers; the
         // body is what the dispatcher needs.
         val response = api.getCommandsWithCadence(deviceId)
-        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+        if (!response.isSuccessful) {
+            // Issue #465: one definite signal, and only one. A revoked device is not a transient failure
+            // to retry forever — but a network error, a 5xx or a plain 401 must not unlink a phone, so
+            // the decision reads the status and the body's error code and nothing else.
+            val code = DeviceRevoked.codeFromBody(runCatching { response.errorBody()?.string() }.getOrNull())
+            if (DeviceRevoked.isRevoked(response.code(), code)) {
+                if (unlinkPolicy.onDeviceRevoked(System.currentTimeMillis())) unlinker.unlink()
+                return
+            }
+            throw retrofit2.HttpException(response)
+        }
+        // A good answer proves the phone is still linked, so a half-confirmation is dropped.
+        unlinkPolicy.onLinked()
         // Issue #319: the poll is also the retry path for a token minted before pairing. Never throws,
         // so a failed token upload does not turn a good poll red.
         syncPushToken(deviceId, response.headers()[PushTokenUploadPolicy.PUSH_TOKEN_HEADER])
