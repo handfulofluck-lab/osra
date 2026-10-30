@@ -3,7 +3,10 @@ package com.familyshield.agent.setup
 import com.familyshield.agent.BuildConfig
 import com.familyshield.agent.R
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +28,7 @@ import com.familyshield.agent.commands.CommandPollWorker
 import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
+import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.ServerUrls
 import com.familyshield.agent.security.AdminEnrolmentMessages
 import com.familyshield.agent.security.AdminEnrolmentPolicy
@@ -235,6 +239,38 @@ class PairingActivity : ComponentActivity() {
         lifecycleScope.launch {
             if (settings.isPaired()) showStatus() else showForm(typedServer, typedCode, typedName, scanned = restoredScan)
         }
+    }
+
+    /**
+     * Issue #471: the unlink runs in the agent, not here, so this screen used to keep showing the
+     * paired state — "device admin: on", "web filter: connected" — until it was recreated, while the
+     * phone was already unlinked. It now re-renders from the pair state on the agent's broadcast.
+     *
+     * Registered for `started`, not `created`: a screen in the background re-renders from
+     * `onResume`/`onCreate` anyway, and an unregistered receiver cannot leak.
+     */
+    private val unlinkedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
+            lifecycleScope.launch {
+                if (!settings.isPaired()) showForm("", "", "", scanned = null)
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            unlinkedReceiver,
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(unlinkedReceiver) }
+        super.onStop()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
