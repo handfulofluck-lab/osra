@@ -17,9 +17,9 @@ import com.familyshield.agent.enforcement.MediaAction
 import com.familyshield.agent.enforcement.MediaBlockPolicy
 
 /**
- * Issue #444 C4: the Android side of [MediaBlockPolicy]. From a blocked app's media notification (category
- * or template, and the `EXTRA_MEDIA_SESSION` token; never the title, artist or artwork) it keeps one
- * [MediaController] per blocked package, and pauses **that** session when it plays. A resume from the shade or
+ * Issue #444 C4: the Android side of [MediaBlockPolicy]. From each app's media notification (category or
+ * template, and the `EXTRA_MEDIA_SESSION` token; never the title, artist or artwork) it keeps one
+ * [MediaController] per package, and pauses **that** session when it plays while its app is blocked. A resume from the shade or
  * the lock screen is seen two ways, because on the Flip4 it posts nothing new: the session's own callback
  * reports PLAYING, and `AudioPlaybackCallback` reports a new media player. No audio focus and no global media
  * key: an allowed player is never touched (#444, C4-4). No NotificationListener, so the Play build has it too.
@@ -54,6 +54,9 @@ class MediaEnforcer(
         controllers.keys.toList().forEach(::forget)
     }
 
+    /** A rule sync finished: an app that is playing may have just been blocked (#457 review, R6). */
+    fun onRulesChanged() = apply(policy.onPlaybackMaybeStarted(isBlocked, ::isPlaying))
+
     /** The block or time-limit screen was raised for [pkg]. */
     fun onRaise(pkg: String) = apply(policy.onRaise(pkg, ::isPlaying))
 
@@ -66,17 +69,15 @@ class MediaEnforcer(
         val isMedia = notification.category == Notification.CATEGORY_TRANSPORT || template.contains("MediaStyle")
         if (!isMedia) return
         val token = notification.extras?.token()
-        val blocked = isBlocked(pkg)
-        // The policy's Store condition, applied first so a Pause in the same answer reaches the new session.
-        if (blocked && token != null) store(pkg, token)
-        apply(policy.onMediaNotification(pkg, blocked, hasToken = token != null, ::isPlaying))
+        // The policy's Store condition (any token), applied first so a Pause in the same answer reaches it.
+        if (token != null) store(pkg, token)
+        apply(policy.onMediaNotification(pkg, hasToken = token != null, isBlocked, ::isPlaying))
     }
 
     private fun apply(actions: List<MediaAction>) {
         for (action in actions) {
             when (action) {
                 is MediaAction.Store -> Unit // stored in onNotification, where the token is in hand
-                is MediaAction.Forget -> forget(action.pkg)
                 is MediaAction.Pause -> runCatching { controllers[action.pkg]?.transportControls?.pause() }
                     .onSuccess { Log.i(TAG, "paused a blocked app's media session (#444 C4)") }
                     .onFailure { Log.w(TAG, "pause failed", it) }
@@ -96,7 +97,10 @@ class MediaEnforcer(
             }
 
             override fun onSessionDestroyed() {
-                main.post { forget(pkg) }
+                main.post {
+                    policy.onSessionDestroyed(pkg)
+                    forget(pkg)
+                }
             }
         }
         runCatching { controller.registerCallback(callback, main) }

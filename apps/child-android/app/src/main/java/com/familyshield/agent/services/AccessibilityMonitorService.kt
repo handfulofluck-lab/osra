@@ -86,6 +86,11 @@ class AccessibilityMonitorService : AccessibilityService() {
         )
     }
 
+    /** Issue #444 C4: a rule sync may have just blocked an app that is playing; the check runs on the main thread. */
+    private val rulesChanged: () -> Unit = {
+        android.os.Handler(android.os.Looper.getMainLooper()).post { media.onRulesChanged() }
+    }
+
     /** Issue #444 C4: a blocked app's media audio is paused, however it was started ([MediaBlockPolicy]). */
     private val media by lazy {
         MediaEnforcer(this, isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW })
@@ -114,6 +119,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         runCatching { registerReceiver(packageChangeReceiver, filter) }
         calls.onConnected()
         media.onConnected()
+        rules.addRulesChangedListener(rulesChanged)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -127,6 +133,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         isRunning = false
         calls.onDestroy()
         media.onDestroy()
+        rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
