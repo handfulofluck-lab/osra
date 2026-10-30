@@ -48,12 +48,17 @@ void main() {
   Future<void> confirmWith(WidgetTester tester, String email) async {
     await tester.enterText(find.byKey(const ValueKey('deleteAccountConfirm')), email);
     await tester.pump();
+    // The screen is a long scroll, so on the 800x600 surface the button can start below the fold.
+    await tester.ensureVisible(find.byKey(const ValueKey('deleteAccountSubmit')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('deleteAccountSubmit')));
     await tester.pumpAndSettle();
-    // The shared reauth dialog's password field, found by its label: `find.byType(TextField).first`
-    // is the screen's own email field, still mounted behind the dialog.
-    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'good-password');
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue').last);  // l10n.continueLabel
+    // Asserted here so a missed tap fails at the tap rather than three steps later (#469 review).
+    expect(find.text('Confirm it is you'), findsOneWidget);
+    // The dialog's own keys, as `mfa_screens_test.dart` drives it: `find.byType(TextField).first` is
+    // the screen's email field, still mounted behind the dialog.
+    await tester.enterText(find.byKey(const ValueKey('reauthPassword')), 'good-password');
+    await tester.tap(find.byKey(const ValueKey('reauthConfirm')));
     await flush(tester);
   }
 
