@@ -49,6 +49,9 @@ class BlockRaisePolicy(
     private var episodeRaises = 0
     private var bypassReported = false
 
+    /** Issue #460: a raise waiting for the launcher after `GLOBAL_ACTION_HOME`, or null. */
+    private var pending: PendingRaise? = null
+
     fun decide(pkg: String, layout: WindowLayout, blockedIsActive: Boolean, nowMs: Long): BlockRaise {
         val key = "$pkg|$layout"
         if (key != episode) {
@@ -90,6 +93,49 @@ class BlockRaisePolicy(
         bypassReported = false
     }
 
+    /**
+     * Issue #460: `GLOBAL_ACTION_HOME` was just sent for [pkg], so the block screen must **wait** for the
+     * launcher instead of racing it.
+     *
+     * On the Flip4 the launch order came out `BlockActivity`, then Home, so the launcher landed on top and
+     * the child saw no block screen at all — 4 of 4 tries. Both calls are asynchronous and nothing ordered
+     * them. The raise is therefore deferred to the next event that shows a launcher in front, with a
+     * fallback for launchers that report no such event ([DEFAULT_HOME_FALLBACK_MS]).
+     */
+    fun noteHomeSent(pkg: String, blocked: Boolean, nowMs: Long) {
+        pending = PendingRaise(pkg, blocked, nowMs)
+    }
+
+    /**
+     * Issue #460: advance a deferred raise. Returns what to raise when it is time, or null to keep waiting.
+     *
+     * Raises when the launcher is in front (the Home we asked for has landed) or when the fallback has
+     * expired. Either way the pending raise is cleared, so repeated launcher events cannot raise in a
+     * loop — the "once, not a loop" half of the row.
+     */
+    fun launcherFront(
+        launcherFront: Boolean,
+        nowMs: Long,
+        fallbackMs: Long = DEFAULT_HOME_FALLBACK_MS,
+    ): PendingRaise? {
+        val waiting = pending ?: return null
+        val expired = nowMs - waiting.sinceMs >= fallbackMs
+        if (!launcherFront && !expired) return null
+        pending = null
+        return waiting
+    }
+
+    /** The raise that is waiting for the launcher, or null. For the service's fallback scheduling. */
+    fun pendingRaise(): PendingRaise? = pending
+
+    /** Forget a deferred raise without raising it (consent paused, a new episode, the service stopping). */
+    fun clearPendingRaise() {
+        pending = null
+    }
+
+    /** A deferred raise: which package, whether the block or the time-limit screen, and since when. */
+    data class PendingRaise(val pkg: String, val blocked: Boolean, val sinceMs: Long)
+
     companion object {
         /** The issue's spacing: never faster than once a second per package. */
         const val DEFAULT_DEBOUNCE_MS: Long = 1_000L
@@ -99,5 +145,8 @@ class BlockRaisePolicy(
 
         /** One bypass alert per app per ten minutes, however often the episode restarts ([BypassAlertFloor]). */
         const val DEFAULT_BYPASS_FLOOR_MS: Long = BypassAlertFloor.DEFAULT_FLOOR_MS
+
+        /** Issue #460: how long to wait for the launcher before raising anyway. */
+        const val DEFAULT_HOME_FALLBACK_MS: Long = 500L
     }
 }

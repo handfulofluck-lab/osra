@@ -76,6 +76,10 @@ class AccessibilityMonitorService : AccessibilityService() {
     /** Issue #175: the cover over a blocked PiP window, which stays above the block screen otherwise. */
     private val pipCover by lazy { PipCoverOverlay(this) }
 
+    /** Issue #460: the fallback that raises the deferred block screen when no launcher event arrives. */
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val deferredRaise = Runnable { raiseDeferredIfDue() }
+
     /** Issue #444: a blocked app's calls are declined, covered, hung up or reported ([CallBlockPolicy]). */
     private val calls by lazy {
         CallEnforcer(
@@ -121,6 +125,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         isRunning = false
         calls.onDestroy()
         pipCover.remove()
+        // #460 review: a deferred raise posted inside the fallback window must not fire after the
+        // service is gone — the child turning accessibility off is exactly when that window exists.
+        cancelDeferredRaise()
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
     }
@@ -159,6 +166,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // records, captures and enforces nothing.
         if (consentState.isPaused()) {
             pipCover.remove()
+            // #460 review: consent withdrawn inside the fallback window must not still show a block
+            // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
+            cancelDeferredRaise()
             return
         }
         // Usage and social capture belong to the app actually in front; our own overlay and the
@@ -178,6 +188,65 @@ class AccessibilityMonitorService : AccessibilityService() {
         // or a PiP window over Home. This runs even when our own overlay is the active window, which
         // is exactly the split-screen case the child uses to keep the blocked app beside the lock.
         enforceVisibleBlocks(snapshot, foreground)
+        // Issue #460: the launcher may be the Home we asked for, so the deferred block screen goes on
+        // top of it. Called after the block step, which may have deferred a new raise this event.
+        advanceDeferredRaise(foreground ?: eventPkg)
+    }
+
+    /**
+     * Issue #460: show the screen a blocked package gets, once it is time to show it.
+     */
+    private fun raiseBlockOrTimeLimit(pkg: String, blocked: Boolean) {
+        // The policy owns the spacing (1 s); AppBlocker's own 2 s debounce would halve it.
+        blocker.clearDebounce(pkg)
+        if (blocked) blocker.showBlockScreen(pkg) else blocker.showTimeLimitScreen(pkg)
+    }
+
+    /**
+     * Issue #460: a launcher in front while a raise is deferred means the Home we asked for has landed,
+     * so the block screen can go on top of it. Every event also advances the fallback, so a launcher
+     * that reports nothing still gets the raise.
+     */
+    private fun advanceDeferredRaise(frontPackage: String?) {
+        val launcherFront = frontPackage != null && packageFacts.homePackages().contains(frontPackage)
+        val deferred = blockRaisePolicy.launcherFront(
+            launcherFront = launcherFront,
+            nowMs = System.currentTimeMillis(),
+        ) ?: return
+        main.removeCallbacks(deferredRaise)
+        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked)
+    }
+
+    /**
+     * Issue #460 review: the fallback, which must not re-check the wall clock.
+     *
+     * The Runnable is always reposted for the latest pending raise, so when it runs it is due by
+     * construction. Reading `now` again let a backwards clock step (NTP, or the user setting the time)
+     * find `expired == false`, return without raising and post no retry — and with a launcher that
+     * reports no event, that is the app staying blocked with no screen.
+     */
+    private fun raiseDeferredIfDue() {
+        if (consentState.isPaused()) {
+            cancelDeferredRaise()
+            return
+        }
+        val deferred = blockRaisePolicy.launcherFront(
+            launcherFront = true,
+            nowMs = System.currentTimeMillis(),
+        ) ?: return
+        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked)
+    }
+
+    /**
+     * Issue #460 review: drop a deferred raise — consent is paused, or the service is going away.
+     *
+     * Without this the posted Runnable survived both: a consent withdrawn inside the fallback window
+     * still showed a block screen (ADR-0008 §3 forbids it), and a service destroyed inside the window
+     * raised after `onDestroy`.
+     */
+    private fun cancelDeferredRaise() {
+        main.removeCallbacks(deferredRaise)
+        blockRaisePolicy.clearPendingRaise()
     }
 
     /**
@@ -207,10 +276,18 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (step.goHome) performGlobalAction(GLOBAL_ACTION_HOME)
         if (step.raise) {
             if (pipWindow != null) dismissPictureInPicture(pkg)
-            // The policy owns the spacing now (1 s); AppBlocker's own 2 s debounce would halve it.
-            blocker.clearDebounce(pkg)
-            if (decision == RuleRepository.Decision.BLOCK) blocker.showBlockScreen(pkg)
-            else blocker.showTimeLimitScreen(pkg)
+            val blocked = decision == RuleRepository.Decision.BLOCK
+            if (step.goHome) {
+                // Issue #460: Home and startActivity are both asynchronous and nothing ordered them, so
+                // the launcher landed on top of the block screen — 4 of 4 on the Flip4, and the child
+                // saw no "blocked by your parent" screen at all. The raise now waits for the launcher's
+                // own window event, with a fallback for launchers that never report one.
+                blockRaisePolicy.noteHomeSent(pkg, blocked, System.currentTimeMillis())
+                main.removeCallbacks(deferredRaise)
+                main.postDelayed(deferredRaise, BlockRaisePolicy.DEFAULT_HOME_FALLBACK_MS)
+            } else {
+                raiseBlockOrTimeLimit(pkg, blocked)
+            }
         }
         if (step.reportBypass) {
             Log.w(TAG, "block overlay: $pkg still visible in ${layout.name.lowercase()} after the raises; telling the parent (#175)")
