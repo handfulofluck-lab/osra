@@ -59,6 +59,17 @@ class RuleRepository @Inject constructor(
 
     @Volatile private var cached: RuleSetDto? = null
 
+    /** Issue #444 C4: told after each successful rule sync, so a newly blocked app that is playing is paused. */
+    private val rulesChangedListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addRulesChangedListener(listener: () -> Unit) {
+        rulesChangedListeners += listener
+    }
+
+    fun removeRulesChangedListener(listener: () -> Unit) {
+        rulesChangedListeners -= listener
+    }
+
     // Pause-the-internet state (Feature #11): set by CommandDispatcher on pause_internet /
     // resume_internet; consulted by [evaluate] so every non-always-allowed app is blocked.
     @Volatile private var pausedInternet = false
@@ -234,6 +245,7 @@ class RuleRepository @Inject constructor(
             cached = updated
             runCatching { settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated)) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
+            rulesChangedListeners.forEach { runCatching { it() } }
             updated
         }
     }

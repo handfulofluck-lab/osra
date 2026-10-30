@@ -90,6 +90,16 @@ class AccessibilityMonitorService : AccessibilityService() {
         )
     }
 
+    /** Issue #444 C4: a rule sync may have just blocked an app that is playing; the check runs on the main thread. */
+    private val rulesChanged: () -> Unit = {
+        android.os.Handler(android.os.Looper.getMainLooper()).post { media.onRulesChanged() }
+    }
+
+    /** Issue #444 C4: a blocked app's media audio is paused, however it was started ([MediaBlockPolicy]). */
+    private val media by lazy {
+        MediaEnforcer(this, isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW })
+    }
+
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
     private var loggedStartDecision: LocationStartPolicy.Decision? = null
 
@@ -112,6 +122,8 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
         calls.onConnected()
+        media.onConnected()
+        rules.addRulesChangedListener(rulesChanged)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -124,6 +136,8 @@ class AccessibilityMonitorService : AccessibilityService() {
     override fun onDestroy() {
         isRunning = false
         calls.onDestroy()
+        media.onDestroy()
+        rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
@@ -137,6 +151,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // RuleRepository.evaluate already answers ALLOW for everything while consent is paused.
         if (event?.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             calls.onNotification(event)
+            media.onNotification(event)
             return
         }
         val eventPkg = event?.packageName?.toString() ?: return
@@ -199,6 +214,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     private fun raiseBlockOrTimeLimit(pkg: String, blocked: Boolean) {
         // The policy owns the spacing (1 s); AppBlocker's own 2 s debounce would halve it.
         blocker.clearDebounce(pkg)
+        media.onRaise(pkg) // #444 C4: pause the blocked app's media when its screen goes up
         if (blocked) blocker.showBlockScreen(pkg) else blocker.showTimeLimitScreen(pkg)
     }
 
