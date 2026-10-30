@@ -42,17 +42,24 @@ class DeviceUnlinker @Inject constructor(
 
     suspend fun unlink() {
         if (unlinked) return
-        // 1. Stop enforcing. The VPN first: it is the one thing that keeps dropping packets while the
-        // rest of this runs, and a later step can fail without leaving a filter behind.
+        // Every step is guarded on its own: one failure must not skip the rest, or the phone is left in
+        // a worse state than before the unlink (an unpaired phone still holding device admin).
+        //
+        // **The order changed after review, and the reason is a decision path.** Forgetting the rules
+        // before clearing the pairing leaves a window where the phone is still *paired* with **no**
+        // rules, and `RuleRepository.decide` answers BLOCK for every non-essential app in that state
+        // (AND-03). If `clearPairing()` then threw — secure storage is the plausible way — the phone
+        // would stay paired with null rules for good: every app blocked, no parent to fix it. Clearing
+        // the pairing first makes the worse failure "unpaired, rules still on disk", which blocks only
+        // what the deleted family had blocked and no longer blocks anything once the rules go.
         runCatching { FilterVpnService.stop(context) }
-        LockState.clear(context)
-        rules.forgetRules()
-        // 2. Clear the pairing, so the poller stops talking to a server that no longer knows this phone.
-        settings.clearPairing()
-        // 3. Drop the admin grant without the PIN: the agent owns this grant and is removing itself.
+        runCatching { LockState.clear(context) }
+        runCatching { settings.clearPairing() }
+        runCatching { rules.forgetRules() }
+        // The admin grant is the agent's own, and it removes itself: no Settings sheet, no PIN, because
+        // the PIN belonged to a parent account that no longer exists.
         runCatching { admin.removeAdmin() }
-        // 4. Say so on the device.
-        UnlinkedNotice.show(context)
+        runCatching { UnlinkedNotice.show(context) }
         unlinked = true
     }
 }

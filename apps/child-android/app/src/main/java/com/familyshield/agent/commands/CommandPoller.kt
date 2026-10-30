@@ -3,6 +3,7 @@ package com.familyshield.agent.commands
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.DeviceRevoked
+import com.familyshield.agent.network.dto.DeviceCommandDto
 import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.UnlinkPolicy
 import com.familyshield.agent.network.ApiService
@@ -39,19 +40,10 @@ class CommandPoller @Inject constructor(
         // the response is read before anything is uploaded. The cadence call keeps the headers; the
         // body is what the dispatcher needs.
         val response = api.getCommandsWithCadence(deviceId)
-        if (!response.isSuccessful) {
-            // Issue #465: one definite signal, and only one. A revoked device is not a transient failure
-            // to retry forever — but a network error, a 5xx or a plain 401 must not unlink a phone, so
-            // the decision reads the status and the body's error code and nothing else.
-            val code = DeviceRevoked.codeFromBody(runCatching { response.errorBody()?.string() }.getOrNull())
-            if (DeviceRevoked.isRevoked(response.code(), code)) {
-                if (unlinkPolicy.onDeviceRevoked(System.currentTimeMillis())) unlinker.unlink()
-                return
-            }
-            throw retrofit2.HttpException(response)
-        }
-        // A good answer proves the phone is still linked, so a half-confirmation is dropped.
-        unlinkPolicy.onLinked()
+        // Issue #465: a revoked device is not a transient failure to retry forever. The answer is read in
+        // one place so both polls — this one and LocationService's — reach the same decision.
+        if (onPollAnswer(response)) return
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
         // Issue #319: the poll is also the retry path for a token minted before pairing. Never throws,
         // so a failed token upload does not turn a good poll red.
         syncPushToken(deviceId, response.headers()[PushTokenUploadPolicy.PUSH_TOKEN_HEADER])
@@ -63,6 +55,31 @@ class CommandPoller @Inject constructor(
                 dispatcher.dispatch(command.type, payload, command.id)
             }.onFailure { Log.w(TAG, "command '${command.type}' failed; swallowed", it) }
         }
+    }
+
+    /**
+     * Issue #465: the shared answer path for **every** poll, and the reason it is shared.
+     *
+     * On a normally paired phone the WorkManager run is skipped while `LocationService` is up
+     * (`IdleCadence.workerShouldPoll`), and the service makes its own `getCommandsWithCadence` call. When
+     * the answer was read only here, the `401 device_revoked` went to the service's own failure handler
+     * and the phone stayed locked — the bug this whole change exists to fix. Both callers now go through
+     * this method.
+     *
+     * Returns true when the poll must stop because the phone is no longer linked.
+     */
+    suspend fun onPollAnswer(response: retrofit2.Response<List<DeviceCommandDto>>): Boolean {
+        if (response.isSuccessful) {
+            // A good answer proves the phone is still linked, so a half-confirmation is dropped.
+            unlinkPolicy.onLinked()
+            return false
+        }
+        // One definite signal, and only one: a network error, a 5xx or a plain 401 a refresh could fix
+        // must never unlink a phone, so the decision reads the status and the body's error code.
+        val code = DeviceRevoked.codeFromBody(runCatching { response.errorBody()?.string() }.getOrNull())
+        if (!DeviceRevoked.isRevoked(response.code(), code)) return false
+        if (unlinkPolicy.onDeviceRevoked(System.currentTimeMillis())) unlinker.unlink()
+        return true
     }
 
     /**
