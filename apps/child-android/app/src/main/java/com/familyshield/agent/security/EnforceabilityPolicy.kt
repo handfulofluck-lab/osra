@@ -52,6 +52,12 @@ object EnforceabilityPolicy {
     /** `pause_internet` asked for a filter the device never consented to, so no packet is dropped. */
     const val REASON_WEB_FILTER_NOT_SET_UP = "web_filter_not_set_up"
 
+    /**
+     * Issue #234: the filter is consented and prepared but the tunnel did not come up inside the
+     * bounded wait, so `pause_internet` would have acked a pause that drops no packet.
+     */
+    const val REASON_WEB_FILTER_START_FAILED = "web_filter_start_failed"
+
     /** The path that can actually make a `lock` visible; its wire value is the ack's `detail.via`. */
     enum class LockPath(val wire: String) {
         OVERLAY("overlay"),
@@ -135,11 +141,64 @@ object EnforceabilityPolicy {
      * preparation are in place (`VpnState.isEnabled` alone stays true after the consent is revoked
      * in Settings, while `FilterVpnService.start` silently returns). The caller persists the paused
      * state either way, so the pause applies when the filter is set up.
+     *
+     * Issue #234: [tunnelRunning] is the separate fact `start()` cannot report — it returns once the
+     * start intent is posted, so a service that never came up used to produce `ok` for a phone that
+     * was still passing every packet. "Set up" and "running" are now different refusals, because the
+     * parent's fix differs: re-enable the filter, or find out why the tunnel will not start.
      */
-    fun pauseInternetOutcome(webFilterSetUp: Boolean): CommandOutcome =
-        if (webFilterSetUp) {
-            CommandOutcome.Applied()
-        } else {
-            CommandOutcome.Refused(REASON_WEB_FILTER_NOT_SET_UP)
+    fun pauseInternetOutcome(webFilterSetUp: Boolean, tunnelRunning: Boolean): CommandOutcome =
+        when {
+            !webFilterSetUp -> CommandOutcome.Refused(REASON_WEB_FILTER_NOT_SET_UP)
+            !tunnelRunning -> CommandOutcome.Refused(REASON_WEB_FILTER_START_FAILED)
+            else -> CommandOutcome.Applied()
         }
+
+    /**
+     * Issue #234: waits, briefly and boundedly, for `FilterVpnService.isRunning`.
+     *
+     * `startForegroundService` only posts the intent — the service sets `isRunning` in `onCreate`.
+     * A command ack cannot be deferred here (the ack is written by the caller once, synchronously),
+     * so the choice is between a short block and acking a fact nobody checked. The wait is bounded by
+     * [timeoutMs] so a phone that refuses to start the tunnel costs one ack, not a wedged worker.
+     *
+     * Time and sleeping are injected, so the JVM rows state the deadline without spending it.
+     *
+     * [isRunning] is deliberately **not** last: a trailing lambda would bind to [now], which is also a
+     * function type, and the call would compile into the wrong parameter. Named arguments are how the
+     * dispatcher calls it, and the compiler now enforces that it names one.
+     *
+     * **Never call this on the main thread.** The work it waits for (`onCreate` → `openTunnel`) runs
+     * there, so blocking main would make the wait time out every time. All three callers today
+     * (`CommandPoller`, `LocationService`, `TamperAlertWorker`) are off it.
+     */
+    fun awaitFilterRunning(
+        isRunning: () -> Boolean,
+        timeoutMs: Long = 1500,
+        intervalMs: Long = 25,
+        sleep: (Long) -> Unit = { Thread.sleep(it) },
+        now: () -> Long = { System.currentTimeMillis() },
+    ): Boolean {
+        if (isRunning()) return true
+        val deadline = now() + timeoutMs
+        while (now() < deadline) {
+            sleep(intervalMs)
+            if (isRunning()) return true
+        }
+        return false
+    }
+
+    /**
+     * Issue #234 review: is a sinkhole-all tunnel the one that is **established**?
+     *
+     * [tunnelMode] is `FilterVpnService.tunnelMode`, which is written only after `establish()` returned
+     * a descriptor and cleared by `stopTunnel` on every re-mode. The older check asked whether the
+     * service object existed, which is true from `onCreate` onwards — before, and even without, a
+     * tunnel — so it acked "paused" for a phone that was still passing packets.
+     *
+     * Kept pure (two strings compared) so the semantic boundary has a JVM row: a null mode, a `dns`
+     * mode and the sinkhole mode each read as what they are.
+     */
+    fun isSinkholeEstablished(tunnelMode: String?, sinkholeMode: String): Boolean =
+        tunnelMode == sinkholeMode
 }

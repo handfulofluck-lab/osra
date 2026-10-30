@@ -467,6 +467,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The web filter is not set up on your child\'s phone, so the internet was not paused.';
 
   @override
+  String get commandRefusedWebFilterStart =>
+      'The internet pause couldn\'t start on your child\'s phone. Open OSRA there and try again.';
+
+  @override
   String get commandRefusedUnsupportedCommand =>
       'This command needs a newer OSRA on your child\'s phone.';
 

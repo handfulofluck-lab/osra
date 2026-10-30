@@ -860,6 +860,12 @@ abstract class AppLocalizations {
   /// **'The web filter is not set up on your child\'s phone, so the internet was not paused.'**
   String get commandRefusedWebFilter;
 
+  /// No description provided for @commandRefusedWebFilterStart.
+  ///
+  /// In en, this message translates to:
+  /// **'The internet pause couldn\'t start on your child\'s phone. Open OSRA there and try again.'**
+  String get commandRefusedWebFilterStart;
+
   /// No description provided for @commandRefusedUnsupportedCommand.
   ///
   /// In en, this message translates to:

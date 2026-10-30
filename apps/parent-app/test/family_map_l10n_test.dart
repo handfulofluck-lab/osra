@@ -30,6 +30,7 @@ const device = Device(
 
 void main() {
   final ar = lookupAppLocalizations(const Locale('ar'));
+  final en = lookupAppLocalizations(const Locale('en'));
 
   Future<FakeApiClient> pumpArabic(WidgetTester tester, Widget body) async {
     final api = FakeApiClient(standardRoutes());
@@ -111,6 +112,23 @@ void main() {
         '«رن» غير متاح على Pixel 7: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.');
     expect(commandRefusalText(ar, 'ring', 'Pixel 7', 'something_new'), contains('something_new'),
         reason: 'an unknown code stays visible rather than becoming a vague failure');
+  });
+
+  // #234: the pause could not start although the filter is consented and prepared — a different
+  // instruction from "consent is missing", so a different sentence. Mutant: delete the
+  // `web_filter_start_failed` branch in `command_messages.dart` and this reads the raw code.
+  test('commandRefusalText explains a pause that never started', () {
+    expect(
+      commandRefusalText(ar, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
+      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.',
+    );
+    expect(
+      commandRefusalText(en, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
+      "The internet pause couldn't start on your child's phone. Open OSRA there and try again.",
+    );
+    // The neighbouring refusal keeps its own sentence: the two are not interchangeable.
+    expect(commandRefusalText(en, 'pause_internet', 'Pixel 7', 'web_filter_not_set_up'),
+        isNot(contains('couldn\'t start')));
   });
 
   // #434: an HTTP error is a different vocabulary from a `reason`. A known cause becomes a sentence
