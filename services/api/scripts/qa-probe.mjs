@@ -2177,44 +2177,51 @@ check("H2 /health/deep reports db+redis", healthDeep.status === 200 && healthDee
 // ── AD. account deletion request: no account oracle (#442 PR 3, #467) ───────────────────────────
 // `POST /v1/account/deletion-request` is public, so it must not tell anyone whether an address has an
 // account: the same status and body, and the same time within noise, for a known and an unknown address.
-// The route answers 202 before the lookup (routes/account.ts), so the work behind a known address cannot
-// show in the response time. A warm-up of each kind is discarded, then known and unknown alternate, so a
-// drift over the run hits both sides alike. 14 requests stay inside the route's own 20-a-minute bucket.
+// The route answers 202 before the lookup (routes/account.ts), so the work behind a known address (the
+// token write and, on staging, the mail provider's round trip) cannot show in the response time.
+// Only an address's FIRST request does that work: a repeat inside the minute is the mail cooldown and
+// returns early. So each sample is a first request: five fresh registered addresses against five fresh
+// unknown ones, alternating, after one discarded warm-up. 11 requests stay inside the route's own
+// 20-a-minute bucket; the five registrations use /register's.
 {
-  const adKnown = `qa-ad-${stamp}@example.com`;
-  const adUnknown = `qa-ad-none-${stamp}@example.com`;
-  const adReg = await call("POST", "/v1/auth/register", {
-    body: { email: adKnown, password: PASSWORD, displayName: "QA AD", familyName: "QA Family AD", region: "US" },
-  });
+  const adKnown = [];
+  const adRegs = [];
+  for (let i = 0; i < 5; i++) {
+    const email = `qa-ad-${stamp}-${i}@example.com`;
+    adRegs.push((await call("POST", "/v1/auth/register", {
+      body: { email, password: PASSWORD, displayName: "QA AD", familyName: "QA Family AD", region: "US" },
+    })).status);
+    adKnown.push(email);
+  }
   const timed = async (email) => {
     const t0 = performance.now();
     const r = await call("POST", "/v1/account/deletion-request", { body: { email } });
     return { ...r, ms: performance.now() - t0 };
   };
-  await timed(adKnown);
-  await timed(adUnknown);
+  await timed(`qa-ad-warmup-${stamp}@example.com`);
   const known = [];
   const unknown = [];
-  for (let i = 0; i < 6; i++) {
-    known.push(await timed(adKnown));
-    unknown.push(await timed(adUnknown));
+  for (let i = 0; i < 5; i++) {
+    known.push(await timed(adKnown[i]));
+    unknown.push(await timed(`qa-ad-none-${stamp}-${i}@example.com`));
   }
   const all = [...known, ...unknown];
   const bodies = new Set(all.map((r) => JSON.stringify(r.data)));
-  const median = (xs) => { const v = xs.map((r) => r.ms).sort((x, y) => x - y); return (v[2] + v[3]) / 2; };
+  const median = (xs) => xs.map((r) => r.ms).sort((x, y) => x - y)[2];
   const mk = median(known);
   const mu = median(unknown);
   check(
     "AD1 /v1/account/deletion-request answers a known and an unknown address alike: 202 and one identical body",
-    adReg.status === 201 && all.every((r) => r.status === 202) && bodies.size === 1,
-    `register=${adReg.status} statuses=${all.map((r) => r.status).join(",")} bodies=${[...bodies].join(" | ")}`,
+    adRegs.every((s) => s === 201) && all.every((r) => r.status === 202) && bodies.size === 1,
+    `register=${adRegs.join(",")} statuses=${all.map((r) => r.status).join(",")} bodies=${[...bodies].join(" | ")}`,
   );
-  // 25 ms is far above local jitter for one small JSON response and far below a password hash, a DB
-  // lookup plus token write, or a mail send, which is what an oracle would leak.
+  // 25 ms is far above local jitter for one small JSON answer and below a mail provider's round trip,
+  // which is what a reply that waited for the work would leak. On the local stack the token write alone
+  // costs well under 1 ms, so this row is meant for staging, where the provider is real.
   check(
-    "AD2 ... and in the same time within noise (median known vs unknown within 25 ms)",
+    "AD2 ... and in the same time within noise (first request per address, median known vs unknown within 25 ms)",
     Math.abs(mk - mu) <= 25,
-    `median known=${mk.toFixed(1)} ms unknown=${mu.toFixed(1)} ms (diff ${(mk - mu).toFixed(1)} ms)`,
+    `known=[${known.map((r) => r.ms.toFixed(1)).join(",")}] unknown=[${unknown.map((r) => r.ms.toFixed(1)).join(",")}] ms, median diff ${(mk - mu).toFixed(1)} ms`,
   );
 }
 
