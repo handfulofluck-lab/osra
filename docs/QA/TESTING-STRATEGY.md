@@ -179,8 +179,8 @@ run means the rows ran; it does not mean the gate is open.
   nothing open, every **30 minutes**. (Superseded: 30 / 60 minutes, agreed 2026-10-16.)
 - **The message file is `docs/QA/TEST-REQUESTS.md`:** short, dated messages in its *Messages* section
   (newest first), one line each, quoting a `TR-nn` where one applies. Long-form evidence and
-  point-by-point replies stay in `DISCUSSION-LOG.md` (append-only); PR comments carry the evidence for a
-  specific change; the program board issue (#50) is the source of truth for lanes and ownership.
+  point-by-point replies live in the PR's or issue's GitHub comments, with a digest per merge batch on #50
+  (`DISCUSSION-LOG.md` is frozen as of 2026-10-30, `AGENTS.md` §6.2); the program board issue (#50) is the source of truth for lanes and ownership.
 - The author responds in the same window with agreement, a counter-proposal, or the fix — the loop is
   two-way, not a queue.
 - If the interval must change (long build, night off), say so — silence should not read as agreement.
