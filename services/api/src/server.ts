@@ -17,6 +17,7 @@ import { contentRoutes } from "./routes/content.js";
 import { inviteRoutes } from "./routes/invites.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { meRoutes } from "./routes/me.js";
+import { accountRoutes } from "./routes/account.js";
 import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
 import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
@@ -29,6 +30,7 @@ import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
 import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/rateLimits.js";
 import { getRedis } from "./redis.js";
+import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -58,7 +60,12 @@ try {
 
 // Behind the ALB every request arrives from the balancer, so the client address comes from
 // X-Forwarded-For, trusted for TRUST_PROXY hops (1 in infra/terraform/env/ecs.tf). Unset trusts nothing.
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, trustProxy: trustProxyFromEnv() });
+// #442 PR 3: the request log keeps the URL but not the credential some links carry in it (`?token=`,
+// `?ticket=`), so a mailed deletion or digest link never lands in log aggregation (`lib/logRedaction.ts`).
+const app = Fastify({
+  logger: { level: process.env.LOG_LEVEL ?? "info", serializers: LOGGER_SERIALIZERS },
+  trustProxy: trustProxyFromEnv(),
+});
 
 // Review API-1: CORS allowlist via env (comma-separated); unset = reflect (dev/test only, NOTE).
 const corsOrigins = process.env.CORS_ORIGIN?.split(",").map((o) => o.trim()).filter(Boolean);
@@ -112,6 +119,9 @@ await app.register(socialRoutes, { prefix: "/v1/social" });
 await app.register(contentRoutes, { prefix: "/v1/content" });
 await app.register(insightsRoutes, { prefix: "/v1/insights" });
 await app.register(meRoutes, { prefix: "/v1/me" });
+// #442 PR 3: the public account-deletion pages (Play's web link). No session; the two POSTs carry
+// AUTH_RATE_LIMIT themselves.
+await app.register(accountRoutes, { prefix: "/v1/account" });
 
 registerRealtime(app);
 

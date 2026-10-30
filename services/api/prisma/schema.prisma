@@ -64,6 +64,7 @@ model Parent {
   pushTokens   ParentPushToken[]
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
+  accountDeletionTokens AccountDeletionToken[]
 }
 
 /// ADR-0032 / roadmap 2.7: a single-logout revocation, the durable record behind
@@ -86,6 +87,24 @@ model RevokedToken {
 /// ADR-0023 Option A: one-time MFA recovery codes. Only the SHA-256 hash of the normalised code is
 /// stored; the plaintext exists in the issuing response and nowhere else. A row with `usedAt` set is
 /// kept as the record that the batch was spent; recovery deletes the sibling rows.
+/// #442 PR 3: the single-use link `POST /v1/account/deletion-request` mails, which opens the web page that
+/// deletes the account (Play's "delete from a web link" requirement). `tokenHash` is the SHA-256 of the
+/// 32-byte token; the plaintext exists only in the email. 30 minutes (`expiresAt`), and `usedAt` is set
+/// by the one conditional update that spends it, so two submits cannot both pass. A new request
+/// deletes the parent's earlier rows, so one parent has at most one live link. The account deletion
+/// itself deletes every row of the deleted parents (`FAMILY_SCOPED_DELETES`, `PARENT_SCOPED_DELETES`).
+model AccountDeletionToken {
+  id        String    @id @default(uuid())
+  parentId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  parent    Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@index([parentId])
+}
+
 model ParentMfaRecoveryCode {
   id        String    @id @default(uuid())
   parentId  String

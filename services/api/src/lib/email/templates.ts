@@ -173,3 +173,36 @@ export function digestConfirmEmail(to: string, opts: { link: string }, locale: L
   );
   return { to, subject: `Confirm your OSRA digest · تأكيد ملخّص أسرة`, html, text };
 }
+
+/**
+ * #442 PR 3 (Play account deletion, the web link): someone asked, on the public page, to delete the
+ * account that uses this address. The link opens a page that asks for the password (and the
+ * authenticator code when MFA is on) before anything is deleted, so the mail alone deletes nothing.
+ *
+ * Like `digestConfirmEmail`, it carries **no user-written text**: the request came from a page anyone
+ * can reach, so the message must not be a way to put a chosen string in an account holder's inbox.
+ */
+export function accountDeletionEmail(to: string, opts: { link: string }, locale: Locale = "both"): EmailMessage {
+  const { html, text } = shell(
+    {
+      en: {
+        title: "Delete your OSRA account",
+        body: [
+          "Someone asked to delete the OSRA account that uses this address. If it was you, open the link and enter your password to confirm. Nothing is deleted until you do.",
+          "The link works once and expires in 30 minutes. If you did not ask for this, ignore this email: your account stays as it is.",
+        ],
+        cta: { label: "Delete my account", href: opts.link },
+      },
+      ar: {
+        title: "حذف حسابك في أسرة",
+        body: [
+          "طلب أحدهم حذف حساب أسرة الذي يستخدم هذا العنوان. إن كنت أنت، افتح الرابط وأدخل كلمة المرور للتأكيد. لن يُحذف شيء قبل ذلك.",
+          "الرابط صالح لمرة واحدة وتنتهي صلاحيته خلال 30 دقيقة. إن لم تطلب ذلك، تجاهل هذه الرسالة وسيبقى حسابك كما هو.",
+        ],
+        cta: { label: "حذف حسابي", href: opts.link },
+      },
+    },
+    locale,
+  );
+  return { to, subject: "Delete your OSRA account · حذف حسابك في أسرة", html, text };
+}
