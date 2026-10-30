@@ -33,14 +33,13 @@ class MediaEnforcer(
     private val main = Handler(Looper.getMainLooper())
     private val controllers = HashMap<String, MediaController>()
     private val callbacks = HashMap<String, MediaController.Callback>()
-    private var activeMedia = 0
 
     private val playback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
             val media = configs.orEmpty().count { it.audioAttributes.usage == AudioAttributes.USAGE_MEDIA }
-            val started = media > activeMedia
-            activeMedia = media
-            if (started) apply(policy.onPlaybackMaybeStarted(isBlocked, ::isPlaying))
+            // #457 review: sweep on every change; a resume of a paused player need not change the count.
+            logSweep("config media=$media")
+            apply(policy.onPlaybackConfigChanged(media, isBlocked, ::isPlaying))
         }
     }
 
@@ -78,9 +77,16 @@ class MediaEnforcer(
         for (action in actions) {
             when (action) {
                 is MediaAction.Store -> Unit // stored in onNotification, where the token is in hand
-                is MediaAction.Pause -> runCatching { controllers[action.pkg]?.transportControls?.pause() }
-                    .onSuccess { Log.i(TAG, "paused a blocked app's media session (#444 C4)") }
-                    .onFailure { Log.w(TAG, "pause failed", it) }
+                is MediaAction.Pause -> {
+                    val controller = controllers[action.pkg]
+                    if (controller == null) {
+                        Log.w(TAG, "pause for ${action.pkg}: no controller")
+                    } else {
+                        runCatching { controller.transportControls.pause() }
+                            .onSuccess { Log.i(TAG, "paused a blocked app's media session (#444 C4)") }
+                            .onFailure { Log.w(TAG, "pause for ${action.pkg} failed", it) }
+                    }
+                }
             }
         }
     }
@@ -93,7 +99,11 @@ class MediaEnforcer(
         val controller = runCatching { MediaController(service, token) }.getOrNull() ?: return
         val callback = object : MediaController.Callback() {
             override fun onPlaybackStateChanged(state: PlaybackState?) {
-                if (state?.state == PlaybackState.STATE_PLAYING) apply(policy.onPlaybackMaybeStarted(isBlocked, ::isPlaying))
+                Log.d(TAG, "state $pkg=${state?.state}")
+                if (state?.state == PlaybackState.STATE_PLAYING) {
+                    logSweep("session $pkg playing")
+                    apply(policy.onPlaybackMaybeStarted(isBlocked, ::isPlaying))
+                }
             }
 
             override fun onSessionDestroyed() {
@@ -106,11 +116,19 @@ class MediaEnforcer(
         runCatching { controller.registerCallback(callback, main) }
         controllers[pkg] = controller
         callbacks[pkg] = callback
+        Log.d(TAG, "store $pkg")
+    }
+
+    /** #457 review: one debug line per sweep, with each stored package's blocked and playing state. */
+    private fun logSweep(trigger: String) {
+        val detail = policy.storedPackages().joinToString { "$it blocked=${isBlocked(it)} playing=${isPlaying(it)}" }
+        Log.d(TAG, "sweep ($trigger) stored=${policy.storedCount} [$detail]")
     }
 
     private fun forget(pkg: String) {
         val controller = controllers.remove(pkg) ?: return
         callbacks.remove(pkg)?.let { runCatching { controller.unregisterCallback(it) } }
+        Log.d(TAG, "forget $pkg")
     }
 
     @Suppress("DEPRECATION")

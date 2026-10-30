@@ -11,6 +11,6 @@
 - No audio focus and no global pause key: an allowed player is never touched, because nothing is paused
   unless its app is blocked at that moment. A token goes when its session ends. No NotificationListener is
   needed, so this works in the Play build.
-- `MediaBlockPolicy` is pure; `MediaBlockPolicyTest` has 10 rows, including a resume with no new post, a block
+- `MediaBlockPolicy` is pure; `MediaBlockPolicyTest` has 11 rows, including a resume with no new post (and one that leaves the player count unchanged, R7), a block
   applied while playing (R5, R6), an allowed player untouched, unblock and re-block, a destroyed session, and
   not playing means no pause.

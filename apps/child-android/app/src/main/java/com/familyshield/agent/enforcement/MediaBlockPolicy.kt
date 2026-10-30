@@ -58,6 +58,24 @@ class MediaBlockPolicy {
     fun onPlaybackMaybeStarted(isBlocked: (String) -> Boolean, isPlaying: (String) -> Boolean): List<MediaAction> =
         stored.filter { isBlocked(it) && isPlaying(it) }.map { MediaAction.Pause(it) }
 
+    /**
+     * Every `AudioPlaybackCallback.onPlaybackConfigChanged` (#457 review, R7): the sweep runs each time, not
+     * only when the number of media players rises. On the Flip4 a paused player stays in the list, so a resume
+     * from the shade or the lock screen leaves the count where it was. [mediaCount] is kept for the debug log.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun onPlaybackConfigChanged(
+        mediaCount: Int,
+        isBlocked: (String) -> Boolean,
+        isPlaying: (String) -> Boolean,
+    ): List<MediaAction> = onPlaybackMaybeStarted(isBlocked, isPlaying)
+
+    /** How many sessions are stored, for the debug log. */
+    val storedCount: Int get() = stored.size
+
+    /** The stored packages, for the debug log. */
+    fun storedPackages(): List<String> = stored.toList()
+
     /** The block screen was raised for [pkg]: if its stored session is playing, pause it. */
     fun onRaise(pkg: String, isPlaying: (String) -> Boolean): List<MediaAction> =
         if (pkg in stored && isPlaying(pkg)) listOf(MediaAction.Pause(pkg)) else emptyList()

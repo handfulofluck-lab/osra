@@ -114,4 +114,17 @@ class MediaBlockPolicyTest {
         assertEquals(emptyList<MediaAction>(), p.post(youtube, hasToken = false))
         assertEquals(emptyList<MediaAction>(), p.sweep())
     }
+
+    @Test
+    fun `R7 - a resume that leaves the media count unchanged is still swept and paused`() {
+        val p = MediaBlockPolicy()
+        p.post(youtube)
+        assertEquals("paused, one player in the list", emptyList<MediaAction>(), p.onPlaybackConfigChanged(1, isBlocked, isPlaying))
+        playing = setOf(youtube)
+        assertEquals(
+            "same count, now playing: paused",
+            listOf(MediaAction.Pause(youtube)),
+            p.onPlaybackConfigChanged(1, isBlocked, isPlaying),
+        )
+    }
 }
