@@ -93,4 +93,19 @@ class OnboardingPolicyTest {
         assertTrue(listenerOnly!!.contains("notification"))
         assertFalse(listenerOnly.contains("call and SMS"))
     }
+
+    @Test
+    fun `#81 - USB debugging off is recommended, not required, and listed after battery`() {
+        assertFalse(Grant.USB_DEBUGGING.required)
+        val order = OnboardingPolicy.rows { true }.map { it.grant }
+        assertEquals(order.indexOf(Grant.BATTERY) + 1, order.indexOf(Grant.USB_DEBUGGING))
+        assertTrue("a missing USB row never blocks completion", OnboardingPolicy.canComplete(OnboardingPolicy.rows { it != Grant.USB_DEBUGGING }))
+    }
+
+    @Test
+    fun `#81 - ADB_ENABLED 1 means USB debugging is on; 0 or unreadable means off`() {
+        assertFalse(OnboardingPolicy.usbDebuggingOff(1))
+        assertTrue(OnboardingPolicy.usbDebuggingOff(0))
+        assertTrue(OnboardingPolicy.usbDebuggingOff(null))
+    }
 }

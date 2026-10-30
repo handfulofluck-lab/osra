@@ -62,6 +62,13 @@ app blocking); the OS offers no hook to put a PIN prompt *inside* its deactivate
   accessibility guard, and the adb routes (`am force-stop`, `pm clear` — which wipes the pairing
   even with admin active) are answered server-side by the `device_silent` alert (an active device
   unseen for 30 min). `OWNER` is the tier that blocks both at the OS.
+- **#81 (2026-10-30), `pm clear` and the tiers.** On `ADMIN` the agent cannot stop `pm clear`; it can
+  only make it visible. The phone recognises the wipe at the next pairing (admin still active, no pairing,
+  no PIN) and the parent's Allow records a `tamper` alert `agent_data_cleared` (#453), and onboarding warns
+  while USB debugging is on (`OnboardingPolicy.Grant.USB_DEBUGGING`, recommended, not required). Blocking
+  the route needs `UserManager.DISALLOW_DEBUGGING_FEATURES` (and `DISALLOW_APPS_CONTROL`), which only bind
+  under a device owner. That is the reason the Full build's `OWNER` tier is stronger than Play's `ADMIN`,
+  and plain device admin does not pretend otherwise.
 - OEM Settings wording differs; the classifier matches generic verbs plus our labels and is covered by
   JVM tests for AOSP/Google/Samsung phrasing. A screen it misses is a finding, not a crash: the device
   stays on the same tier and admin still blocks the uninstall.
