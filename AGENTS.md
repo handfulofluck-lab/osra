@@ -64,7 +64,7 @@ as such and the row goes to the human or stays open; it does not quietly become 
    (CI, harness, docs) is verified by Kimi Code, which CI allows only while the PR has no Kimi-authored
    commit, or by the maintainer. The
    result is a `TR-*` row in `docs/QA/TEST-REQUESTS.md` with the raw output, and a point-by-point reply in
-   `docs/QA/DISCUSSION-LOG.md`.
+   the PR's own comments (§6.2).
 4. **Merge or return.** Kimi merges when §6.5 holds, citing the verification record in the merge message;
    otherwise the PR returns with the failing evidence and its `TR-*` row stays open. A returned PR is the
    gate working, not a verdict on the author.
@@ -123,7 +123,7 @@ as such and the row goes to the human or stays open; it does not quietly become 
 | `docs/QA/QA-REPORT-<date>.md` | Consolidated QA state (Kimi-owned) |
 | `docs/QA/audits/*.md` | Raw per-platform audits (read-only, Kimi-owned) |
 | `docs/QA/ANTIGRAVITY-INBOX.md` | The ordered work queue (Kimi writes, Antigravity works through) |
-| `docs/QA/DISCUSSION-LOG.md` | The durable, full-detail dialogue between the agents (append-only) |
+| `docs/QA/DISCUSSION-LOG.md` | **Frozen 2026-10-30.** The agents' dialogue up to that date, kept for history. New exchanges live in GitHub comments and the digest on #50 (§6.2) |
 | `services/api/scripts/qa-probe.mjs` | Adversarial acceptance gate (must pass before merge) |
 | `services/api/scripts/e2e.mjs` | Happy-path acceptance flow |
 | `scripts/hardware/phone-claim.ps1` | The lease over the one physical test phone — claim before `adb`, release with the state you hand over (§9) |
@@ -155,8 +155,8 @@ carries its documentation **in the same PR**:
 - **`docs/TESTING.md`** — when a suite, a gate, a procedure or an environment trap changes.
 - **`docs/README.md`** — when a document is added or moves.
 - **`README.md`** — when the product surface, suite list/status, security model or limitations change.
-- **`docs/QA/`** — the verifying agent owns the report, the queue and the discussion log; the
-  implementing agent answers in the log rather than rewriting the report.
+- **`docs/QA/`** — the verifying agent owns the report and the queue; the implementing agent answers
+  in the PR's comments rather than rewriting the report (the discussion log is frozen, §6.2).
 
 **Writing rules.** Prefer the concrete over the general (a command, a status code, a `file:line`); state
 what you verified and where; keep the *why* next to the *what*; and never delete a record of a past
@@ -220,8 +220,16 @@ Fill in `.github/PULL_REQUEST_TEMPLATE.md`. It requires, in order:
 
 The reviewer replies to **every** numbered claim in the PR — quoting the claim and stating
 agree / disagree / needs evidence, with the evidence. Vague approvals ("LGTM") are not reviews.
-Both agents append their exchange to `docs/QA/DISCUSSION-LOG.md` using its entry format, so the
-reasoning survives and can be re-read later. Assume the other agent has *not* seen your screen,
+The exchange lives in the PR's or the issue's **GitHub comments**, where every member reads (Ahmed works
+from GitHub only). Each batch of merges gets one **digest comment on #50**: what merged, who verified it,
+at which sha, and what stays open. That digest is the chronological record. An edit that changes a claim in
+an earlier comment says so in place (`[Edit: …]`), never silently.
+
+`docs/QA/DISCUSSION-LOG.md` is **frozen as of 2026-10-30** and gains no new entries. It was one
+append-only file, so two PRs that each wrote an entry conflicted every time: three hand merges on
+2026-10-30, and one of them voided a signature, because a resolution inside the PR's own files breaks the
+§6.5 carry (#452). The decision is recorded on #50. Its entry format (understanding, what I did, agreement,
+asks, status) still applies to a comment. Assume the other agent has *not* seen your screen,
 your terminal or your reasoning: write what you saw, verbatim where it matters.
 
 ### 6.3 Disagreement and escalation
@@ -313,9 +321,9 @@ else reaches — leave the PR open, state under its own heading what was *not* v
 human decide. Never merge on the author's assurance, and never relabel an author's run as verification.
 
 **Maintainer override** (deliberate, rare), as in §6: the human may direct a merge these conditions do
-not cover. The deviation is then named in the merge message and recorded in
-`docs/QA/DISCUSSION-LOG.md` with the reason, so the next reader sees an exception that was decided rather
-than a rule that was forgotten.
+not cover. The deviation is then named in the merge message and recorded, with the reason, in the
+#50 digest (§6.2), so the next reader sees an exception that was decided rather than a rule that was
+forgotten.
 
 Merging is not approval of the other agent's competence — it is a claim that the evidence in the PR
 justifies the change.
@@ -462,7 +470,7 @@ One label, one meaning, set by the **author** and read from a single API call (`
 | `state:verifying` | A tester holds it | Author: no force-push, no rebase. Others: stay off it |
 | `state:verified` | Gates re-run by someone other than the author, numbers and a signed `Verified-sha:` line on the PR (§6.5 rule 6) | The development lead merges on it once `verified-gate` is green |
 | `state:changes-requested` | Verification failed, or the restatement was wrong | Author fixes and returns it to `ready-for-verification` |
-| `state:needs-arch` | Waiting on an architecture decision (KCL lead) | Everyone else waits; the decision is recorded in an ADR or the log |
+| `state:needs-arch` | Waiting on an architecture decision (KCL lead) | Everyone else waits; the decision is recorded in an ADR or on #50 |
 | `state:blocked` | Needs something outside the repo — a key, a phone, a merge, an entitlement | Say what, and who has it, in the PR and on the board |
 
 Rules:
