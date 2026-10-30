@@ -53,4 +53,4 @@ Anything **not** changed that a reader might expect to be changed, and why:
 - [ ] I have read the reviewer's point-by-point reply
 - [ ] Every point is answered with evidence (or explicitly deferred to the human with `needs-human`)
 - [ ] Any change to my restatement in §1 is re-stated and agreed before merge
-- [ ] `docs/QA/DISCUSSION-LOG.md` updated with this exchange
+- [ ] The point-by-point exchange is in this PR's comments (`docs/QA/DISCUSSION-LOG.md` is frozen, `AGENTS.md` §6.2)
