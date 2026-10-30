@@ -103,7 +103,7 @@ class OnboardingPolicyTest {
     }
 
     @Test
-    fun `#81 - ADB_ENABLED 1 means USB debugging is on; 0 or unreadable means off`() {
+    fun `#81 - ADB_ENABLED 1 means USB debugging is on, 0 or unreadable means off`() {
         assertFalse(OnboardingPolicy.usbDebuggingOff(1))
         assertTrue(OnboardingPolicy.usbDebuggingOff(0))
         assertTrue(OnboardingPolicy.usbDebuggingOff(null))
