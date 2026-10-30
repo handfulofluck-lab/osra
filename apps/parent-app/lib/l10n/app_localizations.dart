@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// No description provided for @appName.
@@ -103,6 +103,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OSRA'**
   String get appName;
+
+  /// No description provided for @deleteAccountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get deleteAccountTitle;
+
+  /// No description provided for @deleteAccountFamilyWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This deletes your whole family: every child, every device and every other parent. It cannot be undone.'**
+  String get deleteAccountFamilyWarning;
+
+  /// No description provided for @deleteAccountSelfWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This deletes your account and signs you out. The family and its children stay.'**
+  String get deleteAccountSelfWarning;
+
+  /// No description provided for @deleteAccountFamilyStopsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What is deleted'**
+  String get deleteAccountFamilyStopsTitle;
+
+  /// No description provided for @deleteAccountFamilyStopsData.
+  ///
+  /// In en, this message translates to:
+  /// **'Every child\'s data: location history, app and web activity, and chat scans.'**
+  String get deleteAccountFamilyStopsData;
+
+  /// No description provided for @deleteAccountFamilyStopsDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Every paired device is unlinked, and the agent stops monitoring.'**
+  String get deleteAccountFamilyStopsDevices;
+
+  /// No description provided for @deleteAccountFamilyStopsParents.
+  ///
+  /// In en, this message translates to:
+  /// **'Every parent\'s account, including yours.'**
+  String get deleteAccountFamilyStopsParents;
+
+  /// No description provided for @deleteAccountSelfStopsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What is deleted'**
+  String get deleteAccountSelfStopsTitle;
+
+  /// No description provided for @deleteAccountSelfStopsAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account and your sign-in. The family keeps working without you.'**
+  String get deleteAccountSelfStopsAccount;
+
+  /// No description provided for @deleteAccountSelfStopsFamilyKept.
+  ///
+  /// In en, this message translates to:
+  /// **'The children stay monitored by the rest of the family.'**
+  String get deleteAccountSelfStopsFamilyKept;
+
+  /// No description provided for @deleteAccountTypeEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Type your email to confirm: {email}'**
+  String deleteAccountTypeEmail(String email);
+
+  /// No description provided for @deleteAccountTypeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletion has no undo.'**
+  String get deleteAccountTypeHint;
+
+  /// No description provided for @deleteAccountSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get deleteAccountSubmit;
+
+  /// No description provided for @deleteAccountBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleting…'**
+  String get deleteAccountBusy;
+
+  /// No description provided for @deleteAccountPasswordRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your password. A code alone cannot delete an account.'**
+  String get deleteAccountPasswordRequired;
+
+  /// No description provided for @deleteAccountReauthFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That password or code was not accepted. Nothing was deleted.'**
+  String get deleteAccountReauthFailed;
+
+  /// No description provided for @deleteAccountMfaReenroll.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account needs two-step verification, but no authenticator is set up. Set one up first.'**
+  String get deleteAccountMfaReenroll;
+
+  /// No description provided for @deleteAccountConsentHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'You hold consent records for a child in another family, so this account cannot be deleted yet.'**
+  String get deleteAccountConsentHeld;
+
+  /// No description provided for @deleteAccountOnlyOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the family owner can delete the family.'**
+  String get deleteAccountOnlyOwner;
+
+  /// No description provided for @deleteAccountOwnerMustUseFamily.
+  ///
+  /// In en, this message translates to:
+  /// **'This account owns the family, so use the family deletion instead.'**
+  String get deleteAccountOwnerMustUseFamily;
+
+  /// No description provided for @deleteAccountFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The account was not deleted. {detail}'**
+  String deleteAccountFailed(String detail);
 
   /// No description provided for @cancel.
   ///
@@ -2375,7 +2501,7 @@ abstract class AppLocalizations {
   /// No description provided for @pairClaimDataCleared.
   ///
   /// In en, this message translates to:
-  /// **'OSRA's data was cleared on this phone, so it lost its protection. Allow it only if you expected this.'**
+  /// **'OSRA\'s data was cleared on this phone, so it lost its protection. Allow it only if you expected this.'**
   String get pairClaimDataCleared;
 
   /// No description provided for @appearanceTitle.
@@ -4565,7 +4691,7 @@ abstract class AppLocalizations {
   /// No description provided for @alertTitleDataCleared.
   ///
   /// In en, this message translates to:
-  /// **'OSRA's data was cleared on a phone'**
+  /// **'OSRA\'s data was cleared on a phone'**
   String get alertTitleDataCleared;
 
   /// No description provided for @alertTitleVpnDetected.
@@ -4686,8 +4812,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -10,6 +11,86 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appName => 'OSRA';
+
+  @override
+  String get deleteAccountTitle => 'Delete account';
+
+  @override
+  String get deleteAccountFamilyWarning =>
+      'This deletes your whole family: every child, every device and every other parent. It cannot be undone.';
+
+  @override
+  String get deleteAccountSelfWarning =>
+      'This deletes your account and signs you out. The family and its children stay.';
+
+  @override
+  String get deleteAccountFamilyStopsTitle => 'What is deleted';
+
+  @override
+  String get deleteAccountFamilyStopsData =>
+      'Every child\'s data: location history, app and web activity, and chat scans.';
+
+  @override
+  String get deleteAccountFamilyStopsDevices =>
+      'Every paired device is unlinked, and the agent stops monitoring.';
+
+  @override
+  String get deleteAccountFamilyStopsParents =>
+      'Every parent\'s account, including yours.';
+
+  @override
+  String get deleteAccountSelfStopsTitle => 'What is deleted';
+
+  @override
+  String get deleteAccountSelfStopsAccount =>
+      'Your account and your sign-in. The family keeps working without you.';
+
+  @override
+  String get deleteAccountSelfStopsFamilyKept =>
+      'The children stay monitored by the rest of the family.';
+
+  @override
+  String deleteAccountTypeEmail(String email) {
+    return 'Type your email to confirm: $email';
+  }
+
+  @override
+  String get deleteAccountTypeHint => 'Deletion has no undo.';
+
+  @override
+  String get deleteAccountSubmit => 'Delete account';
+
+  @override
+  String get deleteAccountBusy => 'Deleting…';
+
+  @override
+  String get deleteAccountPasswordRequired =>
+      'Enter your password. A code alone cannot delete an account.';
+
+  @override
+  String get deleteAccountReauthFailed =>
+      'That password or code was not accepted. Nothing was deleted.';
+
+  @override
+  String get deleteAccountMfaReenroll =>
+      'Your account needs two-step verification, but no authenticator is set up. Set one up first.';
+
+  @override
+  String get deleteAccountConsentHeld =>
+      'You hold consent records for a child in another family, so this account cannot be deleted yet.';
+
+  @override
+  String get deleteAccountOnlyOwner =>
+      'Only the family owner can delete the family.';
+
+  @override
+  String get deleteAccountOwnerMustUseFamily =>
+      'This account owns the family, so use the family deletion instead.';
+
+  @override
+  String deleteAccountFailed(String detail) {
+    return 'The account was not deleted. $detail';
+  }
 
   @override
   String get cancel => 'إلغاء';
