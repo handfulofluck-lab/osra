@@ -2886,7 +2886,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleTamper => 'محاولة تعطيل الحماية';
 
   @override
-  String get alertTitleBlockBypass => 'تطبيق تجاوز الحظر';
+  String get alertTitleBlockBypass => 'أحد التطبيقات تجاوز الحظر';
 
   @override
   String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
