@@ -613,20 +613,22 @@ POST /v1/devices/pair        (parent JWT + `devices` permission; requireFamily c
   Collision: regenerate on SET NX failure (max 5 tries).
 
 POST /v1/devices/pair/claim  (NO auth; 10 a minute per address)
-  body: { code, platform, model, osVersion, deviceName?, pushToken? }
+  body: { code, platform, model, osVersion, deviceName?, pushToken?, dataCleared? }
   → 202 { claimId, pollSecret, expiresAt }      (plan 2.7: the parent approves each new device)
   No device and no token yet. model/osVersion/deviceName: control and bidi characters stripped,
   64 characters at most; a model with nothing left → 400. A code holds one claim at a time:
   a second claim → 409 { error: "claim_pending" }. Unknown/expired code → 404
-  { error: "invalid_or_expired_code" }. Consent missing → 428.
+  { error: "invalid_or_expired_code" }. Consent missing → 428. `dataCleared: true` (#81): the phone
+  found device admin active with no pairing and no parent PIN, which is what `pm clear` leaves.
 
 GET  /v1/devices/pair/:code/claim               (parent JWT + `devices`, same family; else 404)
   → { status: "waiting" } | { status: "pending" | "approved" | "denied" | "paired", claimId,
-      platform, model, deviceName, osVersion, deviceId? }   — the parent's pairing screen, every 2 s
+      platform, model, deviceName, osVersion, dataCleared?, deviceId? }   — the parent's pairing screen, every 2 s
 POST /v1/devices/pair/claims/:claimId/approve   (parent JWT + `devices`, same family; else 404)
 POST /v1/devices/pair/claims/:claimId/deny      (same; Deny also deletes the code)
   → 200 { status }; 409 { error: "claim_not_pending" } once decided. Each writes a
-  PairingDecision row (who, which child, the phone's cleaned name).
+  PairingDecision row (who, which child, the phone's cleaned name). Allow on a `dataCleared`
+  claim also raises one `tamper` alert, metadata { type: "agent_data_cleared" }, keyed by the claim.
 
 POST /v1/devices/pair/claims/:claimId/poll     (NO auth; the poll secret is the credential;
   body: { pollSecret }                           60 a minute per claim)

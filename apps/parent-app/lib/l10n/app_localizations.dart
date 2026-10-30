@@ -2372,6 +2372,12 @@ abstract class AppLocalizations {
   /// **'That did not go through. Try again.'**
   String get pairClaimError;
 
+  /// No description provided for @pairClaimDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA's data was cleared on this phone, so it lost its protection. Allow it only if you expected this.'**
+  String get pairClaimDataCleared;
+
   /// No description provided for @appearanceTitle.
   ///
   /// In en, this message translates to:

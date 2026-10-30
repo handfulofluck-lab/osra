@@ -494,6 +494,36 @@ describe("device pairing (spec §14.1)", () => {
     await app.close();
   });
 
+  // Issue #81: a phone that detected `pm clear` says so on the claim. Mutants: drop the flag from GET (the
+  // card never shows it), or drop the alert on Allow (the parent only ever hears "silent").
+  it("a dataCleared claim is shown to the parent and its Allow records one agent_data_cleared tamper alert", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:171717", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    prismaMock.alert.create.mockResolvedValue({ id: "alert-1" });
+    const claim = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "171717", platform: "android", model: "SM-F721B", osVersion: "14", dataCleared: true } })).json();
+    const pending = (await app.inject({ method: "GET", url: "/v1/devices/pair/171717/claim", headers: authHeader(app) })).json();
+    expect(pending.dataCleared).toBe(true);
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${claim.claimId}/approve`, headers: authHeader(app) });
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ childId: "child-1", category: "tamper", metadata: { type: "agent_data_cleared" }, dedupeKey: `agent_data_cleared|${claim.claimId}` });
+    await app.close();
+  });
+
+  it("no alert without the flag, and none when a flagged claim is denied", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    for (const code of ["181818", "191919"]) store.set(`pair:${code}`, JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    const plain = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "181818", platform: "android", model: "A", osVersion: "1" } })).json();
+    const flagged = (await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "191919", platform: "android", model: "B", osVersion: "1", dataCleared: true } })).json();
+    expect((await app.inject({ method: "GET", url: "/v1/devices/pair/181818/claim", headers: authHeader(app) })).json()).not.toHaveProperty("dataCleared");
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${plain.claimId}/approve`, headers: authHeader(app) });
+    await app.inject({ method: "POST", url: `/v1/devices/pair/claims/${flagged.claimId}/deny`, headers: authHeader(app) });
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    const bad = await app.inject({ method: "POST", url: "/v1/devices/pair/claim", payload: { code: "191919", platform: "android", model: "B", osVersion: "1", dataCleared: "yes" } });
+    expect(bad.statusCode).toBe(400);
+    await app.close();
+  });
+
   // Point 1: ten wrong secrets burn the claim. Mutant: drop recordPollMiss -> the right secret still
   // gets its token after the guesses.
   it("ten wrong secrets burn the claim: the right one then gets 404, and the code can be claimed again", async () => {

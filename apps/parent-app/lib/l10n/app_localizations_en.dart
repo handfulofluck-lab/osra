@@ -1424,6 +1424,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pairClaimError => 'That did not go through. Try again.';
 
   @override
+  String get pairClaimDataCleared =>
+      'OSRA\'s data was cleared on this phone, so it lost its protection. Allow it only if you expected this.';
+
+  @override
   String get appearanceTitle => 'Appearance';
 
   @override

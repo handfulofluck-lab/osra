@@ -720,6 +720,7 @@
   },
   "pairClaimDenied": "Declined. Make a new code to pair a phone.",
   "pairClaimError": "That did not go through. Try again.",
+  "pairClaimDataCleared": "OSRA's data was cleared on this phone, so it lost its protection. Allow it only if you expected this.",
   "appearanceTitle": "Appearance",
   "themeLabel": "Theme",
   "appearanceDesc": "System follows this device. Light or Dark overrides it for OSRA only.",

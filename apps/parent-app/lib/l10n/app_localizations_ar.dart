@@ -1549,6 +1549,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get pairClaimError => 'لم يتم ذلك. حاول مرة أخرى.';
 
   @override
+  String get pairClaimDataCleared =>
+      'تم مسح بيانات OSRA على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.';
+
+  @override
   String get appearanceTitle => 'المظهر';
 
   @override
