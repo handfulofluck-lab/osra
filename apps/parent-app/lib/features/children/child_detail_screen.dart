@@ -8,12 +8,14 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import 'command_messages.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/clock_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
 import '../pairing/pair_qr_screen.dart';
+import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
 import 'command_history_screen.dart' show formatCommandTime;
 import '../../api/permission_errors.dart';
@@ -530,6 +532,8 @@ class _AppsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(childId));
+    // #456: the clock is a provider so a row can pin the sentence to a weekday morning.
+    final now = ref.watch(clockProvider)();
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),
@@ -545,7 +549,33 @@ class _AppsTab extends ConsumerWidget {
                   _ => Icons.check_circle_outline,
                 }),
                 title: Text(r.appName),
-                subtitle: Text(r.packageId),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.packageId),
+                    // #456: name the window that is overriding this app, so an "Allowed" row that
+                    // the phone refuses explains itself.
+                    if (activeWindowFor(packageId: r.packageId, rules: ruleSet, now: now)
+                        case final window?)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          l10n.blockedNowBy(
+                            switch (window.kind) {
+                              WindowKind.school => l10n.schoolHours,
+                              WindowKind.bedtime => l10n.bedtime,
+                              WindowKind.routine => window.routineName ?? l10n.tabRoutines,
+                            },
+                            window.endsAt,
+                          ),
+                          key: ValueKey('blocked-now-${r.packageId}'),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      ),
+                  ],
+                ),
                 trailing: Text(r.action == 'time_limit'
                     ? (r.dailyLimitMinutes == null ? '—' : l10n.minutesShort(r.dailyLimitMinutes!))
                     : switch (r.action) {

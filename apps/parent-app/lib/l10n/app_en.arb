@@ -492,6 +492,14 @@
   "starts": "Starts",
   "ends": "Ends",
   "schoolHours": "School hours",
+  "blockedNowBy": "Blocked now by {reason} (until {time})",
+  "@blockedNowBy": {
+    "description": "#456: why an app the parent allowed is refused right now. {reason} is a localised window name (School hours, Bedtime) or the family's own routine name.",
+    "placeholders": {
+      "reason": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
   "weekdayMon": "Mon",
   "weekdayTue": "Tue",
   "weekdayWed": "Wed",
