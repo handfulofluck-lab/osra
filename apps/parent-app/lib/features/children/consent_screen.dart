@@ -5,10 +5,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart' show apiClientProvider;
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'consent_step.dart';
 
 /// Result of a completed withdrawal, carried back from the confirmation
 /// screen so the status screen can report what the server actually did.
@@ -24,6 +26,34 @@ class ConsentRevokeResult {
 String formatConsentTime(BuildContext context, DateTime? at) => at == null
     ? context.l10n.timeUnknown
     : DateFormat.yMMMd(context.localeName).add_Hm().format(at.toLocal());
+
+/// True when the screen offers to grant consent — for every state except a
+/// healthy active record (issue #437 part B; `expiring` added on review,
+/// Claude 2026-10-29 15:41Z).
+///
+/// [ConsentState.expiring] is included: the record still authorises collection,
+/// but a parent who can only renew *after* it lapses is guaranteed a gap —
+/// `requireConsent` starts answering `428` and monitoring pauses the moment the
+/// date passes. Renewing early keeps the same record chain unbroken, which is
+/// also why the card switches to renew wording for that state rather than
+/// claiming monitoring has stopped.
+///
+/// Every other non-active state (expired, revoked, none, region mismatch)
+/// already leaves the family unable to change anything, which is the stranding
+/// this action removes.
+bool needsConsentGrant(ConsentState state) => switch (state) {
+      ConsentState.expired ||
+      ConsentState.revoked ||
+      ConsentState.none ||
+      ConsentState.jurisdictionMismatch ||
+      ConsentState.expiring =>
+        true,
+      ConsentState.active => false,
+    };
+
+/// True when the grant is a renewal of a record that is still running, so the
+/// card and the dialog must not say monitoring has stopped.
+bool isConsentRenewal(ConsentState state) => state == ConsentState.expiring;
 
 /// Roadmap 3.7: the consent record the server holds for one child, with a
 /// deliberately slow withdrawal flow. Revocation is a real server action
@@ -72,6 +102,21 @@ class ConsentScreen extends ConsumerWidget {
                 ),
               const SizedBox(height: AppSpace.sm),
               _StateCard(status: data),
+              if (isOwner && needsConsentGrant(data.state)) ...[
+                const SizedBox(height: AppSpace.sm),
+                _GrantCard(
+                  childId: childId,
+                  // `expiring` is a renewal of a record that still runs, so the
+                  // card must not claim monitoring has stopped.
+                  renewal: isConsentRenewal(data.state),
+                  // The route refuses anything but the family region, and both
+                  // sources are the family region: the overview carries it, and
+                  // `checkActiveConsent` echoes it back as `jurisdiction`. The
+                  // overview is preferred because it is what the family page
+                  // shows, so the dialog and the family settings agree.
+                  jurisdiction: overview?.family.region ?? data.jurisdiction,
+                ),
+              ],
               const SizedBox(height: AppSpace.sm),
               _CurrentRecordCard(status: data),
               if (data.records
@@ -298,6 +343,198 @@ class _HistoryCard extends StatelessWidget {
       return l10n.consentHistoryExpired(formatConsentTime(context, expiresAt));
     }
     return l10n.consentHistoryActive;
+  }
+}
+
+/// Issue #437 part B: the owner-only remedy for a child whose consent lapsed or
+/// is about to.
+///
+/// The server has supported `POST /v1/family/children/:id/consent` all along
+/// (`family.ts:212`, owner only, `201 {consent}`, and it enqueues
+/// `consent_granted` to every paired device), but the app never called it — so
+/// an expired record stranded the family: the state screen said monitoring had
+/// stopped and every write answered `428`. This card is that call.
+///
+/// Two wordings, because the truth differs: a lapsed record means monitoring has
+/// stopped, while an `expiring` one is still running and renewing early is what
+/// avoids the gap. Using the lapsed wording there would be a lie the parent can
+/// see through — the state card above says collection is still allowed.
+///
+/// It is the owner's alone because the route is `requireOwner`; a co-parent
+/// gets `403`, so offering the button would only offer a denial.
+class _GrantCard extends ConsumerWidget {
+  final String childId;
+
+  /// The family region, which is the only jurisdiction the route accepts.
+  final String jurisdiction;
+
+  /// True when this is an early renewal of a record that still runs.
+  final bool renewal;
+
+  const _GrantCard({
+    required this.childId,
+    required this.jurisdiction,
+    this.renewal = false,
+  });
+
+  Future<void> _open(BuildContext context, WidgetRef ref) async {
+    final granted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _GrantDialog(
+        childId: childId,
+        jurisdiction: jurisdiction,
+        renewal: renewal,
+      ),
+    );
+    if (granted != true || !context.mounted) return;
+    // The status is what this screen renders; the overview carries the child's
+    // `consentRecordId`, so both are refreshed rather than left stale.
+    ref.invalidate(consentStatusProvider(childId));
+    ref.invalidate(familyProvider);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.l10n.consentGrantDone)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final title = renewal ? l10n.consentRenewTitle : l10n.consentGrantTitle;
+    final note = renewal ? l10n.consentRenewNote : l10n.consentGrantNote;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: AppSpace.xs),
+            Text(note,
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: AppSpace.sm),
+            FilledButton.icon(
+              key: const ValueKey('consentGrantButton'),
+              onPressed: () => _open(context, ref),
+              icon: const Icon(Icons.verified_user_outlined, size: 18),
+              label: Text(l10n.consentGrantAction),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The confirmation step of granting consent: the shared [ConsentStep] plus the
+/// region the record will carry. It stays open on a failure so the parent can
+/// retry without re-picking a method.
+class _GrantDialog extends ConsumerStatefulWidget {
+  final String childId;
+  final String jurisdiction;
+  final bool renewal;
+
+  const _GrantDialog({
+    required this.childId,
+    required this.jurisdiction,
+    this.renewal = false,
+  });
+
+  @override
+  ConsumerState<_GrantDialog> createState() => _GrantDialogState();
+}
+
+class _GrantDialogState extends ConsumerState<_GrantDialog> {
+  String _method = kConsentMethods.first;
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _submit() async {
+    final l10n = context.l10n;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(apiClientProvider).raw.post(
+            '/v1/family/children/${widget.childId}/consent',
+            // No region choice: the route refuses any other jurisdiction
+            // (`428 consent_jurisdiction_mismatch`), so the family's is sent.
+            data: {'method': _method, 'jurisdiction': widget.jurisdiction},
+          );
+      if (mounted) Navigator.of(context).pop(true);
+    } on DioException catch (e) {
+      final region = consentRefusalRegionLabel(l10n, e);
+      if (!mounted) return;
+      setState(() {
+        _error = e.response?.statusCode == 403
+            ? l10n.consentGrantForbidden
+            : region != null
+                ? l10n.addChildConsentRegion(region)
+                : l10n.consentGrantFailed;
+        _busy = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = l10n.consentGrantFailed;
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final title = widget.renewal ? l10n.consentRenewTitle : l10n.consentGrantTitle;
+    return AlertDialog(
+      title: Text(title),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConsentStep(
+              method: _method,
+              onMethodChanged: (m) => setState(() => _method = m),
+              // The add-child notice says "before you add a child", which is false
+              // on this screen: the child exists and already has a record. The
+              // override is the neutral line; the legal wording stays English.
+              notice: l10n.consentRegrantNotice,
+            ),
+            const SizedBox(height: AppSpace.md),
+            Text(l10n.consentGrantRegion(regionLabel(l10n, widget.jurisdiction)),
+                style: Theme.of(context).textTheme.bodySmall),
+            if (_error != null) ...[
+              const SizedBox(height: AppSpace.md),
+              Text(
+                _error!,
+                key: const ValueKey('consentGrantError'),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: context.tokens.danger),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey('consentGrantCancel'),
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(
+          key: const ValueKey('consentGrantConfirm'),
+          onPressed: _busy ? null : _submit,
+          child: Text(_busy
+              ? l10n.consentGrantBusy
+              : widget.renewal
+                  ? l10n.consentRenewTitle
+                  : l10n.consentGrantAction),
+        ),
+      ],
+    );
   }
 }
 

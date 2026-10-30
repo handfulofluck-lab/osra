@@ -626,6 +626,22 @@
   },
   "consentHistoryActive": "سارية",
   "consentLoadFailed": "تعذّر تحميل سجل الموافقة. تحقّق من اتصالك وحاول مجددًا.",
+  "consentGrantTitle": "منح الموافقة مجددًا",
+  "consentGrantAction": "منح الموافقة",
+  "consentGrantNote": "تبقى المراقبة متوقفة حتى يوجد سجل موافقة جديد. منح الموافقة مجددًا يستأنف الجمع على أجهزة هذا الطفل.",
+  "consentGrantRegion": "يُسجَّل السجل بمنطقة عائلتك ({region}). السجل من منطقة أخرى لا يمكنه السماح بالمراقبة.",
+  "@consentGrantRegion": {
+    "placeholders": {
+      "region": { "type": "String" }
+    }
+  },
+  "consentGrantDone": "سُجِّلت الموافقة. تستأنف المراقبة على أجهزة هذا الطفل.",
+  "consentGrantFailed": "لم تُسجَّل الموافقة. تحقّق من اتصالك وحاول مجددًا.",
+  "consentGrantForbidden": "مالك العائلة فقط يمكنه منح الموافقة.",
+  "consentGrantBusy": "جارٍ الحفظ…",
+  "consentRenewTitle": "تجديد الموافقة",
+  "consentRenewNote": "تنتهي الموافقة قريبًا. التجديد الآن يُبقي المراقبة مستمرة دون انقطاع.",
+  "consentRegrantNotice": "أكّد الطريقة التي تحقّقت بها من أنك وليّ أمر هذا الطفل.",
   "consentWithdrawAction": "سحب الموافقة",
   "consentWithdrawOnlyOwner": "مالك العائلة فقط يمكنه سحب الموافقة.",
   "consentWithdrawUnavailable": "لا يوجد سجل موافقة سارٍ لسحبه.",
