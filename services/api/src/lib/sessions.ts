@@ -72,6 +72,8 @@ export async function signParentToken(
   // Read the version at mint time: a concurrent revocation either lands before this read (and the
   // token is born current) or after it (and the token is born stale), never in between (#117).
   const sv = opts.sv ?? await currentSessionVersion(parent.id);
+  // #442: a deleted parent's version is the tombstone, which no token may carry (it would sign as null).
+  if (!Number.isFinite(sv)) throw new Error("parent_deleted: refusing to mint a token for a deleted account");
   const claims: ParentClaims = { sub: parent.id, familyId: parent.familyId, role: "parent", familyRole: parent.role ?? "owner", jti, sv };
   return { token: app.jwt.sign(claims, { expiresIn: opts.expiresIn ?? PARENT_TOKEN_TTL }), jti, sv };
 }
@@ -99,8 +101,25 @@ export const revokedTokenKey = (jti: string) => `revoked:token:${jti}`;
  */
 export const REVOKED_TOKEN_TTL_SECONDS = 8 * 24 * 3600;
 
-/** Parse a stored version: anything absent, non-numeric or negative means "nothing revoked". */
+/**
+ * The version marker of a parent whose account was deleted (#442, account deletion PR 1).
+ *
+ * A deleted parent has no `Parent` row, and a missing row used to read as version 0 — so a token
+ * minted at `sv=0` stayed valid for its whole 7-day life after the account was gone. The tombstone
+ * reads as a version no token can reach ([DELETED_SESSION_VERSION]), so every token of that parent is
+ * refused, and it is written both by the deletion and by the next cold read that finds no row.
+ */
+export const DELETED_SESSION_MARKER = "deleted";
+
+/** What the tombstone reads as: higher than any `sv` a token can carry. */
+export const DELETED_SESSION_VERSION = Number.POSITIVE_INFINITY;
+
+/**
+ * Parse a stored version: the tombstone is [DELETED_SESSION_VERSION]; anything else absent,
+ * non-numeric or negative means "nothing revoked".
+ */
 function parseVersion(raw: string | null): number {
+  if (raw === DELETED_SESSION_MARKER) return DELETED_SESSION_VERSION;
   if (raw === null) return 0;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
@@ -127,6 +146,12 @@ function parseVersion(raw: string | null): number {
  */
 async function loadSessionState(parentId: string, redis: Redis): Promise<number> {
   const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { sessionVersion: true } });
+  // #442: no row means the account was deleted (or never existed), never "nothing revoked". The
+  // tombstone overwrites whatever a racing writer put there: a number for a deleted parent is stale.
+  if (!row) {
+    await redis.set(sessionVersionKey(parentId), DELETED_SESSION_MARKER);
+    return DELETED_SESSION_VERSION;
+  }
   const version = typeof row?.sessionVersion === "number" ? row.sessionVersion : 0;
   const now = Date.now();
   const tokens = await prisma.revokedToken.findMany({
@@ -188,7 +213,9 @@ export async function currentSessionVersion(parentId: string): Promise<number> {
 export async function invalidateSessionsBefore(parentId: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
   const redis = getRedis();
   const cached = await redis.get(sessionVersionKey(parentId));
-  if (cached === null) await loadSessionState(parentId, redis);
+  // #442: a tombstoned parent is revoked for good and has no row to increment.
+  if (cached === DELETED_SESSION_MARKER) return;
+  if (cached === null && (await loadSessionState(parentId, redis)) === DELETED_SESSION_VERSION) return;
   await prisma.parent.update({ where: { id: parentId }, data: { sessionVersion: { increment: 1 } } });
   try {
     await redis.incrby(sessionVersionKey(parentId), 1);
@@ -267,6 +294,25 @@ export async function revokeTokenOnce(jti: string, parentId: string, ttlSeconds 
     await redis.set(revokedTokenKey(jti), "1", "EX", ttlSeconds);
   } catch (err) {
     if (parentId) await redis.del(sessionVersionKey(parentId)).catch(() => {});
+    throw err;
+  }
+}
+
+/**
+ * Tombstone a deleted parent's sessions (#442): every token of theirs is refused from now on.
+ *
+ * Called after the `Parent` row is gone, so the marker never expires and needs no record behind it —
+ * the row's absence is the record, and `loadSessionState` writes the same marker when a cold cache
+ * finds no row. If the write fails, the marker is dropped instead (the same rule as
+ * `invalidateSessionsBefore`): the next read then misses, finds no row and tombstones it itself. The
+ * error is rethrown so the caller can say the deletion's cache step failed.
+ */
+export async function tombstoneParentSessions(parentId: string): Promise<void> {
+  const redis = getRedis();
+  try {
+    await redis.set(sessionVersionKey(parentId), DELETED_SESSION_MARKER);
+  } catch (err) {
+    await redis.del(sessionVersionKey(parentId)).catch(() => {});
     throw err;
   }
 }

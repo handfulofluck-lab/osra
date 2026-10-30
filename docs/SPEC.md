@@ -94,6 +94,14 @@ nothing: existing rows stay until the retention job (`RETENTION_DAYS`, default 9
 decision 5; `ROLLUP_RETENTION_DAYS`, default 365 for usage summaries; alerts and device commands are
 kept until erasure) or until `DELETE /v1/family/children/:id` erases the child. A client must not claim
 that withdrawal deletes or anonymises data.
+
+**Account deletion (#442).** `DELETE /v1/family` (owner) deletes the whole family: every child through
+the same erasure as `DELETE /v1/family/children/:id`, then the family's rows, every parent and the family.
+`DELETE /v1/me` (co-parent or guardian) deletes only the caller's account. Both take
+`{ password, mfaCode? }` and answer `401 reauth_failed` on a wrong value; `403 owner_role_required` and
+`409 owner_must_delete_family` route each role to its operation. Nothing is kept except `RevokedToken`
+ids until their tokens would have expired (at most 8 days) and the database backups until they rotate
+out. A deleted parent's tokens answer `401 session_revoked` from then on.
 Alerts carry **no coordinates**: a geofence alert names the fence (`metadata.geofenceId` and `label`),
 because alert rows sit outside the retention job and exact positions there would outlive the 30-day
 location window. Migration `0022` scrubs the coordinates written before #242.
