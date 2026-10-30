@@ -69,4 +69,8 @@
     <string name="pair_code_hint">6-digit pairing code</string>
     <!-- Issue #81: English until Karim approves the Arabic. -->
     <string name="wipe_detected_notice">OSRA\'s data was cleared on this phone, so it is no longer protected. Ask your parent to pair it again.</string>
+    <!-- Issue #465: shown once when the server says this phone's family was deleted. -->
+    <string name="unlinked_title">This phone is no longer linked to a family</string>
+    <string name="unlinked_body">OSRA was removed from the family that managed this phone, so it has stopped monitoring. You can uninstall it now.</string>
+    <string name="unlinked_channel">Phone unlinked</string>
 </resources>

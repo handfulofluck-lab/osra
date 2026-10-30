@@ -63,4 +63,8 @@
     <string name="pair_title">OSRA على هاتف الطفل</string>
     <string name="pair_server_hint">https://your-server أو 192.168.1.5:3000</string>
     <string name="pair_code_hint">رمز الإقران المكوّن من 6 أرقام</string>
+    <!-- #465: the notice shown after the family was deleted and this phone released itself. -->
+    <string name="unlinked_title">لم يعد هذا الهاتف مرتبطًا بعائلة</string>
+    <string name="unlinked_body">أُزيل OSRA من العائلة التي كانت تدير هذا الهاتف، لذلك توقّف عن المراقبة. يمكنك إلغاء تثبيته الآن.</string>
+    <string name="unlinked_channel">إلغاء ربط الهاتف</string>
 </resources>
