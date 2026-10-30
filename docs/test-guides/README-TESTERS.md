@@ -5,9 +5,13 @@
 > they are not committed to this repository. This guide describes that bundle.
 
 > **Branding note (2026-09-17):** the product was renamed from *FamilyShield* to **OSRA (أسرة — "family")**.
-> Technical identifiers stay unchanged so already-paired devices keep working: Android package id
-> `com.familyshield.agent`, the `X-FamilyShield-Signature` header, `familyshield.dev` emails/URLs,
-> and on-device storage paths. Artifacts: `OSRA-Parent.apk`, `OSRA-ChildAgent.apk`, `OSRA-Agent-Windows\`.
+> Technical identifiers mostly stayed unchanged so already-paired devices keep working: the
+> `X-FamilyShield-Signature` header, `familyshield.dev` emails/URLs, and on-device storage paths.
+> **The installed Android ids changed on 2026-10-29** (Karim's decision 2B, before anything was
+> uploaded to Play): the child agent is `com.osratech.child` and the parent app `com.osratech.parent`.
+> The Kotlin/Dart package names, and therefore the component names you see after the slash
+> (`com.osratech.child/com.familyshield.agent.…`), still carry the old namespace.
+> Artifacts: `OSRA-Parent.apk`, `OSRA-ChildAgent.apk`, `OSRA-Agent-Windows\`.
 
 This package contains tester-installable builds of the OSRA MVP.
 **iOS is intentionally not part of this release.**

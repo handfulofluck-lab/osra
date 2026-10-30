@@ -34,7 +34,7 @@ class EssentialPackagesTest {
         "AOSP emergency" to "com.android.emergency",
         "Samsung in-call UI" to "com.samsung.android.incallui",
         "telephony" to "com.android.phone",
-        "the agent itself" to "com.familyshield.agent",
+        "the agent itself" to EssentialPackages.OWN_PACKAGE,
     )
 
     @Test
@@ -94,6 +94,40 @@ class EssentialPackagesTest {
                 EssentialPackages.isEssential(pkg, FakeFacts()),
             )
         }
+    }
+
+    // 2026-10-29 (Karim's decision 2B): the Play identity moved from `com.familyshield.agent` to
+    // `com.osratech.child`, and `OWN_PACKAGE` used to be a second copy of that literal — so the
+    // security list and the build file could disagree, and the agent would stop treating its own
+    // overlay as essential.
+    //
+    // The obvious row (`OWN_PACKAGE == BuildConfig.APPLICATION_ID`) is now **true by construction**
+    // and could not fail, so it is not written. This one can: it reads the source and rejects a
+    // literal, which is the only shape that lets the two drift apart again.
+    // Mutant: change `val OWN_PACKAGE: String = BuildConfig.APPLICATION_ID` back to
+    // `const val OWN_PACKAGE: String = "com.familyshield.agent"` — this row goes red.
+    @Test
+    fun `OWN_PACKAGE is derived from the build, never a second copy of the id`() {
+        val source = java.io.File(
+            "src/main/java/com/familyshield/agent/enforcement/EssentialPackages.kt",
+        )
+        assertTrue(
+            "JVM unit tests run from the module directory; if this file is missing the row would " +
+                "pass vacuously, so its absence is a failure",
+            source.isFile,
+        )
+        val declaration = source.readLines()
+            .firstOrNull { it.contains("val OWN_PACKAGE") }
+        assertTrue("OWN_PACKAGE must still be declared in one piece", declaration != null)
+        assertTrue(
+            "OWN_PACKAGE must come from BuildConfig.APPLICATION_ID, not from a string literal: " +
+                "found `${declaration?.trim()}`",
+            declaration!!.contains("BuildConfig.APPLICATION_ID"),
+        )
+        assertFalse(
+            "a quoted package name here is the drift this row exists to stop",
+            declaration.contains("\""),
+        )
     }
 
     @Test

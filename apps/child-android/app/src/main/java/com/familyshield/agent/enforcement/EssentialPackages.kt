@@ -1,5 +1,7 @@
 package com.familyshield.agent.enforcement
 
+import com.familyshield.agent.BuildConfig
+
 /**
  * The packages the **app-block overlay** ([BlockActivity]) must never cover: the launcher, the system
  * UI, the call surfaces (dialers, the emergency dialer, in-call UI, telephony) and the agent itself.
@@ -61,8 +63,16 @@ object EssentialPackages {
      * a `startsWith` / shorter-string test and do not add a sibling `com.familyshield.*` name unless it
      * is actually ours: the Full build is sideloaded, so a child can install a package called
      * `com.familyshield.notanapp`.
+     *
+     * **Derived, never written (2026-10-29).** It used to be the literal `"com.familyshield.agent"`,
+     * which silently tied this security list to a build file: when Karim changed the Play identity to
+     * `com.osratech.child` the agent would have stopped treating its own windows as essential and could
+     * have blocked its own overlay and lock screens. The value now comes from
+     * [com.familyshield.agent.BuildConfig.APPLICATION_ID] — the same field the manifest is built from —
+     * so it cannot disagree with what the OS installed. The Kotlin package is still
+     * `com.familyshield.agent`; only the installed identity changed.
      */
-    const val OWN_PACKAGE: String = "com.familyshield.agent"
+    val OWN_PACKAGE: String = BuildConfig.APPLICATION_ID
 
     /**
      * Exact package names. A name here is exempt without asking the OS, because the JVM rule path has

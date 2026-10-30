@@ -264,8 +264,11 @@ if ($Human) {
 
 $adb = "C:\KARIM\tools\android-sdk\platform-tools\adb.exe"
 $S = "R5CW116Y6GF"
-$PKG = "com.familyshield.agent"
-$ADMIN = "com.familyshield.agent/.security.GuardianAdminReceiver"
+$PKG = "com.osratech.child"
+# 2026-10-29 (decision 2B): the installed package moved to com.osratech.child while the *class* keeps
+# the old namespace, so the relative `pkg/.security.X` form no longer resolves — adb would look for
+# com.osratech.child.security.GuardianAdminReceiver, which does not exist. Spell the FQCN out.
+$ADMIN = "com.osratech.child/com.familyshield.agent.security.GuardianAdminReceiver"
 . (Join-Path $PSScriptRoot "classify-build.ps1")   # the build kind is recorded with every run (issue #178)
 $BASE = $Base
 if (-not (Test-Path $Out)) { New-Item -ItemType Directory -Force $Out | Out-Null }
@@ -327,7 +330,7 @@ function WaitOtherWindow([int]$timeoutSec = 30) {
   $focus = ""
   while ((Get-Date) -lt $deadline) {
     $focus = Sh "dumpsys window | grep mCurrentFocus"
-    if ($focus -notmatch "com\.familyshield\.agent") { return @{ ok = $true; focus = $focus } }
+    if ($focus -notmatch "com\.osratech\.child") { return @{ ok = $true; focus = $focus } }
     Pause 100
   }
   return @{ ok = $false; focus = $focus }

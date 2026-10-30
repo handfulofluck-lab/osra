@@ -28,7 +28,7 @@ $OUT    = Join-Path $ROOT "run"
 $BRANCH = $Branch
 $PORT   = $Port
 $BASE   = "http://127.0.0.1:$PORT"
-$PKG    = "com.familyshield.agent"
+$PKG    = "com.osratech.child"
 $TOOLS  = "C:\KARIM\tools"
 New-Item -ItemType Directory -Force -Path $OUT | Out-Null
 $REPORT = Join-Path $OUT "report.txt"
@@ -130,8 +130,8 @@ $phoneEpoch = [int64](((Adb shell date +%s) -join "").Trim()); $hostEpoch = [Dat
 $SKEW = $phoneEpoch - $hostEpoch
 W ("clock: phone=$phoneEpoch host=$hostEpoch skew=${SKEW}s (server window is +/-300 s)")
 if ([math]::Abs($SKEW) -gt 300) { W "  WARNING: skew exceeds the signing window - every signed call would be 401 stale_timestamp" }
-$pre = (Adb shell pm list packages) | Select-String familyshield
-W ("familyshield packages before: " + (($pre | ForEach-Object { $_.ToString() }) -join ", "))
+$pre = (Adb shell pm list packages) | Select-String osratech
+W ("osratech packages before: " + (($pre | ForEach-Object { $_.ToString() }) -join ", "))
 
 Section "2. checkout $BRANCH"
 if (-not (Test-Path (Join-Path $WORK ".git"))) {
