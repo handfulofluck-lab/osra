@@ -2174,6 +2174,50 @@ check("H1 unknown route -> 404 JSON", unknownRoute.status === 404, `got ${unknow
 const healthDeep = await call("GET", "/health/deep");
 check("H2 /health/deep reports db+redis", healthDeep.status === 200 && healthDeep.data?.db === "up" && healthDeep.data?.redis === "up", JSON.stringify(healthDeep.data));
 
+// ── AD. account deletion request: no account oracle (#442 PR 3, #467) ───────────────────────────
+// `POST /v1/account/deletion-request` is public, so it must not tell anyone whether an address has an
+// account: the same status and body, and the same time within noise, for a known and an unknown address.
+// The route answers 202 before the lookup (routes/account.ts), so the work behind a known address cannot
+// show in the response time. A warm-up of each kind is discarded, then known and unknown alternate, so a
+// drift over the run hits both sides alike. 14 requests stay inside the route's own 20-a-minute bucket.
+{
+  const adKnown = `qa-ad-${stamp}@example.com`;
+  const adUnknown = `qa-ad-none-${stamp}@example.com`;
+  const adReg = await call("POST", "/v1/auth/register", {
+    body: { email: adKnown, password: PASSWORD, displayName: "QA AD", familyName: "QA Family AD", region: "US" },
+  });
+  const timed = async (email) => {
+    const t0 = performance.now();
+    const r = await call("POST", "/v1/account/deletion-request", { body: { email } });
+    return { ...r, ms: performance.now() - t0 };
+  };
+  await timed(adKnown);
+  await timed(adUnknown);
+  const known = [];
+  const unknown = [];
+  for (let i = 0; i < 6; i++) {
+    known.push(await timed(adKnown));
+    unknown.push(await timed(adUnknown));
+  }
+  const all = [...known, ...unknown];
+  const bodies = new Set(all.map((r) => JSON.stringify(r.data)));
+  const median = (xs) => { const v = xs.map((r) => r.ms).sort((x, y) => x - y); return (v[2] + v[3]) / 2; };
+  const mk = median(known);
+  const mu = median(unknown);
+  check(
+    "AD1 /v1/account/deletion-request answers a known and an unknown address alike: 202 and one identical body",
+    adReg.status === 201 && all.every((r) => r.status === 202) && bodies.size === 1,
+    `register=${adReg.status} statuses=${all.map((r) => r.status).join(",")} bodies=${[...bodies].join(" | ")}`,
+  );
+  // 25 ms is far above local jitter for one small JSON response and far below a password hash, a DB
+  // lookup plus token write, or a mail send, which is what an oracle would leak.
+  check(
+    "AD2 ... and in the same time within noise (median known vs unknown within 25 ms)",
+    Math.abs(mk - mu) <= 25,
+    `median known=${mk.toFixed(1)} ms unknown=${mu.toFixed(1)} ms (diff ${(mk - mu).toFixed(1)} ms)`,
+  );
+}
+
 // ── summary ─────────────────────────────────────────────────────────────────
 console.log(`\n───────────  ${PASS.length} passed · ${FAIL.length} failed · ${TARGETS.length} targets · ${NOTE.length} notes · rate limit: ${rateLimited429} x 429  ───────────`);
 if (rateLimited429) console.log(`RATE LIMIT: ${rateLimited429} x 429 observed; each was retried once and the retry succeeded, so no check above judged a throttled response.`);
