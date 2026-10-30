@@ -3,6 +3,7 @@ package com.familyshield.agent.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -77,6 +78,27 @@ class AgentSettings @Inject constructor(
 
     /** Returns the persisted rule set JSON, or null. */
     suspend fun rulesJson(): String? = read(KEY_RULES_JSON)
+
+    /**
+     * Issue #465 review: "an unlink was started and may not have finished". Written **before** the first
+     * step of the unlink and cleared after the last, so a process death in between is resumed at the next
+     * start instead of leaving an unpaired phone still holding device admin. Every unlink step is
+     * idempotent, so re-running it is safe.
+     */
+    suspend fun setUnlinkPending(pending: Boolean) {
+        store.edit { it[KEY_UNLINK_PENDING] = pending }
+    }
+
+    /** True when an unlink was started and not finished; see [setUnlinkPending]. */
+    suspend fun unlinkPending(): Boolean = store.data.first()[KEY_UNLINK_PENDING] ?: false
+
+    /**
+     * Issue #465: drop the cached rule set when this phone is no longer linked to a family. The last
+     * rules the server sent are the ones a deleted family's phone would otherwise keep enforcing.
+     */
+    suspend fun forgetRules() {
+        store.edit { it.remove(KEY_RULES_JSON) }
+    }
 
     /** Persists the merged default-category blocklist (packageId -> category JSON). */
     suspend fun saveBlocklistJson(json: String) {
@@ -431,6 +453,7 @@ class AgentSettings @Inject constructor(
         private const val SECURE_DEVICE_TOKEN = "device_token"
         private const val SECURE_HMAC_SECRET = "hmac_secret"
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
+        private val KEY_UNLINK_PENDING = booleanPreferencesKey("unlink_pending")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")
         private val KEY_BASE_URL = stringPreferencesKey("base_url")

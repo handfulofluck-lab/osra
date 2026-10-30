@@ -58,4 +58,7 @@ interface WorkerEntryPoint {
 
     /** Plan 2.6: the durable scan queue, for ScanFlushWorker. */
     fun socialScanQueue(): com.familyshield.agent.social.SocialScanQueue
+
+    /** Issue #465 review: the unlink, so a start after a half-finished one can finish it. */
+    fun deviceUnlinker(): com.familyshield.agent.network.DeviceUnlinker
 }

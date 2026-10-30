@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import com.familyshield.agent.enforcement.AndroidPackageFacts
 import com.familyshield.agent.enforcement.PackageFacts
+import com.familyshield.agent.network.UnlinkPolicy
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,4 +31,13 @@ object AppModule {
     @Singleton
     fun providePackageFacts(@ApplicationContext context: Context): PackageFacts =
         AndroidPackageFacts(context)
+
+    /**
+     * Issue #465: the confirmation state lives with the poller, so it is one instance for the process.
+     * Two answers at least a minute apart are what turn a `401 device_revoked` into an unlink, and a
+     * second instance would restart that count on every poll.
+     */
+    @Provides
+    @Singleton
+    fun provideUnlinkPolicy(): UnlinkPolicy = UnlinkPolicy()
 }

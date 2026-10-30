@@ -396,6 +396,9 @@ class LocationService : Service() {
         val deviceId = settings.deviceId() ?: return
         runCatching {
             val response = api.getCommandsWithCadence(deviceId)
+            // Issue #465: this poll is the one a paired phone actually runs, so the revoked answer has to
+            // reach the shared path or the unlink never fires.
+            if (commandPoller.onPollAnswer(response)) return@runCatching
             if (!response.isSuccessful) throw HttpException(response) // keeps the 428 consent path
             // #383: a token the server cleared is re-sent from here, because this poll is the one that
             // runs on a paired phone (the worker skips its own while this service is up).
