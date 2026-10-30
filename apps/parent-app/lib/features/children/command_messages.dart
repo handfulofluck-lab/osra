@@ -27,6 +27,9 @@ String commandRefusalText(
     'location_permission_missing' => l10n.commandRefusedLocationPermission(type, deviceModel),
     'lock_screen_unavailable' => l10n.commandRefusedLockScreen,
     'web_filter_not_set_up' => l10n.commandRefusedWebFilter,
+    // #234: the filter is consented and prepared but the sinkhole never came up, which is a different
+    // instruction for the parent ("open the app there") from "consent is missing".
+    'web_filter_start_failed' => l10n.commandRefusedWebFilterStart,
     'unsupported_command' => l10n.commandRefusedUnsupportedCommand,
     // ADR-0034 decision 3: `not_supported` means the build or platform cannot do the feature at
     // all — not a fault, and not something the parent can fix by asking the child to open the app.

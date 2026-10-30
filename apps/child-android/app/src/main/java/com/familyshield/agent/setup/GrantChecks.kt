@@ -34,6 +34,9 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
         OnboardingPolicy.Grant.LOCATION -> locationGranted()
         OnboardingPolicy.Grant.PRIVATE_DNS -> OnboardingPolicy.privateDnsOk(Settings.Global.getString(context.contentResolver, "private_dns_mode"))
         OnboardingPolicy.Grant.BATTERY -> context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+        OnboardingPolicy.Grant.USB_DEBUGGING -> OnboardingPolicy.usbDebuggingOff(
+            runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED) }.getOrNull(),
+        )
         OnboardingPolicy.Grant.NOTIFICATION_LISTENER -> NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
     }
 
@@ -49,6 +52,7 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
             OnboardingPolicy.Grant.LOCATION -> null
             OnboardingPolicy.Grant.PRIVATE_DNS -> Intent(Settings.ACTION_WIRELESS_SETTINGS)
             OnboardingPolicy.Grant.BATTERY -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            OnboardingPolicy.Grant.USB_DEBUGGING -> Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
             OnboardingPolicy.Grant.NOTIFICATION_LISTENER -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
         }.let { it?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     }

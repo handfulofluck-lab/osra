@@ -206,6 +206,17 @@ class PairingActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             val pad = (16 * resources.displayMetrics.density).toInt()
             setPadding(pad, pad, pad, pad)
+            // #440 follow-up: Android 15 is edge to edge at targetSdk 35; keep the title clear of the clock.
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+                val bars = insets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                        androidx.core.view.WindowInsetsCompat.Type.displayCutout() or
+                        androidx.core.view.WindowInsetsCompat.Type.ime(),
+                )
+                val p = SystemBarPadding.of(pad, bars.left, bars.top, bars.right, bars.bottom)
+                view.setPadding(p.left, p.top, p.right, p.bottom)
+                insets
+            }
         }
         setContentView(root)
         showLoading()
@@ -272,6 +283,10 @@ class PairingActivity : ComponentActivity() {
         replaceWith {
             addView(label(getString(R.string.pair_title)))
             addView(label(getString(R.string.pair_intro)))
+            // Issue #81: tell whoever holds the phone why it is unpaired; the parent's Allow card says it too.
+            if (dataClearedDetected()) {
+                addView(label(getString(R.string.wipe_detected_notice)).apply { setTextColor(0xFFB00020.toInt()) })
+            }
 
             if (scanError != null) {
                 addView(
@@ -531,6 +546,10 @@ class PairingActivity : ComponentActivity() {
                 .onFailure { android.util.Log.w("PairingActivity", "no device-admin settings screen", it) }
         }
     }
+
+    /** Issue #81: this unpaired phone still holds our admin grant but no PIN — its OSRA data was cleared. */
+    private fun dataClearedDetected(): Boolean =
+        WipeDetector.dataCleared(deviceAdmin.isAdminActive(), paired = false, pinConfigured = pinStore.isConfigured())
 
     /** Runs [action] only after the parent PIN is verified on the guard screen; no PIN yet → runs at once. */
     private fun requirePin(reason: String, action: () -> Unit) {
@@ -838,6 +857,7 @@ class PairingActivity : ComponentActivity() {
                 .put("model", Build.MODEL ?: "unknown")
                 .put("osVersion", Build.VERSION.RELEASE ?: "unknown")
                 .put("deviceName", deviceName.ifBlank { Build.MODEL ?: "android-device" })
+                .apply { if (dataClearedDetected()) put("dataCleared", true) }
                 .toString()
                 .toRequestBody(JSON_MEDIA_TYPE)
             val client = OkHttpClient.Builder()
