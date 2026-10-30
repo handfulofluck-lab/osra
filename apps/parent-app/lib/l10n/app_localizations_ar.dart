@@ -12,6 +12,89 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appName => 'OSRA';
 
   @override
+  String get deleteAccountTitle => 'حذف الحساب';
+
+  @override
+  String get deleteAccountFamilyWarning =>
+      'سيؤدي هذا إلى حذف عائلتك بالكامل: كل طفل وكل جهاز وكل والد آخر. ولا يمكن التراجع عن ذلك.';
+
+  @override
+  String get deleteAccountSelfWarning =>
+      'سيؤدي هذا إلى حذف حسابك وتسجيل خروجك. وتبقى العائلة وأطفالها.';
+
+  @override
+  String get deleteAccountFamilyStopsTitle => 'ما الذي سيُحذف';
+
+  @override
+  String get deleteAccountFamilyStopsData =>
+      'بيانات كل طفل: سجل المواقع، ونشاط التطبيقات والويب، وفحوصات المحادثات.';
+
+  @override
+  String get deleteAccountFamilyStopsDevices =>
+      'يُلغى ربط كل جهاز مقترن، ويتوقف تطبيق الطفل عن المراقبة.';
+
+  @override
+  String get deleteAccountFamilyStopsParents =>
+      'حساب كل والد، بما في ذلك حسابك.';
+
+  @override
+  String get deleteAccountSelfStopsTitle => 'ما الذي سيُحذف';
+
+  @override
+  String get deleteAccountSelfStopsAccount =>
+      'حسابك وبيانات تسجيل دخولك. وتستمر العائلة في العمل من دونك.';
+
+  @override
+  String get deleteAccountSelfStopsFamilyKept =>
+      'يبقى الأطفال تحت مراقبة بقية أفراد العائلة.';
+
+  @override
+  String deleteAccountTypeEmail(String email) {
+    return 'اكتب بريدك الإلكتروني للتأكيد: $email';
+  }
+
+  @override
+  String get deleteAccountTypeHint => 'لا يمكن التراجع عن الحذف.';
+
+  @override
+  String get deleteAccountSubmit => 'حذف الحساب';
+
+  @override
+  String get deleteAccountBusy => 'جارٍ الحذف…';
+
+  @override
+  String get deleteAccountPasswordRequired =>
+      'أدخل كلمة المرور. لا يكفي الرمز وحده لحذف الحساب.';
+
+  @override
+  String get deleteAccountReauthFailed =>
+      'لم تُقبل كلمة المرور أو الرمز. لم يُحذف أي شيء.';
+
+  @override
+  String get deleteAccountMfaReenroll =>
+      'يتطلب حسابك التحقق بخطوتين، لكن لا يوجد تطبيق مصادقة مُعدّ. أعدّ واحدًا أولًا.';
+
+  @override
+  String get deleteAccountConsentHeld =>
+      'لديك سجلات موافقة لطفل في عائلة أخرى، لذا لا يمكن حذف هذا الحساب الآن.';
+
+  @override
+  String get deleteAccountOnlyOwner => 'مالك العائلة فقط يمكنه حذف العائلة.';
+
+  @override
+  String get deleteAccountOwnerMustUseFamily =>
+      'هذا الحساب يملك العائلة، لذا استخدم حذف العائلة بدلًا من ذلك.';
+
+  @override
+  String get deleteAccountLoadFailed =>
+      'تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مجددًا.';
+
+  @override
+  String deleteAccountFailed(String detail) {
+    return 'لم يُحذف الحساب. $detail';
+  }
+
+  @override
   String get cancel => 'إلغاء';
 
   @override

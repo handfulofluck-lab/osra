@@ -21,6 +21,7 @@ import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
+import 'features/settings/delete_account_screen.dart';
 import 'features/settings/mfa_settings_screen.dart';
 import 'features/social/social_screen.dart';
 import 'features/content/search_safety_screen.dart';
@@ -113,6 +114,8 @@ final router = GoRouter(
     GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
     GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
     GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
+    // #442 PR 2: Play requires account deletion to be reachable in the app.
+    GoRoute(path: '/settings/delete-account', builder: (_, __) => const DeleteAccountScreen()),
     // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
     // MFA settings screen open it from `GET /mfa/reset/pending`, with the id
     // and the requester's name; this deep link remains for a notification
