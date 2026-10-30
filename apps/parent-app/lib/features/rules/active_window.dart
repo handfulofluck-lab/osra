@@ -71,6 +71,14 @@ ActiveWindow? activeWindowFor({
   // 0. Parent-mandated exemptions win over every window (`RuleEngine.kt:41`).
   if (rules.alwaysAllowedApps.contains(packageId)) return null;
 
+  final appRule = rules.appRules.where((r) => r.packageId == packageId).firstOrNull;
+
+  // 0b. #474 review: an app the parent blocked stays blocked when the routine ends, so naming the
+  //     routine would promise it opens at 19:00. The row already says "Blocked"; no window sentence
+  //     is the honest answer. `time_limit` is different — there the app does open again, and the
+  //     sentence is true.
+  if (appRule?.action == 'block') return null;
+
   final day = now.weekday; // 1 = Monday … 7 = Sunday, same as Kotlin's DayOfWeek.value.
   final time = _minutesOfDay(now);
 
@@ -90,8 +98,7 @@ ActiveWindow? activeWindowFor({
   }
 
   // 2. The app's own rule: an `allow` short-circuits both screen-time windows, and `block` /
-  //    `time_limit` are not "a routine overriding an allowed app".
-  final appRule = rules.appRules.where((r) => r.packageId == packageId).firstOrNull;
+  //    `time_limit` are not "a routine overriding an allowed app" (`block` was already returned above).
   if (appRule != null) return null;
 
   // 3. Bedtime, every day — the agent reads it before school hours.

@@ -100,6 +100,89 @@ void main() {
       expect(w, const ActiveWindow(kind: WindowKind.routine, routineName: 'Homework', endsAt: '19:00'));
     });
 
+    test('a routine block on an app the parent also blocked gets no sentence (#474 review)', () {
+      // The row already says "Blocked"; naming Homework would promise it opens at 19:00, and it does not.
+      final w = activeWindowFor(
+        packageId: 'com.example.game',
+        rules: rules(
+          appRules: const [AppRule(packageId: 'com.example.game', appName: 'Game', action: 'block')],
+          routines: const [
+            Routine(
+              id: 'r1',
+              name: 'Homework',
+              startTime: '17:00',
+              endTime: '19:00',
+              days: [1, 2, 3],
+              blockedApps: ['com.example.game'],
+            ),
+          ],
+        ),
+        now: monday(17, 30),
+      );
+      expect(w, isNull);
+    });
+
+    test('a routine only applies on its own days (#474 F2)', () {
+      // Thursday 17:30: Homework is Mon–Wed, so nothing holds the app.
+      final w = activeWindowFor(
+        packageId: 'com.example.meet',
+        rules: rules(
+          routines: const [
+            Routine(
+              id: 'r1',
+              name: 'Homework',
+              startTime: '17:00',
+              endTime: '19:00',
+              days: [1, 2, 3],
+              blockedApps: ['com.example.meet'],
+            ),
+          ],
+        ),
+        now: DateTime(2026, 11, 5, 17, 30),
+      );
+      expect(w, isNull);
+    });
+
+    test('the start of a routine is inside it (#474 F3)', () {
+      final w = activeWindowFor(
+        packageId: 'com.example.meet',
+        rules: rules(
+          routines: const [
+            Routine(
+              id: 'r1',
+              name: 'Homework',
+              startTime: '17:00',
+              endTime: '19:00',
+              days: [1],
+              blockedApps: ['com.example.meet'],
+            ),
+          ],
+        ),
+        now: monday(17, 0),
+      );
+      expect(w?.routineName, 'Homework');
+    });
+
+    test('the end of a routine is outside it, so it never says "until 19:00" at 19:00 (#474 F1)', () {
+      final w = activeWindowFor(
+        packageId: 'com.example.meet',
+        rules: rules(
+          routines: const [
+            Routine(
+              id: 'r1',
+              name: 'Homework',
+              startTime: '17:00',
+              endTime: '19:00',
+              days: [1],
+              blockedApps: ['com.example.meet'],
+            ),
+          ],
+        ),
+        now: monday(19, 0),
+      );
+      expect(w, isNull);
+    });
+
     test('a routine allow-list blocks every app it does not name', () {
       final w = activeWindowFor(
         packageId: 'com.example.meet',

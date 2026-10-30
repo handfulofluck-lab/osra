@@ -12,7 +12,10 @@
   window semantics: `[start, end)` and the overnight wrap, equal times are empty, school hours restricted
   to their days. The clock is a provider (`clockProvider`) so a row can pin a weekday morning.
 - One new string pair (en/ar): `blockedNowBy` — "محجوب الآن بسبب {reason} (حتى {time})".
-- `test/routine_override_test.dart`: 12 unit rows over the ordering and window arithmetic, 3 widget rows
+- A row whose app the parent **blocked** gets no sentence even inside a routine (#474 review): the app
+  stays blocked after the routine ends, so "Blocked now by Homework (until 19:00)" would promise it
+  opens. `time_limit` keeps the sentence — there the app does open again.
+- `test/routine_override_test.dart`: 16 unit rows over the ordering and window arithmetic, 3 widget rows
   on the real screen (routine override named; nothing claimed after the window ends; an allowed app not
   described as school-hours-blocked). Mutant: remove the `action == 'allow'` short-circuit and the third
   widget row goes red with a false "School hours" sentence.
