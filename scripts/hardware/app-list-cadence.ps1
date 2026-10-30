@@ -37,9 +37,10 @@
 # reverse direction has no tolerance: a stored package the device no longer has is STALE and FAILs
 # at the verdict comparison (the last one after a sync).
 #
-# The OSRA agent package (`com.familyshield.agent`) is excluded from the device set because the
-# collector deliberately skips itself (a parent must not be able to block the protection agent), so
-# comparing it would be a false MISSING.
+# The OSRA agent package is excluded from the device set because the collector deliberately skips
+# itself (a parent must not be able to block the protection agent), so comparing it would be a false
+# MISSING. Since the 2026-10-29 rename that is `com.osratech.child`: the Kotlin package is still
+# `com.familyshield.agent`, but the OS reports the applicationId.
 #
 # Windows PowerShell 5.1 and pwsh 7, ASCII only. Needs: adb, the API reachable at -Base, and a parent
 # token with the `rules` permission (the route is permission-gated on purpose).
@@ -67,7 +68,7 @@ param(
     [switch]$SelfTest
 )
 $ErrorActionPreference = "Continue"
-$AGENT_PKG = "com.familyshield.agent"
+$AGENT_PKG = "com.osratech.child"
 $CADENCE_MIN_S = 14 * 60
 $CADENCE_MAX_S = 16 * 60
 
@@ -80,7 +81,7 @@ function Get-DeviceAppSet {
     param(
         [string[]]$ThirdParty = @(),
         [string[]]$Launchable = @(),
-        [string]$AgentPackage = "com.familyshield.agent"
+        [string]$AgentPackage = "com.osratech.child"
     )
     $tp = @(); if ($ThirdParty) { $tp = @($ThirdParty | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
     $la = @(); if ($Launchable) { $la = @($Launchable | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }

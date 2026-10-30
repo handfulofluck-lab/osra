@@ -122,7 +122,11 @@ class RuleRepositoryTest {
 
     @Test
     fun `isEssentialApp identifies essential system apps and exempts them`() {
-        org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.familyshield.agent"))
+        org.junit.Assert.assertTrue(
+            com.familyshield.agent.data.RuleRepository.isEssentialApp(
+                com.familyshield.agent.enforcement.EssentialPackages.OWN_PACKAGE,
+            ),
+        )
         org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.systemui"))
         org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.settings"))
         org.junit.Assert.assertTrue(com.familyshield.agent.data.RuleRepository.isEssentialApp("com.android.dialer"))

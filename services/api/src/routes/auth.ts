@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import argon2 from "argon2";
 import { Prisma } from "@prisma/client";
 import type { MfaResetRequest as MfaResetRequestRow } from "@prisma/client";
@@ -22,7 +22,7 @@ import {
   resetCodeMatches,
   resetWindowEndsAt,
 } from "../lib/mfaReset.js";
-import { generateTotpSecret, totpAtCounter } from "../lib/totp.js";
+import { generateTotpSecret } from "../lib/totp.js";
 import { getRedis } from "../redis.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
 import {
@@ -36,7 +36,8 @@ import {
 } from "../lib/mfaRecovery.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, revokeTokenOnce, signParentToken } from "../lib/sessions.js";
-import { decryptSecret, encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
+import { encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
+import { verifyTotpFresh } from "../lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 
 const RegisterSchema = z.object({
@@ -89,47 +90,6 @@ const MfaRecoverSchema = z.object({
 let dummyPasswordHash: Promise<string> | null = null;
 const unknownParentPasswordHash = (): Promise<string> =>
   (dummyPasswordHash ??= argon2.hash(randomBytes(16).toString("hex")));
-
-/**
- * Verify a login TOTP code with replay protection (review 3.1): the accepted
- * time-step counter is stored per parent, so a captured code cannot be reused
- * within its validity window.
- */
-async function verifyTotpFresh(parentId: string, storedSecret: string | null, code: string): Promise<boolean> {
-  const secret = decryptSecret(storedSecret);
-  if (!secret) return false;
-  const now = Math.floor(Date.now() / 1000 / 30);
-  let matched: number | null = null;
-  for (const counter of [now - 1, now, now + 1]) {
-    if (timingSafeEq(totpAtCounter(secret, counter), code)) { matched = counter; break; }
-  }
-  if (matched === null) return false;
-  const redis = getRedis();
-  const key = `mfa:lastcounter:${parentId}`;
-  // Handoff item 7: replay protection must fail CLOSED in production. When Redis is
-  // unreachable there, reject the code loudly instead of silently disabling the check.
-  const production = process.env.NODE_ENV === "production";
-  try {
-    const last = await redis.get(key);
-    if (last !== null && Number(last) >= matched) return false;
-    await redis.set(key, String(matched));
-    return true;
-  } catch (err) {
-    if (production) {
-      console.error(`[security] MFA replay store unreachable for ${parentId} — rejecting login`, err);
-      return false;
-    }
-    console.warn("[security] MFA replay store unreachable; replay protection disabled (dev only)", err);
-    return true;
-  }
-}
-
-/** Constant-time comparison of two equal-length digit strings. */
-function timingSafeEq(a: string, b: string): boolean {
-  const ba = Buffer.from(a.padStart(6, "0"));
-  const bb = Buffer.from(b.padStart(6, "0"));
-  return ba.length === bb.length && timingSafeEqual(ba, bb);
-}
 
 export async function authRoutes(app: FastifyInstance) {
   // Review API-11: stricter bucket on auth endpoints (brute-force protection).
@@ -226,7 +186,9 @@ export async function authRoutes(app: FastifyInstance) {
       return { family, parent };
     });
 
-    const { token, jti, sv } = await signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" });
+    // A parent created in this request has version 0 by the column default; reading it back would
+    // only race the commit, and since #442 a version read that finds no row is a deleted account.
+    const { token, jti, sv } = await signParentToken(app, { id: result.parent.id, familyId: result.family.id, role: "owner" }, { sv: 0 });
     return reply.code(201).send({ token, refreshToken: await issueRefreshToken(result.parent.id, sv, jti), parent: { id: result.parent.id, email, displayName } });
   });
 

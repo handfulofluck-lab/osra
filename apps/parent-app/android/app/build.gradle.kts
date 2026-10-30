@@ -48,8 +48,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "dev.familyshield.familyshield_parent"
+        // Play identity, decided by Karim on 2026-10-29 (decision 2B). See the child agent's
+        // build.gradle.kts for the reasoning: applicationId only, the Dart/Kotlin package names stay.
+        applicationId = "com.osratech.parent"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
