@@ -203,8 +203,7 @@ class BlockRaisePolicyTest {
     }
 
     @Test
-    fun `H4 - without Home the raise is immediate, as before`() {
-        // The issue named the PiP case here, but PiP does send Home by #175's design ("each sending Home
+    fun `H4 - without Home the raise is immediate, as before`() {        // The issue named the PiP case here, but PiP does send Home by #175's design ("each sending Home
         // first in PiP"), so deferral applies there too. The case that really has no Home is a blocked
         // window that is NOT the active one in the normal layout — the other split pane — and there the
         // service raises straight away because nothing is deferred.
@@ -214,5 +213,25 @@ class BlockRaisePolicyTest {
         assertTrue(step.raise)
         assertFalse("no Home in this case, so nothing is deferred", step.goHome)
         assertEquals("and no pending raise is created", null, policy.pendingRaise())
+    }
+
+    /**
+     * Issue #460 review, H5: a cleared raise never fires.
+     *
+     * `cancelDeferredRaise()` is what stops a posted fallback from raising after consent was withdrawn
+     * (ADR-0008 §3: a paused agent enforces nothing) or after the service was destroyed. Without the
+     * row, `clearPendingRaise()` could become a no-op and both cases would silently regress.
+     */
+    @Test
+    fun `H5 - a cleared raise never fires`() {
+        val policy = BlockRaisePolicy()
+        policy.noteHomeSent(youtube, blocked = true, nowMs = 1_000L)
+        policy.clearPendingRaise()
+
+        assertEquals("no launcher will raise it", null, policy.launcherFront(launcherFront = true, nowMs = 1_100L))
+        // Mutant: make `clearPendingRaise` a no-op and the fallback raises a screen nobody allowed.
+        assertEquals("and neither will the fallback", null,
+            policy.launcherFront(launcherFront = false, nowMs = 1_000L + 10 * BlockRaisePolicy.DEFAULT_HOME_FALLBACK_MS))
+        assertEquals(null, policy.pendingRaise())
     }
 }

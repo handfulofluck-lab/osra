@@ -125,6 +125,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         isRunning = false
         calls.onDestroy()
         pipCover.remove()
+        // #460 review: a deferred raise posted inside the fallback window must not fire after the
+        // service is gone — the child turning accessibility off is exactly when that window exists.
+        cancelDeferredRaise()
         runCatching { unregisterReceiver(packageChangeReceiver) }
         super.onDestroy()
     }
@@ -163,6 +166,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // records, captures and enforces nothing.
         if (consentState.isPaused()) {
             pipCover.remove()
+            // #460 review: consent withdrawn inside the fallback window must not still show a block
+            // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
+            cancelDeferredRaise()
             return
         }
         // Usage and social capture belong to the app actually in front; our own overlay and the
@@ -211,8 +217,37 @@ class AccessibilityMonitorService : AccessibilityService() {
         raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked)
     }
 
-    /** Issue #460: the fallback — no event came, so the deferred raise fires on the timer. */
-    private fun raiseDeferredIfDue() = advanceDeferredRaise(frontPackage = null)
+    /**
+     * Issue #460 review: the fallback, which must not re-check the wall clock.
+     *
+     * The Runnable is always reposted for the latest pending raise, so when it runs it is due by
+     * construction. Reading `now` again let a backwards clock step (NTP, or the user setting the time)
+     * find `expired == false`, return without raising and post no retry — and with a launcher that
+     * reports no event, that is the app staying blocked with no screen.
+     */
+    private fun raiseDeferredIfDue() {
+        if (consentState.isPaused()) {
+            cancelDeferredRaise()
+            return
+        }
+        val deferred = blockRaisePolicy.launcherFront(
+            launcherFront = true,
+            nowMs = System.currentTimeMillis(),
+        ) ?: return
+        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked)
+    }
+
+    /**
+     * Issue #460 review: drop a deferred raise — consent is paused, or the service is going away.
+     *
+     * Without this the posted Runnable survived both: a consent withdrawn inside the fallback window
+     * still showed a block screen (ADR-0008 §3 forbids it), and a service destroyed inside the window
+     * raised after `onDestroy`.
+     */
+    private fun cancelDeferredRaise() {
+        main.removeCallbacks(deferredRaise)
+        blockRaisePolicy.clearPendingRaise()
+    }
 
     /**
      * Issue #175: run the same [RuleRepository.evaluate] over every visible application package —
