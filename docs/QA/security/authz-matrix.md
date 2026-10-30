@@ -100,6 +100,7 @@ read. So the co-parent and guardian columns show the same codes unless a route n
 | `GET /v1/family/invites` | invites 61 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `POST /v1/family/invites/:id/accept` | invites 71 | 200 if the token's email matches, else 403 `email_mismatch` | same | same | same | 401 (no Parent row, `:81`) | 401 | 401dr | 401s | 401 | 401 | 401 | — |
 | `DELETE /v1/family/invites/:id` | invites 115 | 200 | 403o | 403o | 403f (`:120`) | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `DELETE /v1/family` (#442: re-auth body, `401 reauth_failed`) | family 349 | 200 | 403 `owner_only` | 403 `owner_only` | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 On the owner-only routes, the "Other fam." caller is an owner, so `requireOwner` passes and `requireFamily`
 answers `403f`. A co-parent or guardian of another family would get `403o` first.
@@ -163,6 +164,7 @@ The digest row is keyed by **family**, not by parent, so since #354 writing it a
 | `POST /v1/me/push-token` | me 21 | 201 | 201 | 201 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `DELETE /v1/me/push-token` | me 35 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 | `GET /v1/me/push-tokens` | me 43 | 200 | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
+| `DELETE /v1/me` (#442: re-auth body, `401 reauth_failed`) | me 65 | 409 `owner_must_delete_family` | 200 | 200 | own | 403r | 403r | 401dr | 401s | 401 | 401 | 401 | — |
 
 ### Any bearer: parent or device (`routes/blocklists.ts`, `routes/insights.ts`)
 
@@ -266,6 +268,7 @@ permission → 2xx" half is listed separately where a test has it.
 - **`GET /v1/family/children/:id/consent`**: Ow t:consent.test.ts:80 · Co, Gu p:Q6c, p:Q6d · OF p:Q8 · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/children/:id/consent/revoke`**: Ow t:consent.test.ts:40 · Co t:sessions-and-roles.test.ts:362 · OF t:consent.test.ts:65 · Gu p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`GET /v1/family/export`**: Ow t:family.test.ts:392 · Co, Gu `403o` p:Q6, p:Q6b, t:guardian-reads.test.ts (owner-only since #326) · devices `403r` p:Q7 · no GAP in these columns.
+- **`DELETE /v1/family`**, **`DELETE /v1/me`** (#442): Ow, Co, Gu t:account-deletion.test.ts D1–D5, M1–M3 · revoked session after the deletion t:account-deletion.test.ts T1–T3 · GAP: devices `403r`, Other fam., and the probe. Both routes are **not** in qa-probe's 65-route walk yet: a walk with a live owner token would delete the probe family, so Ahmed's rows use a throwaway family (#442 design, probe rows).
 - **`POST /v1/family/invites`**: Ow t:invites.test.ts:52, p:N4 · non-owner t:invites.test.ts:88 · Gu (as a role) p:Q6 · devices `403r` p:Q7 · no GAP in these columns.
 - **`GET /v1/family/invites`**: Ow t:invites.test.ts:125 · Co, Gu p:Q6c, p:Q6d · devices `403r` p:Q7 · no GAP in these columns.
 - **`POST /v1/family/invites/:id/accept`**: match t:invites.test.ts:139, p:N5 · mismatch t:invites.test.ts:226 · unknown t:invites.test.ts:243 · GAP: a device token (401).

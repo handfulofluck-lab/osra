@@ -11,6 +11,8 @@ import { getRedis } from "../redis.js";
 import { eraseChildData, screenTimeTodayFromDb } from "../lib/usageModel.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
+import { ReauthSchema, checkReauth, consentHeldElsewhere, eraseFamilyData } from "../lib/accountDeletion.js";
+import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -332,5 +334,31 @@ export async function familyRoutes(app: FastifyInstance) {
       exportedAt: new Date().toISOString(),
       family: { ...family, parents: family.parents.map(sanitizeParent), children: exportChildren },
     };
+  });
+
+  /**
+   * #442 (Play account deletion): the owner deletes the whole family — every child, every parent and
+   * the family itself (`lib/accountDeletion.ts`). A co-parent or guardian deletes only their own account
+   * with `DELETE /v1/me`, so here they get `403 owner_only`.
+   *
+   * The body is required: `{ password, mfaCode? }`, the code when MFA is on. A wrong value is
+   * `401 reauth_failed`, counted with the auth routes' limits (`AUTH_RATE_LIMIT`, fails closed), so a
+   * stolen session cannot guess the password through this route faster than through `/login`.
+   * `409 consent_records_held`: see `consentHeldElsewhere`.
+   */
+  app.delete("/", { preHandler: requireParent, config: { rateLimit: AUTH_RATE_LIMIT } }, async (req, reply) => {
+    const parsed = ReauthSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const user = req.user as AuthedUser;
+    const parent = await prisma.parent.findUnique({ where: { id: user.sub } });
+    if (!parent) return reply.code(404).send({ error: "parent_not_found" });
+    if (parent.role !== "owner") return reply.code(403).send({ error: "owner_only" });
+    const refusal = await checkReauth(parent, parsed.data);
+    if (refusal) return reply.code(401).send({ error: refusal });
+    const parentIds = (await prisma.parent.findMany({ where: { familyId: parent.familyId }, select: { id: true } })).map((p) => p.id);
+    if ((await consentHeldElsewhere(parentIds, parent.familyId)) > 0) {
+      return reply.code(409).send({ error: "consent_records_held" });
+    }
+    return reply.code(200).send(await eraseFamilyData(parent.familyId));
   });
 }
