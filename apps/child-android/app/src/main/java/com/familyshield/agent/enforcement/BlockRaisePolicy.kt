@@ -41,10 +41,9 @@ data class BlockRaise(
 class BlockRaisePolicy(
     private val debounceMs: Long = DEFAULT_DEBOUNCE_MS,
     private val multiWindowRaises: Int = DEFAULT_MULTI_WINDOW_RAISES,
-    private val bypassFloorMs: Long = DEFAULT_BYPASS_FLOOR_MS,
+    private val floor: BypassAlertFloor = BypassAlertFloor(),
 ) {
     private val lastRaiseMs = HashMap<String, Long>()
-    private val lastBypassMs = HashMap<String, Long>()
     private var episode: String? = null
     private var episodeStartMs = 0L
     private var episodeRaises = 0
@@ -80,9 +79,7 @@ class BlockRaisePolicy(
         bypassReported = true
         // #443 review: a PiP window that blinks out of getWindows() and back starts a new episode; the
         // raises may restart, the parent hears once per floor.
-        val lastReport = lastBypassMs[pkg]
-        if (lastReport != null && nowMs - lastReport in 0 until bypassFloorMs) return BlockRaise.NOTHING
-        lastBypassMs[pkg] = nowMs
+        if (!floor.tryReport(pkg, nowMs)) return BlockRaise.NOTHING
         return BlockRaise(raise = false, goHome = false, reportBypass = true, episodeStartMs = episodeStartMs)
     }
 
@@ -100,7 +97,7 @@ class BlockRaisePolicy(
         /** "If the PiP window survives two tries": two raises, then the parent is told. */
         const val DEFAULT_MULTI_WINDOW_RAISES: Int = 2
 
-        /** One bypass alert per app per ten minutes, however often the episode restarts. */
-        const val DEFAULT_BYPASS_FLOOR_MS: Long = 10 * 60_000L
+        /** One bypass alert per app per ten minutes, however often the episode restarts ([BypassAlertFloor]). */
+        const val DEFAULT_BYPASS_FLOOR_MS: Long = BypassAlertFloor.DEFAULT_FLOOR_MS
     }
 }
