@@ -64,7 +64,32 @@ class UnlinkedRefreshWiringTest {
         assertTrue("and released, so it cannot leak", pairing.contains("unregisterReceiver(unlinkedReceiver)"))
         assertTrue(
             "the screen re-renders from the pair state rather than trusting the broadcast payload",
-            pairing.contains("if (!settings.isPaired()) showForm("),
+            pairing.contains("if (!settings.isPaired() && statusScreenShown) showForm()"),
+        )
+    }
+
+    /**
+     * #479 review: the receiver is unregistered in `onStop`, so an unlink while the child is in another
+     * app reaches them on return, not by broadcast. `onResume` used to act only when the phone was
+     * paired, so this path left #471 unfixed behind a KDoc claiming otherwise.
+     *
+     * Mutant: delete the `else if (statusScreenShown)` branch in `onResume` and this row goes red.
+     */
+    @Test
+    fun `onResume re-renders an unpaired status screen, and only that screen`() {
+        val onResume = pairing.substringAfter("override fun onResume()").substringBefore("// ---- states ----")
+        assertTrue(
+            "the unpaired branch must exist in onResume",
+            onResume.contains("else if (statusScreenShown)"),
+        )
+        assertTrue("and it re-renders the pairing form", onResume.contains("showForm()"))
+        assertTrue(
+            "the form guard is what keeps a half-typed pairing form from being replaced",
+            pairing.contains("private var statusScreenShown = false"),
+        )
+        assertTrue(
+            "the status screen sets it, the form clears it",
+            pairing.contains("statusScreenShown = true") && pairing.contains("statusScreenShown = false"),
         )
     }
 

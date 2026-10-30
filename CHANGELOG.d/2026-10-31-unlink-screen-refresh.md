@@ -5,14 +5,18 @@
   reported no admin and `FilterVpnService` was gone. Force-stopping the app showed the pairing form, so
   the state was right and only the screen was stale — the two worst sentences to be wrong, because they
   tell a child the phone is still watched and that uninstalling needs a parent who no longer exists.
-- `DeviceUnlinker` now sends a package-scoped broadcast (`DeviceUnlinker.ACTION_UNLINKED`) once the
-  sequence has run, after the steps rather than before them. `PairingActivity` registers for it while
-  started (`RECEIVER_NOT_EXPORTED`, released in `onStop`) and **re-reads the pair state** instead of
-  trusting the payload: `if (!settings.isPaired()) showForm(...)`.
-- Rows: `UnlinkedRefreshWiringTest` (four source-text assertions: one action constant, a package-scoped
-  send that follows the steps, a `started`-scoped registration that is released, and a re-render that
-  reads the pair state). Mutants: drop `sendBroadcast` → first two rows red; drop `registerReceiver` →
-  the third; swap the order → the "announces after the sequence" row.
+- **Two refresh paths, because one is not enough.** While the screen is started, `DeviceUnlinker`
+  sends a package-scoped broadcast (`ACTION_UNLINKED`, after the steps rather than before them) and
+  `PairingActivity` re-reads the pair state instead of trusting the payload. On return from the
+  background the receiver has been released in `onStop`, so `onResume` carries the other half: when the
+  phone is unpaired **and the status screen is the one on display**, it renders the pairing form.
+  A `statusScreenShown` flag (set by `showStatus`, cleared by `showForm`) is what keeps a half-typed
+  pairing form from being replaced by either path.
+- Rows: `UnlinkedRefreshWiringTest` (four rows: one action constant, a package-scoped send that follows
+  the steps, a `started`-scoped registration that is released, and the `onResume` unpaired branch with
+  the flag it depends on). Mutants: drop `sendBroadcast` → a row red; drop `registerReceiver` → a row
+  red; swap the order → the ordering row; delete the `onResume` branch → the fourth (this last one was
+  a real hole the first version shipped, caught in review).
 - **Not verified by a JVM row, and stated as such:** that a broadcast actually re-renders the screen on
   a device. That is the Flip4 row (status screen in the foreground, then an unlink), and Claude's phone
   queue owns it.
