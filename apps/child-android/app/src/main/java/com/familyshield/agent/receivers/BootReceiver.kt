@@ -10,12 +10,14 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.commands.LockActivity
 import com.familyshield.agent.data.WorkScheduler
+import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.PendingPingWorker
 import com.familyshield.agent.vpn.FilterVpnService
 import com.familyshield.agent.vpn.VpnState
+import dagger.hilt.android.EntryPointAccessors
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
@@ -54,10 +56,15 @@ class BootReceiver : BroadcastReceiver() {
         val hasFine = granted(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
         val hasCoarse = granted(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
         val hasBackground = granted(ctx, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-        if (!BootStartPolicy.shouldStartLocationService(hasFine, hasCoarse, hasBackground, Build.VERSION.SDK_INT)) {
+        // Issue #472: an unlinked phone has no child to locate. The pair state is read here, not
+        // assumed, so the boot path cannot start a foreground service on a deleted family's device.
+        val isPaired = EntryPointAccessors.fromApplication(ctx, WorkerEntryPoint::class.java)
+            .agentSettings()
+            .isPairedSync()
+        if (!BootStartPolicy.shouldStartLocationService(isPaired, hasFine, hasCoarse, hasBackground, Build.VERSION.SDK_INT)) {
             Log.i(
                 TAG,
-                "location not granted (fine=$hasFine coarse=$hasCoarse background=$hasBackground); not starting LocationService at boot",
+                "not starting LocationService at boot (paired=$isPaired fine=$hasFine coarse=$hasCoarse background=$hasBackground)",
             )
             return
         }

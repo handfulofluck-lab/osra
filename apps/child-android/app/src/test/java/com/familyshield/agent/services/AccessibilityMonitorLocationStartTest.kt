@@ -87,7 +87,7 @@ class AccessibilityMonitorLocationStartTest {
     }
 
     @Test
-    fun `an already running service or an unpaired device is left alone`() {
+    fun `an already running service is left alone`() {
         assertNull(
             AccessibilityMonitorService.locationStartDecision(
                 isServiceRunning = true,
@@ -98,7 +98,19 @@ class AccessibilityMonitorLocationStartTest {
                 apiLevel = 34,
             ),
         )
-        assertNull(
+    }
+
+    /**
+     * Issue #472: an unpaired phone has no child to locate. The pair state is now an input to the
+     * shared rule, so this site answers UNPAIRED instead of short-circuiting to "nothing to do" —
+     * the caller logs `not_paired`, which is the honest reason, and no service is started either way.
+     * Mutant: delete `if (!isPaired) return Decision.UNPAIRED` from LocationStartPolicy.decide and
+     * this row gets START with every grant present.
+     */
+    @Test
+    fun `an unpaired device is refused as not_paired even with every grant`() {
+        assertEquals(
+            Decision.UNPAIRED,
             AccessibilityMonitorService.locationStartDecision(
                 isServiceRunning = false,
                 paired = false,
@@ -108,5 +120,6 @@ class AccessibilityMonitorLocationStartTest {
                 apiLevel = 34,
             ),
         )
+        assertEquals("not_paired", Decision.UNPAIRED.reason)
     }
 }

@@ -24,12 +24,10 @@ class LocationStatusPolicyTest {
         apiLevel: Int = 34,
         running: Boolean = true,
     ) = LocationStatusPolicy.classify(
-        LocationStartPolicy.decide(
-            hasFineLocation = fine,
-            hasCoarseLocation = coarse,
-            hasBackgroundLocation = background,
-            apiLevel = apiLevel,
-        ),
+        hasFineLocation = fine,
+        hasCoarseLocation = coarse,
+        hasBackgroundLocation = background,
+        apiLevel = apiLevel,
         serviceRunning = running,
     )
 

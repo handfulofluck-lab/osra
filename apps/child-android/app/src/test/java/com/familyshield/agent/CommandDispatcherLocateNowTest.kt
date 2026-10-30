@@ -20,6 +20,7 @@ class CommandDispatcherLocateNowTest {
     @Test
     fun `locate_now without the background grant is refused with background_location_missing`() {
         val decision = CommandDispatcher.locateNowDecision(
+            isPaired = true,
             hasFineLocation = true,
             hasCoarseLocation = false,
             hasBackgroundLocation = false,
@@ -31,7 +32,7 @@ class CommandDispatcherLocateNowTest {
 
     @Test
     fun `coarse-only while-in-use is refused the same way`() {
-        val decision = CommandDispatcher.locateNowDecision(true, false, false, 29)
+        val decision = CommandDispatcher.locateNowDecision(true, true, false, false, 29)
         assertEquals(Decision.MISSING_BACKGROUND_LOCATION, decision)
         assertEquals("background_location_missing", decision.reason)
     }
@@ -41,6 +42,7 @@ class CommandDispatcherLocateNowTest {
         assertEquals(
             Decision.START,
             CommandDispatcher.locateNowDecision(
+                isPaired = true,
                 hasFineLocation = true,
                 hasCoarseLocation = true,
                 hasBackgroundLocation = true,
@@ -51,13 +53,13 @@ class CommandDispatcherLocateNowTest {
 
     @Test
     fun `locate_now without any location grant is refused with location_permission_missing`() {
-        val decision = CommandDispatcher.locateNowDecision(false, false, false, 34)
+        val decision = CommandDispatcher.locateNowDecision(true, false, false, false, 34)
         assertEquals(Decision.MISSING_LOCATION_PERMISSION, decision)
         assertEquals("location_permission_missing", decision.reason)
     }
 
     @Test
     fun `pre-Q locate_now needs no background grant`() {
-        assertEquals(Decision.START, CommandDispatcher.locateNowDecision(true, false, false, 28))
+        assertEquals(Decision.START, CommandDispatcher.locateNowDecision(true, true, false, false, 28))
     }
 }

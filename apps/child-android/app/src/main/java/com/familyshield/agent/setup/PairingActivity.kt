@@ -761,8 +761,11 @@ class PairingActivity : ComponentActivity() {
                     }
                 }
                 val locationStatus = LocationStatusPolicy.classify(
-                    LocationStartPolicy.decide(hasFine, hasCoarse, hasBackground, Build.VERSION.SDK_INT),
-                    isRunning,
+                    hasFineLocation = hasFine,
+                    hasCoarseLocation = hasCoarse,
+                    hasBackgroundLocation = hasBackground,
+                    apiLevel = Build.VERSION.SDK_INT,
+                    serviceRunning = isRunning,
                 )
                 addView(
                     label(LocationStatusPolicy.line(locationStatus)).apply {
@@ -947,6 +950,10 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun startLocationServiceIfPermitted() {
+        // Issue #472: an unlinked phone has nothing to locate. Without this guard every launch after
+        // an unlink started a location foreground service again — an ongoing notification on a device
+        // the family was told it could uninstall.
+        if (!settings.isPairedSync()) return
         val hasFine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val hasCoarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (hasFine || hasCoarse) {

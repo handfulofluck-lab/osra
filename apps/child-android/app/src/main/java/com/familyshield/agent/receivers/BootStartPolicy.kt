@@ -29,11 +29,13 @@ object BootStartPolicy {
      * @param apiLevel `Build.VERSION.SDK_INT`, passed in so the rule is testable on the JVM.
      */
     fun shouldStartLocationService(
+        isPaired: Boolean,
         hasFineLocation: Boolean,
         hasCoarseLocation: Boolean,
         hasBackgroundLocation: Boolean,
         apiLevel: Int,
     ): Boolean = LocationStartPolicy.shouldStart(
+        isPaired = isPaired,
         hasFineLocation = hasFineLocation,
         hasCoarseLocation = hasCoarseLocation,
         hasBackgroundLocation = hasBackgroundLocation,
