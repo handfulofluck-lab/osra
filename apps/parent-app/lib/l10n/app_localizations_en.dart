@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -86,6 +85,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get deleteAccountOwnerMustUseFamily =>
       'This account owns the family, so use the family deletion instead.';
+
+  @override
+  String get deleteAccountLoadFailed =>
+      'Could not load your family. Check your connection and try again.';
 
   @override
   String deleteAccountFailed(String detail) {

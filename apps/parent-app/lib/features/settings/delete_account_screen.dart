@@ -49,9 +49,16 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     super.dispose();
   }
 
-  String get _email => ref.read(authProvider).parent?.email ?? '';
+  /// The account the deletion applies to, from the same overview that gives the role — one source for
+  /// both, so the email the parent is asked to type is the email the server holds.
+  String get _email => ref.read(familyProvider).valueOrNull?.parent.email ?? '';
 
-  bool get _matches => _email.isNotEmpty && _confirm.text.trim().toLowerCase() == _email.toLowerCase();
+  /// Normalised on both sides, as `/login` and #467 are: `Karim@…` against `karim@…` must not leave the
+  /// button dead (#442 PR 2 review).
+  bool get _matches {
+    final email = _email.trim().toLowerCase();
+    return email.isNotEmpty && _confirm.text.trim().toLowerCase() == email;
+  }
 
   Future<void> _submit(DeleteScope scope) async {
     if (_busy || !_matches) return;
@@ -99,13 +106,18 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final overview = ref.watch(familyProvider).valueOrNull;
+    final family = ref.watch(familyProvider);
+    final overview = family.valueOrNull;
     final parent = overview?.parent;
     final scope = parent == null ? null : deleteScopeFor(parent);
     final isOwner = scope == DeleteScope.family;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.deleteAccountTitle)),
-      body: OverviewNotLoaded(overview: overview, child: ListView(
+      body: OverviewNotLoaded(
+        overview: overview,
+        error: family.hasError ? '${family.error}' : null,
+        onRetry: () => ref.invalidate(familyProvider),
+        child: ListView(
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
           Card(
@@ -201,18 +213,53 @@ String deleteAccountError(AppLocalizations l10n, DioException e) {
   };
 }
 
-/// A `null` overview is "not loaded yet", not "no account": showing the family copy while the role is
-/// unknown would offer the wrong deletion.
+/// A `null` overview is "not loaded yet", not "no account": showing either copy while the role is
+/// unknown would offer the wrong deletion, so this never falls back to one.
+///
+/// And it does not spin forever: `GET /v1/family/me` failing leaves the role unknown, which is exactly
+/// the state where guessing is wrong — so the error is shown with a Retry instead (#442 PR 2 review).
 class OverviewNotLoaded extends StatelessWidget {
-  const OverviewNotLoaded({super.key, required this.overview, required this.child});
+  const OverviewNotLoaded({
+    super.key,
+    required this.overview,
+    required this.child,
+    this.error,
+    this.onRetry,
+  });
 
   final FamilyOverview? overview;
   final Widget child;
+  final String? error;
+  final VoidCallback? onRetry;
 
   @override
-  Widget build(BuildContext context) => overview == null
-      ? const Center(child: CircularProgressIndicator())
-      : child;
+  Widget build(BuildContext context) {
+    if (overview != null) return child;
+    if (error != null && onRetry != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off, size: 32),
+              const SizedBox(height: AppSpace.sm),
+              Text(context.l10n.deleteAccountLoadFailed, textAlign: TextAlign.center),
+              const SizedBox(height: AppSpace.xs),
+              Text(error!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: AppSpace.md),
+              OutlinedButton(
+                key: const ValueKey('deleteAccountRetry'),
+                onPressed: onRetry,
+                child: Text(context.l10n.retry),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const Center(child: CircularProgressIndicator());
+  }
 }
 
 class _SectionTitle extends StatelessWidget {

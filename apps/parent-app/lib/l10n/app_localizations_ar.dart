@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -13,83 +12,86 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appName => 'OSRA';
 
   @override
-  String get deleteAccountTitle => 'Delete account';
+  String get deleteAccountTitle => 'حذف الحساب';
 
   @override
   String get deleteAccountFamilyWarning =>
-      'This deletes your whole family: every child, every device and every other parent. It cannot be undone.';
+      'سيؤدي هذا إلى حذف عائلتك بالكامل: كل طفل وكل جهاز وكل والد آخر. ولا يمكن التراجع عن ذلك.';
 
   @override
   String get deleteAccountSelfWarning =>
-      'This deletes your account and signs you out. The family and its children stay.';
+      'سيؤدي هذا إلى حذف حسابك وتسجيل خروجك. وتبقى العائلة وأطفالها.';
 
   @override
-  String get deleteAccountFamilyStopsTitle => 'What is deleted';
+  String get deleteAccountFamilyStopsTitle => 'ما الذي سيُحذف';
 
   @override
   String get deleteAccountFamilyStopsData =>
-      'Every child\'s data: location history, app and web activity, and chat scans.';
+      'بيانات كل طفل: سجل المواقع، ونشاط التطبيقات والويب، وفحوصات المحادثات.';
 
   @override
   String get deleteAccountFamilyStopsDevices =>
-      'Every paired device is unlinked, and the agent stops monitoring.';
+      'يُلغى ربط كل جهاز مقترن، ويتوقف تطبيق الطفل عن المراقبة.';
 
   @override
   String get deleteAccountFamilyStopsParents =>
-      'Every parent\'s account, including yours.';
+      'حساب كل والد، بما في ذلك حسابك.';
 
   @override
-  String get deleteAccountSelfStopsTitle => 'What is deleted';
+  String get deleteAccountSelfStopsTitle => 'ما الذي سيُحذف';
 
   @override
   String get deleteAccountSelfStopsAccount =>
-      'Your account and your sign-in. The family keeps working without you.';
+      'حسابك وبيانات تسجيل دخولك. وتستمر العائلة في العمل من دونك.';
 
   @override
   String get deleteAccountSelfStopsFamilyKept =>
-      'The children stay monitored by the rest of the family.';
+      'يبقى الأطفال تحت مراقبة بقية أفراد العائلة.';
 
   @override
   String deleteAccountTypeEmail(String email) {
-    return 'Type your email to confirm: $email';
+    return 'اكتب بريدك الإلكتروني للتأكيد: $email';
   }
 
   @override
-  String get deleteAccountTypeHint => 'Deletion has no undo.';
+  String get deleteAccountTypeHint => 'لا يمكن التراجع عن الحذف.';
 
   @override
-  String get deleteAccountSubmit => 'Delete account';
+  String get deleteAccountSubmit => 'حذف الحساب';
 
   @override
-  String get deleteAccountBusy => 'Deleting…';
+  String get deleteAccountBusy => 'جارٍ الحذف…';
 
   @override
   String get deleteAccountPasswordRequired =>
-      'Enter your password. A code alone cannot delete an account.';
+      'أدخل كلمة المرور. لا يكفي الرمز وحده لحذف الحساب.';
 
   @override
   String get deleteAccountReauthFailed =>
-      'That password or code was not accepted. Nothing was deleted.';
+      'لم تُقبل كلمة المرور أو الرمز. لم يُحذف أي شيء.';
 
   @override
   String get deleteAccountMfaReenroll =>
-      'Your account needs two-step verification, but no authenticator is set up. Set one up first.';
+      'يتطلب حسابك التحقق بخطوتين، لكن لا يوجد تطبيق مصادقة مُعدّ. أعدّ واحدًا أولًا.';
 
   @override
   String get deleteAccountConsentHeld =>
-      'You hold consent records for a child in another family, so this account cannot be deleted yet.';
+      'لديك سجلات موافقة لطفل في عائلة أخرى، لذا لا يمكن حذف هذا الحساب الآن.';
 
   @override
-  String get deleteAccountOnlyOwner =>
-      'Only the family owner can delete the family.';
+  String get deleteAccountOnlyOwner => 'مالك العائلة فقط يمكنه حذف العائلة.';
 
   @override
   String get deleteAccountOwnerMustUseFamily =>
-      'This account owns the family, so use the family deletion instead.';
+      'هذا الحساب يملك العائلة، لذا استخدم حذف العائلة بدلًا من ذلك.';
+
+  @override
+  String get deleteAccountLoadFailed =>
+      'تعذّر تحميل عائلتك. تحقّق من اتصالك وحاول مجددًا.';
 
   @override
   String deleteAccountFailed(String detail) {
-    return 'The account was not deleted. $detail';
+    return 'لم يُحذف الحساب. $detail';
   }
 
   @override
