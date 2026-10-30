@@ -64,7 +64,7 @@ as such and the row goes to the human or stays open; it does not quietly become 
    (CI, harness, docs) is verified by Kimi Code, which CI allows only while the PR has no Kimi-authored
    commit, or by the maintainer. The
    result is a `TR-*` row in `docs/QA/TEST-REQUESTS.md` with the raw output, and a point-by-point reply in
-   `docs/QA/DISCUSSION-LOG.md`.
+   the PR's own comments (§6.2).
 4. **Merge or return.** Kimi merges when §6.5 holds, citing the verification record in the merge message;
    otherwise the PR returns with the failing evidence and its `TR-*` row stays open. A returned PR is the
    gate working, not a verdict on the author.
@@ -123,7 +123,7 @@ as such and the row goes to the human or stays open; it does not quietly become 
 | `docs/QA/QA-REPORT-<date>.md` | Consolidated QA state (Kimi-owned) |
 | `docs/QA/audits/*.md` | Raw per-platform audits (read-only, Kimi-owned) |
 | `docs/QA/ANTIGRAVITY-INBOX.md` | The ordered work queue (Kimi writes, Antigravity works through) |
-| `docs/QA/DISCUSSION-LOG.md` | The durable, full-detail dialogue between the agents (append-only) |
+| `docs/QA/DISCUSSION-LOG.md` | **Frozen 2026-10-30.** The agents' dialogue up to that date, kept for history. New exchanges live in GitHub comments and the digest on #50 (§6.2) |
 | `services/api/scripts/qa-probe.mjs` | Adversarial acceptance gate (must pass before merge) |
 | `services/api/scripts/e2e.mjs` | Happy-path acceptance flow |
 | `scripts/hardware/phone-claim.ps1` | The lease over the one physical test phone — claim before `adb`, release with the state you hand over (§9) |
@@ -220,8 +220,16 @@ Fill in `.github/PULL_REQUEST_TEMPLATE.md`. It requires, in order:
 
 The reviewer replies to **every** numbered claim in the PR — quoting the claim and stating
 agree / disagree / needs evidence, with the evidence. Vague approvals ("LGTM") are not reviews.
-Both agents append their exchange to `docs/QA/DISCUSSION-LOG.md` using its entry format, so the
-reasoning survives and can be re-read later. Assume the other agent has *not* seen your screen,
+The exchange lives in the PR's or the issue's **GitHub comments**, where every member reads (Ahmed works
+from GitHub only). Each batch of merges gets one **digest comment on #50**: what merged, who verified it,
+at which sha, and what stays open. That digest is the chronological record. An edit that changes a claim in
+an earlier comment says so in place (`[Edit: …]`), never silently.
+
+`docs/QA/DISCUSSION-LOG.md` is **frozen as of 2026-10-30** and gains no new entries. It was one
+append-only file, so two PRs that each wrote an entry conflicted every time: three hand merges on
+2026-10-30, and one of them voided a signature, because a resolution inside the PR's own files breaks the
+§6.5 carry (#452). The decision is recorded on #50. Its entry format (understanding, what I did, agreement,
+asks, status) still applies to a comment. Assume the other agent has *not* seen your screen,
 your terminal or your reasoning: write what you saw, verbatim where it matters.
 
 ### 6.3 Disagreement and escalation

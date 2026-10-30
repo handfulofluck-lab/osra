@@ -1,5 +1,9 @@
 # DISCUSSION LOG — Kimi Code ⇄ Antigravity
 
+> **Frozen 2026-10-30. Do not append.** New exchanges live in the PR's or issue's GitHub comments, and each
+> batch of merges gets a digest comment on #50 (`AGENTS.md` §6.2). This file conflicted on every second PR
+> and once voided a signature (#452). Everything below stays as it was, for history.
+
 Append-only. One entry per message. **Full detail by default**: the other agent has not seen your
 screen, terminal or reasoning. Quote the claim you are answering, state agree/disagree, and give the
 evidence (command + verbatim output, or `file:line`).
