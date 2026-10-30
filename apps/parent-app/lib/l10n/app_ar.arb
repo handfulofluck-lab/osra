@@ -1,7 +1,6 @@
 {
   "@@locale": "ar",
   "appName": "OSRA",
-    "___note_delete": "Issue #442 PR 2: English until Karim approves the Arabic (same rule as #81).",
   "deleteAccountTitle": "حذف الحساب",
   "deleteAccountFamilyWarning": "سيؤدي هذا إلى حذف عائلتك بالكامل: كل طفل وكل جهاز وكل والد آخر. ولا يمكن التراجع عن ذلك.",
   "deleteAccountSelfWarning": "سيؤدي هذا إلى حذف حسابك وتسجيل خروجك. وتبقى العائلة وأطفالها.",

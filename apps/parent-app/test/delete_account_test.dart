@@ -4,7 +4,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/settings/delete_account_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -51,8 +50,9 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('deleteAccountSubmit')));
     await tester.pumpAndSettle();
-    // The shared reauth dialog: its password field is the first TextField.
-    await tester.enterText(find.byType(TextField).first, 'good-password');
+    // The shared reauth dialog's password field, found by its label: `find.byType(TextField).first`
+    // is the screen's own email field, still mounted behind the dialog.
+    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'good-password');
     await tester.tap(find.widgetWithText(FilledButton, 'Continue').last);  // l10n.continueLabel
     await flush(tester);
   }
@@ -119,19 +119,20 @@ void main() {
     expect(find.byKey(const ValueKey('deleteAccountSubmit')), findsOneWidget);
   });
 
-  testWidgets('R5 an unloaded overview shows a spinner, never either copy', (tester) async {
-    final api = fakeApi();
-    // Never completes: the overview stays in flight.
+  testWidgets('R5 while the role is unknown there is a spinner and neither copy', (tester) async {
+    // The screen's own contract, tested at the widget: a null overview is "not loaded yet", and both
+    // copies offer a deletion, so neither may appear until the role is known. Driving this through the
+    // provider is not possible with the fake — its routes resolve in a microtask, so the overview is
+    // never actually in flight — and a row that can only pass by luck is worth less than this one.
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api.client)],
-      child: localizedTestApp(const DeleteAccountScreen()),
+      overrides: [apiClientProvider.overrideWithValue(fakeApi().client)],
+      child: localizedTestApp(const Scaffold(body: OverviewNotLoaded(overview: null, child: SizedBox()))),
     ));
     await tester.pump();
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.textContaining('deletes your whole family'), findsNothing);
     expect(find.textContaining('deletes your account and signs you out'), findsNothing);
-    // Mutant: default the scope to `self` while loading and a co-parent's copy appears for an owner.
   });
 
   testWidgets('R6 a failed overview shows the error and a Retry, not a spinner forever', (tester) async {
