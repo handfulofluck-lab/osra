@@ -38,7 +38,9 @@ object PlayManifestPolicy {
         "android.permission.CAMERA" to "src/main — roadmap 3.2 QR scanner (PairQrScanActivity); user-facing in both flavours, preview only, nothing stored",
         "android.permission.ACCESS_NETWORK_STATE" to "firebase-messaging 24.0.0 — IID token creation",
         "com.google.android.c2dm.permission.RECEIVE" to "firebase-messaging 24.0.0 — FCM delivery",
-        "com.familyshield.agent.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" to "androidx.core — context-registered receivers; declared signature permission of this app",
+        // androidx.core declares this from `${applicationId}`, so the rename (2026-10-29, decision 2B)
+        // moved it too. The merged-manifest gate is what proves the value, not this comment.
+        "com.osratech.child.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" to "androidx.core — context-registered receivers; declared signature permission of this app",
     )
 
     /** Permissions that must never appear in the Play artefact, with the decision that forbids each. */

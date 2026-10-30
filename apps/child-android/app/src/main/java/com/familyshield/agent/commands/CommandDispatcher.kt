@@ -367,12 +367,24 @@ class CommandDispatcher @Inject constructor(
         if (webFilterSetUp) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL) }
         }
+        // Issue #234 review: `isRunning` only says the service object exists — `onCreate` sets it
+        // before `establish()`, and it stays true when `establish()` returns null. Wait for the mode
+        // of a tunnel that is actually established instead.
+        val tunnelRunning = webFilterSetUp &&
+            com.familyshield.agent.security.EnforceabilityPolicy.awaitFilterRunning(
+                isRunning = {
+                    com.familyshield.agent.security.EnforceabilityPolicy.isSinkholeEstablished(
+                        com.familyshield.agent.vpn.FilterVpnService.tunnelMode,
+                        com.familyshield.agent.vpn.FilterVpnService.MODE_SINKHOLE_ALL,
+                    )
+                },
+            )
         context.startActivity(
             Intent(context, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_PAUSED_INTERNET),
         )
-        return EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp)
+        return EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp, tunnelRunning)
     }
 
     /** Clears pause-the-internet and dismisses the paused-internet overlay (single-task onNewIntent). */

@@ -71,7 +71,13 @@ android {
     compileSdk = 35
     buildToolsVersion = "35.0.0"
     defaultConfig {
-        applicationId = "com.familyshield.agent"
+        // Play identity, decided by Karim on 2026-10-29 (decision 2B): this is what an installed app
+        // reports, and Play freezes it forever once anything is uploaded — internal testing included.
+        // Deliberately *only* the applicationId: `namespace` and the Kotlin package stay
+        // `com.familyshield.agent`, so hundreds of source files, proguard's class-name keeps and the
+        // manifest component names are untouched. `EssentialPackages.OWN_PACKAGE` derives from this
+        // value, so the agent cannot stop recognising itself.
+        applicationId = "com.osratech.child"
         minSdk = 26
         targetSdk = 35
         versionCode = 2

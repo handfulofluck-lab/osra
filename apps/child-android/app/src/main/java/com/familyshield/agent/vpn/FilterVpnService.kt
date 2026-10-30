@@ -165,12 +165,18 @@ class FilterVpnService : VpnService() {
         VpnState.setEstablished(this, true)
         VpnState.setRevokedAt(this, 0L)
         running.set(true)
+        // #234: only now is there a tunnel. Set after the fd exists, never before, so the dispatcher's
+        // wait cannot be satisfied by a service that failed to establish.
+        tunnelMode = mode
         val gen = generation.incrementAndGet()
         pump = Thread({ pumpLoop(fd, gen) }, "osra-dns-sinkhole-$gen").also { it.isDaemon = true; it.start() }
         Log.i(TAG, "tunnel up, mode=$mode")
     }
 
     private fun stopTunnel() {
+        // Cleared first, before the fd closes: a re-mode must not briefly claim the old tunnel while
+        // the new descriptor is being established (#234 review).
+        tunnelMode = null
         running.set(false)
         runCatching { tun?.close() }
         tun = null
@@ -285,6 +291,18 @@ class FilterVpnService : VpnService() {
     }
 
     companion object {
+        /**
+         * The mode of the tunnel that is **actually established**, or null when there is none.
+         *
+         * Issue #234 review: [isRunning] means "the service object exists" — it is set in `onCreate`,
+         * before `establish()` runs, and stays true when `establish()` returns null and the service
+         * lives on with no fd. So it answers the wrong question: a phone told "internet paused" still
+         * passing every packet. This field is written only after `establish()` returned a descriptor
+         * and is cleared by [stopTunnel], which every re-mode calls first.
+         */
+        @Volatile var tunnelMode: String? = null
+            private set
+
         private const val TAG = "FilterVpn"
         const val MODE_DNS = "dns"
         const val MODE_SINKHOLE_ALL = "sinkhole_all"

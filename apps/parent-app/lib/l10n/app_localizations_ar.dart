@@ -494,6 +494,10 @@ class AppLocalizationsAr extends AppLocalizations {
       'لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.';
 
   @override
+  String get commandRefusedWebFilterStart =>
+      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.';
+
+  @override
   String get commandRefusedUnsupportedCommand =>
       'يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.';
 
@@ -1543,6 +1547,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get pairClaimError => 'لم يتم ذلك. حاول مرة أخرى.';
+
+  @override
+  String get pairClaimDataCleared =>
+      'تم مسح بيانات OSRA على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.';
 
   @override
   String get appearanceTitle => 'المظهر';

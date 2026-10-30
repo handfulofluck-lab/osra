@@ -11,7 +11,9 @@ package com.familyshield.agent.setup
  * guard), usage access (limits), display over other apps (the lock), device admin (uninstall
  * protection), the web filter consent (1.4), location (locate / geofences) and Private DNS off a
  * named host (otherwise the web filter is bypassed). Battery exemption and the notification
- * listener (2.6) are recommended: without them the agent is slower, not absent.
+ * listener (2.6) are recommended: without them the agent is slower, not absent. USB debugging off
+ * (#81) is recommended too: a phone with it on can have OSRA's data cleared from any computer, but
+ * families switch it on for real reasons, so it warns rather than blocks.
  */
 object OnboardingPolicy {
 
@@ -24,6 +26,7 @@ object OnboardingPolicy {
         LOCATION("Location (allow all the time)", "Locate the device and geofence alerts; background access keeps it working with the app closed.", true),
         PRIVATE_DNS("Private DNS not set to a provider", "A named Private DNS provider bypasses the web filter. Set it to Automatic or Off.", true),
         BATTERY("Battery: unrestricted", "Without it the phone may pause the agent in the background and commands arrive late.", false),
+        USB_DEBUGGING("USB debugging off", "With USB debugging on, anyone with a computer can clear OSRA's data on this phone. Turn it off in Developer options.", false),
         NOTIFICATION_LISTENER("Notification access", "Reads notifications from monitored apps for the safety scan (Phase 2.6).", false),
     }
 
@@ -84,6 +87,12 @@ object OnboardingPolicy {
             else -> null
         }
     }
+
+    /**
+     * Issue #81: `Settings.Global.ADB_ENABLED` (readable without a permission) is 1 while USB debugging is
+     * on. `adb shell pm clear` then wipes the agent despite device admin. Unknown counts as off.
+     */
+    fun usbDebuggingOff(adbEnabled: Int?): Boolean = adbEnabled == null || adbEnabled == 0
 
     /** Private DNS: Android's `private_dns_mode` is "off", "opportunistic" (Automatic) or "hostname" (a provider). */
     fun privateDnsOk(mode: String?): Boolean = mode == null || mode.trim().lowercase() != "hostname"

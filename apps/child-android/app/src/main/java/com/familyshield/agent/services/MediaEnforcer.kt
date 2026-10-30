@@ -46,6 +46,9 @@ class MediaEnforcer(
     fun onConnected() {
         runCatching { audio?.registerAudioPlaybackCallback(playback, main) }
             .onFailure { Log.w(TAG, "no playback callback", it) }
+        // #457 review: sessions live in memory only, so a rebind (OEM kill, update, a UI dump) starts empty
+        // until each app posts again. Logged once so a phone run can see it.
+        Log.d(TAG, "connected stored=${policy.storedCount}")
     }
 
     fun onDestroy() {

@@ -245,6 +245,22 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets('#81: a claim from a phone whose OSRA data was cleared says so; a plain one does not',
+        (tester) async {
+      final api = claimApi(() => {...pending, 'dataCleared': true});
+      await pumpScreen(tester, api);
+      await nextRead(tester);
+      expect(find.byKey(const ValueKey('pairClaimDataCleared')), findsOneWidget);
+      await unmount(tester);
+
+      final plain = claimApi(() => pending);
+      await pumpScreen(tester, plain);
+      await nextRead(tester);
+      expect(find.byKey(const ValueKey('pairClaimTitle')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairClaimDataCleared')), findsNothing);
+      await unmount(tester);
+    });
+
     testWidgets('Deny refuses the claim and stops reading it', (tester) async {
       final api = claimApi(() => pending);
       await pumpScreen(tester, api);
