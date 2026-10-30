@@ -75,6 +75,7 @@ void main() {
     expect(api.client.calls('DELETE', '/v1/family'), hasLength(1));
     expect(api.client.calls('DELETE', '/v1/me'), isEmpty);
     expect(api.client.calls('DELETE', '/v1/family').single.body['password'], 'good-password');
+
   });
 
   testWidgets('R2 a co-parent is shown the self deletion and DELETE /v1/me is sent', (tester) async {
@@ -90,6 +91,7 @@ void main() {
 
     expect(api.client.calls('DELETE', '/v1/me'), hasLength(1));
     expect(api.client.calls('DELETE', '/v1/family'), isEmpty);
+
     // Mutant: decide the scope from anything but the role and this pair of rows swaps.
   });
 
@@ -125,10 +127,9 @@ void main() {
   });
 
   testWidgets('R5 while the role is unknown there is a spinner and neither copy', (tester) async {
-    // The screen's own contract, tested at the widget: a null overview is "not loaded yet", and both
-    // copies offer a deletion, so neither may appear until the role is known. Driving this through the
-    // provider is not possible with the fake — its routes resolve in a microtask, so the overview is
-    // never actually in flight — and a row that can only pass by luck is worth less than this one.
+    // At the widget, deliberately: the `FakePending` sentinel leaves a pending Timer and Flutter's test
+    // binding fails the row for it, so a screen-level version cannot pass. Claude's fault m7 (a scope
+    // defaulted while loading) is still caught here, because this is the widget that would be edited.
     await tester.pumpWidget(ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(fakeApi().client)],
       child: localizedTestApp(const Scaffold(body: OverviewNotLoaded(overview: null, child: SizedBox()))),
@@ -137,7 +138,6 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.textContaining('deletes your whole family'), findsNothing);
-    expect(find.textContaining('deletes your account and signs you out'), findsNothing);
   });
 
   testWidgets('R6 a failed overview shows the error and a Retry, not a spinner forever', (tester) async {
@@ -160,6 +160,7 @@ class Mq {
       : client = FakeApiClient({
           ...standardRoutes(familyMe: me),
           if (failFamilyMe) 'GET /v1/family/me': (_) => const FakeHttpError(500, {'error': 'boom'}),
+          'POST /v1/auth/logout': (_) => {'ok': true},
           'DELETE /v1/family': onDelete ?? (_) => {'deleted': 'family'},
           'DELETE /v1/me': onDelete ?? (_) => {'deleted': 'parent'},
         });

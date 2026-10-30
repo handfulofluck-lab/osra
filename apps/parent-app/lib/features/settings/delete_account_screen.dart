@@ -85,9 +85,17 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             },
           );
       // The account the token belongs to is gone: drop the local session and go back to sign-in.
+      // The navigation is guarded on purpose — a failure to route must not be reported as "the account
+      // was not deleted", which is what fell through to the generic catch before (#469 review).
       await ref.read(authProvider.notifier).logout();
       ref.invalidate(familyProvider);
-      if (mounted) context.go('/login');
+      if (mounted) {
+        try {
+          context.go('/login');
+        } catch (_) {
+          // Deliberately swallowed: a screen that cannot route must not report the deletion as failed.
+        }
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       setState(() {
