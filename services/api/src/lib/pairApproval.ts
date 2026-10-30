@@ -32,6 +32,11 @@ export interface ClaimRecord {
   osVersion: string;
   deviceName?: string;
   pushToken?: string;
+  /**
+   * Issue #81: the phone says OSRA's data was cleared on it (device admin still active, no pairing, no
+   * parent PIN: what `pm clear` leaves). Shown on the parent's Allow card; an Allow records a `tamper` alert.
+   */
+  dataCleared?: boolean;
   /** sha256 of the poll secret; the secret itself is only ever in the claiming phone. */
   pollSecretHash: string;
   /** The parent who tapped Allow or Deny. */
@@ -108,7 +113,7 @@ export type ReserveResult =
  */
 export async function reserveClaim(
   code: string,
-  device: Pick<ClaimRecord, "platform" | "model" | "osVersion" | "deviceName" | "pushToken">,
+  device: Pick<ClaimRecord, "platform" | "model" | "osVersion" | "deviceName" | "pushToken" | "dataCleared">,
 ): Promise<ReserveResult> {
   const claimId = randomUUID();
   const res = (await getRedis().eval(PAIR_SCRIPTS.reserve, 2, codeKey(code), codeClaimKey(code), claimId)) as

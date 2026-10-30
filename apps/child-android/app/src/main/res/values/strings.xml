@@ -67,4 +67,6 @@
     <string name="pair_title">OSRA Child Agent</string>
     <string name="pair_server_hint">https://your-server or 192.168.1.5:3000</string>
     <string name="pair_code_hint">6-digit pairing code</string>
+    <!-- Issue #81: English until Karim approves the Arabic. -->
+    <string name="wipe_detected_notice">OSRA\'s data was cleared on this phone, so it is no longer protected. Ask your parent to pair it again.</string>
 </resources>

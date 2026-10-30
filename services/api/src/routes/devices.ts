@@ -26,6 +26,7 @@ import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
+import { raiseAlertOnce } from "../lib/alerts.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
 
@@ -96,6 +97,8 @@ const ClaimSchema = z.object({
   osVersion: DeviceText.pipe(z.string().min(1)),
   deviceName: DeviceText.optional().transform((v) => (v ? v : undefined)),
   pushToken: z.string().optional(),
+  // Issue #81: the phone detected that OSRA's data was cleared on it. A claim still needs a live parent code.
+  dataCleared: z.boolean().optional(),
 });
 
 const PollSchema = z.object({ pollSecret: z.string().min(1).max(200) });
@@ -311,8 +314,15 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.post("/pair/claim", { config: { rateLimit: PAIR_CLAIM_RATE_LIMIT } }, async (req, reply) => {
     const parsed = ClaimSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { code, platform, model, osVersion, deviceName, pushToken } = parsed.data;
-    const reserved = await reserveClaim(code, { platform, model, osVersion, deviceName, pushToken });
+    const { code, platform, model, osVersion, deviceName, pushToken, dataCleared } = parsed.data;
+    const reserved = await reserveClaim(code, {
+      platform,
+      model,
+      osVersion,
+      deviceName,
+      pushToken,
+      ...(dataCleared ? { dataCleared: true } : {}),
+    });
     if (reserved.kind === "unknown") {
       // A metric, not a brake: counted from the logs to see guessing, never used to refuse pairing for
       // everyone. The code itself is not logged.
@@ -354,6 +364,7 @@ export async function deviceRoutes(app: FastifyInstance) {
       model: claim.model,
       deviceName: claim.deviceName ?? null,
       osVersion: claim.osVersion,
+      ...(claim.dataCleared ? { dataCleared: true } : {}),
       ...(claim.deviceId ? { deviceId: claim.deviceId } : {}),
     };
   });
@@ -387,6 +398,25 @@ export async function deviceRoutes(app: FastifyInstance) {
         });
       } catch (err) {
         req.log.error({ err, metric: "pairing_decision_not_recorded" }, "pairing decision not recorded");
+      }
+      // Issue #81: a phone whose OSRA data was cleared (`pm clear` despite device admin) is being paired
+      // again. The wipe itself cannot be reported (it takes the phone's credentials with it); this records
+      // it as a distinct tamper reason, once per claim, instead of leaving the parent with only "silent".
+      if (decision === "approved" && record.dataCleared) {
+        try {
+          await raiseAlertOnce({
+            childId: record.childId,
+            familyId: record.familyId,
+            severity: "warning",
+            category: "tamper",
+            title: "OSRA's data was cleared on a phone",
+            body: `${record.deviceName ?? record.model} was paired again after OSRA's data on it was cleared. Its protection was off until now.`,
+            metadata: { type: "agent_data_cleared" },
+            dedupeKey: `agent_data_cleared|${record.claimId}`,
+          });
+        } catch (err) {
+          req.log.error({ err, metric: "data_cleared_alert_not_recorded" }, "data-cleared alert not recorded");
+        }
       }
       return { status: decision };
     });

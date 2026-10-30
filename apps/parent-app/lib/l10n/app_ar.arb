@@ -378,6 +378,7 @@
   "pairClaimPaired": "تم إقران {device}.",
   "pairClaimDenied": "تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.",
   "pairClaimError": "لم يتم ذلك. حاول مرة أخرى.",
+  "pairClaimDataCleared": "تم مسح بيانات OSRA على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.",
   "appearanceTitle": "المظهر",
   "themeLabel": "نمط العرض",
   "appearanceDesc": "يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق OSRA فقط.",

@@ -399,6 +399,15 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
             const SizedBox(height: AppSpace.xs),
             Text(l10n.pairClaimBody(device),
                 key: const ValueKey('pairClaimBody')),
+            // Issue #81: the phone detected that OSRA's data was cleared on it (`pm clear`).
+            if (claim['dataCleared'] == true) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                l10n.pairClaimDataCleared,
+                key: const ValueKey('pairClaimDataCleared'),
+                style: TextStyle(color: context.tokens.danger),
+              ),
+            ],
             if (_decisionFailed) ...[
               const SizedBox(height: AppSpace.xs),
               Text(
