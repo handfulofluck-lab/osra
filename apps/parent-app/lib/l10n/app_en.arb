@@ -244,6 +244,7 @@
   },
   "commandRefusedLockScreen": "The lock can't hold on your child's phone: turn on OSRA's accessibility service there.",
   "commandRefusedWebFilter": "The web filter is not set up on your child's phone, so the internet was not paused.",
+  "commandRefusedWebFilterStart": "The internet pause couldn't start on your child's phone. Open OSRA there and try again.",
   "commandRefusedUnsupportedCommand": "This command needs a newer OSRA on your child's phone.",
   "commandRefusedNotSupported": "{command} isn't available on {device}: this phone or app version cannot do it, so nothing was sent.",
   "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},

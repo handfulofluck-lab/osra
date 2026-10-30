@@ -206,6 +206,17 @@ class PairingActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             val pad = (16 * resources.displayMetrics.density).toInt()
             setPadding(pad, pad, pad, pad)
+            // #440 follow-up: Android 15 is edge to edge at targetSdk 35; keep the title clear of the clock.
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+                val bars = insets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                        androidx.core.view.WindowInsetsCompat.Type.displayCutout() or
+                        androidx.core.view.WindowInsetsCompat.Type.ime(),
+                )
+                val p = SystemBarPadding.of(pad, bars.left, bars.top, bars.right, bars.bottom)
+                view.setPadding(p.left, p.top, p.right, p.bottom)
+                insets
+            }
         }
         setContentView(root)
         showLoading()
