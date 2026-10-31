@@ -363,17 +363,33 @@ class InstalledApp {
   final String label;
   final bool isSystem;
 
-  const InstalledApp({required this.packageId, required this.label, this.isSystem = false});
+  /// Issue #199 item 5: whether Android treats this package as essential (dialer, HOME, the agent).
+  ///
+  /// **Tri-state on purpose.** `true` means the phone reported it and the row must not accept a rule;
+  /// `false` means it reported it is not; **`null` means it has not reported** — an older agent, the iOS
+  /// agent, or a row written before the field existed. The picker treats `null` exactly as it did
+  /// before this field: selectable, with no label. A stale row must not claim either answer.
+  final bool? essential;
+
+  const InstalledApp({
+    required this.packageId,
+    required this.label,
+    this.isSystem = false,
+    this.essential,
+  });
 
   factory InstalledApp.fromJson(Map<String, dynamic> json) {
     final packageId = _str(json['packageId']);
     final label = _str(json['label']).trim();
+    final rawEssential = json['essential'];
     return InstalledApp(
       packageId: packageId,
       // The API already falls back to the package id; repeat it so a hand-written
       // fixture cannot render an empty row.
       label: label.isEmpty ? packageId : label,
       isSystem: _bool(json['isSystem']),
+      // Absent and explicit null both mean "not reported"; anything that is not a bool is not a claim.
+      essential: rawEssential is bool ? rawEssential : null,
     );
   }
 }

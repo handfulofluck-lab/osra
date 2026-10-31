@@ -55,8 +55,16 @@ describe("installed app inventory — agent write", () => {
     expect(prismaMock.deviceApp.deleteMany).toHaveBeenCalledWith({ where: { deviceId: "dev-1" } });
     expect(prismaMock.deviceApp.createMany).toHaveBeenCalledWith({
       data: [
-        { deviceId: "dev-1", packageId: PACKAGE, label: "Game", isSystem: false },
-        { deviceId: "dev-1", packageId: "com.android.settings", label: "com.android.settings", isSystem: true },
+        // #199: an older agent omits `essential`, and absent must mean null ("not reported"), never
+        // false — false would claim the dialer is not essential on every row written before this field.
+        { deviceId: "dev-1", packageId: PACKAGE, label: "Game", isSystem: false, essential: null },
+        {
+          deviceId: "dev-1",
+          packageId: "com.android.settings",
+          label: "com.android.settings",
+          isSystem: true,
+          essential: null,
+        },
       ],
     });
     expect(prismaMock.device.update).toHaveBeenCalledWith(
@@ -69,6 +77,37 @@ describe("installed app inventory — agent write", () => {
         }),
       }),
     );
+    await app.close();
+  });
+
+  it("#199: stores the device-computed essential flag, and an absent one stays null", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/apps",
+      headers: deviceHeader(app),
+      payload: {
+        version: 1,
+        apps: [
+          // The phone knows the dialer role; the parent and the server must not guess it.
+          { packageId: "com.google.android.dialer", label: "Phone", isSystem: true, essential: true },
+          { packageId: "com.example.browser", label: "Browser", isSystem: false, essential: false },
+          // An older agent: no field at all.
+          { packageId: "com.example.notes", label: "Notes", isSystem: false },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(prismaMock.deviceApp.createMany).toHaveBeenCalledWith({
+      data: [
+        { deviceId: "dev-1", packageId: "com.google.android.dialer", label: "Phone", isSystem: true, essential: true },
+        { deviceId: "dev-1", packageId: "com.example.browser", label: "Browser", isSystem: false, essential: false },
+        { deviceId: "dev-1", packageId: "com.example.notes", label: "Notes", isSystem: false, essential: null },
+      ],
+    });
     await app.close();
   });
 
@@ -226,7 +265,9 @@ describe("installed app inventory — parent read", () => {
     });
     expect(prismaMock.deviceApp.findMany).toHaveBeenCalledWith({
       where: { deviceId: "dev-1" },
-      select: { packageId: true, label: true, isSystem: true },
+      // #199: the parent app needs the device-computed flag to render "Always allowed (needed for calls
+      // and safety)"; null on the wire means "not reported".
+      select: { packageId: true, label: true, isSystem: true, essential: true },
       orderBy: [{ label: "asc" }, { packageId: "asc" }],
     });
     await app.close();

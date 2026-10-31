@@ -191,6 +191,16 @@ const InstalledAppSchema = z.object({
   packageId: z.string().trim().min(1).max(255).regex(APP_PACKAGE_ID),
   label: z.string().max(MAX_APP_LABEL_LENGTH),
   isSystem: z.boolean().default(false),
+  /**
+   * Issue #199 item 5: computed **on the phone** with `EssentialPackages.isEssential(packageId,
+   * PackageFacts)`, because only the device knows the OS roles (dialer, HOME). Optional on the wire so
+   * an older agent still posts a valid report; absent means "not reported", which the column stores as
+   * null and the parent renders as it does today.
+   *
+   * Display only: the server never enforces with it, and a parent request cannot set it (this route is
+   * device-only, `requireDeviceRole` + `requireOwnDevice`).
+   */
+  essential: z.boolean().optional(),
 });
 
 const InstalledAppsSchema = z.object({
@@ -201,14 +211,16 @@ const InstalledAppsSchema = z.object({
 /** Trim labels, fall back to the package id, and keep the first occurrence of a package (dedupe). */
 function normalizeInstalledApps(
   apps: Array<z.infer<typeof InstalledAppSchema>>,
-): Array<{ packageId: string; label: string; isSystem: boolean }> {
-  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean }>();
+): Array<{ packageId: string; label: string; isSystem: boolean; essential: boolean | null }> {
+  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean; essential: boolean | null }>();
   for (const app of apps) {
     if (seen.has(app.packageId)) continue;
     seen.set(app.packageId, {
       packageId: app.packageId,
       label: app.label.trim() || app.packageId,
       isSystem: app.isSystem,
+      // An older agent omits it: store null, which is "not reported", never "not essential".
+      essential: app.essential ?? null,
     });
   }
   return [...seen.values()];
@@ -534,7 +546,7 @@ export async function deviceRoutes(app: FastifyInstance) {
     const device = (req as unknown as { device: { appsReportedAt?: Date | null } }).device;
     const apps = await prisma.deviceApp.findMany({
       where: { deviceId: id },
-      select: { packageId: true, label: true, isSystem: true },
+      select: { packageId: true, label: true, isSystem: true, essential: true },
       orderBy: [{ label: "asc" }, { packageId: "asc" }],
     });
     return {

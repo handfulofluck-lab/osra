@@ -52,6 +52,13 @@ data class InstalledAppDto(
     val packageId: String,
     val label: String,
     val isSystem: Boolean,
+    /**
+     * Issue #199 item 5: whether Android treats this package as essential (dialer, HOME, the agent).
+     * Computed here with [com.familyshield.agent.enforcement.EssentialPackages.isEssential] and
+     * [com.familyshield.agent.enforcement.PackageFacts], because the phone is the only side that knows
+     * the OS roles. The parent shows it; nothing enforces with it.
+     */
+    val essential: Boolean,
 )
 
 /** Replace-wholesale inventory report for POST /v1/devices/<id>/apps (`version` is the contract). */

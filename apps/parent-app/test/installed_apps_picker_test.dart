@@ -239,4 +239,36 @@ void main() {
     // The dialog's ListTile and the rules screen behind it both stay inside 320 px.
     expect(drainExceptions(tester), isEmpty);
   });
+
+  /// Issue #199 item 5: an app the phone reported as essential is shown as "Always allowed (needed for
+  /// calls and safety)" and cannot be selected — a rule on the dialer would silently do nothing. A row
+  /// with **no** essential value (an older agent) keeps today's behaviour: selectable, package id shown.
+  testWidgets('an essential app cannot be selected, and an unreported one still can', (tester) async {
+    // The fixture reports the dialer as essential and says nothing about the browser.
+    final payload = installedAppsPayload(apps: [
+      {...installedAppJson('com.google.android.dialer', 'Phone'), 'essential': true},
+      installedAppJson('com.example.browser', 'Browser'),
+    ]);
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => payload,
+    });
+
+    await pumpRules(tester, api);
+    await openAppsTab(tester);
+    // The always-allowed block above grew (#172), so the picker button is below the fold at 800x600.
+    await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pickInstalledApp')));
+    await flushFakeHttp(tester);
+    await tester.pumpAndSettle();
+
+    // The essential row is labelled and disabled.
+    expect(find.text('Always allowed (needed for calls and safety)'), findsOneWidget);
+    final dialerRow = tester.widget<ListTile>(find.byKey(const ValueKey('installedApp-com.google.android.dialer')));
+    expect(dialerRow.enabled, isFalse);
+    final browserRow = tester.widget<ListTile>(find.byKey(const ValueKey('installedApp-com.example.browser')));
+    expect(browserRow.enabled, isTrue);
+    expect(find.text('com.example.browser'), findsOneWidget); // unreported: package id, as today
+  });
 }
