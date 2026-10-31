@@ -7,8 +7,9 @@
  * exposure was real until it was rotated — and a rotation does not stop the next one being written down.
  * This is the check that makes the next one cost a red run instead of an incident.
  *
- * **What counts as a finding:** a run of 4–8 digits within 30 characters of the word `PIN`, in either
- * order, in a text file under `docs/`, `scripts/` or `.github/`, or in the root `README.md`.
+ * **What counts as a finding:** a run of 4–8 digits within 16 characters of any `PIN` on the line, in
+ * either order, in a text file under `docs/`, `scripts/`, `.github/`, `infra/` or `CHANGELOG.d/`, or in
+ * the root `README.md`, `CHANGELOG.md` or `AGENTS.md`.
  *
  * **What does not:**
  * - `<app-PIN>`, `<device-PIN>` and any `<…>` placeholder — no digits, nothing to leak.
@@ -29,8 +30,8 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const SCAN_DIRS = ["docs", "scripts", ".github"];
-const SCAN_FILES = ["README.md"];
+const SCAN_DIRS = ["docs", "scripts", ".github", "infra", "CHANGELOG.d"];
+const SCAN_FILES = ["README.md", "CHANGELOG.md", "AGENTS.md"];
 
 /** `0000` is the refused desktop default the documentation has to name; it is not a credential. */
 const ALLOWED = new Set(["0000"]);
@@ -43,23 +44,27 @@ const PROXIMITY = 16;
  */
 const SAMPLE = ["48", "2613"].join("");
 // A standalone token: not part of an identifier like `ADR-0010` or `TR-09`, which share the shape.
-const DIGITS = /(?<![A-Za-z0-9_-])\d{4,8}(?![A-Za-z0-9_])/g;
-const WORD_PIN = /\bPINs?\b/i;
+// A date or a time is not a PIN either: `2026-10-23`, `10:15`.
+const DIGITS = /(?<![A-Za-z0-9_-]|\d[:./])\d{4,8}(?![A-Za-z0-9_]|[-:./]\d)/g;
+const WORD_PIN = /\bPINs?\b/gi;
 
 /** True when [line] publishes something that looks like a PIN. Pure, so the fixtures can call it. */
 export function pinFinding(line) {
-  const word = WORD_PIN.exec(line);
-  if (!word) return null;
-  const wordStart = word.index;
-  const wordEnd = word.index + word[0].length;
+  // Every `PIN` on the line counts, not only the first: "the PIN gate … the parent PIN <value>".
+  const words = [...line.matchAll(WORD_PIN)];
+  if (words.length === 0) return null;
   for (const match of line.matchAll(DIGITS)) {
     const digits = match[0];
     if (ALLOWED.has(digits)) continue;
     const at = match.index ?? 0;
-    // Character distance to the nearest edge of the word, so a value written before the word is caught
+    // Character distance to the nearest edge of a word, so a value written before the word is caught
     // as well as one after it, while an unrelated number a clause away is not.
-    const distance = at >= wordEnd ? at - wordEnd : Math.max(0, wordStart - (at + digits.length));
-    if (distance <= PROXIMITY) return digits;
+    for (const word of words) {
+      const wordStart = word.index ?? 0;
+      const wordEnd = wordStart + word[0].length;
+      const distance = at >= wordEnd ? at - wordEnd : Math.max(0, wordStart - (at + digits.length));
+      if (distance <= PROXIMITY) return digits;
+    }
   }
   return null;
 }
@@ -126,9 +131,12 @@ function runSelfTest() {
   const cases = [
     ["an actual PIN in prose", `the parent PIN ${SAMPLE} opens removal`, SAMPLE],
     ["a PIN on the other side of the word", `${SAMPLE} is the app PIN`, SAMPLE],
-    ["the old desktop default, named on purpose", "the old default 0000 is refused since #140", null],
+    ["a PIN after an earlier PIN on the same line", `the PIN gate covers removal; the parent PIN ${SAMPLE} opens it`, SAMPLE],
+    ["the old desktop default, named on purpose", "the old desktop PIN 0000 is refused since #140", null],
+    ["an identifier that shares the shape", "the PIN rule is ADR-0010, checked in TR-0909", null],
+    ["a date or a time next to the word", "the PIN gate passed on 2026-10-23 at 10:15", null],
     ["a placeholder rather than a value", "enter your PIN <app-PIN> at pairing", null],
-    ["digits far from the word", "TR-44 measured at 19:02 in test 2019 on port 3000", null],
+    ["digits far from the word", "the PIN gate held over the removal screens in test 2019", null],
     ["too short to be a PIN", "PIN 123 is not a PIN", null],
     ["too long to be a PIN", "PIN 123456789 is not a PIN", null],
     ["the word without digits", "the PIN gate is over the OS removal screens", null],

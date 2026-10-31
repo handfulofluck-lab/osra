@@ -13,7 +13,7 @@
   decision: a value after the word, a value before it, the refused default, a placeholder, and four
   negatives (digits a clause away, too short, too long, the word alone). A guard that is green because it
   is broken is the failure mode this repository has paid for before.
-- **Mutant, run before pushing:** a planted `The test family parent PIN 482613 …` line in `docs/TESTING.md`
+- **Mutant, run before pushing:** a planted `The test family parent PIN <six digits> …` line in `docs/TESTING.md`
   → `docs\TESTING.md:1235: a 6-digit number next to the word PIN (#151)`, exit 1; reverted → exit 0. The
   fixture value inside the script is composed (`["48","2613"].join("")`) so the guard does not flag itself.
 - **State of the repository at this commit:** the scan is clean — the five published values are already
