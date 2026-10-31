@@ -46,17 +46,9 @@ class RuleEngine {
         if (pausedInternet) return RuleRepository.Decision.BLOCK
 
         // 2. Routine windows: blockedApps / allowedApps restricted by day-of-week + time.
-        for (routine in ruleSet.routines) {
-            if (day !in routine.days) continue
-            if (!inWindow(time, routine.startTime, routine.endTime)) continue
-            // NOTE: an explicit allow-list membership wins over blockedApps inside the same
-            // routine — a contradictory config resolves to the parent's explicit allow.
-            if (packageId in routine.allowedApps) continue
-            if (packageId in routine.blockedApps) return RuleRepository.Decision.BLOCK
-            if (routine.allowedApps.isNotEmpty()) {
-                return RuleRepository.Decision.BLOCK
-            }
-        }
+        // Issue #473: the loop lives in [routineWindow] so the reason it returns and the decision it
+        // makes cannot drift apart.
+        routineWindow(ruleSet, packageId, local)?.let { return RuleRepository.Decision.BLOCK }
 
         // 2. App-level rules.
         val appRule = ruleSet.appRules.firstOrNull { it.packageId == packageId }
@@ -92,19 +84,70 @@ class RuleEngine {
             if (minutesUsedToday.values.sum() >= limit) return RuleRepository.Decision.TIME_LIMIT_REACHED
         }
 
-        // 5. Bedtime window (applies every day).
-        if (inWindow(time, screenTime.bedtimeStart, screenTime.bedtimeEnd)) {
-            return RuleRepository.Decision.BLOCK
-        }
+        // 5-6. Bedtime (every day), then school hours (their configured days). Issue #473: both live in
+        // [screenTimeWindow], which returns the window so the block screen can name it.
+        screenTimeWindow(ruleSet, local)?.let { return RuleRepository.Decision.BLOCK }
 
-        // 6. School-hours window (restricted to its configured days).
+        return RuleRepository.Decision.ALLOW
+    }
+
+    /**
+     * Issue #473: the routine window holding [packageId] at [local], or null.
+     *
+     * The precedence inside one routine is the one `evaluate` has always used: an explicit allow-list
+     * membership wins over `blockedApps`, a `blockedApps` entry blocks, and a routine that has an
+     * allow-list at all blocks everything it does not name. Extracted rather than copied: `evaluate`
+     * calls this, so the decision and the reason cannot disagree.
+     */
+    private fun routineWindow(ruleSet: RuleSetDto, packageId: String, local: LocalDateTime): WindowReason? {
+        val day = local.dayOfWeek.value
+        val time = local.toLocalTime()
+        for (routine in ruleSet.routines) {
+            if (day !in routine.days) continue
+            if (!inWindow(time, routine.startTime, routine.endTime)) continue
+            if (packageId in routine.allowedApps) continue
+            if (packageId in routine.blockedApps) {
+                return WindowReason(WindowKind.ROUTINE, routine.name, routine.endTime)
+            }
+            if (routine.allowedApps.isNotEmpty()) {
+                return WindowReason(WindowKind.ROUTINE, routine.name, routine.endTime)
+            }
+        }
+        return null
+    }
+
+    /** Issue #473: bedtime (every day), then school hours (their configured days). */
+    private fun screenTimeWindow(ruleSet: RuleSetDto, local: LocalDateTime): WindowReason? {
+        val screenTime = ruleSet.screenTime
+        val time = local.toLocalTime()
+        val day = local.dayOfWeek.value
+        if (inWindow(time, screenTime.bedtimeStart, screenTime.bedtimeEnd)) {
+            return WindowReason(WindowKind.BEDTIME, null, screenTime.bedtimeEnd)
+        }
         if (day in screenTime.schoolHours.days &&
             inWindow(time, screenTime.schoolHours.start, screenTime.schoolHours.end)
         ) {
-            return RuleRepository.Decision.BLOCK
+            return WindowReason(WindowKind.SCHOOL, null, screenTime.schoolHours.end)
         }
+        return null
+    }
 
-        return RuleRepository.Decision.ALLOW
+    /**
+     * Issue #473: which window, if any, is holding [packageId] shut right now — the same question as
+     * [evaluate], answered with the reason rather than the decision.
+     *
+     * The short-circuits are the point, and they are the ones [evaluate] takes, in order: an
+     * always-allowed app, a paused internet, a routine window, a per-app rule of any action, the
+     * blocklist, then bedtime and school hours. **Only the two window steps produce a reason.** Every
+     * other block is the app's own rule, and calling that "School hours" would be a lie on a child's
+     * screen — the ordering point #456's review settled for the parent app.
+     */
+    fun windowFor(ruleSet: RuleSetDto, packageId: String, now: ZonedDateTime = ZonedDateTime.now()): WindowReason? {
+        if (packageId in ruleSet.alwaysAllowedApps) return null
+        val local = now.toLocalDateTime()
+        routineWindow(ruleSet, packageId, local)?.let { return it }
+        if (ruleSet.appRules.any { it.packageId == packageId }) return null
+        return screenTimeWindow(ruleSet, local)
     }
 
     /** Returns true when [time] falls in [[start], [end]); windows wrapping midnight are supported. */
