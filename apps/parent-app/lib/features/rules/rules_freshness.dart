@@ -16,6 +16,7 @@ import '../../api/models.dart';
 bool rulesAreBehind(Child child) {
   final rules = child.rulesVersion;
   final applied = child.appliedRulesVersion;
-  if (rules == null || applied == null) return false;
+  if (rules == null) return false;
+  if (applied == null) return true;
   return applied < rules;
 }
