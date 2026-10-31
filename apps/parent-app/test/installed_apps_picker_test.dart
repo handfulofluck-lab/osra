@@ -137,6 +137,10 @@ void main() {
     await pumpRules(tester, api);
     await openAppsTab(tester);
 
+    // #172 grew the always-allowed block above the rule list, so these sit below the fold on the
+    // 800x600 test surface; drag the list rather than shrink the assertions.
+    await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
+    await tester.pumpAndSettle();
     expect(find.text("Choose from child's apps"), findsOneWidget);
     expect(find.text('Add app rule'), findsOneWidget);
 

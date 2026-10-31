@@ -2018,6 +2018,18 @@ abstract class AppLocalizations {
   /// **'These apps stay open during bedtime, school time, pause and routines.'**
   String get alwaysAllowedDesc;
 
+  /// No description provided for @addPaymentApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a payment app'**
+  String get addPaymentApp;
+
+  /// #172: the decision is that OS payment surfaces stay blocked during bedtime (ADR-0035). This is the sentence that makes the decision visible, beside the control that fixes it.
+  ///
+  /// In en, this message translates to:
+  /// **'Bedtime also blocks payment apps such as Samsung Pay or Google Wallet. If your family needs one at night, add it to Always allowed below.'**
+  String get bedtimeBlocksPayments;
+
   /// No description provided for @noAlwaysAllowedApps.
   ///
   /// In en, this message translates to:

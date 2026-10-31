@@ -536,6 +536,11 @@
   "off": "Off",
   "alwaysAllowed": "Always allowed",
   "alwaysAllowedDesc": "These apps stay open during bedtime, school time, pause and routines.",
+  "addPaymentApp": "Add a payment app",
+  "bedtimeBlocksPayments": "Bedtime also blocks payment apps such as Samsung Pay or Google Wallet. If your family needs one at night, add it to Always allowed below.",
+  "@bedtimeBlocksPayments": {
+    "description": "#172: the decision is that OS payment surfaces stay blocked during bedtime (ADR-0035). This is the sentence that makes the decision visible, beside the control that fixes it."
+  },
   "noAlwaysAllowedApps": "No always-allowed apps yet",
   "addApp": "Add app",
   "addAppRule": "Add app rule",

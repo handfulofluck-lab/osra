@@ -1134,6 +1134,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'These apps stay open during bedtime, school time, pause and routines.';
 
   @override
+  String get addPaymentApp => 'Add a payment app';
+
+  @override
+  String get bedtimeBlocksPayments =>
+      'Bedtime also blocks payment apps such as Samsung Pay or Google Wallet. If your family needs one at night, add it to Always allowed below.';
+
+  @override
   String get noAlwaysAllowedApps => 'No always-allowed apps yet';
 
   @override

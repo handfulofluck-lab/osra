@@ -1177,6 +1177,13 @@ class AppLocalizationsAr extends AppLocalizations {
       'تظل هذه التطبيقات مفتوحة أثناء وقت النوم والساعات المدرسية والإيقاف والروتين.';
 
   @override
+  String get addPaymentApp => 'إضافة تطبيق دفع';
+
+  @override
+  String get bedtimeBlocksPayments =>
+      'يحجب وقت النوم أيضًا تطبيقات الدفع مثل Samsung Pay أو Google Wallet. إذا كانت عائلتك تحتاج أحدها ليلًا، أضفه إلى «المسموح به دائمًا» أدناه.';
+
+  @override
   String get noAlwaysAllowedApps => 'لا توجد تطبيقات مسموح بها دائمًا بعد';
 
   @override
