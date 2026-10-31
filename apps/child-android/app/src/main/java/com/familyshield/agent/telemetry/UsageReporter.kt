@@ -152,7 +152,19 @@ class UsageReporter @Inject constructor(
         // lastSeen/battery fresh for the parent app.
         try {
             val grant = currentLocationGrant()
-            api.postTelemetry(deviceId, TelemetryDto(perAppMinutes = perApp, totalMinutes = total, unlockCount = unlocks, batteryPct = currentBatteryPct(), locationGrant = grant))
+            // Issue #475: the applied rules version rides every telemetry upload, beside the grant report.
+            val appliedRules = settings.appliedRulesVersion()
+            api.postTelemetry(
+                deviceId,
+                TelemetryDto(
+                    perAppMinutes = perApp,
+                    totalMinutes = total,
+                    unlockCount = unlocks,
+                    batteryPct = currentBatteryPct(),
+                    locationGrant = grant,
+                    appliedRulesVersion = appliedRules,
+                ),
+            )
             // Issue #221: the periodic upload also counts as a report, so the expedited path does not
             // re-send the same value on the next resume.
             settings.recordReportedLocationGrant(grant)
@@ -235,6 +247,7 @@ class UsageReporter @Inject constructor(
                         unlockCount = 0,
                         batteryPct = currentBatteryPct(),
                         locationGrant = grant,
+                        appliedRulesVersion = settings.appliedRulesVersion(),
                     ),
                 )
             },

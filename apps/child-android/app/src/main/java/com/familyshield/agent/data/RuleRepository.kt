@@ -252,7 +252,13 @@ class RuleRepository @Inject constructor(
             }
             consent.onPollStatus(200)
             cached = updated
-            runCatching { settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated)) }
+            // Issue #475: the applied version moves only when the rules were actually PERSISTED. A failed
+            // write with the version advanced would tell the parent the phone has rules it will lose on the
+            // next process start — the same class of lie the feature exists to prevent.
+            val persisted = runCatching {
+                settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
+            }.isSuccess
+            if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }
             updated
