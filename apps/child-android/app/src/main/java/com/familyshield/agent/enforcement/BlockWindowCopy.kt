@@ -15,8 +15,22 @@ import com.familyshield.agent.data.WindowReason
  * **Only windows appear.** A pause, an explicit `block`, a `time_limit` and the blocklist arrive with no
  * [WindowReason] (`RuleEngine.evaluateWithReason` answers null for each), so this returns null and the
  * screen keeps today's copy. Naming a window there would be a promise the rules do not keep.
+ *
+ * **Each value is direction-isolated (#506).** On an Arabic phone the rendered sentence is RTL, but a
+ * routine's name is whatever the family typed — often English. Without isolation the Unicode bidi
+ * algorithm lets that name and the digits after it trade places, and «محجوب بسبب Homework حتى 23:50»
+ * came out as «محجوب بسبب Homework 23:50 حتى» on the Flip4. Wrapping **both** the label and the time in
+ * FSI…PDI (U+2068 / U+2069) makes each one a self-contained run whose direction comes from its own first
+ * strong character, so the template's order survives whatever the name is. FSI rather than LRI/RLI
+ * because the direction is not known here: it belongs to the family's text, not to us.
+ *
+ * Done by hand rather than with `android.text.BidiFormatter` on purpose: this object stays pure so the
+ * rows in `BlockWindowCopyTest` pin the exact emitted string on the JVM, with no Android runtime.
  */
 object BlockWindowCopy {
+
+    private const val FSI = '\u2068'   // FIRST STRONG ISOLATE
+    private const val PDI = '\u2069'   // POP DIRECTIONAL ISOLATE
 
     /**
      * The sentence for [window], or null when nothing should be added.
@@ -37,6 +51,9 @@ object BlockWindowCopy {
             WindowKind.BEDTIME -> bedtime
             WindowKind.SCHOOL -> schoolHours
         }
-        return String.format(template, label, window.endsAt)
+        return String.format(template, isolate(label), isolate(window.endsAt))
     }
+
+    /** A self-contained run: its direction comes from its own first strong character, not the sentence's. */
+    private fun isolate(value: String): String = "$FSI$value$PDI"
 }
