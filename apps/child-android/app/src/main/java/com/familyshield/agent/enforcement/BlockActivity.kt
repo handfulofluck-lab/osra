@@ -1,6 +1,9 @@
 package com.familyshield.agent.enforcement
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -30,9 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
+import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.dto.AlertDto
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -108,6 +113,41 @@ class BlockActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Issue #488: a block screen left open across an unlink kept saying the app was blocked, on a phone no
+     * family manages any more. Two paths, the #479 shape:
+     * - **while the screen is started** this receiver fires on [DeviceUnlinker.ACTION_UNLINKED];
+     * - **on return from the background** [onResume] finds the phone unpaired, because the receiver is
+     *   unregistered in `onStop` and would have missed the broadcast.
+     */
+    private val unlinkedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
+            if (!settings.isPairedSync()) finish()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(
+            this,
+            unlinkedReceiver,
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(unlinkedReceiver) }
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Issue #488: the unlink happened while this screen was in the background.
+        if (!settings.isPairedSync()) finish()
     }
 
     /**

@@ -1,7 +1,10 @@
 package com.familyshield.agent.commands
 
 import android.app.KeyguardManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -24,9 +27,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.familyshield.agent.enforcement.KeyguardPolicy
 import com.familyshield.agent.enforcement.LockScreenPolicy
 import com.familyshield.agent.enforcement.LockState
+import com.familyshield.agent.network.DeviceUnlinker
 
 /**
  * Full-screen overlay used by CommandDispatcher. MODE_LOCKED shows "device locked by your
@@ -62,8 +67,27 @@ class LockActivity : ComponentActivity() {
         applyMode(intent)
     }
 
+    /**
+     * Issue #488: an overlay left open across an unlink kept saying the device was locked. The unlink
+     * clears [LockState] before it announces itself, so the receiver re-reads it rather than trusting the
+     * broadcast. The background path needs nothing new: [onResume] already finishes when [LockState]
+     * no longer holds a locking mode.
+     */
+    private val unlinkedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
+            if (!LockState.isActive(this@LockActivity)) finish()
+        }
+    }
+
     override fun onStart() {
         super.onStart()
+        ContextCompat.registerReceiver(
+            this,
+            unlinkedReceiver,
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         // Issue #233 review (F1): our own visible window is what lets Android start this activity
         // from the background (BAL_ALLOW_VISIBLE_WINDOW), so CommandDispatcher checks this flag
         // before launching an unlock. Cleared in onStop: an activity that is no longer visible is
@@ -73,6 +97,7 @@ class LockActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        runCatching { unregisterReceiver(unlinkedReceiver) }
         super.onStop()
         onStoppedVisible()
     }
