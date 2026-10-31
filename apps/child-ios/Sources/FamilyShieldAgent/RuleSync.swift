@@ -160,6 +160,9 @@ public enum RuleStore {
     }
 
     public static func allowedApps() -> [String] { defaults?.stringArray(forKey: Keys.allowedApps) ?? [] }
+    public static func blockedApps() -> [String] { defaults?.stringArray(forKey: Keys.blockedApps) ?? [] }
+    public static func bedtimeStart() -> String? { defaults?.string(forKey: Keys.bedtimeStart) }
+    public static func bedtimeEnd() -> String? { defaults?.string(forKey: Keys.bedtimeEnd) }
     public static func alwaysAllowedApps() -> [String] { defaults?.stringArray(forKey: Keys.alwaysAllowedApps) ?? [] }
 
     /// Records the bedtime or routine activities the system refused to monitor, in one place: the parent
