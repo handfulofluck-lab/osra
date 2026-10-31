@@ -64,6 +64,45 @@ class AppliedRulesVersionWiringTest {
         )
     }
 
+    @Test
+    fun `forgetRules drops the applied version with the rules`() {
+        // #500 review: the cached rules and the version describing them are one fact. Keeping the version
+        // after the rules are gone leaves the phone claiming an apply it cannot back, and on a re-pair to
+        // another child that stale number is *below* what the server issued — so the server stores it and
+        // the parent reads "not received yet" for a change this phone never had.
+        val body = functionBody(settings, "forgetRules")
+        assertTrue("forgetRules must drop the cached rules", body.contains("it.remove(KEY_RULES_JSON)"))
+        assertTrue(
+            "and the applied version with them",
+            body.contains("it.remove(KEY_APPLIED_RULES_VERSION)"),
+        )
+    }
+
+    @Test
+    fun `clearPairing drops the applied version`() {
+        // #500 review: a re-pair is a new device identity. The rules stay — a same-family re-pair keeps
+        // enforcing them — so only the version goes, and reporting null reads as "never reported", not as
+        // "behind". Scoped to this body so the assertion cannot be satisfied by `forgetRules` above.
+        val body = functionBody(settings, "clearPairing")
+        assertTrue(
+            "clearPairing must forget which ruleset this pairing applied",
+            body.contains("it.remove(KEY_APPLIED_RULES_VERSION)"),
+        )
+        assertFalse(
+            "clearPairing is not forgetRules — the cached rules stay",
+            body.contains("it.remove(KEY_RULES_JSON)"),
+        )
+    }
+
+    /** One `suspend fun <name>` body, so a row cannot be satisfied by a line that lives elsewhere. */
+    private fun functionBody(source: String, name: String): String {
+        val start = source.indexOf("suspend fun $name(")
+        assertTrue("$name must exist", start > 0)
+        val end = source.indexOf("\n    }", start)
+        assertTrue("$name must have a body", end > start)
+        return source.substring(start, end)
+    }
+
     private fun sourceFile(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null) {

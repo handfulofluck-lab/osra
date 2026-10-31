@@ -10,9 +10,16 @@
   stores as null and the parent renders as no warning).
 - `AgentSettings` gains `saveAppliedRulesVersion` / `appliedRulesVersion`; the value survives a restart, so a
   phone that applied version 7 yesterday reports 7 before its first refresh today.
-- Rows: `AppliedRulesVersionWiringTest` (3) — the save order, the one writer, the persisted guard, the DTO
-  field, and both upload paths. Mutants run: dropping the `if (persisted)` guard reddens the ordering row;
-  dropping the field from one upload path reddens the "every upload carries it" row.
+- **The version is dropped when its rules are** (#500 review): `forgetRules()` removes it beside the cached
+  ruleset, and `clearPairing()` removes it on a re-pair while keeping the rules a same-family re-pair still
+  enforces. Left behind, a phone re-paired to another child would report the previous child's number, and
+  because the server stores any version not above the one it issued, the parent would read "not received
+  yet" for a change this phone never had — a false warning pointing the wrong way.
+- Rows: `AppliedRulesVersionWiringTest` (5) — the save order, the one writer, the persisted guard, the DTO
+  field, both upload paths, and the two reset paths (each scoped to its own function body, so `forgetRules`
+  cannot satisfy the `clearPairing` row). Mutants run: dropping the `if (persisted)` guard reddens the
+  ordering row; dropping the field from one upload path reddens the "every upload carries it" row; removing
+  either `it.remove(KEY_APPLIED_RULES_VERSION)` reddens its own reset row and nothing else.
 - **Also in this PR, as you asked:** the two stale `[RuleEngine.windowFor]` KDoc references from #496
   (`WindowReason.kt` and `RuleEngineWindowReasonTest.kt`) now name `evaluateWithReason`.
 - **Not in it:** the parent app's "hasn't picked this up yet" line and its Arabic — that is PR 3.

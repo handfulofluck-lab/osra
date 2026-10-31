@@ -106,9 +106,17 @@ class AgentSettings @Inject constructor(
     /**
      * Issue #465: drop the cached rule set when this phone is no longer linked to a family. The last
      * rules the server sent are the ones a deleted family's phone would otherwise keep enforcing.
+     *
+     * Issue #475: the applied version goes with it. Keeping it would leave this phone claiming it applied
+     * a ruleset it no longer holds, and on a re-pair to another child the parent would read that stale
+     * number — below what the server issued, so the server stores it and the app shows "not received yet"
+     * for a change the phone never had (#500 review).
      */
     suspend fun forgetRules() {
-        store.edit { it.remove(KEY_RULES_JSON) }
+        store.edit {
+            it.remove(KEY_RULES_JSON)
+            it.remove(KEY_APPLIED_RULES_VERSION)
+        }
     }
 
     /** Persists the merged default-category blocklist (packageId -> category JSON). */
@@ -200,6 +208,11 @@ class AgentSettings @Inject constructor(
             // Issue #221: a re-pair is a new device identity, so the next grant report is a first
             // report rather than a change the expedited upload should skip.
             it.remove(KEY_REPORTED_LOCATION_GRANT)
+            // Issue #475: the applied rules version belongs to the pairing that applied it. Left behind, a
+            // phone re-paired to another child would report the previous child's number, and the server
+            // stores any version not above the one it issued — so the parent would see "not received yet"
+            // for a change this phone never had (#500 review).
+            it.remove(KEY_APPLIED_RULES_VERSION)
             // Issue #225: after a re-pair the next accessibility/overlay check is a first observation again.
             it.remove(KEY_ACCESSIBILITY_WAS_ENABLED)
             it.remove(KEY_OVERLAY_WAS_GRANTED)
