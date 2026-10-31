@@ -2,6 +2,7 @@ package com.familyshield.agent
 
 import com.familyshield.agent.data.RuleEngine
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.data.Verdict
 import com.familyshield.agent.data.RuleRepository.Decision
 import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.EssentialPackages
@@ -214,7 +215,7 @@ class MultiWindowCoverageTest {
             VisibleBlockStep.decide(
                 snapshot,
                 snapshot.activePackage,
-                evaluate = { decide(it, facts) },
+                evaluate = { Verdict(decide(it, facts)) },
                 isEssential = { EssentialPackages.isEssential(it, facts) },
                 policy = policy,
                 nowMs = nowMs,

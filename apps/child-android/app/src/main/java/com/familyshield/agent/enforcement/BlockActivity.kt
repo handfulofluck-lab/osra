@@ -1,5 +1,9 @@
 package com.familyshield.agent.enforcement
 
+import com.familyshield.agent.R
+import com.familyshield.agent.data.WindowKind
+import com.familyshield.agent.data.WindowReason
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -30,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -106,6 +111,7 @@ class BlockActivity : ComponentActivity() {
                         BlockScreen(
                             appLabel = appLabel,
                             timeLimit = request.timeLimit,
+                            window = request.window,
                             onRequestAccess = { requestAccess(session.requestAccessPackage(), request.reason) },
                             onExit = { goHome() },
                         )
@@ -161,7 +167,11 @@ class BlockActivity : ComponentActivity() {
     }
 
     private fun applyIntent(intent: Intent) {
-        session.apply(intent.getStringExtra(EXTRA_PACKAGE), intent.getStringExtra(EXTRA_REASON))
+        session.apply(
+            intent.getStringExtra(EXTRA_PACKAGE),
+            intent.getStringExtra(EXTRA_REASON),
+            windowFrom(intent),
+        )
     }
 
     /** The app's user-facing name, or null when the OS cannot resolve it (the package id is then shown). */
@@ -207,6 +217,14 @@ class BlockActivity : ComponentActivity() {
         /** Intent extra: block reason (REASON_BLOCKED or REASON_TIME_LIMIT). */
         const val EXTRA_REASON: String = "reason"
 
+        /**
+         * Issue #473: the window that fired, when there is one. Absent means the block came from the
+         * app's own rule (or a pause, or the blocklist) and the screen keeps its existing copy.
+         */
+        const val EXTRA_WINDOW_KIND: String = "window_kind"
+        const val EXTRA_WINDOW_NAME: String = "window_name"
+        const val EXTRA_WINDOW_ENDS: String = "window_ends"
+
         /** Reason value: the app is blocked by a parent rule. */
         const val REASON_BLOCKED: String = "blocked"
 
@@ -215,10 +233,25 @@ class BlockActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Issue #473: the window the launching intent named, or null when it named none.
+ *
+ * A kind the app does not know (a newer agent's, a typo) reads as null, so the screen shows today's copy
+ * rather than half a sentence. The ends time is required for the same reason: a window with no end cannot
+ * be described.
+ */
+private fun windowFrom(intent: Intent): WindowReason? {
+    val kind = intent.getStringExtra(BlockActivity.EXTRA_WINDOW_KIND) ?: return null
+    val ends = intent.getStringExtra(BlockActivity.EXTRA_WINDOW_ENDS) ?: return null
+    val parsed = runCatching { WindowKind.valueOf(kind) }.getOrNull() ?: return null
+    return WindowReason(parsed, intent.getStringExtra(BlockActivity.EXTRA_WINDOW_NAME), ends)
+}
+
 @Composable
 private fun BlockScreen(
     appLabel: String,
     timeLimit: Boolean,
+    window: WindowReason?,
     onRequestAccess: () -> Unit,
     onExit: () -> Unit,
 ) {
@@ -238,6 +271,18 @@ private fun BlockScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = appLabel, color = Color(0xFFAEB0B8), textAlign = TextAlign.Center)
+        // #473: name the window, so a child in a Study routine and one kept out of school hours stop
+        // reading the same sentence. Absent for every other reason, and then nothing is added.
+        // #473 review: the words come from resources, so an Arabic phone can show Arabic.
+        BlockWindowCopy.line(
+            window = window,
+            bedtime = stringResource(R.string.block_window_bedtime),
+            schoolHours = stringResource(R.string.block_window_school),
+            template = stringResource(R.string.block_window_line),
+        )?.let { line ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = line, color = Color(0xFFAEB0B8), textAlign = TextAlign.Center)
+        }
         Spacer(modifier = Modifier.height(40.dp))
         if (sent) {
             Text(text = "Request sent to your parent", color = Color(0xFF9CCC65))

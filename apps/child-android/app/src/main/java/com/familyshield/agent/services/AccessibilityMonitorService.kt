@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.data.RuleRepository
+import com.familyshield.agent.data.WindowReason
 import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.BypassAlertFloor
@@ -211,11 +212,13 @@ class AccessibilityMonitorService : AccessibilityService() {
     /**
      * Issue #460: show the screen a blocked package gets, once it is time to show it.
      */
-    private fun raiseBlockOrTimeLimit(pkg: String, blocked: Boolean) {
+    private fun raiseBlockOrTimeLimit(pkg: String, blocked: Boolean, window: WindowReason? = null) {
         // The policy owns the spacing (1 s); AppBlocker's own 2 s debounce would halve it.
         blocker.clearDebounce(pkg)
         media.onRaise(pkg) // #444 C4: pause the blocked app's media when its screen goes up
-        if (blocked) blocker.showBlockScreen(pkg) else blocker.showTimeLimitScreen(pkg)
+        // Issue #473: the screen names the window when one fired; a time limit and every other block
+        // pass no window and keep the existing copy.
+        if (blocked) blocker.showBlockScreen(pkg, window) else blocker.showTimeLimitScreen(pkg)
     }
 
     /**
@@ -230,7 +233,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             nowMs = System.currentTimeMillis(),
         ) ?: return
         main.removeCallbacks(deferredRaise)
-        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked)
+        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked, deferred.window)
     }
 
     /**
@@ -250,7 +253,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             launcherFront = true,
             nowMs = System.currentTimeMillis(),
         ) ?: return
-        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked)
+        raiseBlockOrTimeLimit(deferred.pkg, deferred.blocked, deferred.window)
     }
 
     /**
@@ -276,7 +279,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         val found = VisibleBlockStep.decide(
             snapshot,
             active,
-            evaluate = rules::evaluate,
+            evaluate = rules::verdict,
             isEssential = { EssentialPackages.isEssential(it, packageFacts) },
             policy = blockRaisePolicy,
             nowMs = System.currentTimeMillis(),
@@ -285,7 +288,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             pipCover.update(null)
             return
         }
-        val (pkg, decision, step) = found
+        val (pkg, verdict, step) = found
+        val decision = verdict.decision
         val layout = snapshot.layout
         val pipWindow = snapshot.windows.firstOrNull { it.inPictureInPicture && it.packageName == pkg }
         pipCover.update(pipWindow?.bounds)
@@ -298,11 +302,11 @@ class AccessibilityMonitorService : AccessibilityService() {
                 // the launcher landed on top of the block screen — 4 of 4 on the Flip4, and the child
                 // saw no "blocked by your parent" screen at all. The raise now waits for the launcher's
                 // own window event, with a fallback for launchers that never report one.
-                blockRaisePolicy.noteHomeSent(pkg, blocked, System.currentTimeMillis())
+                blockRaisePolicy.noteHomeSent(pkg, blocked, System.currentTimeMillis(), verdict.reason)
                 main.removeCallbacks(deferredRaise)
                 main.postDelayed(deferredRaise, BlockRaisePolicy.DEFAULT_HOME_FALLBACK_MS)
             } else {
-                raiseBlockOrTimeLimit(pkg, blocked)
+                raiseBlockOrTimeLimit(pkg, blocked, verdict.reason)
             }
         }
         if (step.reportBypass) {

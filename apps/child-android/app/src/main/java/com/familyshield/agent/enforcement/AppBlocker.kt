@@ -1,5 +1,6 @@
 package com.familyshield.agent.enforcement
 
+import com.familyshield.agent.data.WindowReason
 import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,8 +24,11 @@ class AppBlocker @Inject constructor(
     private val lock = Any()
     private val lastShownMs = HashMap<String, Long>()
 
-    /** Shows the "blocked by your parent" screen for [pkg]. */
-    fun showBlockScreen(pkg: String) = show(pkg, BlockActivity.REASON_BLOCKED)
+    /**
+     * Shows the "blocked by your parent" screen for [pkg], naming [window] when the block came from a
+     * routine, bedtime or school hours (#473). A null window keeps the screen exactly as it was.
+     */
+    fun showBlockScreen(pkg: String, window: WindowReason? = null) = show(pkg, BlockActivity.REASON_BLOCKED, window)
 
     /** Shows the "daily limit reached" screen for [pkg]. */
     fun showTimeLimitScreen(pkg: String) = show(pkg, BlockActivity.REASON_TIME_LIMIT)
@@ -36,7 +40,7 @@ class AppBlocker @Inject constructor(
         }
     }
 
-    private fun show(pkg: String, reason: String) {
+    private fun show(pkg: String, reason: String, window: WindowReason? = null) {
         if (pkg.isBlank() || pkg == context.packageName) return
         // Issue #165: an essential screen gets no overlay at all — not the launcher, the system UI or
         // the dialer/emergency surfaces, whatever rule answered BLOCK. The decision path already
@@ -61,6 +65,13 @@ class AppBlocker @Inject constructor(
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .putExtra(BlockActivity.EXTRA_PACKAGE, pkg)
             .putExtra(BlockActivity.EXTRA_REASON, reason)
+        // Issue #473: the extras exist only when a window fired. An older screen that never reads them
+        // is unaffected, and the screen shows today's copy when they are absent.
+        if (window != null) {
+            intent.putExtra(BlockActivity.EXTRA_WINDOW_KIND, window.kind.name)
+            intent.putExtra(BlockActivity.EXTRA_WINDOW_ENDS, window.endsAt)
+            window.name?.let { intent.putExtra(BlockActivity.EXTRA_WINDOW_NAME, it) }
+        }
         runCatching { context.startActivity(intent) }
     }
 

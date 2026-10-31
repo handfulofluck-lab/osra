@@ -1,5 +1,7 @@
 package com.familyshield.agent.enforcement
 
+import com.familyshield.agent.data.WindowReason
+
 /**
  * The block currently on screen (issue #217). [BlockActivity] is `launchMode="singleTask"`, so a second
  * block reuses the instance; this holder is what `onNewIntent` updates. Reading the intent once in
@@ -9,6 +11,12 @@ package com.familyshield.agent.enforcement
 internal data class BlockRequest(
     val packageId: String = "",
     val reason: String = BlockActivity.REASON_BLOCKED,
+    /**
+     * Issue #473: the window that fired, when one did. Part of the request rather than of the screen's
+     * local state, because `BlockActivity` is `singleTask` — a second block reuses the instance, and a
+     * stale window from the previous app would be the #217 bug again.
+     */
+    val window: WindowReason? = null,
 ) {
     val timeLimit: Boolean
         get() = reason == BlockActivity.REASON_TIME_LIMIT
@@ -33,8 +41,8 @@ internal class BlockSession(
         private set
 
     /** Applies the extras of the intent that is currently on screen, replacing any previous block. */
-    fun apply(packageId: String?, reason: String?) {
-        request = BlockRequest(packageId.orEmpty(), reason ?: BlockActivity.REASON_BLOCKED)
+    fun apply(packageId: String?, reason: String?, window: WindowReason? = null) {
+        request = BlockRequest(packageId.orEmpty(), reason ?: BlockActivity.REASON_BLOCKED, window)
         appLabel = if (request.packageId.isBlank()) {
             ""
         } else {
