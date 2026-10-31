@@ -108,6 +108,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (alert.body.isNotEmpty) Text(alert.body),
+                // #444: the agent cannot end another app's VoIP call, so this alert must say the call
+                // kept going rather than let the parent assume the block ended it. Only for the call
+                // layout: a split-screen or PiP bypass already reads correctly from the body.
+                if (alert.category == 'tamper' &&
+                    alert.metadata['type']?.toString() == 'block_bypass' &&
+                    alert.metadata['layout']?.toString() == 'call') ...[
+                  const SizedBox(height: AppSpace.sm),
+                  Text(
+                    l10n.alertCallBypassNote,
+                    key: const ValueKey('alert-call-bypass-note'),
+                    style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(dialogContext).colorScheme.error,
+                        ),
+                  ),
+                ],
                 const SizedBox(height: AppSpace.sm),
                 Text('${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
                     '${l10n.severityLabel(l10n.severityName(alert.severity))}'),

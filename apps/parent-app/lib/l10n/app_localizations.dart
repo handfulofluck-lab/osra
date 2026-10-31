@@ -4700,6 +4700,12 @@ abstract class AppLocalizations {
   /// **'An app got around the block'**
   String get alertTitleBlockBypass;
 
+  /// #444: shown in the alert dialog when a block_bypass alert carries metadata.layout = call. The agent cannot end another app's VoIP call; this says so rather than promising silence.
+  ///
+  /// In en, this message translates to:
+  /// **'The call app was blocked, but its call kept going under the block screen. OSRA can\'t end another app\'s call, so the screen stays blocked until the call ends.'**
+  String get alertCallBypassNote;
+
   /// No description provided for @alertTitleDataCleared.
   ///
   /// In en, this message translates to:

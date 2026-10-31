@@ -2826,6 +2826,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTitleBlockBypass => 'An app got around the block';
 
   @override
+  String get alertCallBypassNote =>
+      'The call app was blocked, but its call kept going under the block screen. OSRA can\'t end another app\'s call, so the screen stays blocked until the call ends.';
+
+  @override
   String get alertTitleDataCleared => 'OSRA\'s data was cleared on a phone';
 
   @override
