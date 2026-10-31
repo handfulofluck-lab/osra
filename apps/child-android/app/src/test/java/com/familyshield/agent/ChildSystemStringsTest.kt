@@ -1,0 +1,73 @@
+package com.familyshield.agent
+
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.w3c.dom.Element
+
+/**
+ * #480: the lines Android itself shows for the agent (the Accessibility list, the device-admin sheet)
+ * and the wipe notice on the pairing screen speak Arabic, exactly as Karim approved on 2026-10-31 06:20Z
+ * (`arabic-review/2026-10-31-child-system-strings`, Q1–Q5). Each line is pinned as a literal, so a
+ * changed or missing translation turns this red.
+ *
+ * `app_name`, `app_name_ar` and `sos_tile_label` are brand names: they keep no Arabic override on
+ * purpose, and the last row holds that.
+ *
+ * As in `PairingStringsTest`, the resource merger is not on the JVM test classpath, so this reads the
+ * two source files. How the sheets render on a phone needs a device.
+ */
+class ChildSystemStringsTest {
+
+    private val english = strings("values/strings.xml")
+    private val arabic = strings("values-ar/strings.xml")
+
+    /** Karim's approved Arabic, line for line. */
+    private val approvedArabic = linkedMapOf(
+        "accessibility_service_label" to "إمكانية الوصول في OSRA",
+        "accessibility_description" to "يراقب OSRA استخدام التطبيقات لتطبيق قواعد وقت الشاشة التي وضعها والدك أو والدتك.",
+        "device_admin_label" to "الرقابة الأبوية من OSRA",
+        "device_admin_description" to "يتيح لـ OSRA قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.",
+        "wipe_detected_notice" to "مُسحت بيانات OSRA على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.",
+    )
+
+    @Test
+    fun `each system line has an English source and an Arabic counterpart`() {
+        approvedArabic.keys.forEach { key ->
+            assertTrue("English '$key' is missing", english.containsKey(key))
+            assertTrue("Arabic '$key' is missing", arabic.containsKey(key))
+        }
+    }
+
+    @Test
+    fun `the Arabic is exactly the approved wording`() {
+        approvedArabic.forEach { (key, approved) ->
+            assertEquals("'$key' differs from the approved Arabic", approved, arabic.getValue(key))
+        }
+    }
+
+    @Test
+    fun `the brand names keep the default value`() {
+        listOf("app_name", "app_name_ar", "sos_tile_label").forEach { key ->
+            assertFalse("'$key' is a brand name and should not be overridden in Arabic", arabic.containsKey(key))
+        }
+    }
+
+    private fun strings(relativeToRes: String): Map<String, String> {
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(locate("src/main/res/$relativeToRes"))
+        val nodes = document.getElementsByTagName("string")
+        return (0 until nodes.length)
+            .map { nodes.item(it) as Element }
+            .associate { it.getAttribute("name") to it.textContent }
+    }
+
+    private fun locate(relativeToModule: String): File {
+        val working = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        return listOf(File(working, relativeToModule), File(working, "app/$relativeToModule"))
+            .firstOrNull { it.isFile }
+            ?: error("could not find $relativeToModule below ${working.path}")
+    }
+}

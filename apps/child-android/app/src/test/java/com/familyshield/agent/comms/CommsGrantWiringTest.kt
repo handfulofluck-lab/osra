@@ -175,16 +175,43 @@ class CommsGrantWiringTest {
             "the floor is a per-row decision, because a clock set back gives an older DATE and a higher id",
             logger.contains("CommsWatermarkPolicy.shouldReadCall(ts, duration, dateFloor)"),
         )
-        assertFalse(
-            "a DATE predicate in the query is what lost the set-back call (#264 F2)",
-            logger.contains("\${CallLog.Calls.DATE} >= ?") || logger.contains("\${CallLog.Calls.DATE} > ?"),
+        // The READ is by id. It is the one query below the anchor, and a DATE predicate there is what
+        // lost the set-back call (#264 F2). The anchor query may use DATE (it now selects the
+        // future-dated rows too), so the positive form is asserted rather than a negative on the file.
+        assertTrue(
+            "the call read must be by id, not by DATE",
+            logger.contains("\"\${CallLog.Calls._ID} > ?\""),
         )
         assertTrue(
-            "the anchor is the newest id whose call ENDED by the ceiling, not the newest DATE",
+            "the anchor's rule lives in the pure policy, not inline (#264 withdrawal half)",
             logger.contains("newestCallIdEndedBy(") &&
-                logger.contains("CallLog.Calls.DURATION") && logger.contains("endedAt <= ceilingEnd"),
+                logger.contains("CallLog.Calls.DURATION") &&
+                logger.contains("CommsWatermarkPolicy.countsAsBeforeAnchor("),
         )
         assertFalse("the DATE anchor is the bug it replaced", logger.contains("newestCallIdUpTo("))
+    }
+
+    /**
+     * #485 review (F2): the policy can only anchor past a future-dated row that the anchor query
+     * returns. Putting back the old `DATE <= ?` alone filters those rows out in SQL, so
+     * `countsAsBeforeAnchor` never sees them and the withdrawal call is uploaded again, with every
+     * policy row still green.
+     *
+     * Mutant: restore `"${CallLog.Calls.DATE} <= ?"` with one argument in `newestCallIdEndedBy` and this
+     * row goes red.
+     */
+    @Test
+    fun `the anchor query also selects future-dated rows, so the policy can anchor past them`() {
+        val anchor = logger.substringAfter("private fun newestCallIdEndedBy(").substringBefore("private fun ")
+        assertTrue(
+            "both shapes must reach the policy: ended by the ceiling, or dated beyond now + skew",
+            anchor.contains("\"(\${CallLog.Calls.DATE} <= ? OR \${CallLog.Calls.DATE} > ?)\""),
+        )
+        assertTrue(
+            "the future bound is the real now plus the skew, not the ceiling",
+            anchor.contains("val futureLimit = now + CommsWatermarkPolicy.CLOCK_SKEW_MS") &&
+                anchor.contains("arrayOf(ceilingEnd.toString(), futureLimit.toString())"),
+        )
     }
 
     /**
@@ -201,7 +228,7 @@ class CommsGrantWiringTest {
         assertTrue(
             "a stored 0 with a real floor anchors at that floor first",
             logger.contains("if (fromId == 0L && dateFloor > 0L)") &&
-                logger.contains("fromId = newestCallIdEndedBy(dateFloor)"),
+                logger.contains("fromId = newestCallIdEndedBy(dateFloor, now)"),
         )
         assertTrue(
             "and the query is bound to the anchored id, not to the stored one",

@@ -289,7 +289,7 @@ class CommsLogger @Inject constructor(
             // anchor of 0 would offer the phone's whole call log to `shouldReadCall`, and every call that
             // ended before the grant counts as "clock set back" and would be read (#269 review, D1).
             val ceiling = maxOf(legacyDate ?: 0L, grantTime ?: now)
-            dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, newestCallIdEndedBy(ceiling)))
+            dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, newestCallIdEndedBy(ceiling, now)))
             dao.set(AgentStateEntity(KEY_CALL_WATERMARK, ceiling))
             if (grantTime == null) dao.set(AgentStateEntity(KEY_CALL_SINCE, now))
             return@withLock
@@ -300,7 +300,7 @@ class CommsLogger @Inject constructor(
         // triggered the harvest has to survive (#257).
         var fromId = storedId
         if (fromId == 0L && dateFloor > 0L) {
-            fromId = newestCallIdEndedBy(dateFloor)
+            fromId = newestCallIdEndedBy(dateFloor, now)
             dao.set(AgentStateEntity(KEY_CALL_ID_WATERMARK, fromId))
         }
         val events = mutableListOf<CommsEventEntity>()
@@ -390,19 +390,36 @@ class CommsLogger @Inject constructor(
      * a *lower* `DATE` than its position suggests. Iterating ids downwards and stopping at the first row
      * whose span ends by the ceiling puts the anchor where the window really closes.
      */
-    private fun newestCallIdEndedBy(ceilingEnd: Long): Long {
+    /**
+     * Issue #264: the id anchor — the newest `_ID` whose call counts as **before** [ceilingEnd].
+     *
+     * The predicate is [CommsWatermarkPolicy.countsAsBeforeAnchor], not `ended by the ceiling` alone: a
+     * call made while consent was withdrawn and the clock was set forward is dated in the future, and
+     * counting only "ended by the ceiling" put the anchor below it, so the re-grant read it. The query
+     * therefore selects both shapes — `DATE <= ceiling` and the future-dated rows — and the predicate
+     * makes the decision, so a single SQL change cannot widen what is anchored without a row going red.
+     */
+    private fun newestCallIdEndedBy(ceilingEnd: Long, now: Long = System.currentTimeMillis()): Long {
         if (ceilingEnd <= 0L) return 0L
+        val futureLimit = now + CommsWatermarkPolicy.CLOCK_SKEW_MS
         return try {
             context.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
                 arrayOf(CallLog.Calls._ID, CallLog.Calls.DATE, CallLog.Calls.DURATION),
-                "${CallLog.Calls.DATE} <= ?",
-                arrayOf(ceilingEnd.toString()),
+                "(${CallLog.Calls.DATE} <= ? OR ${CallLog.Calls.DATE} > ?)",
+                arrayOf(ceilingEnd.toString(), futureLimit.toString()),
                 "${CallLog.Calls._ID} DESC",
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
-                    val endedAt = cursor.getLong(1) + cursor.getLong(2) * 1000L
-                    if (endedAt <= ceilingEnd) return cursor.getLong(0)
+                    if (CommsWatermarkPolicy.countsAsBeforeAnchor(
+                            rowDate = cursor.getLong(1),
+                            durationSec = cursor.getLong(2),
+                            ceiling = ceilingEnd,
+                            now = now,
+                        )
+                    ) {
+                        return cursor.getLong(0)
+                    }
                 }
                 0L
             } ?: 0L
