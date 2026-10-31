@@ -16,6 +16,15 @@ data class SocialScanDto(
     val source: String = "screen",
 )
 
+/** #490: one flush as one request — at most `ScanQueuePolicy.ITEMS_PER_REQUEST` captures. */
+data class SocialScanBatchDto(val items: List<SocialScanDto>)
+
+/** #490: the server answers each item of a batch on its own, in the order sent. */
+data class SocialScanBatchResultDto(val results: List<SocialScanItemResultDto> = emptyList())
+
+/** `ok` false carries the server's reason (`child_not_found`, `invalid_item`, …); the row is counted down. */
+data class SocialScanItemResultDto(val ok: Boolean, val reason: String? = null)
+
 /** One activity event for POST /v1/devices/<id>/activity (Feature #6/#29, server ActivityEvent). */
 data class ActivityEventDto(
     /** "call" | "sms" | "app_usage". */

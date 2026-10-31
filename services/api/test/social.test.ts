@@ -219,6 +219,107 @@ describe("social routes", () => {
     await app.close();
   });
 
+  /**
+   * #490: an agent sends a flush as one `{ items: [...] }` request. Each item is answered on its own,
+   * in order, so one bad item doesn't drop the others; more than SCAN_BATCH_MAX (6) is a 400.
+   */
+  describe("batched scans (#490)", () => {
+    const flaggedAi = () => aiOk({ flagged: true, severity: "warning", categories: { self_harm: 0.8, safe: 0.2 } });
+
+    it("scans an array body and answers each item in order", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", flaggedAi());
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      const res = await postScan(app, { items: [scanBody({ text: "one kill yourself" }), scanBody({ text: "two kill yourself" })] });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        results: [
+          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
+          { ok: true, flagged: true, severity: "warning", concernTypes: ["self_harm"] },
+        ],
+      });
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(2);
+      await app.close();
+    });
+
+    it("takes exactly 6 items and refuses 7 as a whole", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 1 } }));
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      const six = await postScan(app, { items: Array.from({ length: 6 }, (_, i) => scanBody({ text: `hello ${i}` })) });
+      expect(six.statusCode).toBe(200);
+      expect(six.json().results).toHaveLength(6);
+      const seven = await postScan(app, { items: Array.from({ length: 7 }, (_, i) => scanBody({ text: `hello ${i}` })) });
+      expect(seven.statusCode).toBe(400);
+      expect(seven.json()).not.toHaveProperty("results");
+      await app.close();
+    });
+
+    it("a failing item 2 is reported on its own; items 1 and 3 are stored", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", flaggedAi());
+      prismaMock.child.findUnique.mockImplementation((async (args: { where: { id: string } }) =>
+        args.where.id === CHILD.id ? CHILD : null) as never);
+      const res = await postScan(app, {
+        items: [
+          scanBody({ text: "one kill yourself" }),
+          scanBody({ childId: "child-unknown", text: "two kill yourself" }),
+          scanBody({ text: "three kill yourself" }),
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      const results = res.json().results as Array<Record<string, unknown>>;
+      expect(results.map((r) => r.ok)).toEqual([true, false, true]);
+      expect(results[1]).toEqual({ ok: false, reason: "child_not_found" });
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(2);
+      const stored = prismaMock.socialEvent.create.mock.calls.map((c) => (c[0] as { data: { childId: string } }).data.childId);
+      expect(stored).toEqual([CHILD.id, CHILD.id]);
+      await app.close();
+    });
+
+    it("an invalid item is reported as invalid_item without failing the batch", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", aiOk({ flagged: false, severity: "info", categories: { safe: 1 } }));
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      const res = await postScan(app, { items: [{ childId: CHILD.id, app: "whatsapp" }, scanBody({ text: "hi" })] });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().results).toEqual([
+        { ok: false, reason: "invalid_item" },
+        { ok: true, flagged: false, severity: "info", concernTypes: [] },
+      ]);
+      await app.close();
+    });
+
+    it("scans the items concurrently, so a slow AI engine costs one wait, not six (#498 review)", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      const DELAY_MS = 300;
+      vi.stubGlobal("fetch", vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+        return { ok: true, json: async () => ({ flagged: false, severity: "info", categories: { safe: 1 } }) };
+      }) as unknown as typeof fetch);
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      const started = Date.now();
+      const res = await postScan(app, { items: Array.from({ length: 6 }, (_, i) => scanBody({ text: `hello ${i}` })) });
+      const elapsed = Date.now() - started;
+      expect(res.statusCode).toBe(200);
+      expect(res.json().results).toHaveLength(6);
+      // Serial would take 6 × 300 ms; concurrent takes about one delay.
+      expect(elapsed).toBeLessThan(2 * DELAY_MS);
+      await app.close();
+    });
+
+    it("the single-item body older agents send still works, unchanged", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      vi.stubGlobal("fetch", flaggedAi());
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      const res = await postScan(app, scanBody());
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ flagged: true, severity: "warning", concernTypes: ["self_harm"] });
+      expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
+      await app.close();
+    });
+  });
+
   it("lists vault events decrypted, newest first, with filters", async () => {
     const app = await buildApp(socialRoutes, "/v1/social");
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
