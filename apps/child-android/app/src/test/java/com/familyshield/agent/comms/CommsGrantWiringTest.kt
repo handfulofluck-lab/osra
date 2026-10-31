@@ -192,6 +192,29 @@ class CommsGrantWiringTest {
     }
 
     /**
+     * #485 review (F2): the policy can only anchor past a future-dated row that the anchor query
+     * returns. Putting back the old `DATE <= ?` alone filters those rows out in SQL, so
+     * `countsAsBeforeAnchor` never sees them and the withdrawal call is uploaded again, with every
+     * policy row still green.
+     *
+     * Mutant: restore `"${CallLog.Calls.DATE} <= ?"` with one argument in `newestCallIdEndedBy` and this
+     * row goes red.
+     */
+    @Test
+    fun `the anchor query also selects future-dated rows, so the policy can anchor past them`() {
+        val anchor = logger.substringAfter("private fun newestCallIdEndedBy(").substringBefore("private fun ")
+        assertTrue(
+            "both shapes must reach the policy: ended by the ceiling, or dated beyond now + skew",
+            anchor.contains("\"(\${CallLog.Calls.DATE} <= ? OR \${CallLog.Calls.DATE} > ?)\""),
+        )
+        assertTrue(
+            "the future bound is the real now plus the skew, not the ceiling",
+            anchor.contains("val futureLimit = now + CommsWatermarkPolicy.CLOCK_SKEW_MS") &&
+                anchor.contains("arrayOf(ceilingEnd.toString(), futureLimit.toString())"),
+        )
+    }
+
+    /**
      * #269 review D1: with no `DATE` predicate left in the query, an id watermark of `0` offers the whole
      * call log, and `shouldReadCall` calls every pre-grant call "clock set back" and reads it. Both a
      * fresh install and a consent reset store `0`, so both paths must anchor before any row is offered.

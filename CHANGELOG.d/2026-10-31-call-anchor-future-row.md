@@ -17,5 +17,6 @@
 - `CommsGrantWiringTest` was updated to assert the policy call rather than the inline `endedAt <= ceilingEnd`,
   and its "no DATE predicate" assertion became the positive "the read is `_ID > ?`" — the anchor query may
   legitimately use `DATE` now, and a negative on the whole file would have been a false guarantee.
+- `CommsGrantWiringTest` also gained Claude's row from the review: the **anchor query** selects both shapes, so a future-dated row reaches the policy at all. Without it, putting back the old `DATE <= ?` alone filtered those rows out in SQL and every policy row stayed green (his F2).
 - **Not in it:** the Flip4 row (T1 on #484, Full build: inject a future-dated withdrawal call, re-grant, and
   see nothing uploaded). That is Claude's queue.
