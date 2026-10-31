@@ -253,16 +253,16 @@ jobs:
             -scheme OSRAAgentIntegration \
             -destination "id=$DEVICE_ID" \
             -derivedDataPath .build/liveDerivedData 2>&1 | tee "$RUNNER_TEMP/live-tests.log"
-          # Loud, not green-by-default (#361): all nine cases ran and passed, none skipped.
+          # Loud, not green-by-default (#361): all ten cases ran and passed, none skipped (case 10 is #475).
           COUNT='index($0, "Test Case") && index($0, "-[FamilyShieldAgentIntegrationTests.LiveAPITests test") && index($0, word " (") { n++ } END { print n + 0 }'
           PASSED="$(awk -v word=passed "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           SKIPPED="$(awk -v word=skipped "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           echo "live API cases passed: $PASSED, skipped: $SKIPPED"
           cat "$RUNNER_TEMP/approve.log"
           wait "$APPROVER"
-          test "$PASSED" -eq 9 && test "$SKIPPED" -eq 0
+          test "$PASSED" -eq 10 && test "$SKIPPED" -eq 0
 
-      - name: The parent sees the alert and the location (GET /v1/alerts, /v1/location/:childId/latest)
+      - name: The parent sees the alert, the location and the applied rules version (GET /v1/alerts, /v1/location/:childId/latest, /v1/family/children/:id)
         run: node apps/child-ios/scripts/live-api.mjs verify
 
       - name: API log on failure

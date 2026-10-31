@@ -198,7 +198,8 @@ extension LiveAPITests {
 extension LiveAPITests {
     // 10. #475: the rules version the phone applied reaches the server, and `live-api.mjs verify` reads it back as
     // the parent from `GET /v1/family/children/:id`. setup's PUT bumped the version, so it is at least 2. Named
-    // `test9b…` so XCTest's alphabetical order runs it after case 9 (a `test10…` would sort before `test1…`).
+    // `test9b…` so XCTest's order runs it after the claim (case 1): a `test10…` would sort before `test1…`. It does
+    // not depend on case 9, and XCTest runs it before case 9.
     // A simulator cannot hold Screen Time authorization, so a stand-in apply that succeeds is passed; that the
     // real apply throws without authorization (and so records nothing) is a 5.1 device row.
     func test9bAppliedRulesVersionReachesTheServer() async throws {
