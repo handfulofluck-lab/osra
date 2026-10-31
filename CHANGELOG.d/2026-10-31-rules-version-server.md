@@ -1,7 +1,9 @@
 ### API — a rules version the parent can compare against what the phone applied (#475, server half)
 - **What a parent will see, once all three halves land:** "The phone hasn't picked up this change yet" while
   the device's applied version is behind. This PR is the half that makes the sentence possible.
-- **`RuleSet.rulesVersion`**, bumped by **every rule write in the same statement** (`update: { …,
+- **`RuleSet.rulesVersion`**, bumped by **every ruleset write in the same statement**, including the
+  **bonus grant** (`POST /children/:childId/bonus`) — the agent reads the extra minutes from the rules
+  payload, so a parent granting time while the phone is offline must see the warning too (#499 review) (`update: { …,
   rulesVersion: { increment: 1 } }`), so a saved ruleset and its version cannot disagree even if two
   parents write at once. Both `PUT` and `PATCH` carry it, and it is returned on the ruleset the agent
   fetches.

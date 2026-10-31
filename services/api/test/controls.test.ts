@@ -166,10 +166,12 @@ describe("controls routes (features #10/#11)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().bonusMinutesToday).toBe(15);
     expect(res.json().alwaysAllowedApps).toEqual(["com.android.chrome"]);
+    // Issue #475 review: a bonus is a rule write, so it bumps the version in the same statement. Without
+    // this, a parent granting time while the phone is offline would see no "hasn't picked this up" line.
     expect(prismaMock.ruleSet.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { childId: "child-1" },
-        update: { bonusMinutesToday: { increment: 15 } },
+        update: { bonusMinutesToday: { increment: 15 }, rulesVersion: { increment: 1 } },
       }),
     );
 
