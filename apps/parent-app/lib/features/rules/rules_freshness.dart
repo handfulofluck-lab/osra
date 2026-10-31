@@ -17,5 +17,5 @@ bool rulesAreBehind(Child child) {
   final rules = child.rulesVersion;
   final applied = child.appliedRulesVersion;
   if (rules == null || applied == null) return false;
-  return applied < rules;
+  return applied <= rules;
 }
