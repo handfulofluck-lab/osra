@@ -324,6 +324,60 @@ describe("rules routes", () => {
     await app.close();
   });
 
+  /**
+   * Issue #475: the bump is what the parent compares against the device's applied version, so it has to be
+   * part of the write statement itself — a separate update would let two parents write at once and leave a
+   * saved ruleset whose version never moved.
+   */
+  it("bumps rulesVersion in the same statement as the write, on PUT and on PATCH", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({
+      id: "rs-1",
+      childId: CHILD_ID,
+      dailyLimitMinutes: 180,
+      weekendLimitMinutes: 300,
+      bedtimeStart: "21:00",
+      bedtimeEnd: "07:00",
+      schoolHoursStart: "08:00",
+      schoolHoursEnd: "15:00",
+      schoolDays: [1, 2, 3, 4, 5],
+      blockedCategories: ["pornography"],
+      allowedDomains: [],
+      blockedDomains: ["example.com"],
+      safeSearchEnforced: true,
+      appRules: [],
+      routines: [],
+      rulesVersion: 3,
+      updatedAt: "2026-09-15T00:00:00.000Z",
+    });
+    prismaMock.ruleSet.upsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => ({
+      id: "rs-1",
+      updatedAt: "2026-09-15T00:00:00.000Z",
+      rulesVersion: 4,
+      ...create,
+    }));
+    prismaMock.device.findMany.mockResolvedValue([]);
+
+    const put = await app.inject({ method: "PUT", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app), payload: validRuleSet });
+    expect(put.statusCode).toBe(200);
+    expect(put.json()).toMatchObject({ rulesVersion: 4 });
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/v1/rules/${CHILD_ID}`,
+      headers: authHeader(app),
+      payload: { screenTime: { dailyLimitMinutes: 200 } },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    for (const call of prismaMock.ruleSet.upsert.mock.calls) {
+      expect(call[0].update.rulesVersion).toEqual({ increment: 1 });
+    }
+    expect(prismaMock.ruleSet.upsert.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await app.close();
+  });
+
   it("rejects an invalid PATCH body (400)", async () => {
     const app = await buildApp(rulesRoutes, "/v1/rules");
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
@@ -499,4 +553,5 @@ describe("device-token child scoping on rules reads", () => {
     expect(res.statusCode).toBe(200);
     await app.close();
   });
+
 });

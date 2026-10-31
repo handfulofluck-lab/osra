@@ -32,6 +32,9 @@ export function toApiRuleSet(row: Record<string, unknown>) {
     socialMonitoring: (row.socialMonitoring as Record<string, boolean>) ?? {},
     contactAllowlist: (row.contactAllowlist as string[]) ?? [],
     updatedAt: row.updatedAt,
+    // Issue #475: the version the parent app compares against what the device has applied. Older rows
+    // created before this column existed read 1, which matches the migration's default.
+    rulesVersion: (row.rulesVersion as number) ?? 1,
   };
 }
 
