@@ -71,6 +71,7 @@ class UnlinkOrderTest {
         return buildUnlinkSteps(
             stopVpn = step("vpn"),
             clearLock = step("lock"),
+            stopLocation = step("location"),
             clearPairing = step("pairing"),
             forgetRules = step("rules"),
             removeAdmin = step("admin"),
@@ -79,7 +80,7 @@ class UnlinkOrderTest {
     }
 
     @Test
-    fun `U5 the recorded order is pending, vpn, lock, pairing, rules, admin, notice, then pending cleared`() =
+    fun `U5 the recorded order is pending, vpn, lock, location, pairing, rules, admin, notice, then pending cleared`() =
         runBlocking {
             val record = mutableListOf<String>()
             val done = runUnlinkSteps(
@@ -90,10 +91,33 @@ class UnlinkOrderTest {
             )
             assertTrue(done)
             assertEquals(
-                listOf("pending=true", "vpn", "lock", "pairing", "rules", "admin", "notice", "pending=false"),
+                listOf(
+                    "pending=true", "vpn", "lock", "location", "pairing", "rules", "admin", "notice", "pending=false",
+                ),
                 record,
             )
         }
+
+    /**
+     * Issue #472 review: the service that saw the `401` is the one still running, and no unlink step
+     * used to stop it — the ongoing location notification survived the unlink until the process died.
+     * It is stopped **before** the pairing is cleared, so no poll can run in the window where the
+     * device id is gone but the service is still alive.
+     *
+     * Mutants: drop the `location` step from `buildUnlinkSteps` → the first assertion; move it after
+     * `admin` → the second.
+     */
+    @Test
+    fun `U8 the production list stops the location service before it clears the pairing (#472 review)`() {
+        val names = steps(mutableListOf()).map { it.name }
+        assertTrue("the location step must be in the production list, found $names", "location" in names)
+        assertTrue(
+            "location must precede pairing, found $names",
+            names.indexOf("location") < names.indexOf("pairing"),
+        )
+        // And it must not be last: the notice is what tells the family, and it reads after the rest.
+        assertTrue("the notice stays last, found $names", names.last() == "notice")
+    }
 
     @Test
     fun `U6 one failing step does not skip the rest, and the flag stays set`() = runBlocking {
