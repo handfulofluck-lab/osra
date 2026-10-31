@@ -215,8 +215,12 @@ class CallBlockPolicy(
     }
 
     companion object {
-        /** "If the call still lasts more than 15 s" (Claude, #444). */
-        const val DEFAULT_REPORT_AFTER_MS: Long = 15_000L
+        /**
+         * Ten seconds of `MODE_IN_COMMUNICATION` with the block screen up (Claude, #444, 2026-10-31):
+         * long enough to skip a call that ends as the screen rises, short enough that the 51 s Flip4
+         * case alerts. Was 15 s from the earlier spec.
+         */
+        const val DEFAULT_REPORT_AFTER_MS: Long = 10_000L
 
         /** Once RINGTONE was seen, the cover still never outlives a minute. */
         const val DEFAULT_COVER_MAX_MS: Long = 60_000L
