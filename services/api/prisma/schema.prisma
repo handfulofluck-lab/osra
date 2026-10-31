@@ -226,6 +226,9 @@ model Device {
   /// Roadmap 3.4: when the agent last replaced its installed-launchable-app list, and the report
   /// contract version it used. Null means the device has never reported (the parent picker says so).
   appsReportedAt DateTime?    @db.Timestamptz(3)
+  /// Issue #475: the rules version the device reports it has SAVED AND APPLIED. Null until it first
+  /// reports — a device that has never reported must not produce a warning in the parent app.
+  appliedRulesVersion Int?
   appsVersion    Int?
   /// Issue #221: the location grant an Android agent last reported in its telemetry upload —
   /// `background` | `while_in_use` | `none` (src/lib/locationGrant.ts). Null until the agent has
@@ -309,6 +312,10 @@ model RuleSet {
   contactAllowlist    String[] @default([])
   appRules            Json     @default("[]")
   routines            Json     @default("[]")
+  /// Issue #475: bumped by every rule write, in the same transaction as the write itself. The parent app
+  /// compares it with the `appliedRulesVersion` the device reports, so "the phone hasn't picked this up
+  /// yet" is a fact rather than a guess.
+  rulesVersion        Int      @default(1)
   updatedAt           DateTime @updatedAt
   child               Child    @relation(fields: [childId], references: [id])
 }

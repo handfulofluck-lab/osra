@@ -187,8 +187,26 @@ export async function familyRoutes(app: FastifyInstance) {
 
   /** Return a single child of the authenticated family. */
   app.get("/children/:id", { preHandler: [requireParent, requireFamily({ model: "child" })] }, async (req) => {
-    const child = (req as unknown as { child: unknown }).child;
-    return child;
+    const child = (req as unknown as { child: { id?: string } }).child;
+    const childId = child?.id;
+    if (!childId) return child;
+    // Issue #475: the parent app needs both halves of "the phone has this change", so they travel with
+    // the child rather than as a second round trip the screens could forget.
+    const [ruleSet, devices] = await Promise.all([
+      prisma.ruleSet.findUnique({ where: { childId }, select: { rulesVersion: true } }),
+      prisma.device.findMany({ where: { childId }, select: { appliedRulesVersion: true } }),
+    ]);
+    const reported = devices
+      .map((d) => d.appliedRulesVersion)
+      .filter((v): v is number => typeof v === "number");
+    return {
+      ...child,
+      rulesVersion: ruleSet?.rulesVersion ?? null,
+      // The MINIMUM of the children's devices, because the warning is about a phone that is behind: with
+      // two handsets, one having the change is not enough. Null when no device has ever reported, which
+      // the app renders as nothing rather than as a warning.
+      appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
+    };
   });
 
   /**
