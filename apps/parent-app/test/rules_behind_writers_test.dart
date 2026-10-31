@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
@@ -60,5 +61,59 @@ void main() {
     // Null is "never reported", not "version 0": a fresh install must not be warned about.
     await pumpSocial(tester, child(rules: 7));
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+  });
+
+  // The bonus card: a grant bumps `rulesVersion` (controls.ts:88), so the card that grants it is the third
+  // place a parent needs the line. Same three states, same widget.
+  Future<void> pumpDetail(WidgetTester tester, Map<String, dynamic> childJson) async {
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const ChildDetailScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('the bonus card shows the line when the phone is behind', (tester) async {
+    await pumpDetail(tester, child(rules: 7, applied: 5));
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+  });
+
+  testWidgets('the bonus card says nothing when the phone is current', (tester) async {
+    await pumpDetail(tester, child(rules: 7, applied: 7));
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+  });
+
+  testWidgets('the bonus card says nothing when the phone never reported', (tester) async {
+    await pumpDetail(tester, child(rules: 7));
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+  });
+
+  testWidgets('a grant shows the line, because the family is refetched', (tester) async {
+    // Claude's fault for this screen: no family refresh after the write. The row grants, the refetch answers
+    // with the bumped version, and only then is the line earned - so dropping the invalidation reddens this
+    // row and nothing else.
+    final childJson = child(rules: 7, applied: 7);
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
+      'POST /v1/controls/children/child-1/bonus': (_) => {'ok': true},
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const ChildDetailScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+
+    childJson['rulesVersion'] = 8; // the grant bumped it; the phone still has 7
+    // The card sits below the fold on a 800x600 test surface: scroll it in, or the tap lands nowhere.
+    await tester.ensureVisible(find.text('+15'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+15'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
   });
 }
