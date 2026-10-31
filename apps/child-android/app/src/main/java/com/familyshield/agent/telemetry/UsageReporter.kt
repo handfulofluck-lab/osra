@@ -162,7 +162,6 @@ class UsageReporter @Inject constructor(
                     unlockCount = unlocks,
                     batteryPct = currentBatteryPct(),
                     locationGrant = grant,
-                    appliedRulesVersion = appliedRules,
                 ),
             )
             // Issue #221: the periodic upload also counts as a report, so the expedited path does not
