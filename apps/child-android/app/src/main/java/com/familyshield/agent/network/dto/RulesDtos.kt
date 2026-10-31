@@ -6,6 +6,13 @@ package com.familyshield.agent.network.dto
  */
 data class RuleSetDto(
     val id: String = "",
+    /**
+     * Issue #475: bumped by the server on every rule write. The agent stores the version it has **saved and
+     * applied** and reports it on telemetry, so the parent can say "the phone hasn't picked this up yet".
+     * Defaults to 1 for an older server that does not send it — which reads as "version 1", the value every
+     * row starts at, rather than as a signal the agent cannot know.
+     */
+    val rulesVersion: Int = 1,
     val childId: String = "",
     val screenTime: ScreenTimeRuleDto = ScreenTimeRuleDto(),
     val webFilter: WebFilterRuleDto = WebFilterRuleDto(),

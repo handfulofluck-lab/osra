@@ -14,12 +14,12 @@ import org.junit.Test
  * Issue #473: the block screen names the window that is holding the app shut, so a child in a Study
  * routine and a child kept out of school hours stop reading the same sentence.
  *
- * `windowFor` is built from the same two helpers `evaluate` now calls (`routineWindow`,
+ * `evaluateWithReason` is built from the same two helpers `evaluate` now calls (`routineWindow`,
  * `screenTimeWindow`), so this suite and the 30-odd `RuleRepository`/`RuleEngine` rows are two views of
- * one implementation rather than two implementations.
+ * one implementation rather than two implementations — `evaluate` is its one-line wrapper.
  *
- * Mutant: make `windowFor` return the window for *any* block — drop the `appRules` short-circuit — and
- * [an app with a block rule of its own is not attributed to a window] goes red.
+ * Mutant: answer a window for *any* block — drop the early returns that name a pause or a blocklisted app
+ * as reasonless — and [a pause blocks with no reason, even at bedtime] goes red.
  */
 class RuleEngineWindowReasonTest {
 

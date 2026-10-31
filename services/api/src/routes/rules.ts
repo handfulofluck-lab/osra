@@ -13,11 +13,14 @@ import { toApiRuleSet } from "../lib/ruleSync.js";
 // shared mapper lives in lib with the publish fan-out (no routes↔routes imports).
 export { toApiRuleSet };
 
+const MINUTES_PER_DAY = 1440;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const ScreenTimeSchema = z.object({
-  dailyLimitMinutes: z.number().int().min(0).max(10080),
-  weekendLimitMinutes: z.number().int().min(0).max(10080),
+  // #505: a daily limit is at most the minutes in a day. The parent app's slider stops at 600; the cap
+  // here is the day, so a parent who stored more elsewhere is not refused on save.
+  dailyLimitMinutes: z.number().int().min(0).max(MINUTES_PER_DAY),
+  weekendLimitMinutes: z.number().int().min(0).max(MINUTES_PER_DAY),
   bedtimeStart: z.string().regex(HHMM),
   bedtimeEnd: z.string().regex(HHMM),
   schoolHours: z.object({

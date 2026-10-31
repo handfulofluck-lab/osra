@@ -8,6 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../api/permission_errors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import 'rules_freshness.dart';
 import '../../theme/app_tokens.dart';
 
 const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
@@ -34,6 +35,17 @@ const List<String> walletSuggestions = <String>[
   'com.google.android.apps.walletnfcrel',
   'com.samsung.android.samsungpay.gear',
 ];
+
+/// #505: the screen-time sliders' range, in minutes. The API accepts more than the slider shows (up to
+/// a day), so a value stored by another client can sit outside it.
+const double kLimitSliderMin = 15;
+const double kLimitSliderMax = 600;
+
+/// #505: where the slider's thumb sits for a stored limit. `Slider` throws for a value outside
+/// `[min, max]`, which took the whole editor down for a child with 1440 stored, so the thumb is clamped.
+/// Only the thumb: the title and label keep showing the stored value, and the draft keeps it until the
+/// parent moves the slider, so saving another rule never rewrites the limit.
+double limitSliderPosition(int minutes) => minutes.toDouble().clamp(kLimitSliderMin, kLimitSliderMax);
 
 class RulesEditorScreen extends ConsumerStatefulWidget {
   final String childId;
@@ -76,6 +88,11 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       // NOTE: the server PATCH-merges, so we always send the full object.
       await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: _draft.toJson());
       ref.invalidate(rulesProvider(widget.childId));
+      // Issue #475: the PUT bumped `rulesVersion` on the server, and the banner compares that number with
+      // what the phone applied. Without this the family snapshot still carries the pre-save version, so
+      // right after Save `applied == rules` and the line the parent just earned never appears — which is
+      // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
+      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
@@ -135,6 +152,28 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ],
       );
     }
+    // Issue #475: the child's phones report the rules version they have SAVED AND APPLIED, and this is the
+    // screen where a parent changes the rules — so it is where "the phone hasn't picked this up yet" has to
+    // appear. The child comes from the overview the app already loads (#475 review: no extra request).
+    final child = ref.watch(familyProvider).valueOrNull?.children.where((c) => c.id == widget.childId).firstOrNull;
+    final behind = child != null && rulesAreBehind(child);
+    if (behind) {
+      return Column(
+        children: [
+          MaterialBanner(
+            key: const ValueKey('rules-behind-banner'),
+            content: Text(l10n.rulesBehindHint),
+            leading: const Icon(Icons.sync_problem_outlined),
+            actions: const [SizedBox.shrink()],
+          ),
+          Expanded(child: _editorBody(l10n)),
+        ],
+      );
+    }
+    return _editorBody(l10n);
+  }
+
+  Widget _editorBody(AppLocalizations l10n) {
     return DefaultTabController(
       length: 4,
       child: Column(
@@ -181,10 +220,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         Text(l10n.dailyLimit(st.dailyLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: st.dailyLimitMinutes.toDouble(), min: 15, max: 600, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
         Text(l10n.weekendLimit(st.weekendLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: st.weekendLimitMinutes.toDouble(), min: 15, max: 600, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
         Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
         timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
