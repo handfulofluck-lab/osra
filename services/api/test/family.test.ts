@@ -189,6 +189,52 @@ describe("family routes", () => {
     await app.close();
   });
 
+  /**
+   * Issue #475: the pair also rides the overview, because the rule screens already load it — and the two
+   * endpoints must answer the same numbers, so this row pins them against each other rather than each on
+   * its own.
+   */
+  it("issue #475: /me and /children/:id answer the same rules and applied versions", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.family.findUnique.mockResolvedValue({
+      id: FAMILY.id,
+      name: "Demo",
+      region: "US",
+      createdAt: new Date(),
+      parents: [{ id: "parent-1", email: "demo@familyshield.dev", passwordHash: "x" }],
+      children: [
+        {
+          id: CHILD_ID,
+          displayName: "Alex",
+          consents: [],
+          geofences: [],
+          ruleSet: { id: "rs-1", rulesVersion: 7 },
+          // Two phones: one current, one behind — the minimum is what the warning is about.
+          devices: [{ id: "dev-1", appliedRulesVersion: 7 }, { id: "dev-2", appliedRulesVersion: 5 }],
+        },
+      ],
+    });
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: FAMILY.id });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 7 });
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 7 }, { appliedRulesVersion: 5 }]);
+
+    const me = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+    const child = await app.inject({
+      method: "GET",
+      url: `/v1/family/children/${CHILD_ID}`,
+      headers: authHeader(app),
+    });
+
+    expect(me.statusCode).toBe(200);
+    expect(child.statusCode).toBe(200);
+    const meChild = me.json().children[0];
+    expect(meChild.rulesVersion).toBe(7);
+    expect(meChild.appliedRulesVersion).toBe(5);
+    expect(meChild.rulesVersion).toBe(child.json().rulesVersion);
+    expect(meChild.appliedRulesVersion).toBe(child.json().appliedRulesVersion);
+    await app.close();
+  });
+
   it("returns 401 when no JWT is provided", async () => {
     const app = await buildApp(familyRoutes, "/v1/family");
     const res = await app.inject({ method: "GET", url: `/v1/family/children/${CHILD_ID}` });

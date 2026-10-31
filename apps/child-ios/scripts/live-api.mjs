@@ -5,7 +5,7 @@
  *
  *   node scripts/live-api.mjs setup    # seeded parent logs in, adds a child with consent, sets its rules, mints a code
  *   node scripts/live-api.mjs approve  # in the background during the XCTest run: the parent taps Allow (plan 2.7)
- *   node scripts/live-api.mjs verify   # after the XCTest run: the parent sees the agent's alert and location
+ *   node scripts/live-api.mjs verify   # after the XCTest run: the parent sees the agent's alert, location and applied rules version
  *
  * `setup` seeds through the API itself, as services/api/scripts/e2e.mjs does, and hands the tests their
  * inputs through $GITHUB_ENV as TEST_RUNNER_* variables (xcodebuild strips the prefix for the test
@@ -118,7 +118,15 @@ async function verify() {
   }
   console.log(`paired device's location grant as the parent sees it: ${device?.locationGrant ?? "missing"}`);
   if (device?.locationGrant !== "background") fail(`locationGrant is ${JSON.stringify(device?.locationGrant)}, expected "background"`);
-  console.log("live-api: the parent sees the iOS agent's alert and location");
+  // Case 10 (#475): the version the iPhone applied, as the parent's child endpoint reports it. setup's PUT
+  // bumped it past the starting 1, and the phone applied that same version.
+  const childRes = await call("GET", `/v1/family/children/${encodeURIComponent(childId)}`, { token });
+  const { rulesVersion, appliedRulesVersion } = childRes.data ?? {};
+  console.log(`rules version as the parent sees it: status=${childRes.status} rulesVersion=${rulesVersion} appliedRulesVersion=${appliedRulesVersion}`);
+  if (childRes.status !== 200) fail(`GET /v1/family/children/:id answered ${childRes.status}`);
+  if (!(rulesVersion >= 2)) fail(`rulesVersion is ${JSON.stringify(rulesVersion)}, expected at least 2 after setup's PUT`);
+  if (appliedRulesVersion !== rulesVersion) fail(`appliedRulesVersion is ${JSON.stringify(appliedRulesVersion)}, expected ${rulesVersion}`);
+  console.log("live-api: the parent sees the iOS agent's alert, location and applied rules version");
 }
 
 /**

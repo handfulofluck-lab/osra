@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// The child's rules as `GET /v1/rules/:childId` returns them (`services/api/src/lib/ruleSync.ts`
 /// `toApiRuleSet`), reduced to what the iOS agent enforces (5.5 PR C, #372). Unknown fields are ignored,
@@ -50,6 +51,11 @@ public struct RuleSet: Decodable, Equatable {
     public var appRules: [AppRule]
     public var routines: [Routine]
     public var alwaysAllowedApps: [String]
+    /// #475: the version the server bumps on every rule write. Absent from an older server, read as 1.
+    public var rulesVersion: Int?
+
+    /// #475: the version this rule set carries, 1 when the server sent none (its starting value).
+    public var effectiveRulesVersion: Int { rulesVersion ?? 1 }
 
     /// Bundle identifiers the parent blocked outright (`action == "block"`).
     public var blockedBundleIdentifiers: [String] {
@@ -122,6 +128,7 @@ public enum RuleStore {
         static let routineSchedules = "rules.routineSchedules"
         static let unscheduled = "rules.unscheduledActivities"
         static let syncedAt = "rules.syncedAt"
+        static let appliedRulesVersion = "rules.appliedVersion"
     }
 
     /// One routine, with its days already in Foundation's weekday numbering.
@@ -160,6 +167,9 @@ public enum RuleStore {
     }
 
     public static func allowedApps() -> [String] { defaults?.stringArray(forKey: Keys.allowedApps) ?? [] }
+    public static func blockedApps() -> [String] { defaults?.stringArray(forKey: Keys.blockedApps) ?? [] }
+    public static func bedtimeStart() -> String? { defaults?.string(forKey: Keys.bedtimeStart) }
+    public static func bedtimeEnd() -> String? { defaults?.string(forKey: Keys.bedtimeEnd) }
     public static func alwaysAllowedApps() -> [String] { defaults?.stringArray(forKey: Keys.alwaysAllowedApps) ?? [] }
 
     /// Records the bedtime or routine activities the system refused to monitor, in one place: the parent
@@ -170,11 +180,23 @@ public enum RuleStore {
 
     public static func unscheduled() -> [String] { defaults?.stringArray(forKey: Keys.unscheduled) ?? [] }
 
+    /// #475: the rules version the phone has stored AND applied without an error. Nil until the first
+    /// successful apply; telemetry leaves the field out while it is nil.
+    public static func appliedRulesVersion() -> Int? {
+        guard let defaults, defaults.object(forKey: Keys.appliedRulesVersion) != nil else { return nil }
+        return defaults.integer(forKey: Keys.appliedRulesVersion)
+    }
+
+    public static func setAppliedRulesVersion(_ version: Int) {
+        defaults?.set(version, forKey: Keys.appliedRulesVersion)
+    }
+
     /// Removes every synced rule: on unpairing, and when the server answers 428 (consent withdrawn).
     public static func clear() {
         guard let defaults else { return }
         for key in [Keys.blockedApps, Keys.allowedApps, Keys.alwaysAllowedApps, Keys.bedtimeStart, Keys.bedtimeEnd,
-                    Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.unscheduled, Keys.syncedAt] {
+                    Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.unscheduled, Keys.syncedAt,
+                    Keys.appliedRulesVersion] {
             defaults.removeObject(forKey: key)
         }
     }
@@ -247,6 +269,8 @@ public enum ActivityTeardown {
 
 /// One sync: fetch the rules with the device token, store them for the extensions, and enforce them.
 public enum RuleSyncer {
+    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "RuleSync")
+
     public enum Outcome: Equatable {
         case notPaired
         case synced(RuleSet)
@@ -256,15 +280,43 @@ public enum RuleSyncer {
         case failed(String)
     }
 
+    /// Applies a fetched rule set; throws when the phone did not put it in force.
+    public typealias Apply = (RuleSet) throws -> Void
+    /// Sends the applied version to the server (`POST /v1/devices/:id/telemetry`); returns the HTTP status.
+    public typealias ReportApplied = (AgentIdentity, Int) async -> Int
+
+    /// The real apply: Screen Time, where the frameworks exist; nil (nothing applied) elsewhere.
+    public static var defaultApply: Apply? {
+        #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+        return { try ScreenTimeController().applyRules($0) }
+        #else
+        return nil
+        #endif
+    }
+
+    /// One sync. `enforce: false` stores the rules without applying them, so no version is recorded; a test
+    /// that stands in for Screen Time passes `apply`.
+    ///
+    /// #475: the applied version is recorded only after `apply` returns without throwing, and then sent on
+    /// telemetry at once, so the parent's "not picked up yet" line clears without waiting for the next
+    /// grant report. A refused or failed apply keeps the old version, and the line stays.
     @discardableResult
-    public static func syncNow(client: RuleSyncClient = RuleSyncClient(), enforce: Bool = true) async -> Outcome {
+    public static func syncNow(client: RuleSyncClient = RuleSyncClient(), enforce: Bool = true,
+                               apply: Apply? = nil,
+                               reportApplied: ReportApplied = { await LocationClient().reportAppliedRulesVersion($0, $1) }) async -> Outcome {
         guard let identity = AgentIdentityStore.load() else { return .notPaired }
         do {
             let rules = try await client.fetch(for: identity)
             RuleStore.save(rules)
-            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
-            if enforce { ScreenTimeController().applyRules(rules) }
-            #endif
+            if let applying = apply ?? (enforce ? defaultApply : nil) {
+                do {
+                    try applying(rules)
+                    RuleStore.setAppliedRulesVersion(rules.effectiveRulesVersion)
+                    _ = await reportApplied(identity, rules.effectiveRulesVersion)
+                } catch {
+                    logger.error("rules \(rules.effectiveRulesVersion) stored but not applied: \(String(describing: error), privacy: .public)")
+                }
+            }
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
             RuleStore.clear()

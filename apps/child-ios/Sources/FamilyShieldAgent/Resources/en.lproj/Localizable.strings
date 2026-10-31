@@ -1,0 +1,7 @@
+/* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
+"block_title_blocked" = "This app is blocked by your parent";
+"block_request_access" = "Request access";
+"block_exit_home" = "Exit to Home screen";
+/* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "Blocked by %1$@ until %2$@";
+"block_window_bedtime" = "Bedtime";

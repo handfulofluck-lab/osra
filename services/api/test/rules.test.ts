@@ -184,6 +184,24 @@ describe("rules routes", () => {
     await app.close();
   });
 
+  it("caps both screen-time limits at a day: 1441 is refused, 1440 is accepted (#505)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.upsert.mockResolvedValue({ childId: CHILD_ID });
+    prismaMock.device.findMany.mockResolvedValue([]);
+    const put = (screenTime: Record<string, unknown>) =>
+      app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: { ...validRuleSet, screenTime: { ...validRuleSet.screenTime, ...screenTime } },
+      });
+    expect((await put({ dailyLimitMinutes: 1441 })).statusCode).toBe(400);
+    expect((await put({ weekendLimitMinutes: 1441 })).statusCode).toBe(400);
+    expect((await put({ dailyLimitMinutes: 1440, weekendLimitMinutes: 1440 })).statusCode).toBe(200);
+    await app.close();
+  });
+
   it("enforces family isolation (403 for another family's child)", async () => {
     const app = await buildApp(rulesRoutes, "/v1/rules");
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-2" });

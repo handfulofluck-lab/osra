@@ -141,4 +141,58 @@ class CommsFutureSmsPolicyTest {
             CommsFutureSmsPolicy.shouldImportFuture(1L, -1L),
         )
     }
+
+    @Test
+    fun `a row read under the forward clock is remembered when the clock comes back (#513)`() {
+        // The year-ahead text that reached the parent twice. Under the forward clock it is not future, so it
+        // is imported and moves the watermark to its date; the clock then goes back, and the next harvest
+        // would see the same row as a brand-new future one. Everything with now < DATE <= stored was read
+        // once already, and remembering it is what keeps the second import out.
+        val stored = aYearAhead
+        val remembered = CommsFutureSmsPolicy.seenOnClockBack(
+            rows = listOf(
+                CommsFutureSmsPolicy.ClockBackRow(aYearAhead - 1_000L, 42L, "abc123"), // read under the forward clock
+                CommsFutureSmsPolicy.ClockBackRow(now + 120_000L, 43L, "def456"),      // inside the skew
+            ),
+            now = now,
+            stored = stored,
+        )
+        assertTrue(
+            "the year-ahead text is tracked under the identity the harvest uses",
+            CommsFutureSmsPolicy.entry(aYearAhead - 1_000L, 42L, "abc123") in remembered,
+        )
+        assertTrue(
+            "and a row inside the skew was read too",
+            CommsFutureSmsPolicy.entry(now + 120_000L, 43L, "def456") in remembered,
+        )
+        assertEquals(2, remembered.size)
+    }
+
+    @Test
+    fun `rows the forward clock never read are not remembered, so they still arrive (#513)`() {
+        // A row dated after the old watermark was never read: remembering it would drop it forever, which
+        // trades one duplicate for one lost message. A row at or before now is normal collection.
+        val remembered = CommsFutureSmsPolicy.seenOnClockBack(
+            rows = listOf(
+                CommsFutureSmsPolicy.ClockBackRow(aYearAhead + 1_000L, 50L, "gg"), // beyond the ceiling
+                CommsFutureSmsPolicy.ClockBackRow(now - 1_000L, 51L, "hh"),       // behind now
+                CommsFutureSmsPolicy.ClockBackRow(now, 52L, "ii"),                // exactly now
+            ),
+            now = now,
+            stored = aYearAhead,
+        )
+        assertTrue("nothing here was read under the forward clock", remembered.isEmpty())
+    }
+
+    @Test
+    fun `a remembered row is the one the harvest already skips (#513)`() {
+        // The policy's two halves have to agree on the identity, or the clock-back branch writes entries the
+        // later harvest never matches — the fix would be silent.
+        val row = CommsFutureSmsPolicy.ClockBackRow(aYearAhead - 1_000L, 42L, "abc123")
+        val remembered = CommsFutureSmsPolicy.seenOnClockBack(listOf(row), now, aYearAhead)
+        assertTrue(
+            "the entry built by the clock-back branch is the one isTracked looks for",
+            CommsFutureSmsPolicy.isTracked(remembered, CommsFutureSmsPolicy.entry(row.date, row.id, row.digest)),
+        )
+    }
 }

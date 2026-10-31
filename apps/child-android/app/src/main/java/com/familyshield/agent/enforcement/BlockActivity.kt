@@ -264,7 +264,9 @@ private fun BlockScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = if (timeLimit) "Daily limit reached" else "This app is blocked by your parent",
+            text = stringResource(
+                if (timeLimit) R.string.block_title_time_limit else R.string.block_title_blocked,
+            ),
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White,
             textAlign = TextAlign.Center,
@@ -285,18 +287,18 @@ private fun BlockScreen(
         }
         Spacer(modifier = Modifier.height(40.dp))
         if (sent) {
-            Text(text = "Request sent to your parent", color = Color(0xFF9CCC65))
+            Text(text = stringResource(R.string.block_request_sent), color = Color(0xFF9CCC65))
         } else {
             Button(onClick = {
                 onRequestAccess()
                 sent = true
             }) {
-                Text("Request access")
+                Text(stringResource(R.string.block_request_access))
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(onClick = onExit) {
-            Text("Exit to Home screen", color = Color.White)
+            Text(stringResource(R.string.block_exit_home), color = Color.White)
         }
     }
 }

@@ -5,8 +5,8 @@ import UIKit
 import ManagedSettings
 import ManagedSettingsUI
 
-/// Shield appearance for FamilyShield block screens (spec §6.3): title, a subtitle
-/// describing the rule reason, and the "Ask parent" / "OK" buttons.
+/// Shield appearance for FamilyShield block screens (spec §6.3): the title, the window line (#511) and the
+/// "Request access" / "Exit to Home screen" buttons, in English or Arabic.
 ///
 /// NOTE: this class only takes effect as the NSExtensionPrincipalClass of the Shield
 /// Configuration extension target (`Extensions/ShieldConfiguration` in `project.yml`;
@@ -17,32 +17,29 @@ public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataS
 
     /// Shield configuration shown when an application is blocked.
     public override func configuration(shielding application: Application) -> ShieldConfiguration {
-        Self.makeConfiguration()
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier))
     }
 
-    /// Shield configuration shown when a website is blocked.
+    /// Shield configuration shown when a website is blocked. The web filter is not a window, so no line.
     public override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        Self.makeConfiguration()
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
     }
 
-    /// Shared shield layout used for every block reason (IOS-04).
-    private static func makeConfiguration() -> ShieldConfiguration {
+    /// #511: the text comes from `ShieldText`, in the phone's language. Our own rules (bedtime, the routines)
+    /// sit in the shared app group, so the extension can name the window holding the app and when it ends; with
+    /// no window it shows the title alone.
+    private static func makeConfiguration(_ text: ShieldText) -> ShieldConfiguration {
         ShieldConfiguration(
             backgroundBlurStyle: nil,
             backgroundColor: nil,
             icon: nil,
-            title: ShieldConfiguration.Label(text: "Blocked by OSRA", color: .label),
-            subtitle: ShieldConfiguration.Label(text: Self.subtitle, color: .secondaryLabel),
-            primaryButtonLabel: ShieldConfiguration.Label(text: "Ask parent", color: .systemBlue),
+            title: ShieldConfiguration.Label(text: text.title, color: .label),
+            subtitle: text.subtitle.map { ShieldConfiguration.Label(text: $0, color: .secondaryLabel) },
+            primaryButtonLabel: ShieldConfiguration.Label(text: text.primaryButton, color: .systemBlue),
             primaryButtonBackgroundColor: nil,
-            secondaryButtonLabel: ShieldConfiguration.Label(text: "OK", color: .systemGray)
+            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .systemGray)
         )
     }
-
-    // NOTE: the exact rule (bedtime, app limit, web filter) is not visible to the
-    // shield extension for privacy reasons, so the subtitle describes the reason set.
-    private static let subtitle =
-        "This app or website is blocked by an OSRA rule (bedtime, app limit, or web filter)."
 }
 
 /// Handles taps on FamilyShield shield buttons (spec §6.3): "Ask parent" keeps the
