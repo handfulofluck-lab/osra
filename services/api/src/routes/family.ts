@@ -91,9 +91,16 @@ export async function familyRoutes(app: FastifyInstance) {
             }
           }
         }
+        // Issue #475: the pair the rule screens compare, on the request the app already makes. The child
+        // endpoint answers the same two numbers from the same rule — one row asserts they agree.
+        const reported = c.devices
+          .map((d) => (d as { appliedRulesVersion?: number | null }).appliedRulesVersion)
+          .filter((v): v is number => typeof v === "number");
         return {
           ...c,
           screenTimeTodayMinutes,
+          rulesVersion: (c as { ruleSet?: { rulesVersion?: number } | null }).ruleSet?.rulesVersion ?? null,
+          appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
           devices: c.devices.map(sanitizeDevice),
         };
       }),

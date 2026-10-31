@@ -273,6 +273,7 @@
   "commandRefusedNotSupported": "{command} isn't available on {device}: this phone or app version cannot do it, so nothing was sent.",
   "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
   "commandRefusedInvalidPayload": "The phone rejected this command's settings.",
+  "rulesBehindHint": "The phone hasn't picked this change up yet.",
   "rulesLoadFailed": "Failed to load rules: {error}",
   "@rulesLoadFailed": {
     "placeholders": {
