@@ -9,9 +9,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -186,8 +189,10 @@ private fun OverlayScreen(mode: String) {
             "Internet paused by your parent" to "Educational apps still work. · أسرة"
         else -> "This device is locked by your parent" to "It will unlock when your parent allows it. · أسرة"
     }
+    // #489: at targetSdk 35 the screen is drawn edge to edge, so in landscape the title sat under the
+    // status bar and the cutout. The root keeps its 32 dp and adds whatever the system bars take.
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
