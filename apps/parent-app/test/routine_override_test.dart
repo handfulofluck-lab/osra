@@ -315,4 +315,76 @@ void main() {
       expect(find.textContaining('Blocked now by'), findsNothing);
     });
   });
+  /// #476: the child's phone enforces a routine in the family's zone, so the sentence is read there.
+  /// Each row derives the family offset from the test machine's own offset, so it holds in any zone CI
+  /// runs in. Mutants: ignore the offset → the "four hours behind" row shows a sentence; apply it with
+  /// the wrong sign → the "an hour ahead" row loses its sentence; drop the field on the server → the
+  /// API row in `timezone.test.ts`.
+  group('the routine sentence is read on the family clock (#476)', () {
+    test('familyWallClock shifts the instant by the family offset, and keeps the clock without one', () {
+      final instant = DateTime.utc(2026, 11, 2, 12, 30);
+      final dubai = familyWallClock(instant, 240);
+      expect([dubai.weekday, dubai.hour, dubai.minute], [1, 16, 30]);
+      final newYork = familyWallClock(instant, -300);
+      expect([newYork.hour, newYork.minute], [7, 30]);
+      expect(familyWallClock(instant, null), instant);
+    });
+
+    Map<String, dynamic> payload() => {
+          ...ruleSetPayload('child-1'),
+          'appRules': [
+            {'packageId': 'com.example.meet', 'appName': 'Meet', 'action': 'allow'},
+          ],
+          'routines': [
+            {
+              'id': 'r1',
+              'name': 'Homework',
+              'startTime': '17:00',
+              'endTime': '19:00',
+              'days': [1, 2, 3],
+              'blockedApps': ['com.example.meet'],
+              'allowedApps': <String>[],
+            },
+          ],
+        };
+
+    Future<void> pumpApps(WidgetTester tester, DateTime parentClock, int? familyOffset) async {
+      final me = familyMeTwoChildren();
+      if (familyOffset != null) {
+        me['family'] = {...Map<String, dynamic>.from(me['family'] as Map), 'utcOffsetMinutes': familyOffset};
+      }
+      final api = FakeApiClient({
+        ...standardRoutes(familyMe: me),
+        'GET /v1/rules/child-1': (_) => payload(),
+      });
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          clockProvider.overrideWithValue(() => parentClock),
+        ],
+        child: localizedTestApp(const ChildDetailScreen(childId: 'child-1')),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apps'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a parent four hours ahead of the family is not in the window at 17:30 parent time', (tester) async {
+      final parent = monday(17, 30);
+      await pumpApps(tester, parent, parent.timeZoneOffset.inMinutes - 240);
+      // 13:30 on the family clock: Homework (17:00–19:00) has not started on the child's phone.
+      expect(find.textContaining('Blocked now by'), findsNothing);
+    });
+
+    testWidgets('with the family an hour ahead, 16:30 parent time is 17:30 there and in the window', (tester) async {
+      final parent = monday(16, 30);
+      await pumpApps(tester, parent, parent.timeZoneOffset.inMinutes + 60);
+      expect(find.text('Blocked now by Homework (until 19:00)'), findsOneWidget);
+    });
+
+    testWidgets('with no family zone set, the parent clock is used', (tester) async {
+      await pumpApps(tester, monday(17, 30), null);
+      expect(find.text('Blocked now by Homework (until 19:00)'), findsOneWidget);
+    });
+  });
 }

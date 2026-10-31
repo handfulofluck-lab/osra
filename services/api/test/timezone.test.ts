@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import argon2 from "argon2";
 import { authRoutes } from "../src/routes/auth.js";
 import { familyRoutes } from "../src/routes/family.js";
+import { utcOffsetMinutes } from "../src/lib/digestSchedule.js";
 import { authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -117,5 +118,47 @@ describe("family timezone source (ADR-0020)", () => {
     expect(bad.statusCode).toBe(400);
     expect(bad.json()).toEqual({ error: "invalid_timezone" });
     await app.close();
+  });
+
+  /**
+   * #476: the parent app reads a routine window on the child's clock. `/me` gives it the family
+   * zone's offset at the moment of the request, and nothing while no zone has been set.
+   * Mutant: drop the `utcOffsetMinutes` spread from `/me` → the Dubai row goes red.
+   */
+  describe("/me carries the family zone's UTC offset (#476)", () => {
+    const familyRow = (timezone: string, timezoneSource: string) => ({
+      id: "fam-1",
+      name: "F",
+      region: "OTHER",
+      timezone,
+      timezoneSource,
+      parents: [{ id: "parent-1", email: "parent@example.com", passwordHash: "x", mfaSecret: null }],
+      children: [],
+    });
+
+    it("a family in Asia/Dubai gets 240", async () => {
+      const app = await buildApp(familyRoutes, "/v1/family");
+      prismaMock.family.findUnique.mockResolvedValue(familyRow("Asia/Dubai", "parent"));
+      const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().family.utcOffsetMinutes).toBe(240);
+      await app.close();
+    });
+
+    it("a family with no zone set gets no field", async () => {
+      const app = await buildApp(familyRoutes, "/v1/family");
+      prismaMock.family.findUnique.mockResolvedValue(familyRow("UTC", "default"));
+      const res = await app.inject({ method: "GET", url: "/v1/family/me", headers: authHeader(app) });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().family).not.toHaveProperty("utcOffsetMinutes");
+      await app.close();
+    });
+
+    it("the offset follows daylight saving and keeps its sign west of UTC", () => {
+      expect(utcOffsetMinutes(new Date("2026-01-15T12:00:00Z"), "America/New_York")).toBe(-300);
+      expect(utcOffsetMinutes(new Date("2026-07-15T12:00:00Z"), "America/New_York")).toBe(-240);
+      expect(utcOffsetMinutes(new Date("2026-07-15T12:00:00.750Z"), "Asia/Kolkata")).toBe(330);
+      expect(utcOffsetMinutes(new Date("2026-07-15T12:00:00Z"), "UTC")).toBe(0);
+    });
   });
 });
