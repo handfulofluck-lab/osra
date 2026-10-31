@@ -258,6 +258,16 @@ class RuleRepository @Inject constructor(
     /** The cached rule set without touching disk (null before the first load); for services on the hot path. */
     fun cachedRules(): RuleSetDto? = cached
 
+    /**
+     * Issue #465: forget every rule, in memory and on disk, because this phone is no longer linked to a
+     * family. After this every decision answers fail-closed with the essential list only, which is what
+     * an unlinked phone should do: nothing to enforce, nothing to block.
+     */
+    suspend fun forgetRules() {
+        cached = null
+        settings.forgetRules()
+    }
+
     /** Returns the most recently known rule set, loading it from disk if necessary. */
     suspend fun currentRules(): RuleSetDto? {
         cached?.let { return it }
