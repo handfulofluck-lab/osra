@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -566,6 +567,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get commandRefusedInvalidPayload =>
       'The phone rejected this command\'s settings.';
+
+  @override
+  String get rulesBehindHint => 'The phone hasn\'t picked this change up yet.';
 
   @override
   String rulesLoadFailed(String error) {
