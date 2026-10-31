@@ -28,6 +28,12 @@ data class TelemetryDto(
      * it expire before WorkManager's 15-minute poll.
      */
     val locationGrant: String,
+    /**
+     * Issue #475: the rules version this agent has saved and applied, or null when it has never applied one
+     * (a fresh install). Omitted rather than sent as 0, because null is "never reported" and the server
+     * stores it as such.
+     */
+    val appliedRulesVersion: Int? = null,
 )
 
 /**
