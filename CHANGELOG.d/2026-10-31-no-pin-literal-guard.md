@@ -8,10 +8,13 @@
   - It is deliberately narrow about what counts: a token that is part of an identifier (`ADR-0010`,
     `TR-09`) is not a value, `0000` is the desktop agent's **refused** old default that the docs must name
     to explain #140, and a placeholder (`<app-PIN>`) has no digits.
-  - It is deliberately wide about where it looks: prose is where this leaked, in five files, over weeks.
-- **Wired into `workflow-lint` beside the docs-links check, self-test first.** Eight fixtures, each a
-  decision: a value after the word, a value before it, the refused default, a placeholder, and four
-  negatives (digits a clause away, too short, too long, the word alone). A guard that is green because it
+  - It is deliberately wide about where it looks: prose is where this leaked, in five files, over weeks —
+  so the scan covers `docs/`, `scripts/`, `.github/`, `infra/`, `CHANGELOG.d/`, `README.md`,
+  `CHANGELOG.md` and `AGENTS.md`.
+- **Wired into `workflow-lint` beside the docs-links check, self-test first.** Eleven fixtures, each a
+  decision: a value after the word, before it, after an *earlier* PIN on the same line, the refused
+  `0000` default, a placeholder, an identifier (`ADR-0010`), a date and time — and four negatives. Two of
+  the original negatives never contained the word `PIN` and so could not fail; both now do. A guard that is green because it
   is broken is the failure mode this repository has paid for before.
 - **Mutant, run before pushing:** a planted `The test family parent PIN <six digits> …` line in `docs/TESTING.md`
   → `docs\TESTING.md:1235: a 6-digit number next to the word PIN (#151)`, exit 1; reverted → exit 0. The
