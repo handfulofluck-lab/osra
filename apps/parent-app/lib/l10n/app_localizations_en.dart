@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1014,6 +1015,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get schoolHours => 'School hours';
+
+  @override
+  String blockedNowBy(String reason, String time) {
+    return 'Blocked now by $reason (until $time)';
+  }
 
   @override
   String get weekdayMon => 'Mon';
