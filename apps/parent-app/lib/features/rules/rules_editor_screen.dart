@@ -81,7 +81,6 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       // what the phone applied. Without this the family snapshot still carries the pre-save version, so
       // right after Save `applied == rules` and the line the parent just earned never appears — which is
       // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
-      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
