@@ -91,6 +91,14 @@ class Child {
   final String consentRecordId;
   final int screenTimeTodayMinutes;
 
+  /// Issue #475: the ruleset's version and the version the child's phones report they have applied.
+  ///
+  /// Both are nullable and mean different absences: `rulesVersion` null means the server did not answer
+  /// with one (an older deployment), and `appliedRulesVersion` null means **no device has ever reported**.
+  /// Neither is a reason to warn — a phone that has never reported is not a phone that is behind.
+  final int? rulesVersion;
+  final int? appliedRulesVersion;
+
   const Child({
     required this.id,
     required this.familyId,
@@ -99,6 +107,8 @@ class Child {
     this.avatarUrl,
     this.consentRecordId = '',
     this.screenTimeTodayMinutes = 0,
+    this.rulesVersion,
+    this.appliedRulesVersion,
   });
 
   factory Child.fromJson(Map<String, dynamic> json) => Child(
@@ -109,6 +119,8 @@ class Child {
         avatarUrl: _strOrNull(json['avatarUrl']),
         consentRecordId: _str(json['consentRecordId']),
         screenTimeTodayMinutes: _int(json['screenTimeTodayMinutes']),
+        rulesVersion: json['rulesVersion'] is num ? _int(json['rulesVersion']) : null,
+        appliedRulesVersion: json['appliedRulesVersion'] is num ? _int(json['appliedRulesVersion']) : null,
       );
 
   /// First letters of the display name, for avatar initials.
