@@ -215,7 +215,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         // The policy owns the spacing (1 s); AppBlocker's own 2 s debounce would halve it.
         blocker.clearDebounce(pkg)
         media.onRaise(pkg) // #444 C4: pause the blocked app's media when its screen goes up
-        if (blocked) blocker.showBlockScreen(pkg) else blocker.showTimeLimitScreen(pkg)
+        // Issue #473: the screen names the window when one fired; a time limit and every other block
+        // pass no window and keep the existing copy.
+        if (blocked) blocker.showBlockScreen(pkg, rules.windowFor(pkg)) else blocker.showTimeLimitScreen(pkg)
     }
 
     /**

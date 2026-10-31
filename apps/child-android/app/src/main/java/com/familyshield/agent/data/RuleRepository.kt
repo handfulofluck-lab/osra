@@ -92,6 +92,17 @@ class RuleRepository @Inject constructor(
         }
     }
 
+    /**
+     * Issue #473: which window, if any, holds [packageId] shut right now — the reason the block screen
+     * shows. Null when there is no cached rule set or consent is withdrawn, the same guards [evaluate]
+     * applies before it consults the rules; those two cases are "not a window", not "unknown window".
+     */
+    fun windowFor(packageId: String): WindowReason? {
+        if (consent.isPaused()) return null
+        val ruleSet = cached ?: return null
+        return engine.windowFor(ruleSet, packageId, ZonedDateTime.now())
+    }
+
     /** Returns the decision for [packageId] based on the cached rules, the blocklist and today's usage counters. */
     fun evaluate(packageId: String): Decision {
         val ruleSet = cached
