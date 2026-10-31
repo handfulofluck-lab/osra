@@ -23,7 +23,7 @@ class BlockWindowCopyTest {
     fun `school hours are named with their end`() {
         assertEquals(
             "Blocked by School hours until 15:00",
-            BlockWindowCopy.line(WindowReason(WindowKind.SCHOOL, null, "15:00")),
+            BlockWindowCopy.line(WindowReason(WindowKind.SCHOOL, null, "15:00"), BEDTIME, SCHOOL, TEMPLATE),
         )
     }
 
@@ -31,7 +31,7 @@ class BlockWindowCopyTest {
     fun `bedtime is named with its end`() {
         assertEquals(
             "Blocked by Bedtime until 07:00",
-            BlockWindowCopy.line(WindowReason(WindowKind.BEDTIME, null, "07:00")),
+            BlockWindowCopy.line(WindowReason(WindowKind.BEDTIME, null, "07:00"), BEDTIME, SCHOOL, TEMPLATE),
         )
     }
 
@@ -39,19 +39,37 @@ class BlockWindowCopyTest {
     fun `a routine is named by the family`() {
         assertEquals(
             "Blocked by Homework until 19:00",
-            BlockWindowCopy.line(WindowReason(WindowKind.ROUTINE, "Homework", "19:00")),
+            BlockWindowCopy.line(WindowReason(WindowKind.ROUTINE, "Homework", "19:00"), BEDTIME, SCHOOL, TEMPLATE),
         )
     }
 
     @Test
     fun `a routine with a blank name says nothing rather than half a sentence`() {
-        assertNull(BlockWindowCopy.line(WindowReason(WindowKind.ROUTINE, "  ", "19:00")))
+        assertNull(BlockWindowCopy.line(WindowReason(WindowKind.ROUTINE, "  ", "19:00"), BEDTIME, SCHOOL, TEMPLATE))
     }
 
     @Test
     fun `no window means no sentence`() {
         // Every other reason — a pause, an explicit block, a time limit, the blocklist — arrives here as
         // null, and the screen keeps today's copy.
-        assertNull(BlockWindowCopy.line(null))
+        assertNull(BlockWindowCopy.line(null, BEDTIME, SCHOOL, TEMPLATE))
+    }
+
+    @Test
+    fun `the words come from the caller, so an Arabic phone can show Arabic (#496 review)`() {
+        // The first version built "Bedtime" and the template in Kotlin; this row fails if that returns.
+        val arabic = BlockWindowCopy.line(
+            WindowReason(WindowKind.SCHOOL, null, "15:00"),
+            bedtime = "وقت النوم",
+            schoolHours = "الساعات المدرسية",
+            template = "محجوب حتى %2\$s بسبب %1\$s",
+        )
+        assertEquals("محجوب حتى 15:00 بسبب الساعات المدرسية", arabic)
+    }
+
+    private companion object {
+        const val BEDTIME = "Bedtime"
+        const val SCHOOL = "School hours"
+        const val TEMPLATE = "Blocked by %1\$s until %2\$s"
     }
 }

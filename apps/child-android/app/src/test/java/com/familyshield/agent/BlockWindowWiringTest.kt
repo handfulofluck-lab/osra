@@ -25,8 +25,9 @@ class BlockWindowWiringTest {
     @Test
     fun `the decision passes the window it computed`() {
         assertTrue(
-            "the service must ask the repository which window fired",
-            service.contains("blocker.showBlockScreen(pkg, rules.windowFor(pkg))"),
+            "the service must take the reason from the same verdict that decided (#496 review)",
+            service.contains("evaluate = rules::verdict,") &&
+                service.contains("raiseBlockOrTimeLimit(pkg, blocked, verdict.reason)"),
         )
         assertTrue(
             "and only for a block — a time limit has no window",
@@ -58,8 +59,10 @@ class BlockWindowWiringTest {
                 activity.contains("EXTRA_WINDOW_ENDS) ?: return null"),
         )
         assertTrue(
-            "the line is rendered from the request",
-            activity.contains("BlockWindowCopy.line(window)") && activity.contains("window = request.window"),
+            "the line is rendered from the request, with the words resolved from resources",
+            activity.contains("window = request.window") &&
+                activity.contains("BlockWindowCopy.line(") &&
+                activity.contains("stringResource(R.string.block_window_line)"),
         )
     }
 

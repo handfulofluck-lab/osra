@@ -1,5 +1,7 @@
 package com.familyshield.agent.enforcement
 
+import com.familyshield.agent.data.WindowReason
+
 /** What to do about one blocked package seen in one accessibility event (issue #175). */
 data class BlockRaise(
     /** Start the block (or time-limit) screen now. */
@@ -102,8 +104,8 @@ class BlockRaisePolicy(
      * them. The raise is therefore deferred to the next event that shows a launcher in front, with a
      * fallback for launchers that report no such event ([DEFAULT_HOME_FALLBACK_MS]).
      */
-    fun noteHomeSent(pkg: String, blocked: Boolean, nowMs: Long) {
-        pending = PendingRaise(pkg, blocked, nowMs)
+    fun noteHomeSent(pkg: String, blocked: Boolean, nowMs: Long, window: WindowReason? = null) {
+        pending = PendingRaise(pkg, blocked, nowMs, window)
     }
 
     /**
@@ -134,7 +136,17 @@ class BlockRaisePolicy(
     }
 
     /** A deferred raise: which package, whether the block or the time-limit screen, and since when. */
-    data class PendingRaise(val pkg: String, val blocked: Boolean, val sinceMs: Long)
+    /**
+     * Issue #473: the window travels with the pending raise. The raise happens after a launcher event or
+     * the fallback, and asking again then would name whatever rule is current rather than the one that
+     * blocked — a rules sync in between is enough to change the answer.
+     */
+    data class PendingRaise(
+        val pkg: String,
+        val blocked: Boolean,
+        val sinceMs: Long,
+        val window: WindowReason? = null,
+    )
 
     companion object {
         /** The issue's spacing: never faster than once a second per package. */

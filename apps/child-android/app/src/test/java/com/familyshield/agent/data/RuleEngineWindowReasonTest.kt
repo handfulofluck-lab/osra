@@ -49,11 +49,15 @@ class RuleEngineWindowReasonTest {
         alwaysAllowedApps = alwaysAllowed,
     )
 
+
+    private fun reasonOf(rules: RuleSetDto, pkg: String, at: ZonedDateTime): WindowReason? =
+        engine.evaluateWithReason(rules, pkg, at).reason
+
     @Test
     fun `school hours name the window and when it ends`() {
         assertEquals(
             WindowReason(WindowKind.SCHOOL, null, "15:00"),
-            engine.windowFor(rules(), meet, monday(10)),
+            reasonOf(rules(), meet, monday(10)),
         )
     }
 
@@ -61,7 +65,7 @@ class RuleEngineWindowReasonTest {
     fun `bedtime names itself and when it ends`() {
         assertEquals(
             WindowReason(WindowKind.BEDTIME, null, "07:00"),
-            engine.windowFor(rules(), meet, monday(22)),
+            reasonOf(rules(), meet, monday(22)),
         )
     }
 
@@ -78,7 +82,7 @@ class RuleEngineWindowReasonTest {
         )
         assertEquals(
             WindowReason(WindowKind.ROUTINE, "Homework", "19:00"),
-            engine.windowFor(rules(routines = listOf(homework)), meet, monday(17, 30)),
+            reasonOf(rules(routines = listOf(homework)), meet, monday(17, 30)),
         )
     }
 
@@ -95,7 +99,7 @@ class RuleEngineWindowReasonTest {
         )
         assertEquals(
             WindowReason(WindowKind.ROUTINE, "Study", "18:00"),
-            engine.windowFor(rules(routines = listOf(study)), meet, monday(16, 30)),
+            reasonOf(rules(routines = listOf(study)), meet, monday(16, 30)),
         )
     }
 
@@ -104,32 +108,51 @@ class RuleEngineWindowReasonTest {
         // The block screen says "Blocked"; naming School hours would promise it opens at 15:00, and it
         // does not. Same rule as #474's parent-app sentence, from the other side.
         val blocked = AppRuleDto(packageId = meet, appName = "Meet", action = "block")
-        assertNull(engine.windowFor(rules(appRules = listOf(blocked)), meet, monday(10)))
+        assertNull(reasonOf(rules(appRules = listOf(blocked)), meet, monday(10)))
     }
 
     @Test
     fun `an allowed app is not held by a window at all`() {
         val allowed = AppRuleDto(packageId = meet, appName = "Meet", action = "allow")
-        assertNull(engine.windowFor(rules(appRules = listOf(allowed)), meet, monday(10)))
-        assertNull(engine.windowFor(rules(alwaysAllowed = listOf(meet)), meet, monday(22)))
+        assertNull(reasonOf(rules(appRules = listOf(allowed)), meet, monday(10)))
+        assertNull(reasonOf(rules(alwaysAllowed = listOf(meet)), meet, monday(22)))
     }
 
     @Test
-    fun `a time limit is the app's own reason, not a window`() {
+    fun `a time limit that has been reached is the app's own reason, not a window`() {
         val limited = AppRuleDto(packageId = meet, appName = "Meet", action = "time_limit", dailyLimitMinutes = 30)
-        assertNull(engine.windowFor(rules(appRules = listOf(limited)), meet, monday(10)))
+        val verdict = engine.evaluateWithReason(
+            rules(appRules = listOf(limited)),
+            meet,
+            monday(10),
+            minutesUsedToday = mapOf(meet to 30),
+        )
+        assertEquals(RuleRepository.Decision.TIME_LIMIT_REACHED, verdict.decision)
+        assertNull(verdict.reason)
+    }
+
+    @Test
+    fun `a time-limited app under its limit is held by whatever window is in force`() {
+        // #496 review found the first version suppressed the reason for *any* app rule. It should not: an
+        // app allowed 30 minutes a day, blocked at 10:00 with none used, is blocked by school hours, and
+        // naming the window is the truth.
+        val limited = AppRuleDto(packageId = meet, appName = "Meet", action = "time_limit", dailyLimitMinutes = 30)
+        assertEquals(
+            WindowReason(WindowKind.SCHOOL, null, "15:00"),
+            reasonOf(rules(appRules = listOf(limited)), meet, monday(10)),
+        )
     }
 
     @Test
     fun `nothing is named outside every window`() {
-        assertNull(engine.windowFor(rules(), meet, monday(16, 30)))
+        assertNull(reasonOf(rules(), meet, monday(16, 30)))
     }
 
     @Test
     fun `school hours only name their configured days`() {
         // Saturday is outside the default school days.
         val saturday = ZonedDateTime.of(2026, 11, 7, 10, 0, 0, 0, java.time.ZoneId.of("UTC"))
-        assertNull(engine.windowFor(rules(), meet, saturday))
+        assertNull(reasonOf(rules(), meet, saturday))
     }
 
     @Test
@@ -144,6 +167,67 @@ class RuleEngineWindowReasonTest {
         val blocked = AppRuleDto(packageId = meet, appName = "Meet", action = "block")
         val blockedRules = rules(appRules = listOf(blocked))
         assertEquals(RuleRepository.Decision.BLOCK, engine.evaluate(blockedRules, meet, monday(10)))
-        assertNull(engine.windowFor(blockedRules, meet, monday(10)))
+        assertNull(reasonOf(blockedRules, meet, monday(10)))
+    }
+
+    @Test
+    fun `a pause blocks with no reason, even at bedtime (#496 review)`() {
+        // The pause is step 1; the window is step 5. Naming Bedtime here would be a window the decision
+        // never reached — the first version's bug.
+        val verdict = engine.evaluateWithReason(rules(), meet, monday(22), pausedInternet = true)
+        assertEquals(RuleRepository.Decision.BLOCK, verdict.decision)
+        assertNull(verdict.reason)
+    }
+
+    @Test
+    fun `a blocklisted app blocks with no reason, even during school hours (#496 review)`() {
+        val verdict = engine.evaluateWithReason(
+            rules(),
+            meet,
+            monday(10),
+            blocklist = mapOf(meet to "gaming"),
+        )
+        assertEquals(RuleRepository.Decision.BLOCK, verdict.decision)
+        assertNull(verdict.reason)
+    }
+
+    @Test
+    fun `a routine beats bedtime, because step 2 is read first (#496 review)`() {
+        val homework = RoutineDto(
+            id = "r1",
+            name = "Homework",
+            startTime = "20:00",
+            endTime = "23:00",
+            days = listOf(1),
+            blockedApps = listOf(meet),
+            allowedApps = emptyList(),
+        )
+        // 22:00 is inside bedtime (21:00-07:00) *and* inside Homework: the routine is the reason.
+        assertEquals(
+            WindowReason(WindowKind.ROUTINE, "Homework", "23:00"),
+            reasonOf(rules(routines = listOf(homework)), meet, monday(22)),
+        )
+    }
+
+    @Test
+    fun `the wrapper never changes a decision (#496 review)`() {
+        // The parity row: every case above, through both entry points.
+        val cases = listOf(
+            Triple(rules(), meet, monday(10)),
+            Triple(rules(), meet, monday(22)),
+            Triple(rules(), meet, monday(16, 30)),
+            Triple(
+                rules(appRules = listOf(AppRuleDto(packageId = meet, appName = "Meet", action = "block"))),
+                meet,
+                monday(10),
+            ),
+            Triple(rules(alwaysAllowed = listOf(meet)), meet, monday(10)),
+        )
+        for ((ruleSet, pkg, at) in cases) {
+            assertEquals(
+                engine.evaluate(ruleSet, pkg, at),
+                engine.evaluateWithReason(ruleSet, pkg, at).decision,
+            )
+        }
     }
 }

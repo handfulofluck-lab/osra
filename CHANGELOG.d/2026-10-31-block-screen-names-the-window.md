@@ -6,6 +6,16 @@
 - **Only windows are named.** A pause, an explicit `block`, a `time_limit` and the blocklist produce **no**
   line: naming a window there would promise the app opens when the window ends, and it does not. That is
   the same ordering point #456/#474 settled for the parent app, from the phone's side.
+- **One walk, not two calls (#496 review).** The first version asked the engine for the decision and then
+  again for the reason (`windowFor`), with its own short-circuit list — so a **pause** and a **blocklisted
+  app**, which block before any window is consulted, came back naming Bedtime or School hours, and a rules
+  sync between the two calls could name a different window. `RuleEngine.evaluateWithReason` now walks the
+  order once and returns `Verdict(decision, reason)`; `evaluate` is its one-line wrapper; `windowFor` is
+  gone. `RuleRepository.verdict` replaces the pair, `VisibleBlockStep`'s seam takes a verdict, and the
+  deferred raise carries the reason so the screen is named from the decision that caused it.
+- **The words come from resources (#496 review).** `block_window_line` / `_bedtime` / `_school` in
+  `values/`; `BlockWindowCopy.line` stays pure and takes the resolved strings, so a JVM row still pins the
+  choice and an Arabic phone can show Arabic. No `values-ar` entry: the Arabic is Q10 for Karim.
 - **One implementation, not two.** The two window steps moved out of `RuleEngine.evaluate` into
   `routineWindow` and `screenTimeWindow`, which `evaluate` now calls in exactly the places it returned
   BLOCK; `RuleEngine.windowFor` answers the same question with the reason, taking the same short-circuits

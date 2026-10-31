@@ -93,27 +93,22 @@ class RuleRepository @Inject constructor(
     }
 
     /**
-     * Issue #473: which window, if any, holds [packageId] shut right now — the reason the block screen
-     * shows. Null when there is no cached rule set or consent is withdrawn, the same guards [evaluate]
-     * applies before it consults the rules; those two cases are "not a window", not "unknown window".
+     * Issue #473: the decision **and** the window that produced it, from one call (#496 review).
+     *
+     * Two calls were the bug: the reason was asked for separately, so a pause or a blocklisted app —
+     * which block before any window is consulted — came back naming a window the decision never reached,
+     * and a rules sync in between could name a different one.
      */
-    fun windowFor(packageId: String): WindowReason? {
-        if (consent.isPaused()) return null
-        val ruleSet = cached ?: return null
-        return engine.windowFor(ruleSet, packageId, ZonedDateTime.now())
-    }
-
-    /** Returns the decision for [packageId] based on the cached rules, the blocklist and today's usage counters. */
-    fun evaluate(packageId: String): Decision {
+    fun verdict(packageId: String): Verdict {
         val ruleSet = cached
-        return decide(
+        return decideWithReason(
             packageId = packageId,
             ruleSet = ruleSet,
             paired = settings.isPairedSync(),
             consentPaused = consent.isPaused(),
             essential = { EssentialPackages.isEssential(it, packageFacts) },
         ) { rules ->
-            engine.evaluate(
+            engine.evaluateWithReason(
                 rules,
                 packageId,
                 ZonedDateTime.now(),
@@ -124,6 +119,9 @@ class RuleRepository @Inject constructor(
             )
         }
     }
+
+    /** Returns the decision for [packageId]; [verdict] is the same walk with the reason attached. */
+    fun evaluate(packageId: String): Decision = verdict(packageId).decision
 
     /** Enables or clears pause-the-internet (Feature #11); while paused every app except alwaysAllowedApps is blocked. */
     fun setPausedInternet(paused: Boolean) {
@@ -329,13 +327,29 @@ class RuleRepository @Inject constructor(
             consentPaused: Boolean,
             essential: (String) -> Boolean = { EssentialPackages.isEssential(it) },
             rulesDecision: (RuleSetDto) -> Decision,
-        ): Decision {
+        ): Decision =
+            // Issue #473: one implementation, two views. This overload projects the reason away so the
+            // rows that only ask "which decision" keep their shape; it is not a second walk.
+            decideWithReason(packageId, ruleSet, paired, consentPaused, essential) { rules ->
+                Verdict(rulesDecision(rules))
+            }.decision
+
+        /** Issue #473: the same gate, returning the decision **and** the window that produced it. */
+        internal fun decideWithReason(
+            packageId: String,
+            ruleSet: RuleSetDto?,
+            paired: Boolean,
+            consentPaused: Boolean,
+            essential: (String) -> Boolean = { EssentialPackages.isEssential(it) },
+            rulesDecision: (RuleSetDto) -> Verdict,
+        ): Verdict {
             // ADR-0008 §3: no enforcement while the parent has withdrawn consent.
-            if (consentPaused) return Decision.ALLOW
-            if (essential(packageId)) return Decision.ALLOW
+            if (consentPaused) return Verdict(Decision.ALLOW)
+            if (essential(packageId)) return Verdict(Decision.ALLOW)
             if (ruleSet == null) {
-                // AND-03: Fail-closed when paired but no rules are cached yet — for apps only.
-                return if (paired) Decision.BLOCK else Decision.ALLOW
+                // AND-03: Fail-closed when paired but no rules are cached yet — for apps only. No window:
+                // there were no rules to consult, so naming one would be a guess.
+                return Verdict(if (paired) Decision.BLOCK else Decision.ALLOW)
             }
             return rulesDecision(ruleSet)
         }

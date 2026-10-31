@@ -73,4 +73,9 @@
     <string name="unlinked_title">This phone is no longer linked to a family</string>
     <string name="unlinked_body">OSRA was removed from the family that managed this phone, so it has stopped monitoring. You can uninstall it now.</string>
     <string name="unlinked_channel">Phone unlinked</string>
+    <!-- #473: the block screen names the window that is holding the app. The routine's name comes from
+         the family, so it is a placeholder rather than a string here. -->
+    <string name="block_window_line">Blocked by %1$s until %2$s</string>
+    <string name="block_window_bedtime">Bedtime</string>
+    <string name="block_window_school">School hours</string>
 </resources>

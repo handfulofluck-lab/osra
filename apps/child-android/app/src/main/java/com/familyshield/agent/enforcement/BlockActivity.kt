@@ -1,5 +1,6 @@
 package com.familyshield.agent.enforcement
 
+import com.familyshield.agent.R
 import com.familyshield.agent.data.WindowKind
 import com.familyshield.agent.data.WindowReason
 
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -271,7 +273,13 @@ private fun BlockScreen(
         Text(text = appLabel, color = Color(0xFFAEB0B8), textAlign = TextAlign.Center)
         // #473: name the window, so a child in a Study routine and one kept out of school hours stop
         // reading the same sentence. Absent for every other reason, and then nothing is added.
-        BlockWindowCopy.line(window)?.let { line ->
+        // #473 review: the words come from resources, so an Arabic phone can show Arabic.
+        BlockWindowCopy.line(
+            window = window,
+            bedtime = stringResource(R.string.block_window_bedtime),
+            schoolHours = stringResource(R.string.block_window_school),
+            template = stringResource(R.string.block_window_line),
+        )?.let { line ->
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = line, color = Color(0xFFAEB0B8), textAlign = TextAlign.Center)
         }

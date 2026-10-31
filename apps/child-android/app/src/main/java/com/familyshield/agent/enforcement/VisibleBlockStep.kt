@@ -1,9 +1,16 @@
 package com.familyshield.agent.enforcement
 
 import com.familyshield.agent.data.RuleRepository.Decision
+import com.familyshield.agent.data.Verdict
 
-/** The blocked package found in one snapshot, its decision, and what [BlockRaisePolicy] said to do. */
-data class VisibleBlock(val pkg: String, val decision: Decision, val step: BlockRaise)
+/**
+ * The blocked package found in one snapshot, the verdict that named it, and what [BlockRaisePolicy] said
+ * to do. Issue #473: the verdict carries the window, so the screen is named from the same walk that made
+ * the decision rather than from a second call.
+ */
+data class VisibleBlock(val pkg: String, val verdict: Verdict, val step: BlockRaise) {
+    val decision: Decision get() = verdict.decision
+}
 
 /**
  * Issue #175: the service's per-event block step, kept free of Android types so the JVM suite can pin it.
@@ -20,17 +27,17 @@ object VisibleBlockStep {
     fun decide(
         snapshot: WindowSnapshot,
         active: String?,
-        evaluate: (String) -> Decision,
+        evaluate: (String) -> Verdict,
         isEssential: (String) -> Boolean,
         policy: BlockRaisePolicy,
         nowMs: Long,
     ): VisibleBlock? {
         for (pkg in EssentialPackages.blockCandidates(active, snapshot.windows)) {
-            val decision = evaluate(pkg)
-            if (decision == Decision.ALLOW) continue
+            val verdict = evaluate(pkg)
+            if (verdict.decision == Decision.ALLOW) continue
             val step = policy.decide(pkg, snapshot.layout, blockedIsActive = pkg == active, nowMs = nowMs)
             val homeIsSafe = active == null || active == pkg || !isEssential(active)
-            return VisibleBlock(pkg, decision, if (homeIsSafe) step else step.copy(goHome = false))
+            return VisibleBlock(pkg, verdict, if (homeIsSafe) step else step.copy(goHome = false))
         }
         policy.noBlockedWindow()
         return null

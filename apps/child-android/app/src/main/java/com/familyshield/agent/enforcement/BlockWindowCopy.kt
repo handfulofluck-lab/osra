@@ -6,29 +6,37 @@ import com.familyshield.agent.data.WindowReason
 /**
  * Issue #473: the one line the block screen adds when a window is what is holding the app shut.
  *
- * Pure and Android-free so a JVM row can pin it: the screen around it is Compose and needs a device, but
- * the sentence — and which reason produces which sentence — is a decision.
+ * **Localised by the caller, decided here.** The first version built "Bedtime", "School hours" and the
+ * whole template in Kotlin, so an Arabic phone could never show Arabic (review point 4). The screen now
+ * resolves `block_window_bedtime`, `block_window_school` and `block_window_line` from resources and passes
+ * them in; this function still owns the *decision* — which window, which label, whether a line at all —
+ * so a JVM row pins it without Android.
  *
- * **Why only windows appear.** A pause, an explicit `block`, a `time_limit` and the blocklist arrive with
- * no [WindowReason] (`RuleEngine.windowFor` answers null for each), so this returns null and the screen
- * keeps today's copy. Naming a window there would be a promise the rules do not keep: a blocked app does
- * not open at 15:00 because school hours ended.
+ * **Only windows appear.** A pause, an explicit `block`, a `time_limit` and the blocklist arrive with no
+ * [WindowReason] (`RuleEngine.evaluateWithReason` answers null for each), so this returns null and the
+ * screen keeps today's copy. Naming a window there would be a promise the rules do not keep.
  */
 object BlockWindowCopy {
 
     /**
      * The sentence for [window], or null when nothing should be added.
      *
-     * A routine's name is the family's own text and is used verbatim; the two screen-time windows are
-     * named in the app's own words because the phone, not the family, owns those concepts.
+     * @param bedtime the localised "Bedtime"
+     * @param schoolHours the localised "School hours"
+     * @param template the localised "Blocked by %1$s until %2$s"
      */
-    fun line(window: WindowReason?): String? {
+    fun line(
+        window: WindowReason?,
+        bedtime: String,
+        schoolHours: String,
+        template: String,
+    ): String? {
         if (window == null) return null
         val label = when (window.kind) {
             WindowKind.ROUTINE -> window.name?.takeIf { it.isNotBlank() } ?: return null
-            WindowKind.BEDTIME -> "Bedtime"
-            WindowKind.SCHOOL -> "School hours"
+            WindowKind.BEDTIME -> bedtime
+            WindowKind.SCHOOL -> schoolHours
         }
-        return "Blocked by $label until ${window.endsAt}"
+        return String.format(template, label, window.endsAt)
     }
 }
