@@ -7,7 +7,8 @@ import java.io.File
 /**
  * #489 (Flip4, landscape): the block screen's title was clipped under the status bar and the cutout,
  * because at targetSdk 35 the screen is drawn edge to edge and neither overlay applied the window insets.
- * Each overlay's root column must add the safe-drawing insets before its own padding.
+ * Each overlay's root column must add the safe-drawing insets before its own padding; the follow-up
+ * (#492 review) applies the same to the SOS and reset-code screens.
  */
 class BlockScreenInsetsTest {
 
@@ -23,6 +24,21 @@ class BlockScreenInsetsTest {
     fun `the lock screen's root column applies the safe-drawing insets`() {
         val text = source("commands/LockActivity.kt")
         assertTrue("OverlayScreen's root must pad by the insets", text.contains(rootModifier))
+    }
+
+    @Test
+    fun `the SOS screen's root column applies the safe-drawing insets`() {
+        val text = source("sos/SosActivity.kt")
+        assertTrue("SosScreen's root must pad by the insets", text.contains(rootModifier))
+    }
+
+    @Test
+    fun `the reset-code screen's root column applies the insets outside its scroll`() {
+        val text = source("commands/ResetCodeActivity.kt")
+        assertTrue(
+            "ResetCodeScreen's root must pad by the insets before it scrolls",
+            text.contains(".fillMaxSize()\n            .windowInsetsPadding(WindowInsets.safeDrawing)\n            .verticalScroll("),
+        )
     }
 
     private fun source(path: String): String {
