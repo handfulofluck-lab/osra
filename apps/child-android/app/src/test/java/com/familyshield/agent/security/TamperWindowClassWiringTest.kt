@@ -22,8 +22,12 @@ class TamperWindowClassWiringTest {
 
     @Test
     fun `the class is kept from window-state changes only`() {
-        val kept = guard.substringAfter("if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {")
-            .substringBefore("}")
+        // missingDelimiterValue = "": without it, a guard with no state-change test would hand back the whole
+        // guard here, which still contains both assignments, and the row would pass.
+        val kept = guard.substringAfter(
+            "if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {",
+            missingDelimiterValue = "",
+        ).substringBefore("}")
         assertTrue("the class comes from a state change", kept.contains("lastWindowClass = event.className?.toString()"))
         assertTrue("with its package", kept.contains("lastWindowClassPkg = event.packageName?.toString()"))
         assertFalse(
