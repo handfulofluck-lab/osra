@@ -2978,6 +2978,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTitleBlockBypass => 'أحد التطبيقات تجاوز الحظر';
 
   @override
+  String get alertCallBypassNote =>
+      'تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.';
+
+  @override
   String get alertTitleDataCleared => 'تم مسح بيانات OSRA على هاتف';
 
   @override

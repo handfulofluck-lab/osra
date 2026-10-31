@@ -1272,6 +1272,10 @@
   "alertTitleGrooming": "Possible grooming",
   "alertTitleTamper": "Protection tampered with",
   "alertTitleBlockBypass": "An app got around the block",
+  "alertCallBypassNote": "The call app was blocked, but its call kept going under the block screen. OSRA can't end another app's call, so the screen stays blocked until the call ends.",
+  "@alertCallBypassNote": {
+    "description": "#444: shown in the alert dialog when a block_bypass alert carries metadata.layout = call. The agent cannot end another app's VoIP call; this says so rather than promising silence."
+  },
   "alertTitleDataCleared": "OSRA's data was cleared on a phone",
   "alertTitleVpnDetected": "VPN detected",
   "alertTitleInstallRequest": "App install request",

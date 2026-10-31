@@ -862,6 +862,7 @@
   "alertTitleGrooming": "استدراج محتمل من شخص بالغ",
   "alertTitleTamper": "محاولة تعطيل الحماية",
   "alertTitleBlockBypass": "أحد التطبيقات تجاوز الحظر",
+  "alertCallBypassNote": "تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.",
   "alertTitleDataCleared": "تم مسح بيانات OSRA على هاتف",
   "alertTitleVpnDetected": "تم اكتشاف شبكة VPN",
   "alertTitleInstallRequest": "طلب تثبيت تطبيق",
