@@ -195,6 +195,28 @@ extension LiveAPITests {
     }
 }
 
+extension LiveAPITests {
+    // 10. #475: the rules version the phone applied reaches the server, and `live-api.mjs verify` reads it back as
+    // the parent from `GET /v1/family/children/:id`. setup's PUT bumped the version, so it is at least 2. Named
+    // `test9b…` so XCTest's alphabetical order runs it after case 9 (a `test10…` would sort before `test1…`).
+    // A simulator cannot hold Screen Time authorization, so a stand-in apply that succeeds is passed; that the
+    // real apply throws without authorization (and so records nothing) is a 5.1 device row.
+    func test9bAppliedRulesVersionReachesTheServer() async throws {
+        _ = try input("OSRA_TEST_API_BASE")
+        _ = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
+        var status = 0
+        let outcome = await RuleSyncer.syncNow(apply: { _ in }, reportApplied: { identity, version in
+            status = await LocationClient().reportAppliedRulesVersion(identity, version)
+            return status
+        })
+        guard case .synced(let rules) = outcome else { return XCTFail("rule sync ended with \(outcome)") }
+        XCTAssertGreaterThanOrEqual(rules.effectiveRulesVersion, 2, "setup's PUT bumps the version past 1")
+        XCTAssertEqual(RuleStore.appliedRulesVersion(), rules.effectiveRulesVersion)
+        XCTAssertEqual(status, 202, "the telemetry route answers 202 Accepted")
+        print("live case 10: applied rules version \(rules.effectiveRulesVersion) reported")
+    }
+}
+
 /// Ends a case whose required live input is missing, after the failure is recorded.
 private struct MissingLiveInput: Error {
     let name: String

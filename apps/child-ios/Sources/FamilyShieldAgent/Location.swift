@@ -127,13 +127,33 @@ public struct LocationClient {
         }
     }
 
-    /// `POST /v1/devices/:id/telemetry {"locationGrant"}`; the other telemetry fields are optional.
+    /// The telemetry body: the grant when known, and #475's applied rules version once the phone has applied
+    /// a rule set. A field that is nil is left out, never sent as 0 (the server refuses 0).
+    static func telemetryBody(grant: LocationGrant?, appliedRulesVersion: Int?) -> [String: Any] {
+        var body: [String: Any] = [:]
+        if let grant { body["locationGrant"] = grant.rawValue }
+        if let appliedRulesVersion { body["appliedRulesVersion"] = appliedRulesVersion }
+        return body
+    }
+
+    /// `POST /v1/devices/:id/telemetry {"locationGrant", "appliedRulesVersion"?}`; every field is optional.
     @discardableResult
-    public func reportGrant(_ identity: AgentIdentity, _ grant: LocationGrant) async -> Int {
+    public func reportGrant(_ identity: AgentIdentity, _ grant: LocationGrant,
+                            appliedRulesVersion: Int? = RuleStore.appliedRulesVersion()) async -> Int {
+        await postTelemetry(identity, Self.telemetryBody(grant: grant, appliedRulesVersion: appliedRulesVersion))
+    }
+
+    /// #475: right after a rule set was applied, so the parent's "not picked up yet" line clears.
+    @discardableResult
+    public func reportAppliedRulesVersion(_ identity: AgentIdentity, _ version: Int) async -> Int {
+        await postTelemetry(identity, Self.telemetryBody(grant: nil, appliedRulesVersion: version))
+    }
+
+    private func postTelemetry(_ identity: AgentIdentity, _ body: [String: Any]) async -> Int {
         var request = URLRequest(url: identity.apiBaseURL.appendingPathComponent("v1/devices")
             .appendingPathComponent(identity.deviceId).appendingPathComponent("telemetry"))
         request.httpMethod = "POST"
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["locationGrant": grant.rawValue])
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         return await send(&request, identity)
     }
 

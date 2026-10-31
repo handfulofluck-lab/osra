@@ -102,11 +102,15 @@ public final class ScreenTimeController {
     /// Enforces a synced rule set (5.5 PR C): blocked apps, the web filter, bedtime and the routines.
     /// Without Screen Time authorization each step logs and does nothing, as the methods above do. Any
     /// bedtime or routine activity the system refuses is recorded in `RuleStore.unscheduled()`.
-    public func applyRules(_ rules: RuleSet) {
+    ///
+    /// #475: throws when the rules were not put in force, so the caller does not report them as applied:
+    /// `notAuthorized` without Screen Time authorization, `unscheduled` when the system refused a bedtime or
+    /// routine activity.
+    public func applyRules(_ rules: RuleSet) throws {
         applyBlockedApps(packageIds: rules.blockedBundleIdentifiers)
         applyWebFilter(blockedCategories: rules.webFilter.blockedCategories,
                        blockedDomains: rules.webFilter.blockedDomains)
-        guard ensureAuthorized(#function) else { return }
+        guard ensureAuthorized(#function) else { throw ApplyError.notAuthorized }
         var refused: [String] = []
         if let start = parseHHMM(rules.screenTime.bedtimeStart), let end = parseHHMM(rules.screenTime.bedtimeEnd) {
             do {
@@ -124,7 +128,14 @@ public final class ScreenTimeController {
         RuleStore.recordUnscheduled(refused)
         if !refused.isEmpty {
             Self.logger.error("\(refused.count) activities not monitored: \(refused.joined(separator: "; "), privacy: .public)")
+            throw ApplyError.unscheduled(refused)
         }
+    }
+
+    /// Why `applyRules` did not put a rule set in force (#475).
+    public enum ApplyError: Error, Equatable {
+        case notAuthorized
+        case unscheduled([String])
     }
 
     /// Registers one daily activity per routine (`RoutinePlan`); the monitor applies the shield only on the

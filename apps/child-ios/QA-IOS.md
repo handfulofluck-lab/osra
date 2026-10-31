@@ -158,11 +158,28 @@ On the contract the Android agent already uses; no server change.
   - Live case 9: the simulator is placed with `simctl location` and granted Always with `simctl privacy`. The
     grant is reported (202), a `locate_now` through Core Location answers `ok`, and `verify` reads the point
     back as the parent, attributed to the iPhone, with the device's grant `background`.
+  - Live case 10 (`test9b…`, #475): after setup's PUT, a sync with a stand-in apply records the version and
+    reports it on telemetry (202); `verify` reads `appliedRulesVersion == rulesVersion` (at least 2) from
+    `GET /v1/family/children/:id` as the parent.
 - **5.1 device checklist:**
   - significant-change updates on a real iPhone, moving between places;
   - a relaunch after termination delivers the new fix (the simulator can't relaunch on a location event);
   - the When In Use and Always prompts, in English and Arabic;
   - `locate_now` on a locked iPhone answers within the wake deadline.
+
+## Applied rules version (added 2026-10-31, #475)
+
+- `RuleSyncer.syncNow` records `rulesVersion` (1 when the server sends none) in the app group **only after**
+  `ScreenTimeController.applyRules` returns without throwing, then sends it at once on
+  `POST /v1/devices/:id/telemetry {"appliedRulesVersion"}`. `applyRules` throws `notAuthorized` without Screen
+  Time authorization and `unscheduled` when the system refused a bedtime or routine activity; either keeps
+  the old version, so the parent's "not picked up yet" line stays. Every later telemetry carries the stored
+  version; before the first apply the field is left out, never sent as 0. A 428 clears it with the rules.
+- **Tests:** `RuleSyncTests` (stored and reported after a successful apply; unchanged and not reported when
+  the apply throws; nothing recorded by `enforce: false`; a server without the field reads as 1; telemetry
+  carries it, and leaves it out before the first apply). Live case 10 above.
+- **5.1 device row:** on a signed iPhone, change a rule; the parent's line clears after the next sync. With
+  Screen Time authorization revoked, the line stays.
 
 ## Rule sync (updated 2026-10-25, roadmap 5.5 PR C, #372)
 
