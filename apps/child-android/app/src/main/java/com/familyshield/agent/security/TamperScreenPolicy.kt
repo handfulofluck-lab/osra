@@ -33,12 +33,15 @@ object TamperScreenPolicy {
     private val DEACTIVATE_VERBS = listOf(
         "deactivate", "turn off", "remove", "disable",
         "الغاء تنشيط", "الغاء التنشيط", "ايقاف", "ازالة", "تعطيل",
+        // osra-security#5 (Flip4, One UI, ar-EG): the admin sheet's verb. Never bare «إلغاء», which is Cancel.
+        "الغاء التفعيل", "الغاء تفعيل",
     )
     private val UNINSTALL_VERBS = listOf(
         "uninstall", "remove app", "delete app",
         "الغاء تثبيت", "الغاء التثبيت", "ازالة التثبيت", "ازالة تثبيت", "حذف التطبيق",
     )
-    private val FORCE_STOP_VERBS = listOf("force stop", "فرض الايقاف", "فرض ايقاف", "ايقاف اجباري")
+    // The Flip4's force-stop button reads «إيقاف إجباري» and its dialog title «توقف إجباري».
+    private val FORCE_STOP_VERBS = listOf("force stop", "فرض الايقاف", "فرض ايقاف", "ايقاف اجباري", "توقف اجباري")
     private val APP_INFO_VERBS = FORCE_STOP_VERBS + listOf(
         "force close", "clear data", "clear storage", "uninstall",
         "محو البيانات", "مسح البيانات", "محو مساحة التخزين", "مسح مساحة التخزين", "الغاء التثبيت", "الغاء تثبيت",
@@ -57,7 +60,12 @@ object TamperScreenPolicy {
     // Primary signal: what the window IS, not what it says (osra-security#5). The class of the
     // TYPE_WINDOW_STATE_CHANGED event, matched on its simple name so the AOSP, Google and OEM packages
     // of the same activity all match. These do not depend on the phone's language.
-    private val ADMIN_CLASSES = setOf("DeviceAdminAdd")
+    // The admin sheet serves activation AND deactivation under one class (AOSP `DeviceAdminAdd`, Samsung
+    // `SecDeviceAdminAdd`, seen on the Flip4), so it counts only while our admin is active ([classify]).
+    private val ADMIN_CLASSES = setOf("DeviceAdminAdd", "SecDeviceAdminAdd")
+    // The admin LIST is never a protection screen; in Arabic its intro text carries «إلغاء تفعيل» and the list
+    // names us, so the word path would misfire without this.
+    private val NEVER_CLASSES = setOf("DeviceAdminSettingsActivity")
     private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
     private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
 
@@ -88,7 +96,9 @@ object TamperScreenPolicy {
      * text/content-description on it, in any order; [agentLabel] the agent's launcher label
      * ("OSRA Child Agent"), [adminLabel] the device-admin label ("OSRA parental controls") and
      * [agentPackage] its package name — any of them naming the agent on the screen. [windowClass] is the
-     * class of the window's last TYPE_WINDOW_STATE_CHANGED event, when it is known.
+     * class of the window's last TYPE_WINDOW_STATE_CHANGED event, when it is known. [ourAdminActive] is whether
+     * the agent's device admin is active right now: the admin sheet is a deactivation only then. While it is
+     * inactive the same sheet is the activation the parent runs in setup, and it is never guarded.
      *
      * A screen still has to name the agent to count, whichever signal matched: the class alone would put
      * the guard in front of every app's admin sheet and every uninstall.
@@ -99,6 +109,7 @@ object TamperScreenPolicy {
         agentLabel: String,
         adminLabel: String,
         agentPackage: String,
+        ourAdminActive: Boolean,
         windowClass: String? = null,
     ): TamperScreen {
         if (packageName == null || packageName !in SYSTEM_PACKAGES) return TamperScreen.NONE
@@ -115,7 +126,8 @@ object TamperScreenPolicy {
         if (!namesUs) return TamperScreen.NONE
 
         when (simpleName(windowClass)) {
-            in ADMIN_CLASSES -> return TamperScreen.DEACTIVATE_ADMIN
+            in NEVER_CLASSES -> return TamperScreen.NONE
+            in ADMIN_CLASSES -> return if (ourAdminActive) TamperScreen.DEACTIVATE_ADMIN else TamperScreen.NONE
             in UNINSTALL_CLASSES -> return TamperScreen.UNINSTALL
             in APP_INFO_CLASSES -> return TamperScreen.APP_INFO
         }
@@ -124,7 +136,9 @@ object TamperScreenPolicy {
         fun anyOf(words: List<String>) = words.any { joined.contains(normalize(it)) }
         val mentionsAdmin = anyOf(ADMIN_WORDS)
         return when {
-            mentionsAdmin && anyOf(DEACTIVATE_VERBS) -> TamperScreen.DEACTIVATE_ADMIN
+            // Nothing to deactivate while our admin is inactive: an activation sheet that says "disable" in its
+            // list of powers is not a tamper screen.
+            mentionsAdmin && anyOf(DEACTIVATE_VERBS) -> if (ourAdminActive) TamperScreen.DEACTIVATE_ADMIN else TamperScreen.NONE
             anyOf(UNINSTALL_VERBS) && !anyOf(FORCE_STOP_VERBS) -> TamperScreen.UNINSTALL
             anyOf(APP_INFO_VERBS) -> TamperScreen.APP_INFO
             else -> TamperScreen.NONE
