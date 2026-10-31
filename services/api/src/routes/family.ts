@@ -100,7 +100,7 @@ export async function familyRoutes(app: FastifyInstance) {
           ...c,
           screenTimeTodayMinutes,
           rulesVersion: (c as { ruleSet?: { rulesVersion?: number } | null }).ruleSet?.rulesVersion ?? null,
-          appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
+          appliedRulesVersion: reported.length > 0 ? Math.max(...reported) : null,
           devices: c.devices.map(sanitizeDevice),
         };
       }),
