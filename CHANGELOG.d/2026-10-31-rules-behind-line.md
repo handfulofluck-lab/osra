@@ -13,11 +13,17 @@
   pair from the same rule, and **one row pins them against each other** rather than each on its own.
 - `Child` gains `rulesVersion` / `appliedRulesVersion`, both nullable: absent from an older server reads as
   "nothing to say", not as "behind".
+- **Saving a rule refreshes the family snapshot too** (`ref.invalidate(familyProvider)` beside the existing
+  `rulesProvider` one). Without it the snapshot kept the pre-save `rulesVersion`, `applied == rules` held,
+  and the line the parent had just earned never appeared — the "I changed it, why is Meet still blocked?"
+  moment this feature exists for (#501 review).
 - Rows: `rules_freshness_test.dart` — five pure rows (behind, equal, never reported, no server version, a
-  version above) and three widget rows (the banner appears; a current phone and a never-reporting phone show
-  nothing; the Arabic line under `ar`/RTL). Mutants run: `applied != rules` reddens the never-reported row;
-  hiding the banner reddens the widget row; `max` instead of `min` on `/me` reddens the parity row.
-- **The Arabic is still a draft** («لم يلتقط الهاتف هذا التغيير بعد.») and goes to Karim with Q10's line; it
-  is in `app_ar.arb` so parity holds, and a rewording is a strings-only change. It is **pinned as a literal**
-  in the RTL row the way #486 and #491 pin theirs, so a rewording has to move the row too rather than arrive
-  silently — which is the point of pinning draft wording, not a claim that it is final.
+  version above) and four widget rows (the banner appears; **a save shows it from the refetched family**; a
+  current phone and a never-reporting phone show nothing; the Arabic line under `ar`/RTL). Mutants run:
+  `applied != rules` reddens the never-reported row; hiding the banner reddens the widget row; `max` instead
+  of `min` on `/me` reddens the parity row; dropping the `familyProvider` invalidation from `_save()`
+  reddens **only** the save row (8 passed, 1 failed).
+- **The Arabic is Karim's approved wording** (Q11, 31 Oct 15:52Z): «لم يستلم الهاتف هذا التغيير بعد.» — his
+  word «يستلم» ("received") for the draft's «يلتقط». It is **pinned as a literal** in the RTL row the way
+  #486 and #491 pin theirs, so a changed word turns red instead of shipping quietly (mutant: the first
+  character of the generated getter changed, same length, reddens that row alone).

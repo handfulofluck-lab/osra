@@ -594,7 +594,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get commandRefusedInvalidPayload => 'رفض الهاتف إعدادات هذا الأمر.';
 
   @override
-  String get rulesBehindHint => 'لم يلتقط الهاتف هذا التغيير بعد.';
+  String get rulesBehindHint => 'لم يستلم الهاتف هذا التغيير بعد.';
 
   @override
   String rulesLoadFailed(String error) {

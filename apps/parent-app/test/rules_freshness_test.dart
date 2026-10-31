@@ -85,6 +85,31 @@ void main() {
       expect(find.textContaining("hasn't picked this change up yet"), findsOneWidget);
     });
 
+    testWidgets('saving a rule shows the line, because the family is refetched', (tester) async {
+      // #501 review, point 1: `_save()` invalidated only `rulesProvider`, so the family snapshot kept the
+      // pre-save version — `applied == rules`, and the banner the parent had just earned never appeared.
+      // The row saves and answers the refetch with the bumped version, which is what a real server does.
+      // Mutant: drop `ref.invalidate(familyProvider)` from `_save()` and this row goes red, while every
+      // other row here stays green — which is exactly why it exists.
+      final childJson = <String, dynamic>{
+        'id': 'child-1',
+        'familyId': 'fam-1',
+        'displayName': 'Alex',
+        'birthYear': 2013,
+        'rulesVersion': 7,
+        'appliedRulesVersion': 7,
+      };
+      await pumpEditor(tester, childJson);
+      expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+
+      childJson['rulesVersion'] = 8; // the PUT bumped it; the phone still has 7
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+      expect(find.textContaining("hasn't picked this change up yet"), findsOneWidget);
+    });
+
     testWidgets('a phone that is current, or has never reported, shows nothing', (tester) async {
       await pumpEditor(tester, {
         'id': 'child-1',
@@ -124,7 +149,7 @@ void main() {
         textDirection: TextDirection.rtl,
       );
       expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
-      expect(find.text('لم يلتقط الهاتف هذا التغيير بعد.'), findsOneWidget);
+      expect(find.text('لم يستلم الهاتف هذا التغيير بعد.'), findsOneWidget);
     });
   });
 }

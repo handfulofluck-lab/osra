@@ -77,6 +77,11 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       // NOTE: the server PATCH-merges, so we always send the full object.
       await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: _draft.toJson());
       ref.invalidate(rulesProvider(widget.childId));
+      // Issue #475: the PUT bumped `rulesVersion` on the server, and the banner compares that number with
+      // what the phone applied. Without this the family snapshot still carries the pre-save version, so
+      // right after Save `applied == rules` and the line the parent just earned never appears — which is
+      // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
+      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
