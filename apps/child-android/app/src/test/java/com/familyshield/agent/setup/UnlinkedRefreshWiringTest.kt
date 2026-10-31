@@ -87,9 +87,15 @@ class UnlinkedRefreshWiringTest {
             "the form guard is what keeps a half-typed pairing form from being replaced",
             pairing.contains("private var statusScreenShown = false"),
         )
+        // Scoped to each body: "both strings appear somewhere" survived the swapped flag (#479 F3),
+        // which would leave the status screen never refreshing and wipe a half-typed form.
+        val showFormBody = pairing.substringAfter("private fun showForm(").substringBefore("replaceWith {")
+        assertTrue("showForm clears the flag before it draws", showFormBody.contains("statusScreenShown = false"))
+        assertTrue("and never sets it", !showFormBody.contains("statusScreenShown = true"))
+        val showStatusBody = pairing.substringAfter("private fun showStatus()").substringBefore("lifecycleScope.launch {")
         assertTrue(
-            "the status screen sets it, the form clears it",
-            pairing.contains("statusScreenShown = true") && pairing.contains("statusScreenShown = false"),
+            "showStatus sets the flag once the PIN gate is passed",
+            showStatusBody.contains("statusScreenShown = true"),
         )
     }
 
