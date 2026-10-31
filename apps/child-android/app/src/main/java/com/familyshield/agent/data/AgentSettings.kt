@@ -76,6 +76,17 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_RULES_JSON] = json }
     }
 
+    /**
+     * Issue #475: the rules version the agent has **saved and applied**, not the one it fetched. Written by
+     * [RuleRepository.refresh] after the rules are persisted, read by the telemetry upload.
+     */
+    suspend fun saveAppliedRulesVersion(version: Int) {
+        store.edit { it[KEY_APPLIED_RULES_VERSION] = version.toString() }
+    }
+
+    /** The applied rules version, or null when this install has never applied one (never reported). */
+    suspend fun appliedRulesVersion(): Int? = read(KEY_APPLIED_RULES_VERSION)?.toIntOrNull()
+
     /** Returns the persisted rule set JSON, or null. */
     suspend fun rulesJson(): String? = read(KEY_RULES_JSON)
 
@@ -453,6 +464,7 @@ class AgentSettings @Inject constructor(
         private const val SECURE_DEVICE_TOKEN = "device_token"
         private const val SECURE_HMAC_SECRET = "hmac_secret"
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
+        private val KEY_APPLIED_RULES_VERSION = stringPreferencesKey("applied_rules_version")
         private val KEY_UNLINK_PENDING = booleanPreferencesKey("unlink_pending")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")
