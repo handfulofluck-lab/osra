@@ -202,6 +202,26 @@ describe("rules routes", () => {
     await app.close();
   });
 
+  it("caps a per-app daily limit at a day: 1441 is refused, 1440 is accepted (#508 review)", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.upsert.mockResolvedValue({ childId: CHILD_ID });
+    prismaMock.device.findMany.mockResolvedValue([]);
+    const put = (dailyLimitMinutes: number) =>
+      app.inject({
+        method: "PUT",
+        url: `/v1/rules/${CHILD_ID}`,
+        headers: authHeader(app),
+        payload: {
+          ...validRuleSet,
+          appRules: [{ packageId: "com.game", appName: "Game", action: "time_limit", dailyLimitMinutes }],
+        },
+      });
+    expect((await put(1441)).statusCode).toBe(400);
+    expect((await put(1440)).statusCode).toBe(200);
+    await app.close();
+  });
+
   it("enforces family isolation (403 for another family's child)", async () => {
     const app = await buildApp(rulesRoutes, "/v1/rules");
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-2" });
