@@ -74,4 +74,9 @@
     <string name="device_admin_label">الرقابة الأبوية من OSRA</string>
     <string name="device_admin_description">يتيح لـ OSRA قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.</string>
     <string name="wipe_detected_notice">مُسحت بيانات OSRA على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.</string>
+    <!-- #473/#496: the block screen names the window holding the app. Karim approved 2026-10-31 15:30Z (Q10).
+         %1$s is the window's name (or the family's own routine name, shown as typed); %2$s is the end time. -->
+    <string name="block_window_line">محجوب بسبب %1$s حتى %2$s</string>
+    <string name="block_window_bedtime">وقت النوم</string>
+    <string name="block_window_school">الساعات المدرسية</string>
 </resources>
