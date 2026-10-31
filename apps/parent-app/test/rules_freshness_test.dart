@@ -52,13 +52,22 @@ void main() {
   });
 
   group('the rule screen says so', () {
-    Future<void> pumpEditor(WidgetTester tester, Map<String, dynamic> childJson) async {
+    Future<void> pumpEditor(
+      WidgetTester tester,
+      Map<String, dynamic> childJson, {
+      Locale locale = const Locale('en'),
+      TextDirection textDirection = TextDirection.ltr,
+    }) async {
       final api = FakeApiClient({
         ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
       });
       await tester.pumpWidget(ProviderScope(
         overrides: [apiClientProvider.overrideWithValue(api)],
-        child: localizedTestApp(const RulesEditorScreen(childId: 'child-1')),
+        child: localizedTestApp(
+          const RulesEditorScreen(childId: 'child-1'),
+          locale: locale,
+          textDirection: textDirection,
+        ),
       ));
       await tester.pumpAndSettle();
     }
@@ -95,6 +104,27 @@ void main() {
         'rulesVersion': 7,
       });
       expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+    });
+
+    testWidgets('the Arabic line is Karim\'s wording, in RTL', (tester) async {
+      // Karim's approved Arabic, pinned as a literal the way #486 and #491 pin theirs: an ARB generator, a
+      // merge or a well-meaning translation that replaces the words turns this red instead of shipping
+      // quietly, and the RTL pass proves the banner lays out under `ar` rather than only translating.
+      await pumpEditor(
+        tester,
+        {
+          'id': 'child-1',
+          'familyId': 'fam-1',
+          'displayName': 'Alex',
+          'birthYear': 2013,
+          'rulesVersion': 7,
+          'appliedRulesVersion': 5,
+        },
+        locale: const Locale('ar'),
+        textDirection: TextDirection.rtl,
+      );
+      expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+      expect(find.text('لم يلتقط الهاتف هذا التغيير بعد.'), findsOneWidget);
     });
   });
 }

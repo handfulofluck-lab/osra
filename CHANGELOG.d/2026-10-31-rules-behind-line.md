@@ -14,8 +14,10 @@
 - `Child` gains `rulesVersion` / `appliedRulesVersion`, both nullable: absent from an older server reads as
   "nothing to say", not as "behind".
 - Rows: `rules_freshness_test.dart` — five pure rows (behind, equal, never reported, no server version, a
-  version above) and two widget rows (the banner appears; a current phone and a never-reporting phone show
-  nothing). Mutants run: `applied != rules` reddens the never-reported row; hiding the banner reddens the
-  widget row; `max` instead of `min` on `/me` reddens the parity row.
-- **The Arabic is a draft** («لم يلتقط الهاتف هذا التغيير بعد.») and goes to Karim with Q10's line; it is in
-  `app_ar.arb` so parity holds, and a rewording is a strings-only change.
+  version above) and three widget rows (the banner appears; a current phone and a never-reporting phone show
+  nothing; the Arabic line under `ar`/RTL). Mutants run: `applied != rules` reddens the never-reported row;
+  hiding the banner reddens the widget row; `max` instead of `min` on `/me` reddens the parity row.
+- **The Arabic is still a draft** («لم يلتقط الهاتف هذا التغيير بعد.») and goes to Karim with Q10's line; it
+  is in `app_ar.arb` so parity holds, and a rewording is a strings-only change. It is **pinned as a literal**
+  in the RTL row the way #486 and #491 pin theirs, so a rewording has to move the row too rather than arrive
+  silently — which is the point of pinning draft wording, not a claim that it is final.
