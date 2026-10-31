@@ -155,6 +155,7 @@
   "commandRefusedUnsupportedCommand": "يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.",
   "commandRefusedNotSupported": "«{command}» غير متاح على {device}: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.",
   "commandRefusedInvalidPayload": "رفض الهاتف إعدادات هذا الأمر.",
+  "rulesBehindHint": "لم يلتقط الهاتف هذا التغيير بعد.",
   "rulesLoadFailed": "تعذّر تحميل القواعد: {error}",
   "noPerAppRules": "لا توجد قواعد لكل تطبيق",
   "appActionBlock": "حظر",
