@@ -45,6 +45,26 @@ class CommsClockBackWiringTest {
         assertTrue("the set is written first, the watermark second", remembered < reanchored)
     }
 
+    @Test
+    fun `the window is read from now up to the watermark that was in the future`() {
+        // #515 review: `val ceiling = now` kept every other test green while the branch remembered nothing,
+        // because the policy then filters every row out. The ceiling must be the stored watermark, and the
+        // query must ask for exactly now < DATE <= ceiling, with the bounds in that order.
+        val branch = clockBackBranch()
+        assertTrue("the ceiling is the stored watermark", branch.contains("val ceiling = stored ?: now"))
+        val start = logger.indexOf("private fun smsRowsBetween(")
+        assertTrue("the window reader must exist", start > 0)
+        val reader = logger.substring(start).substringBefore("private fun newestSmsId(")
+        assertTrue(
+            "the query bounds DATE on both sides",
+            reader.contains("\"\${Telephony.Sms.DATE} > ? AND \${Telephony.Sms.DATE} <= ?\""),
+        )
+        assertTrue(
+            "now is the lower bound and the ceiling the upper",
+            reader.contains("arrayOf(now.toString(), ceiling.toString())"),
+        )
+    }
+
     /** The text of the `isClockBack` branch, up to its `return@withLock`. */
     private fun clockBackBranch(): String {
         val start = logger.indexOf("if (CommsWatermarkPolicy.isClockBack(stored, now))")
