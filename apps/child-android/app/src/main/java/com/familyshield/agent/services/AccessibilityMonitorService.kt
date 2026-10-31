@@ -57,6 +57,9 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+    /** osra-security#5: class and package of the last TYPE_WINDOW_STATE_CHANGED, for [TamperScreenPolicy.classify]. */
+    private var lastWindowClass: String? = null
+    private var lastWindowClassPkg: String? = null
 
     /**
      * Issue #175: bounded re-raises of the lock overlay for a PiP / split screen state the platform may
@@ -496,6 +499,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) return
+        // osra-security#5: the window's class is what the screen IS, in any language. A state change
+        // carries the activity or dialog class; a content change carries a view class, so the last state
+        // change's class is kept and used only while the same package is in front.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            lastWindowClass = event.className?.toString()
+            lastWindowClassPkg = event.packageName?.toString()
+        }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()
         if (now - lastGuardMs < 1_500L) return
@@ -514,6 +524,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentLabel = getString(com.familyshield.agent.R.string.app_name),
             adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
             agentPackage = packageName,
+            windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg },
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
