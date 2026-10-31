@@ -85,6 +85,30 @@ object CommsWatermarkPolicy {
     }
 
     /**
+     * Issue #264 (the withdrawal half): does a row belong **below** the id anchor?
+     *
+     * The anchor is "the newest `_ID` whose call ended by the ceiling", and every later read is
+     * `_ID > anchor`. That was wrong for one row shape: a call made while consent was withdrawn and the
+     * clock was set **forward**. Its `DATE` is in the future, so `ended by the ceiling` is false and the
+     * anchor lands below its id — then, after the re-grant, `shouldReadCall` sees `rowDate >= floor` and
+     * reads it. A withdrawal-window call reached the parent, which ADR-0008 forbids (#269 review found
+     * the same hole once already, from the other side).
+     *
+     * A row dated later than the real `now` plus [CLOCK_SKEW_MS] cannot be a genuine call made after the
+     * grant, so it counts as **before** the anchor: the anchor moves above it and it is never read.
+     * Ids are monotonic, so anchoring above it still leaves every real post-grant call above the anchor,
+     * and the #257 row ("the call that triggered the harvest survives") still holds.
+     *
+     * @param ceiling the grant time (or now on a fresh install) the anchor is taken at
+     * @param now the real clock at anchor time
+     */
+    fun countsAsBeforeAnchor(rowDate: Long, durationSec: Long, ceiling: Long, now: Long): Boolean {
+        val endedAt = rowDate + durationSec * 1000L
+        if (endedAt <= ceiling) return true
+        return rowDate > now + CLOCK_SKEW_MS
+    }
+
+    /**
      * Issue #260: calls are watermarked by `CallLog._ID`, not `DATE`.
      *
      * `DATE` is when a call *started* but the row is written when it *ends*, so a 290-second call with a
