@@ -8,7 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../api/permission_errors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
-import 'rules_freshness.dart';
+import 'rules_behind_banner.dart';
 import '../../theme/app_tokens.dart';
 
 const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
@@ -155,22 +155,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     // Issue #475: the child's phones report the rules version they have SAVED AND APPLIED, and this is the
     // screen where a parent changes the rules — so it is where "the phone hasn't picked this up yet" has to
     // appear. The child comes from the overview the app already loads (#475 review: no extra request).
-    final child = ref.watch(familyProvider).valueOrNull?.children.where((c) => c.id == widget.childId).firstOrNull;
-    final behind = child != null && rulesAreBehind(child);
-    if (behind) {
-      return Column(
-        children: [
-          MaterialBanner(
-            key: const ValueKey('rules-behind-banner'),
-            content: Text(l10n.rulesBehindHint),
-            leading: const Icon(Icons.sync_problem_outlined),
-            actions: const [SizedBox.shrink()],
-          ),
-          Expanded(child: _editorBody(l10n)),
-        ],
-      );
-    }
-    return _editorBody(l10n);
+    // The widget renders nothing when the child is current, so the column below is unconditional.
+    return Column(
+      children: [
+        RulesBehindBanner(childId: widget.childId),
+        Expanded(child: _editorBody(l10n)),
+      ],
+    );
   }
 
   Widget _editorBody(AppLocalizations l10n) {

@@ -136,6 +136,8 @@ class _MonitoringTogglesSectionState extends ConsumerState<MonitoringTogglesSect
       body['socialMonitoring'] = {...ruleSet.socialMonitoring, ...draft};
       await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: body);
       ref.invalidate(rulesProvider(widget.childId));
+      // Issue #475 follow-up: a rule write must refresh the family snapshot too (#501 review).
+      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.monitoringSaved)));
       }
@@ -416,6 +418,8 @@ class _AllowlistSectionState extends ConsumerState<AllowlistSection> {
       body['contactAllowlist'] = List.of(items);
       await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: body);
       ref.invalidate(rulesProvider(widget.childId));
+      // Issue #475 follow-up: a rule write must refresh the family snapshot too (#501 review).
+      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.allowlistSaved)));
       }
