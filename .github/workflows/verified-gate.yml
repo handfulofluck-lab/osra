@@ -56,10 +56,18 @@ name: verified-gate
 #
 # To bind, this check must be "required" in main's branch protection, with "Do not allow bypassing"
 # (enforce_admins) on — every agent pushes as a repo admin. See AGENTS.md §6.4.
+#
+# `edited` (2026-10-31, #501/#503): a STACKED PR whose base branch is deleted is retargeted to `main` by
+# GitHub itself, and that emits `edited` (changes.base) — not `opened`, not `synchronize`. Without `edited`
+# in this list the gate is never created for such a PR, and because this is the ONLY required status check
+# on `main` the PR can never merge while every visible check is green and nothing says why. Measured on the
+# scratch PR #503: retargeted from a non-main base to `main`, `workflow-lint` re-ran (its list has
+# `edited`) and `verified-gate` stayed silent; #501's head `8464c1f` carries eight check runs and none of
+# them is this one. `scripts/check-workflows.mjs` now fails if any of these seven events is dropped.
 on:
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review, edited]
 
 permissions:
   contents: read
