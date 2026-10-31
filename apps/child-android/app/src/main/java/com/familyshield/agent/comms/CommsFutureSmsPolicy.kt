@@ -73,6 +73,31 @@ object CommsFutureSmsPolicy {
      */
     fun shouldImportFuture(rowId: Long, idFloor: Long): Boolean = idFloor < 0L || rowId > idFloor
 
+    /** One row as the clock-back branch sees it: what an [entry] needs and nothing more. */
+    data class ClockBackRow(val date: Long, val id: Long, val digest: String)
+
+    /**
+     * Issue #513: rows already read under the forward clock, remembered when the clock comes back.
+     *
+     * The hole: a text dated inside the skew is **not** future while the clock is ahead, so it takes the
+     * normal path, is imported, and advances the watermark to its date. The clock then goes back; the
+     * clock-back branch re-anchors the watermark to `now` and reads nothing. The harvest after that asks
+     * for `DATE > now`, the same text is now future-dated, `tracked` is false because only future rows are
+     * remembered — and it is imported a **second** time. Run 1 of T1 on the emulator did exactly that.
+     *
+     * So the clock-back branch remembers everything in `now < DATE <= stored` **without importing it**:
+     * those rows were read once under the forward clock, and every one of them would otherwise look like a
+     * brand-new future row. [prune] drops the entries once the real date passes them.
+     *
+     * The `<= stored` ceiling matters as much as the `> now` edge: a row dated beyond the old watermark was
+     * never read, and remembering it would drop it for good — one duplicate traded for one lost message.
+     *
+     * @param stored the watermark that was in the future, i.e. the ceiling of what the forward clock read
+     */
+    fun seenOnClockBack(rows: List<ClockBackRow>, now: Long, stored: Long): Set<String> =
+        rows.filter { it.date > now && it.date <= stored }
+            .mapTo(LinkedHashSet()) { entry(it.date, it.id, it.digest) }
+
     /**
      * A short, stable digest of a phone number, so the persisted set cannot be read as a contact list.
      *
