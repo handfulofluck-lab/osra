@@ -70,23 +70,21 @@ class ChildSystemStringsTest {
     }
 
     @Test
-    fun `the block screen's Arabic is Karim's approved wording, and the rest waits for him (#506)`() {
-        // Q12 approved three lines — the ones the iPhone shield also shows, quoted from the iOS
-        // `ar.lproj/Localizable.strings` that cites the same approval (merged with #512). The daily-limit
-        // title and "request sent" were not in it, so they stay English rather than ship a translation
-        // nobody approved; his answer turns them into two more pairs here.
+    fun `the block screen's Arabic is Karim's approved Q12, verbatim (#506)`() {
+        // Karim approved all five at 16:28Z (quoted in full on this PR). Pinned as literals the way #487
+        // and #502 pin theirs: a changed word, a dropped line or a partial translation turns this red, and
+        // this pin is the only thing that would — nothing else reads `values-ar`.
         val approved = mapOf(
             "block_title_blocked" to "حجب والدك أو والدتك هذا التطبيق",
+            "block_title_time_limit" to "انتهى وقت الشاشة اليومي",
             "block_request_access" to "اطلب السماح",
+            "block_request_sent" to "أُرسل الطلب إلى والدك أو والدتك",
             "block_exit_home" to "الخروج إلى الشاشة الرئيسية",
         )
         approved.forEach { (key, wording) ->
             assertEquals("Arabic '$key'", wording, arabic.getValue(key))
         }
-        listOf("block_title_time_limit", "block_request_sent").forEach { key ->
-            assertFalse("'$key' carries Arabic before Karim approved it", arabic.containsKey(key))
-        }
-        approved.keys.plus(listOf("block_title_time_limit", "block_request_sent")).forEach { key ->
+        approved.keys.forEach { key ->
             assertTrue("English '$key' is missing", english.containsKey(key))
         }
     }
