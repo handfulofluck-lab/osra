@@ -233,8 +233,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         // finished). This is not a wrong code, and the password alone cannot fix it — say what it
         // actually is instead of the generic MFA message below.
         if (err == 'mfa_reenroll_required') {
-          return 'Two-step verification is on for this account, but no authenticator is set up yet. '
-              'Sign in with an unused recovery code to finish setting it up.';
+          // Issue #199 item 1: after a recovery there are no unused codes left — `/mfa/recover` deletes
+          // the rest of the batch — so the old sentence sent the parent to a door that does not exist.
+          return 'Two-step verification was reset but not finished. Open "Lost your authenticator?" if '
+              'you still have the setup screen open; otherwise contact support.';
         }
         final lower = err.toLowerCase();
         if (e.response?.statusCode == 401 && (lower.contains('mfa') || lower == 'invalid_code')) {

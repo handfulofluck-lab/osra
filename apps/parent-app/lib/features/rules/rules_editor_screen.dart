@@ -749,15 +749,21 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
         }
         final app = filtered[index];
         final ruled = widget.existingPackageIds.contains(app.packageId);
+        // Issue #199 item 5: a package the phone reported as essential is "Always allowed (needed for
+        // calls and safety)" and is not selectable — a rule on the dialer would silently do nothing.
+        // `null` (not reported) keeps today's behaviour exactly: selectable, no label.
+        final essential = app.essential == true;
         return ListTile(
           key: ValueKey('installedApp-${app.packageId}'),
-          enabled: !ruled,
+          enabled: !ruled && !essential,
           leading: Icon(app.isSystem ? Icons.settings_applications : Icons.apps),
           title: Text(app.label),
-          subtitle: Text(app.packageId),
-          trailing: ruled
-              ? Icon(Icons.check_circle, semanticLabel: l10n.alreadyRuled)
-              : const Icon(Icons.add),
+          subtitle: Text(essential ? l10n.essentialAppRow : app.packageId),
+          trailing: essential
+              ? Icon(Icons.verified_user_outlined, semanticLabel: l10n.essentialAppRow)
+              : ruled
+                  ? Icon(Icons.check_circle, semanticLabel: l10n.alreadyRuled)
+                  : const Icon(Icons.add),
           onTap: ruled
               ? null
               : () => Navigator.of(context).pop(

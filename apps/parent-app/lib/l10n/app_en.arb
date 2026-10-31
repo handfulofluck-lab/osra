@@ -549,6 +549,7 @@
   "searchApps": "Search apps",
   "showSystemApps": "Show system apps",
   "alreadyRuled": "Already ruled",
+  "essentialAppRow": "Always allowed (needed for calls and safety)",
   "installedAppsEmpty": "No apps reported yet",
   "installedAppsEmptyHint": "The list appears after the child device's next check-in (up to 15 minutes).",
   "installedAppsNoMatch": "No apps match your search.",

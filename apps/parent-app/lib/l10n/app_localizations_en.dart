@@ -1164,6 +1164,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alreadyRuled => 'Already ruled';
 
   @override
+  String get essentialAppRow => 'Always allowed (needed for calls and safety)';
+
+  @override
   String get installedAppsEmpty => 'No apps reported yet';
 
   @override

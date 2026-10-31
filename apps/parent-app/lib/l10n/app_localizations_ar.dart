@@ -1207,6 +1207,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alreadyRuled => 'له قاعدة بالفعل';
 
   @override
+  String get essentialAppRow => 'مسموح دائمًا (ضروري للمكالمات والسلامة)';
+
+  @override
   String get installedAppsEmpty => 'لم يتم الإبلاغ عن أي تطبيقات بعد';
 
   @override

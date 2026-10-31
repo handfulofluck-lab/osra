@@ -2078,6 +2078,12 @@ abstract class AppLocalizations {
   /// **'Already ruled'**
   String get alreadyRuled;
 
+  /// No description provided for @essentialAppRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Always allowed (needed for calls and safety)'**
+  String get essentialAppRow;
+
   /// No description provided for @installedAppsEmpty.
   ///
   /// In en, this message translates to:

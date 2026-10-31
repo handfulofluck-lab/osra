@@ -160,7 +160,14 @@ void main() {
     final state = container.read(authProvider);
     expect(state.isAuthenticated, isFalse);
     expect(state.error, isNot('Invalid authentication code'));
-    expect(state.error, contains('no authenticator is set up'));
+    // Issue #199 item 1: the old sentence sent the parent to a recovery code that a recovery has
+    // already deleted. The message now says the setup is unfinished and names the only ways out.
+    expect(
+      state.error,
+      'Two-step verification was reset but not finished. Open "Lost your authenticator?" if you still '
+      'have the setup screen open; otherwise contact support.',
+    );
+    expect('${state.error}', isNot(contains('unused recovery code')));
   });
 
   test('logout returns to the logged-out state', () async {

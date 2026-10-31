@@ -3,6 +3,8 @@ package com.familyshield.agent.apps
 import android.content.Context
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.PackageFacts
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.InstalledAppDto
@@ -34,6 +36,8 @@ class InstalledAppsReporter @Inject constructor(
     private val api: ApiService,
     private val settings: AgentSettings,
     private val consent: ConsentState,
+    /** Issue #199: the OS roles the essential set needs; injected so a test can feed a double. */
+    private val facts: PackageFacts,
 ) {
     /** Uploads when the list changed, or when the last successful upload is older than 24 h. */
     suspend fun reportIfChanged(now: Long = System.currentTimeMillis()) {
@@ -53,7 +57,9 @@ class InstalledAppsReporter @Inject constructor(
                 deviceId,
                 InstalledAppsDto(
                     version = CONTRACT_VERSION,
-                    apps = report.apps.map { InstalledAppDto(it.packageId, it.label, it.isSystem) },
+                    apps = report.apps.map {
+                        inventoryApp(it.packageId, it.label, it.isSystem, facts)
+                    },
                 ),
             )
             // NOTE: the fingerprint moves only after the upload succeeds, so a failed POST is
@@ -76,3 +82,28 @@ class InstalledAppsReporter @Inject constructor(
         private const val TAG = "InstalledAppsReporter"
     }
 }
+
+/**
+ * Issue #199 item 5: one inventory row as the wire carries it, with `essential` computed where the OS
+ * roles exist. Pure, so a JVM row can pin that the dialer leaves the phone as `essential = true` — the
+ * parent cannot work that out from a package name, and the server must never guess.
+ *
+ * **A role change alone does not re-upload (#199 review).** The upload is gated on the list's
+ * fingerprint (`InstalledAppsPolicy.fingerprint`), which covers package ids, labels and the system flag —
+ * so the child making a different app the default dialer, with the same package list, keeps the old
+ * `essential` values on the server until the forced 24-hour refresh
+ * ([InstalledAppsReporter.MAX_AGE_MS]) picks them up. That is accepted because nothing enforces with this
+ * field: the phone's own `EssentialPackages` answer decides, and the parent's copy is a label. If it ever
+ * becomes enforcement, the fingerprint has to include the role answer first.
+ */
+internal fun inventoryApp(
+    packageId: String,
+    label: String,
+    isSystem: Boolean,
+    facts: PackageFacts,
+): InstalledAppDto = InstalledAppDto(
+    packageId = packageId,
+    label = label,
+    isSystem = isSystem,
+    essential = EssentialPackages.isEssential(packageId, facts),
+)

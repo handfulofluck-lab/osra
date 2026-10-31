@@ -253,6 +253,11 @@ model DeviceApp {
   packageId String
   label     String
   isSystem  Boolean  @default(false)
+  /// Issue #199 item 5: computed on the phone with `EssentialPackages.isEssential(packageId,
+  /// PackageFacts)`. **Nullable on purpose**: null is "this phone has not reported it", so an old row,
+  /// an older Play agent or the iOS agent never claims "not essential" or "always allowed". Display
+  /// only — the server does not enforce with it, and no parent request writes it.
+  essential Boolean?
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
