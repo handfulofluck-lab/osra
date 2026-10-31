@@ -258,7 +258,7 @@ class RuleRepository @Inject constructor(
             val persisted = runCatching {
                 settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
             }.isSuccess
-            if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
+            runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }
             updated
