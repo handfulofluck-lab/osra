@@ -19,5 +19,9 @@
   first; an always-allowed gms is not added twice; blanks never reach the builder; the Play Store is not
   excluded. Mutant: delete the `if (sinkholeAll) packages += FCM_PACKAGE` line and the pause row goes
   red (verified locally before pushing).
+- `FilterVpnBypassWiringTest` (Claude's row, cherry-picked from `verify/481-w0-head`) closes the half the
+  policy rows cannot see: `openTunnel` asks the policy for the pause list **exactly** in pause mode, and
+  applies that list and nothing else, before the tunnel is established. Two faults survived the policy
+  rows without it — an inverted mode check and a hand-built list — and either brings #458 back on the phone.
 - **Not verified by code, and it is the row that matters:** pause, drop the network briefly, then
   resume — the resume should land in under five seconds on the Flip4. That is Claude's phone queue.
