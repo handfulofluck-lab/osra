@@ -5,6 +5,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.network.dto.SocialScanBatchDto
 import com.familyshield.agent.network.dto.SocialScanDto
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -21,8 +22,8 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes by content hash,
- * caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs each batch item to POST
- * /v1/social/scan (the server runs the AI scan and raises alerts). On 200 nothing extra happens
+ * caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
+ * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). On 200 nothing extra happens
  * here — flagged content surfaces as server-side alerts. A numeric contact (e.g. an unsaved
  * WhatsApp number) is also checked against the Feature #27 allowlist; an unknown number raises a
  * throttled unknown_contact alert (1 per hour per number, allowlist empty = disabled).
@@ -70,8 +71,8 @@ class SocialScanQueue @Inject constructor(
     }
 
     /**
-     * Sends the oldest queued rows (serialized). A row is deleted on 2xx, kept with `attempts + 1`
-     * on failure, and purged by [ScanQueuePolicy.shouldKeep]'s limits; when a network failure leaves
+     * Sends the oldest queued rows (serialized), [ScanQueuePolicy.ITEMS_PER_REQUEST] per request (#490).
+     * A row is deleted when the server answers `ok` for it, kept with `attempts + 1` otherwise, and purged by [ScanQueuePolicy.shouldKeep]'s limits; when a network failure leaves
      * rows behind, [ScanFlushWorker] is scheduled to retry under a network constraint.
      */
     suspend fun flush() {
@@ -84,28 +85,25 @@ class SocialScanQueue @Inject constructor(
             if (batch.isEmpty()) return@withLock
             val childId = settings.childId()
             val deviceId = settings.deviceId()
-            var networkFailure = false
-            for (row in batch) {
-                if (childId == null || deviceId == null) break // not paired: keep the rows for after pairing
-                val result = runCatching {
-                    api.postSocialScan(
-                        SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source),
-                    )
-                }
-                if (result.isSuccess) {
-                    sendTimestamps.addLast(System.currentTimeMillis())
-                    runCatching { dao.delete(row.id) }
-                    row.contact?.let { maybeAlertUnknownContact(it, row.app) }
-                } else {
-                    val e = result.exceptionOrNull()
-                    if (e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429) {
-                        runCatching { dao.bumpAttempts(row.id) } // the server will never take it: count it down to the drop
-                    } else {
-                        networkFailure = true
-                        runCatching { dao.bumpAttempts(row.id) }
-                    }
-                }
+            if (childId == null || deviceId == null) return@withLock // not paired: keep the rows for after pairing
+            // #490: one request per ITEMS_PER_REQUEST rows, not one per row; each row is settled by its
+            // own answer, so one bad capture never drops the others.
+            val outcome = ScanBatchSender<com.familyshield.agent.data.db.PendingScanEntity>(
+                toDto = { row ->
+                    SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
+                },
+                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(items)).results },
+                isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
+            ).send(batch)
+            for (row in outcome.sent) {
+                sendTimestamps.addLast(System.currentTimeMillis())
+                runCatching { dao.delete(row.id) }
+                row.contact?.let { maybeAlertUnknownContact(it, row.app) }
             }
+            // The server will never take these: count them down to the drop.
+            for (row in outcome.rejected) runCatching { dao.bumpAttempts(row.id) }
+            for (row in outcome.failed) runCatching { dao.bumpAttempts(row.id) }
+            val networkFailure = outcome.failed.isNotEmpty()
             val remaining = runCatching { dao.count() }.getOrDefault(0)
             if (ScanQueuePolicy.retryLater(networkFailure, remaining)) ScanFlushWorker.scheduleRetry(context)
         }
