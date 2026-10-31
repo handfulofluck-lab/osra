@@ -23,8 +23,8 @@ enum class WindowKind {
  * carry, formatted by the screen in the device's locale conventions.
  *
  * **Only windows appear here.** A pause, an explicit `block`, a `time_limit` and the blocklist's
- * category protection are the app's own reason, not a window; [RuleEngine.evaluateWithReason] returns a
- * null reason for each, and a null reason means the screen keeps its existing copy.
+ * category protection are the app's own reason, not a window; [RuleEngine.windowFor] answers null for
+ * each, and a null reason means the screen keeps its existing copy.
  */
 data class WindowReason(
     val kind: WindowKind,
