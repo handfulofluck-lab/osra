@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1208,7 +1207,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alreadyRuled => 'له قاعدة بالفعل';
 
   @override
-  String get essentialAppRow => 'مسموح دائمًا (لازم للمكالمات والسلامة)';
+  String get essentialAppRow => 'مسموح دائمًا (ضروري للمكالمات والسلامة)';
 
   @override
   String get installedAppsEmpty => 'لم يتم الإبلاغ عن أي تطبيقات بعد';

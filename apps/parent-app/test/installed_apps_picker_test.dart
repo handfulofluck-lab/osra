@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 
 import 'fake_api_client.dart';
@@ -270,5 +271,12 @@ void main() {
     final browserRow = tester.widget<ListTile>(find.byKey(const ValueKey('installedApp-com.example.browser')));
     expect(browserRow.enabled, isTrue);
     expect(find.text('com.example.browser'), findsOneWidget); // unreported: package id, as today
+  });
+
+  /// Karim's approved Q9 (2026-10-31 09:13Z), pinned as a literal the way #486 pins its lines. A
+  /// generator run, a merge or a well-meaning edit that changes the wording fails here instead of
+  /// shipping text he did not approve.
+  test('the approved Arabic for the essential row is pinned verbatim', () {
+    expect(AppLocalizationsAr().essentialAppRow, 'مسموح دائمًا (ضروري للمكالمات والسلامة)');
   });
 }
