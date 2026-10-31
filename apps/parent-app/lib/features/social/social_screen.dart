@@ -7,6 +7,7 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../rules/rules_behind_banner.dart';
 import '../../providers/social_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../coach/coach_card_section.dart';
@@ -35,7 +36,14 @@ class SocialScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
         appBar: AppBar(title: Text(context.l10n.socialMonitoringTitle)),
-        body: SocialSectionsView(childId: childId),
+        // Issue #475 follow-up: the social sections write rules (monitoring toggles, contact
+      // allowlist), so this screen carries the same line the rule editor does.
+      body: Column(
+        children: [
+          RulesBehindBanner(childId: childId),
+          Expanded(child: SocialSectionsView(childId: childId)),
+        ],
+      ),
       );
 }
 

@@ -329,6 +329,9 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
         data: {'minutes': minutes},
       );
       ref.invalidate(rulesProvider(widget.childId));
+      // Issue #475 follow-up: a bonus grant bumps rulesVersion (`controls.ts:88`), so the family
+      // snapshot has to be refetched or the "not picked up yet" line can never appear after "+15 min".
+      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.bonusGranted(minutes))),
