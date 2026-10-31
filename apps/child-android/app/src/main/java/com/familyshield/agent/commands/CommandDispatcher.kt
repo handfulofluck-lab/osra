@@ -470,6 +470,7 @@ class CommandDispatcher @Inject constructor(
      */
     private fun locateNow(commandId: String?): CommandOutcome {
         val decision = locateNowDecision(
+            isPaired = settings.isPairedSync(),
             hasFineLocation = granted(Manifest.permission.ACCESS_FINE_LOCATION),
             hasCoarseLocation = granted(Manifest.permission.ACCESS_COARSE_LOCATION),
             hasBackgroundLocation = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
@@ -522,11 +523,13 @@ class CommandDispatcher @Inject constructor(
          * silently.
          */
         internal fun locateNowDecision(
+            isPaired: Boolean,
             hasFineLocation: Boolean,
             hasCoarseLocation: Boolean,
             hasBackgroundLocation: Boolean,
             apiLevel: Int,
         ): LocationStartPolicy.Decision = LocationStartPolicy.decide(
+            isPaired = isPaired,
             hasFineLocation = hasFineLocation,
             hasCoarseLocation = hasCoarseLocation,
             hasBackgroundLocation = hasBackgroundLocation,

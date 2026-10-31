@@ -18,6 +18,12 @@ package com.familyshield.agent.services
  * The call sites read the three grants themselves (`ContextCompat.checkSelfPermission`) and pass the
  * booleans in, so the rule stays pure and JVM-tested; `LocationServiceStartSitesTest` pins the set of
  * call sites that must come through here.
+ *
+ * Issue #472 added the fourth input and made it first: [decide] answers `UNPAIRED` before it reads a
+ * grant. An unlinked phone has no child to locate, and the unlink notice tells the family the app can
+ * be uninstalled — a location foreground service left running there is an ongoing notification on a
+ * device nobody manages. The pair state is a parameter, not a defaulted argument, so a new start site
+ * that forgets it does not compile.
  */
 object LocationStartPolicy {
 
@@ -31,19 +37,34 @@ object LocationStartPolicy {
      */
     enum class Decision(val reason: String?) {
         START(null),
+
+        /**
+         * Issue #472: there is no device id, so there is no child to locate and no family to report
+         * to. A location foreground service on an unlinked phone shows an ongoing notification on a
+         * device nobody manages, and the unlink notice tells the family it can be uninstalled.
+         *
+         * First in the order on purpose: it is not a permission problem, and telling a parent to
+         * grant more permissions to a phone that is not linked would be the wrong ask.
+         */
+        UNPAIRED("not_paired"),
+
         MISSING_LOCATION_PERMISSION("location_permission_missing"),
         MISSING_BACKGROUND_LOCATION("background_location_missing"),
     }
 
     /**
+     * @param isPaired whether the agent still holds a device id (`AgentSettings.isPairedSync`). Every
+     *   caller reads it rather than passing a default, so a new start site cannot forget it.
      * @param apiLevel `Build.VERSION.SDK_INT`, passed in so the rule is testable on the JVM.
      */
     fun decide(
+        isPaired: Boolean,
         hasFineLocation: Boolean,
         hasCoarseLocation: Boolean,
         hasBackgroundLocation: Boolean,
         apiLevel: Int,
     ): Decision {
+        if (!isPaired) return Decision.UNPAIRED
         if (!hasFineLocation && !hasCoarseLocation) return Decision.MISSING_LOCATION_PERMISSION
         if (apiLevel >= BACKGROUND_LOCATION_RUNTIME_FROM && !hasBackgroundLocation) {
             return Decision.MISSING_BACKGROUND_LOCATION
@@ -53,9 +74,10 @@ object LocationStartPolicy {
 
     /** Whether [LocationService] may be requested from a background context. */
     fun shouldStart(
+        isPaired: Boolean,
         hasFineLocation: Boolean,
         hasCoarseLocation: Boolean,
         hasBackgroundLocation: Boolean,
         apiLevel: Int,
-    ): Boolean = decide(hasFineLocation, hasCoarseLocation, hasBackgroundLocation, apiLevel) == Decision.START
+    ): Boolean = decide(isPaired, hasFineLocation, hasCoarseLocation, hasBackgroundLocation, apiLevel) == Decision.START
 }

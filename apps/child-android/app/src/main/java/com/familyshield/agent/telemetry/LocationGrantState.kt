@@ -29,6 +29,9 @@ object LocationGrantState {
         apiLevel: Int,
     ): String = report(
         LocationStartPolicy.decide(
+            // The link is not a grant: this classifies fine/coarse/background for telemetry, and
+            // "unpaired" has its own reporting path there. See LocationStartPolicy.Decision.UNPAIRED.
+            isPaired = true,
             hasFineLocation = hasFineLocation,
             hasCoarseLocation = hasCoarseLocation,
             hasBackgroundLocation = hasBackgroundLocation,
@@ -41,5 +44,9 @@ object LocationGrantState {
         LocationStartPolicy.Decision.START -> BACKGROUND
         LocationStartPolicy.Decision.MISSING_BACKGROUND_LOCATION -> WHILE_IN_USE
         LocationStartPolicy.Decision.MISSING_LOCATION_PERMISSION -> NONE
+        // Unreachable through [classify], which asks the policy with `isPaired = true` because this
+        // value describes a grant, not the link (#472). Kept explicit so a future decision cannot
+        // fall into the wrong bucket silently.
+        LocationStartPolicy.Decision.UNPAIRED -> NONE
     }
 }

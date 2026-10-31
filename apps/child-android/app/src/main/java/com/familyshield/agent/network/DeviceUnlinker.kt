@@ -6,8 +6,11 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.security.DeviceAdminManager
+import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.vpn.FilterVpnService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +29,12 @@ internal data class UnlinkStep(val name: String, val run: suspend () -> Unit)
  * - **The pending flag is written first and cleared last, and only on full success.** If any step threw, or
  *   the admin grant is still active afterwards, the flag stays set and the next start runs the whole
  *   sequence again; every step is idempotent, so re-running is safe.
+ * - **The sequence cannot be cancelled half-way (#472 review).** On a paired phone the unlink runs
+ *   inside `LocationService`'s own scope, and the `location` step stops that service — whose
+ *   `onDestroy` cancels the scope. Without [NonCancellable] the later steps (`clearPairing`,
+ *   `forgetRules`, `clearPending`) throw `CancellationException`, `runCatching` swallows it, and the
+ *   phone can end up with the admin removed and the notice shown but the pairing still stored.
+ *   Whoever started an unlink, it finishes.
  */
 internal suspend fun runUnlinkSteps(
     steps: List<UnlinkStep>,
@@ -33,7 +42,7 @@ internal suspend fun runUnlinkSteps(
     clearPending: suspend () -> Unit,
     isAdminActive: () -> Boolean,
     onFailure: (UnlinkStep, Throwable) -> Unit = { _, _ -> },
-): Boolean {
+): Boolean = withContext(NonCancellable) {
     runCatching { markPending() }
     var allSucceeded = true
     for (step in steps) {
@@ -44,7 +53,7 @@ internal suspend fun runUnlinkSteps(
     }
     val done = allSucceeded && !isAdminActive()
     if (done) runCatching { clearPending() }
-    return done
+    done
 }
 
 /**
@@ -55,6 +64,10 @@ internal suspend fun runUnlinkSteps(
 internal fun buildUnlinkSteps(
     stopVpn: suspend () -> Unit,
     clearLock: suspend () -> Unit,
+    // Issue #472 review: the service that is already running is the one that polls, so it is the one
+    // that saw the 401. Stopping it before the pairing is cleared means no poll can run in the window
+    // between "no device id" and "service gone".
+    stopLocation: suspend () -> Unit,
     clearPairing: suspend () -> Unit,
     forgetRules: suspend () -> Unit,
     removeAdmin: suspend () -> Unit,
@@ -63,6 +76,7 @@ internal fun buildUnlinkSteps(
     // The VPN first: it is the one thing still dropping packets while the rest runs.
     UnlinkStep("vpn", stopVpn),
     UnlinkStep("lock", clearLock),
+    UnlinkStep("location", stopLocation),
     // Pairing before rules: a paired phone with no rules blocks every app (AND-03).
     UnlinkStep("pairing", clearPairing),
     UnlinkStep("rules", forgetRules),
@@ -105,6 +119,7 @@ class DeviceUnlinker @Inject constructor(
             steps = buildUnlinkSteps(
                 stopVpn = { FilterVpnService.stop(context) },
                 clearLock = { LockState.clear(context) },
+                stopLocation = { context.stopService(Intent(context, LocationService::class.java)) },
                 clearPairing = { settings.clearPairing() },
                 forgetRules = { rules.forgetRules() },
                 removeAdmin = { admin.removeAdmin() },

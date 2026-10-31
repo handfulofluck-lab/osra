@@ -612,8 +612,10 @@ class AccessibilityMonitorService : AccessibilityService() {
             hasBackgroundLocation: Boolean,
             apiLevel: Int,
         ): LocationStartPolicy.Decision? = when {
-            isServiceRunning || !paired -> null
+            isServiceRunning -> null
+            // Issue #472: the pair state is an input to the shared rule, not a second guard here.
             else -> LocationStartPolicy.decide(
+                isPaired = paired,
                 hasFineLocation = hasFineLocation,
                 hasCoarseLocation = hasCoarseLocation,
                 hasBackgroundLocation = hasBackgroundLocation,

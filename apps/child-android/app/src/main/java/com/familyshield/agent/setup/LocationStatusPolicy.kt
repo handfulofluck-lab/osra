@@ -31,13 +31,34 @@ enum class LocationStatus {
 
 object LocationStatusPolicy {
 
-    fun classify(decision: LocationStartPolicy.Decision, serviceRunning: Boolean): LocationStatus =
-        when (decision) {
+    /**
+     * Issue #472: the pair state is deliberately not an input here. This screen only renders for a
+     * paired device, and "unpaired" is not a location status — inventing one would put a dead line
+     * on a screen nobody can reach. The start decision still asks the link first
+     * ([LocationStartPolicy.decide]); the two answer different questions.
+     */
+    fun classify(
+        hasFineLocation: Boolean,
+        hasCoarseLocation: Boolean,
+        hasBackgroundLocation: Boolean,
+        apiLevel: Int,
+        serviceRunning: Boolean,
+    ): LocationStatus {
+        val decision = LocationStartPolicy.decide(
+            isPaired = true,
+            hasFineLocation = hasFineLocation,
+            hasCoarseLocation = hasCoarseLocation,
+            hasBackgroundLocation = hasBackgroundLocation,
+            apiLevel = apiLevel,
+        )
+        return when (decision) {
             LocationStartPolicy.Decision.MISSING_LOCATION_PERMISSION -> LocationStatus.MISSING_PERMISSION
             LocationStartPolicy.Decision.MISSING_BACKGROUND_LOCATION -> LocationStatus.MISSING_BACKGROUND
             LocationStartPolicy.Decision.START ->
                 if (serviceRunning) LocationStatus.ACTIVE else LocationStatus.SERVICE_STOPPED
+            LocationStartPolicy.Decision.UNPAIRED -> LocationStatus.MISSING_PERMISSION
         }
+    }
 
     /** The line the status screen shows. Only [LocationStatus.ACTIVE] carries a tick. */
     fun line(status: LocationStatus): String = when (status) {
