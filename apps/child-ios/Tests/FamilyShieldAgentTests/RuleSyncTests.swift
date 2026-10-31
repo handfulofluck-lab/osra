@@ -197,6 +197,91 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertEqual(defaults.stringArray(forKey: "apps.blockedBundleIdentifiers"), ["com.example.blocked"])
     }
 
+    // MARK: - #475: the rules version the phone applied
+
+    private func rules(version: Int?) -> Data {
+        guard let version else { return Data(rulesJSON.utf8) }
+        return Data(rulesJSON.replacingOccurrences(of: #""id": "rs-1","#, with: #""id": "rs-1", "rulesVersion": \#(version),"#).utf8)
+    }
+
+    func testTheVersionIsStoredAndReportedAfterASuccessfulApply() async throws {
+        pair()
+        RuleStore.clear()
+        StubProtocol.response = (200, rules(version: 4))
+        var reported: [Int] = []
+        let outcome = await RuleSyncer.syncNow(client: stubbedClient, apply: { _ in },
+                                               reportApplied: { _, v in reported.append(v); return 202 })
+        guard case .synced(let synced) = outcome else { return XCTFail("got \(outcome)") }
+        XCTAssertEqual(synced.rulesVersion, 4)
+        XCTAssertEqual(RuleStore.appliedRulesVersion(), 4)
+        XCTAssertEqual(reported, [4], "sent on telemetry straight after the apply")
+    }
+
+    func testAFailedApplyKeepsTheOldVersionAndReportsNothing() async throws {
+        pair()
+        RuleStore.clear()
+        RuleStore.setAppliedRulesVersion(3)
+        StubProtocol.response = (200, rules(version: 4))
+        struct Refused: Error {}
+        var reported: [Int] = []
+        let outcome = await RuleSyncer.syncNow(client: stubbedClient, apply: { _ in throw Refused() },
+                                               reportApplied: { _, v in reported.append(v); return 202 })
+        guard case .synced = outcome else { return XCTFail("got \(outcome)") }
+        XCTAssertEqual(RuleStore.appliedRulesVersion(), 3, "a refused apply is not an applied version")
+        XCTAssertEqual(reported, [])
+    }
+
+    func testStoringWithoutApplyingRecordsNoVersion() async throws {
+        pair()
+        RuleStore.clear()
+        StubProtocol.response = (200, rules(version: 4))
+        var reported: [Int] = []
+        _ = await RuleSyncer.syncNow(client: stubbedClient, enforce: false,
+                                     reportApplied: { _, v in reported.append(v); return 202 })
+        XCTAssertNil(RuleStore.appliedRulesVersion(), "fetched and stored is not applied")
+        XCTAssertEqual(reported, [])
+    }
+
+    func testAServerWithoutAVersionIsReadAsOne() async throws {
+        pair()
+        RuleStore.clear()
+        StubProtocol.response = (200, rules(version: nil))
+        _ = await RuleSyncer.syncNow(client: stubbedClient, apply: { _ in }, reportApplied: { _, _ in 202 })
+        XCTAssertEqual(RuleStore.appliedRulesVersion(), 1)
+    }
+
+    func testTelemetryCarriesTheAppliedVersionAndOmitsItBeforeTheFirstApply() async throws {
+        pair()
+        RuleStore.clear()
+        let identity = try XCTUnwrap(AgentIdentityStore.load())
+        let client = LocationClient(session: StubProtocol.session)
+        StubProtocol.response = (202, Data("{}".utf8))
+
+        // Before any apply: no field at all, never 0.
+        _ = await client.reportGrant(identity, .background)
+        var body = try XCTUnwrap(sentBody(StubProtocol.requests.last))
+        XCTAssertEqual(body["locationGrant"] as? String, "background")
+        XCTAssertNil(body["appliedRulesVersion"], "absent until the phone has applied a rule set")
+
+        RuleStore.setAppliedRulesVersion(5)
+        _ = await client.reportGrant(identity, .background)
+        body = try XCTUnwrap(sentBody(StubProtocol.requests.last))
+        XCTAssertEqual(body["appliedRulesVersion"] as? Int, 5)
+
+        let status = await client.reportAppliedRulesVersion(identity, 6)
+        XCTAssertEqual(status, 202)
+        let last = try XCTUnwrap(StubProtocol.requests.last)
+        XCTAssertEqual(last.request.url?.path, "/v1/devices/dev-1/telemetry")
+        body = try XCTUnwrap(sentBody(last))
+        XCTAssertEqual(body["appliedRulesVersion"] as? Int, 6)
+        XCTAssertNil(body["locationGrant"], "the version report carries no grant it did not read")
+    }
+
+    private func sentBody(_ entry: (request: URLRequest, body: Data)?) -> [String: Any]? {
+        guard let entry else { return nil }
+        return (try? JSONSerialization.jsonObject(with: entry.body)) as? [String: Any]
+    }
+
     func testUnpairedDoesNotCallTheServer() async {
         let outcome = await RuleSyncer.syncNow(client: stubbedClient, enforce: false)
         XCTAssertEqual(outcome, .notPaired)
