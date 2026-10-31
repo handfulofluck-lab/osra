@@ -1,0 +1,7 @@
+/* #511: Karim's approved wording (Q10 and Q12), the same as the Android agent's values-ar/strings.xml. */
+"block_title_blocked" = "حجب والدك أو والدتك هذا التطبيق";
+"block_request_access" = "اطلب السماح";
+"block_exit_home" = "الخروج إلى الشاشة الرئيسية";
+/* %1$@ is the window (وقت النوم, or the routine's name), %2$@ its end time (HH:MM). */
+"block_window_line" = "محجوب بسبب %1$@ حتى %2$@";
+"block_window_bedtime" = "وقت النوم";

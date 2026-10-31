@@ -69,4 +69,124 @@ class TamperScreenPolicyTest {
         // and only Settings hosts it
         assertEquals(TamperScreen.NONE, classify("com.android.chrome", "Private DNS provider hostname"))
     }
+
+    // ---- osra-security#5: protection screens in a non-English system language ----
+    // On an Arabic phone our labels resolve to Arabic too: the launcher label stays the brand ("OSRA"),
+    // the device-admin label is the Arabic string from values-ar.
+    private val adminAr = "الرقابة الأبوية من OSRA"
+
+    private fun classifyAr(packageName: String?, windowClass: String?, vararg texts: String) =
+        TamperScreenPolicy.classify(packageName, texts.toList(), agent, adminAr, pkg, windowClass)
+
+    @Test
+    fun `each protection class classifies with no verb on the screen, in Arabic or with only our name`() {
+        // Arabic text that names us but carries none of the listed verbs.
+        assertEquals(
+            TamperScreen.DEACTIVATE_ADMIN,
+            classifyAr("com.android.settings", "com.android.settings.DeviceAdminAdd", adminAr, "يتيح هذا التطبيق قفل الجهاز"),
+        )
+        assertEquals(
+            TamperScreen.DEACTIVATE_ADMIN,
+            classifyAr(
+                "com.android.settings",
+                "com.android.settings.applications.specialaccess.deviceadmin.DeviceAdminAdd",
+                adminAr,
+            ),
+        )
+        assertEquals(
+            TamperScreen.UNINSTALL,
+            classifyAr("com.google.android.packageinstaller", "com.android.packageinstaller.UninstallerActivity", "OSRA"),
+        )
+        assertEquals(
+            TamperScreen.UNINSTALL,
+            classifyAr("com.samsung.android.packageinstaller", "com.android.packageinstaller.UninstallerActivity", "OSRA", "؟"),
+        )
+        assertEquals(
+            TamperScreen.APP_INFO,
+            classifyAr("com.android.settings", "com.android.settings.applications.InstalledAppDetailsTop", "OSRA", "الأذونات"),
+        )
+        assertEquals(
+            TamperScreen.APP_INFO,
+            classifyAr("com.android.settings", "com.android.settings.Settings\$AppInfoDashboardActivity", "OSRA"),
+        )
+        // A language we ship no strings for: the admin label falls back to English, the class still matches.
+        assertEquals(
+            TamperScreen.DEACTIVATE_ADMIN,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf("OSRA parental controls", "Désactiver cette application"),
+                agent, admin, pkg,
+                "com.android.settings.DeviceAdminAdd",
+            ),
+        )
+    }
+
+    @Test
+    fun `a protection class that does not name us stays NONE, so other apps' admin sheets are left alone`() {
+        assertEquals(
+            TamperScreen.NONE,
+            classifyAr("com.android.settings", "com.android.settings.DeviceAdminAdd", "العثور على جهازي", "إلغاء تنشيط"),
+        )
+        assertEquals(
+            TamperScreen.NONE,
+            classifyAr("com.google.android.packageinstaller", "com.android.packageinstaller.UninstallerActivity", "يوتيوب", "إلغاء التثبيت"),
+        )
+        assertEquals(
+            TamperScreen.NONE,
+            classifyAr("com.android.settings", "com.android.settings.applications.InstalledAppDetailsTop", "يوتيوب", "فرض الإيقاف"),
+        )
+        // Nothing on the screen at all: there is no way to know whose screen it is.
+        assertEquals(TamperScreen.NONE, classifyAr("com.android.settings", "com.android.settings.DeviceAdminAdd"))
+        // And a class only counts in a system package.
+        assertEquals(TamperScreen.NONE, classifyAr("com.whatsapp", "com.android.settings.DeviceAdminAdd", adminAr))
+    }
+
+    @Test
+    fun `the Arabic word lists classify the four screens without a known class`() {
+        // AOSP Arabic wording; the class is an unknown OEM one.
+        assertEquals(
+            TamperScreen.DEACTIVATE_ADMIN,
+            classifyAr("com.android.settings", "com.oem.UnknownSheet", "تطبيقات مشرف الجهاز", adminAr, "إلغاء تنشيط تطبيق مشرف الجهاز هذا", "إلغاء"),
+        )
+        assertEquals(
+            TamperScreen.UNINSTALL,
+            classifyAr("com.google.android.packageinstaller", null, "OSRA", "هل تريد إلغاء تثبيت هذا التطبيق؟", "إلغاء", "حسنًا"),
+        )
+        assertEquals(
+            TamperScreen.APP_INFO,
+            classifyAr("com.android.settings", null, "معلومات التطبيق", "OSRA", "فرض الإيقاف", "إلغاء التثبيت", "التخزين"),
+        )
+        assertEquals(
+            TamperScreen.APP_INFO,
+            classifyAr("com.android.settings", null, "OSRA", "com.familyshield.agent", "محو مساحة التخزين"),
+        )
+        assertEquals(
+            TamperScreen.PRIVATE_DNS,
+            classifyAr("com.android.settings", null, "نظام أسماء النطاقات الخاص", "اسم مضيف مزوّد نظام أسماء النطاقات الخاص", "dns.google"),
+        )
+        // With vowel marks and a tatweel, as some OEM strings render.
+        assertEquals(
+            TamperScreen.UNINSTALL,
+            classifyAr("com.samsung.android.packageinstaller", null, "OSRA", "إِلْغَاء التَّثْبِيـت"),
+        )
+    }
+
+    @Test
+    fun `an unrelated Settings screen in Arabic stays NONE`() {
+        assertEquals(
+            TamperScreen.NONE,
+            classifyAr("com.android.settings", "com.android.settings.SubSettings", "الإعدادات", "الشبكة والإنترنت", "OSRA", "التطبيقات"),
+        )
+        assertEquals(
+            TamperScreen.NONE,
+            classifyAr("com.android.settings", null, "تطبيقات مشرف الجهاز", adminAr, "العثور على جهازي"),
+        )
+    }
+
+    @Test
+    fun `normalize folds Arabic vowel marks and hamza forms and leaves English as lowercase`() {
+        assertEquals("الغاء التثبيت", TamperScreenPolicy.normalize("إِلْغَاء التَّثْبِيـت"))
+        assertEquals("مسوول", TamperScreenPolicy.normalize("مسؤول"))
+        assertEquals("deactivate this device admin app", TamperScreenPolicy.normalize("Deactivate this Device Admin app"))
+    }
 }

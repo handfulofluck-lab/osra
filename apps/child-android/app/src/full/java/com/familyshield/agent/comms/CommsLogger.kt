@@ -367,6 +367,34 @@ class CommsLogger @Inject constructor(
      * known yet" and the harvest resolves it before its first use; it is never treated as "no floor",
      * because fail-open is what imported the withdrawn window.
      */
+    /**
+     * Issue #513: the SMS rows dated after [now] and at or before [ceiling] — what the forward clock had
+     * already read when it was ahead. Read-only, and tolerant of a revoked permission like its neighbours.
+     */
+    private fun smsRowsBetween(now: Long, ceiling: Long): List<CommsFutureSmsPolicy.ClockBackRow> {
+        val rows = mutableListOf<CommsFutureSmsPolicy.ClockBackRow>()
+        return try {
+            context.contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.DATE),
+                "${Telephony.Sms.DATE} > ? AND ${Telephony.Sms.DATE} <= ?",
+                arrayOf(now.toString(), ceiling.toString()),
+                "${Telephony.Sms.DATE} ASC",
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    rows += CommsFutureSmsPolicy.ClockBackRow(
+                        date = cursor.getLong(2),
+                        id = cursor.getLong(0),
+                        digest = CommsFutureSmsPolicy.digest(cursor.getString(1) ?: ""),
+                    )
+                }
+            }
+            rows
+        } catch (e: SecurityException) {
+            rows
+        }
+    }
+
     private fun newestSmsId(): Long {
         return try {
             context.contentResolver.query(
@@ -462,6 +490,17 @@ class CommsLogger @Inject constructor(
         // than the skew in the future means the clock moved back: re-anchor to now and read nothing this
         // round. One window is lost; without this, every message afterwards is lost instead.
         if (CommsWatermarkPolicy.isClockBack(stored, now)) {
+            // Issue #513: every row this phone read under the forward clock is dated now < DATE <= stored,
+            // and read again it would look like a brand-new future row — which is how the year-ahead SMS
+            // reached the parent twice. Remember them first, then re-anchor: a crash between the two costs
+            // one duplicate guard at worst, never a message.
+            val ceiling = stored ?: now // isClockBack guarantees non-null; the compiler cannot see through it
+            val alreadyRead = CommsFutureSmsPolicy.seenOnClockBack(smsRowsBetween(now, ceiling), now, ceiling)
+            if (alreadyRead.isNotEmpty()) {
+                var remembered = settings.futureSmsSeen()
+                alreadyRead.forEach { remembered = CommsFutureSmsPolicy.remember(remembered, it) }
+                settings.setFutureSmsSeen(remembered)
+            }
             dao.set(AgentStateEntity(KEY_SMS_WATERMARK, now))
             if (!warnedClockBack) {
                 warnedClockBack = true

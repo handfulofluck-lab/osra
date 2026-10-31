@@ -78,4 +78,12 @@
     <string name="block_window_line">Blocked by %1$s until %2$s</string>
     <string name="block_window_bedtime">Bedtime</string>
     <string name="block_window_school">School hours</string>
+    <!-- #506: the rest of the block screen, so the whole screen can speak the phone's language rather
+         than only its reason line. Karim approved the Arabic (Q12, 31 Oct 16:28Z); it lives in
+         `values-ar`, and `ChildSystemStringsTest` pins all five lines word for word. -->
+    <string name="block_title_blocked">This app is blocked by your parent</string>
+    <string name="block_title_time_limit">Daily limit reached</string>
+    <string name="block_request_access">Request access</string>
+    <string name="block_request_sent">Request sent to your parent</string>
+    <string name="block_exit_home">Exit to Home screen</string>
 </resources>
