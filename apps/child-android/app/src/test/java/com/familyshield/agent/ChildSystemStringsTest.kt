@@ -84,8 +84,16 @@ class ChildSystemStringsTest {
         approved.forEach { (key, wording) ->
             assertEquals("Arabic '$key'", wording, arabic.getValue(key))
         }
-        approved.keys.forEach { key ->
-            assertTrue("English '$key' is missing", english.containsKey(key))
+        // The English is pinned too (#514 review): a reworded key kept the row green while an English phone's
+        // screen changed, which is the same class of hole the Arabic pin closes.
+        mapOf(
+            "block_title_blocked" to "This app is blocked by your parent",
+            "block_title_time_limit" to "Daily limit reached",
+            "block_request_access" to "Request access",
+            "block_request_sent" to "Request sent to your parent",
+            "block_exit_home" to "Exit to Home screen",
+        ).forEach { (key, wording) ->
+            assertEquals("English '$key'", wording, english.getValue(key))
         }
     }
 
