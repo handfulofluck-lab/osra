@@ -67,4 +67,11 @@
     <string name="unlinked_title">لم يعد هذا الهاتف مرتبطًا بعائلة</string>
     <string name="unlinked_body">أُزيل OSRA من العائلة التي كانت تدير هذا الهاتف، لذلك توقّف عن المراقبة. يمكنك إلغاء تثبيته الآن.</string>
     <string name="unlinked_channel">إلغاء ربط الهاتف</string>
+    <!-- #480: the system-facing lines (Accessibility list, device-admin sheet, wipe notice). Karim approved 2026-10-31 06:20Z.
+         app_name, app_name_ar and sos_tile_label are brand names and fall back to the default on purpose. -->
+    <string name="accessibility_service_label">إمكانية الوصول في OSRA</string>
+    <string name="accessibility_description">يراقب OSRA استخدام التطبيقات لتطبيق قواعد وقت الشاشة التي وضعها والدك أو والدتك.</string>
+    <string name="device_admin_label">الرقابة الأبوية من OSRA</string>
+    <string name="device_admin_description">يتيح لـ OSRA قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.</string>
+    <string name="wipe_detected_notice">مُسحت بيانات OSRA على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.</string>
 </resources>
