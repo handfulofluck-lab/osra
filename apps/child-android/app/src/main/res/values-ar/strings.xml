@@ -79,4 +79,11 @@
     <string name="block_window_line">محجوب بسبب %1$s حتى %2$s</string>
     <string name="block_window_bedtime">وقت النوم</string>
     <string name="block_window_school">الساعات المدرسية</string>
+    <!-- #506: Karim's approved Q12 wording for the three lines the iPhone shield carries too
+         (apps/child-ios .../ar.lproj/Localizable.strings, merged with #512, cites the same approval).
+         The daily-limit title and "request sent" were not in that approval, so they stay English and
+         `ChildSystemStringsTest` holds exactly that split. -->
+    <string name="block_title_blocked">حجب والدك أو والدتك هذا التطبيق</string>
+    <string name="block_request_access">اطلب السماح</string>
+    <string name="block_exit_home">الخروج إلى الشاشة الرئيسية</string>
 </resources>

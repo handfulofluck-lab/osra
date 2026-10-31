@@ -9,9 +9,12 @@
   `android.text.BidiFormatter` so the object stays pure and the JVM rows can pin the exact emitted string.
 - **The rest of the screen moves to resources** — `block_title_blocked`, `block_title_time_limit`,
   `block_request_access`, `block_request_sent`, `block_exit_home` — because only the reason line was localised;
-  the title and both buttons were English literals in the composable. Arabic for these five is **Q12, proposed
-  to Karim and not yet approved**, so `values-ar` has no entry and a row holds that: an Arabic value appearing
-  there before approval turns the suite red.
+  the title and both buttons were English literals in the composable.
+- **Arabic in three of the five**: Karim's Q12 approval covers the title, "Request access" and "Exit to Home
+  screen" — the same three the iPhone shield carries (its `ar.lproj` cites the approval, merged with #512), so
+  an Arabic phone now reads the whole screen except the daily-limit title and "request sent". Those two were not
+  in Q12, so they stay English and a row holds exactly that split: an Arabic value for either turns the suite red
+  until his word arrives.
 - Rows: `BlockWindowCopyTest` (9) — the three #506 rows pin the isolates as codepoints, assert the stripped
   sentence is unchanged (they are zero-width), and cover an Arabic routine name the same way; the English rows
   keep their meaning with the isolates allowed. `ChildSystemStringsTest` gains two: the five keys' English

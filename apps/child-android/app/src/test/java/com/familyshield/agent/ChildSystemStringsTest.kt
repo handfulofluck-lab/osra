@@ -70,18 +70,24 @@ class ChildSystemStringsTest {
     }
 
     @Test
-    fun `the rest of the block screen has an English source, and no Arabic before Karim approves it (#506)`() {
-        // Q12's Arabic is *proposed*. Until Karim approves those five lines the English value is the only
-        // one that exists, so an Arabic entry appearing here means someone shipped an unapproved translation.
-        listOf(
-            "block_title_blocked" to "This app is blocked by your parent",
-            "block_title_time_limit" to "Daily limit reached",
-            "block_request_access" to "Request access",
-            "block_request_sent" to "Request sent to your parent",
-            "block_exit_home" to "Exit to Home screen",
-        ).forEach { (key, wording) ->
-            assertEquals("English '$key'", wording, english.getValue(key))
-            assertFalse("'$key' carries Arabic before Karim approved it (Q12)", arabic.containsKey(key))
+    fun `the block screen's Arabic is Karim's approved wording, and the rest waits for him (#506)`() {
+        // Q12 approved three lines — the ones the iPhone shield also shows, quoted from the iOS
+        // `ar.lproj/Localizable.strings` that cites the same approval (merged with #512). The daily-limit
+        // title and "request sent" were not in it, so they stay English rather than ship a translation
+        // nobody approved; his answer turns them into two more pairs here.
+        val approved = mapOf(
+            "block_title_blocked" to "حجب والدك أو والدتك هذا التطبيق",
+            "block_request_access" to "اطلب السماح",
+            "block_exit_home" to "الخروج إلى الشاشة الرئيسية",
+        )
+        approved.forEach { (key, wording) ->
+            assertEquals("Arabic '$key'", wording, arabic.getValue(key))
+        }
+        listOf("block_title_time_limit", "block_request_sent").forEach { key ->
+            assertFalse("'$key' carries Arabic before Karim approved it", arabic.containsKey(key))
+        }
+        approved.keys.plus(listOf("block_title_time_limit", "block_request_sent")).forEach { key ->
+            assertTrue("English '$key' is missing", english.containsKey(key))
         }
     }
 
