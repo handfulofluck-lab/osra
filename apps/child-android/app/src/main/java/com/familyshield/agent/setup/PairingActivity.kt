@@ -3,7 +3,10 @@ package com.familyshield.agent.setup
 import com.familyshield.agent.BuildConfig
 import com.familyshield.agent.R
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +28,7 @@ import com.familyshield.agent.commands.CommandPollWorker
 import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.WorkScheduler
+import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.ServerUrls
 import com.familyshield.agent.security.AdminEnrolmentMessages
 import com.familyshield.agent.security.AdminEnrolmentPolicy
@@ -237,6 +241,49 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * True while the paired **status** screen is the one on display (set by [showStatus], cleared by
+     * [showForm]). Both refresh paths check it, so neither can replace a half-typed pairing form.
+     */
+    @Volatile private var statusScreenShown = false
+
+    /**
+     * Issue #471: the unlink runs in the agent, not here, so this screen used to keep showing the
+     * paired state — "device admin: on", "web filter: connected" — until it was recreated, while the
+     * phone was already unlinked.
+     *
+     * Two paths, because one is not enough:
+     * - **while the screen is started** this receiver fires on the agent's [DeviceUnlinker.ACTION_UNLINKED];
+     * - **on return from the background** [onResume] finds the phone unpaired and re-renders, because the
+     *   receiver is unregistered in `onStop` and would have missed the broadcast entirely (#471 review).
+     *
+     * Registered for `started`, not `created`: a backgrounded screen does not need a live receiver, and
+     * an unregistered one cannot leak.
+     */
+    private val unlinkedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
+            lifecycleScope.launch {
+                if (!settings.isPaired() && statusScreenShown) showForm()
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            unlinkedReceiver,
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(unlinkedReceiver) }
+        super.onStop()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         val review = scanFlow.state as? PairingScanFlow.State.Review
@@ -254,6 +301,12 @@ class PairingActivity : ComponentActivity() {
             if (settings.isPaired()) {
                 startLocationServiceIfPermitted()
                 showStatus()
+            } else if (statusScreenShown) {
+                // Issue #471 review: this is the return-from-background path. The receiver is
+                // unregistered in onStop, so an unlink that happens while the child is in another app
+                // used to leave this screen claiming admin and web filter until the activity was
+                // recreated. Only the status screen is replaced: a half-typed pairing form stays.
+                showForm()
             }
         }
     }
@@ -280,6 +333,7 @@ class PairingActivity : ComponentActivity() {
         scanned: PairQrPayload? = null,
         scanError: String? = null,
     ) {
+        statusScreenShown = false
         replaceWith {
             addView(label(getString(R.string.pair_title)))
             addView(label(getString(R.string.pair_intro)))
@@ -690,9 +744,11 @@ class PairingActivity : ComponentActivity() {
     private fun showStatus() {
         // ADR-0010 §2 (#440 Flip4 follow-up): no status screen, and so no ungated action, before a PIN exists.
         if (SetupResumePolicy.pairedScreen(pinStore.isConfigured()) == PairedScreen.SET_PIN) {
+            statusScreenShown = false
             showSetPin()
             return
         }
+        statusScreenShown = true
         lifecycleScope.launch {
             val childId = settings.childId() ?: "-"
             val deviceId = settings.deviceId() ?: "-"

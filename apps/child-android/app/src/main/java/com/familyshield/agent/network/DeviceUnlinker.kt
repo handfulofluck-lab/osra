@@ -122,5 +122,15 @@ class DeviceUnlinker @Inject constructor(
             isAdminActive = { admin.isAdminActive() },
         )
         unlinked = true
+        // Issue #471: the unlink runs on a coroutine, so a status screen that is already on top kept
+        // saying "device admin: on / web filter: connected" until the activity was recreated — the
+        // opposite of what this sequence just did. The broadcast is package-scoped and carries no data:
+        // the screen re-reads the state it already trusts instead of being told what it is.
+        runCatching { context.sendBroadcast(Intent(ACTION_UNLINKED).setPackage(context.packageName)) }
+    }
+
+    companion object {
+        /** Sent after an unlink completes; `PairingActivity` re-renders from the pair state (#471). */
+        const val ACTION_UNLINKED: String = "com.familyshield.agent.action.UNLINKED"
     }
 }
