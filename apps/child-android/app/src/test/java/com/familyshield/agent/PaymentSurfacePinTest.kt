@@ -2,6 +2,7 @@ package com.familyshield.agent
 
 import com.familyshield.agent.enforcement.EssentialPackages
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -27,7 +28,12 @@ class PaymentSurfacePinTest {
     /** The two surfaces named in the decision; the list is not exhaustive and must not be treated as one. */
     private val paymentSurfaces = listOf(
         "com.samsung.android.spay",
-        "com.google.android.walletnfcrel",
+        // #172 review: the real Wallet package. `com.google.android.walletnfcrel` does not exist, and a
+        // pin on a name nobody ships passes for the wrong reason.
+        "com.google.android.apps.walletnfcrel",
+        // The watch surface: contains none of "spay", "wallet" or "payment", which is why the shape guard
+        // below matches on "pay".
+        "com.samsung.android.samsungpay.gear",
     )
 
     @Test
@@ -42,12 +48,12 @@ class PaymentSurfacePinTest {
     fun `the set itself has not grown a payment surface under another name`() {
         // Guards the shape rather than the two names: any future entry that looks like a wallet is a
         // policy change, and a test failing here is the place to have that argument.
-        val suspicious = EssentialPackages.EXACT.filter { name ->
-            val lower = name.lowercase()
-            lower.contains("spay") || lower.contains("wallet") || lower.contains("payment")
-        }
-        assert(suspicious.isEmpty()) {
-            "the essential set gained a payment surface (#172 chose option 2): $suspicious"
-        }
+        val suspicious = EssentialPackages.EXACT.filter { name -> name.lowercase().contains("pay") }
+        // `assertTrue`, not Kotlin's `assert`: that one only runs when the JVM has -ea on, so the row
+        // would depend on a Gradle default (#172 review).
+        assertTrue(
+            "the essential set gained a payment surface (#172 chose option 2): $suspicious",
+            suspicious.isEmpty(),
+        )
     }
 }

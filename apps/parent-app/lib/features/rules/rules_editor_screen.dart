@@ -31,7 +31,8 @@ String formatTime(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minu
 /// in the dialog before it becomes an always-allowed app.
 const List<String> walletSuggestions = <String>[
   'com.samsung.android.spay',
-  'com.google.android.walletnfcrel',
+  'com.google.android.apps.walletnfcrel',
+  'com.samsung.android.samsungpay.gear',
 ];
 
 class RulesEditorScreen extends ConsumerStatefulWidget {
@@ -392,9 +393,25 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           icon: const Icon(Icons.credit_card),
           label: Text(l10n.addPaymentApp),
           onPressed: () async {
+            // #172 review: prefilling Samsung's name on a Pixel offers a package that is not installed.
+            // Take the first suggestion the child's own inventory reports, and fall back to the first
+            // entry when there is no inventory yet (a phone that has not reported, or an offline read).
+            // Await the inventory: reading the async value returns "loading" on the first tap and would
+            // silently fall back to the first suggestion on every phone (#486 review).
+            var installed = const InstalledAppsReport();
+            try {
+              installed = await ref.read(installedAppsProvider(widget.childId).future);
+            } catch (_) {
+              // A phone that has not reported, or an offline read: the first suggestion is the fallback.
+            }
+            final available = installed.apps.map((a) => a.packageId).toSet();
+            final prefill = walletSuggestions.firstWhere(
+              available.contains,
+              orElse: () => walletSuggestions.first,
+            );
             final pkg = await showDialog<String>(
               context: context,
-              builder: (_) => _AddAlwaysAllowedDialog(initialPackageId: walletSuggestions.first),
+              builder: (_) => _AddAlwaysAllowedDialog(initialPackageId: prefill),
             );
             if (pkg != null && !_draft.alwaysAllowedApps.contains(pkg)) {
               updateAlwaysAllowed([..._draft.alwaysAllowedApps, pkg]);

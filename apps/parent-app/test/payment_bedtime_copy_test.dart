@@ -1,4 +1,5 @@
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
+import 'package:familyshield_parent/l10n/app_localizations_ar.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,5 +39,45 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('add-payment-app')));
     await tester.pumpAndSettle();
     expect(find.text(walletSuggestions.first), findsOneWidget);
+  });
+
+  /// Claude's #486 review: with only Google's wallet in the child's inventory, the shortcut must offer
+  /// that name — prefilling Samsung's on a Pixel offers a package that is not installed.
+  testWidgets('the shortcut prefills the first suggestion the child actually has', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/apps': (_) => installedAppsPayload(
+            apps: [installedAppJson('com.google.android.apps.walletnfcrel', 'Wallet')],
+          ),
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const RulesEditorScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apps'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -80));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('add-payment-app')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    final field = tester.widget<TextField>(
+      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+    );
+    expect(field.controller?.text, 'com.google.android.apps.walletnfcrel');
+  });
+
+  /// Karim's approved Arabic, pinned as literals (#486 review). If a generator, a merge or a well-meaning
+  /// edit changes either line, this fails instead of shipping wording he did not approve.
+  test('the approved Arabic is pinned verbatim', () {
+    final ar = AppLocalizationsAr();
+    expect(ar.addPaymentApp, 'إضافة تطبيق دفع');
+    expect(
+      ar.bedtimeBlocksPayments,
+      'يحجب وقت النوم أيضًا تطبيقات الدفع مثل Samsung Pay أو Google Wallet. '
+      'إذا كانت عائلتك تحتاج أحدها ليلًا، فأضفه إلى «مسموح دائمًا» أدناه.',
+    );
   });
 }

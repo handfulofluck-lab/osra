@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1181,7 +1180,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get bedtimeBlocksPayments =>
-      'يحجب وقت النوم أيضًا تطبيقات الدفع مثل Samsung Pay أو Google Wallet. إذا كانت عائلتك تحتاج أحدها ليلًا، أضفه إلى «المسموح به دائمًا» أدناه.';
+      'يحجب وقت النوم أيضًا تطبيقات الدفع مثل Samsung Pay أو Google Wallet. إذا كانت عائلتك تحتاج أحدها ليلًا، فأضفه إلى «مسموح دائمًا» أدناه.';
 
   @override
   String get noAlwaysAllowedApps => 'لا توجد تطبيقات مسموح بها دائمًا بعد';
