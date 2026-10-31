@@ -70,6 +70,25 @@ final class ShieldTextTests: XCTestCase {
                        .routine(name: "Late", endsAt: "02:00"))
     }
 
+    func testAnAllowListRoutineHoldsEverythingButItsApps() {
+        let reading = RuleStore.RoutineSchedule(name: "Reading", startTime: "17:00", endTime: "19:00",
+                                                swiftWeekdays: [2], // Monday
+                                                blockedApps: [], allowedApps: ["com.example.reader"])
+        // An app outside the routine's list is held by the routine.
+        XCTAssertEqual(window("com.example.game", at: monday(17, 30, in: utc), zone: utc, routines: [reading]),
+                       .routine(name: "Reading", endsAt: "19:00"))
+        // The routine's own app is not held by it, and nothing else holds it at 17:30.
+        XCTAssertNil(window("com.example.reader", at: monday(17, 30, in: utc), zone: utc, routines: [reading]))
+    }
+
+    func testARoutineInsideBedtimeIsNamedRatherThanBedtime() {
+        let late = RuleStore.RoutineSchedule(name: "Homework", startTime: "21:30", endTime: "22:30",
+                                             swiftWeekdays: [2], // Monday
+                                             blockedApps: ["com.example.game"], allowedApps: [])
+        XCTAssertEqual(window("com.example.game", at: monday(22, 0, in: utc), zone: utc, routines: [late]),
+                       .routine(name: "Homework", endsAt: "22:30"))
+    }
+
     // MARK: - What it says
 
     func testTheWindowLineInEnglishAndArabic() {
