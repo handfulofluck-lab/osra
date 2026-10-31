@@ -159,10 +159,12 @@ export async function rulesRoutes(app: FastifyInstance) {
     const overlap = overlapError(parsed.data);
     if (overlap) return reply.code(400).send({ error: overlap });
     const { childId } = req.params as { childId: string };
+    // Issue #475: the bump is part of the write statement, so a saved ruleset and its version cannot
+    // disagree even if two parents write at once.
     const row = await prisma.ruleSet.upsert({
       where: { childId },
       create: toRow(parsed.data, childId),
-      update: toRow(parsed.data, childId),
+      update: { ...toRow(parsed.data, childId), rulesVersion: { increment: 1 } },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, api);
@@ -204,7 +206,7 @@ export async function rulesRoutes(app: FastifyInstance) {
     const row = await prisma.ruleSet.upsert({
       where: { childId },
       create: toRow(validated.data, childId),
-      update: toRow(validated.data, childId),
+      update: { ...toRow(validated.data, childId), rulesVersion: { increment: 1 } },
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, api);

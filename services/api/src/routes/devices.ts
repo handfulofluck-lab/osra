@@ -118,6 +118,10 @@ const TelemetrySchema = z
     // Issue #221 (D1): the agent's own classification of its location grant. Optional so an older
     // agent keeps working (the server then leaves the stored value unknown and queues locate_now).
     locationGrant: z.enum(LOCATION_GRANT_STATES).optional(),
+    // Issue #475: the rules version the agent has SAVED AND APPLIED, not the one it fetched. Validated
+    // against what the server issued for this child before it is stored — a future version is not a
+    // report, it is a bug in the caller.
+    appliedRulesVersion: z.number().int().min(1).optional(),
   })
   .passthrough();
 
@@ -753,6 +757,24 @@ export async function deviceRoutes(app: FastifyInstance) {
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+
+    // Issue #475: store the applied rules version only if the server has actually issued it for this
+    // child. A version from the future is a caller bug, not a report — logging it and dropping it keeps
+    // the parent's "not picked up yet" line honest instead of clearing it on a bad number.
+    const reportedVersion = parsed.data.appliedRulesVersion;
+    if (reportedVersion !== undefined && device?.childId) {
+      const issued = await prisma.ruleSet.findUnique({
+        where: { childId: device.childId },
+        select: { rulesVersion: true },
+      });
+      const current = issued?.rulesVersion ?? 0;
+      if (reportedVersion <= current) {
+        await prisma.device.update({ where: { id }, data: { appliedRulesVersion: reportedVersion } });
+      } else {
+        req.log.warn({ deviceId: id, reportedVersion, issued: current }, "appliedRulesVersion above the issued version; ignored");
+      }
+    }
+
     await setJson(`device:${id}:telemetry`, { ...parsed.data, receivedAt: new Date().toISOString() }, 86400);
 
     // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
