@@ -539,6 +539,49 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  /**
+   * Issue #475: the applied rules version is a *report*, and only a version the server has issued counts.
+   * A number from the future would clear the parent's "the phone hasn't picked this up yet" line on a
+   * caller bug, which is worse than the warning itself.
+   */
+  it("issue #475: stores an applied rules version the server issued, and ignores a future one", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    // Issued version is 5.
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 5 });
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { appliedRulesVersion: 5 },
+    });
+    expect(accepted.statusCode).toBe(202);
+    // The route also stamps lastSeen/status on every telemetry, so assert on the field, not the call.
+    expect(
+      prismaMock.device.update.mock.calls.some(
+        ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 5,
+      ),
+    ).toBe(true);
+
+    prismaMock.device.update.mockClear();
+    const future = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { appliedRulesVersion: 99 },
+    });
+    expect(future.statusCode).toBe(202);
+    expect(
+      prismaMock.device.update.mock.calls.some(
+        ([args]: [{ data?: Record<string, unknown> }]) => "appliedRulesVersion" in (args.data ?? {}),
+      ),
+    ).toBe(false);
+    await app.close();
+  });
+
   it("issue #221: stores the location grant a device reports, and leaves it alone when omitted", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue(DEVICE);

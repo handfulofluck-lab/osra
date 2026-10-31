@@ -79,10 +79,13 @@ export async function controlsRoutes(app: FastifyInstance) {
       const { minutes } = parsed.data;
       // Upsert so a bonus can be granted before any ruleset exists; increment keeps
       // consecutive grants additive for the same day (column resets daily per migration).
+      // Issue #475 review: the bonus is a rule write. The agent reads the extra minutes from the rules
+      // payload, so a parent granting time while the phone is offline must see "hasn't picked this up
+      // yet" — which needs the bump, in the same statement as the increment.
       const row = await prisma.ruleSet.upsert({
         where: { childId },
         create: { ...defaultRuleSetRow(childId), bonusMinutesToday: minutes },
-        update: { bonusMinutesToday: { increment: minutes } },
+        update: { bonusMinutesToday: { increment: minutes }, rulesVersion: { increment: 1 } },
       });
       const api = toApiRuleSet(row as unknown as Record<string, unknown>);
       await fanOutToDevices(childId, "bonus_time", { minutes });

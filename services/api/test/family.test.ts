@@ -159,6 +159,36 @@ describe("family routes", () => {
     await app.close();
   });
 
+  /**
+   * Issue #475: the child endpoint carries both halves of "the phone has this change", so the screens do
+   * not have to make a second call they could forget.
+   */
+  it("issue #475: returns the rules version and the MINIMUM applied version across the child's devices", async () => {
+    const app = await buildApp(familyRoutes, "/v1/family");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 7 });
+    // Two phones: one has the change, one does not — the warning is about the one that is behind.
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 7 }, { appliedRulesVersion: 5 }]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/family/children/${CHILD_ID}`,
+      headers: authHeader(app, "fam-1"),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ rulesVersion: 7, appliedRulesVersion: 5 });
+
+    // A device that has never reported yields null, which the app renders as nothing, not a warning.
+    prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: null }]);
+    const never = await app.inject({
+      method: "GET",
+      url: `/v1/family/children/${CHILD_ID}`,
+      headers: authHeader(app, "fam-1"),
+    });
+    expect(never.json().appliedRulesVersion).toBeNull();
+    await app.close();
+  });
+
   it("returns 401 when no JWT is provided", async () => {
     const app = await buildApp(familyRoutes, "/v1/family");
     const res = await app.inject({ method: "GET", url: `/v1/family/children/${CHILD_ID}` });
