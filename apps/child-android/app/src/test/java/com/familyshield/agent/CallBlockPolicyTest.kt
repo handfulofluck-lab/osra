@@ -147,13 +147,30 @@ class CallBlockPolicyTest {
     }
 
     @Test
-    fun `C2 - a call still up after 15 s is reported once`() {
+    fun `C2 - a call still up after 10 s is reported once`() {
         val p = CallBlockPolicy()
         p.post(meet, ongoing, now = 0L)
         p.mode(CallAudioMode.IN_COMMUNICATION, now = 0L)
-        assertEquals(emptyList<CallAction>(), p.tick(14_999L))
-        assertEquals(listOf(CallAction.ReportCall(meet, 0L)), p.tick(15_000L))
+        // One millisecond short: a call that ends as the block screen rises must not page the parent.
+        assertEquals(emptyList<CallAction>(), p.tick(9_999L))
+        assertEquals(listOf(CallAction.ReportCall(meet, 0L)), p.tick(10_000L))
         assertEquals(emptyList<CallAction>(), p.tick(30_000L))
+    }
+
+    @Test
+    fun `a split-screen alert followed by a call inside the floor sends once (#444 review)`() {
+        // Claude's row: the floor is per app, so the second path must not page the parent again.
+        val floor = BypassAlertFloor()
+        val windows = BlockRaisePolicy(floor = floor)
+        repeat(3) { windows.decide(meet, WindowLayout.SPLIT_SCREEN, false, it * 1_000L) }
+        val calls = CallBlockPolicy(floor = floor)
+        calls.post(meet, ongoing, now = 20_000L)
+        calls.mode(CallAudioMode.IN_COMMUNICATION, now = 20_000L)
+        assertEquals(
+            "the split-screen alert already paged the parent",
+            emptyList<CallAction>(),
+            calls.tick(40_000L),
+        )
     }
 
     @Test
