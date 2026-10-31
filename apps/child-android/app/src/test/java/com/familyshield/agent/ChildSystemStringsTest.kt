@@ -69,6 +69,62 @@ class ChildSystemStringsTest {
         }
     }
 
+    @Test
+    fun `the block screen's Arabic is Karim's approved Q12, verbatim (#506)`() {
+        // Karim approved all five at 16:28Z (quoted in full on this PR). Pinned as literals the way #487
+        // and #502 pin theirs: a changed word, a dropped line or a partial translation turns this red, and
+        // this pin is the only thing that would — nothing else reads `values-ar`.
+        val approved = mapOf(
+            "block_title_blocked" to "حجب والدك أو والدتك هذا التطبيق",
+            "block_title_time_limit" to "انتهى وقت الشاشة اليومي",
+            "block_request_access" to "اطلب السماح",
+            "block_request_sent" to "أُرسل الطلب إلى والدك أو والدتك",
+            "block_exit_home" to "الخروج إلى الشاشة الرئيسية",
+        )
+        approved.forEach { (key, wording) ->
+            assertEquals("Arabic '$key'", wording, arabic.getValue(key))
+        }
+        // The English is pinned too (#514 review): a reworded key kept the row green while an English phone's
+        // screen changed, which is the same class of hole the Arabic pin closes.
+        mapOf(
+            "block_title_blocked" to "This app is blocked by your parent",
+            "block_title_time_limit" to "Daily limit reached",
+            "block_request_access" to "Request access",
+            "block_request_sent" to "Request sent to your parent",
+            "block_exit_home" to "Exit to Home screen",
+        ).forEach { (key, wording) ->
+            assertEquals("English '$key'", wording, english.getValue(key))
+        }
+    }
+
+    @Test
+    fun `the block screen reads its words from resources, not from its own source (#506)`() {
+        // The fault this catches is the one the Flip4 showed: the reason line Arabic, everything around it
+        // English, because the sentences were literals in the composable. A literal here turns this red even
+        // when the resource is also correct, which is the point — two sources of the same sentence drift.
+        // Comments are stripped first: this file's KDoc quotes the sentences to explain the alert it posts,
+        // and prose is not a second source of truth.
+        val source = codeOnly(locate("src/main/java/com/familyshield/agent/enforcement/BlockActivity.kt").readText())
+        listOf(
+            "This app is blocked by your parent",
+            "Daily limit reached",
+            "Request access",
+            "Request sent to your parent",
+            "Exit to Home screen",
+        ).forEach { wording ->
+            assertFalse("'$wording' is hardcoded in BlockActivity", source.contains("\"$wording\""))
+        }
+        listOf(
+            "R.string.block_title_blocked",
+            "R.string.block_title_time_limit",
+            "R.string.block_request_access",
+            "R.string.block_request_sent",
+            "R.string.block_exit_home",
+        ).forEach { reference ->
+            assertTrue("$reference is never read by BlockActivity", source.contains(reference))
+        }
+    }
+
     private fun strings(relativeToRes: String): Map<String, String> {
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(locate("src/main/res/$relativeToRes"))
         val nodes = document.getElementsByTagName("string")
@@ -76,6 +132,10 @@ class ChildSystemStringsTest {
             .map { nodes.item(it) as Element }
             .associate { it.getAttribute("name") to it.textContent }
     }
+
+    /** Strips block and line comments, so a source-text row judges code rather than prose. */
+    private fun codeOnly(source: String): String =
+        source.replace(Regex("/\\*[\\s\\S]*?\\*/"), "").replace(Regex("//[^\\n]*"), "")
 
     private fun locate(relativeToModule: String): File {
         val working = File(System.getProperty("user.dir") ?: ".").absoluteFile

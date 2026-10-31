@@ -79,4 +79,12 @@
     <string name="block_window_line">محجوب بسبب %1$s حتى %2$s</string>
     <string name="block_window_bedtime">وقت النوم</string>
     <string name="block_window_school">الساعات المدرسية</string>
+    <!-- #506: Karim's approved Q12 wording (31 Oct 16:28Z) — the five lines this screen shows,
+         copied word for word from his approval. `ChildSystemStringsTest` pins each one as a literal,
+         so a changed word or a partial translation turns the suite red. -->
+    <string name="block_title_blocked">حجب والدك أو والدتك هذا التطبيق</string>
+    <string name="block_title_time_limit">انتهى وقت الشاشة اليومي</string>
+    <string name="block_request_sent">أُرسل الطلب إلى والدك أو والدتك</string>
+    <string name="block_request_access">اطلب السماح</string>
+    <string name="block_exit_home">الخروج إلى الشاشة الرئيسية</string>
 </resources>
