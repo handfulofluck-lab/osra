@@ -20,8 +20,8 @@ const ScanSchema = z.object({
 
 /**
  * #490: an agent sends a flush as one request of up to [SCAN_BATCH_MAX] items instead of one request per
- * row. Must match the agent's `ScanQueuePolicy.ITEMS_PER_REQUEST`. Items are scanned one after another
- * (each may wait up to [AI_TIMEOUT_MS] on the AI engine), which is what bounds the batch.
+ * row. Must match the agent's `ScanQueuePolicy.ITEMS_PER_REQUEST`. Items are scanned concurrently, so a
+ * batch waits about one [AI_TIMEOUT_MS] on a slow AI engine, not six.
  */
 export const SCAN_BATCH_MAX = 6;
 
@@ -181,12 +181,13 @@ export async function socialRoutes(app: FastifyInstance) {
     if (raw && typeof raw === "object" && "items" in raw) {
       const batch = ScanBatchSchema.safeParse(raw);
       if (!batch.success) return reply.code(400).send({ error: batch.error.flatten() });
-      const results: Array<Record<string, unknown>> = [];
-      for (const item of batch.data.items) {
-        const r = await scanOne(item, auth.device);
-        // A failed item carries its reason only; status codes belong to the single-item body.
-        results.push(r.ok ? r : { ok: false, reason: r.reason });
-      }
+      // Concurrently (#498 review): each item may wait AI_TIMEOUT_MS on the AI engine, and six in a row
+      // reach the agent's 30 s read timeout, so a slow engine would fail a batch the server had already
+      // stored, and the retry would store it twice. `Promise.all` keeps the order, and the alert
+      // throttle is an atomic SET NX, so same-app items still raise at most one alert.
+      const scanned = await Promise.all(batch.data.items.map((item) => scanOne(item, auth.device)));
+      // A failed item carries its reason only; status codes belong to the single-item body.
+      const results = scanned.map((r) => (r.ok ? r : { ok: false, reason: r.reason }));
       return { results };
     }
     const single = await scanOne(req.body, auth.device);

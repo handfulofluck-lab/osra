@@ -290,6 +290,24 @@ describe("social routes", () => {
       await app.close();
     });
 
+    it("scans the items concurrently, so a slow AI engine costs one wait, not six (#498 review)", async () => {
+      const app = await buildApp(socialRoutes, "/v1/social");
+      const DELAY_MS = 300;
+      vi.stubGlobal("fetch", vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+        return { ok: true, json: async () => ({ flagged: false, severity: "info", categories: { safe: 1 } }) };
+      }) as unknown as typeof fetch);
+      prismaMock.child.findUnique.mockResolvedValue(CHILD);
+      const started = Date.now();
+      const res = await postScan(app, { items: Array.from({ length: 6 }, (_, i) => scanBody({ text: `hello ${i}` })) });
+      const elapsed = Date.now() - started;
+      expect(res.statusCode).toBe(200);
+      expect(res.json().results).toHaveLength(6);
+      // Serial would take 6 × 300 ms; concurrent takes about one delay.
+      expect(elapsed).toBeLessThan(2 * DELAY_MS);
+      await app.close();
+    });
+
     it("the single-item body older agents send still works, unchanged", async () => {
       const app = await buildApp(socialRoutes, "/v1/social");
       vi.stubGlobal("fetch", flaggedAi());
