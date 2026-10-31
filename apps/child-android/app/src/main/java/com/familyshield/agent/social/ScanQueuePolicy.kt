@@ -9,6 +9,13 @@ object ScanQueuePolicy {
     /** Rows per flush — bounded so a day's backlog drains in a few network bursts, not one huge one. */
     const val BATCH_SIZE: Int = 50
 
+    /**
+     * #490: captures per `POST /v1/social/scan`. A flush of [BATCH_SIZE] rows goes out in requests of
+     * this many, not one request per row, so the radio wakes once per six captures. Must match the
+     * server's `SCAN_BATCH_MAX`, which refuses a larger body as a whole.
+     */
+    const val ITEMS_PER_REQUEST: Int = 6
+
     /** A row that failed this many POSTs is poison (a 4xx that will never succeed) and is dropped. */
     const val MAX_ATTEMPTS: Int = 8
 

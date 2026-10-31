@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { raiseAlert } from "../lib/alerts.js";
 import { getRedis } from "../redis.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { assertProcessingAllowed } from "../lib/consent.js";
+import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 
@@ -17,6 +17,15 @@ const ScanSchema = z.object({
   /** Plan 2.6: where the agent captured the text — screen (accessibility) or notification. */
   source: z.enum(["screen", "notification"]).optional(),
 });
+
+/**
+ * #490: an agent sends a flush as one request of up to [SCAN_BATCH_MAX] items instead of one request per
+ * row. Must match the agent's `ScanQueuePolicy.ITEMS_PER_REQUEST`. Items are scanned one after another
+ * (each may wait up to [AI_TIMEOUT_MS] on the AI engine), which is what bounds the batch.
+ */
+export const SCAN_BATCH_MAX = 6;
+
+const ScanBatchSchema = z.object({ items: z.array(z.unknown()).min(1).max(SCAN_BATCH_MAX) });
 
 const EventsQuerySchema = z.object({
   childId: z.string().min(1),
@@ -85,6 +94,73 @@ async function analyzeWithAi(text: string, childAge?: number): Promise<Verdict |
   }
 }
 
+type ScanDevice = { id: string; childId: string } | null | undefined;
+
+/** One item's outcome. `status` and `body` keep the single-item response exactly as it was. */
+type ScanItemResult =
+  | { ok: true; flagged: boolean; severity: Severity; concernTypes: string[] }
+  | { ok: false; reason: string; status: number; body?: Record<string, unknown> };
+
+/**
+ * Scans one capture: ownership, consent, the verdict, the vault write and the throttled alert. Shared
+ * by the single-item body and each item of a batch (#490), so the checks are identical for both.
+ */
+async function scanOne(input: unknown, device: ScanDevice): Promise<ScanItemResult> {
+  const parsed = ScanSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "invalid_item", status: 400, body: { error: parsed.error.flatten() } };
+  const { childId, deviceId, app: appName, contact, text } = parsed.data;
+
+  if (device) {
+    if (device.childId !== childId) return { ok: false, reason: "cross_child_forbidden", status: 400 };
+    if (deviceId && deviceId !== device.id) return { ok: false, reason: "device_mismatch", status: 400 };
+  }
+
+  const child = await prisma.child.findUnique({ where: { id: childId } });
+  if (!child) return { ok: false, reason: "child_not_found", status: 404 };
+  // ADR-0008 §2b: withdrawal of consent stops collection.
+  const consent = await checkActiveConsent(childId);
+  if (!consent.active) {
+    const reason = consent.reason ?? "parental_consent_required";
+    return { ok: false, reason, status: 428, body: { error: reason, childId } };
+  }
+
+  const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
+    ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
+    : undefined;
+  const verdict = (await analyzeWithAi(text, childAge)) ?? localKeywordCheck(text);
+  if (!verdict.flagged) {
+    return { ok: true, flagged: false, severity: "info", concernTypes: [] };
+  }
+
+  // The snippet vault always records flagged messages; alerts are throttled separately.
+  const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
+  await prisma.socialEvent.create({
+    data: { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes },
+  });
+
+  // NOTE: at most one alert per app per 10 minutes per child; the vault write above always
+  // happens so parents can still review the full snippet history in /v1/social/events.
+  const throttleKey = `social:alert:${childId}:${appName.toLowerCase()}`;
+  const throttled = await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX") !== "OK";
+  if (!throttled) {
+    const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
+    // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
+    // the decrypted preview stays exclusively in the encrypted vault (#24).
+    await raiseAlert({
+      childId,
+      familyId: child.familyId,
+      deviceId,
+      severity: verdict.severity,
+      category,
+      title: `Social concern in ${appName}`,
+      body: `${contact || "A contact"} sent a flagged message on ${appName}`,
+      metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
+      childName: child.displayName,
+    });
+  }
+  return { ok: true, flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
+}
+
 export async function socialRoutes(app: FastifyInstance) {
   registerRawBodyParser(app);
 
@@ -99,59 +175,25 @@ export async function socialRoutes(app: FastifyInstance) {
     if (!auth.valid) {
       return reply.code(401).send({ error: "invalid_signature", reason: auth.reason });
     }
-    const parsed = ScanSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, app: appName, contact, text } = parsed.data;
-
-    if (auth.device) {
-      if (auth.device.childId !== childId) {
-        return reply.code(400).send({ error: "cross_child_forbidden" });
+    // #490: `{ items: [...] }` is a batch, answered item by item so one bad item doesn't drop the
+    // rest. Anything else is the single-item body older agents send, answered exactly as before.
+    const raw = req.body as { items?: unknown } | null;
+    if (raw && typeof raw === "object" && "items" in raw) {
+      const batch = ScanBatchSchema.safeParse(raw);
+      if (!batch.success) return reply.code(400).send({ error: batch.error.flatten() });
+      const results: Array<Record<string, unknown>> = [];
+      for (const item of batch.data.items) {
+        const r = await scanOne(item, auth.device);
+        // A failed item carries its reason only; status codes belong to the single-item body.
+        results.push(r.ok ? r : { ok: false, reason: r.reason });
       }
-      if (deviceId && deviceId !== auth.device.id) {
-        return reply.code(400).send({ error: "device_mismatch" });
-      }
+      return { results };
     }
-
-    const child = await prisma.child.findUnique({ where: { id: childId } });
-    if (!child) return reply.code(404).send({ error: "child_not_found" });
-    // ADR-0008 §2b: withdrawal of consent stops collection.
-    if (!(await assertProcessingAllowed(childId, reply))) return;
-
-    const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
-      ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
-      : undefined;
-    const verdict = (await analyzeWithAi(text, childAge)) ?? localKeywordCheck(text);
-    if (!verdict.flagged) {
-      return { flagged: false, severity: "info" as Severity, concernTypes: [] };
+    const single = await scanOne(req.body, auth.device);
+    if (!single.ok) {
+      return reply.code(single.status).send(single.body ?? { error: single.reason });
     }
-
-    // The snippet vault always records flagged messages; alerts are throttled separately.
-    const previewCipher = encryptSnippet(text.slice(0, PREVIEW_MAX_CHARS));
-    await prisma.socialEvent.create({
-      data: { childId, app: appName, contact, severity: verdict.severity, previewCipher, concernTypes: verdict.concernTypes },
-    });
-
-    // NOTE: at most one alert per app per 10 minutes per child; the vault write above always
-    // happens so parents can still review the full snippet history in /v1/social/events.
-    const throttleKey = `social:alert:${childId}:${appName.toLowerCase()}`;
-    const throttled = await getRedis().set(throttleKey, "1", "EX", THROTTLE_SECONDS, "NX") !== "OK";
-    if (!throttled) {
-      const category = GAMING_APPS.has(appName.toLowerCase()) ? "gaming_chat" : "social_concern";
-      // Alerts never carry the message snippet — metadata is app/contact/concernTypes only;
-      // the decrypted preview stays exclusively in the encrypted vault (#24).
-      await raiseAlert({
-        childId,
-        familyId: child.familyId,
-        deviceId,
-        severity: verdict.severity,
-        category,
-        title: `Social concern in ${appName}`,
-        body: `${contact || "A contact"} sent a flagged message on ${appName}`,
-        metadata: { app: appName, contact, concernTypes: verdict.concernTypes },
-        childName: child.displayName,
-      });
-    }
-    return { flagged: true, severity: verdict.severity, concernTypes: verdict.concernTypes };
+    return { flagged: single.flagged, severity: single.severity, concernTypes: single.concernTypes };
   });
 
   /**
