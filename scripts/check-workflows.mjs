@@ -105,6 +105,30 @@ for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort()) {
       errors.push(`${path}:${i + 1} 'if:' references the secrets context — GitHub rejects the whole file ("Unrecognized named-value: 'secrets'"); copy the secret into env: and test that, or branch inside the run body`);
   }
 
+  // ── verified-gate's trigger list: nothing may drop an event that can wake the gate ──
+  // A gate that never STARTS is the same class as a gate that cannot fail (2026-10-31, #501/#503): a
+  // stacked PR is retargeted to main by GitHub when its base branch is deleted, and that arrives as
+  // `edited`; without it the required check is never created and the PR is unmergeable with every
+  // visible check green.
+  if (file === "verified-gate.yml") {
+    const typesLine = lines.find((l) => /^\s+types:\s*\[/.test(l));
+    const listed = typesLine
+      ? typesLine.match(/\[([^\]]*)\]/)[1].split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const required = [
+      ["opened", "a normal PR never runs the gate"],
+      ["reopened", "a reopened PR keeps a stale result"],
+      ["synchronize", "a new commit keeps a signature for the old head"],
+      ["labeled", "the label this gate reads never triggers it"],
+      ["unlabeled", "removing state:verified keeps a passing result"],
+      ["ready_for_review", "a draft opened straight into review is never judged"],
+      ["edited", "a PR retargeted to main (stacked base deleted) never runs the gate at all"],
+    ];
+    for (const [event, why] of required)
+      if (!listed.includes(event))
+        errors.push(`${path} pull_request types: is missing "${event}" — ${why}`);
+  }
+
   // ── steps: the uses+run / with-without-uses traps ──
   for (let i = 0; i < lines.length; i++) {
     const stepStart = lines[i].match(/^(\s*)- /);
