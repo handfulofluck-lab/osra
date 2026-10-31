@@ -9,6 +9,8 @@ import com.familyshield.agent.security.DeviceAdminManager
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.vpn.FilterVpnService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,6 +29,12 @@ internal data class UnlinkStep(val name: String, val run: suspend () -> Unit)
  * - **The pending flag is written first and cleared last, and only on full success.** If any step threw, or
  *   the admin grant is still active afterwards, the flag stays set and the next start runs the whole
  *   sequence again; every step is idempotent, so re-running is safe.
+ * - **The sequence cannot be cancelled half-way (#472 review).** On a paired phone the unlink runs
+ *   inside `LocationService`'s own scope, and the `location` step stops that service — whose
+ *   `onDestroy` cancels the scope. Without [NonCancellable] the later steps (`clearPairing`,
+ *   `forgetRules`, `clearPending`) throw `CancellationException`, `runCatching` swallows it, and the
+ *   phone can end up with the admin removed and the notice shown but the pairing still stored.
+ *   Whoever started an unlink, it finishes.
  */
 internal suspend fun runUnlinkSteps(
     steps: List<UnlinkStep>,
@@ -34,7 +42,7 @@ internal suspend fun runUnlinkSteps(
     clearPending: suspend () -> Unit,
     isAdminActive: () -> Boolean,
     onFailure: (UnlinkStep, Throwable) -> Unit = { _, _ -> },
-): Boolean {
+): Boolean = withContext(NonCancellable) {
     runCatching { markPending() }
     var allSucceeded = true
     for (step in steps) {
@@ -45,7 +53,7 @@ internal suspend fun runUnlinkSteps(
     }
     val done = allSucceeded && !isAdminActive()
     if (done) runCatching { clearPending() }
-    return done
+    done
 }
 
 /**

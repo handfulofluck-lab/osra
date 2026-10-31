@@ -6,7 +6,10 @@ import com.familyshield.agent.network.UnlinkPolicy
 import com.familyshield.agent.network.UnlinkStep
 import com.familyshield.agent.network.buildUnlinkSteps
 import com.familyshield.agent.network.runUnlinkSteps
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -117,6 +120,38 @@ class UnlinkOrderTest {
         )
         // And it must not be last: the notice is what tells the family, and it reads after the rest.
         assertTrue("the notice stays last, found $names", names.last() == "notice")
+    }
+
+    /**
+     * Issue #472 review: on a paired phone the unlink runs inside `LocationService`'s own scope, and the
+     * `location` step stops that service — whose `onDestroy` cancels the scope. Every later suspending
+     * step then threw `CancellationException`, which `runCatching` swallowed, so the pairing could stay
+     * stored while the admin was removed and the notice already shown.
+     *
+     * Mutant: drop `withContext(NonCancellable)` from `runUnlinkSteps` and this row fails with an empty
+     * `ran` and `cleared == false`.
+     */
+    @Test
+    fun `U9 cancelling the caller mid-sequence does not skip the later steps`() = runBlocking {
+        val ran = mutableListOf<String>()
+        var cleared = false
+        lateinit var caller: Job
+        caller = launch {
+            runUnlinkSteps(
+                steps = listOf(
+                    // What stopService does to LocationService's scope.
+                    UnlinkStep("location") { caller.cancel() },
+                    UnlinkStep("pairing") { yield(); ran += "pairing" },
+                    UnlinkStep("admin") { yield(); ran += "admin" },
+                ),
+                markPending = {},
+                clearPending = { yield(); cleared = true },
+                isAdminActive = { false },
+            )
+        }
+        caller.join()
+        assertEquals(listOf("pairing", "admin"), ran)
+        assertTrue("the pending flag is cleared once the sequence finished", cleared)
     }
 
     @Test
