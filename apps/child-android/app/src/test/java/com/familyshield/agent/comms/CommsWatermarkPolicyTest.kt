@@ -143,6 +143,55 @@ class CommsWatermarkPolicyTest {
         assertTrue(CommsWatermarkPolicy.shouldReadCall(floor - 1_000L, 10, 0L))
     }
 
+    /**
+     * Issue #264 (the withdrawal half), Claude's finding on `701d951`: a call made while consent was
+     * withdrawn **and** the clock was set forward was uploaded after the re-grant, because the anchor
+     * counted only "ended by the ceiling" and the future-dated row sat above it, where `shouldReadCall`
+     * reads anything dated at or after the floor.
+     *
+     * Mutant: drop `|| rowDate > now + CLOCK_SKEW_MS` from [CommsWatermarkPolicy.countsAsBeforeAnchor]
+     * and the first of the three rows below goes red.
+     */
+    @Test
+    fun `a future-dated withdrawal call sits below the anchor, so the re-grant does not read it`() {
+        val real = 1_792_563_200_000L            // the honest clock
+        val floor = real + 2 * 60_000L           // re-granted two minutes later
+        val anchorNow = real + 3 * 60_000L       // the harvest that takes the anchor
+        // Id 5: made during the withdrawal with the clock set a year forward.
+        val withdrawalDate = real + 365L * 24 * 60 * 60 * 1000
+        assertTrue(
+            "a row dated beyond now + skew cannot be a post-grant call",
+            CommsWatermarkPolicy.countsAsBeforeAnchor(withdrawalDate, 60, floor, anchorNow),
+        )
+        // The anchor lands on id 5, and the read is `_ID > anchor`.
+        assertFalse(CommsWatermarkPolicy.shouldReadById(5, 5))
+    }
+
+    @Test
+    fun `a real call after the re-grant is still read`() {
+        val real = 1_792_563_200_000L
+        val floor = real + 2 * 60_000L
+        val callAt = floor + 10 * 60_000L         // a genuine call, ten minutes after the grant
+        val anchorNow = callAt + 60_000L          // anchored a minute after that call ended
+        assertFalse(
+            "a real post-grant call must not be anchored past",
+            CommsWatermarkPolicy.countsAsBeforeAnchor(callAt, 30, floor, anchorNow),
+        )
+        assertTrue(CommsWatermarkPolicy.shouldReadById(6, 5))
+        assertTrue(CommsWatermarkPolicy.shouldReadCall(callAt, 30, floor))
+    }
+
+    @Test
+    fun `the isClockBack path anchors past a future-dated row too`() {
+        // `isClockBack` re-anchors a grant stored in the future to `now`; a withdrawal call dated between
+        // `now` and the old grant has the same shape as the row above.
+        val now = 1_792_563_200_000L
+        val between = now + 10L * 24 * 60 * 60 * 1000
+        assertTrue(CommsWatermarkPolicy.countsAsBeforeAnchor(between, 60, now, now))
+        // A row before the ceiling counts as before for the ordinary reason, not the future one.
+        assertTrue(CommsWatermarkPolicy.countsAsBeforeAnchor(now - 24 * 60 * 60 * 1000L, 30, now, now))
+    }
+
     @Test
     fun `the straddle tolerance is the clock skew, not a second window`() {
         val floor = 1_792_563_200_000L
