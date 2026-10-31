@@ -35,6 +35,17 @@ const List<String> walletSuggestions = <String>[
   'com.samsung.android.samsungpay.gear',
 ];
 
+/// #505: the screen-time sliders' range, in minutes. The API accepts more than the slider shows (up to
+/// a day), so a value stored by another client can sit outside it.
+const double kLimitSliderMin = 15;
+const double kLimitSliderMax = 600;
+
+/// #505: where the slider's thumb sits for a stored limit. `Slider` throws for a value outside
+/// `[min, max]`, which took the whole editor down for a child with 1440 stored, so the thumb is clamped.
+/// Only the thumb: the title and label keep showing the stored value, and the draft keeps it until the
+/// parent moves the slider, so saving another rule never rewrites the limit.
+double limitSliderPosition(int minutes) => minutes.toDouble().clamp(kLimitSliderMin, kLimitSliderMax);
+
 class RulesEditorScreen extends ConsumerStatefulWidget {
   final String childId;
   const RulesEditorScreen({super.key, required this.childId});
@@ -181,10 +192,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
         Text(l10n.dailyLimit(st.dailyLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: st.dailyLimitMinutes.toDouble(), min: 15, max: 600, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
         Text(l10n.weekendLimit(st.weekendLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
-        Slider(value: st.weekendLimitMinutes.toDouble(), min: 15, max: 600, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
         Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
         timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
