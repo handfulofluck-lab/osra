@@ -42,8 +42,10 @@ import kotlinx.coroutines.launch
  *
  * In **pause-internet** mode the tunnel takes the default route instead and everything that lands
  * in it is dropped on the floor, which is what "the internet is paused" has to mean on a phone
- * without a device owner; the parent's always-allowed apps and the agent itself are excluded from
- * the tunnel with `addDisallowedApplication`, so they keep working.
+ * without a device owner; the parent's always-allowed apps, the agent itself and — in this mode only —
+ * Google Play services are excluded from the tunnel with `addDisallowedApplication`, so they keep
+ * working (#458: without the Play services exclusion, FCM cannot reconnect during a pause and a
+ * `resume_internet` waits for the next poll). [TunnelBypassPolicy] holds that list.
  *
  * Limits recorded in the ADR: a Private DNS (DoT) setting or an in-app DoH resolver bypasses a DNS
  * sinkhole — onboarding asks the parent to set Private DNS to "Off"/"Automatic" (Android uses the
@@ -146,9 +148,14 @@ class FilterVpnService : VpnService() {
             // to the VPN resolver (v4) once the VPN declares one, so no v6 route is needed.
             builder.addRoute(TUN_DNS, 32)
         }
-        // Our own traffic and the parent's always-allowed apps bypass the tunnel entirely.
-        runCatching { builder.addDisallowedApplication(packageName) }
-        for (pkg in rules.cachedRules()?.alwaysAllowedApps.orEmpty()) runCatching { builder.addDisallowedApplication(pkg) }
+        // Our own traffic, the FCM wake path (pause mode only) and the parent's always-allowed apps
+        // bypass the tunnel entirely (#458). The list itself is a pure function so a row can pin it.
+        val bypass = TunnelBypassPolicy.excludedPackages(
+            sinkholeAll = mode == MODE_SINKHOLE_ALL,
+            selfPackage = packageName,
+            alwaysAllowedApps = rules.cachedRules()?.alwaysAllowedApps.orEmpty(),
+        )
+        for (pkg in bypass) runCatching { builder.addDisallowedApplication(pkg) }
         val configure = Intent(this, PairingActivity::class.java)
         builder.setConfigureIntent(PendingIntent.getActivity(this, 0, configure, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         val fd = try {
