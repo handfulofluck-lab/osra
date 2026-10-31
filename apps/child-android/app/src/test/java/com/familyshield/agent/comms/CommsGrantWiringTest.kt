@@ -175,14 +175,18 @@ class CommsGrantWiringTest {
             "the floor is a per-row decision, because a clock set back gives an older DATE and a higher id",
             logger.contains("CommsWatermarkPolicy.shouldReadCall(ts, duration, dateFloor)"),
         )
-        assertFalse(
-            "a DATE predicate in the query is what lost the set-back call (#264 F2)",
-            logger.contains("\${CallLog.Calls.DATE} >= ?") || logger.contains("\${CallLog.Calls.DATE} > ?"),
+        // The READ is by id. It is the one query below the anchor, and a DATE predicate there is what
+        // lost the set-back call (#264 F2). The anchor query may use DATE (it now selects the
+        // future-dated rows too), so the positive form is asserted rather than a negative on the file.
+        assertTrue(
+            "the call read must be by id, not by DATE",
+            logger.contains("\"\${CallLog.Calls._ID} > ?\""),
         )
         assertTrue(
-            "the anchor is the newest id whose call ENDED by the ceiling, not the newest DATE",
+            "the anchor's rule lives in the pure policy, not inline (#264 withdrawal half)",
             logger.contains("newestCallIdEndedBy(") &&
-                logger.contains("CallLog.Calls.DURATION") && logger.contains("endedAt <= ceilingEnd"),
+                logger.contains("CallLog.Calls.DURATION") &&
+                logger.contains("CommsWatermarkPolicy.countsAsBeforeAnchor("),
         )
         assertFalse("the DATE anchor is the bug it replaced", logger.contains("newestCallIdUpTo("))
     }
@@ -201,7 +205,7 @@ class CommsGrantWiringTest {
         assertTrue(
             "a stored 0 with a real floor anchors at that floor first",
             logger.contains("if (fromId == 0L && dateFloor > 0L)") &&
-                logger.contains("fromId = newestCallIdEndedBy(dateFloor)"),
+                logger.contains("fromId = newestCallIdEndedBy(dateFloor, now)"),
         )
         assertTrue(
             "and the query is bound to the anchored id, not to the stored one",
