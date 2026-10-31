@@ -60,9 +60,8 @@ class ActiveWindow {
 ///    does not have. Saying "blocked now by school hours" next to an app the parent blocked would be
 ///    a wrong reason, which is worse than no reason.
 ///
-/// [now] is the wall clock of the device the rules apply to. The caller passes the parent's local
-/// time today (see the note in the PR): a parent in another zone than the child would mis-read the
-/// window, which is why the family timezone is the next step rather than a guess here.
+/// [now] is the wall clock of the device the rules apply to: the caller passes [familyWallClock] of the
+/// parent's clock, so a parent travelling in another zone reads the window the child's phone applies.
 ActiveWindow? activeWindowFor({
   required String packageId,
   required RuleSet rules,
@@ -137,3 +136,12 @@ int? _parseHhMm(String value) {
   if (h < 0 || h > 23 || m < 0 || m > 59) return null;
   return h * 60 + m;
 }
+
+/// #476: [now] read on the family's clock. The child's phone enforces routines in its own zone, so a
+/// parent in another zone has to shift by the family zone's UTC offset (from `GET /v1/family/me`)
+/// before a window is checked. With no offset (no family zone set) the parent's own clock is kept.
+///
+/// The result is a UTC `DateTime` whose fields are the family's wall time: `weekday`, `hour` and
+/// `minute` are what [activeWindowFor] reads.
+DateTime familyWallClock(DateTime now, int? utcOffsetMinutes) =>
+    utcOffsetMinutes == null ? now : now.toUtc().add(Duration(minutes: utcOffsetMinutes));

@@ -10,7 +10,7 @@ import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { getRedis } from "../redis.js";
 import { eraseChildData, screenTimeTodayFromDb } from "../lib/usageModel.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
-import { isValidTimeZone } from "../lib/digestSchedule.js";
+import { isValidTimeZone, utcOffsetMinutes } from "../lib/digestSchedule.js";
 import { ReauthSchema, checkReauth, consentHeldElsewhere, eraseFamilyData } from "../lib/accountDeletion.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 
@@ -112,7 +112,13 @@ export async function familyRoutes(app: FastifyInstance) {
           return rest;
         })
       : children;
-    return { family: { ...familyRest, children: childrenOut }, parent, parents, children: childrenOut, devices };
+    // #476: the family zone's offset right now, so the parent app can read a routine window on the
+    // child's clock rather than its own. Absent while no zone has been set: the app then keeps its own.
+    const offset =
+      family.timezoneSource !== "default" && isValidTimeZone(family.timezone)
+        ? { utcOffsetMinutes: utcOffsetMinutes(new Date(), family.timezone) }
+        : {};
+    return { family: { ...familyRest, ...offset, children: childrenOut }, parent, parents, children: childrenOut, devices };
   });
 
   /** Create a child; gated on an active jurisdiction-matching ConsentRecord (428 otherwise). */

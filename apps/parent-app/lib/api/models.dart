@@ -35,13 +35,18 @@ class Family {
   final String region;
   final DateTime? createdAt;
 
-  const Family({required this.id, required this.name, required this.region, this.createdAt});
+  /// #476: the family zone's offset from UTC when `/me` was read, in minutes. Null while the family
+  /// has no zone set (`timezoneSource = default`); the app then reads windows on its own clock.
+  final int? utcOffsetMinutes;
+
+  const Family({required this.id, required this.name, required this.region, this.createdAt, this.utcOffsetMinutes});
 
   factory Family.fromJson(Map<String, dynamic> json) => Family(
         id: _str(json['id']),
         name: _str(json['name']),
         region: _str(json['region'], 'US'),
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
+        utcOffsetMinutes: _intOrNull(json['utcOffsetMinutes']),
       );
 }
 

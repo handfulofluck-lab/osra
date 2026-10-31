@@ -533,7 +533,9 @@ class _AppsTab extends ConsumerWidget {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(childId));
     // #456: the clock is a provider so a row can pin the sentence to a weekday morning.
-    final now = ref.watch(clockProvider)();
+    // #476: and it is read on the family's clock, where the child's phone enforces the window.
+    final offset = ref.watch(familyProvider).valueOrNull?.family.utcOffsetMinutes;
+    final now = familyWallClock(ref.watch(clockProvider)(), offset);
     return rules.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(l10n.rulesLoadFailed('$e'))),

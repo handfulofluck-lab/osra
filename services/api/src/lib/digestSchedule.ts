@@ -53,6 +53,19 @@ export function isValidTimeZone(timeZone: string): boolean {
   }
 }
 
+/**
+ * #476: the zone's offset from UTC at `now`, in whole minutes (Asia/Dubai → 240, America/New_York in
+ * winter → -300). The parent app shifts its clock by this instead of shipping a tz database, so the
+ * "Blocked now by …" sentence is computed in the family's zone, where the child's phone enforces it.
+ */
+export function utcOffsetMinutes(now: Date, timeZone: string): number {
+  const parts = formatter(timeZone).formatToParts(now);
+  const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  const wholeSeconds = Math.floor(now.getTime() / 1000) * 1000;
+  return Math.round((asUtc - wholeSeconds) / 60_000);
+}
+
 const WEEKDAY_NUMBER: Record<string, number> = {
   Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
 };
