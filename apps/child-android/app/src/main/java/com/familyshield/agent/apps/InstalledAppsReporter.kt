@@ -87,6 +87,14 @@ class InstalledAppsReporter @Inject constructor(
  * Issue #199 item 5: one inventory row as the wire carries it, with `essential` computed where the OS
  * roles exist. Pure, so a JVM row can pin that the dialer leaves the phone as `essential = true` — the
  * parent cannot work that out from a package name, and the server must never guess.
+ *
+ * **A role change alone does not re-upload (#199 review).** The upload is gated on the list's
+ * fingerprint (`InstalledAppsPolicy.fingerprint`), which covers package ids, labels and the system flag —
+ * so the child making a different app the default dialer, with the same package list, keeps the old
+ * `essential` values on the server until the forced 24-hour refresh
+ * ([InstalledAppsReporter.MAX_AGE_MS]) picks them up. That is accepted because nothing enforces with this
+ * field: the phone's own `EssentialPackages` answer decides, and the parent's copy is a label. If it ever
+ * becomes enforcement, the fingerprint has to include the role answer first.
  */
 internal fun inventoryApp(
     packageId: String,
