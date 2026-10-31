@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1132,6 +1131,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get alwaysAllowedDesc =>
       'These apps stay open during bedtime, school time, pause and routines.';
+
+  @override
+  String get addPaymentApp => 'Add a payment app';
+
+  @override
+  String get bedtimeBlocksPayments =>
+      'Bedtime also blocks payment apps such as Samsung Pay or Google Wallet. If your family needs one at night, add it to Always allowed below.';
 
   @override
   String get noAlwaysAllowedApps => 'No always-allowed apps yet';

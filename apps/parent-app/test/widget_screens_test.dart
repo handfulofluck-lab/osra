@@ -600,6 +600,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('com.example.game'), findsOneWidget);
 
+      // #172 grew the always-allowed block above the rule list, so "Add app rule" is below the fold on
+      // the 800x600 test surface. Dragging the list is the deterministic form (one scrollable, named by
+      // key, rather than "the first Scrollable on the screen").
+      await tester.drag(find.byKey(const ValueKey('appsRulesList')), const Offset(0, -260));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Add app rule'));
       await tester.pumpAndSettle();
       final dialog = find.byType(AlertDialog);

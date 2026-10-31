@@ -26,6 +26,15 @@ String formatTime(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minu
 
 /// Rules editor for one child (spec §7.9): Screen time / Web filter /
 /// Apps / Routines. Save PUTs the full RuleSet to /v1/rules/:childId.
+/// Issue #172 / ADR-0035: the payment surfaces the decision names. The list is a *suggestion* for the
+/// shortcut, not a policy: nothing here is exempt from bedtime, and the parent confirms the package name
+/// in the dialog before it becomes an always-allowed app.
+const List<String> walletSuggestions = <String>[
+  'com.samsung.android.spay',
+  'com.google.android.apps.walletnfcrel',
+  'com.samsung.android.samsungpay.gear',
+];
+
 class RulesEditorScreen extends ConsumerStatefulWidget {
   final String childId;
   const RulesEditorScreen({super.key, required this.childId});
@@ -359,11 +368,51 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             ],
           ),
         const SizedBox(height: AppSpace.sm),
+        // #172 / ADR-0035: payment surfaces stay blocked at bedtime, and this is where a family that
+        // needs one fixes it. The sentence and the shortcut sit together on purpose — the decision is
+        // only defensible if the way out of it is one tap away.
+        Text(
+          l10n.bedtimeBlocksPayments,
+          key: const ValueKey('bedtime-blocks-payments'),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: AppSpace.sm),
         OutlinedButton.icon(
           icon: const Icon(Icons.add),
           label: Text(l10n.addApp),
           onPressed: () async {
             final pkg = await showDialog<String>(context: context, builder: (_) => const _AddAlwaysAllowedDialog());
+            if (pkg != null && !_draft.alwaysAllowedApps.contains(pkg)) {
+              updateAlwaysAllowed([..._draft.alwaysAllowedApps, pkg]);
+            }
+          },
+        ),
+        const SizedBox(height: AppSpace.xs),
+        TextButton.icon(
+          key: const ValueKey('add-payment-app'),
+          icon: const Icon(Icons.credit_card),
+          label: Text(l10n.addPaymentApp),
+          onPressed: () async {
+            // #172 review: prefilling Samsung's name on a Pixel offers a package that is not installed.
+            // Take the first suggestion the child's own inventory reports, and fall back to the first
+            // entry when there is no inventory yet (a phone that has not reported, or an offline read).
+            // Await the inventory: reading the async value returns "loading" on the first tap and would
+            // silently fall back to the first suggestion on every phone (#486 review).
+            var installed = const InstalledAppsReport();
+            try {
+              installed = await ref.read(installedAppsProvider(widget.childId).future);
+            } catch (_) {
+              // A phone that has not reported, or an offline read: the first suggestion is the fallback.
+            }
+            final available = installed.apps.map((a) => a.packageId).toSet();
+            final prefill = walletSuggestions.firstWhere(
+              available.contains,
+              orElse: () => walletSuggestions.first,
+            );
+            final pkg = await showDialog<String>(
+              context: context,
+              builder: (_) => _AddAlwaysAllowedDialog(initialPackageId: prefill),
+            );
             if (pkg != null && !_draft.alwaysAllowedApps.contains(pkg)) {
               updateAlwaysAllowed([..._draft.alwaysAllowedApps, pkg]);
             }
@@ -721,7 +770,12 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
 }
 
 /// Feature #9 dialog: collects just a package id for the always-allowed list.
-class _AddAlwaysAllowedDialog extends StatefulWidget {  const _AddAlwaysAllowedDialog();
+class _AddAlwaysAllowedDialog extends StatefulWidget {
+  /// #172: the payment-app shortcut opens this dialog already filled with a package, so the parent is
+  /// confirming a name rather than being asked to type one they would have to look up.
+  final String? initialPackageId;
+
+  const _AddAlwaysAllowedDialog({this.initialPackageId});
 
   @override
   State<_AddAlwaysAllowedDialog> createState() => _AddAlwaysAllowedDialogState();
@@ -729,6 +783,13 @@ class _AddAlwaysAllowedDialog extends StatefulWidget {  const _AddAlwaysAllowedD
 
 class _AddAlwaysAllowedDialogState extends State<_AddAlwaysAllowedDialog> {
   final _packageId = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialPackageId;
+    if (initial != null && initial.isNotEmpty) _packageId.text = initial;
+  }
 
   @override
   void dispose() {
