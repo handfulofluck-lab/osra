@@ -11,7 +11,7 @@ import org.w3c.dom.Element
 /**
  * #480: the lines Android itself shows for the agent (the Accessibility list, the device-admin sheet)
  * and the wipe notice on the pairing screen speak Arabic, exactly as Karim approved on 2026-10-31 06:20Z
- * (`arabic-review/2026-10-31-child-system-strings`, Q1–Q5). Each line is pinned as a literal, so a
+ * (`arabic-review/2026-10-31-child-system-strings`, Q1–Q5; the block screen's window line, Q10, 15:30Z). Each line is pinned as a literal, so a
  * changed or missing translation turns this red.
  *
  * `app_name`, `app_name_ar` and `sos_tile_label` are brand names: they keep no Arabic override on
@@ -32,6 +32,10 @@ class ChildSystemStringsTest {
         "device_admin_label" to "الرقابة الأبوية من OSRA",
         "device_admin_description" to "يتيح لـ OSRA قفل الجهاز، ويمنع إزالة التطبيق دون رمز PIN للوالدين.",
         "wipe_detected_notice" to "مُسحت بيانات OSRA على هذا الهاتف، لذلك لم يعد محميًا. اطلب من والدك أو والدتك إقرانه مرة أخرى.",
+        // #473/#496, Q10 (Karim 2026-10-31 15:30Z): the block screen's window line.
+        "block_window_line" to "محجوب بسبب %1\$s حتى %2\$s",
+        "block_window_bedtime" to "وقت النوم",
+        "block_window_school" to "الساعات المدرسية",
     )
 
     @Test
@@ -46,6 +50,15 @@ class ChildSystemStringsTest {
     fun `the Arabic is exactly the approved wording`() {
         approvedArabic.forEach { (key, approved) ->
             assertEquals("'$key' differs from the approved Arabic", approved, arabic.getValue(key))
+        }
+    }
+
+    @Test
+    fun `the Arabic window line keeps both placeholders, in order`() {
+        // A translation that drops or swaps %1$s / %2$s would crash String.format or name the time as the window.
+        listOf(english, arabic).forEach { strings ->
+            val line = strings.getValue("block_window_line")
+            assertTrue("'$line' must name the window first", line.indexOf("%1\$s") in 0 until line.indexOf("%2\$s"))
         }
     }
 
