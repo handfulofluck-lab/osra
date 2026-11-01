@@ -52,6 +52,41 @@ export const CapabilitiesSchema = z
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 
 /**
+ * A2's 4 KB cap, applied to the **raw** input before the schema sees it.
+ *
+ * The cap inside [CapabilitiesSchema] cannot be reached by schema-valid data: enum keys and short enum
+ * values make a valid report well under a kilobyte. What the cap actually bounds is the raw object an
+ * agent posts — a hostile one can be any size, and `.strict()` would only reject it *after* parsing it.
+ * Claude's f3 (delete the cap) survived every row until this existed, which is what a dead guard looks
+ * like: it is checked last, on data that already passed.
+ */
+export function capabilitiesInputBytes(raw: unknown): number | null {
+  try {
+    return Buffer.byteLength(JSON.stringify(raw), "utf8");
+  } catch {
+    return null; // an unserializable value is the schema's problem, not the cap's
+  }
+}
+
+/** The one entry point the routes use: the cap first, the schema second. */
+export function parseCapabilities(
+  raw: unknown,
+): { ok: true; value: Capabilities } | { ok: false; issue: string } {
+  const bytes = capabilitiesInputBytes(raw);
+  if (bytes != null && bytes > CAPABILITIES_MAX_BYTES) {
+    return { ok: false, issue: `capabilities is ${bytes} bytes; the cap is ${CAPABILITIES_MAX_BYTES}` };
+  }
+  const parsed = CapabilitiesSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      issue: parsed.error.issues.map((i) => `${i.path.join(".") || "capabilities"}: ${i.message}`).join("; "),
+    };
+  }
+  return { ok: true, value: parsed.data };
+}
+
+/**
  * A4: how old a report may be and still describe the phone *now*.
  *
  * One telemetry period plus its flex, the same window issue #221 chose for `locationGrant`. A report

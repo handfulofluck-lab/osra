@@ -3,6 +3,7 @@ import {
   CAPABILITIES_MAX_AGE_MS,
   CapabilitiesSchema,
   commandRefusal,
+  parseCapabilities,
   setupFor,
 } from "../src/lib/capabilities.js";
 
@@ -48,11 +49,16 @@ describe("A2 — the schema is strict, enum-keyed and capped", () => {
     expect(CapabilitiesSchema.safeParse(report({ client: { ...report().client, mood: "good" } })).success).toBe(false);
   });
 
-  it("claim 9 — an object over the 4 KB cap is refused", () => {
-    const padding = "x".repeat(4096);
-    // A single long value is enough to cross the cap without inventing a new key.
-    const big = report({ client: { ...report().client, version: padding } });
-    expect(CapabilitiesSchema.safeParse(big).success).toBe(false);
+  it("claim 9 — an object over the 4 KB cap is refused by the cap, not by a field rule", () => {
+    // The cap cannot be reached by valid data (enum keys, short values), so it can only be tested on the
+    // RAW object — which is exactly what it exists to bound. Claude's f3 (delete the cap) survived every
+    // row until this one existed.
+    const raw: Record<string, unknown> = { ...report() };
+    for (let i = 0; i < 200; i++) raw[`k${i}`] = "x".repeat(40);
+    expect(Buffer.byteLength(JSON.stringify(raw))).toBeGreaterThan(4096);
+    const parsed = parseCapabilities(raw);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.ok ? "" : parsed.issue).toContain("the cap is 4096");
   });
 
   it("claim 11 — a timestamp inside the object is not part of the contract, so it is refused", () => {

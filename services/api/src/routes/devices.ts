@@ -10,7 +10,7 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
-import { CapabilitiesSchema, commandRefusal, setupFor } from "../lib/capabilities.js";
+import { commandRefusal, parseCapabilities, setupFor } from "../lib/capabilities.js";
 import {
   POLL_AFTER_HEADER,
   PUSH_TOKEN_HEADER,
@@ -342,15 +342,11 @@ export async function deviceRoutes(app: FastifyInstance) {
     // ADR-0034 A2: the strict schema, the same one telemetry uses. A claim has nothing else to keep, so a
     // bad report refuses the claim rather than half-describing the phone.
     if (capabilities !== undefined) {
-      const parsedCapabilities = CapabilitiesSchema.safeParse(capabilities);
-      if (!parsedCapabilities.success) {
+      const parsedCapabilities = parseCapabilities(capabilities);
+      if (!parsedCapabilities.ok) {
         return reply.code(400).send({
           error: "invalid_capabilities",
-          fieldErrors: {
-            capabilities: parsedCapabilities.error.issues
-              .map((i) => `${i.path.join(".") || "capabilities"}: ${i.message}`)
-              .join("; "),
-          },
+          fieldErrors: { capabilities: parsedCapabilities.issue },
         });
       }
     }
@@ -819,13 +815,10 @@ export async function deviceRoutes(app: FastifyInstance) {
 
     // ADR-0034 A2: a strict, enum-keyed, 4 KB-capped report. Parsed here rather than inside
     // `TelemetrySchema` so a bad one costs this field only — the rest of the upload is stored.
-    const capabilityParse = parsed.data.capabilities === undefined ? null : CapabilitiesSchema.safeParse(parsed.data.capabilities);
-    const capabilitiesOk = capabilityParse?.success ?? false;
-    const capabilitiesParsed = capabilityParse?.success ? capabilityParse.data : undefined;
-    const capabilitiesIssue =
-      capabilityParse && !capabilityParse.success
-        ? capabilityParse.error.issues.map((i) => `${i.path.join(".") || "capabilities"}: ${i.message}`).join("; ")
-        : undefined;
+    const capabilityParse = parsed.data.capabilities === undefined ? null : parseCapabilities(parsed.data.capabilities);
+    const capabilitiesOk = capabilityParse?.ok ?? false;
+    const capabilitiesParsed = capabilityParse?.ok ? capabilityParse.value : undefined;
+    const capabilitiesIssue = capabilityParse && !capabilityParse.ok ? capabilityParse.issue : undefined;
 
     // Issue #475: store the applied rules version only if the server has actually issued it for this
     // child. A version from the future is a caller bug, not a report — logging it and dropping it keeps
