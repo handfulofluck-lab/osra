@@ -100,6 +100,9 @@ const ClaimSchema = z.object({
   pushToken: z.string().optional(),
   // Issue #81: the phone detected that OSRA's data was cleared on it. A claim still needs a live parent code.
   dataCleared: z.boolean().optional(),
+  // ADR-0034 A2: the same strict report a new phone sends in telemetry, so it is described from its
+  // first minute. Validated below; a bad one answers 400 and no claim is reserved.
+  capabilities: z.unknown().optional(),
 });
 
 const PollSchema = z.object({ pollSecret: z.string().min(1).max(200) });
@@ -335,7 +338,22 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.post("/pair/claim", { config: { rateLimit: PAIR_CLAIM_RATE_LIMIT } }, async (req, reply) => {
     const parsed = ClaimSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { code, platform, model, osVersion, deviceName, pushToken, dataCleared } = parsed.data;
+    const { code, platform, model, osVersion, deviceName, pushToken, dataCleared, capabilities } = parsed.data;
+    // ADR-0034 A2: the strict schema, the same one telemetry uses. A claim has nothing else to keep, so a
+    // bad report refuses the claim rather than half-describing the phone.
+    if (capabilities !== undefined) {
+      const parsedCapabilities = CapabilitiesSchema.safeParse(capabilities);
+      if (!parsedCapabilities.success) {
+        return reply.code(400).send({
+          error: "invalid_capabilities",
+          fieldErrors: {
+            capabilities: parsedCapabilities.error.issues
+              .map((i) => `${i.path.join(".") || "capabilities"}: ${i.message}`)
+              .join("; "),
+          },
+        });
+      }
+    }
     const reserved = await reserveClaim(code, {
       platform,
       model,
@@ -343,6 +361,9 @@ export async function deviceRoutes(app: FastifyInstance) {
       deviceName,
       pushToken,
       ...(dataCleared ? { dataCleared: true } : {}),
+      ...(capabilities !== undefined
+        ? { capabilities, capabilitiesReportedAt: new Date().toISOString() }
+        : {}),
     });
     if (reserved.kind === "unknown") {
       // A metric, not a brake: counted from the logs to see guessing, never used to refuse pairing for
@@ -484,6 +505,10 @@ export async function deviceRoutes(app: FastifyInstance) {
         status: "online",
         lastSeen: new Date(),
         internalSecret,
+        // ADR-0034: the report the phone sent with its claim, and the time the server received it.
+        ...(record.capabilities !== undefined
+          ? { capabilities: record.capabilities as Prisma.InputJsonValue, capabilitiesReportedAt: new Date(record.capabilitiesReportedAt ?? Date.now()) }
+          : {}),
       },
     });
     await markPaired(record, device.id);
