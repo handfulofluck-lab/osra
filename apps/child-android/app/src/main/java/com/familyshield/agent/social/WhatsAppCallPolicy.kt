@@ -26,8 +26,20 @@ package com.familyshield.agent.social
  * `Notification.CATEGORY_CALL` and `missed` requires `CATEGORY_MISSED_CALL`, which is API 30+ — on an older
  * phone no missed row is produced rather than a guessed one.
  *
+ * **"Answered" is measured from the notification changing, not guessed.** On the Flip4 capture (Claude,
+ * #50, 1 Nov 2026) a ring is posted on `voip_notification_4` at importance 4, and the same key changes to
+ * `silent_notifications_3` at importance 2 once the call is answered. Both signals are used, and the channel is
+ * compared on its **prefix** because the numeric suffix moves between calls. `FLAG_FOREGROUND_SERVICE` is
+ * deliberately *not* a signal: the outgoing call carried it from its very first row.
+ *
+ * **A call that ends without being answered may leave no notice at all.** The capture's outgoing call was
+ * posted and then removed 25 s later with no change and no `missed_call`, so [ended] returns null and
+ * [missed] never fires. [unanswered] is the row for that case: `unknown` direction and a **null** duration,
+ * because we cannot tell whether it connected and a 25 s "duration" on a call nobody answered is a lie.
+ *
  * The adapter (`NotificationCaptureService`, Full flavour only) owns the platform mapping, the pause gate and
- * the "first `startMs` wins per key" rule; this object decides what a call looks like once it has the facts.
+ * the "first `startMs` wins per key" rule; this object decides what a call looks like once it has the facts,
+ * and [WhatsAppCallTracker] decides the order those facts arrive in.
  */
 object WhatsAppCallPolicy {
 
@@ -36,6 +48,26 @@ object WhatsAppCallPolicy {
 
     /** `Notification.CATEGORY_MISSED_CALL` (API 30). */
     const val CATEGORY_MISSED_CALL = "missed_call"
+
+    /** Channel prefix of a ringing call (`voip_notification`, `voip_notification_4`, …). */
+    const val CHANNEL_VOIP_PREFIX = "voip_notification"
+
+    /** Channel prefix of an in-progress call (`silent_notifications`, `silent_notifications_3`, …). */
+    const val CHANNEL_SILENT_PREFIX = "silent_notifications"
+
+    /**
+     * How long to wait, after a `call` heads-up is removed unanswered, for the `missed_call` notice.
+     *
+     * The capture measured 1.2 s (removed 10:42:02.930, missed posted 10:42:04.133); 5 s is the margin, not
+     * the measurement. A longer window holds a row back from the parent for no reason.
+     */
+    const val MISSED_PAIRING_WINDOW_MS = 5_000L
+
+    /**
+     * The `source` these rows carry on the wire — the parent app shows "WhatsApp" for it, and it is what tells
+     * a row the notifications produced from a row the call log wrote (roadmap 4.5).
+     */
+    const val SOURCE = "whatsapp"
 
     /**
      * The fields of a posted/removed call notification this needs, as primitives — no Android types.
@@ -52,6 +84,17 @@ object WhatsAppCallPolicy {
         /** WhatsApp puts the caller's display name here; it is the only identity we are given. */
         val title: String? = null,
         val postedAtMs: Long = 0L,
+        /**
+         * `StatusBarNotification.user.identifier` — the Android profile the notification belongs to.
+         *
+         * Kept because a missed notice is paired with the ring it belongs to, and the Dual Messenger clone runs
+         * the same package in user 95 (Claude's rule 4: never filter to user 0, and never pair across profiles).
+         */
+        val userId: Int = 0,
+        /** `Ranking.importance` as posted — 4 ringing, 2 in progress. Null when the platform gave none. */
+        val importance: Int? = null,
+        /** `Notification.channelId` — `voip_notification_4` ringing, `silent_notifications_3` in progress. */
+        val channelId: String? = null,
     )
 
     /** One call row: who, when, how long — and nothing that could carry content, and no guessed direction. */
@@ -115,13 +158,20 @@ object WhatsAppCallPolicy {
      * @param startedAtMs when [started] produced the row, from the call it returned as [Call.startMs]
      * @param answered true when the adapter saw the notification change from ringing to in progress. An
      *   unanswered call returns null: it rang and ended, and the `missed_call` notice is the row for it.
+     * @param removedAtMs when the heads-up disappeared. **Not** `sbn.postTime`: a removal carries the time the
+     *   notification was *posted*, so defaulting to it would report every call as lasting 0 s.
      */
-    fun ended(snapshot: Snapshot, startedAtMs: Long, answered: Boolean): Call? {
+    fun ended(
+        snapshot: Snapshot,
+        startedAtMs: Long,
+        answered: Boolean,
+        removedAtMs: Long = snapshot.postedAtMs,
+    ): Call? {
         if (!answered) return null
         if (!isCallLike(snapshot, CATEGORY_CALL)) return null
         // A clock that went backwards must not produce a negative duration or a wild one: a removal dated
         // before the start is "just started", and anything beyond a day is not a call we watched.
-        val elapsedMs = (snapshot.postedAtMs - startedAtMs).coerceIn(0L, MAX_CALL_MS)
+        val elapsedMs = (removedAtMs - startedAtMs).coerceIn(0L, MAX_CALL_MS)
         return Call(
             contact = contactOf(snapshot)!!,
             direction = DIRECTION_UNKNOWN,
@@ -131,6 +181,48 @@ object WhatsAppCallPolicy {
             key = snapshot.key,
         )
     }
+
+    /**
+     * A call whose heads-up was removed without ever being answered, and with **no** `missed_call` notice.
+     *
+     * This is the outgoing call in Claude's capture: posted on `voip_notification_4` with FOREGROUND_SERVICE,
+     * removed 25 s later, no change and no notice. The parent gets one row, `unknown` direction and a **null**
+     * duration — not 0 (reads as a call that connected instantly) and not the elapsed time (we do not know
+     * whether it connected at all).
+     *
+     * @param started the row [started] produced for this call; its contact, key and start are kept
+     */
+    fun unanswered(started: Call): Call = Call(
+        contact = started.contact,
+        direction = DIRECTION_UNKNOWN,
+        durationSec = null,
+        durationApprox = false,
+        // The call is dated to when it rang, not to when we noticed it was gone.
+        startMs = started.startMs,
+        key = started.key,
+    )
+
+    /**
+     * True when [current] is the *same* call now in progress: the heads-up became a silent ongoing row.
+     *
+     * Either signal is enough — importance falling (4 → 2 in the capture), or the channel moving from the
+     * `voip_notification` prefix to the `silent_notifications` prefix. Both are compared on what the platform
+     * reported; when it reports neither, this is false and the call gets the unknown row instead of a
+     * duration it cannot back.
+     */
+    fun answered(previous: Snapshot, current: Snapshot): Boolean {
+        if (previous.key != current.key) return false
+        val importanceDropped =
+            previous.importance != null &&
+                current.importance != null &&
+                current.importance < previous.importance
+        val movedToSilent =
+            previous.channelId.hasPrefix(CHANNEL_VOIP_PREFIX) &&
+                current.channelId.hasPrefix(CHANNEL_SILENT_PREFIX)
+        return importanceDropped || movedToSilent
+    }
+
+    private fun String?.hasPrefix(prefix: String): Boolean = this?.startsWith(prefix) == true
 
     /**
      * A call that was never answered: `missed`, and **no** duration — null, not zero.

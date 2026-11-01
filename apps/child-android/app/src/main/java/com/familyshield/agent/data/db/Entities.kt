@@ -34,13 +34,26 @@ data class CommsEventEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** call | sms. */
     val type: String,
+    /**
+     * The call log's number, or — for a WhatsApp call (roadmap 4.5) — the contact name WhatsApp gave us.
+     * WhatsApp never shows a number, so the name is the only identity there is; the parent app renders this
+     * field as the row's label.
+     */
     val number: String,
-    /** incoming | outgoing | missed | other. */
+    /** incoming | outgoing | missed | unknown | other. */
     val direction: String,
-    val durationSec: Int = 0,
+    /**
+     * Seconds, or **null when the length is not known** — a WhatsApp call that was never answered has none,
+     * and `0` would read as a call that connected and ended instantly. Nullable since room version 4.
+     */
+    val durationSec: Int? = null,
     /** SMS body preview (capped at 120 chars), null for calls. */
     val bodyPreview: String? = null,
     val timestamp: Long,
+    /** `whatsapp` for a call read from its notifications; null for a row the call log wrote (roadmap 4.5). */
+    val source: String? = null,
+    /** True when [durationSec] was measured from notifications rather than timed, so the screen says "about". */
+    val durationApprox: Boolean = false,
 )
 
 /**
