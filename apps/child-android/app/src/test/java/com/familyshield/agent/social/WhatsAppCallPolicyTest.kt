@@ -119,6 +119,11 @@ class WhatsAppCallPolicyTest {
             WhatsAppCallPolicy.identity(ended) !=
                 WhatsAppCallPolicy.identity(ended.copy(key = "whatsapp-call-2")),
         )
+        assertTrue(
+            "a later call that reuses the notification key is a new call",
+            WhatsAppCallPolicy.identity(ended) !=
+                WhatsAppCallPolicy.identity(ended.copy(startMs = start + 3_600_000L)),
+        )
     }
 
     // What this suite cannot own, stated so a green run is not read as more than it is:
