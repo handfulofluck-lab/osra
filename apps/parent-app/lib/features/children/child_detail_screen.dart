@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/clock_provider.dart';
 import '../../providers/controls_provider.dart';
 import '../../providers/family_provider.dart';
+import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
 import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
@@ -329,6 +330,9 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
         data: {'minutes': minutes},
       );
       ref.invalidate(rulesProvider(widget.childId));
+      // Issue #475 follow-up: a bonus grant bumps rulesVersion (`controls.ts:88`), so the family
+      // snapshot has to be refetched or the "not picked up yet" line can never appear after "+15 min".
+      ref.invalidate(familyProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.bonusGranted(minutes))),
@@ -362,6 +366,9 @@ class _BonusTimeCardState extends ConsumerState<_BonusTimeCard> {
             Text(l10n.bonusTime, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpace.xxs),
             Text(l10n.extraScreenTimeToday, style: Theme.of(context).textTheme.bodySmall),
+            // Issue #475 follow-up: a grant bumps rulesVersion, so the card that grants it says whether
+            // the phone has caught up yet. Renders nothing when it has, or when it never reported.
+            RulesBehindBanner(childId: widget.childId),
             const SizedBox(height: AppSpace.sm),
             Wrap(
               spacing: AppSpace.sm,
