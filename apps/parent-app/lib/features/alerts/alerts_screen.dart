@@ -188,6 +188,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       await api.put('/v1/rules/${alert.childId}', data: body);
       ref.invalidate(alertsProvider);
       ref.invalidate(rulesProvider(alert.childId));
+      // Issue #475 follow-up: this screen writes rules, so the family snapshot must be refetched —
+      // otherwise right after a save the app believes `applied == rules` and the "not picked up yet"
+      // line never appears at the moment it is earned (#501 review).
+      ref.invalidate(familyProvider);
       if (!dialogContext.mounted) return;
       Navigator.of(dialogContext).pop();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.appBlockedSnack)));
