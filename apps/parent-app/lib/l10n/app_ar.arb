@@ -882,5 +882,8 @@
   "riskGrooming": "استدراج",
   "riskViolence": "العنف",
   "riskHateSpeech": "خطاب الكراهية",
-  "riskAiConcern": "محتوى مثير للقلق"
+  "riskAiConcern": "محتوى مثير للقلق",
+  "phoneSetupOtherSpaceClone": "في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).",
+  "phoneSetupOtherSpaceWork": "في هذا الهاتف ملف عمل.",
+  "phoneSetupOtherSpaceOther": "في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها."
 }

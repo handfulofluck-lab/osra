@@ -269,4 +269,44 @@ class TamperScreenPolicyTest {
             ),
         )
     }
+
+    // osra-security#6 item 3: the screens that create a second space, by package and class from the Flip4
+    // capture. Mutants: drop a pair from SPACE_SETUP_SCREENS → its row goes red; match on the class alone
+    // → [a same-named class in another package is not a space screen]; match on the package alone → [another
+    // screen of the same app is not a space screen].
+
+    private fun classifySpace(packageName: String?, windowClass: String?, vararg texts: String) =
+        TamperScreenPolicy.classify(packageName, texts.toList(), agent, admin, pkg, ourAdminActive = false, windowClass = windowClass)
+
+    @Test
+    fun `Dual Messenger's app list is SPACE_SETUP, without naming us and in any language`() {
+        val cls = "com.samsung.android.da.daagent.activity.DualAppActivity"
+        assertEquals(TamperScreen.SPACE_SETUP, classifySpace("com.samsung.android.da.daagent", cls, "Dual Messenger", "WhatsApp"))
+        assertEquals(TamperScreen.SPACE_SETUP, classifySpace("com.samsung.android.da.daagent", cls, "المراسلة المزدوجة"))
+        assertEquals("no text on screen yet", TamperScreen.SPACE_SETUP, classifySpace("com.samsung.android.da.daagent", cls))
+    }
+
+    @Test
+    fun `Secure Folder's setup is SPACE_SETUP`() {
+        val cls = "com.samsung.knox.securefolder.provisioning.setup.view.WelcomeActivity"
+        assertEquals(TamperScreen.SPACE_SETUP, classifySpace("com.samsung.knox.securefolder", cls, "Secure Folder", "Agree"))
+    }
+
+    @Test
+    fun `a same-named class in another package is not a space screen`() {
+        assertEquals(TamperScreen.NONE, classifySpace("com.example.app", "com.example.app.WelcomeActivity", "Welcome"))
+        assertEquals(TamperScreen.NONE, classifySpace("com.example.app", "com.example.DualAppActivity", "Dual"))
+    }
+
+    @Test
+    fun `another screen of the same app is not a space screen`() {
+        assertEquals(TamperScreen.NONE, classifySpace("com.samsung.knox.securefolder", "com.samsung.knox.securefolder.SettingsActivity", "Secure Folder"))
+        assertEquals(TamperScreen.NONE, classifySpace("com.samsung.android.da.daagent", null, "Dual Messenger"))
+    }
+
+    @Test
+    fun `the guard steps in for a space screen like any other`() {
+        assertTrue(TamperScreenPolicy.shouldGuard(TamperScreen.SPACE_SETUP, pinConfigured = true, graceUntilMs = 0L, nowMs = 1L))
+        assertFalse(TamperScreenPolicy.shouldGuard(TamperScreen.SPACE_SETUP, pinConfigured = true, graceUntilMs = 2L, nowMs = 1L))
+    }
 }

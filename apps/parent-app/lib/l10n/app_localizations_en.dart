@@ -2890,4 +2890,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get riskAiConcern => 'Concerning content';
+
+  @override
+  String get phoneSetupOtherSpaceClone => 'This phone has a second space for cloned apps (Dual Messenger).';
+
+  @override
+  String get phoneSetupOtherSpaceWork => 'This phone has a work profile.';
+
+  @override
+  String get phoneSetupOtherSpaceOther => 'This phone has another space. OSRA may not reach the apps inside it.';
 }
