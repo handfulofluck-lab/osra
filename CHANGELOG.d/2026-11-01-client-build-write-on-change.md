@@ -7,5 +7,8 @@
 - **The trap inside it, named in the code:** Prisma's `{ column: { not: value } }` does **not** match a NULL column,
   so a device reporting its build for the first time would never satisfy the predicate and the write would silently
   never happen. Each column reads `column IS NULL OR column != value`, and a row asserts that shape field by field.
-- Rows: `client-header-hooks.test.ts` (9) — the device's own write, the null-safe `where`, and claim 10's
-  "a parent's request leaves the device's build alone" now covering both call shapes.
+- Rows: `client-header-hooks.test.ts` (10) — the device's own write pinned **exactly** (the four null-safe clauses,
+  each carrying this request's value), the same guard on the parent's push-token path, and claim 10's "a parent's
+  request leaves the device's build alone" covering both call shapes. The first version checked the clause's
+  *shape* and nothing on the parent path, so a guard removed there — or a column compared with a constant — stayed
+  green (#529 review).
