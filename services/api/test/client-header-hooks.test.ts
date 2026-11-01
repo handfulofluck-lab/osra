@@ -173,19 +173,40 @@ describe("A3 / claim 10 — the build is written only by the device it belongs t
       headers: { ...deviceHeader(app), "x-osra-client": "child-android/0.2.0+7 (full)" },
     });
 
-    const where = prismaMock.device.updateMany.mock.calls.at(-1)?.[0]?.where as Record<string, unknown>;
-    const or = where.OR as Array<Record<string, unknown>>;
-    expect(Array.isArray(or)).toBe(true);
-    // One clause per stored column, each of the shape OR: [{col: null}, {col: {not: value}}].
-    expect(or).toHaveLength(4);
-    for (const clause of or) {
-      const inner = clause.OR as Array<Record<string, unknown>>;
-      expect(inner).toHaveLength(2);
-      const [nullClause, notClause] = inner;
-      expect(Object.values(nullClause)[0]).toBeNull();
-      const spec = Object.values(notClause)[0] as { not?: unknown };
-      expect(spec.not).toBeDefined();
-    }
+    // Exact, not only the shape (#529 review): each column is compared with THIS request's value, so a
+    // guard that compared against the wrong value or the wrong column fails here.
+    expect(prismaMock.device.updateMany.mock.calls.at(-1)?.[0]?.where).toEqual({
+      id: "dev-1",
+      OR: [
+        { OR: [{ clientApp: null }, { clientApp: { not: "child-android" } }] },
+        { OR: [{ clientVersion: null }, { clientVersion: { not: "0.2.0" } }] },
+        { OR: [{ clientBuild: null }, { clientBuild: { not: 7 } }] },
+        { OR: [{ clientFlavour: null }, { clientFlavour: { not: "full" } }] },
+      ],
+    });
+  });
+
+  it("a parent's build write is guarded the same way, on its own push-token rows", async () => {
+    const app = await appWith(undefined);
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.parentPushToken.updateMany.mockResolvedValue({ count: 0 });
+
+    await app.inject({
+      method: "GET",
+      url: "/v1/devices/dev-1",
+      headers: { ...authHeader(app), "x-osra-client": "parent-app/0.9.0+9 (android)" },
+    });
+
+    const call = prismaMock.parentPushToken.updateMany.mock.calls.at(-1)?.[0];
+    expect(call?.where).toEqual({
+      parentId: expect.any(String),
+      OR: [
+        { OR: [{ clientApp: null }, { clientApp: { not: "parent-app" } }] },
+        { OR: [{ clientBuild: null }, { clientBuild: { not: 9 } }] },
+        { OR: [{ clientFlavour: null }, { clientFlavour: { not: "android" } }] },
+      ],
+    });
+    expect(call?.data).toEqual({ clientApp: "parent-app", clientBuild: 9, clientFlavour: "android" });
   });
 
   it("claim 10 — a PARENT's request to the same device leaves the stored build alone", async () => {
