@@ -13,7 +13,7 @@ package com.familyshield.agent.security
  * verb in English or Arabic second. A Settings page that merely lists apps, or the admin list without
  * our row expanded, is not a tamper screen.
  */
-enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PRIVATE_DNS }
+enum class TamperScreen { NONE, DEACTIVATE_ADMIN, UNINSTALL, APP_INFO, PRIVATE_DNS, SPACE_SETUP }
 
 object TamperScreenPolicy {
 
@@ -69,6 +69,17 @@ object TamperScreenPolicy {
     private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
     private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
 
+    /**
+     * osra-security#6 item 3: the screens that create a second space on the phone — Samsung Dual Messenger's
+     * app list (which clones an app into the clone profile) and Secure Folder's setup. Package **and** class,
+     * both from the Flip4 capture (`topResumedActivity`, One UI, SDK 36). They never name the agent, so this
+     * is the one place the class alone decides; the package pins it to the one system app that hosts it.
+     */
+    private val SPACE_SETUP_SCREENS = setOf(
+        "com.samsung.android.da.daagent" to "DualAppActivity",
+        "com.samsung.knox.securefolder" to "WelcomeActivity",
+    )
+
     /** The simple name of a window class (`com.android.settings.DeviceAdminAdd` → `DeviceAdminAdd`, `Settings$X` → `X`). */
     private fun simpleName(windowClass: String?): String? =
         windowClass?.substringAfterLast('.')?.substringAfterLast('$')?.takeIf { it.isNotEmpty() }
@@ -101,7 +112,9 @@ object TamperScreenPolicy {
      * inactive the same sheet is the activation the parent runs in setup, and it is never guarded.
      *
      * A screen still has to name the agent to count, whichever signal matched: the class alone would put
-     * the guard in front of every app's admin sheet and every uninstall.
+     * the guard in front of every app's admin sheet and every uninstall. The one exception is
+     * [TamperScreen.SPACE_SETUP] (osra-security#6): creating a second space is a protection change whatever
+     * app it is for, and the screen never names us.
      */
     fun classify(
         packageName: String?,
@@ -112,6 +125,9 @@ object TamperScreenPolicy {
         ourAdminActive: Boolean,
         windowClass: String? = null,
     ): TamperScreen {
+        if (packageName != null && (packageName to simpleName(windowClass)) in SPACE_SETUP_SCREENS) {
+            return TamperScreen.SPACE_SETUP
+        }
         if (packageName == null || packageName !in SYSTEM_PACKAGES) return TamperScreen.NONE
         val lower = texts.filterNotNull().map { normalize(it.toString()) }
         if (lower.isEmpty()) return TamperScreen.NONE
