@@ -3,45 +3,61 @@ package com.familyshield.agent.social
 /**
  * Roadmap 4.5 — a WhatsApp call as a **call row**, never as content. The decisions, as a pure function.
  *
- * WhatsApp tells the phone three things about a call and nothing more: a heads-up while it rings, a
- * "missed call" notice when it was not answered, and (implicitly) that the heads-up went away when the call
- * ended. From those we can honestly report **who, when, and roughly how long** — and nothing else:
+ * WhatsApp tells the phone a small number of things about a call: a ringing heads-up, an updated
+ * notification while it is in progress, a "missed call" notice when it was not answered, and the removal of
+ * the heads-up when it ends. From those we can honestly report **who, when, and roughly how long** — and
+ * nothing else:
  *
  * - the caller name is the notification's title, because WhatsApp gives no number;
- * - an ongoing call is `incoming` (a call the child placed produces no heads-up notification, so a heads-up
- *   is never one they started — the one assumption here, stated rather than hidden);
+ * - **the direction is `unknown` for a live call.** WhatsApp keeps an ongoing-call notification
+ *   (category `call`, a Hang up action) for the whole of *any* call, outgoing included, so a call the child
+ *   placed looks exactly like one they received. Saying `incoming` would state something false about the
+ *   child; losing the arrow costs a detail, inventing it costs the parent's trust (Claude, #523 review);
  * - a duration is the difference between the heads-up and its removal, so it is **approximate**, and
  *   [Call.durationApprox] says so rather than letting the parent read it as a measured time;
- * - a missed call has **no** duration at all — not zero, absent ([Call.durationSec] is null), because "0 s"
- *   would read as an instantaneous call rather than one that never connected;
- * - the notification's **text is never read into the result**: [Call] has no field for it, so a future
- *   refactor cannot copy a message body into a call row by accident.
+ * - an **unanswered** call produces no `ended` row at all — the missed notice owns that row, so a ring that
+ *   was ignored is one row with no duration, not two rows, one of which claims 25 seconds of call;
+ * - a missed call has **no** duration: null, not zero, because "0 s" reads as a call that connected;
+ * - the notification's **body never enters this object**: [Snapshot] has no field for it and [Call] has
+ *   none either, so neither the way in nor the way out can carry a message.
  *
- * The adapter (`NotificationCaptureService`, Full flavour only) owns the platform mapping and the pause
- * gate; this object only decides what a call looks like once the notification is in hand.
+ * **A call is told from a message by the notification's category**, not by having a title: every WhatsApp
+ * chat message also arrives with the sender's name in the title. `started`/`ended` require
+ * `Notification.CATEGORY_CALL` and `missed` requires `CATEGORY_MISSED_CALL`, which is API 30+ — on an older
+ * phone no missed row is produced rather than a guessed one.
+ *
+ * The adapter (`NotificationCaptureService`, Full flavour only) owns the platform mapping, the pause gate and
+ * the "first `startMs` wins per key" rule; this object decides what a call looks like once it has the facts.
  */
 object WhatsAppCallPolicy {
 
-    /** The fields of a posted/removed call notification this needs, as primitives — no Android types. */
+    /** `Notification.CATEGORY_CALL`. */
+    const val CATEGORY_CALL = "call"
+
+    /** `Notification.CATEGORY_MISSED_CALL` (API 30). */
+    const val CATEGORY_MISSED_CALL = "missed_call"
+
+    /**
+     * The fields of a posted/removed call notification this needs, as primitives — no Android types.
+     *
+     * There is deliberately no `text`: the adapter cannot hand us a body it does not pass, so fault 4 of the
+     * review is structural on the way in as well as on the way out.
+     */
     data class Snapshot(
         val packageId: String,
         /** `StatusBarNotification.key`: stable across the updates of one call. */
         val key: String,
+        /** `Notification.category`: what tells a call from a message. */
+        val category: String? = null,
         /** WhatsApp puts the caller's display name here; it is the only identity we are given. */
         val title: String? = null,
-        /** The notification body. Present so the mapping is honest about what arrives, **never** used. */
-        val text: String? = null,
-        /** True while the call is ringing or in progress; false once the notification is removed. */
-        val isOngoing: Boolean = true,
-        /** True when this snapshot is a "missed call" notice rather than a live call. */
-        val isMissed: Boolean = false,
         val postedAtMs: Long = 0L,
     )
 
-    /** One call row: who, when, how long — and nothing that could carry content. */
+    /** One call row: who, when, how long — and nothing that could carry content, and no guessed direction. */
     data class Call(
         val contact: String,
-        /** `incoming` or `missed`. A heads-up is never a call the child placed; see the class KDoc. */
+        /** `unknown` for a live call, `missed` for one that was not answered. Never guessed. */
         val direction: String,
         /** Seconds, or null when the call never connected. */
         val durationSec: Long?,
@@ -52,12 +68,16 @@ object WhatsAppCallPolicy {
         val key: String,
     )
 
+    // The values `direction` may take, named so a typo is a compile error rather than a silent new state.
+    const val DIRECTION_UNKNOWN = "unknown"
+    const val DIRECTION_MISSED = "missed"
+
     /**
      * The identity of one call: the notification key **plus** the start time.
      *
      * The key alone is not enough — WhatsApp reuses it — and the start alone is not enough either: two
-     * missed calls from the same person in the same second are two calls. Together they make a re-posted
-     * heads-up (ring → in progress → removed) one row, which is the difference between one call and four.
+     * missed calls from the same person in the same second are two calls. Together they make the updates of
+     * one call one row.
      */
     fun identity(call: Call): String = "${call.key}|${call.startMs}"
 
@@ -65,21 +85,23 @@ object WhatsAppCallPolicy {
     private fun contactOf(snapshot: Snapshot): String? =
         snapshot.title?.trim()?.takeIf { it.isNotEmpty() }
 
-    /** True when this notification is a WhatsApp call at all: the monitored app, and a name to show. */
-    fun isCall(snapshot: Snapshot): Boolean =
-        MonitoredApps.appKeyFor(snapshot.packageId) == "whatsapp" && contactOf(snapshot) != null
+    /** WhatsApp, a name on the screen, and the given category — everything the row below needs. */
+    private fun isCallLike(snapshot: Snapshot, category: String): Boolean =
+        MonitoredApps.appKeyFor(snapshot.packageId) == "whatsapp" &&
+            snapshot.category == category &&
+            contactOf(snapshot) != null
 
     /**
-     * A call that is ringing or in progress: `incoming`, no duration yet.
+     * A call that is ringing or in progress: `unknown` direction, no duration yet.
      *
-     * Returns null for a missed notice, for another app, and for a notification with no name — an unnamed
-     * row ("Incoming call") tells the parent nothing they can act on.
+     * Returns null for a missed notice, for a message (category `msg`), for another app, and for a
+     * notification with no name — an unnamed row ("Incoming call") tells the parent nothing they can act on.
      */
     fun started(snapshot: Snapshot): Call? {
-        if (!isCall(snapshot) || snapshot.isMissed) return null
+        if (!isCallLike(snapshot, CATEGORY_CALL)) return null
         return Call(
             contact = contactOf(snapshot)!!,
-            direction = "incoming",
+            direction = DIRECTION_UNKNOWN,
             durationSec = null,
             durationApprox = false,
             startMs = snapshot.postedAtMs,
@@ -91,15 +113,18 @@ object WhatsAppCallPolicy {
      * The same call once its heads-up is gone: the row that carries the duration.
      *
      * @param startedAtMs when [started] produced the row, from the call it returned as [Call.startMs]
+     * @param answered true when the adapter saw the notification change from ringing to in progress. An
+     *   unanswered call returns null: it rang and ended, and the `missed_call` notice is the row for it.
      */
-    fun ended(snapshot: Snapshot, startedAtMs: Long): Call? {
-        if (!isCall(snapshot) || snapshot.isMissed) return null
+    fun ended(snapshot: Snapshot, startedAtMs: Long, answered: Boolean): Call? {
+        if (!answered) return null
+        if (!isCallLike(snapshot, CATEGORY_CALL)) return null
         // A clock that went backwards must not produce a negative duration or a wild one: a removal dated
         // before the start is "just started", and anything beyond a day is not a call we watched.
         val elapsedMs = (snapshot.postedAtMs - startedAtMs).coerceIn(0L, MAX_CALL_MS)
         return Call(
             contact = contactOf(snapshot)!!,
-            direction = "incoming",
+            direction = DIRECTION_UNKNOWN,
             durationSec = elapsedMs / 1_000L,
             durationApprox = true,
             startMs = startedAtMs,
@@ -107,12 +132,17 @@ object WhatsAppCallPolicy {
         )
     }
 
-    /** A call that was never answered: `missed`, and **no** duration — null, not zero. */
+    /**
+     * A call that was never answered: `missed`, and **no** duration — null, not zero.
+     *
+     * Below API 30 there is no `CATEGORY_MISSED_CALL`, so this returns null there rather than guessing from
+     * wording; the parent loses a missed row, not the truth.
+     */
     fun missed(snapshot: Snapshot): Call? {
-        if (!isCall(snapshot) || !snapshot.isMissed) return null
+        if (!isCallLike(snapshot, CATEGORY_MISSED_CALL)) return null
         return Call(
             contact = contactOf(snapshot)!!,
-            direction = "missed",
+            direction = DIRECTION_MISSED,
             durationSec = null,
             durationApprox = false,
             startMs = snapshot.postedAtMs,
