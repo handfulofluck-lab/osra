@@ -49,10 +49,22 @@ data class ActivityEventBatchDto(
 
 /** Payload of a call activity event. */
 data class CallActivityPayload(
+    /**
+     * The call log's number, or — for a WhatsApp call (roadmap 4.5) — the contact name WhatsApp gave us. It is
+     * the row's label on the parent screen, and WhatsApp never shows a number.
+     */
     val number: String,
-    val durationSec: Int,
-    /** incoming | outgoing | missed | other. */
+    /**
+     * Seconds, or **absent** when the length was not measured. Never `0` for "unknown": the parent app reads a
+     * present 0 as a call that connected and ended instantly (roadmap 4.5, #526).
+     */
+    val durationSec: Int? = null,
+    /** incoming | outgoing | missed | unknown | other. */
     val direction: String,
+    /** `whatsapp` when the call was read from WhatsApp's notifications; absent for a carrier call. */
+    val source: String? = null,
+    /** True when [durationSec] was measured from notifications rather than timed, so the screen says "about". */
+    val durationApprox: Boolean = false,
 )
 
 /** Payload of an SMS activity event; [bodyPreview] is capped at 120 chars on the agent. */
