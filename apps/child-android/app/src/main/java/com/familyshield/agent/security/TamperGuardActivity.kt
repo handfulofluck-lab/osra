@@ -117,7 +117,6 @@ class TamperGuardActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        GuardGateState.showing = false
         super.onPause()
     }
 
