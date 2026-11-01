@@ -90,8 +90,9 @@ class CommsLogger @Inject constructor(
             while (isActive) {
                 delay(FLUSH_PERIOD_MS)
                 // Issue #229: a grant made while this process was in the background is picked up
-                // here even if no activity resumed and no call arrived.
-                runCatching { harvestNow() }
+                // here even if no activity resumed and no call arrived. The loop keeps the public entry
+                // point (#520 review): only the start path needs the harvest ordered against its flush.
+                runCatching { onPermissionsChanged() }
                 runCatching { flush() }
             }
         }

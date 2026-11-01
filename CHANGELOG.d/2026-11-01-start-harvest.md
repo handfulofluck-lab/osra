@@ -13,7 +13,11 @@
   loop); the two cannot drift because there is one body.
 - Rows: `CommsStartHarvestWiringTest` (3) — the start path harvests, the loop still harvests on every tick, the
   harvest precedes the flush, and the retry entry point launches the same body.
-- Mutants: delete the start-time `harvestNow()` and the first row goes red; move it after the flush and the
-  ordering row goes red.
+- Mutants, measured: delete the start-time `harvestNow()` and **two** rows go red — the start row and the
+  ordering row, because without the call the first flush has no harvest before it; move it after the flush and
+  the ordering row alone goes red.
+- **The loop keeps calling `onPermissionsChanged()`.** My first version replaced that call with `harvestNow()`
+  and broke `CommsGrantWiringTest`'s "the 5-minute loop is the backstop" row on CI — a documented invariant I
+  had no reason to move. Only the start path needs the harvest ordered against its flush.
 - **Play is unaffected:** the artefact declares neither `READ_SMS` nor `READ_CALL_LOG`, and `start()` returns
   before registering anything when `CAPTURE_CALL_SMS` is false.

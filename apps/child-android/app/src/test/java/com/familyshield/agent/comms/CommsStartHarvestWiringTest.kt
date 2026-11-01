@@ -34,9 +34,11 @@ class CommsStartHarvestWiringTest {
             "start() must harvest what is already in the table instead of waiting for the next text",
             beforeLoop.contains("harvestNow()"),
         )
+        // The loop keeps calling the public entry point: `CommsGrantWiringTest` pins that, and #520 only
+        // needed the START path ordered against its flush — changing the loop was scope I had not been given.
         assertTrue(
-            "and the loop must still harvest on every tick",
-            snippet(start, "while (isActive)").contains("harvestNow()"),
+            "and the loop still retries through the public entry point on every tick",
+            snippet(start, "while (isActive)").contains("onPermissionsChanged()"),
         )
     }
 
