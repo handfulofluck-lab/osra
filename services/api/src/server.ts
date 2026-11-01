@@ -28,6 +28,7 @@ import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { healthRoutes } from "./routes/health.js";
 import { registerErrorHandler } from "./lib/errorHandler.js";
 import { registerIdleBudgetHook } from "./lib/idleBudget.js";
+import { registerClientHeader } from "./middleware/clientHeader.js";
 import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/rateLimits.js";
 import { getRedis } from "./redis.js";
 import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
@@ -83,6 +84,11 @@ await app.register(websocket);
 // cannot be imported by a test. ADR-0032: the `Device` row and `Parent.sessionVersion` are the
 // records; the Redis keys are caches they rebuild on a miss.
 app.addHook("preHandler", sessionGuardHook);
+
+// ADR-0034 1b: X-OSRA-Client is parsed before the body is read (a 426 must not depend on a request
+// shape the server might not understand), every response carries X-OSRA-Update, and a device's own
+// request records its build. CLIENT_POLICY ships empty, so nothing is refused.
+registerClientHeader(app);
 
 /**
  * Idle-request budget (roadmap 5.8): count authenticated device requests, per device per minute per route,
