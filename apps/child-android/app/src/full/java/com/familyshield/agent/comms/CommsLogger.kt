@@ -81,11 +81,17 @@ class CommsLogger @Inject constructor(
         started = true
         registerObservers()
         scope.launch {
+            // Issue #520: a restart must harvest what is already in the table instead of waiting for the
+            // next text or an app open. This is the first thing the service does, and it runs **before**
+            // the flush that would otherwise upload nothing — the measured case was two SMS sitting
+            // unharvested through two 5-minute flushes after a force-stop.
+            runCatching { harvestNow() }
+            runCatching { flush() }
             while (isActive) {
                 delay(FLUSH_PERIOD_MS)
                 // Issue #229: a grant made while this process was in the background is picked up
                 // here even if no activity resumed and no call arrived.
-                runCatching { onPermissionsChanged() }
+                runCatching { harvestNow() }
                 runCatching { flush() }
             }
         }
@@ -99,13 +105,20 @@ class CommsLogger @Inject constructor(
      */
     override fun onPermissionsChanged() {
         if (!BuildConfig.CAPTURE_CALL_SMS) return
-        scope.launch {
-            runCatching { registerObservers() }
-            runCatching { noteConsentState(db.agentStateDao()) }
-            if (consent.isPaused()) return@launch // ADR-0008 §3
-            if (callObserverRegistered) runCatching { harvestCalls() }
-            if (smsObserverRegistered) runCatching { harvestSms() }
-        }
+        scope.launch { harvestNow() }
+    }
+
+    /**
+     * Issue #520: the body of [onPermissionsChanged], suspendable so a caller can order it against the
+     * flush it must precede. `start()` awaits this before its first flush; the public entry point keeps
+     * launching it, because its callers are synchronous Android callbacks.
+     */
+    private suspend fun harvestNow() {
+        runCatching { registerObservers() }
+        runCatching { noteConsentState(db.agentStateDao()) }
+        if (consent.isPaused()) return // ADR-0008 §3
+        if (callObserverRegistered) runCatching { harvestCalls() }
+        if (smsObserverRegistered) runCatching { harvestSms() }
     }
 
     // Issue #229: four call sites can now reach this (boot, permission result, resume, the loop), two
