@@ -20,6 +20,7 @@ import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.ActivityEventBatchDto
 import com.familyshield.agent.network.dto.ActivityEventDto
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.social.WhatsAppCallPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -659,17 +660,7 @@ class CommsLogger @Inject constructor(
                         // absent, which dated a whole batch to the flush and made an offline phone
                         // report hours of calls at the moment it reconnected.
                         ts = CommsEventTimestamps.isoUtc(e.timestamp),
-                        payload = when (e.type) {
-                            "call" -> mapOf(
-                                "number" to e.number,
-                                "durationSec" to e.durationSec,
-                                "direction" to e.direction,
-                            )
-                            else -> mapOf(
-                                "number" to e.number,
-                                "bodyPreview" to (e.bodyPreview ?: ""),
-                            )
-                        },
+                        payload = CommsPayloadPolicy.payloadFor(e),
                     )
                 },
             )
@@ -680,6 +671,37 @@ class CommsLogger @Inject constructor(
                 throw e // NOTE: never swallow coroutine cancellation
             } catch (e: Exception) {
                 Log.w(TAG, "comms flush failed; events kept for next round", e)
+            }
+        }
+    }
+
+    /**
+     * Roadmap 4.5: one WhatsApp call row, buffered in the same table — and behind the same mutex — as the call
+     * log, so [flush] uploads it on its next round like any other row.
+     *
+     * The mutex is not ceremony: [flush] reads the table and then clears it, so a row inserted between those two
+     * steps would be deleted before it was uploaded (issue #229). The row is dated to when the call **started**,
+     * never to now — a phone that was offline for an hour must not report an hour of calls at reconnection
+     * (issue #260). Consent is checked here as well as in the service: a withdrawal that lands between the
+     * notification and this write must leave nothing behind (ADR-0008 §3).
+     */
+    fun recordCall(call: WhatsAppCallPolicy.Call, nowMs: Long) {
+        val timestamp = if (call.startMs > 0L) call.startMs else nowMs
+        scope.launch {
+            commsMutex.withLock {
+                if (consent.isPaused()) return@withLock
+                db.commsEventDao().insert(
+                    CommsEventEntity(
+                        type = "call",
+                        // WhatsApp gives a name and no number; the parent app renders this field as the label.
+                        number = call.contact,
+                        direction = call.direction,
+                        durationSec = call.durationSec?.toInt(),
+                        timestamp = timestamp,
+                        source = WhatsAppCallPolicy.SOURCE,
+                        durationApprox = call.durationApprox,
+                    ),
+                )
             }
         }
     }
