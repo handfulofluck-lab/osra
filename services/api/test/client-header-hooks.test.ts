@@ -34,7 +34,9 @@ async function appWith(policy?: string) {
   await app.register(healthRoutes);
   await app.register(deviceRoutes, { prefix: "/v1/devices" });
   await app.ready();
-  process.env.CLIENT_POLICY = previous;
+  // `delete`, not assigning `previous`: when it was unset that would set the STRING "undefined".
+  if (previous === undefined) delete process.env.CLIENT_POLICY;
+  else process.env.CLIENT_POLICY = previous;
   return app;
 }
 
