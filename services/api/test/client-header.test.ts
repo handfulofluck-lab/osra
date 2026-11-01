@@ -99,6 +99,8 @@ describe("A5 — the gate never blocks a data right", () => {
     expect(isGateExempt("GET", "/v1/me")).toBe(false);
     expect(isGateExempt("POST", "/v1/family/export")).toBe(false);
     expect(isGateExempt("DELETE", "/v1/family/invites/inv-1")).toBe(false);
+    expect(isGateExempt("DELETE", "/v1/me/push-token/extra")).toBe(false);
+    expect(isGateExempt("DELETE", "/v1/family/children/child-1/extra")).toBe(false);
   });
 });
 
