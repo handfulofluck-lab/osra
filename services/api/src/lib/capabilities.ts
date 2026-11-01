@@ -7,6 +7,8 @@ import {
   FEATURE_STATES,
   GRANT_KEYS,
   GRANT_STATES,
+  PROFILE_KINDS,
+  PROFILES_MAX_OTHERS,
   type CapabilityApp,
   type DeviceSetup,
   type FeatureKey,
@@ -23,6 +25,30 @@ import { isCommandNotSupported, isNotSupported, shownFeatureState } from "./capa
  *  * when a command is refused instead of queued ([commandRefusal], decision 3 + A1).
  */
 
+/**
+ * osra-security#6 item 2: other users and profiles, counts and kinds only.
+ *
+ * `kinds` is a set of at most `others` entries, and never empty while `others > 0`, so an unknown profile
+ * is still a row on the parent's Phone setup screen rather than a clean one. `others: 0` carries no kinds.
+ */
+export const ProfilesSchema = z
+  .object({
+    others: z.number().int().min(0).max(PROFILES_MAX_OTHERS),
+    kinds: z.array(z.enum(PROFILE_KINDS)).max(PROFILE_KINDS.length),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.kinds).size !== value.kinds.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["kinds"], message: "kinds must not repeat" });
+    }
+    if (value.kinds.length > value.others) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["kinds"], message: "more kinds than others" });
+    }
+    if (value.others > 0 && value.kinds.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["kinds"], message: "others > 0 needs at least one kind (\"other\" when unknown)" });
+    }
+  });
+
 /** A2: enum keys, enum values, nothing else, and a cap on the serialized object. */
 export const CapabilitiesSchema = z
   .object({
@@ -38,6 +64,8 @@ export const CapabilitiesSchema = z
     // parse error rather than a field the server quietly keeps.
     grants: z.record(z.enum(GRANT_KEYS), z.enum(GRANT_STATES)),
     features: z.record(z.enum(FEATURE_KEYS), z.enum(FEATURE_STATES)),
+    // Optional: an agent that cannot read profiles omits it, and [withStoredProfiles] keeps the last value.
+    profiles: ProfilesSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -105,6 +133,20 @@ export function parseCapabilities(
 }
 
 /**
+ * osra-security#6 item 2: a report without `profiles` keeps the stored one.
+ *
+ * Decision 2's rule for the whole report, applied one level down: the report replaces the stored one, but
+ * an agent that cannot read profiles (or a build from before this field) must not erase what an agent that
+ * could said. A stored value that no longer parses is dropped rather than carried.
+ */
+export function withStoredProfiles(next: Capabilities, stored: unknown): Capabilities {
+  if (next.profiles !== undefined) return next;
+  const previous = CapabilitiesSchema.safeParse(stored);
+  if (!previous.success || previous.data.profiles === undefined) return next;
+  return { ...next, profiles: previous.data.profiles };
+}
+
+/**
  * A4: how old a report may be and still describe the phone *now*.
  *
  * One telemetry period plus its flex, the same window issue #221 chose for `locationGrant`. A report
@@ -137,9 +179,9 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
   const parsed = CapabilitiesSchema.safeParse(report.capabilities);
   const at = reportedAtMs(report.capabilitiesReportedAt);
   if (!parsed.success || at == null) {
-    return { reportedAt: null, stale: true, features: {}, missing: [] };
+    return { reportedAt: null, stale: true, features: {}, missing: [], profiles: null };
   }
-  const { client, grants, features } = parsed.data;
+  const { client, grants, features, profiles } = parsed.data;
   const shownFeatures: Partial<Record<FeatureKey, string>> = {};
   for (const [feature, state] of Object.entries(features)) {
     const shown = shownFeatureState(client.app, client.flavour, feature as FeatureKey, state);
@@ -152,6 +194,7 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
     missing: (Object.entries(grants) as Array<[keyof typeof grants, string]>)
       .filter(([, state]) => state === "missing")
       .map(([key]) => key as DeviceSetup["missing"][number]),
+    profiles: profiles ?? null,
   };
 }
 
