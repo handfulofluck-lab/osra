@@ -12,7 +12,7 @@ class TamperScreenPolicyTest {
     private val pkg = "com.familyshield.agent"
 
     private fun classify(packageName: String?, vararg texts: String) =
-        TamperScreenPolicy.classify(packageName, texts.toList(), agent, admin, pkg)
+        TamperScreenPolicy.classify(packageName, texts.toList(), agent, admin, pkg, ourAdminActive = true)
 
     @Test
     fun `the deactivate-admin confirmation for our admin is DEACTIVATE_ADMIN`() {
@@ -76,7 +76,7 @@ class TamperScreenPolicyTest {
     private val adminAr = "الرقابة الأبوية من OSRA"
 
     private fun classifyAr(packageName: String?, windowClass: String?, vararg texts: String) =
-        TamperScreenPolicy.classify(packageName, texts.toList(), agent, adminAr, pkg, windowClass)
+        TamperScreenPolicy.classify(packageName, texts.toList(), agent, adminAr, pkg, ourAdminActive = true, windowClass = windowClass)
 
     @Test
     fun `each protection class classifies with no verb on the screen, in Arabic or with only our name`() {
@@ -116,7 +116,8 @@ class TamperScreenPolicyTest {
                 "com.android.settings",
                 listOf("OSRA parental controls", "Désactiver cette application"),
                 agent, admin, pkg,
-                "com.android.settings.DeviceAdminAdd",
+                ourAdminActive = true,
+                windowClass = "com.android.settings.DeviceAdminAdd",
             ),
         )
     }
@@ -188,5 +189,84 @@ class TamperScreenPolicyTest {
         assertEquals("الغاء التثبيت", TamperScreenPolicy.normalize("إِلْغَاء التَّثْبِيـت"))
         assertEquals("مسوول", TamperScreenPolicy.normalize("مسؤول"))
         assertEquals("deactivate this device admin app", TamperScreenPolicy.normalize("Deactivate this Device Admin app"))
+    }
+
+    // ---- osra-security#5 follow-up: the Flip4 capture (One UI, ar-EG and en, build 1998413) ----
+    private val samsungSheet = "com.samsung.android.settings.applications.specialaccess.SecDeviceAdminAdd"
+    private val aospSheet = "com.android.settings.DeviceAdminAdd"
+
+    private fun classifyFlip(windowClass: String?, adminActive: Boolean, vararg texts: String) =
+        TamperScreenPolicy.classify("com.android.settings", texts.toList(), agent, adminAr, pkg, adminActive, windowClass)
+
+    @Test
+    fun `the Samsung admin sheet with our admin active is DEACTIVATE_ADMIN, by class and by its Arabic verb`() {
+        // By class alone: the sheet names us and shows no listed verb.
+        assertEquals(TamperScreen.DEACTIVATE_ADMIN, classifyFlip(samsungSheet, adminActive = true, adminAr, "إلغاء"))
+        // By the Flip4's verb alone, with the class unknown.
+        assertEquals(
+            TamperScreen.DEACTIVATE_ADMIN,
+            classifyFlip(null, adminActive = true, "تطبيق مسؤول الجهاز", adminAr, "إلغاء التفعيل", "إلغاء"),
+        )
+        // Bare «إلغاء» (Cancel) is not a deactivation.
+        assertEquals(TamperScreen.NONE, classifyFlip(null, adminActive = true, "تطبيق مسؤول الجهاز", adminAr, "إلغاء"))
+    }
+
+    @Test
+    fun `the same Samsung sheet with our admin inactive is the activation and stays NONE`() {
+        assertEquals(
+            TamperScreen.NONE,
+            classifyFlip(samsungSheet, adminActive = false, "تطبيق مسؤول الجهاز", adminAr, "إلغاء التفعيل", "إلغاء"),
+        )
+    }
+
+    @Test
+    fun `the AOSP sheet with our admin inactive stays NONE, in either language`() {
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf("Activate device admin app?", "OSRA parental controls", "Disable some screen lock features", "Activate"),
+                agent, admin, pkg, ourAdminActive = false, windowClass = aospSheet,
+            ),
+        )
+        // And with no class at all, the word path does not take the activation sheet's "Disable" for a deactivation.
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.android.settings",
+                listOf("Device admin app", "OSRA parental controls", "Disable some screen lock features", "Activate"),
+                agent, admin, pkg, ourAdminActive = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `the Arabic admin list with its intro text stays NONE`() {
+        assertEquals(
+            TamperScreen.NONE,
+            classifyFlip(
+                "com.android.settings.Settings\$DeviceAdminSettingsActivity",
+                adminActive = true,
+                "تطبيقات مسؤول الجهاز",
+                "لإلغاء تفعيل تطبيق مسؤول الجهاز، اختره من القائمة",
+                adminAr,
+            ),
+        )
+    }
+
+    @Test
+    fun `the Arabic force-stop dialog title is classified`() {
+        assertEquals(
+            TamperScreen.APP_INFO,
+            classifyFlip("androidx.appcompat.app.AlertDialog", adminActive = true, "OSRA", "توقف إجباري؟", "موافق", "إلغاء"),
+        )
+        // Its title is not the uninstall dialog, even though both are AlertDialogs.
+        assertEquals(
+            TamperScreen.UNINSTALL,
+            TamperScreenPolicy.classify(
+                "com.google.android.packageinstaller", listOf("OSRA", "إلغاء التثبيت", "حسنًا", "إلغاء"),
+                agent, adminAr, pkg, ourAdminActive = true, windowClass = "android.app.AlertDialog",
+            ),
+        )
     }
 }

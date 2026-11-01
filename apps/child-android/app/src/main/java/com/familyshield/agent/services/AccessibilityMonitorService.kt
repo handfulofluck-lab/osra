@@ -51,6 +51,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var consentState: ConsentState
     @Inject lateinit var pinStore: ParentPinStore
+    @Inject lateinit var deviceAdmin: com.familyshield.agent.security.DeviceAdminManager
 
     /** Issue #83 review F1 / #165: what the OS says a package is, shared with [AppBlocker]'s overlay guard. */
     @Inject lateinit var packageFacts: PackageFacts
@@ -524,6 +525,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentLabel = getString(com.familyshield.agent.R.string.app_name),
             adminLabel = getString(com.familyshield.agent.R.string.device_admin_label),
             agentPackage = packageName,
+            ourAdminActive = deviceAdmin.isAdminActive(),
             windowClass = lastWindowClass.takeIf { lastWindowClassPkg != null && lastWindowClassPkg == pkg },
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet

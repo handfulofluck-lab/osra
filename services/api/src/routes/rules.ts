@@ -44,7 +44,8 @@ const AppRuleSchema = z.object({
   packageId: z.string().min(1),
   appName: z.string().min(1),
   action: z.enum(["allow", "block", "time_limit"]),
-  dailyLimitMinutes: z.number().int().min(0).max(10080).optional(),
+  // #508 review: a per-app daily limit is at most a day, like the screen-time limits above.
+  dailyLimitMinutes: z.number().int().min(0).max(MINUTES_PER_DAY).optional(),
 });
 
 const RoutineSchema = z.object({

@@ -282,6 +282,18 @@ final class RuleSyncTests: XCTestCase {
         return (try? JSONSerialization.jsonObject(with: entry.body)) as? [String: Any]
     }
 
+    /// #509 review: `clear()` must drop the applied version with the rules, checked directly rather than through a
+    /// value left over from an earlier row. Mutant: leave `Keys.appliedRulesVersion` out of the clear list.
+    func testClearRemovesTheAppliedVersionWithTheRules() throws {
+        RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)))
+        RuleStore.setAppliedRulesVersion(7)
+        XCTAssertEqual(RuleStore.appliedRulesVersion(), 7)
+        RuleStore.clear()
+        XCTAssertNil(RuleStore.appliedRulesVersion(), "a cleared phone has applied nothing")
+        XCTAssertNil(defaults.object(forKey: "rules.appliedVersion"))
+        XCTAssertNil(defaults.stringArray(forKey: "apps.blockedBundleIdentifiers"))
+    }
+
     func testUnpairedDoesNotCallTheServer() async {
         let outcome = await RuleSyncer.syncNow(client: stubbedClient, enforce: false)
         XCTAssertEqual(outcome, .notPaired)
