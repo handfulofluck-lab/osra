@@ -10,6 +10,7 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
+import { commandRefusal, parseCapabilities, setupFor } from "../lib/capabilities.js";
 import {
   POLL_AFTER_HEADER,
   PUSH_TOKEN_HEADER,
@@ -99,6 +100,9 @@ const ClaimSchema = z.object({
   pushToken: z.string().optional(),
   // Issue #81: the phone detected that OSRA's data was cleared on it. A claim still needs a live parent code.
   dataCleared: z.boolean().optional(),
+  // ADR-0034 A2: the same strict report a new phone sends in telemetry, so it is described from its
+  // first minute. Validated below; a bad one answers 400 and no claim is reserved.
+  capabilities: z.unknown().optional(),
 });
 
 const PollSchema = z.object({ pollSecret: z.string().min(1).max(200) });
@@ -122,6 +126,10 @@ const TelemetrySchema = z
     // against what the server issued for this child before it is stored — a future version is not a
     // report, it is a bug in the caller.
     appliedRulesVersion: z.number().int().min(1).optional(),
+    // ADR-0034 A2: validated on its own, below, so a bad report costs the capabilities field and not the
+    // whole upload. Typed `unknown` here on purpose — putting the strict schema in this object would make
+    // one bad report reject the telemetry beside it.
+    capabilities: z.unknown().optional(),
   })
   .passthrough();
 
@@ -330,7 +338,18 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.post("/pair/claim", { config: { rateLimit: PAIR_CLAIM_RATE_LIMIT } }, async (req, reply) => {
     const parsed = ClaimSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { code, platform, model, osVersion, deviceName, pushToken, dataCleared } = parsed.data;
+    const { code, platform, model, osVersion, deviceName, pushToken, dataCleared, capabilities } = parsed.data;
+    // ADR-0034 A2: the strict schema, the same one telemetry uses. A claim has nothing else to keep, so a
+    // bad report refuses the claim rather than half-describing the phone.
+    if (capabilities !== undefined) {
+      const parsedCapabilities = parseCapabilities(capabilities, platform);
+      if (!parsedCapabilities.ok) {
+        return reply.code(400).send({
+          error: "invalid_capabilities",
+          fieldErrors: { capabilities: parsedCapabilities.issue },
+        });
+      }
+    }
     const reserved = await reserveClaim(code, {
       platform,
       model,
@@ -338,6 +357,9 @@ export async function deviceRoutes(app: FastifyInstance) {
       deviceName,
       pushToken,
       ...(dataCleared ? { dataCleared: true } : {}),
+      ...(capabilities !== undefined
+        ? { capabilities, capabilitiesReportedAt: new Date().toISOString() }
+        : {}),
     });
     if (reserved.kind === "unknown") {
       // A metric, not a brake: counted from the logs to see guessing, never used to refuse pairing for
@@ -479,6 +501,10 @@ export async function deviceRoutes(app: FastifyInstance) {
         status: "online",
         lastSeen: new Date(),
         internalSecret,
+        // ADR-0034: the report the phone sent with its claim, and the time the server received it.
+        ...(record.capabilities !== undefined
+          ? { capabilities: record.capabilities as Prisma.InputJsonValue, capabilitiesReportedAt: new Date(record.capabilitiesReportedAt ?? Date.now()) }
+          : {}),
       },
     });
     await markPaired(record, device.id);
@@ -503,7 +529,12 @@ export async function deviceRoutes(app: FastifyInstance) {
       include: { child: true },
       orderBy: { lastSeen: "desc" },
     });
-    return { devices: devices.map(sanitizeDevice) };
+    // ADR-0034 decision 3: each device carries its "Phone setup" projection. `stale` is the server's
+    // judgement (A4) and `not_supported` is recomputed from the build table (A1), so the screen cannot be
+    // talked into greying out a fault by a modified agent.
+    return {
+      devices: devices.map((d) => ({ ...sanitizeDevice(d), setup: setupFor({ capabilities: d.capabilities, capabilitiesReportedAt: d.capabilitiesReportedAt }) })),
+    };
   });
 
   /** Return one device with its latest telemetry payload merged in. */
@@ -530,7 +561,10 @@ export async function deviceRoutes(app: FastifyInstance) {
             ),
           )
         : stored;
-    return { device: sanitizeDevice(device), telemetry };
+    // ADR-0034 decision 3: the same setup projection as the list, on the device the parent opened.
+    const storedDevice = await prisma.device.findUnique({ where: { id: device.id }, select: { capabilities: true, capabilitiesReportedAt: true } });
+    const setup = setupFor({ capabilities: storedDevice?.capabilities ?? null, capabilitiesReportedAt: storedDevice?.capabilitiesReportedAt ?? null });
+    return { device: sanitizeDevice(device), telemetry, setup };
   });
 
   /**
@@ -605,7 +639,14 @@ export async function deviceRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const user = req.user as AuthedUser & { sub: string };
     const device = (req as unknown as {
-      device: { id: string; childId: string; locationGrant?: string | null; locationGrantReportedAt?: Date | string | null };
+      device: {
+        id: string;
+        childId: string;
+        locationGrant?: string | null;
+        locationGrantReportedAt?: Date | string | null;
+        capabilities?: unknown;
+        capabilitiesReportedAt?: Date | string | null;
+      };
     }).device;
     // ADR-0008 §2c: enforcement commands need active consent; safe-direction commands
     // (unlock, resume, sos_clear) must always remain available to the parent.
@@ -623,6 +664,20 @@ export async function deviceRoutes(app: FastifyInstance) {
         const failed = await enqueueFailedDeviceCommand(id, "locate_now", reason, { requestedBy: user.sub });
         return { published: false, status: "failed", reason, ...failed };
       }
+    }
+    // ADR-0034 decision 3 (PR 1a): the capability report generalises the refusal above to every command
+    // whose effect is one of the ten features. A feature the build cannot do is refused at once whatever
+    // the report's age (A1); a fresh `unavailable` is refused with the feature's own reason; `degraded`
+    // and anything stale are queued, so the phone answers and the server never contradicts it.
+    const capabilityReason = commandRefusal(
+      { capabilities: device?.capabilities ?? null, capabilitiesReportedAt: device?.capabilitiesReportedAt ?? null },
+      parsed.data.command,
+    );
+    if (capabilityReason) {
+      const failed = await enqueueFailedDeviceCommand(id, parsed.data.command, capabilityReason.reason, {
+        requestedBy: user.sub,
+      });
+      return { published: false, status: "failed", reason: capabilityReason.reason, ...failed };
     }
     // Phase 2b: the command is a durable row; the response carries its id so the parent app can
     // poll /commands/history for delivered / acked / failed instead of guessing.
@@ -754,9 +809,16 @@ export async function deviceRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = TelemetrySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    const device = (req as unknown as { device: { id: string; childId: string; platform?: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+
+    // ADR-0034 A2: a strict, enum-keyed, 4 KB-capped report. Parsed here rather than inside
+    // `TelemetrySchema` so a bad one costs this field only — the rest of the upload is stored.
+    const capabilityParse = parsed.data.capabilities === undefined ? null : parseCapabilities(parsed.data.capabilities, device?.platform);
+    const capabilitiesOk = capabilityParse?.ok ?? false;
+    const capabilitiesParsed = capabilityParse?.ok ? capabilityParse.value : undefined;
+    const capabilitiesIssue = capabilityParse && !capabilityParse.ok ? capabilityParse.issue : undefined;
 
     // Issue #475: store the applied rules version only if the server has actually issued it for this
     // child. A version from the future is a caller bug, not a report — logging it and dropping it keeps
@@ -775,7 +837,8 @@ export async function deviceRoutes(app: FastifyInstance) {
       }
     }
 
-    await setJson(`device:${id}:telemetry`, { ...parsed.data, receivedAt: new Date().toISOString() }, 86400);
+    const { capabilities: rawCapabilities, ...telemetryFields } = parsed.data;
+    await setJson(`device:${id}:telemetry`, { ...telemetryFields, receivedAt: new Date().toISOString() }, 86400);
 
     // Accumulate daily usage per child (Issue #31: delta windows must accumulate, not overwrite)
     if (parsed.data.totalMinutes && parsed.data.totalMinutes > 0 && device?.childId) {
@@ -807,8 +870,22 @@ export async function deviceRoutes(app: FastifyInstance) {
         ...(parsed.data.locationGrant !== undefined
           ? { locationGrant: parsed.data.locationGrant, locationGrantReportedAt: new Date() }
           : {}),
+        // ADR-0034 A2/A4: the latest report wins, the SERVER's receipt time is the only clock, and an
+        // upload without the field leaves the stored report alone (an old agent cannot erase a newer one).
+        ...(capabilitiesOk
+          ? { capabilities: capabilitiesParsed as Prisma.InputJsonValue, capabilitiesReportedAt: new Date() }
+          : {}),
       },
     });
+    if (rawCapabilities !== undefined && !capabilitiesOk) {
+      // A2: refused with 400 **for the capabilities field**, and the rest of the upload is stored above.
+      req.log.warn({ deviceId: id }, "capabilities report refused; the rest of the telemetry was stored");
+      return reply.code(400).send({
+        error: "invalid_capabilities",
+        fieldErrors: { capabilities: capabilitiesIssue ?? "invalid" },
+        accepted: true,
+      });
+    }
     return reply.code(202).send({ accepted: true });
   });
 

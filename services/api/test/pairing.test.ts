@@ -290,6 +290,49 @@ describe("device pairing (spec §14.1)", () => {
   });
 
   // Mutant: drop the SET NX on `pair:<code>:claim` -> both claims answer 202 and the parent sees two.
+  // ADR-0034 (#527, Claude's verification): the report a phone sends with its claim describes it from its
+  // first minute. Mutant: skip writing it at the poll -> the new device has no report until its first
+  // telemetry, and an iPhone's lock is queued instead of refused.
+  it("ADR-0034: the claim's capability report is written to the new device, with the server's receipt time", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:123456", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    prismaMock.device.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "dev-9", ...data }));
+    const report = {
+      client: { app: "child-android", version: "0.2.0", build: 2, flavour: "full" },
+      grants: { overlay: "missing" },
+      features: { lock_screen: "degraded" },
+    };
+    const before = Date.now();
+    const { claim, poll } = await pairThrough(app, { code: "123456", platform: "android", model: "Pixel 7a", osVersion: "14", capabilities: report });
+    expect(claim.statusCode).toBe(202);
+    expect(poll.statusCode).toBe(201);
+    const data = prismaMock.device.create.mock.calls.at(-1)?.[0]?.data ?? {};
+    expect(data.capabilities).toEqual(report);
+    expect(data.capabilitiesReportedAt).toBeInstanceOf(Date);
+    expect((data.capabilitiesReportedAt as Date).getTime()).toBeGreaterThanOrEqual(before - 1000);
+    await app.close();
+  });
+
+  it("ADR-0034 A1: a claim whose report names another platform's app is refused, and no claim is reserved", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:123456", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/pair/claim",
+      payload: {
+        code: "123456",
+        platform: "android",
+        model: "Pixel 7a",
+        osVersion: "14",
+        capabilities: { client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "appstore" }, grants: {}, features: {} },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("invalid_capabilities");
+    expect([...store.keys()].some((k) => k.startsWith("pairclaim:"))).toBe(false);
+    await app.close();
+  });
+
   it("concurrent claims of the same code: exactly one is pending, the other is refused (BUG-005)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     store.set("pair:222222", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));

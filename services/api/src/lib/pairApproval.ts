@@ -37,6 +37,13 @@ export interface ClaimRecord {
    * parent PIN: what `pm clear` leaves). Shown on the parent's Allow card; an Allow records a `tamper` alert.
    */
   dataCleared?: boolean;
+  /**
+   * ADR-0034: the capability report, validated by the same strict schema as telemetry. Kept on the claim
+   * because the Device row does not exist until the parent Allows, and written with
+   * [capabilitiesReportedAt] — the moment the SERVER received it (A4), never a device clock.
+   */
+  capabilities?: unknown;
+  capabilitiesReportedAt?: string;
   /** sha256 of the poll secret; the secret itself is only ever in the claiming phone. */
   pollSecretHash: string;
   /** The parent who tapped Allow or Deny. */
@@ -113,7 +120,7 @@ export type ReserveResult =
  */
 export async function reserveClaim(
   code: string,
-  device: Pick<ClaimRecord, "platform" | "model" | "osVersion" | "deviceName" | "pushToken" | "dataCleared">,
+  device: Pick<ClaimRecord, "platform" | "model" | "osVersion" | "deviceName" | "pushToken" | "dataCleared" | "capabilities" | "capabilitiesReportedAt">,
 ): Promise<ReserveResult> {
   const claimId = randomUUID();
   const res = (await getRedis().eval(PAIR_SCRIPTS.reserve, 2, codeKey(code), codeClaimKey(code), claimId)) as

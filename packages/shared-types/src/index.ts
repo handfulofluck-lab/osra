@@ -43,3 +43,5 @@ export interface ConsentRecord { id: UUID; childId: UUID; parentId: UUID;
   grantedAt: ISODate; expiresAt?: ISODate; revokedAt?: ISODate; thirdPartySharing: boolean; }
 
 export * from "./world-class.js";
+
+export * from "./capabilities.js";
