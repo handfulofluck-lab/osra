@@ -342,7 +342,7 @@ export async function deviceRoutes(app: FastifyInstance) {
     // ADR-0034 A2: the strict schema, the same one telemetry uses. A claim has nothing else to keep, so a
     // bad report refuses the claim rather than half-describing the phone.
     if (capabilities !== undefined) {
-      const parsedCapabilities = parseCapabilities(capabilities);
+      const parsedCapabilities = parseCapabilities(capabilities, platform);
       if (!parsedCapabilities.ok) {
         return reply.code(400).send({
           error: "invalid_capabilities",
@@ -809,13 +809,13 @@ export async function deviceRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = TelemetrySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const device = (req as unknown as { device: { id: string; childId: string } }).device;
+    const device = (req as unknown as { device: { id: string; childId: string; platform?: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
 
     // ADR-0034 A2: a strict, enum-keyed, 4 KB-capped report. Parsed here rather than inside
     // `TelemetrySchema` so a bad one costs this field only — the rest of the upload is stored.
-    const capabilityParse = parsed.data.capabilities === undefined ? null : parseCapabilities(parsed.data.capabilities);
+    const capabilityParse = parsed.data.capabilities === undefined ? null : parseCapabilities(parsed.data.capabilities, device?.platform);
     const capabilitiesOk = capabilityParse?.ok ?? false;
     const capabilitiesParsed = capabilityParse?.ok ? capabilityParse.value : undefined;
     const capabilitiesIssue = capabilityParse && !capabilityParse.ok ? capabilityParse.issue : undefined;

@@ -194,3 +194,119 @@ describe("ADR-0034 claim 13 — a command the build cannot run is failed, not qu
     expect(res.json()).toMatchObject({ published: true, status: "pending" });
   });
 });
+
+/**
+ * Claude's verification of #527: three gaps a fault survived or a modified agent could use.
+ *  - A1 rests on `client.app`, so the app must be the one this device is (a Pixel claiming `child-ios`
+ *    would otherwise grey `lock_screen` out and have every lock refused from the table).
+ *  - A6 lists `unlock` and `ring` with `lock` and `pause_internet` as failed at once on an iPhone.
+ *  - `GET /v1/devices/:id` must carry the setup projection (decision 3), not only the list.
+ */
+describe("ADR-0034 A1/A6/decision 3 — verifier rows (#527)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("A1 — an Android device reporting child-ios is refused for the field, and the rest is stored", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, platform: "android" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        batteryPct: 50,
+        capabilities: capabilities({
+          client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "appstore" },
+          features: { lock_screen: "not_supported" },
+        }),
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("invalid_capabilities");
+    const written = prismaMock.device.update.mock.calls.at(-1)?.[0]?.data ?? {};
+    expect(written.batteryPct).toBe(50);
+    expect(written.capabilities).toBeUndefined();
+  });
+
+  it("A1 — the same report from an Android device that says child-android is stored", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, platform: "android" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { capabilities: capabilities() },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const written = prismaMock.device.update.mock.calls.at(-1)?.[0]?.data ?? {};
+    expect(written.capabilities).toMatchObject({ client: { app: "child-android" } });
+  });
+
+  for (const command of ["unlock", "ring"]) {
+    it(`A6 — ${command} to an iPhone is failed with not_supported at once, whatever the report's age`, async () => {
+      const app = await buildApp(deviceRoutes, "/v1/devices");
+      prismaMock.device.findUnique.mockResolvedValue({
+        ...DEVICE,
+        platform: "ios",
+        capabilities: capabilities({ client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" }, features: {} }),
+        capabilitiesReportedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/command",
+        headers: authHeader(app),
+        payload: { command },
+      });
+
+      expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "not_supported" });
+    });
+
+    it(`A6 — ${command} to an Android phone is still queued`, async () => {
+      const app = await buildApp(deviceRoutes, "/v1/devices");
+      prismaMock.device.findUnique.mockResolvedValue({
+        ...DEVICE,
+        platform: "android",
+        capabilities: capabilities({ features: { lock_screen: "unavailable" } }),
+        capabilitiesReportedAt: new Date(),
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/command",
+        headers: authHeader(app),
+        payload: { command },
+      });
+
+      expect(res.json()).toMatchObject({ published: true, status: "pending" });
+    });
+  }
+
+  it("decision 3 — GET /v1/devices/:id carries the setup projection, with the table's word", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const row = {
+      ...DEVICE,
+      platform: "android",
+      capabilities: capabilities({
+        client: { app: "child-android", version: "0.2.0", build: 2, flavour: "play" },
+        features: { lock_screen: "ready", call_sms_log: "ready", web_filter: "not_supported" },
+      }),
+      capabilitiesReportedAt: new Date(),
+    };
+    prismaMock.device.findUnique.mockResolvedValue(row);
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1", headers: authHeader(app) });
+
+    expect(res.statusCode).toBe(200);
+    const setup = res.json().setup;
+    expect(setup.stale).toBe(false);
+    expect(setup.reportedAt).toBe(row.capabilitiesReportedAt.toISOString());
+    expect(setup.features).toEqual({ lock_screen: "ready", call_sms_log: "not_supported", web_filter: "unavailable" });
+    expect(setup.missing).toEqual(["overlay"]);
+  });
+});

@@ -38,6 +38,21 @@ const NOT_SUPPORTED: Record<CapabilityApp, Partial<Record<CapabilityFlavour, rea
   "agent-macos": {},
 };
 
+/**
+ * A6: commands no feature describes that a build still cannot run. `lock`, `unlock`, `ring` and
+ * `pause_internet` to an iPhone are recorded failed at once; `lock` and `pause_internet` come through
+ * their features above, and these two have no feature to carry them.
+ */
+const NOT_SUPPORTED_COMMANDS: Partial<Record<CapabilityApp, readonly string[]>> = {
+  "child-ios": ["unlock", "ring"],
+};
+
+/** True when this app cannot run [command] at all, whatever its features say (A6). */
+export function isCommandNotSupported(app: string | null | undefined, command: string): boolean {
+  if (!app) return false;
+  return NOT_SUPPORTED_COMMANDS[app as CapabilityApp]?.includes(command) ?? false;
+}
+
 /** True when this (app, flavour) cannot do [feature] at all. */
 export function isNotSupported(
   app: string | null | undefined,

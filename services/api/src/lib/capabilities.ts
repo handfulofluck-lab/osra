@@ -7,10 +7,11 @@ import {
   FEATURE_STATES,
   GRANT_KEYS,
   GRANT_STATES,
+  type CapabilityApp,
   type DeviceSetup,
   type FeatureKey,
 } from "@familyshield/shared-types";
-import { isNotSupported, shownFeatureState } from "./capabilityTable.js";
+import { isCommandNotSupported, isNotSupported, shownFeatureState } from "./capabilityTable.js";
 
 /**
  * ADR-0034 PR 1a: the capability report, its storage rules, and the one refusal that replaces
@@ -68,9 +69,23 @@ export function capabilitiesInputBytes(raw: unknown): number | null {
   }
 }
 
-/** The one entry point the routes use: the cap first, the schema second. */
+/**
+ * A1 rests on `client.app`, so it must be the app this device actually is. Without this check a modified
+ * Android agent could report `child-ios` and have the server grey `lock_screen` out as `not_supported`
+ * and refuse every lock from the table: the exact fault-into-grey-row A1 exists to stop. The platform
+ * comes from the pairing claim and the Device row, never from the report.
+ */
+const APP_FOR_PLATFORM: Record<string, CapabilityApp | undefined> = {
+  android: "child-android",
+  ios: "child-ios",
+  windows: "agent-desktop",
+  macos: "agent-macos",
+};
+
+/** The one entry point the routes use: the cap first, the schema second, then the app must match the platform. */
 export function parseCapabilities(
   raw: unknown,
+  platform?: string | null,
 ): { ok: true; value: Capabilities } | { ok: false; issue: string } {
   const bytes = capabilitiesInputBytes(raw);
   if (bytes != null && bytes > CAPABILITIES_MAX_BYTES) {
@@ -82,6 +97,9 @@ export function parseCapabilities(
       ok: false,
       issue: parsed.error.issues.map((i) => `${i.path.join(".") || "capabilities"}: ${i.message}`).join("; "),
     };
+  }
+  if (platform != null && APP_FOR_PLATFORM[platform] !== parsed.data.client.app) {
+    return { ok: false, issue: `client.app: ${parsed.data.client.app} does not match this device (${platform})` };
   }
   return { ok: true, value: parsed.data };
 }
@@ -175,11 +193,12 @@ export function commandRefusal(
   command: string,
   nowMs: number = Date.now(),
 ): CommandRefusal | null {
-  const feature = COMMAND_FEATURE[command];
-  if (!feature) return null;
   const parsed = CapabilitiesSchema.safeParse(report.capabilities);
   if (!parsed.success) return null;
   const { client, features } = parsed.data;
+  if (isCommandNotSupported(client.app, command)) return { reason: "not_supported" };
+  const feature = COMMAND_FEATURE[command];
+  if (!feature) return null;
 
   if (isNotSupported(client.app, client.flavour, feature)) return { reason: "not_supported" };
 
