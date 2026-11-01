@@ -2,6 +2,13 @@
 - **One vocabulary, shared.** `DeviceCapabilitiesV1` in `packages/shared-types`: `client` (app, version, build,
   flavour), `grants` (the platform's real keys, including `usb_debugging` and iOS's three from A6), `features`
   (the ten), and the four states. The agent's Kotlin mirror comes with PR 2.
+- **The report must name the app this device actually is.** A1 rests on `client.app`, so `parseCapabilities` takes
+  the platform from the Device row (telemetry) or the pairing claim and refuses a report naming another
+  platform's app — otherwise a modified Android agent could say `child-ios`, have `lock_screen` greyed out as
+  `not_supported`, and escape every lock without waking the phone (#527 review).
+- **`unlock` and `ring` to an iPhone are refused from the table**, beside `lock` and `pause_internet` (A6): they
+  have no feature, so a small command table carries them. On Android both still queue, and a fresh
+  `lock_screen: unavailable` never refuses an `unlock`.
 - **The server decides `not_supported`, from a table of build facts** (A1). Play cannot log calls or scan
   notifications; every iOS flavour cannot lock, pause, uninstall-guard or read calls. A device that claims
   `not_supported` **outside** its own row is stored, shown as `unavailable`, and counted as a fault — otherwise a
