@@ -86,7 +86,7 @@ describe("decision 3 + A4 — what the parent's setup screen is shown", () => {
 
   it("a device that has never reported is not 'all missing'", () => {
     const setup = setupFor({ capabilities: null, capabilitiesReportedAt: null }, NOW);
-    expect(setup).toEqual({ reportedAt: null, stale: true, features: {}, missing: [] });
+    expect(setup).toEqual({ reportedAt: null, stale: true, features: {}, missing: [], profiles: null });
   });
 
   it("claim 8 — a not_supported claimed outside the build's row is shown as unavailable", () => {

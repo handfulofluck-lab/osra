@@ -84,11 +84,43 @@ export interface CapabilityClient {
   flavour: CapabilityFlavour;
 }
 
+/**
+ * osra-security#6 item 2: the kinds of "other space" a phone can hold besides the child's own user.
+ *
+ * `clone` is Android's `android.os.usertype.profile.CLONE` (Samsung Dual Messenger, user 95 on the Flip4),
+ * `work` is `android.os.usertype.profile.MANAGED`. `secure_folder` is reserved: no capture has shown a
+ * set-up Secure Folder's user type yet, so nothing maps to it, and a Knox user is reported as `other`.
+ * `other` is any profile whose type the agent cannot name — including every profile below API 35, where a
+ * normal app cannot read the type at all.
+ */
+export const PROFILE_KINDS = ["work", "clone", "secure_folder", "other"] as const;
+export type ProfileKind = (typeof PROFILE_KINDS)[number];
+
+/** The most other profiles a report may claim. Android caps users per device well below this. */
+export const PROFILES_MAX_OTHERS = 8;
+
+/**
+ * Other users and profiles on the phone: **counts and kinds only** — never user ids, names or app lists.
+ *
+ * `kinds` is a set (no duplicates, at most `others` entries), and is never empty while `others > 0`: a
+ * profile whose type is unknown is `other`, so the parent's Phone setup row cannot read as clean.
+ */
+export interface DeviceProfiles {
+  others: number;
+  kinds: ProfileKind[];
+}
+
 /** ADR-0034 decision 1: the whole report. */
 export interface DeviceCapabilitiesV1 {
   client: CapabilityClient;
   grants: Partial<Record<GrantKey, GrantState>>;
   features: Partial<Record<FeatureKey, FeatureState>>;
+  /**
+   * osra-security#6 item 2, optional on the wire: a report without it leaves the stored value alone, the
+   * same rule decision 2 sets for the whole report, so an agent that cannot read profiles never erases what
+   * one that could said.
+   */
+  profiles?: DeviceProfiles;
 }
 
 /** The largest serialized report the server accepts (A2). */
@@ -106,4 +138,6 @@ export interface DeviceSetup {
   features: Partial<Record<FeatureKey, FeatureState>>;
   /** The grants the device reported as `missing` — the "what to fix" list. */
   missing: GrantKey[];
+  /** osra-security#6 item 2: the last reported other spaces, or null when no report has carried them. */
+  profiles: DeviceProfiles | null;
 }

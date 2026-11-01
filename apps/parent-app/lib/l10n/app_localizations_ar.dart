@@ -3042,4 +3042,13 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get riskAiConcern => 'محتوى مثير للقلق';
+
+  @override
+  String get phoneSetupOtherSpaceClone => 'في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).';
+
+  @override
+  String get phoneSetupOtherSpaceWork => 'في هذا الهاتف ملف عمل.';
+
+  @override
+  String get phoneSetupOtherSpaceOther => 'في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.';
 }

@@ -4825,6 +4825,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Concerning content'**
   String get riskAiConcern;
+
+  /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has a second space for cloned apps (Dual Messenger).'**
+  String get phoneSetupOtherSpaceClone;
+
+  /// Phone setup row (osra-security#6): profiles.kinds holds work. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has a work profile.'**
+  String get phoneSetupOtherSpaceWork;
+
+  /// Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has another space. OSRA may not reach the apps inside it.'**
+  String get phoneSetupOtherSpaceOther;
 }
 
 class _AppLocalizationsDelegate

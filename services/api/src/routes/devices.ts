@@ -10,7 +10,7 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
-import { commandRefusal, parseCapabilities, setupFor } from "../lib/capabilities.js";
+import { commandRefusal, parseCapabilities, setupFor, withStoredProfiles } from "../lib/capabilities.js";
 import {
   POLL_AFTER_HEADER,
   PUSH_TOKEN_HEADER,
@@ -817,7 +817,12 @@ export async function deviceRoutes(app: FastifyInstance) {
     // `TelemetrySchema` so a bad one costs this field only — the rest of the upload is stored.
     const capabilityParse = parsed.data.capabilities === undefined ? null : parseCapabilities(parsed.data.capabilities, device?.platform);
     const capabilitiesOk = capabilityParse?.ok ?? false;
-    const capabilitiesParsed = capabilityParse?.ok ? capabilityParse.value : undefined;
+    let capabilitiesParsed = capabilityParse?.ok ? capabilityParse.value : undefined;
+    // osra-security#6 item 2: a report without `profiles` keeps the stored value (decision 2, one level down).
+    if (capabilitiesParsed && capabilitiesParsed.profiles === undefined) {
+      const stored = await prisma.device.findUnique({ where: { id }, select: { capabilities: true } });
+      capabilitiesParsed = withStoredProfiles(capabilitiesParsed, stored?.capabilities ?? null);
+    }
     const capabilitiesIssue = capabilityParse && !capabilityParse.ok ? capabilityParse.issue : undefined;
 
     // Issue #475: store the applied rules version only if the server has actually issued it for this
