@@ -239,6 +239,11 @@ model Device {
   /// `locate_now` only on a report younger than one telemetry period (lib/locationGrant.ts); an
   /// older or undated report is "unknown" and the command is queued so the phone can answer it.
   locationGrantReportedAt DateTime? @db.Timestamptz(3)
+  /// ADR-0034 decision 1 + A4: the capability report the device last sent (`DeviceCapabilitiesV1`),
+  /// stored as JSONB, and when the **server** received it. A timestamp inside the object is never read:
+  /// a modified agent could otherwise future-date a report and keep it "fresh" forever.
+  capabilities           Json?
+  capabilitiesReportedAt DateTime? @db.Timestamptz(3)
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]
