@@ -19,12 +19,14 @@ import org.junit.Test
  * Mutants: put `performGlobalAction(GLOBAL_ACTION_BACK)` back in the guard → [the guard opens the gate without
  * sending BACK first]; make "Go back", hardware back or the fifth wrong PIN `finish()` instead of `goHome()` →
  * [every way out without the PIN goes Home]; drop the HOME intent from `goHome` → [goHome lands on Home];
- * never clear `GuardGateState.showing`, or go back to a bare time check → [the debounce asks the policy].
+ * never clear `GuardGateState.showing`, or go back to a bare time check → [the debounce asks the policy];
+ * drop `resizeableActivity="false"` from the gate → [the gate never shares the screen].
  */
 class TamperGuardLandsHomeWiringTest {
 
     private val service = sourceFile("app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
     private val gate = sourceFile("app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt")
+    private val manifest = sourceFile("app/src/main/AndroidManifest.xml")
 
     @Test
     fun `the guard opens the gate without sending BACK first`() {
@@ -71,6 +73,14 @@ class TamperGuardLandsHomeWiringTest {
         assertTrue("and the resume time recorded", onResume.contains("GuardGateState.lastResumedMs = System.currentTimeMillis()"))
         val onPause = gate.substringAfter("override fun onPause()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
         assertTrue("showing cleared on pause", onPause.contains("GuardGateState.showing = false"))
+    }
+
+    @Test
+    fun `the gate never shares the screen, so it always pauses when it leaves the front`() {
+        val entry = manifest.substringAfter("android:name=\".security.TamperGuardActivity\"", missingDelimiterValue = "")
+            .substringBefore("/>", missingDelimiterValue = "")
+        assertTrue("the gate's manifest entry is where it was", entry.contains("android:exported=\"false\""))
+        assertTrue("not resizeable: no split screen, where both halves stay resumed", entry.contains("android:resizeableActivity=\"false\""))
     }
 
     private fun sourceFile(relative: String): String {

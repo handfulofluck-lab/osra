@@ -12,10 +12,14 @@
   Settings inside that window would have shown it unguarded. `GuardDebouncePolicy` now suppresses only while the
   gate is in front, or still coming up (launched, not yet resumed). A gate that came up and went away never
   suppresses. `TamperGuardActivity` sets `GuardGateState.showing` in `onResume` and clears it in `onPause`.
+- **The gate never shares the screen** (#533 review): `TamperGuardActivity` is now `resizeableActivity="false"`,
+  like the block screens (#175). In split screen both halves stay resumed, so the gate would never pause, and
+  `showing` would have suppressed the guard for as long as the split lasted.
 - **Tests:** `GuardDebouncePolicyTest` (the gate showing, a launch pending, the gate left inside 1.5 s, past the
   window). `TamperGuardLandsHomeWiringTest` pins three things:
   - no Back or Home is sent before the gate;
   - every exit without the PIN goes through `goHome()`;
   - `goHome()` starts the launcher.
 
-  It also pins that the service asks the policy, and that the gate sets and clears the flag.
+  It also pins that the service asks the policy, that the gate sets and clears the flag, and that the gate's
+  manifest entry is not resizeable.

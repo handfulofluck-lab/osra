@@ -141,10 +141,14 @@
             android:turnScreenOn="true"/>
 
         <!-- ADR-0010: parent-PIN gate shown over the OS screens that remove protection. -->
+        <!-- #533 review: the PIN gate must not share the screen with the screen it guards. In split screen both
+             halves stay resumed, so the gate would never pause and GuardGateState.showing would suppress the
+             guard for as long as the split lasted. Same rule #175 gave the overlay activities below. -->
         <activity android:name=".security.TamperGuardActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
+            android:resizeableActivity="false"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
 
         <activity android:name=".setup.PairingActivity"
