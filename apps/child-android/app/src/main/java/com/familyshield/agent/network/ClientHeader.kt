@@ -41,7 +41,7 @@ object ClientHeader {
      * @param flavour `play` or `full`
      */
     fun value(versionName: String?, versionCode: Int, flavour: String): String? {
-        val version = semver(versionName) ?: return null
+        val version = version(versionName) ?: return null
         if (versionCode < 1) return null
         if (!FLAVOUR.matches(flavour)) return null
         val header = "$APP/$version+$versionCode ($flavour)"
@@ -51,8 +51,11 @@ object ClientHeader {
     /**
      * `0.2.0` from `0.2.0`, or `0.2.0` from `0.2` by padding the missing parts with zeros — Gradle allows a
      * two-part name and the wire does not. A part that is not 1–4 digits is not a version we can claim.
+     *
+     * Public because the capability report's `client.version` and this header must be the **same string**: two
+     * normalisers would eventually disagree, and the server compares the header against the report.
      */
-    private fun semver(versionName: String?): String? {
+    fun version(versionName: String?): String? {
         val raw = versionName?.trim().orEmpty()
         if (raw.isEmpty()) return null
         val parts = raw.split('.')
