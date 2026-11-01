@@ -18,7 +18,6 @@ object GuardDebouncePolicy {
     const val LAUNCH_WINDOW_MS: Long = 1_500L
 
     fun suppress(nowMs: Long, lastGuardMs: Long, gateShowing: Boolean, gateResumedSinceLaunch: Boolean): Boolean {
-        if (gateShowing) return true
         val launchPending = nowMs - lastGuardMs < LAUNCH_WINDOW_MS && !gateResumedSinceLaunch
         return launchPending
     }
