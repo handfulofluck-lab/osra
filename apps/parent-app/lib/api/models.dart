@@ -649,8 +649,30 @@ class ActivityEvent {
       );
 
   String? get number => payload['number'] is String ? payload['number'] as String : null;
-  int get durationSec => _int(payload['durationSec']);
+
+  /// Issue 4.5: **null when the agent sent no duration** — a missed call carries none, and reading that
+  /// as 0 renders "0:00", which says the call connected and ended instantly.
+  int? get durationSec {
+    final v = payload['durationSec'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
   String get direction => _str(payload['direction']);
+
+  /// Which app produced the call, when it was not the phone itself. `whatsapp` today (roadmap 4.5);
+  /// absent on every row the call log wrote, so old rows keep their meaning.
+  String? get source {
+    final v = payload['source'];
+    return v is String && v.isNotEmpty ? v : null;
+  }
+
+  /// True when the caller phone measured the call from notifications rather than timing it, so the
+  /// screen can say "about" instead of claiming a measurement.
+  bool get durationApprox => payload['durationApprox'] == true;
+
   String get bodyPreview => _str(payload['bodyPreview']);
 }
 

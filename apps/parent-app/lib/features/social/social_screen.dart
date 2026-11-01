@@ -114,6 +114,29 @@ String formatRelativeTime(DateTime? at, [AppLocalizations? l10n]) {
   return l10n?.relativeDaysAgo(diff.inDays) ?? '${diff.inDays}d ago';
 }
 
+/// Roadmap 4.5: the icon a call's direction earns.
+///
+/// `incoming`, `outgoing` and `missed` are measurements. **Anything else is neutral** — the phone-side parser
+/// sends `unknown` for a WhatsApp call, because WhatsApp keeps the ongoing-call notification for outgoing
+/// calls too, and an arrow there would state a direction nobody measured (#523, Claude's review).
+IconData callIconFor(String direction) => switch (direction) {
+      'outgoing' => Icons.call_made,
+      'incoming' => Icons.call_received,
+      'missed' => Icons.call_missed,
+      _ => Icons.call,
+    };
+
+/// Roadmap 4.5: the duration a call's row may claim.
+///
+/// **Nothing** for a missed call or when the agent sent no duration — `0:00` would say the call connected and
+/// ended instantly — and a leading `≈` when the agent measured it from notifications rather than timing it.
+Widget? callDurationText(ActivityEvent event, BuildContext context) {
+  final seconds = event.durationSec;
+  if (event.direction == 'missed' || seconds == null) return null;
+  final mmss = formatDurationMmSs(seconds);
+  return Text(event.durationApprox ? '≈ $mmss' : mmss);
+}
+
 String formatDurationMmSs(int seconds) {
   final s = seconds < 0 ? 0 : seconds;
   return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
@@ -404,18 +427,14 @@ class CallsSmsSection extends ConsumerWidget {
                     Card(
                       child: ListTile(
                         dense: true,
-                        leading: Icon(e.type == 'call'
-                            ? (e.direction == 'outgoing'
-                                ? Icons.call_made
-                                : Icons.call_received)
-                            : Icons.sms_outlined),
+                        leading: Icon(e.type == 'call' ? callIconFor(e.direction) : Icons.sms_outlined),
                         title: Text(e.number ?? l10n.unknownNumber),
                         subtitle: e.type == 'sms'
                             ? Text(_truncateSms(e.bodyPreview))
-                            : null,
-                        trailing: e.type == 'call'
-                            ? Text(formatDurationMmSs(e.durationSec))
-                            : null,
+                            // Roadmap 4.5: a brand name, so the same text in both languages and no new
+                            // Arabic to approve (#523 ruled the phone side; the screen has to match).
+                            : (e.source == 'whatsapp' ? const Text('WhatsApp') : null),
+                        trailing: e.type == 'call' ? callDurationText(e, context) : null,
                       ),
                     ),
                 ],
