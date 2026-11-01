@@ -116,4 +116,65 @@ void main() {
 
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
   });
+
+  // The child-detail Social tab renders SocialSectionsView directly, so the line has to live in that view
+  // rather than in the SocialScreen wrapper — otherwise a parent who saves from the tab sees nothing
+  // (Claude, #522).
+  testWidgets('the child-detail Social tab shows the line when the phone is behind', (tester) async {
+    await pumpDetail(tester, child(rules: 7, applied: 5));
+    await tester.tap(find.text('Social'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+  });
+
+  Future<void> pumpSocialApi(WidgetTester tester, FakeApiClient api) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const SocialScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('saving the monitoring toggles shows the line', (tester) async {
+    // Claude's fault on social_screen.dart: drop the familyProvider invalidation from this save and the
+    // line never appears. The row starts current, the save bumps the version, and the refetch answers it.
+    final childJson = child(rules: 7, applied: 7);
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
+    });
+    await pumpSocialApi(tester, api);
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+
+    childJson['rulesVersion'] = 8;
+    await tester.tap(find.widgetWithText(SwitchListTile, 'WhatsApp'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save monitoring'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+  });
+
+  testWidgets('saving the contact allowlist shows the line', (tester) async {
+    // The second save on that screen, and the second fault line: its own invalidation, its own row.
+    final childJson = child(rules: 7, applied: 7);
+    final api = FakeApiClient({
+      ...standardRoutes(familyMe: {...familyMeTwoChildren(), 'children': [childJson]}),
+    });
+    await pumpSocialApi(tester, api);
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+
+    childJson['rulesVersion'] = 8;
+    // The allowlist sits at the bottom of a lazy ListView, so it is not built until scrolled to;
+    // ensureVisible throws "No element" on a widget that does not exist yet.
+    await tester.scrollUntilVisible(
+      find.text('Save allowlist'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save allowlist'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+  });
 }

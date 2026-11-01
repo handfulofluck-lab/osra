@@ -10,9 +10,13 @@
   `social_screen` (both saves) and the bonus grant invalidated only `rulesProvider`, so right after the write
   the app believed `applied == rules` and the line could not appear at the moment it was earned — the #501
   review finding, on the screens that were not covered.
-- Rows: `rules_behind_writers_test.dart` (7) — behind shows the line, current shows nothing, never-reported
-  shows nothing, on the social screen and on the bonus card; plus the grant row: tap `+15`, the refetch answers
-  one version higher, and only then is the line earned.
+- **The line lives in `SocialSectionsView`, not in the `SocialScreen` wrapper** (Claude, #522): the child-detail
+  Social tab renders that view directly, so the wrapper-only version left the tab — which writes the same toggles
+  and allowlist — showing nothing after a save.
+- Rows: `rules_behind_writers_test.dart` (10) — behind shows the line, current shows nothing, never-reported
+  shows nothing, on the social screen and on the bonus card; the child-detail Social tab shows it too; and three
+  save rows: the monitoring toggles, the contact allowlist, and the bonus grant, each bumping the version in the
+  fake and expecting the line only because its write refetched the family.
 - Mutants: `<=` instead of `<` in `rulesAreBehind` reddens the "current shows nothing" row alone (1 of 3);
   dropping the `familyProvider` invalidation from `_grant` reddens the grant row alone (1 of 7).
 - **Not in this PR:** no banner on `alerts_screen`. It is a family-wide feed with no `childId`, so a per-child
