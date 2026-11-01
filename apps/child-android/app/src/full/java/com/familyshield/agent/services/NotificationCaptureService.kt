@@ -93,7 +93,7 @@ class NotificationCaptureService : NotificationListenerService() {
         if (MonitoredApps.appKeyFor(sbn.packageName.orEmpty()) != WHATSAPP_KEY) return
         val now = System.currentTimeMillis()
         val snapshot = whatsAppSnapshotOf(sbn, rankingMap)
-        val rows = if (removed) tracker.removed(snapshot.key, now) else tracker.posted(snapshot)
+        val rows = if (removed) tracker.removed(snapshot.key, now) else tracker.posted(snapshot, now)
         rows.forEach { comms.recordCall(it, now) }
         scheduleSettle()
     }

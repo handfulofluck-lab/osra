@@ -155,23 +155,28 @@ object WhatsAppCallPolicy {
     /**
      * The same call once its heads-up is gone: the row that carries the duration.
      *
-     * @param startedAtMs when [started] produced the row, from the call it returned as [Call.startMs]
+     * @param startedAtMs when the call rang — the row is **dated** to it, so the timeline says "at 10:42", not
+     *   "at 10:42:57". It is not where the length starts: a call that rings for 25 s and then talks for 10 s did
+     *   not last 35 s, so the clock starts when it was answered.
      * @param answered true when the adapter saw the notification change from ringing to in progress. An
      *   unanswered call returns null: it rang and ended, and the `missed_call` notice is the row for it.
      * @param removedAtMs when the heads-up disappeared. **Not** `sbn.postTime`: a removal carries the time the
      *   notification was *posted*, so defaulting to it would report every call as lasting 0 s.
+     * @param answeredAtMs when the change that answered it was seen — the start of the measured length. Defaults
+     *   to the ring only for a caller that has no better fact, which is why the adapter always passes it.
      */
     fun ended(
         snapshot: Snapshot,
         startedAtMs: Long,
         answered: Boolean,
         removedAtMs: Long = snapshot.postedAtMs,
+        answeredAtMs: Long = startedAtMs,
     ): Call? {
         if (!answered) return null
         if (!isCallLike(snapshot, CATEGORY_CALL)) return null
         // A clock that went backwards must not produce a negative duration or a wild one: a removal dated
         // before the start is "just started", and anything beyond a day is not a call we watched.
-        val elapsedMs = (removedAtMs - startedAtMs).coerceIn(0L, MAX_CALL_MS)
+        val elapsedMs = (removedAtMs - answeredAtMs).coerceIn(0L, MAX_CALL_MS)
         return Call(
             contact = contactOf(snapshot)!!,
             direction = DIRECTION_UNKNOWN,

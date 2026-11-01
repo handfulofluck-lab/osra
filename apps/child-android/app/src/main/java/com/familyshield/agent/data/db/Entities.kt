@@ -38,6 +38,11 @@ data class CommsEventEntity(
      * The call log's number, or — for a WhatsApp call (roadmap 4.5) — the contact name WhatsApp gave us.
      * WhatsApp never shows a number, so the name is the only identity there is; the parent app renders this
      * field as the row's label.
+     *
+     * **When [source] is `whatsapp` this is a name, never a number, and nothing may treat it as one:** no
+     * normalising, dialling or allowlist-matching, because `"Mama 2"` normalises to `"2"` and would either be
+     * dialled or matched against a stranger's digits (Claude, #532 review). `CommsLogger.recordCall` never
+     * reaches `maybeAlertUnknownContact`, and that must stay true.
      */
     val number: String,
     /** incoming | outgoing | missed | unknown | other. */
