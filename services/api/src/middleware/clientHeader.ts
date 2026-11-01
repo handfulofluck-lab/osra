@@ -27,6 +27,36 @@ interface WithClient {
   clientVerdict?: UpdateVerdict;
 }
 
+/** The columns each table stores, and where the value comes from on the parsed client. */
+const DEVICE_BUILD_FIELDS = [
+  ["clientApp", (c: ClientIdentity) => c.app],
+  ["clientVersion", (c: ClientIdentity) => c.version],
+  ["clientBuild", (c: ClientIdentity) => c.build],
+  ["clientFlavour", (c: ClientIdentity) => c.flavour],
+] as const;
+
+const PUSH_TOKEN_BUILD_FIELDS = [
+  ["clientApp", (c: ClientIdentity) => c.app],
+  ["clientBuild", (c: ClientIdentity) => c.build],
+  ["clientFlavour", (c: ClientIdentity) => c.flavour],
+] as const;
+
+/**
+ * "Any of these columns differs" as a where clause, null-safe on purpose.
+ *
+ * `{ column: { not: value } }` does not match a NULL column in SQL, so a device reporting its build for the
+ * first time would never satisfy it and the write would silently not happen. Each field therefore reads
+ * `column IS NULL OR column != value` (#528 review advisory 1).
+ */
+function changes(
+  fields: ReadonlyArray<readonly [string, (c: ClientIdentity) => string | number]>,
+  client: ClientIdentity,
+): Array<Record<string, unknown>> {
+  return fields.map(([column, value]) => ({
+    OR: [{ [column]: null }, { [column]: { not: value(client) } }],
+  }));
+}
+
 export function registerClientHeader(app: FastifyInstance): void {
   const policy = parseClientPolicy(process.env.CLIENT_POLICY);
 
@@ -59,8 +89,13 @@ export function registerClientHeader(app: FastifyInstance): void {
       if (user?.role === "device" && user.deviceId) {
         // A3: the device's own build, and only when THIS device made the request. A parent's request
         // resolves the same device through `requireFamily` and must not overwrite this.
-        await prisma.device.update({
-          where: { id: user.deviceId },
+        //
+        // Written only when it changes (#528 review advisory 1): the agent polls every 15 minutes, and a
+        // row write per poll is the load roadmap 5.8 is trying to cut. Each field is compared
+        // null-safely — Prisma's `{ not: x }` EXCLUDES nulls, so `{ clientBuild: { not: 7 } }` would skip
+        // a device that has never reported, and the write would silently never happen.
+        await prisma.device.updateMany({
+          where: { id: user.deviceId, OR: changes(DEVICE_BUILD_FIELDS, client) },
           data: {
             clientApp: client.app,
             clientVersion: client.version,
@@ -71,7 +106,7 @@ export function registerClientHeader(app: FastifyInstance): void {
       } else if (user?.role === "parent" && user.sub) {
         // A parent's build belongs to that parent's install, on the push-token rows it owns.
         await prisma.parentPushToken.updateMany({
-          where: { parentId: user.sub },
+          where: { parentId: user.sub, OR: changes(PUSH_TOKEN_BUILD_FIELDS, client) },
           data: { clientApp: client.app, clientBuild: client.build, clientFlavour: client.flavour },
         });
       }
