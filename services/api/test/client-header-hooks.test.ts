@@ -151,12 +151,62 @@ describe("A3 / claim 10 — the build is written only by the device it belongs t
       headers: { ...deviceHeader(app), "x-osra-client": "child-android/0.2.0+7 (full)" },
     });
 
-    expect(prismaMock.device.update).toHaveBeenCalledWith(
+    expect(prismaMock.device.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "dev-1" },
+        where: expect.objectContaining({ id: "dev-1" }),
         data: expect.objectContaining({ clientBuild: 7, clientApp: "child-android", clientFlavour: "full" }),
       }),
     );
+  });
+
+  it("the write's where clause is null-safe, so a first report is not skipped", async () => {
+    // Claude's advisory 1, and the trap inside it: `{ clientBuild: { not: 7 } }` does not match a NULL
+    // column, so a device reporting its build for the first time would never satisfy the predicate and
+    // the write would silently not happen. Every field therefore reads `IS NULL OR != value`.
+    const app = await appWith(undefined);
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
+
+    await app.inject({
+      method: "GET",
+      url: "/v1/devices/dev-1",
+      headers: { ...deviceHeader(app), "x-osra-client": "child-android/0.2.0+7 (full)" },
+    });
+
+    // Exact, not only the shape (#529 review): each column is compared with THIS request's value, so a
+    // guard that compared against the wrong value or the wrong column fails here.
+    expect(prismaMock.device.updateMany.mock.calls.at(-1)?.[0]?.where).toEqual({
+      id: "dev-1",
+      OR: [
+        { OR: [{ clientApp: null }, { clientApp: { not: "child-android" } }] },
+        { OR: [{ clientVersion: null }, { clientVersion: { not: "0.2.0" } }] },
+        { OR: [{ clientBuild: null }, { clientBuild: { not: 7 } }] },
+        { OR: [{ clientFlavour: null }, { clientFlavour: { not: "full" } }] },
+      ],
+    });
+  });
+
+  it("a parent's build write is guarded the same way, on its own push-token rows", async () => {
+    const app = await appWith(undefined);
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.parentPushToken.updateMany.mockResolvedValue({ count: 0 });
+
+    await app.inject({
+      method: "GET",
+      url: "/v1/devices/dev-1",
+      headers: { ...authHeader(app), "x-osra-client": "parent-app/0.9.0+9 (android)" },
+    });
+
+    const call = prismaMock.parentPushToken.updateMany.mock.calls.at(-1)?.[0];
+    expect(call?.where).toEqual({
+      parentId: expect.any(String),
+      OR: [
+        { OR: [{ clientApp: null }, { clientApp: { not: "parent-app" } }] },
+        { OR: [{ clientBuild: null }, { clientBuild: { not: 9 } }] },
+        { OR: [{ clientFlavour: null }, { clientFlavour: { not: "android" } }] },
+      ],
+    });
+    expect(call?.data).toEqual({ clientApp: "parent-app", clientBuild: 9, clientFlavour: "android" });
   });
 
   it("claim 10 — a PARENT's request to the same device leaves the stored build alone", async () => {
@@ -170,7 +220,9 @@ describe("A3 / claim 10 — the build is written only by the device it belongs t
       headers: { ...authHeader(app), "x-osra-client": "parent-app/0.9.0+9 (android)" },
     });
 
-    const deviceWrites = prismaMock.device.update.mock.calls.map((c) => c[0]?.data ?? {});
+    const deviceWrites = [...prismaMock.device.update.mock.calls, ...prismaMock.device.updateMany.mock.calls].map(
+      (c) => c[0]?.data ?? {},
+    );
     expect(deviceWrites.some((d) => d.clientBuild !== undefined)).toBe(false);
   });
 });
