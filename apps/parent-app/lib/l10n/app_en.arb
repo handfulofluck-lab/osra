@@ -1298,5 +1298,11 @@
   "riskGrooming": "Grooming",
   "riskViolence": "Violence",
   "riskHateSpeech": "Hate speech",
-  "riskAiConcern": "Concerning content"
+  "riskAiConcern": "Concerning content",
+  "phoneSetupOtherSpaceClone": "This phone has a second space for cloned apps (Dual Messenger).",
+  "@phoneSetupOtherSpaceClone": {"description": "Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic is a draft pending Karim's review."},
+  "phoneSetupOtherSpaceWork": "This phone has a work profile.",
+  "@phoneSetupOtherSpaceWork": {"description": "Phone setup row (osra-security#6): profiles.kinds holds work. Arabic is a draft pending Karim's review."},
+  "phoneSetupOtherSpaceOther": "This phone has another space. OSRA may not reach the apps inside it.",
+  "@phoneSetupOtherSpaceOther": {"description": "Phone setup row (osra-security#6): profiles.kinds holds other or secure_folder. Arabic is a draft pending Karim's review."}
 }
