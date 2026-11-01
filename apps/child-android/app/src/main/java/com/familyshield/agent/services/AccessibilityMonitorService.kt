@@ -31,6 +31,8 @@ import com.familyshield.agent.enforcement.WindowBounds
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.GuardAttemptWindow
+import com.familyshield.agent.security.GuardDebouncePolicy
+import com.familyshield.agent.security.GuardGateState
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
@@ -509,7 +511,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()
-        if (now - lastGuardMs < 1_500L) return
+        // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
+        // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
+        if (GuardDebouncePolicy.suppress(now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs))) return
         val root = rootInActiveWindow ?: return
         val texts = ArrayList<CharSequence?>(64)
         try {

@@ -18,7 +18,8 @@ import org.junit.Test
  *
  * Mutants: put `performGlobalAction(GLOBAL_ACTION_BACK)` back in the guard → [the guard opens the gate without
  * sending BACK first]; make "Go back", hardware back or the fifth wrong PIN `finish()` instead of `goHome()` →
- * [every way out without the PIN goes Home]; drop the HOME intent from `goHome` → [goHome lands on Home].
+ * [every way out without the PIN goes Home]; drop the HOME intent from `goHome` → [goHome lands on Home];
+ * never clear `GuardGateState.showing`, or go back to a bare time check → [the debounce asks the policy].
  */
 class TamperGuardLandsHomeWiringTest {
 
@@ -54,6 +55,22 @@ class TamperGuardLandsHomeWiringTest {
         assertTrue(goHome.contains("Intent.ACTION_MAIN"))
         assertTrue(goHome.contains("Intent.CATEGORY_HOME"))
         assertTrue(goHome.contains("finish()"))
+    }
+
+    @Test
+    fun `the debounce asks the policy, fed by the gate's own lifecycle`() {
+        val guard = service.substringAfter("private fun guardProtectionScreens(", missingDelimiterValue = "")
+            .substringBefore("\n    private ", missingDelimiterValue = "")
+        assertTrue(
+            "the service calls the pure rule with both flags",
+            guard.contains("GuardDebouncePolicy.suppress(now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs))"),
+        )
+        assertFalse("and no bare time check", guard.contains("now - lastGuardMs <"))
+        val onResume = gate.substringAfter("override fun onResume()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
+        assertTrue("showing set on resume", onResume.contains("GuardGateState.showing = true"))
+        assertTrue("and the resume time recorded", onResume.contains("GuardGateState.lastResumedMs = System.currentTimeMillis()"))
+        val onPause = gate.substringAfter("override fun onPause()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
+        assertTrue("showing cleared on pause", onPause.contains("GuardGateState.showing = false"))
     }
 
     private fun sourceFile(relative: String): String {
