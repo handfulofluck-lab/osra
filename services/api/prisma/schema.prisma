@@ -165,6 +165,11 @@ model ParentPushToken {
   token      String   @unique
   platform   String
   appVersion String?
+  /// ADR-0034 A3: the build a parent's own requests report. A parent's header must never land on the
+  /// child's Device row, so it goes here, on the row that belongs to that parent's install.
+  clientApp     String?
+  clientBuild   Int?
+  clientFlavour String?
   createdAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
   parent     Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
@@ -244,6 +249,12 @@ model Device {
   /// a modified agent could otherwise future-date a report and keep it "fresh" forever.
   capabilities           Json?
   capabilitiesReportedAt DateTime? @db.Timestamptz(3)
+  /// ADR-0034 decision 4 / A3: the build the AGENT last reported in `X-OSRA-Client`. Written only from a
+  /// device-JWT request for that same device — a parent opening the device screen must not overwrite it.
+  clientApp     String?
+  clientVersion String?
+  clientBuild   Int?
+  clientFlavour String?
   child      Child          @relation(fields: [childId], references: [id])
   locations  LocationPing[]
   alerts     Alert[]
