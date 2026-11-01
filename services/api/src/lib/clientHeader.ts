@@ -100,6 +100,14 @@ const ALWAYS_ALLOWED: Array<{ method: string; pattern: RegExp }> = [
   { method: "POST", pattern: /^\/v1\/auth\/logout-all$/ },
   { method: "POST", pattern: /^\/v1\/family\/children\/[^/]+\/consent\/revoke$/ },
   { method: "DELETE", pattern: /^\/v1\/family\/children\/[^/]+$/ },
+  // A5 as amended on #528: sign-out starts by removing this phone's push token (#356), and a parent who
+  // cannot update (an app that no longer supports their phone) must still be able to take the family's
+  // data out and delete their account or the whole family. A prefixed `/` route also answers with a
+  // trailing slash, so those two allow one.
+  { method: "DELETE", pattern: /^\/v1\/me\/push-token$/ },
+  { method: "GET", pattern: /^\/v1\/family\/export$/ },
+  { method: "DELETE", pattern: /^\/v1\/me\/?$/ },
+  { method: "DELETE", pattern: /^\/v1\/family\/?$/ },
 ];
 
 /** True when [method] [url] is outside the 426 gate. The query string is not part of the decision. */

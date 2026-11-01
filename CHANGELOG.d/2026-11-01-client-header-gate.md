@@ -10,7 +10,9 @@
   **parent app** below `min` is refused (`426 update_required`), and **the child agent never is** — a refused agent
   is an unmonitored phone, so the pressure goes to the parent instead (decision 5).
 - **A5: the gate never blocks a data right.** `/health`, logout, logout-all, consent revocation and child deletion
-  stay open, so a parent on an old app can always withdraw consent and delete a child's data.
+  stay open, so a parent on an old app can always withdraw consent and delete a child's data. So do removing
+  the phone's push token (sign-out starts with it), the family export, and account and family deletion, so a
+  parent who cannot update can still take their data out and leave.
 - **The build is stored with the client it belongs to** (A3): a device's own request writes its build to its own
   `Device` row, and a parent's request writes to that parent's push-token rows. A parent opening the device screen
   passes the same family check, so without that split the dashboard would overwrite the phone's build.

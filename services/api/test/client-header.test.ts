@@ -73,13 +73,20 @@ describe("decision 5 — CLIENT_POLICY, and what the verdict is", () => {
 });
 
 describe("A5 — the gate never blocks a data right", () => {
-  it("the five exempt routes are exempt, with or without a query string", () => {
+  it("the A5 routes are exempt, with or without a query string", () => {
     expect(isGateExempt("GET", "/health")).toBe(true);
     expect(isGateExempt("POST", "/v1/auth/logout")).toBe(true);
     expect(isGateExempt("POST", "/v1/auth/logout-all")).toBe(true);
     expect(isGateExempt("POST", "/v1/family/children/child-1/consent/revoke")).toBe(true);
     expect(isGateExempt("DELETE", "/v1/family/children/child-1")).toBe(true);
     expect(isGateExempt("GET", "/health?probe=1")).toBe(true);
+    // Added on #528: the push-token removal sign-out starts with, export, and account or family deletion.
+    expect(isGateExempt("DELETE", "/v1/me/push-token")).toBe(true);
+    expect(isGateExempt("GET", "/v1/family/export")).toBe(true);
+    expect(isGateExempt("DELETE", "/v1/me")).toBe(true);
+    expect(isGateExempt("DELETE", "/v1/me/")).toBe(true);
+    expect(isGateExempt("DELETE", "/v1/family")).toBe(true);
+    expect(isGateExempt("DELETE", "/v1/family/")).toBe(true);
   });
 
   it("everything else is inside the gate", () => {
@@ -87,6 +94,11 @@ describe("A5 — the gate never blocks a data right", () => {
     // The verb is part of it: DELETE is exempt on that path, GET is not.
     expect(isGateExempt("GET", "/v1/family/children/child-1")).toBe(false);
     expect(isGateExempt("POST", "/v1/devices")).toBe(false);
+    // The new entries are exact: their neighbours and other verbs stay inside the gate.
+    expect(isGateExempt("POST", "/v1/me/push-token")).toBe(false);
+    expect(isGateExempt("GET", "/v1/me")).toBe(false);
+    expect(isGateExempt("POST", "/v1/family/export")).toBe(false);
+    expect(isGateExempt("DELETE", "/v1/family/invites/inv-1")).toBe(false);
   });
 });
 

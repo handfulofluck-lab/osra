@@ -336,7 +336,12 @@ The exemptions in decision 5 grow from `/health` and logout to these routes:
 - `GET /health`;
 - `POST /v1/auth/logout` and `POST /v1/auth/logout-all`;
 - `POST /v1/family/children/:id/consent/revoke`;
-- `DELETE /v1/family/children/:id`.
+- `DELETE /v1/family/children/:id`;
+- `DELETE /v1/me/push-token`, because sign-out starts by removing that phone's push token (#356), and a
+  sign-out that left it registered would keep waking a phone nobody is signed in on;
+- `GET /v1/family/export`, `DELETE /v1/me` and `DELETE /v1/family` (added on #528), because a parent who
+  cannot update, for example when a new app no longer supports their phone, must still be able to take the
+  family's data out and delete their account or the whole family.
 
 A parent on an old app must always be able to withdraw consent and delete a child's data. Withdrawal has to
 stay as easy as consent was (ADR-0008), so a gate that blocked it until an app update would be a compliance
@@ -385,7 +390,7 @@ later PR in Ahmed's lane and belongs on the 5.1 checklist. It does not block PR 
 10. A parent's `GET /v1/devices/:id` sent with any `X-OSRA-Client` leaves the device's stored build
     unchanged.
 11. A `capabilities` object carrying a device timestamp does not change `capabilitiesReportedAt`.
-12. With the parent app's `min` above its build, the five routes in A5 still answer as without the gate.
+12. With the parent app's `min` above its build, every route in A5 still answers as without the gate.
 13. A `lock` to an iPhone is recorded `failed` with `not_supported` at once, whatever the age of its last
     report, and the phone is not woken.
 
