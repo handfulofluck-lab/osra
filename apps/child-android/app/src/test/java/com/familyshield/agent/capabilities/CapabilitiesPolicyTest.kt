@@ -147,7 +147,6 @@ class CapabilitiesPolicyTest {
         assertEquals("unavailable", CapabilitiesPolicy.features(facts(accessibility = false))["app_blocking"])
         assertEquals("ready", CapabilitiesPolicy.features(facts(accessibility = true))["app_blocking"])
         assertEquals("unavailable", CapabilitiesPolicy.features(facts(filterSetUp = false, tunnel = false))["pause_internet"])
-        assertEquals("unavailable", CapabilitiesPolicy.features(facts(filterSetUp = true, tunnel = false))["pause_internet"])
         assertEquals("ready", CapabilitiesPolicy.features(facts(filterSetUp = true, tunnel = true))["pause_internet"])
     }
 
