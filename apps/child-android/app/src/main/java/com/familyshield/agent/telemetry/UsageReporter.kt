@@ -19,6 +19,8 @@ import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.UsageEventEntity
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.ActivityEventBatchDto
+import com.familyshield.agent.capabilities.CapabilityReporter
+import com.familyshield.agent.capabilities.CapabilityUploadPolicy
 import com.familyshield.agent.network.dto.TelemetryDto
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
@@ -48,6 +50,7 @@ class UsageReporter @Inject constructor(
     private val settings: AgentSettings,
     private val rules: RuleRepository,
     private val consent: ConsentState,
+    private val capabilities: CapabilityReporter,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -163,6 +166,7 @@ class UsageReporter @Inject constructor(
                     batteryPct = currentBatteryPct(),
                     locationGrant = grant,
                     appliedRulesVersion = appliedRules,
+                    capabilities = capabilities.report(),
                 ),
             )
             // Issue #221: the periodic upload also counts as a report, so the expedited path does not
@@ -232,6 +236,41 @@ class UsageReporter @Inject constructor(
      * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
      * resume and from the location-permission callbacks.
      */
+    /**
+     * ADR-0034 A2: a grant change reaches the server now, not at the next period — **one request per change**.
+     *
+     * A resume with nothing changed costs nothing: the fingerprint of the report is compared with the one the
+     * server last accepted, and only a difference uploads. The fingerprint is recorded after a successful POST
+     * for the same reason the location grant is: a failed request must be retried, not remembered as covered.
+     */
+    suspend fun reportCapabilitiesIfChanged() {
+        val deviceId = settings.deviceId() ?: return
+        if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
+        val report = capabilities.report() ?: return
+        val fingerprint = CapabilityUploadPolicy.fingerprint(report)
+        if (settings.reportedCapabilities() == fingerprint) return
+        try {
+            api.postTelemetry(
+                deviceId,
+                TelemetryDto(
+                    perAppMinutes = emptyMap(),
+                    totalMinutes = 0,
+                    unlockCount = 0,
+                    batteryPct = currentBatteryPct(),
+                    locationGrant = currentLocationGrant(),
+                    appliedRulesVersion = settings.appliedRulesVersion(),
+                    capabilities = report,
+                ),
+            )
+            settings.recordReportedCapabilities(fingerprint)
+        } catch (e: CancellationException) {
+            throw e // NOTE: never swallow coroutine cancellation
+        } catch (e: Exception) {
+            // Left unrecorded on purpose: the next resume retries with the same report.
+            Log.w(TAG, "capability report failed", e)
+        }
+    }
+
     suspend fun reportLocationGrantIfChanged() {
         val deviceId = settings.deviceId() ?: return
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
@@ -248,6 +287,7 @@ class UsageReporter @Inject constructor(
                         batteryPct = currentBatteryPct(),
                         locationGrant = grant,
                         appliedRulesVersion = settings.appliedRulesVersion(),
+                        capabilities = capabilities.report(),
                     ),
                 )
             },

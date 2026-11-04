@@ -66,6 +66,8 @@ class PairingActivity : ComponentActivity() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
+    /** ADR-0034 A2: a new phone is described from its first minute, beside the claim it makes. */
+    @Inject lateinit var capabilityReporter: com.familyshield.agent.capabilities.CapabilityReporter
 
     /** Issue #229: re-check the call/SMS grants on a permission result and on every resume. */
     @Inject lateinit var commsCapture: CommsCapture
@@ -777,6 +779,12 @@ class PairingActivity : ComponentActivity() {
                     applicationContext,
                     com.familyshield.agent.di.WorkerEntryPoint::class.java,
                 ).usageReporter().reportLocationGrantIfChanged()
+                // ADR-0034 A2: the same seam for the capability report — a grant a parent has just fixed
+                // reaches the server now, and a resume with nothing changed sends nothing.
+                dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    applicationContext,
+                    com.familyshield.agent.di.WorkerEntryPoint::class.java,
+                ).usageReporter().reportCapabilitiesIfChanged()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -917,6 +925,10 @@ class PairingActivity : ComponentActivity() {
                 .put("osVersion", Build.VERSION.RELEASE ?: "unknown")
                 .put("deviceName", deviceName.ifBlank { Build.MODEL ?: "android-device" })
                 .apply { if (dataClearedDetected()) put("dataCleared", true) }
+                // ADR-0034 A2: the same strict report a paired phone sends in telemetry. Absent when this
+                // build cannot name itself, and the server then claims the phone without one rather than
+                // refusing the claim.
+                .apply { capabilityReporter.report()?.let { put("capabilities", JSONObject(it)) } }
                 .toString()
                 .toRequestBody(JSON_MEDIA_TYPE)
             val client = OkHttpClient.Builder()
