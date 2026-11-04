@@ -107,6 +107,20 @@ class TamperGuardActivity : ComponentActivity() {
         )
     }
 
+    // #533 review: the guard's debounce reads these — it may skip a protection screen only while the gate is in
+    // front. onPause completes before the next activity resumes, so a screen that comes back over a paused gate
+    // is always judged.
+    override fun onResume() {
+        super.onResume()
+        GuardGateState.lastResumedMs = System.currentTimeMillis()
+        GuardGateState.showing = true
+    }
+
+    override fun onPause() {
+        GuardGateState.showing = false
+        super.onPause()
+    }
+
     /** Hardware back is the same as "Go back": never a way through. */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {

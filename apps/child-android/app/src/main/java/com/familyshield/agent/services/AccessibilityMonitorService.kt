@@ -31,6 +31,8 @@ import com.familyshield.agent.enforcement.WindowBounds
 import com.familyshield.agent.enforcement.WindowLayout
 import com.familyshield.agent.enforcement.WindowSnapshot
 import com.familyshield.agent.security.GuardAttemptWindow
+import com.familyshield.agent.security.GuardDebouncePolicy
+import com.familyshield.agent.security.GuardGateState
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
@@ -509,7 +511,9 @@ class AccessibilityMonitorService : AccessibilityService() {
         }
         if (!settings.isPairedSync()) return
         val now = System.currentTimeMillis()
-        if (now - lastGuardMs < 1_500L) return
+        // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
+        // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
+        if (GuardDebouncePolicy.suppress(now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs))) return
         val root = rootInActiveWindow ?: return
         val texts = ArrayList<CharSequence?>(64)
         try {
@@ -531,7 +535,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
         lastGuardMs = now
-        performGlobalAction(GLOBAL_ACTION_BACK)
+        // #484 (Flip4, 1 Nov): no global Back action before the gate any more. BACK is asynchronous, so it
+        // landed either on the protection screen (closing it, the gate then over the list behind it) or on
+        // the gate itself (whose back is "Go back", so the child was sent Home) — three end states across
+        // three runs. The gate now always opens over the screen it guards: every way out without the PIN
+        // is TamperGuardActivity.goHome(), and a correct PIN returns the parent to what they opened. The
+        // accessibility service is exempt from the background-launch rule, so the gate does not depend on
+        // BACK having cleared the screen first.
         startActivity(
             Intent(this, TamperGuardActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
