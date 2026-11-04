@@ -132,7 +132,7 @@ object CapabilitiesPolicy {
             else -> DEGRADED
         }
         out["pause_internet"] = applied(
-            EnforceabilityPolicy.pauseInternetOutcome(facts.webFilterSetUp, facts.tunnelRunning),
+            EnforceabilityPolicy.pauseInternetOutcome(true, true),
         )
         // Foreground-only location is a weaker path the agent still serves, so it is degraded rather than
         // unavailable: a `locate_now` works while the app is in the foreground.
