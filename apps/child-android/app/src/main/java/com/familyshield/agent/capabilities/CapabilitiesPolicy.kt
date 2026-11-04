@@ -86,7 +86,6 @@ object CapabilitiesPolicy {
         flavour: String,
         facts: CapabilityFacts,
     ): Map<String, Any?>? {
-        if (ClientHeader.value(versionName, versionCode, flavour) == null) return null
         val out = LinkedHashMap<String, Any?>()
         out["client"] = linkedMapOf(
             "app" to ClientHeader.APP,
