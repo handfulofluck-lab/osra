@@ -59,8 +59,8 @@ object ClientHeader {
         val raw = versionName?.trim().orEmpty()
         if (raw.isEmpty()) return null
         val parts = raw.split('.')
-        if (parts.size > 3) return null
+        if (parts.size > 4) return null
         if (parts.any { !VERSION_PART.matches(it) }) return null
-        return (parts + List(3 - parts.size) { "0" }).joinToString(".")
+        return (parts.take(3) + List(maxOf(0, 3 - parts.size)) { "0" }).joinToString(".")
     }
 }
