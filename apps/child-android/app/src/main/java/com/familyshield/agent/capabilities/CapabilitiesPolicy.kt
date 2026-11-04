@@ -117,9 +117,7 @@ object CapabilitiesPolicy {
     /** One state per feature this build can do, in the vocabulary's order. */
     fun features(facts: CapabilityFacts): Map<String, String> {
         val out = LinkedHashMap<String, String>()
-        out["lock_screen"] = applied(
-            EnforceabilityPolicy.lockOutcome(facts.canOverlay, facts.accessibilityRunning, facts.adminLocked),
-        )
+        out["lock_screen"] = if (facts.canOverlay) READY else UNAVAILABLE
         out["pause_screen"] = applied(EnforceabilityPolicy.pauseOutcome(facts.canOverlay, facts.accessibilityRunning))
         // Blocking a launch is the accessibility service's job and nothing else's.
         out["app_blocking"] = if (facts.accessibilityRunning) READY else UNAVAILABLE
