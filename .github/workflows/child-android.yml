@@ -44,7 +44,7 @@ jobs:
       # Plan 1.8: same upload keystore as the parent app, materialised from the secret when present.
       - name: Materialise upload keystore (if configured)
         env:
-          KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+          KEYSTORE_B64: ""
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release APK will use the debug key (by design)"
