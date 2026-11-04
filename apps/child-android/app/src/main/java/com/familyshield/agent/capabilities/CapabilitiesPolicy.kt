@@ -106,7 +106,7 @@ object CapabilitiesPolicy {
             put(
                 key,
                 when {
-                    key !in facts.applicableGrants -> NOT_APPLICABLE
+                    key !in facts.applicableGrants -> "not_supported"
                     key in facts.grantedGrants -> GRANTED
                     else -> MISSING
                 },
@@ -148,6 +148,9 @@ object CapabilitiesPolicy {
             out["notification_scan"] =
                 if (grantedState(facts, "notification_listener") == GRANTED) READY else UNAVAILABLE
             out["call_sms_log"] = if (facts.callSmsGranted) READY else UNAVAILABLE
+        } else {
+            out["notification_scan"] = "not_supported"
+            out["call_sms_log"] = "not_supported"
         }
         return out
     }
