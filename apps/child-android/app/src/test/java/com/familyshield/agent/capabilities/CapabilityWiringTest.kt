@@ -23,11 +23,12 @@ class CapabilityWiringTest {
         val end = reporter.indexOf("suspend fun ", start + 1).let { if (it < 0) reporter.length else it }
         val body = reporter.substring(start, end)
         val post = body.indexOf("api.postTelemetry(")
-        val record = body.indexOf("settings.recordReportedCapabilities(fingerprint)")
+        val recordCall = "settings.recordReportedCapabilities(fingerprint)"
+        val record = body.indexOf(recordCall)
         val catch = body.indexOf("catch (e: Exception)")
         assertTrue("both the POST and the record are in it", post >= 0 && record >= 0 && catch >= 0)
         assertTrue("the record follows the POST, inside the try", record in (post + 1) until catch)
-        assertTrue("and there is exactly one", body.indexOf("recordReportedCapabilities(", record + 1) < 0)
+        assertTrue("and there is exactly one", body.indexOf("recordReportedCapabilities(", record + recordCall.length) < 0)
     }
 
     @Test
