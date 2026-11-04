@@ -23,6 +23,11 @@ object CapabilityUploadPolicy {
             .joinToString(";", "{", "}") { "${it.key}=${render(it.value)}" }
         is List<*> -> value.joinToString(",", "[", "]") { render(it) }
         null -> "-"
+        // A length prefix, not escaping: without it a value containing the separators renders exactly like
+        // two entries — `{a=1;b=2}` is `mapOf("a" to "1;b=2")` and `mapOf("a" to "1", "b" to "2")` at once,
+        // and a real change would be swallowed as "unchanged". Pinned by
+        // `CapabilityUploadPolicyTest > a value that reads like the separators…`.
+        is String -> "${value.length}:$value"
         else -> value.toString()
     }
 }
