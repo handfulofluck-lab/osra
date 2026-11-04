@@ -928,7 +928,6 @@ class PairingActivity : ComponentActivity() {
                 // ADR-0034 A2: the same strict report a paired phone sends in telemetry. Absent when this
                 // build cannot name itself, and the server then claims the phone without one rather than
                 // refusing the claim.
-                .apply { capabilityReporter.report()?.let { put("capabilities", JSONObject(it)) } }
                 .toString()
                 .toRequestBody(JSON_MEDIA_TYPE)
             val client = OkHttpClient.Builder()
