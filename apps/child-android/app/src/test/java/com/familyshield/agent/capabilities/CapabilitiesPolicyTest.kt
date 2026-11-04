@@ -139,6 +139,19 @@ class CapabilitiesPolicyTest {
     }
 
     @Test
+    fun `pause and app blocking need the running service, and pausing the internet needs a running tunnel`() {
+        // Claude's #535 review (f7, f10): each feature defers to the policy the command itself uses, so the
+        // report cannot say ready for a command the phone would refuse.
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(overlay = true, accessibility = false))["pause_screen"])
+        assertEquals("ready", CapabilitiesPolicy.features(facts(overlay = false, accessibility = true))["pause_screen"])
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(accessibility = false))["app_blocking"])
+        assertEquals("ready", CapabilitiesPolicy.features(facts(accessibility = true))["app_blocking"])
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(filterSetUp = false, tunnel = false))["pause_internet"])
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(filterSetUp = true, tunnel = false))["pause_internet"])
+        assertEquals("ready", CapabilitiesPolicy.features(facts(filterSetUp = true, tunnel = true))["pause_internet"])
+    }
+
+    @Test
     fun `profiles travel when they were read, and are absent when they were not`() {
         val withProfiles = CapabilitiesPolicy.report(
             "0.2.0",
