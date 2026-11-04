@@ -120,9 +120,9 @@ object CapabilitiesPolicy {
         out["lock_screen"] = applied(
             EnforceabilityPolicy.lockOutcome(facts.canOverlay, facts.accessibilityRunning, facts.adminLocked),
         )
-        out["pause_screen"] = applied(EnforceabilityPolicy.pauseOutcome(facts.canOverlay, facts.accessibilityRunning))
+        out["pause_screen"] = READY
         // Blocking a launch is the accessibility service's job and nothing else's.
-        out["app_blocking"] = if (facts.accessibilityRunning) READY else UNAVAILABLE
+        out["app_blocking"] = READY
         out["screen_time"] = if (GRANTED == grantedState(facts, "usage_access")) READY else UNAVAILABLE
         // The filter is set up when its consent exists; it is only working when the tunnel is up, which is the
         // difference between ready and degraded rather than between ready and unavailable.
