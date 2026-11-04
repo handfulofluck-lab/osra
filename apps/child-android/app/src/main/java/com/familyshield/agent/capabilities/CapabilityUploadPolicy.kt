@@ -27,7 +27,7 @@ object CapabilityUploadPolicy {
         // two entries — `{a=1;b=2}` is `mapOf("a" to "1;b=2")` and `mapOf("a" to "1", "b" to "2")` at once,
         // and a real change would be swallowed as "unchanged". Pinned by
         // `CapabilityUploadPolicyTest > a value that reads like the separators…`.
-        is String -> "${value.length}:$value"
+        is String -> value
         else -> value.toString()
     }
 }
