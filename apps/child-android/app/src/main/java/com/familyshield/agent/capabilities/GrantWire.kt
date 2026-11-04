@@ -21,7 +21,7 @@ object GrantWire {
         OnboardingPolicy.Grant.LOCATION -> "location"
         OnboardingPolicy.Grant.PRIVATE_DNS -> "private_dns"
         OnboardingPolicy.Grant.BATTERY -> "battery"
-        OnboardingPolicy.Grant.USB_DEBUGGING -> "usb_debugging"
+        OnboardingPolicy.Grant.USB_DEBUGGING -> "usb-debugging"
         OnboardingPolicy.Grant.NOTIFICATION_LISTENER -> "notification_listener"
     }
 }
