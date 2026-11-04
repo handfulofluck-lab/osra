@@ -24,7 +24,7 @@ object StorageModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): FamilyShieldDatabase =
         Room.databaseBuilder(context, FamilyShieldDatabase::class.java, "familyshield.db")
-            .addMigrations(FamilyShieldDatabase.MIGRATION_2_3)
+            .addMigrations(FamilyShieldDatabase.MIGRATION_2_3, FamilyShieldDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
 

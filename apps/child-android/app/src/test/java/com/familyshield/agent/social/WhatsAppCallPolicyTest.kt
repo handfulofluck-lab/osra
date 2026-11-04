@@ -21,7 +21,17 @@ class WhatsAppCallPolicyTest {
         title: String? = "Mama",
         at: Long = start,
         pkg: String = "com.whatsapp",
-    ) = WhatsAppCallPolicy.Snapshot(pkg, key, category, title, at)
+        importance: Int? = null,
+        channel: String? = null,
+    ) = WhatsAppCallPolicy.Snapshot(
+        packageId = pkg,
+        key = key,
+        category = category,
+        title = title,
+        postedAtMs = at,
+        importance = importance,
+        channelId = channel,
+    )
 
     @Test
     fun `a ringing call is a call with no direction and no duration yet`() {
@@ -126,9 +136,61 @@ class WhatsAppCallPolicyTest {
         )
     }
 
+    @Test
+    fun `an unanswered call that ends anyway becomes one unknown row with no length`() {
+        // Claude's gap: the capture's outgoing call was removed with no change and no missed notice. A duration
+        // here would be the ring time, which says the call connected — we cannot know that.
+        val ring = WhatsAppCallPolicy.started(snapshot())!!
+        val row = WhatsAppCallPolicy.unanswered(ring)
+        assertEquals(ring.contact, row.contact)
+        assertEquals(ring.key, row.key)
+        assertEquals(ring.startMs, row.startMs)
+        assertEquals(WhatsAppCallPolicy.DIRECTION_UNKNOWN, row.direction)
+        assertNull(row.durationSec)
+        assertFalse("nothing was measured", row.durationApprox)
+    }
+
+    @Test
+    fun `the end is dated by the removal, not by the notification's own post time`() {
+        // A removal carries the time the notification was POSTED, so reading the duration off it reports 0 s for
+        // every call. The removal time is a separate fact and is passed separately.
+        val row = WhatsAppCallPolicy.ended(
+            snapshot(at = start),
+            startedAtMs = start,
+            answered = true,
+            removedAtMs = start + 92_000L,
+        )!!
+        assertEquals(92L, row.durationSec)
+    }
+
+    @Test
+    fun `answered is the same key changing, and a different key never is`() {
+        val ring = snapshot(importance = 4, channel = "voip_notification_4")
+        val inProgress = snapshot(importance = 2, channel = "silent_notifications_3")
+        assertTrue(WhatsAppCallPolicy.answered(ring, inProgress))
+        assertTrue(
+            "the channel alone is enough, matched on its prefix",
+            WhatsAppCallPolicy.answered(ring.copy(importance = null), inProgress.copy(importance = null)),
+        )
+        assertTrue(
+            "the importance alone is enough",
+            WhatsAppCallPolicy.answered(ring.copy(channelId = null), inProgress.copy(channelId = null)),
+        )
+        assertFalse(
+            "a re-post that changes nothing is not an answer",
+            WhatsAppCallPolicy.answered(ring, ring.copy(postedAtMs = start + 2_000L)),
+        )
+        assertFalse(
+            "another notification is another call",
+            WhatsAppCallPolicy.answered(ring, inProgress.copy(key = "whatsapp-call-2")),
+        )
+    }
+
     // What this suite cannot own, stated so a green run is not read as more than it is:
     //  - fault 1 (pause gate): the gate lives in the capture service; the row belongs there.
     //  - fault 6 (Play flavour captures calls): a build-flavour question, for the manifest/flavour tests.
-    //  - fault 7 (a row without `source` shown as WhatsApp): server payload plus parent-app rendering.
-    //  - the real sequence (ring, answer, end, missed, outgoing): captured on the Flip4 before the wiring PR.
+    //  - fault 7 (a row without `source` shown as WhatsApp): server payload plus parent-app rendering — the
+    //    payload half is pinned in `CommsCallPayloadTest`, the rendering half in `call_rows_45_test.dart`.
+    //  - the real sequence (ring, answer, end, missed, outgoing): the tracker's rows use Claude's Flip4
+    //    capture as their fixture, but delivery to our own listener is still owed on the phone.
 }
