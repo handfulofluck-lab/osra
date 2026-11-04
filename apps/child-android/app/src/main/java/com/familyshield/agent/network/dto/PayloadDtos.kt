@@ -34,6 +34,14 @@ data class TelemetryDto(
      * stores it as such.
      */
     val appliedRulesVersion: Int? = null,
+    /**
+     * ADR-0034 decision 1 + 2: the capability report, or absent when this build cannot name itself.
+     *
+     * The server validates it strictly and on its own, so a bad report costs the `capabilities` field and not
+     * the telemetry beside it (A2). Absent means "no new report", which leaves the stored one alone — an old
+     * agent must never erase what a newer one said.
+     */
+    val capabilities: Map<String, Any?>? = null,
 )
 
 /**
