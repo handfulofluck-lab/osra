@@ -249,6 +249,7 @@ class UsageReporter @Inject constructor(
         val report = capabilities.report() ?: return
         val fingerprint = CapabilityUploadPolicy.fingerprint(report)
         if (settings.reportedCapabilities() == fingerprint) return
+        settings.recordReportedCapabilities(fingerprint)
         try {
             api.postTelemetry(
                 deviceId,
@@ -262,7 +263,6 @@ class UsageReporter @Inject constructor(
                     capabilities = report,
                 ),
             )
-            settings.recordReportedCapabilities(fingerprint)
         } catch (e: CancellationException) {
             throw e // NOTE: never swallow coroutine cancellation
         } catch (e: Exception) {
