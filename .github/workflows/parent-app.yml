@@ -88,7 +88,18 @@ jobs:
           OSRA_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEYSTORE_PASSWORD }}
           OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
           OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
-        run: flutter build appbundle --release
+          # The server the store build talks to out of the box (server_provider.dart kDefaultServerUrl).
+          # A repository variable, not code: unset keeps today's behaviour (the parent types an address);
+          # set it to the production https URL before a build goes to testers. Never an http:// URL: the
+          # release network config is HTTPS-only.
+          OSRA_API_BASE: ${{ vars.OSRA_API_BASE }}
+        run: |
+          case "$OSRA_API_BASE" in
+            "") echo "OSRA_API_BASE not set: the bundle has no built-in server address" ;;
+            https://*) echo "built-in server: $OSRA_API_BASE" ;;
+            *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
+          esac
+          flutter build appbundle --release --dart-define=API_BASE="$OSRA_API_BASE"
       - name: Release manifest must declare INTERNET
         run: |
           unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
