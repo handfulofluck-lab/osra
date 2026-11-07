@@ -19,6 +19,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Auditing security/quality | [`QA/QA-REPORT-2026-10-11.md`](QA/QA-REPORT-2026-10-11.md) + [`QA/audits/`](QA/audits/) |
 | Tracking what changed and when | [`../CHANGELOG.md`](../CHANGELOG.md) |
 | Preparing a store release | [`test-guides/PUBLISHING-READINESS.md`](test-guides/PUBLISHING-READINESS.md) — the checklist, its owner per row, and the verification a release cites |
+| Explaining setup to a customer (download, pairing, several devices for one child) | [`customer/GETTING-STARTED.md`](customer/GETTING-STARTED.md) (English) · [`customer/GETTING-STARTED.ar.md`](customer/GETTING-STARTED.ar.md) (Arabic) — draft until [`customer/GUIDE-GAPS.md`](customer/GUIDE-GAPS.md) is closed |
 | Comparing against competitors | [`COMPETITIVE-ANALYSIS.md`](COMPETITIVE-ANALYSIS.md) |
 
 ## Specification
