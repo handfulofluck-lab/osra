@@ -1,7 +1,7 @@
 # What the customer guide needs before it can be published
 
 Checked against `main` at `fe8d36f` (7 November 2026) by Claude while writing
-[`GETTING-STARTED.md`](GETTING-STARTED.md). Each gap names the code that shows it. **Blocker** means
+[`getting-started.html`](getting-started.html). Each gap names the code that shows it. **Blocker** means
 a paying customer cannot finish setup by following the guide.
 
 | # | Gap | Evidence | Severity | Owner (suggested) |
