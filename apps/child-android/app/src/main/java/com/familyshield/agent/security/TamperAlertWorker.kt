@@ -96,7 +96,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val start = inputData.getLong(KEY_WINDOW_START_MS, 0L)
         val count = inputData.getInt(KEY_ATTEMPT_COUNT, 0)
         if (start <= 0L || count <= 0) return null
-        val screens = inputData.getString(KEY_SCREENS).orEmpty().split(',').filter { it.isNotBlank() }
+        val screens = GuardAttemptWindow.decodeScreens(inputData.getString(KEY_SCREENS))
         return GuardAttemptWindow.State(windowStartMs = start, count = count, screens = screens)
     }
 
@@ -194,7 +194,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         KEY_EVENT_AT_MS to eventAtMs,
                         KEY_WINDOW_START_MS to windowStartMs,
                         KEY_ATTEMPT_COUNT to attemptCount,
-                        KEY_SCREENS to screens.joinToString(","),
+                        KEY_SCREENS to GuardAttemptWindow.encodeScreens(screens),
                         KEY_APP to app,
                         KEY_LAYOUT to layout,
                     ),

@@ -98,7 +98,7 @@ object TamperState {
         val start = p.getLong(KEY_GUARD_WINDOW_START_MS, 0L)
         val count = p.getInt(KEY_GUARD_WINDOW_COUNT, 0)
         if (start <= 0L || count <= 0) return null
-        val screens = p.getString(KEY_GUARD_WINDOW_SCREENS, null).orEmpty().split(',').filter { it.isNotBlank() }
+        val screens = GuardAttemptWindow.decodeScreens(p.getString(KEY_GUARD_WINDOW_SCREENS, null))
         return GuardAttemptWindow.State(windowStartMs = start, count = count, screens = screens)
     }
 
@@ -106,7 +106,7 @@ object TamperState {
         prefs(context).edit()
             .putLong(KEY_GUARD_WINDOW_START_MS, window.windowStartMs)
             .putInt(KEY_GUARD_WINDOW_COUNT, window.count)
-            .putString(KEY_GUARD_WINDOW_SCREENS, window.screens.joinToString(","))
+            .putString(KEY_GUARD_WINDOW_SCREENS, GuardAttemptWindow.encodeScreens(window.screens))
             .apply()
     }
 

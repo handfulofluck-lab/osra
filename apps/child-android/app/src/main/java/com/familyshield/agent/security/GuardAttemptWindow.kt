@@ -23,8 +23,8 @@ object GuardAttemptWindow {
     const val MAX_SCREENS: Int = 8
 
     /**
-     * [screens] are the distinct protection screens tried in this window, first seen first (e.g.
-     * `device_admin`, `space_setup`). A repeat in an open window used to keep only the count, so a parent
+     * [screens] are the distinct protection screens tried in this window, first seen first, as lower-case
+     * [TamperScreen] names (e.g. `deactivate_admin`, `space_setup`). A repeat in an open window used to keep only the count, so a parent
      * who had seen "device admin" never learned a second space was being set up in the same five minutes.
      */
     data class State(val windowStartMs: Long, val count: Int, val screens: List<String> = emptyList())
@@ -55,9 +55,25 @@ object GuardAttemptWindow {
      */
     fun body(count: Int, screens: List<String>, detail: String): String {
         if (count <= 1) return detail
-        val tried = screens.joinToString(", ") { it.replace('_', ' ') }
+        val tried = screens.joinToString(", ") { label(it) }
         val which = if (tried.isEmpty()) "" else " Screens tried: $tried."
         return "$count attempts were made to open a protection-removal screen on this device in 5 minutes.$which " +
             "The PIN was asked for each time."
     }
+
+    /** What the parent reads for each [TamperScreen], by its lower-case name; an unknown name reads as itself. */
+    fun label(screen: String): String = when (screen) {
+        "deactivate_admin" -> "device admin"
+        "uninstall" -> "uninstall"
+        "app_info" -> "app info"
+        "private_dns" -> "private DNS"
+        "space_setup" -> "second space setup"
+        else -> screen.replace('_', ' ')
+    }
+
+    /** Saved form of [State.screens]: one line, comma-separated (the names never contain a comma). */
+    fun encodeScreens(screens: List<String>): String = screens.joinToString(",")
+
+    /** Inverse of [encodeScreens]; null or empty (state saved before the list existed) is no screens. */
+    fun decodeScreens(saved: String?): List<String> = saved.orEmpty().split(',').filter { it.isNotBlank() }
 }
