@@ -1,0 +1,20 @@
+# What the customer guide needs before it can be published
+
+Checked against `main` at `fe8d36f` (7 November 2026) by Claude while writing
+[`getting-started.html`](getting-started.html). Each gap names the code that shows it. **Blocker** means
+a paying customer cannot finish setup by following the guide.
+
+| # | Gap | Evidence | Severity | Owner (suggested) |
+|---|---|---|---|---|
+| G1 | **There is no subscription or payment flow.** Nothing in the parent app or the API sells, checks or unlocks a plan; any account that registers gets everything. The guide therefore says nothing about subscribing. | No billing, purchase or paywall code in `apps/parent-app/lib` or `services/api/src` (search for `billing`, `subscription`, `in_app_purchase`, `paywall`). | Product decision | Karim decides the model (Play Billing in the parent app, or a website); Claude designs; Kimi builds |
+| G2 | **Neither app knows OSRA's server.** The parent app's server field is blank unless the build is made with `--dart-define=API_BASE=…`, and no workflow passes one. A customer would be asked to type a server address they do not have. | `apps/parent-app/lib/providers/server_provider.dart:10` (`defaultValue: ''`); no `API_BASE` in `.github/workflows/parent-app.yml` | **Blocker** | Kimi: pass the production URL in the release build and hide the server field outside debug builds |
+| G3 | **There is no production server yet.** Only `api.staging.osratech.com` exists (roadmap 5.8: "put a production (Frankfurt) stack up" is still open). | `docs/ROADMAP.md` row 5.8 | **Blocker** for a public launch | Claude (stack) + Karim (spend) |
+| G4 | **Typed pairing asks the child's phone for a server URL** that the parent's screen never shows. The QR path carries the URL; the typed fallback does not, and a release build only accepts `https` on `osratech.com`. | `apps/child-android/.../setup/PairingActivity.kt:362` (server field empty unless scanned); parent screen shows only the six digits (`pair_qr_screen.dart`) | **Blocker** for parents whose child's device cannot scan | Kimi: pre-fill and lock the server field in release builds |
+| G5 | **The daily screen-time limit is counted per device, not per child.** A 3-hour limit gives 3 hours on each device. The guide says so honestly. | `apps/child-android/.../data/RuleEngine.kt:108` sums only the device's own `minutesUsedToday` | Product gap (competitors share one budget) | Claude to write the design (server-side daily total) if Karim wants one budget per child |
+| G6 | **A parent cannot remove a device from the parent app.** The device card has Ring, Lock, Pause and so on, but no Remove or Unpair. | `apps/parent-app/lib/features/children/child_detail_screen.dart:150-235` | Should fix before launch (a child's lost or sold phone stays listed) | Kimi |
+| G7 | **The parent app's wizard text names a button the child app does not have:** "choose Pair with a code", while the child app shows **Scan QR code** and **Pair this device**. | `app_en.arb` `onboardingPairIntro` vs child `strings.xml` `pair_scan_button` / `pair_button` | Small (copy) | Kimi; Arabic to Karim |
+| G8 | **The child app's permission checklist is English only**, also on an Arabic phone. | `apps/child-android/.../setup/OnboardingPolicy.kt:20-30` (titles hard-coded in Kotlin) | Should fix for the Middle East launch | Kimi; Arabic to Karim |
+| G9 | **Neither app is in the App Store yet.** The iPhone child agent exists in code (`apps/child-ios`, including pairing), but shipping it needs the Apple developer account and the Family Controls entitlement (roadmap 5.1, 5.5). The guide says iOS comes later. | ROADMAP 5.1 and 5.5, issue #372 | Known, scheduled | Karim (Apple account), Ahmed (app) |
+| G10 | **The store names are the draft names** (`OSRA: Parental Control`, `OSRA Child: Parental Control`). If the Play listing uses other names, update section 1. | the Play submission draft (project files, 29 Oct) §1; Karim decision 4 | Check at upload | Karim |
+
+When a gap closes, change the guide in the same PR and strike the row here.
