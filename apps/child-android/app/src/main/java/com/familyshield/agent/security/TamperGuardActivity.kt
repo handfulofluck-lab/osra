@@ -1,5 +1,6 @@
 package com.familyshield.agent.security
 
+import android.content.res.Configuration
 import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
@@ -24,7 +25,7 @@ import javax.inject.Inject
  * phone and work with the agent's data cleared of everything but the secure store.
  */
 @AndroidEntryPoint
-class TamperGuardActivity : ComponentActivity() {
+open class TamperGuardActivity : ComponentActivity() {
 
     @Inject lateinit var pinStore: ParentPinStore
 
@@ -114,11 +115,18 @@ class TamperGuardActivity : ComponentActivity() {
         super.onResume()
         GuardGateState.lastResumedMs = System.currentTimeMillis()
         GuardGateState.showing = true
+        onSharingChanged(isInMultiWindowMode)
     }
 
     override fun onPause() {
         GuardGateState.showing = false
+        GuardGateState.multiWindow = false
         super.onPause()
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        onSharingChanged(isInMultiWindowMode)
     }
 
     /** Hardware back is the same as "Go back": never a way through. */
@@ -137,6 +145,31 @@ class TamperGuardActivity : ComponentActivity() {
         finish()
     }
 
+    /**
+     * osra-security#7: a gate sharing the screen covers nothing (the protection screen stays usable in the
+     * other half), so it refuses: it relaunches as [TamperGuardTaskActivity], alone in a non-resizeable task
+     * that Android opens full-screen, or goes Home if that did not hold. The flag also tells the guard to judge
+     * every protection screen again until the gate is back in front alone.
+     */
+    private fun onSharingChanged(inMultiWindow: Boolean) {
+        GuardGateState.multiWindow = inMultiWindow
+        val now = System.currentTimeMillis()
+        when (GuardMultiWindowPolicy.action(inMultiWindow, now, GuardGateState.lastRelaunchMs)) {
+            GuardMultiWindowPolicy.Action.NONE -> Unit
+            GuardMultiWindowPolicy.Action.HOME -> goHome()
+            GuardMultiWindowPolicy.Action.RELAUNCH -> {
+                GuardGateState.lastRelaunchMs = now
+                setResult(RESULT_CANCELED)
+                startActivity(
+                    android.content.Intent(intent)
+                        .setClass(this, TamperGuardTaskActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                finish()
+            }
+        }
+    }
+
     companion object {
         const val EXTRA_REASON = "reason"
         const val REASON_SETTINGS = "settings"
@@ -146,3 +179,12 @@ class TamperGuardActivity : ComponentActivity() {
         private const val MAX_ATTEMPTS = 5
     }
 }
+
+/**
+ * osra-security#7: the gate the accessibility guard opens. Same screen as [TamperGuardActivity], declared with
+ * its own task affinity, so it is the root of a task that is not resizeable. In OSRA's own task (the old
+ * launch), the task's root was the status screen, which is resizeable, so Recents offered split screen for it;
+ * and a correct PIN finished the gate into that status screen instead of the screen the parent had opened.
+ * In-app callers keep [TamperGuardActivity]: they wait for its result, which a separate task cannot return.
+ */
+class TamperGuardTaskActivity : TamperGuardActivity()

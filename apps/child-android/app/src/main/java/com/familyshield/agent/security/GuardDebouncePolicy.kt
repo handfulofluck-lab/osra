@@ -11,13 +11,26 @@ package com.familyshield.agent.security
  *
  * [GuardGateState] supplies the two flags; `onPause` of the gate lands before the next activity resumes, so
  * a screen that returns over a paused gate always sees `gateShowing = false`.
+ *
+ * osra-security#7: in split screen both halves are resumed, so a gate in one half stayed "showing" while a
+ * protection screen was opened and reopened in the other. Two more inputs now beat the flags: a gate in
+ * multi-window mode covers nothing, so it never suppresses; and a window-state change from a window other
+ * than the one last guarded is a new screen, judged even while the gate is up.
  */
 object GuardDebouncePolicy {
 
     /** How long a launched gate is given to come up before the guard would launch it again. */
     const val LAUNCH_WINDOW_MS: Long = 1_500L
 
-    fun suppress(nowMs: Long, lastGuardMs: Long, gateShowing: Boolean, gateResumedSinceLaunch: Boolean): Boolean {
+    fun suppress(
+        nowMs: Long,
+        lastGuardMs: Long,
+        gateShowing: Boolean,
+        gateResumedSinceLaunch: Boolean,
+        gateMultiWindow: Boolean = false,
+        newWindow: Boolean = false,
+    ): Boolean {
+        if (gateMultiWindow || newWindow) return false
         if (gateShowing) return true
         val launchPending = nowMs - lastGuardMs < LAUNCH_WINDOW_MS && !gateResumedSinceLaunch
         return launchPending
@@ -35,6 +48,30 @@ object GuardGateState {
     /** Wall-clock time of the gate's last `onResume`, 0 before the first. */
     @Volatile var lastResumedMs: Long = 0L
 
+    /** osra-security#7: true while the gate is resumed in split screen, pop-up or freeform. */
+    @Volatile var multiWindow: Boolean = false
+
+    /** When the gate last relaunched itself out of multi-window, 0 before the first. */
+    @Volatile var lastRelaunchMs: Long = 0L
+
     /** Whether the gate has come up since a launch at [launchMs]. */
     fun resumedSince(launchMs: Long): Boolean = lastResumedMs >= launchMs && lastResumedMs != 0L
+}
+
+/**
+ * osra-security#7: what a gate that finds itself sharing the screen does. It relaunches itself in its own
+ * non-resizeable task, which Android opens full-screen; if it is sharing the screen again within
+ * [RELAUNCH_WINDOW_MS] (a launcher that forces every app resizeable), it goes Home instead of looping.
+ */
+object GuardMultiWindowPolicy {
+
+    const val RELAUNCH_WINDOW_MS: Long = 2_000L
+
+    enum class Action { NONE, RELAUNCH, HOME }
+
+    fun action(inMultiWindow: Boolean, nowMs: Long, lastRelaunchMs: Long): Action = when {
+        !inMultiWindow -> Action.NONE
+        lastRelaunchMs != 0L && nowMs - lastRelaunchMs < RELAUNCH_WINDOW_MS -> Action.HOME
+        else -> Action.RELAUNCH
+    }
 }

@@ -32,7 +32,7 @@ class TamperGuardLandsHomeWiringTest {
     fun `the guard opens the gate without sending BACK first`() {
         val guard = service.substringAfter("private fun guardProtectionScreens(", missingDelimiterValue = "")
             .substringBefore("\n    private ", missingDelimiterValue = "")
-        assertTrue("guardProtectionScreens is where it was", guard.contains("TamperGuardActivity::class.java"))
+        assertTrue("guardProtectionScreens is where it was", guard.contains("TamperGuardTaskActivity::class.java"))
         assertFalse("no BACK before the gate", guard.contains("GLOBAL_ACTION_BACK"))
         assertFalse("and no HOME, which would defer the gate's launch (#460)", guard.contains("GLOBAL_ACTION_HOME"))
     }
@@ -65,7 +65,13 @@ class TamperGuardLandsHomeWiringTest {
             .substringBefore("\n    private ", missingDelimiterValue = "")
         assertTrue(
             "the service calls the pure rule with both flags",
-            guard.contains("GuardDebouncePolicy.suppress(now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs))"),
+            guard.contains("now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs),"),
+        )
+        assertTrue(
+            "osra-security#7: and with the multi-window flag and the window identity",
+            guard.contains("gateMultiWindow = GuardGateState.multiWindow, newWindow = newWindow,") &&
+                guard.contains("event.windowId != guardedWindowId") &&
+                guard.contains("guardedWindowId = event.windowId"),
         )
         assertFalse("and no bare time check", guard.contains("now - lastGuardMs <"))
         val onResume = gate.substringAfter("override fun onResume()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
@@ -81,6 +87,40 @@ class TamperGuardLandsHomeWiringTest {
             .substringBefore("/>", missingDelimiterValue = "")
         assertTrue("the gate's manifest entry is where it was", entry.contains("android:exported=\"false\""))
         assertTrue("not resizeable: no split screen, where both halves stay resumed", entry.contains("android:resizeableActivity=\"false\""))
+    }
+
+    // osra-security#7. Mutants: launch TamperGuardActivity from the guard again, or drop the task entry's
+    // taskAffinity / resizeableActivity → [the guard's gate is alone in a task that cannot be split]; drop the
+    // multi-window handling from the gate → [a gate sharing the screen refuses it].
+
+    @Test
+    fun `the guard's gate is alone in a task that cannot be split`() {
+        val entry = manifest.substringAfter("android:name=\".security.TamperGuardTaskActivity\"", missingDelimiterValue = "")
+            .substringBefore("/>", missingDelimiterValue = "")
+        assertTrue("the task gate is declared", entry.contains("android:exported=\"false\""))
+        assertTrue("its own task, not OSRA's (whose root is resizeable)", entry.contains("android:taskAffinity=\"\""))
+        assertTrue("not resizeable", entry.contains("android:resizeableActivity=\"false\""))
+        assertTrue("one per device", entry.contains("android:launchMode=\"singleTask\""))
+        assertTrue("same screen", gate.contains("class TamperGuardTaskActivity : TamperGuardActivity()"))
+        val guard = service.substringAfter("private fun guardProtectionScreens(", missingDelimiterValue = "")
+            .substringBefore("\n    private ", missingDelimiterValue = "")
+        assertFalse("the guard never opens the in-task gate", guard.contains("Intent(this, TamperGuardActivity::class.java)"))
+        assertTrue("and leaves split screen first", guard.contains("if (GuardGateState.multiWindow) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)"))
+    }
+
+    @Test
+    fun `a gate sharing the screen refuses it`() {
+        val onResume = gate.substringAfter("override fun onResume()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
+        assertTrue("checked on resume", onResume.contains("onSharingChanged(isInMultiWindowMode)"))
+        val changed = gate.substringAfter("override fun onMultiWindowModeChanged(", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
+        assertTrue("and on every change", changed.contains("onSharingChanged(isInMultiWindowMode)"))
+        val sharing = gate.substringAfter("private fun onSharingChanged(", missingDelimiterValue = "").substringBefore("\n    companion object", missingDelimiterValue = "")
+        assertTrue("the flag the guard reads", sharing.contains("GuardGateState.multiWindow = inMultiWindow"))
+        assertTrue("asks the policy", sharing.contains("GuardMultiWindowPolicy.action("))
+        assertTrue("relaunches as the task gate", sharing.contains("setClass(this, TamperGuardTaskActivity::class.java)"))
+        assertTrue("or goes Home", sharing.contains("GuardMultiWindowPolicy.Action.HOME -> goHome()"))
+        val onPause = gate.substringAfter("override fun onPause()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
+        assertTrue("cleared on pause", onPause.contains("GuardGateState.multiWindow = false"))
     }
 
     private fun sourceFile(relative: String): String {
