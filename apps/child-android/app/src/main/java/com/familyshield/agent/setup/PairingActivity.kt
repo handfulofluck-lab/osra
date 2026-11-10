@@ -918,6 +918,9 @@ class PairingActivity : ComponentActivity() {
             // NOTE: testers type "192.168.1.5:3000" without a scheme; OkHttp would reject it.
             // Fail closed when blank — the form requires a server URL (no built-in default).
             val base = ServerUrls.normalize(serverUrl).ifBlank { throw IllegalArgumentException("Server URL is required") }
+            // Captured once: the claim body and the fingerprint recorded after Allow must describe the
+            // same report, or a resume would re-send one the server already stored.
+            val capabilityReport = capabilityReporter.report()
             val body = JSONObject()
                 .put("code", code)
                 .put("platform", "android")
@@ -928,7 +931,7 @@ class PairingActivity : ComponentActivity() {
                 // ADR-0034 A2: the same strict report a paired phone sends in telemetry. Absent when this
                 // build cannot name itself, and the server then claims the phone without one rather than
                 // refusing the claim.
-                .apply { capabilityReporter.report()?.let { put("capabilities", JSONObject(it)) } }
+                .apply { capabilityReport?.let { put("capabilities", JSONObject(it)) } }
                 .toString()
                 .toRequestBody(JSON_MEDIA_TYPE)
             val client = OkHttpClient.Builder()
@@ -969,6 +972,14 @@ class PairingActivity : ComponentActivity() {
             )
             when (step) {
                 PairingApproval.PollStep.APPROVED -> {
+                    // #535 review (point 5): the report is stored with the device at Allow, so this is when it
+                    // counts as accepted. Recorded only here: a claim the parent refuses must leave nothing
+                    // behind, because nothing was stored.
+                    capabilityReport?.let {
+                        settings.recordReportedCapabilities(
+                            com.familyshield.agent.capabilities.CapabilityUploadPolicy.fingerprint(it),
+                        )
+                    }
                     val json = JSONObject(approved!!)
                     val deviceId = when (val device = json.opt("device")) {
                         is JSONObject -> device.getString("id")

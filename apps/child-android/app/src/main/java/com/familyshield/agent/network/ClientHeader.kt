@@ -23,6 +23,9 @@ object ClientHeader {
     /** A3's hard cap. A longer value is not sent, rather than sent and rejected. */
     const val MAX_LENGTH = 64
 
+    /** The largest build the server's pattern accepts (`\d{1,9}`). */
+    const val MAX_BUILD = 999_999_999
+
     /** The app name this artefact reports: the only one the server knows for an Android child agent. */
     const val APP = "child-android"
 
@@ -42,7 +45,9 @@ object ClientHeader {
      */
     fun value(versionName: String?, versionCode: Int, flavour: String): String? {
         val version = version(versionName) ?: return null
-        if (versionCode < 1) return null
+        // The server's pattern is `\d{1,9}`: a bigger build number would be sent and rejected, which is the
+        // same as a malformed one, so it is not sent (#535 review, point 4).
+        if (versionCode < 1 || versionCode > MAX_BUILD) return null
         if (!FLAVOUR.matches(flavour)) return null
         val header = "$APP/$version+$versionCode ($flavour)"
         return header.takeIf { it.length <= MAX_LENGTH }

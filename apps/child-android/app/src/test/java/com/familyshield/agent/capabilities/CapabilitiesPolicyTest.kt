@@ -88,15 +88,40 @@ class CapabilitiesPolicyTest {
     }
 
     @Test
-    fun `the filter is degraded while the tunnel is down, and unavailable without its consent`() {
+    fun `the filter has no weaker path, so a tunnel that is down is unavailable`() {
+        // #535 review, point 1: Android filters only through the tunnel. Reporting `degraded` there claimed a
+        // weaker path that does not exist, and `pauseInternetOutcome` refuses on the same facts.
         val noConsent = facts(granted = emptySet(), filterSetUp = false, tunnel = false)
         assertEquals("unavailable", CapabilitiesPolicy.features(noConsent)["web_filter"])
 
         val consentNoTunnel = facts(granted = setOf("web_filter"), filterSetUp = true, tunnel = false)
-        assertEquals("degraded", CapabilitiesPolicy.features(consentNoTunnel)["web_filter"])
+        assertEquals("unavailable", CapabilitiesPolicy.features(consentNoTunnel)["web_filter"])
 
         val working = facts(granted = setOf("web_filter"), filterSetUp = true, tunnel = true)
         assertEquals("ready", CapabilitiesPolicy.features(working)["web_filter"])
+    }
+
+    @Test
+    fun `pause and app blocking need the running service, and pausing the internet needs a running tunnel`() {
+        // Claude's #535 review (f7, f10): each feature defers to the policy the command itself uses, so the
+        // report cannot say ready for a command the phone would refuse.
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(overlay = true, accessibility = false))["pause_screen"])
+        assertEquals("ready", CapabilitiesPolicy.features(facts(overlay = false, accessibility = true))["pause_screen"])
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(accessibility = false))["app_blocking"])
+        assertEquals("ready", CapabilitiesPolicy.features(facts(accessibility = true))["app_blocking"])
+        assertEquals("unavailable", CapabilitiesPolicy.features(facts(filterSetUp = false, tunnel = false))["pause_internet"])
+        assertEquals("ready", CapabilitiesPolicy.features(facts(filterSetUp = true, tunnel = true))["pause_internet"])
+    }
+
+    @Test
+    fun `pausing the internet is degraded, not unavailable, while the tunnel is down but set up`() {
+        // The asymmetric case, decided in the #535 review (F-B): `web_filter` is unavailable on exactly these
+        // facts, because nothing is filtered; `pause_internet` is degraded, because the dispatcher starts the
+        // tunnel and waits for it before deciding, and the server never refuses `degraded`. Saying unavailable
+        // here would refuse a command the phone would have carried out.
+        val setUpNoTunnel = facts(granted = setOf("web_filter"), filterSetUp = true, tunnel = false)
+        assertEquals("unavailable", CapabilitiesPolicy.features(setUpNoTunnel)["web_filter"])
+        assertEquals("degraded", CapabilitiesPolicy.features(setUpNoTunnel)["pause_internet"])
     }
 
     @Test

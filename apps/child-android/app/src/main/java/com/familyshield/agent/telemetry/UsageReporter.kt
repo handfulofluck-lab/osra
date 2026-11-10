@@ -157,6 +157,7 @@ class UsageReporter @Inject constructor(
             val grant = currentLocationGrant()
             // Issue #475: the applied rules version rides every telemetry upload, beside the grant report.
             val appliedRules = settings.appliedRulesVersion()
+            val report = capabilities.report()
             api.postTelemetry(
                 deviceId,
                 TelemetryDto(
@@ -166,12 +167,15 @@ class UsageReporter @Inject constructor(
                     batteryPct = currentBatteryPct(),
                     locationGrant = grant,
                     appliedRulesVersion = appliedRules,
-                    capabilities = capabilities.report(),
+                    capabilities = report,
                 ),
             )
             // Issue #221: the periodic upload also counts as a report, so the expedited path does not
             // re-send the same value on the next resume.
             settings.recordReportedLocationGrant(grant)
+            // #535 review (point 5): and so does the capability report — otherwise a change this upload just
+            // carried is uploaded a second time by the next resume.
+            recordCapabilities(report)
             // NOTE: watermark moves only on success...
             dao.deleteOlderThan(newWatermark)
             stateDao.set(AgentStateEntity(KEY_WATERMARK, newWatermark))
@@ -243,6 +247,18 @@ class UsageReporter @Inject constructor(
      * server last accepted, and only a difference uploads. The fingerprint is recorded after a successful POST
      * for the same reason the location grant is: a failed request must be retried, not remembered as covered.
      */
+    /**
+     * #535 review (point 5): any upload that carried a report records its fingerprint, so the change-triggered
+     * path does not send the same report again on the next resume.
+     *
+     * Called only after the POST returned, for the same reason the change-triggered path records after its
+     * POST: a failed upload must be retried, never remembered as covered.
+     */
+    private suspend fun recordCapabilities(report: Map<String, Any?>?) {
+        report ?: return
+        settings.recordReportedCapabilities(CapabilityUploadPolicy.fingerprint(report))
+    }
+
     suspend fun reportCapabilitiesIfChanged() {
         val deviceId = settings.deviceId() ?: return
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
@@ -278,6 +294,7 @@ class UsageReporter @Inject constructor(
             lastReported = { settings.reportedLocationGrant() },
             recordReported = { settings.recordReportedLocationGrant(it) },
             upload = { grant ->
+                val report = capabilities.report()
                 api.postTelemetry(
                     deviceId,
                     TelemetryDto(
@@ -287,9 +304,10 @@ class UsageReporter @Inject constructor(
                         batteryPct = currentBatteryPct(),
                         locationGrant = grant,
                         appliedRulesVersion = settings.appliedRulesVersion(),
-                        capabilities = capabilities.report(),
+                        capabilities = report,
                     ),
                 )
+                recordCapabilities(report)
             },
         )
         try {

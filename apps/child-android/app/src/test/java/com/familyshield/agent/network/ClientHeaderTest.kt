@@ -43,6 +43,14 @@ class ClientHeaderTest {
         assertNull("a version name of spaces", ClientHeader.value("   ", 2, "full"))
         assertNull("an empty part", ClientHeader.value("0..0", 2, "full"))
         assertNull("no build number", ClientHeader.value("0.2.0", 0, "full"))
+        // The server's pattern is `\d{1,9}`: one digit more and the header is not one the server can parse, so
+        // it is not sent at all (#535 review, point 4).
+        assertNull("a build number above the server's nine digits", ClientHeader.value("0.2.0", 1_000_000_000, "full"))
+        assertEquals(
+            "the largest the pattern takes is still sent",
+            "child-android/0.2.0+999999999 (full)",
+            ClientHeader.value("0.2.0", 999_999_999, "full"),
+        )
     }
 
     @Test

@@ -124,16 +124,24 @@ object CapabilitiesPolicy {
         // Blocking a launch is the accessibility service's job and nothing else's.
         out["app_blocking"] = if (facts.accessibilityRunning) READY else UNAVAILABLE
         out["screen_time"] = if (GRANTED == grantedState(facts, "usage_access")) READY else UNAVAILABLE
-        // The filter is set up when its consent exists; it is only working when the tunnel is up, which is the
-        // difference between ready and degraded rather than between ready and unavailable.
+        // **No weaker path exists for the filter**, so a tunnel that is down is `unavailable`, not `degraded`:
+        // traffic is not filtered at all, and `pauseInternetOutcome` refuses on the same facts (#535 review, f7).
+        // Only the consent and a working tunnel are `ready`.
         out["web_filter"] = when {
             grantedState(facts, "web_filter") != GRANTED -> UNAVAILABLE
             facts.webFilterSetUp && facts.tunnelRunning -> READY
+            else -> UNAVAILABLE
+        }
+        // `pause_internet` is deliberately **weaker** than `web_filter`'s verdict on identical facts: the
+        // dispatcher starts the tunnel and waits for it before deciding (`CommandDispatcher`), so a pause asked
+        // on a phone with consent but no tunnel is usually carried out. `degraded` is never refused by the
+        // server; saying `unavailable` here would refuse a command the phone would have honoured (#535 review,
+        // decision F-B).
+        out["pause_internet"] = when {
+            !facts.webFilterSetUp -> UNAVAILABLE
+            facts.tunnelRunning -> READY
             else -> DEGRADED
         }
-        out["pause_internet"] = applied(
-            EnforceabilityPolicy.pauseInternetOutcome(facts.webFilterSetUp, facts.tunnelRunning),
-        )
         // Foreground-only location is a weaker path the agent still serves, so it is degraded rather than
         // unavailable: a `locate_now` works while the app is in the foreground.
         out["location"] = when {
