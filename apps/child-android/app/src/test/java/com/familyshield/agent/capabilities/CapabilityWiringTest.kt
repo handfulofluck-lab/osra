@@ -39,6 +39,37 @@ class CapabilityWiringTest {
         )
     }
 
+    @Test
+    fun `every other upload that carries the report records it, and only after its POST`() {
+        // #535 review point 5 (fault f14): the periodic upload and the location-grant report carry the report
+        // too, so each records the fingerprint once its POST has returned, or the next resume sends it again.
+        for (signature in listOf("suspend fun aggregateAndUpload()", "suspend fun reportLocationGrantIfChanged()")) {
+            val body = functionBody(reporter, signature)
+            val post = body.indexOf("api.postTelemetry(")
+            val record = body.indexOf("recordCapabilities(report)")
+            assertTrue("$signature posts and records the report", post >= 0 && record >= 0)
+            assertTrue("$signature records only after the POST", record > post)
+        }
+    }
+
+    @Test
+    fun `a pairing claim counts as reported only once the parent allows it`() {
+        // #535 review point 5 (fault f15): the server stores the report at Allow, so a refused or abandoned
+        // claim must leave no fingerprint behind.
+        val approved = pairing.indexOf("PairingApproval.PollStep.APPROVED ->")
+        val record = pairing.indexOf("recordReportedCapabilities(")
+        assertTrue("the Allow branch exists", approved >= 0)
+        assertTrue("the fingerprint is recorded inside it", record > approved)
+        assertTrue("and nowhere else", pairing.indexOf("recordReportedCapabilities(", record + 1) < 0)
+    }
+
+    private fun functionBody(source: String, signature: String): String {
+        val start = source.indexOf(signature)
+        assertTrue("$signature exists", start >= 0)
+        val end = source.indexOf("suspend fun ", start + 1).let { if (it < 0) source.length else it }
+        return source.substring(start, end)
+    }
+
     private fun sourceFile(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null) {

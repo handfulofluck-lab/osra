@@ -233,21 +233,6 @@ class UsageReporter @Inject constructor(
     }
 
     /**
-     * Issue #221 (D1 follow-up): upload the grant immediately when it changed, independent of usage.
-     *
-     * The periodic path ([aggregateAndUpload]) returns early while there are no usage events, so on a
-     * phone without accessibility the server could go a long time without learning that location was
-     * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
-     * resume and from the location-permission callbacks.
-     */
-    /**
-     * ADR-0034 A2: a grant change reaches the server now, not at the next period — **one request per change**.
-     *
-     * A resume with nothing changed costs nothing: the fingerprint of the report is compared with the one the
-     * server last accepted, and only a difference uploads. The fingerprint is recorded after a successful POST
-     * for the same reason the location grant is: a failed request must be retried, not remembered as covered.
-     */
-    /**
      * #535 review (point 5): any upload that carried a report records its fingerprint, so the change-triggered
      * path does not send the same report again on the next resume.
      *
@@ -259,6 +244,13 @@ class UsageReporter @Inject constructor(
         settings.recordReportedCapabilities(CapabilityUploadPolicy.fingerprint(report))
     }
 
+    /**
+     * ADR-0034 A2: a grant change reaches the server now, not at the next period — **one request per change**.
+     *
+     * A resume with nothing changed costs nothing: the fingerprint of the report is compared with the one the
+     * server last accepted, and only a difference uploads. The fingerprint is recorded after a successful POST
+     * for the same reason the location grant is: a failed request must be retried, not remembered as covered.
+     */
     suspend fun reportCapabilitiesIfChanged() {
         val deviceId = settings.deviceId() ?: return
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
@@ -287,6 +279,14 @@ class UsageReporter @Inject constructor(
         }
     }
 
+    /**
+     * Issue #221 (D1 follow-up): upload the grant immediately when it changed, independent of usage.
+     *
+     * The periodic path ([aggregateAndUpload]) returns early while there are no usage events, so on a
+     * phone without accessibility the server could go a long time without learning that location was
+     * granted — and refuse a Locate the phone could have answered. Called from the pairing screen's
+     * resume and from the location-permission callbacks.
+     */
     suspend fun reportLocationGrantIfChanged() {
         val deviceId = settings.deviceId() ?: return
         if (consent.isPaused()) return // ADR-0008 §3: no telemetry while consent is withdrawn
