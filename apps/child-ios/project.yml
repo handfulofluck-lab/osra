@@ -12,8 +12,9 @@
 #   OSRAAgentShieldConfiguration   Shield configuration extension (Extensions/ShieldConfiguration/)
 #   OSRAAgentShieldAction          Shield action extension (Extensions/ShieldAction/)
 #
-# Bundle ids are placeholders under dev.familyshield.agent: the maintainer chooses the permanent
-# ids before App Store Connect. The repository is public, so DEVELOPMENT_TEAM stays empty and no
+# Bundle ids are final (decision 2B, 29 Oct): the app is com.osratech.child, as on Android (#452),
+# each extension com.osratech.child.<Target>, app group group.com.osratech.child.
+# scripts/check-identifiers.py fails CI on any other id. The repository is public, so DEVELOPMENT_TEAM stays empty and no
 # team id, provisioning profile or certificate is ever added here.
 name: OSRAAgent
 
@@ -49,7 +50,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OSRAAgent
-        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/OSRAAgent.entitlements
     dependencies:
@@ -67,7 +68,7 @@ targets:
         excludes: ["*.plist", "*.entitlements"]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.monitor
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.Monitor
         INFOPLIST_FILE: Extensions/Monitor/Info.plist
         CODE_SIGN_ENTITLEMENTS: Extensions/Monitor/Monitor.entitlements
     dependencies:
@@ -81,7 +82,7 @@ targets:
         excludes: ["*.plist", "*.entitlements"]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.shield-configuration
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.ShieldConfiguration
         INFOPLIST_FILE: Extensions/ShieldConfiguration/Info.plist
         CODE_SIGN_ENTITLEMENTS: Extensions/ShieldConfiguration/ShieldConfiguration.entitlements
     dependencies:
@@ -95,7 +96,7 @@ targets:
         excludes: ["*.plist", "*.entitlements"]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.shield-action
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.ShieldAction
         INFOPLIST_FILE: Extensions/ShieldAction/Info.plist
         CODE_SIGN_ENTITLEMENTS: Extensions/ShieldAction/ShieldAction.entitlements
     dependencies:
@@ -110,7 +111,7 @@ targets:
       - path: HostedTests
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.hosted-tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.HostedTests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OSRAAgent.app/OSRAAgent"
         BUNDLE_LOADER: "$(TEST_HOST)"
@@ -128,7 +129,7 @@ targets:
       - path: IntegrationTests
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.familyshield.agent.integration-tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child.IntegrationTests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OSRAAgent.app/OSRAAgent"
         BUNDLE_LOADER: "$(TEST_HOST)"

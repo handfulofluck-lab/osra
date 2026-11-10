@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - 'apps/child-ios/**'
+      - 'apps/parent-app/ios/**'
       - '.github/workflows/ios-ci.yml'
       - 'services/api/src/routes/devices.ts'
       - 'services/api/src/routes/alerts.ts'
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - 'apps/child-ios/**'
+      - 'apps/parent-app/ios/**'
       - '.github/workflows/ios-ci.yml'
       - 'services/api/src/routes/devices.ts'
       - 'services/api/src/routes/alerts.ts'
@@ -36,6 +38,18 @@ env:
   XCODEGEN_SHA256: '090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef'
 
 jobs:
+  # Decision 2B (#372): every bundle id, app group and Keychain access group is the final com.osratech one.
+  # Source files only, so it runs on Linux in seconds and goes red before any Mac minute is spent.
+  identifiers:
+    name: iOS identifiers are the final ids
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Check bundle ids, app group and Keychain group
+        run: python3 apps/child-ios/scripts/check-identifiers.py
+
   test-ios:
     name: Build & Test iOS Agent (Simulator + SwiftPM + app with extensions)
     # The newest image: App Store uploads reject apps built with an old SDK.
@@ -243,7 +257,7 @@ jobs:
           set -o pipefail
           # Case 9: install the app, grant Always and place the simulator, so Core Location has a fix to give.
           xcrun simctl install "$DEVICE_ID" .build/liveDerivedData/Build/Products/Debug-iphonesimulator/OSRAAgent.app
-          xcrun simctl privacy "$DEVICE_ID" grant location-always dev.familyshield.agent
+          xcrun simctl privacy "$DEVICE_ID" grant location-always com.osratech.child
           xcrun simctl location "$DEVICE_ID" set "$OSRA_TEST_LAT,$OSRA_TEST_LNG"
           # Plan 2.7: case 1's claim waits for the parent's Allow, so the parent side runs alongside it.
           node scripts/live-api.mjs approve > "$RUNNER_TEMP/approve.log" 2>&1 &
