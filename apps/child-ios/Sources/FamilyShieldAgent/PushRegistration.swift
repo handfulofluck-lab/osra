@@ -7,7 +7,7 @@ import os
 /// Uploaded when the token or the paired device changes, and not otherwise: iOS hands the app its token on
 /// every launch, and a token is not a reason for a request when the server already holds it.
 public enum PushTokenRegistrar {
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Push")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Push")
 
     enum Keys {
         static let uploadedToken = "push.uploadedToken"

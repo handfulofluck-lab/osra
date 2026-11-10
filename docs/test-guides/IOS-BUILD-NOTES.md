@@ -34,7 +34,7 @@ that exists, `swift test` is the only executable verification.
 4. **Capabilities on all three targets**: **Family Controls**
    (`com.apple.developer.family-controls`) — without it `AuthorizationCenter.requestAuthorization`
    fails at runtime (NOTE in `ScreenTimeController.requestAuthorization`).
-5. **App Groups** on all three targets: `group.<team-id>.familyshield` — the shared store
+5. **App Groups** on all three targets: `group.com.osratech.child` — the shared store
    (`UserDefaults(suiteName:)` / keychain access group) that carries `agent.childId`,
    `agent.hmacSecret`, and `apps.blockedBundleIdentifiers` between app and extensions.
 6. Set the **same bundle-id prefix** and team on app + extensions, sign with a real
@@ -56,7 +56,7 @@ that exists, `swift test` is the only executable verification.
 
 **TODO before the app is usable:**
 1. **App-group provisioning**: pairing must write `agent.childId` + `agent.hmacSecret`
-   into the `group.<team-id>.familyshield` suite. Until the Xcode project and entitlements
+   into the `group.com.osratech.child` suite. Until the Xcode project and entitlements
    exist (step 2/5 above) there is no suite to write to — the reporter currently logs
    "childId unknown (agent not paired)" and skips.
 2. **Claim/pairing UI**: a screen that takes the parent app's pairing code (same flow as
