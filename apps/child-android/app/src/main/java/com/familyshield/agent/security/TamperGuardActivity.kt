@@ -146,28 +146,20 @@ open class TamperGuardActivity : ComponentActivity() {
     }
 
     /**
-     * osra-security#7: a gate sharing the screen covers nothing (the protection screen stays usable in the
-     * other half), so it refuses: it relaunches as [TamperGuardTaskActivity], alone in a non-resizeable task
-     * that Android opens full-screen, or goes Home if that did not hold. The flag also tells the guard to judge
-     * every protection screen again until the gate is back in front alone.
+     * osra-security#7: true only for the gate the accessibility guard opens. An in-app gate protects an action
+     * that runs only after the PIN, so sharing the screen exposes nothing there, and refusing would lose the
+     * result its caller waits for.
+     */
+    protected open val guardGate: Boolean = false
+
+    /**
+     * osra-security#7: the guard's gate sharing the screen covers nothing (the protection screen stays usable in
+     * the other half). It is already alone in a non-resizeable task, so relaunching cannot help: it goes Home.
+     * Any gate sets the flag, which tells the guard to judge every protection screen again meanwhile.
      */
     private fun onSharingChanged(inMultiWindow: Boolean) {
         GuardGateState.multiWindow = inMultiWindow
-        val now = System.currentTimeMillis()
-        when (GuardMultiWindowPolicy.action(inMultiWindow, now, GuardGateState.lastRelaunchMs)) {
-            GuardMultiWindowPolicy.Action.NONE -> Unit
-            GuardMultiWindowPolicy.Action.HOME -> goHome()
-            GuardMultiWindowPolicy.Action.RELAUNCH -> {
-                GuardGateState.lastRelaunchMs = now
-                setResult(RESULT_CANCELED)
-                startActivity(
-                    android.content.Intent(intent)
-                        .setClass(this, TamperGuardTaskActivity::class.java)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-                finish()
-            }
-        }
+        if (GuardMultiWindowPolicy.goHome(guardGate, inMultiWindow)) goHome()
     }
 
     companion object {
@@ -187,4 +179,6 @@ open class TamperGuardActivity : ComponentActivity() {
  * and a correct PIN finished the gate into that status screen instead of the screen the parent had opened.
  * In-app callers keep [TamperGuardActivity]: they wait for its result, which a separate task cannot return.
  */
-class TamperGuardTaskActivity : TamperGuardActivity()
+class TamperGuardTaskActivity : TamperGuardActivity() {
+    override val guardGate: Boolean = true
+}

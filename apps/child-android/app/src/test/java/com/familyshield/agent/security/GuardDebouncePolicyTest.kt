@@ -59,12 +59,20 @@ class GuardDebouncePolicyTest {
         assertTrue(GuardDebouncePolicy.suppress(t0 + 300, t0, gateShowing = true, gateResumedSinceLaunch = true, newWindow = false))
     }
 
+    // Review of #546: the guard's gate goes Home when sharing (a relaunch landed on itself and closed it); an
+    // in-app gate never refuses, or its caller loses the result. Mutants: refuse for every gate → [in-app gates
+    // never refuse]; never refuse → [the guard's gate sharing the screen goes Home].
+
     @Test
-    fun `a gate sharing the screen relaunches once, then goes Home`() {
-        assertEquals(GuardMultiWindowPolicy.Action.NONE, GuardMultiWindowPolicy.action(false, t0, 0L))
-        assertEquals(GuardMultiWindowPolicy.Action.RELAUNCH, GuardMultiWindowPolicy.action(true, t0, 0L))
-        assertEquals(GuardMultiWindowPolicy.Action.HOME, GuardMultiWindowPolicy.action(true, t0 + 500, t0))
-        assertEquals(GuardMultiWindowPolicy.Action.RELAUNCH, GuardMultiWindowPolicy.action(true, t0 + 5_000, t0))
+    fun `the guard's gate sharing the screen goes Home`() {
+        assertTrue(GuardMultiWindowPolicy.goHome(guardGate = true, inMultiWindow = true))
+        assertFalse(GuardMultiWindowPolicy.goHome(guardGate = true, inMultiWindow = false))
+    }
+
+    @Test
+    fun `in-app gates never refuse`() {
+        assertFalse(GuardMultiWindowPolicy.goHome(guardGate = false, inMultiWindow = true))
+        assertFalse(GuardMultiWindowPolicy.goHome(guardGate = false, inMultiWindow = false))
     }
 
     @Test

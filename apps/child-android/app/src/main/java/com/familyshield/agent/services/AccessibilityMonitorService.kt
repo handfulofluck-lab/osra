@@ -546,9 +546,6 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
         lastGuardMs = now
         guardedWindowId = event.windowId
-        // osra-security#7: a gate in split screen leaves the other half usable. Leave split screen first; the
-        // gate below is non-resizeable and alone in its task, so Android opens it full-screen.
-        if (GuardGateState.multiWindow) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
         // #484 (Flip4, 1 Nov): no global Back action before the gate any more. BACK is asynchronous, so it
         // landed either on the protection screen (closing it, the gate then over the list behind it) or on
         // the gate itself (whose back is "Go back", so the child was sent Home) — three end states across

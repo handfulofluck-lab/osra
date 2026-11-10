@@ -51,27 +51,15 @@ object GuardGateState {
     /** osra-security#7: true while the gate is resumed in split screen, pop-up or freeform. */
     @Volatile var multiWindow: Boolean = false
 
-    /** When the gate last relaunched itself out of multi-window, 0 before the first. */
-    @Volatile var lastRelaunchMs: Long = 0L
-
     /** Whether the gate has come up since a launch at [launchMs]. */
     fun resumedSince(launchMs: Long): Boolean = lastResumedMs >= launchMs && lastResumedMs != 0L
 }
 
 /**
- * osra-security#7: what a gate that finds itself sharing the screen does. It relaunches itself in its own
- * non-resizeable task, which Android opens full-screen; if it is sharing the screen again within
- * [RELAUNCH_WINDOW_MS] (a launcher that forces every app resizeable), it goes Home instead of looping.
+ * osra-security#7: what a gate that finds itself sharing the screen does. Only the guard's gate refuses, by going
+ * Home: it is already the root of a non-resizeable task, so a relaunch would land on the same instance. An in-app
+ * gate stays, because its caller needs the result and the action it protects runs only after the PIN.
  */
 object GuardMultiWindowPolicy {
-
-    const val RELAUNCH_WINDOW_MS: Long = 2_000L
-
-    enum class Action { NONE, RELAUNCH, HOME }
-
-    fun action(inMultiWindow: Boolean, nowMs: Long, lastRelaunchMs: Long): Action = when {
-        !inMultiWindow -> Action.NONE
-        lastRelaunchMs != 0L && nowMs - lastRelaunchMs < RELAUNCH_WINDOW_MS -> Action.HOME
-        else -> Action.RELAUNCH
-    }
+    fun goHome(guardGate: Boolean, inMultiWindow: Boolean): Boolean = guardGate && inMultiWindow
 }
