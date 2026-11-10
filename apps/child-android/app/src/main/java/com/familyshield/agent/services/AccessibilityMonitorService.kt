@@ -561,7 +561,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Issue #227: one alert per five-minute window. The window start and count are persisted
         // before enqueueing, so a failed POST cannot lose the attempt and the next guard retry
         // increments from the stored count instead of opening a new alert.
-        val attempt = GuardAttemptWindow.record(TamperState.guardAttemptWindow(this), now)
+        val attempt = GuardAttemptWindow.record(TamperState.guardAttemptWindow(this), now, screen.name.lowercase())
         TamperState.setGuardAttemptWindow(this, attempt.state)
         TamperAlertWorker.enqueue(
             this,
@@ -569,6 +569,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             detail = "Screen: ${screen.name.lowercase()} in $pkg",
             windowStartMs = attempt.state.windowStartMs,
             attemptCount = attempt.state.count,
+            screens = attempt.state.screens,
         )
     }
 
