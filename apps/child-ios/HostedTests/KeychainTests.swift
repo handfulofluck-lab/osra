@@ -4,7 +4,7 @@ import Security
 
 /// 5.5 PR B (#372): the real Keychain, inside the simulator app (`OSRAAgentHostedTests`, hosted by
 /// `OSRAAgent`). The app is ad-hoc signed for the simulator with its own entitlements, so these use the
-/// production access group, `group.dev.familyshield.agent`, the one the extensions share. The unsigned
+/// production access group, `group.com.osratech.child`, the one the extensions share. The unsigned
 /// SwiftPM test bundle cannot reach the Keychain at all (-34018); its logic tests use an in-memory store.
 final class KeychainTests: XCTestCase {
 
@@ -25,7 +25,7 @@ final class KeychainTests: XCTestCase {
     }
 
     func testUsesTheSharedAppGroupAccessGroup() {
-        XCTAssertEqual(keychain.accessGroup, "group.dev.familyshield.agent")
+        XCTAssertEqual(keychain.accessGroup, "group.com.osratech.child")
     }
 
     func testWriteReadOverwriteDelete() {
@@ -56,7 +56,7 @@ final class KeychainTests: XCTestCase {
         XCTAssertEqual(items.count, 1, "a second write must not leave a duplicate item")
         let item = try XCTUnwrap(items.first)
         XCTAssertEqual(item[kSecAttrAccessible as String] as? String, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String)
-        XCTAssertEqual(item[kSecAttrAccessGroup as String] as? String, "group.dev.familyshield.agent")
+        XCTAssertEqual(item[kSecAttrAccessGroup as String] as? String, "group.com.osratech.child")
     }
 
     func testIdentityRoundTripsWithSecretsInTheKeychainOnly() {
