@@ -488,9 +488,9 @@ only iOS shows on `main` within a day. When the diff cannot be read (an unknown 
 builds. Each push to `main` runs in a concurrency group of its own, so a later merge never cancels it; a cancelled push would otherwise drop its iOS inputs until the nightly run (it happened to #362's merge). To build iOS on a branch that the filter skips: `gh workflow run parent-app.yml --ref <branch>`. Run locally
 against real merges on `main`: #356 (the iOS tree) and #352 (this workflow) build it; #344, #348, #349 and #355
 skip it.
-- Two assertions on the committed tree, so a green run is not only "the compiler finished": the
-  `PRODUCT_BUNDLE_IDENTIFIER` is `dev.familyshield.familyshieldParent` (the Android `applicationId`'s org and
-  leaf, with the underscore dropped because Apple's bundle-ID grammar forbids it), and `Info.plist` carries
+- Two assertions on the committed tree, so a green run is not only "the compiler finished": every
+  `PRODUCT_BUNDLE_IDENTIFIER` is `com.osratech.parent` or its `.RunnerTests` (the Android `applicationId`,
+  decision 2B, #543), and `Info.plist` carries
   `CFBundleDisplayName = OSRA` with `CFBundleLocalizations = [en, ar]`. Mutant for each: edit
   `ios/Runner.xcodeproj/project.pbxproj` or `ios/Runner/Info.plist` and the job fails.
 
