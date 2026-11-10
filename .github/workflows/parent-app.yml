@@ -197,18 +197,16 @@ jobs:
       - run: flutter pub get
       - name: Build the iOS target unsigned
         run: flutter build ios --release --no-codesign
-      - name: The bundle identifier matches the shape of the Android application id
+      - name: The bundle identifiers are the Play ids (decision 2B)
         run: |
-          BID=$(grep -m1 -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //')
-          echo "iOS bundle id: $BID"
-          # Apple's grammar allows only alphanumerics, hyphens and periods, so
-          # Flutter drops the Android id's underscore rather than emitting an
-          # identifier App Store Connect would refuse: dev.familyshield.familyshield_parent
-          # -> dev.familyshield.familyshieldParent. Same org, same leaf name.
-          case "$BID" in
-            dev.familyshield.familyshieldParent) echo "ok"; ;;
-            *) echo "unexpected bundle id: $BID" >&2; exit 1; ;;
-          esac
+          # The App Store id equals the Android applicationId, com.osratech.parent (#452); the test
+          # bundle hangs under it. Every build configuration is read, not just the first.
+          grep -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //' | sort | uniq -c
+          if grep -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //' \
+            | grep -vxE 'com\.osratech\.parent(\.RunnerTests)?'; then
+            echo "unexpected bundle id(s) above" >&2; exit 1
+          fi
+          echo "ok"
       - name: Info.plist declares the display name and both locales
         run: |
           PLIST=ios/Runner/Info.plist

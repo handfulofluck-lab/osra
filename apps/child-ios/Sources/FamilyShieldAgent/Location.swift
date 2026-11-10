@@ -94,7 +94,7 @@ public enum LocationUploadOutcome: Equatable {
 
 public struct LocationClient {
     private let session: URLSession
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Location")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Location")
 
     public init(session: URLSession = .shared) {
         self.session = session
@@ -214,7 +214,7 @@ public final class LocationController {
 
     let source: LocationSource
     let client: LocationClient
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Location")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Location")
 
     public init(source: LocationSource, client: LocationClient = LocationClient()) {
         self.source = source

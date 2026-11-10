@@ -269,7 +269,7 @@ public enum ActivityTeardown {
 
 /// One sync: fetch the rules with the device token, store them for the extensions, and enforce them.
 public enum RuleSyncer {
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "RuleSync")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "RuleSync")
 
     public enum Outcome: Equatable {
         case notPaired

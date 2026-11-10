@@ -172,11 +172,11 @@ describe("APNs provider", () => {
       return { status: 200, body: "" };
     };
     const cfg = { keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" };
-    const provider = new ApnsProvider({ ...cfg, deviceBundleId: "dev.familyshield.agent" }, transport);
+    const provider = new ApnsProvider({ ...cfg, deviceBundleId: "com.osratech.child" }, transport);
     expect(await provider.send("child-token", buildDeviceWakeMessage())).toEqual({ ok: true });
     expect(calls[0].headers["apns-push-type"]).toBe("background");
     expect(calls[0].headers["apns-priority"]).toBe("5");
-    expect(calls[0].headers["apns-topic"]).toBe("dev.familyshield.agent");
+    expect(calls[0].headers["apns-topic"]).toBe("com.osratech.child");
     expect(JSON.parse(calls[0].body).aps).toEqual({ "content-available": 1 });
     // The alert path is unchanged: parent topic, alert type.
     await provider.send("parent-token", buildParentAlertMessage("ios"));
@@ -445,7 +445,7 @@ describe("the child device wake (#319)", () => {
     setPushProviders([new ApnsProvider(cfg, transport)]);
     expect((await notifyDeviceWake("ios-1")).skipped).toBe("unsupported_platform");
     expect(canWakeDevice(iphone)).toBe(false);
-    setPushProviders([new ApnsProvider({ ...cfg, deviceBundleId: "dev.familyshield.agent" }, transport)]);
+    setPushProviders([new ApnsProvider({ ...cfg, deviceBundleId: "com.osratech.child" }, transport)]);
     expect(await notifyDeviceWake("ios-1")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
     expect(canWakeDevice(iphone)).toBe(true);
     expect(transport).toHaveBeenCalledTimes(1);
