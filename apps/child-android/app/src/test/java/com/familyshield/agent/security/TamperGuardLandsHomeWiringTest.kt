@@ -120,6 +120,7 @@ class TamperGuardLandsHomeWiringTest {
         assertTrue("the flag the guard reads, for any gate", sharing.contains("GuardGateState.multiWindow = inMultiWindow"))
         assertTrue("Home only for the guard's gate", sharing.contains("if (GuardMultiWindowPolicy.goHome(guardGate, inMultiWindow)) goHome()"))
         assertFalse("never starts itself again (a singleTask root would close)", sharing.contains("startActivity("))
+        assertFalse("an in-app gate keeps its result (#546 point 3)", sharing.contains("finish()") || sharing.contains("setResult("))
         assertTrue("the base is an in-app gate", gate.contains("protected open val guardGate: Boolean = false"))
         assertTrue("the task gate is the guard's", gate.substringAfter("class TamperGuardTaskActivity").contains("override val guardGate: Boolean = true"))
         val onPause = gate.substringAfter("override fun onPause()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
