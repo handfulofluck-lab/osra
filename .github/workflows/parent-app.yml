@@ -58,12 +58,21 @@ jobs:
       # NOTE: the `secrets` context is NOT available in a step `if:` — GitHub rejects the whole
       # workflow file ("Unrecognized named-value: 'secrets'") and zero jobs run, which is exactly
       # how the first push of this PR failed. Decide inside the run body instead.
+      # The upload key is used only when the Firebase config is there too: app/build.gradle.kts refuses a
+      # signed release without google-services.json (#400), so a keystore with no PARENT_GOOGLE_SERVICES_JSON_B64
+      # turned every run red, main included, from 7 Nov. Without the config the build keeps the debug key and
+      # says so in a warning; that artefact can never be uploaded, which is what the Gradle guard protects.
       - name: Materialise upload keystore (if configured)
         env:
           KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+          GOOGLE_SERVICES_B64: ${{ secrets.PARENT_GOOGLE_SERVICES_JSON_B64 }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release build will use the debug key (by design)"
+            exit 0
+          fi
+          if [ -z "$GOOGLE_SERVICES_B64" ]; then
+            echo "::warning::PARENT_GOOGLE_SERVICES_JSON_B64 is not set, so this release AAB is debug-signed and cannot be uploaded to Play. Set the secret to sign it with the upload key."
             exit 0
           fi
           echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
