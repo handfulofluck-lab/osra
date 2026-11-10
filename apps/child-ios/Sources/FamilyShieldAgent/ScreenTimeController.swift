@@ -10,7 +10,7 @@ import ManagedSettings
 /// authorization, applies app and web shields, and schedules bedtime enforcement.
 public final class ScreenTimeController {
 
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "ScreenTime")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "ScreenTime")
 
     /// Dedicated store name for parent rule enforcement, separating rules from routine shields (IOS-05).
     public static let rulesStoreName = ManagedSettingsStore.Name("parentRules")
@@ -80,7 +80,7 @@ public final class ScreenTimeController {
         guard ensureAuthorized(#function) else { return }
         guard let sHour = start.hour, let sMin = start.minute,
               let eHour = end.hour, let eMin = end.minute else {
-            throw NSError(domain: "dev.familyshield.agent", code: 400, userInfo: [
+            throw NSError(domain: "com.osratech.child", code: 400, userInfo: [
                 NSLocalizedDescriptionKey: "Invalid start or end DateComponents: hour and minute required"
             ])
         }
@@ -203,7 +203,7 @@ public final class ScreenTimeController {
 
 /// Persistent store for FamilyActivitySelection picked by parent via FamilyActivityPicker (IOS-02).
 public enum SelectionStore {
-    public static let suiteName = "group.dev.familyshield.agent"
+    public static let suiteName = "group.com.osratech.child"
     public static let selectionKey = "agent.familyActivitySelection"
 
     public static func save(_ selection: FamilyActivitySelection) {
