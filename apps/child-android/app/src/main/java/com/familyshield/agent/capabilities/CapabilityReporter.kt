@@ -28,8 +28,11 @@ import javax.inject.Singleton
  * Two facts deserve their caveats:
  *
  * - **`tunnelRunning` is `VpnState.isEstablished`, not `FilterVpnService.isRunning`.** The latter means "the
- *   service object exists" — true from `onCreate`, before any tunnel (#234) — so it would report a filter
- *   that is not filtering as `ready`.
+ *   service object exists" — true from `onCreate`, before any tunnel (#234) — so it would report a filter that
+ *   is not filtering as `ready`. `isEstablished` is a persisted flag that is cleared in `onDestroy`, so a process
+ *   killed without one leaves it `true` and the report claims a tunnel that is gone **until the next start
+ *   corrects it**; the alternative (asking the service) is not available from a report and would still be a
+ *   snapshot. Worth revisiting if a phone is ever seen reporting `web_filter: ready` with the filter down.
  * - **`adminLocked` is `false`, deliberately.** It is the *result* of a `lockNow()` call, a per-command fact
  *   the dispatcher has and a capability check does not; `EnforceabilityPolicy.lockOutcome` does not use it in
  *   its verdict (the accessibility service is what holds the screen), so passing `false` changes nothing and
