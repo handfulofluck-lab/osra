@@ -1,7 +1,10 @@
 package com.familyshield.agent.di
 
+import com.familyshield.agent.BuildConfig
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
+import com.familyshield.agent.network.ClientHeader
+import com.familyshield.agent.network.ClientHeaderInterceptor
 import com.familyshield.agent.network.DeviceAuthInterceptor
 import com.familyshield.agent.network.DynamicBaseUrlInterceptor
 import com.familyshield.agent.network.SignatureInterceptor
@@ -40,6 +43,17 @@ object NetworkModule {
     fun provideOkHttpClient(settings: AgentSettings): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(DynamicBaseUrlInterceptor { settings.baseUrlSync() })
         .addInterceptor(DeviceAuthInterceptor { settings.deviceTokenSync() })
+        // ADR-0034 decision 4: name the build on every request. The Play and Full artefacts report their
+        // own flavour, so the server can tell which store build a phone is running.
+        .addInterceptor(
+            ClientHeaderInterceptor {
+                ClientHeader.value(
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE,
+                    flavour = if (BuildConfig.CAPTURE_CALL_SMS) ClientHeader.FLAVOUR_FULL else ClientHeader.FLAVOUR_PLAY,
+                )
+            },
+        )
         .addInterceptor(SignatureInterceptor { settings.hmacSecretSync() })
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
         .connectTimeout(30, TimeUnit.SECONDS)

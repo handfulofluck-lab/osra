@@ -339,6 +339,14 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_REPORTED_LOCATION_GRANT] = grant }
     }
 
+    /** ADR-0034 A2: the fingerprint of the capability report the server last accepted. */
+    suspend fun reportedCapabilities(): String? = read(KEY_REPORTED_CAPABILITIES)
+
+    /** Records the report a successful upload covered, so a resume with nothing changed costs no request. */
+    suspend fun recordReportedCapabilities(fingerprint: String) {
+        store.edit { it[KEY_REPORTED_CAPABILITIES] = fingerprint }
+    }
+
     /**
      * Issue #267 review: the **bucket** and the per-package UsageStats totals at the last backfill.
      *
@@ -495,6 +503,9 @@ class AgentSettings @Inject constructor(
         private val KEY_CONSENT_RESUMED_AT = stringPreferencesKey("consent_resumed_at")
         // Issue #221: the location grant the server was last told about (change detection).
         private val KEY_REPORTED_LOCATION_GRANT = stringPreferencesKey("reported_location_grant")
+
+        /** ADR-0034 A2: what the last accepted capability report looked like, so a no-op resume is free. */
+        private val KEY_REPORTED_CAPABILITIES = stringPreferencesKey("reported_capabilities")
         // Issue #267: the bucket and per-package UsageStats totals the last backfill covered.
         private val KEY_USAGE_STATS_SNAPSHOT = stringPreferencesKey("usage_stats_snapshot")
         // Issue #225: the recorded "was enabled" state for the accessibility-off transition rule.
