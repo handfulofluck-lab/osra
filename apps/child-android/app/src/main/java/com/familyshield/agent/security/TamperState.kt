@@ -18,6 +18,7 @@ object TamperState {
     private const val KEY_ADMIN_REMOVED_BY_PARENT = "admin_removed_by_parent"
     private const val KEY_GUARD_WINDOW_START_MS = "guard_window_start_ms"
     private const val KEY_GUARD_WINDOW_COUNT = "guard_window_count"
+    private const val KEY_GUARD_WINDOW_SCREENS = "guard_window_screens"
 
     /** How many accepted dedupe keys are kept; a retry only ever needs the newest one. */
     private const val MAX_POSTED_KEYS = 4
@@ -97,13 +98,15 @@ object TamperState {
         val start = p.getLong(KEY_GUARD_WINDOW_START_MS, 0L)
         val count = p.getInt(KEY_GUARD_WINDOW_COUNT, 0)
         if (start <= 0L || count <= 0) return null
-        return GuardAttemptWindow.State(windowStartMs = start, count = count)
+        val screens = p.getString(KEY_GUARD_WINDOW_SCREENS, null).orEmpty().split(',').filter { it.isNotBlank() }
+        return GuardAttemptWindow.State(windowStartMs = start, count = count, screens = screens)
     }
 
     fun setGuardAttemptWindow(context: Context, window: GuardAttemptWindow.State) {
         prefs(context).edit()
             .putLong(KEY_GUARD_WINDOW_START_MS, window.windowStartMs)
             .putInt(KEY_GUARD_WINDOW_COUNT, window.count)
+            .putString(KEY_GUARD_WINDOW_SCREENS, window.screens.joinToString(","))
             .apply()
     }
 
@@ -112,6 +115,7 @@ object TamperState {
         prefs(context).edit()
             .remove(KEY_GUARD_WINDOW_START_MS)
             .remove(KEY_GUARD_WINDOW_COUNT)
+            .remove(KEY_GUARD_WINDOW_SCREENS)
             .apply()
     }
 
