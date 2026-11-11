@@ -81,3 +81,17 @@ google-services*.json
 GoogleService-Info*.plist
 *firebase-adminsdk*.json
 fcm-service-account*.json
+
+# ── Signing material and Apple keys ──────────────────────────────────────────
+# The APNs auth key (.p8), distribution certificates and provisioning profiles stay with Karim,
+# like the Android upload keystore above. None belongs on a public repository.
+*.p8
+*.p12
+*.jks
+*.mobileprovision
+
+# ── Xcode user data and test coverage ────────────────────────────────────────
+xcuserdata/
+*.xcuserstate
+DerivedData/
+coverage/

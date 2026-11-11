@@ -1,0 +1,97 @@
+name: Play upload
+
+# Sends a signed bundle built by child-android.yml or parent-app.yml to a Google Play testing track
+# (roadmap 5.2/5.7). Run by hand only. The Play Developer API key is the PLAY_SERVICE_ACCOUNT_JSON secret
+# (service account play-publisher@osra-3665a, invited in Play Console 11 Nov 2026 with testing-track and
+# store-listing rights, no production rights). scripts/play-upload.mjs talks to the API with node:crypto
+# and fetch, so no third-party action ever sees the key.
+#
+# `check` proves the key works and changes nothing. Play refuses API uploads until an app's first bundle
+# has been uploaded by hand in Play Console; after that, pass the run id of a green build on main.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app
+        type: choice
+        options: [child, parent]
+        required: true
+      mode:
+        description: "check = test the key only; validate = upload and discard; upload = upload and commit"
+        type: choice
+        options: [check, validate, upload]
+        default: check
+      run_id:
+        description: Run id of the green child-android / parent-app build whose bundle to send (not needed for check)
+        type: string
+        required: false
+      track:
+        description: Testing track
+        type: choice
+        options: [internal, alpha, beta]
+        default: internal
+      status:
+        description: "Release status (draft until the app has been published once)"
+        type: choice
+        options: [draft, completed]
+        default: draft
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: play-upload-${{ inputs.app }}
+  cancel-in-progress: false
+
+jobs:
+  play-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Pick the package and the bundle artifact
+        id: pick
+        env:
+          APP: ${{ inputs.app }}
+          MODE: ${{ inputs.mode }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          case "$APP" in
+            child) echo "package=com.osratech.child" >> "$GITHUB_OUTPUT"
+                   echo "artifact=child-android-play-release-aab" >> "$GITHUB_OUTPUT" ;;
+            parent) echo "package=com.osratech.parent" >> "$GITHUB_OUTPUT"
+                    echo "artifact=parent-app-release-aab" >> "$GITHUB_OUTPUT" ;;
+          esac
+          if [ "$MODE" != "check" ]; then
+            case "$RUN_ID" in
+              ''|*[!0-9]*) echo "::error::run_id must be the numeric id of a green build run"; exit 1 ;;
+            esac
+          fi
+      - name: Download the bundle
+        if: inputs.mode != 'check'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.pick.outputs.artifact }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: bundle
+      - name: Send it to Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PKG: ${{ steps.pick.outputs.package }}
+          MODE: ${{ inputs.mode }}
+          TRACK: ${{ inputs.track }}
+          STATUS: ${{ inputs.status }}
+        run: |
+          if [ "$MODE" = "check" ]; then
+            node scripts/play-upload.mjs --package "$PKG" --check
+            exit 0
+          fi
+          AAB=$(find bundle -name '*.aab' | head -n1)
+          [ -n "$AAB" ] || { echo "::error::no .aab in the downloaded artifact"; exit 1; }
+          EXTRA=""
+          [ "$MODE" = "validate" ] && EXTRA="--validate-only"
+          node scripts/play-upload.mjs --package "$PKG" --aab "$AAB" --track "$TRACK" --status "$STATUS" $EXTRA

@@ -8,12 +8,10 @@ import ManagedSettingsUI
 /// Shield appearance for FamilyShield block screens (spec §6.3): the title, the window line (#511) and the
 /// "Request access" / "Exit to Home screen" buttons, in English or Arabic.
 ///
-/// NOTE: this class only takes effect as the NSExtensionPrincipalClass of the Shield
-/// Configuration extension target (`Extensions/ShieldConfiguration` in `project.yml`;
-/// SwiftPM alone cannot declare app extensions). `@objc(...)` gives it that unqualified
-/// runtime name, and it is public so the extension can reference it and keep it linked.
-@objc(FamilyShieldConfigurationDataSource)
-public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
+/// #561: the extension's principal class is `ShieldConfigurationExtension`, declared in
+/// `Extensions/ShieldConfiguration` as a subclass of this one (iOS could not load an `@objc`-renamed class from the
+/// package on the device: `ExtensionError Code=0`). This class is `open` so that subclass can exist; the behaviour stays here, under test.
+open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 
     /// Shield configuration shown when an application is blocked.
     public override func configuration(shielding application: Application) -> ShieldConfiguration {
@@ -56,10 +54,8 @@ public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataS
 /// shield and notifies the parent; "OK" dismisses the shield and logs a request-access
 /// call to the backend.
 ///
-/// NOTE: the NSExtensionPrincipalClass of the Shield Action extension target
-/// (`Extensions/ShieldAction`); `@objc(...)` and `public` for the same reasons as above.
-@objc(FamilyShieldShieldActionDelegate)
-public final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
+/// #561: subclassed by `ShieldActionExtension` in `Extensions/ShieldAction`, the extension's principal class.
+open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
 
     private let reporter = AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret())
 
