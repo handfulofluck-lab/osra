@@ -151,6 +151,15 @@
             android:resizeableActivity="false"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
 
+        <!-- osra-security#7: the gate the accessibility guard opens, root of its own non-resizeable task. -->
+        <activity android:name=".security.TamperGuardTaskActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:resizeableActivity="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
+
         <activity android:name=".setup.PairingActivity"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">

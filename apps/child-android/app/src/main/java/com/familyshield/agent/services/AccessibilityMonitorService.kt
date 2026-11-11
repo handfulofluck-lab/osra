@@ -36,6 +36,7 @@ import com.familyshield.agent.security.GuardGateState
 import com.familyshield.agent.security.ParentPinStore
 import com.familyshield.agent.security.TamperAlertWorker
 import com.familyshield.agent.security.TamperGuardActivity
+import com.familyshield.agent.security.TamperGuardTaskActivity
 import com.familyshield.agent.security.TamperScreen
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
@@ -60,6 +61,9 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
+
+    /** osra-security#7: the window the gate was last opened over; a state change from any other is a new screen. */
+    private var guardedWindowId = -1
     /** osra-security#5: class and package of the last TYPE_WINDOW_STATE_CHANGED, for [TamperScreenPolicy.classify]. */
     private var lastWindowClass: String? = null
     private var lastWindowClassPkg: String? = null
@@ -513,7 +517,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         val now = System.currentTimeMillis()
         // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
         // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
-        if (GuardDebouncePolicy.suppress(now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs))) return
+        // osra-security#7: and never while the gate shares the screen, nor for a window it was not opened over.
+        val newWindow = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.windowId != guardedWindowId
+        if (GuardDebouncePolicy.suppress(
+                now, lastGuardMs, GuardGateState.showing, GuardGateState.resumedSince(lastGuardMs),
+                gateMultiWindow = GuardGateState.multiWindow, newWindow = newWindow,
+            )
+        ) return
         val root = rootInActiveWindow ?: return
         val texts = ArrayList<CharSequence?>(64)
         try {
@@ -535,6 +545,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
         lastGuardMs = now
+        guardedWindowId = event.windowId
         // #484 (Flip4, 1 Nov): no global Back action before the gate any more. BACK is asynchronous, so it
         // landed either on the protection screen (closing it, the gate then over the list behind it) or on
         // the gate itself (whose back is "Go back", so the child was sent Home) — three end states across
@@ -543,7 +554,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // accessibility service is exempt from the background-launch rule, so the gate does not depend on
         // BACK having cleared the screen first.
         startActivity(
-            Intent(this, TamperGuardActivity::class.java)
+            Intent(this, TamperGuardTaskActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(TamperGuardActivity.EXTRA_REASON, TamperGuardActivity.REASON_SETTINGS),
         )
