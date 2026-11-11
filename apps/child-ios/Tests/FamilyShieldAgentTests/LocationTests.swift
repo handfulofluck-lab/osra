@@ -16,12 +16,14 @@ final class LocationTests: XCTestCase {
         AgentIdentityStore.secrets = InMemorySecretStore()
         AgentIdentityStore.clear()
         LocationBuffer.clear()
+        LocationController.alwaysPromptUsed = false
         StubProtocol.reset()
         source = FakeLocationSource()
         controller = LocationController(source: source, client: LocationClient(session: StubProtocol.session))
     }
 
     override func tearDown() async throws {
+        LocationController.alwaysPromptUsed = false
         AgentIdentityStore.clear()
         LocationBuffer.clear()
         StubProtocol.reset()
@@ -86,6 +88,64 @@ final class LocationTests: XCTestCase {
     }
 
     // MARK: - Upload
+
+    // MARK: - The button (5.5, #372: it did nothing after a denial, or after the one-time Always prompt)
+
+    func testTheButtonActionForEachStatus() {
+        XCTAssertEqual(LocationPermissionAction.of(.notDetermined, alwaysPromptUsed: false), .askWhenInUse)
+        XCTAssertEqual(LocationPermissionAction.of(.authorizedWhenInUse, alwaysPromptUsed: false), .askAlways)
+        XCTAssertEqual(LocationPermissionAction.of(.authorizedWhenInUse, alwaysPromptUsed: true), .openSettings)
+        XCTAssertEqual(LocationPermissionAction.of(.denied, alwaysPromptUsed: false), .openSettings)
+        XCTAssertEqual(LocationPermissionAction.of(.restricted, alwaysPromptUsed: false), .openSettings)
+        XCTAssertEqual(LocationPermissionAction.of(.authorizedAlways, alwaysPromptUsed: true), .hidden)
+        XCTAssertEqual(LocationPermissionAction.openSettings.buttonTitle, "Open Settings")
+        XCTAssertEqual(LocationPermissionAction.askWhenInUse.buttonTitle, "Allow location")
+        XCTAssertEqual(LocationPermissionAction.askAlways.buttonTitle, "Allow location")
+        XCTAssertNil(LocationPermissionAction.hidden.buttonTitle)
+    }
+
+    func testDeniedOpensSettingsAndNeverCallsThePrompt() {
+        var opened = 0
+        controller.openSettings = { opened += 1 }
+        for status in [CLAuthorizationStatus.denied, .restricted] {
+            source.authorizationStatus = status
+            controller.requestPermission()
+        }
+        XCTAssertEqual(opened, 2)
+        XCTAssertEqual(source.whenInUseRequests, 0)
+        XCTAssertEqual(source.alwaysRequests, 0)
+    }
+
+    func testNotDeterminedAsksForWhenInUse() {
+        var opened = 0
+        controller.openSettings = { opened += 1 }
+        source.authorizationStatus = .notDetermined
+        controller.requestPermission()
+        XCTAssertEqual(source.whenInUseRequests, 1)
+        XCTAssertEqual(opened, 0)
+    }
+
+    func testTheAlwaysPromptIsAskedOnceThenTheButtonOpensSettings() {
+        var opened = 0
+        controller.openSettings = { opened += 1 }
+        source.authorizationStatus = .authorizedWhenInUse
+        XCTAssertEqual(controller.permissionAction, .askAlways)
+        controller.requestPermission()
+        XCTAssertEqual(source.alwaysRequests, 1)
+        XCTAssertEqual(controller.permissionAction, .openSettings, "iOS shows the upgrade once")
+        controller.requestPermission()
+        XCTAssertEqual(source.alwaysRequests, 1, "no second prompt call")
+        XCTAssertEqual(opened, 1)
+    }
+
+    func testTheAutomaticUpgradePromptCountsAsUsed() {
+        source.authorizationStatus = .authorizedWhenInUse
+        source.onAuthorizationChange?(.authorizedWhenInUse)
+        XCTAssertEqual(source.alwaysRequests, 1)
+        source.onAuthorizationChange?(.authorizedWhenInUse)
+        XCTAssertEqual(source.alwaysRequests, 1, "a later change does not ask again")
+        XCTAssertEqual(controller.permissionAction, .openSettings)
+    }
 
     func testTheBodyIsTheEnvelopeWithISOTimestampsAndAccuracy() async throws {
         pair()

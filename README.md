@@ -56,7 +56,7 @@ familyshield/
 │   ├── consent-sdk/      # COPPA / GDPR-K consent flow library
 │   └── crypto/           # E2E/vault encryption helpers
 ├── docs/                 # SPEC, competitive analysis, world-class addendum, test guides
-├── infra/                # docker / k8s / terraform
+├── infra/                # terraform (AWS Fargate stacks, ADR-0028); Dockerfiles live with each service
 └── .github/workflows/    # CI
 ```
 

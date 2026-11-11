@@ -1,5 +1,9 @@
 # FamilyShield Agent — macOS (Feature #25 scaffolding)
 
+> **Superseded design (2026-11-11):** ADR-0036 (`docs/adr/0036-macos-child-agent-on-macos-27.md`, PR for roadmap 5.9) decides the
+> macOS agent is a **Swift** agent sharing the iOS package's core, and that `FamilyControls` is not available on
+> macOS. This .NET scaffold is retired when the build starts. Read the ADR before working here.
+
 > Status: **proven scaffolding**. This folder exists so the macOS agent *builds and runs*
 > on a Mac today. No Mac was available during the world-class upgrade (Windows-only host),
 > so nothing here has been compiled — the csproj was verified by XML inspection only
@@ -29,7 +33,7 @@ is exactly what survives the port and what must be replaced.
 | `Services/ApiClient.cs`, `AgentConfig.cs`, `Dtos.cs`, `TimeWindows.cs`, `PauseGate.cs` | **Portable pending review** — no Windows-only APIs observed; expected to copy with namespace changes. `PauseGate` logic (pause vs bedtime vs always-allowed precedence) is pure. |
 | `Services/WebFilterProxy.cs` | **Not portable.** Titanium.Web.Proxy + WinINET system-proxy pinning (`InternetSetOption`). Replace with a NetworkExtension **content-filter provider** (see entitlements below) or drop web filtering in favour of Screen Time web shields. |
 | `Services/HttpsInterception.cs` | **Not portable** (cert injection into Windows user store). macOS equivalent: install a root CA into the System keychain (user-consented, documented risk — same policy as Windows `FS_HTTPS_INSPECT=1`). |
-| `Services/ScreenTimeEnforcer.cs` | **Replace with Apple's frameworks.** On macOS 13+ use `FamilyControls` (`AuthorizationCenter.requestAuthorization`) + `ManagedSettings` (`ManagedSettingsStore` application/web shields) — same architecture as `apps/child-ios`. |
+| `Services/ScreenTimeEnforcer.cs` | **Replace — but NOT with Apple's Screen Time frameworks.** Corrected 2026-11-11 by ADR-0036: Apple lists `FamilyControls` authorisation for iOS and iPadOS only, so a Mac app cannot use `ManagedSettings` shields. Use the frontmost-app overlay (Tier 1) and, if Apple grants it, an Endpoint Security client (Tier 2). |
 | `Services/ProcessMonitor.cs` | **Partial.** App-usage counters need a process enumerator — replace WMI/registry paths with `libproc` (`proc_listpids`) or `ps` parsing; VPN-interface detection via `SystemConfiguration.SCNetworkInterfaceCopyAll`. |
 | `Services/LockOverlay.cs`, `PairingDialog.cs` | **Rewrite UI.** Avalonia (cross-platform, pairs with the ported services) or AppKit/NSWindow. WinForms does not exist on macOS. |
 | `Services/SafeSearch.cs` | **Portable** (URL rewriting rules) once the filter pipeline it plugs into is re-platformed. |
@@ -45,11 +49,10 @@ this phase ships scaffolding + scripts instead of a compiled agent:
   capability and a *paid* Apple Developer provisioning profile. The approved app
   installs an `NEContentFilter`/`NEFilterDataProvider` extension; without the
   entitlement the API exists but the extension never activates.
-- **Screen Time path (macOS 13+)** — app shields, web shields and schedules via
-  `FamilyControls` + `ManagedSettings` require the **Family Controls** capability
-  (`com.apple.developer.family-controls`). This is the lower-friction path and matches
-  the iOS agent architecture in `apps/child-ios`; it does not give raw traffic
-  inspection, only token-based shields.
+- **Screen Time path — not available (corrected 2026-11-11, ADR-0036).** An earlier version of this
+  README said `FamilyControls` + `ManagedSettings` work on macOS 13+. Apple's documentation lists
+  `AuthorizationCenter.requestAuthorization(for:)` for iOS and iPadOS only, so a Mac app cannot get the
+  authorisation the shields need.
 - **App group** — `group.<team-id>.familyshield` for the shared pairing store
   (`agent.childId`, `agent.hmacSecret`) between the agent and its extensions.
 - **Accessibility** — only needed if you keep a global SOS hotkey / overlay input
@@ -70,6 +73,7 @@ this phase ships scaffolding + scripts instead of a compiled agent:
 1. Copy `LocalRuleStore.cs` verbatim; add an xunit project mirroring `apps/agent-desktop/tests`.
 2. Port `TelemetryUploader.cs` with the battery block behind `#if __MACOS__`.
 3. Port `RuleSyncService.cs` behind the documented macOS tamper/SOS seams.
-4. Add the FamilyControls/ManagedSettings shield layer (reuse `apps/child-ios` design).
+4. ~~Add the FamilyControls/ManagedSettings shield layer~~ — not possible on macOS; see ADR-0036 for the
+   overlay / Endpoint Security tiers and the Swift rewrite that replaces steps 1–5.
 5. Only then pursue NetworkExtension content filtering if raw traffic inspection is
    still required.

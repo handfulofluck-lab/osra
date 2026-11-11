@@ -1,7 +1,8 @@
+import DeviceActivity
 import FamilyShieldAgent
 
-// This extension's principal class, FamilyShieldDeviceActivityMonitor (named in Info.plist), is defined in
-// the FamilyShieldAgent package, which is linked statically. This reference makes the linker load
-// it into the extension's binary; with nothing referring to it, the extension could start with no
-// principal class. `public` keeps an optimized build from removing the reference.
-public let principalClass: AnyClass = FamilyShieldDeviceActivityMonitor.self
+/// #561: the extension's principal class is declared here, in the extension's own module, as Apple's template does,
+/// and named `$(PRODUCT_MODULE_NAME).DeviceActivityMonitorExtension` in Info.plist. On the iPhone 13 iOS could not load a principal class that
+/// lived only in the statically linked package (SpringBoard logged `ExtensionError Code=0`), so the OSRA shield
+/// never showed. The behaviour stays in `FamilyShieldDeviceActivityMonitor` in the package, where the unit tests reach it.
+final class DeviceActivityMonitorExtension: FamilyShieldDeviceActivityMonitor {}
