@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSRA design language: reference screens</title>
+<!--
+  Reference screens for docs/design/DESIGN-LANGUAGE.md (ADR-0038).
+  One layout, two themes. Open in a browser:
+    screens.html            all screens, light (Calm)
+    screens.html?theme=dark all screens, dark (Control room)
+    screens.html?screen=home&theme=dark   one screen
+  The colour values live in ../tokens.json; the :root blocks below must match it.
+  All names, places and figures are invented demo data.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --page:#F1F5F4;--card:#FFFFFF;--card-border:transparent;--raised:#FFFFFF;--line:#E6ECEB;--border:#C9D6D3;
+  --ink:#12211F;--muted:#4D5E5A;--primary:#0B5D57;--on-primary:#FFFFFF;--tint:#EAF2F0;
+  --ok:#0B5D57;--warn:#8A4B00;--warn-bg:#FFF0D4;--on-warn-bg:#5E3300;--warn-solid:#8A4B00;--on-warn-solid:#FFFFFF;
+  --track:#E2EAE8;--sw-off:#7D8C89;--knob:#FFFFFF;
+  --band-bed:#C7D0E2;--band-school:#DCE4CC;--band-ink:#2C3A37;
+  --c-video:#0B5D57;--c-games:#C96A12;--bar-idle:#7F9792;--scrim:#5D6866;
+  --kid1:#0B5D57;--kid2:#7A3E8E;--kid3:#1F4E9A;--on-kid:#FFFFFF;
+  --map:#DDE7E4;--road:#FFFFFF;--zone:#5F6F6B;
+  --r-card:18px;--r-ctl:12px;--r-sheet:26px;
+  --font:"IBM Plex Sans","IBM Plex Sans Arabic",system-ui,sans-serif;--num:"IBM Plex Sans",system-ui,sans-serif;
+}
+:root[data-theme="dark"]{
+  --page:#0E1417;--card:#172026;--card-border:#2B3840;--raised:#1E2A31;--line:#2B3840;--border:#3A4A53;
+  --ink:#E9EFF1;--muted:#A7B6BD;--primary:#7DB4FF;--on-primary:#0E1417;--tint:#1E2A31;
+  --ok:#86D4BE;--warn:#FFB454;--warn-bg:#3A2A10;--on-warn-bg:#FFD9A0;--warn-solid:#FFB454;--on-warn-solid:#0E1417;
+  --track:#2B3840;--sw-off:#6A7C86;--knob:#0E1417;
+  --band-bed:#2A3550;--band-school:#2F3B33;--band-ink:#C9D4D9;
+  --c-video:#7DB4FF;--c-games:#FFB454;--bar-idle:#5C7483;--scrim:#05080A;
+  --kid1:#7DB4FF;--kid2:#E6A8D0;--kid3:#B7D48A;--on-kid:#0E1417;
+  --map:#121B20;--road:#24333B;--zone:#8FA3AD;
+  --r-card:12px;--r-ctl:8px;--r-sheet:16px;
+  --num:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#8A9391;font-family:var(--font);padding:24px;display:flex;flex-wrap:wrap;gap:24px}
+body.one{padding:0;background:var(--page)}
+button{font:inherit;color:inherit;cursor:pointer}
+h1,h2,p{margin:0}
+.screen{width:390px;height:844px;background:var(--page);color:var(--ink);display:flex;flex-direction:column;overflow:hidden;font-size:15px;line-height:20px}
+.row{display:flex;align-items:center;gap:10px}
+.sp{justify-content:space-between}
+.muted{color:var(--muted)}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+p .num{font-family:inherit}
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:var(--r-card);padding:14px;display:flex;flex-direction:column;gap:10px}
+.list{background:var(--card);border:1px solid var(--card-border);border-radius:var(--r-card)}
+.av{width:40px;height:40px;border-radius:50%;color:var(--on-kid);font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.nm{font-size:17px;font-weight:700}
+.ok{font-size:13px;color:var(--ok)}
+.bar{height:8px;border-radius:4px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:8px;border-radius:4px;background:var(--primary)}
+.act{flex:1;height:44px;border-radius:var(--r-ctl);border:1px solid var(--border);background:var(--raised);font-weight:600;font-size:14px}
+.primary{height:52px;border-radius:var(--r-ctl);border:0;background:var(--primary);color:var(--on-primary);font-size:17px;font-weight:700}
+.text{height:44px;border:0;background:none;color:var(--primary);font-size:15px;font-weight:600}
+.tabs{display:flex;background:var(--card);border-top:1px solid var(--line)}
+.tab{flex:1;height:64px;border:0;background:none;font-size:12px;font-weight:600;color:var(--muted)}
+.tab.on{color:var(--primary)}
+.warnbox{background:var(--warn-bg);border-radius:var(--r-ctl);padding:4px 4px 4px 12px}
+.warnbox p{flex:1;font-size:14px;line-height:18px;color:var(--on-warn-bg)}
+.fix{height:44px;padding:0 16px;border-radius:var(--r-ctl);border:0;background:var(--warn-solid);color:var(--on-warn-solid);font-weight:700;font-size:14px}
+.rule{display:flex;align-items:center;gap:8px;padding:8px 6px 8px 14px;border-top:1px solid var(--line)}
+.rule:first-child{border-top:0}
+.rn{font-size:15px;font-weight:600}
+.rs{font-size:13px;color:var(--muted)}
+.sw{width:52px;height:44px;border:0;background:none;display:flex;align-items:center;justify-content:center;padding:0;flex:none}
+.sw i{width:44px;height:26px;border-radius:13px;background:var(--primary);position:relative;display:block}
+.sw i::after{content:"";position:absolute;top:3px;left:21px;width:20px;height:20px;border-radius:50%;background:var(--knob)}
+.sw.off i{background:var(--sw-off)}
+.sw.off i::after{left:3px}
+.go{display:flex;align-items:center;justify-content:space-between;width:100%;height:48px;padding:0 14px;border:0;border-top:1px solid var(--line);background:none;font-size:15px;font-weight:600;text-align:start}
+.go:first-child{border-top:0}
+.go span{font-size:13px;font-weight:400;color:var(--muted)}
+.strip{position:relative;height:28px;border-radius:6px;background:var(--track);overflow:hidden}
+.band{position:absolute;top:0;height:28px;font-size:10px;line-height:28px;color:var(--band-ink);padding-left:6px}
+.use{position:absolute;top:5px;height:18px;border-radius:3px}
+.col{flex:1;height:84px;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.col i{display:block;width:22px;border-radius:4px 4px 0 0;background:var(--bar-idle)}
+.col u{position:absolute;left:3px;right:3px;height:2px;background:var(--warn)}
+.step{width:52px;height:52px;border-radius:50%;border:1px solid var(--border);background:var(--raised);font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center}
+.day{flex:1;min-height:150px;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;font-size:12px;color:var(--muted)}
+.day i{display:block;width:26px;border-radius:6px;background:var(--bar-idle)}
+.day.on{color:var(--ink);font-weight:700}
+.day.on i{background:var(--primary)}
+.road{position:absolute;height:4px;background:var(--road);transform-origin:left center}
+.zone{position:absolute;border:1.5px dashed var(--zone);border-radius:50%;font-size:11px;color:var(--zone);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px}
+.pin{position:absolute;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700}
+.pin .av{width:30px;height:30px;font-size:14px}
+.ic{width:44px;height:44px;border-radius:var(--r-ctl);background:var(--tint);border:1px solid var(--card-border);font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+</style>
+</head>
+<body>
+
+<!-- 1. Parent home -->
+<section class="screen" id="home">
+  <header class="row sp" style="padding:22px 20px 6px;align-items:flex-end">
+    <div><div class="muted" style="font-size:13px">Wednesday 11 November</div><h1 style="font-size:26px">Family</h1></div>
+    <button class="text" style="padding:0 6px">Add child</button>
+  </header>
+  <main style="flex:1;padding:8px 16px;display:flex;flex-direction:column;gap:12px">
+    <article class="card">
+      <div class="row"><span class="av" style="background:var(--kid1)">A</span><div style="flex:1"><div class="nm">Alex</div><div class="ok">Protected</div></div><span class="muted" style="font-size:12px">Battery <span class="num">84%</span></span></div>
+      <p>At <b>Home</b>. 1 h 52 m used of 4 h. Bedtime at <span class="num">21:00</span>.</p>
+      <div class="bar"><i style="width:47%"></i></div>
+      <div class="row" style="gap:8px"><button class="act">Pause</button><button class="act">Ring</button><button class="act">More time</button></div>
+    </article>
+    <article class="card">
+      <div class="row"><span class="av" style="background:var(--kid2)">M</span><div style="flex:1"><div class="nm">Maya</div><div class="ok">Protected</div></div><span class="muted" style="font-size:12px">Battery <span class="num">72%</span></span></div>
+      <p>At <b>Grandma's house</b>. 1 h 35 m used of 3 h. Bedtime at <span class="num">20:30</span>.</p>
+      <div class="bar"><i style="width:53%"></i></div>
+      <div class="row" style="gap:8px"><button class="act">Pause</button><button class="act">Ring</button><button class="act">More time</button></div>
+    </article>
+    <article class="card">
+      <div class="row"><span class="av" style="background:var(--kid3)">O</span><div style="flex:1"><div class="nm">Omar</div><div style="font-size:13px;font-weight:600;color:var(--warn)">Needs attention</div></div><span class="muted" style="font-size:12px">Battery <span class="num">58%</span></span></div>
+      <div class="row warnbox"><p>App blocking is off on Omar's phone.</p><button class="fix">Fix</button></div>
+      <p>Near <b>Al Wasl Road</b>. 2 h 10 m used of 3 h.</p>
+      <div class="bar"><i style="width:72%"></i></div>
+    </article>
+  </main>
+  <nav class="tabs"><button class="tab on">Home</button><button class="tab">Map</button><button class="tab">Inbox · 2</button><button class="tab">Family</button></nav>
+</section>
+
+<!-- 2. Map -->
+<section class="screen" id="map">
+  <div style="position:relative;height:360px;background:var(--map);overflow:hidden">
+    <span class="road" style="left:-10px;top:120px;width:440px;transform:rotate(8deg)"></span>
+    <span class="road" style="left:130px;top:-10px;width:420px;transform:rotate(72deg)"></span>
+    <span class="road" style="left:0;top:300px;width:420px;transform:rotate(-14deg)"></span>
+    <span class="road" style="left:280px;top:-10px;width:420px;transform:rotate(98deg)"></span>
+    <span class="zone" style="left:28px;top:150px;width:110px;height:110px">Home</span>
+    <span class="zone" style="left:262px;top:40px;width:96px;height:96px">School</span>
+    <span class="pin" style="left:66px;top:186px"><span class="av" style="background:var(--kid1)">A</span>Alex</span>
+    <span class="pin" style="left:170px;top:70px"><span class="av" style="background:var(--kid2)">M</span>Maya</span>
+    <span class="pin" style="left:226px;top:262px"><span class="av" style="background:var(--kid3)">O</span>Omar</span>
+    <button class="act" style="position:absolute;right:16px;top:20px;flex:none;padding:0 14px">Add a place</button>
+  </div>
+  <main style="flex:1;padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+    <div class="list">
+      <div class="rule"><span class="av" style="background:var(--kid1);width:32px;height:32px">A</span><div style="flex:1"><div class="rn">Alex · Home</div><div class="rs">Arrived <span class="num">14:20</span> · seen 1 minute ago</div></div><button class="act" style="flex:none;padding:0 14px">Ring</button></div>
+      <div class="rule"><span class="av" style="background:var(--kid2);width:32px;height:32px">M</span><div style="flex:1"><div class="rn">Maya · Grandma's house</div><div class="rs">Arrived <span class="num">15:05</span> · seen 3 minutes ago</div></div><button class="act" style="flex:none;padding:0 14px">Ring</button></div>
+      <div class="rule"><span class="av" style="background:var(--kid3);width:32px;height:32px">O</span><div style="flex:1"><div class="rn">Omar · Al Wasl Road</div><div class="rs">Left School <span class="num">14:10</span> · seen 2 minutes ago</div></div><button class="act" style="flex:none;padding:0 14px">Ring</button></div>
+    </div>
+    <div class="list">
+      <button class="go">Home<span>Tells you on arrive and leave</span></button>
+      <button class="go">School<span>Tells you on arrive and leave</span></button>
+    </div>
+  </main>
+  <nav class="tabs"><button class="tab">Home</button><button class="tab on">Map</button><button class="tab">Inbox · 2</button><button class="tab">Family</button></nav>
+</section>
+
+<!-- 3. Child page (taller than one screen: it scrolls) -->
+<section class="screen" id="child" style="height:1050px">
+  <header class="row" style="padding:10px 12px 0 4px">
+    <button aria-label="Back" style="width:44px;height:44px;border:0;background:none;font-size:22px">‹</button>
+    <h1 style="flex:1;font-size:22px">Alex</h1>
+    <button class="act" style="flex:none;padding:0 12px;font-weight:400;color:var(--muted)">Search settings</button>
+  </header>
+  <main style="flex:1;padding:6px 16px 16px;display:flex;flex-direction:column;gap:10px">
+    <div><p style="font-size:17px;line-height:23px">At <b>Home</b>. Free time until bedtime at <span class="num">21:00</span>.</p><div class="ok" style="margin-top:2px">Protected · phone seen 1 minute ago</div></div>
+    <div class="row" style="gap:8px"><button class="act">Pause</button><button class="act">Ring</button><button class="act">More time</button></div>
+    <article class="card" style="gap:8px">
+      <div class="row sp"><h2 style="font-size:15px">Today</h2><span style="font-size:14px"><b>1 h 52 m</b> of 4 h</span></div>
+      <div class="strip">
+        <span class="band" style="left:0;width:29.2%;background:var(--band-bed)">Bedtime</span>
+        <span class="band" style="left:33.3%;width:25%;background:var(--band-school)">School time</span>
+        <span class="band" style="left:87.5%;width:12.5%;background:var(--band-bed)"></span>
+        <span class="use" style="left:29.9%;width:2.1%;background:var(--c-video)"></span>
+        <span class="use" style="left:60.4%;width:3.5%;background:var(--c-video)"></span>
+        <span class="use" style="left:67.4%;width:2.2%;background:var(--c-games)"></span>
+        <span style="position:absolute;top:0;left:71%;width:2px;height:28px;background:var(--ink)"></span>
+      </div>
+      <div class="row sp muted num" style="font-size:11px"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+      <div class="row" style="font-size:13px;gap:14px">
+        <span class="row" style="gap:6px"><i style="width:10px;height:10px;border-radius:2px;background:var(--c-video);display:block"></i>Video 1 h 20 m</span>
+        <span class="row" style="gap:6px"><i style="width:10px;height:10px;border-radius:2px;background:var(--c-games);display:block"></i>Games 32 m</span>
+      </div>
+    </article>
+    <article class="card" style="gap:6px">
+      <div class="row sp"><h2 style="font-size:15px">This week</h2><span class="row" style="font-size:13px;gap:6px"><i style="width:14px;height:2px;background:var(--warn);display:block"></i>Daily limit</span></div>
+      <div class="row" style="gap:4px">
+        <div class="col"><u style="bottom:64px"></u><i style="height:51px"></i></div>
+        <div class="col"><u style="bottom:64px"></u><i style="height:40px"></i></div>
+        <div class="col"><u style="bottom:64px"></u><i style="height:64px"></i></div>
+        <div class="col"><u style="bottom:64px"></u><i style="height:30px;background:var(--primary)"></i></div>
+        <div class="col"><u style="bottom:64px"></u></div>
+        <div class="col"><u style="bottom:80px"></u></div>
+        <div class="col"><u style="bottom:80px"></u></div>
+      </div>
+      <div class="row muted" style="gap:4px;font-size:11px;text-align:center"><span style="flex:1">Sun</span><span style="flex:1">Mon</span><span style="flex:1">Tue</span><b style="flex:1;color:var(--ink)">Wed</b><span style="flex:1">Thu</span><span style="flex:1">Fri</span><span style="flex:1">Sat</span></div>
+    </article>
+    <div class="row sp" style="padding:2px 4px 0"><h2 style="font-size:15px">Rules</h2><span class="ok">All active on Alex's phone</span></div>
+    <div class="list">
+      <div class="rule"><div style="flex:1"><div class="rn">Daily limit</div><div class="rs">4 h, Fri and Sat 5 h</div></div><button class="sw" aria-pressed="true" aria-label="Daily limit"><i></i></button></div>
+      <div class="rule"><div style="flex:1"><div class="rn">Bedtime</div><div class="rs"><span class="num">21:00</span> to <span class="num">07:00</span>, every night</div></div><button class="sw" aria-pressed="true" aria-label="Bedtime"><i></i></button></div>
+      <div class="rule"><div style="flex:1"><div class="rn">School time</div><div class="rs"><span class="num">08:00</span> to <span class="num">14:00</span>, Sun to Thu</div></div><button class="sw" aria-pressed="true" aria-label="School time"><i></i></button></div>
+      <div class="rule"><div style="flex:1"><div class="rn">Homework</div><div class="rs">Off · <span class="num">16:00</span> to <span class="num">17:30</span>, Mon to Thu</div></div><button class="sw off" aria-pressed="false" aria-label="Homework"><i></i></button></div>
+      <button class="go" style="color:var(--primary)">Add a schedule</button>
+    </div>
+    <div class="list">
+      <button class="go">Apps<span>2 limited, 1 blocked</span></button>
+      <button class="go">Websites<span>Safe search on · 6 categories blocked</span></button>
+      <button class="go">Places<span>Home, School</span></button>
+      <button class="go">More protection<span>Social monitoring on, 2 apps</span></button>
+    </div>
+  </main>
+</section>
+
+<!-- 4. Rule sheet: daily limit with different days -->
+<section class="screen" id="limit" style="background:var(--scrim)">
+  <div style="height:96px;padding:22px 20px;color:#E6ECEB;font-size:22px;font-weight:700;opacity:.7">Alex</div>
+  <div style="flex:1;background:var(--card);border:1px solid var(--card-border);border-bottom:0;border-radius:var(--r-sheet) var(--r-sheet) 0 0;padding:10px 20px 20px;display:flex;flex-direction:column;gap:14px">
+    <div style="width:40px;height:4px;border-radius:2px;background:var(--border);align-self:center"></div>
+    <div class="row sp"><h1 style="font-size:22px">Daily limit</h1><button class="sw" aria-pressed="true" aria-label="Daily limit on"><i></i></button></div>
+    <div class="row" style="justify-content:center;gap:28px;padding:6px 0">
+      <button class="step" aria-label="15 minutes less">−</button>
+      <div style="text-align:center"><div class="num" style="font-size:48px;font-weight:700;line-height:52px">4 h</div><div class="muted" style="font-size:14px">most days</div></div>
+      <button class="step" aria-label="15 minutes more">+</button>
+    </div>
+    <div style="border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px">
+      <div class="row sp"><h2 style="font-size:16px">Different on some days</h2><span class="muted" style="font-size:13px">Tap a day to change it</span></div>
+      <div class="row" style="gap:4px;align-items:stretch">
+        <button class="day"><i style="height:80px"></i>4 h<span>Sun</span></button>
+        <button class="day"><i style="height:80px"></i>4 h<span>Mon</span></button>
+        <button class="day"><i style="height:80px"></i>4 h<span>Tue</span></button>
+        <button class="day"><i style="height:80px"></i>4 h<span>Wed</span></button>
+        <button class="day"><i style="height:80px"></i>4 h<span>Thu</span></button>
+        <button class="day on"><i style="height:100px"></i>5 h<span>Fri</span></button>
+        <button class="day on"><i style="height:100px"></i>5 h<span>Sat</span></button>
+      </div>
+      <div class="row sp" style="background:var(--tint);border-radius:var(--r-ctl);padding:8px 8px 8px 16px">
+        <span style="font-weight:600">Friday</span>
+        <div class="row" style="gap:12px"><button class="step" style="width:44px;height:44px;font-size:22px" aria-label="Friday 15 minutes less">−</button><b class="num" style="font-size:18px;min-width:40px;text-align:center">5 h</b><button class="step" style="width:44px;height:44px;font-size:22px" aria-label="Friday 15 minutes more">+</button></div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="font-size:14px"><div><b>4 h, Fri and Sat 5 h</b></div><div style="color:var(--ok)">Active on Alex's phone since <span class="num">17:01</span></div></div>
+    <button class="primary">Done</button>
+  </div>
+</section>
+
+<!-- 5. OSRA Kids home -->
+<section class="screen" id="kids" style="gap:16px;padding:28px 20px 22px">
+  <header><h1 style="font-size:26px">Hi Alex</h1><div class="muted">Here is your day</div></header>
+  <div style="align-self:center;width:220px;height:220px;border-radius:50%;background:conic-gradient(var(--primary) 0 53%, var(--track) 0);display:flex;align-items:center;justify-content:center">
+    <div style="width:184px;height:184px;border-radius:50%;background:var(--page);display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <div class="num" style="font-size:36px;font-weight:700;line-height:42px">2 h 08 m</div><div class="muted">left today</div>
+    </div>
+  </div>
+  <div style="text-align:center;font-size:16px">Next: <b>Bedtime at <span class="num">21:00</span></b></div>
+  <div class="card" style="flex-direction:row;align-items:center;gap:12px;padding:12px"><span class="ic">Y</span><div style="flex:1"><div class="rn" style="font-size:16px">YouTube</div><div class="rs" style="font-size:14px">22 minutes left today</div></div></div>
+  <div class="card" style="flex-direction:row;align-items:center;gap:12px;padding:12px"><span class="ic">C</span><div style="flex:1"><div class="rn" style="font-size:16px">Chess</div><div class="rs" style="font-size:14px">Time is up for today. More tomorrow at 7:00.</div></div></div>
+  <div style="flex:1"></div>
+  <button class="primary">Ask for more time</button>
+  <button class="text">What my parents can see</button>
+</section>
+
+<!-- 6. OSRA Kids block screen -->
+<section class="screen" id="block" style="padding:28px 24px 22px;gap:14px;align-items:stretch">
+  <div style="flex:1"></div>
+  <span class="ic" style="width:72px;height:72px;font-size:28px;align-self:center">C</span>
+  <h1 style="font-size:26px;line-height:32px;text-align:center">Chess time is up for today</h1>
+  <p class="muted" style="font-size:17px;line-height:24px;text-align:center">You used your 45 minutes. More tomorrow at <span class="num">7:00</span>.</p>
+  <div style="flex:1"></div>
+  <button class="primary">Ask for 15 more minutes</button>
+  <button class="act" style="flex:none;height:52px;font-size:16px">Ask for something else</button>
+  <button class="text">Go to the home screen</button>
+  <p class="muted" style="font-size:13px;text-align:center">You can always call Mum and Dad.</p>
+</section>
+
+<script>
+var q = new URLSearchParams(location.search);
+if (q.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+var one = q.get('screen');
+if (one) {
+  document.body.className = 'one';
+  document.querySelectorAll('.screen').forEach(function (s) { s.hidden = s.id !== one; });
+}
+</script>
+</body>
+</html>
