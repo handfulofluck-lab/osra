@@ -914,7 +914,7 @@ First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the 
 4. **On the phone, Status screen:** tap **Turn on Screen Time** and approve the prompt; the row reads `On` and rule
    sync stops logging `notAuthorized`. **Allow location** asks for While Using, then Always, each once; after a
    denial, or once the Always prompt was used, the button reads **Open Settings** and opens the app's page.
-5. The home-screen name is **OSRA Kids** (Arabic name pending Karim's approval).
+5. The home-screen name is **OSRA Kids** (Arabic «أسرة للأطفال», approved by Karim on 2026-11-11).
 6. **Parent PIN and app groups (ADR-0037).** After pairing, the phone asks for a parent PIN (4–8 digits). Status →
    **App groups** asks for it: five wrong PINs lock it for 30 s. Make a group ("Games"), **Choose apps** (e.g.
    Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
