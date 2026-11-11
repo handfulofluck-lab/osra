@@ -143,4 +143,21 @@ class FullMergedManifestTest {
             violations.isEmpty(),
         )
     }
+
+    /**
+     * osra-security#8 F1: nothing of this app is backed up or moved to another phone. Its database holds chat text
+     * waiting for upload, location and usage; a restored copy is also half-paired, because the Keystore key behind
+     * the encrypted store does not travel. A restored phone re-pairs instead.
+     */
+    @Test
+    fun `full merged manifests turn backup off with rules that exclude everything`() {
+        for ((buildType, manifest) in listOf("debug" to merged, "release" to releaseMerged)) {
+            assertTrue("Full $buildType: android:allowBackup must be \"false\", was ${manifest.applicationAllowBackup}",
+                manifest.applicationAllowBackup == "false")
+            assertTrue("Full $buildType: android:dataExtractionRules must name the exclude-all rules",
+                manifest.applicationDataExtractionRules == "@xml/data_extraction_rules")
+            assertTrue("Full $buildType: android:fullBackupContent must name the exclude-all rules",
+                manifest.applicationFullBackupContent == "@xml/backup_rules")
+        }
+    }
 }
