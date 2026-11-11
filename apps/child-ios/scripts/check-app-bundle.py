@@ -11,7 +11,8 @@ It checks, for each .app given:
   1. PlugIns/ holds exactly the three expected .appex bundles, and nothing else;
   2. each .appex Info.plist has the expected NSExtensionPointIdentifier and NSExtensionPrincipalClass;
   3. on macOS (where `nm` reads Mach-O), each .appex binary defines its principal class;
-  4. the app's Info.plist asks for location with both usage strings, has them in English and Arabic
+  4. the app's display name is "OSRA Kids" in Info.plist and in en.lproj (Karim, 11 Nov), and ar.lproj
+     carries a display name too; the app's Info.plist asks for location with both usage strings, has them in English and Arabic
      (en.lproj, ar.lproj), and has no `location` background mode (significant-change monitoring needs
      none, and the entry draws App Review questions, 5.5 PR E).
 And once, from the source tree (an unsigned build embeds no entitlements):
@@ -38,6 +39,8 @@ EXTENSIONS = {
     ),
     "OSRAAgentShieldAction.appex": ("com.apple.ManagedSettings.shield-action-service", "FamilyShieldShieldActionDelegate"),
 }
+
+DISPLAY_NAME = "OSRA Kids"
 
 LOCATION_KEYS = ["NSLocationWhenInUseUsageDescription", "NSLocationAlwaysAndWhenInUseUsageDescription"]
 
@@ -80,6 +83,7 @@ def check_app(app):
         extra = sorted(set(found) - set(EXTENSIONS))
         fail(f"PlugIns/ mismatch: missing {missing or 'none'}, unexpected {extra or 'none'}")
 
+    check_display_name(app)
     check_location(app)
 
     for name, (point, principal) in EXTENSIONS.items():
@@ -100,6 +104,51 @@ def check_app(app):
         else:
             fail(f"{name}: NSExtensionPrincipalClass = {got_principal!r}, expected {principal!r}")
         check_principal_linked(appex, name, principal)
+
+
+def check_display_name(app):
+    info_path = os.path.join(app, "Info.plist")
+    if not os.path.isfile(info_path):
+        fail("app: no Info.plist")
+        return
+    name = read_plist(info_path).get("CFBundleDisplayName")
+    if name == DISPLAY_NAME:
+        ok(f"app: CFBundleDisplayName = {name}")
+    else:
+        fail(f"app: CFBundleDisplayName = {name!r}, expected {DISPLAY_NAME!r}")
+    for lang in ("en", "ar"):
+        strings = os.path.join(app, f"{lang}.lproj", "InfoPlist.strings")
+        if not os.path.isfile(strings):
+            fail(f"app: no {lang}.lproj/InfoPlist.strings")
+            continue
+        value = read_strings_value(strings, "CFBundleDisplayName")
+        if lang == "en" and value != DISPLAY_NAME:
+            fail(f"app: en.lproj CFBundleDisplayName = {value!r}, expected {DISPLAY_NAME!r}")
+        elif not value:
+            fail(f"app: {lang}.lproj/InfoPlist.strings has no CFBundleDisplayName")
+        else:
+            ok(f"app: {lang}.lproj CFBundleDisplayName present")
+
+
+def read_strings_value(path, key):
+    """The value of one key in a built .strings file (binary plist, or text in UTF-8/UTF-16)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    try:
+        return plistlib.loads(data).get(key)
+    except Exception:
+        pass
+    for encoding in ("utf-8", "utf-16"):
+        try:
+            text = data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            prefix = f'"{key}" = "'
+            if line.startswith(prefix) and line.endswith('";'):
+                return line[len(prefix):-2]
+    return None
 
 
 def check_location(app):
