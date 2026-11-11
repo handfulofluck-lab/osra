@@ -42,6 +42,19 @@ export function locationRetentionDays(env: NodeJS.ProcessEnv = process.env): num
   return Math.min(Math.max(n, 7), retentionDays(env));
 }
 
+/**
+ * Alerts have their own window (Play decision 10 B, Karim 2026-11-11): **365 days**, longer than the raw
+ * tables because an alert is the record a parent may need months later. `ALERT_RETENTION_DAYS` may lower it
+ * but never raise it, the same rule location follows, so a mistyped override cannot make the product keep a
+ * child's alerts forever. An unusable value takes the product default.
+ */
+export function alertRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.ALERT_RETENTION_DAYS;
+  const n = Number(raw);
+  if (raw === undefined || String(raw).trim() === "" || !Number.isInteger(n)) return 365;
+  return Math.min(Math.max(n, 1), 365);
+}
+
 export function rollupRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
   const n = Number(env.ROLLUP_RETENTION_DAYS ?? 365);
   return Number.isInteger(n) && n >= retentionDays(env) ? n : 365;
@@ -230,6 +243,8 @@ export interface RetentionResult {
   socialEvents: number;
   locationPings: number;
   usageDays: number;
+  /** Play decision 10 B: alerts older than `ALERT_RETENTION_DAYS` (365, never raised). */
+  alerts: number;
 }
 
 /**
@@ -243,14 +258,25 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
   const rawCutoff = new Date(at.getTime() - retentionDays(env) * MS_PER_DAY);
   const locationCutoff = new Date(at.getTime() - locationRetentionDays(env) * MS_PER_DAY);
   const rollupCutoff = utcDay(new Date(at.getTime() - rollupRetentionDays(env) * MS_PER_DAY));
-  const [a, w, s, l, u] = await Promise.all([
+  const alertCutoff = new Date(at.getTime() - alertRetentionDays(env) * MS_PER_DAY);
+  const [a, w, s, l, u, al] = await Promise.all([
     prisma.activityEvent.deleteMany({ where: { ts: { lt: rawCutoff } } }),
     prisma.webVisit.deleteMany({ where: { ts: { lt: rawCutoff } } }),
     prisma.socialEvent.deleteMany({ where: { createdAt: { lt: rawCutoff } } }),
     prisma.locationPing.deleteMany({ where: { timestamp: { lt: locationCutoff } } }),
     prisma.appUsageDaily.deleteMany({ where: { day: { lt: rollupCutoff } } }),
+    // Play decision 10 B: alerts stop being kept forever. Before this they went only when the child was
+    // erased, which is not a retention policy a data-safety form can describe.
+    prisma.alert.deleteMany({ where: { createdAt: { lt: alertCutoff } } }),
   ]);
-  return { activityEvents: a.count, webVisits: w.count, socialEvents: s.count, locationPings: l.count, usageDays: u.count };
+  return {
+    activityEvents: a.count,
+    webVisits: w.count,
+    socialEvents: s.count,
+    locationPings: l.count,
+    usageDays: u.count,
+    alerts: al.count,
+  };
 }
 
 /** Every child-scoped table, in an order that respects the foreign keys. Exported so a test can assert the list. */

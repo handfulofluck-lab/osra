@@ -9,6 +9,7 @@ import {
   applyRetention,
   bucketEvents,
   locationRetentionDays,
+  alertRetentionDays,
   rollupDay,
   screenTimeTodayFromDb,
   usageSeries,
@@ -121,12 +122,12 @@ describe("usage model — reads and rollup", () => {
   });
 
   it("applyRetention deletes raw rows older than RETENTION_DAYS, location pings at the 30-day default of #238, and rollups older than ROLLUP_RETENTION_DAYS, binding the instant from JS", async () => {
-    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 2 });
     }
     const now = new Date("2026-10-16T02:00:00Z");
     const out = await applyRetention(now, { RETENTION_DAYS: "90", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
-    expect(out).toEqual({ activityEvents: 2, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2 });
+    expect(out).toEqual({ activityEvents: 2, webVisits: 2, socialEvents: 2, locationPings: 2, usageDays: 2, alerts: 2 });
     const rawCutoff = new Date(now.getTime() - 90 * 86_400_000);
     // ADR-0028 decision 5 (#238): location history stops at 30 days even when the raw window is 90.
     // This assertion used to expect `rawCutoff` for locationPing; that was the old decision, so the
@@ -143,8 +144,40 @@ describe("usage model — reads and rollup", () => {
     expect(prismaMock.activityEvent.deleteMany).toHaveBeenLastCalledWith({ where: { ts: { lt: rawCutoff } } });
   });
 
+  it("applyRetention keeps alerts for 365 days: a 366-day-old alert goes, a 364-day-old one stays (Play decision 10 B)", async () => {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-11-12T02:00:00Z");
+    await applyRetention(now, { RETENTION_DAYS: "90", ROLLUP_RETENTION_DAYS: "365" } as NodeJS.ProcessEnv);
+    const alertCutoff = new Date(now.getTime() - 365 * 86_400_000);
+    expect(prismaMock.alert.deleteMany).toHaveBeenCalledWith({ where: { createdAt: { lt: alertCutoff } } });
+    // Stated as the boundary the row exists for: one day older is deleted, one day younger is kept.
+    const day = 86_400_000;
+    expect(new Date(now.getTime() - 366 * day) < alertCutoff).toBe(true);
+    expect(new Date(now.getTime() - 364 * day) < alertCutoff).toBe(false);
+  });
+
+  it("the alert window may be lowered but never raised past 365 (Play decision 10 B)", async () => {
+    expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "30" } as NodeJS.ProcessEnv)).toBe(30);
+    // A mistake here would keep a child's alerts for ever, so the cap is the product decision, not a default.
+    expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "1000" } as NodeJS.ProcessEnv)).toBe(365);
+    expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "abc" } as NodeJS.ProcessEnv)).toBe(365);
+    expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "" } as NodeJS.ProcessEnv)).toBe(365);
+    expect(alertRetentionDays({} as NodeJS.ProcessEnv)).toBe(365);
+
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
+      prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
+    }
+    const now = new Date("2026-11-12T02:00:00Z");
+    await applyRetention(now, { RETENTION_DAYS: "90", ALERT_RETENTION_DAYS: "1000" } as NodeJS.ProcessEnv);
+    expect(prismaMock.alert.deleteMany).toHaveBeenCalledWith({
+      where: { createdAt: { lt: new Date(now.getTime() - 365 * 86_400_000) } },
+    });
+  });
+
   it("applyRetention caps the location window at RETENTION_DAYS: LOCATION_RETENTION_DAYS=120 with 90 keeps 90, not 120 (#238)", async () => {
-    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
     }
     const now = new Date("2026-10-16T02:00:00Z");
@@ -159,7 +192,7 @@ describe("usage model — reads and rollup", () => {
   });
 
   it("applyRetention floors the location window at 7 days: LOCATION_RETENTION_DAYS=3 keeps 7 (#238)", async () => {
-    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
     }
     const now = new Date("2026-10-16T02:00:00Z");
@@ -172,7 +205,7 @@ describe("usage model — reads and rollup", () => {
   });
 
   it("applyRetention falls back to min(30, RETENTION_DAYS) for an unusable LOCATION_RETENTION_DAYS (#238)", async () => {
-    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
     }
     const now = new Date("2026-10-16T02:00:00Z");
@@ -207,7 +240,7 @@ describe("usage rollup scheduler", () => {
   it("runs only at the configured UTC hour, claims the day once via SET NX, rolls up YESTERDAY", async () => {
     const redis = getRedis() as unknown as MockRedis;
     prismaMock.activityEvent.findMany.mockResolvedValue([]);
-    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily"] as const) {
+    for (const m of ["activityEvent", "webVisit", "socialEvent", "locationPing", "appUsageDaily", "alert"] as const) {
       prismaMock[m].deleteMany.mockResolvedValue({ count: 0 });
     }
     expect(rollupHourUtc({ ROLLUP_HOUR_UTC: "2" } as NodeJS.ProcessEnv)).toBe(2);
