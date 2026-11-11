@@ -86,10 +86,20 @@ jobs:
       - name: Unit tests & build (JVM + debug APK + minified release APK)
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          # G4 of the customer guide: the server a store build pairs against. A repository variable, the same
+          # one the parent app reads, so one setting describes a deployment for both apps. Unset keeps today's
+          # behaviour (the child types an address); set it to the production https URL before a store build.
+          OSRA_API_BASE: ${{ vars.OSRA_API_BASE }}
         # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
         # comes from the keystore step above when it is complete and falls back to the debug key. Both release flavours
         # are built because #170's gate asserts `android:testOnly` is absent from each release merge.
-        run: ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease bundlePlayRelease --console=plain
+        run: |
+          case "$OSRA_API_BASE" in
+            "") echo "OSRA_API_BASE not set: a release build asks the child for the server address" ;;
+            https://*) echo "built-in server: $OSRA_API_BASE" ;;
+            *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
+          esac
+          ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease bundlePlayRelease --console=plain
       # ADR-0021's gate asserts the *merged* manifest (where a dependency's permissions arrive), so it
       # only means something if the unit tests above actually ran it. The test skips with a loud message
       # when the artefact is missing — that is what an IDE run needs and what CI must never accept — so

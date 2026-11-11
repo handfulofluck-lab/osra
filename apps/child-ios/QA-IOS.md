@@ -33,9 +33,9 @@
 | Target | Kind | Bundle id | Principal class | Extension point |
 |---|---|---|---|---|
 | `OSRAAgent` | host app (`App/`, `@main` `OSRAAgentApp`) | `com.osratech.child` | — | — |
-| `OSRAAgentMonitor` | app extension (`Extensions/Monitor/`) | `com.osratech.child.Monitor` | `FamilyShieldDeviceActivityMonitor` | `com.apple.deviceactivity.monitor-extension` |
-| `OSRAAgentShieldConfiguration` | app extension (`Extensions/ShieldConfiguration/`) | `com.osratech.child.ShieldConfiguration` | `FamilyShieldConfigurationDataSource` | `com.apple.ManagedSettingsUI.shield-configuration-service` |
-| `OSRAAgentShieldAction` | app extension (`Extensions/ShieldAction/`) | `com.osratech.child.ShieldAction` | `FamilyShieldShieldActionDelegate` | `com.apple.ManagedSettings.shield-action-service` |
+| `OSRAAgentMonitor` | app extension (`Extensions/Monitor/`) | `com.osratech.child.Monitor` | `OSRAAgentMonitor.DeviceActivityMonitorExtension` (subclass of the package's `FamilyShieldDeviceActivityMonitor`, #561) | `com.apple.deviceactivity.monitor-extension` |
+| `OSRAAgentShieldConfiguration` | app extension (`Extensions/ShieldConfiguration/`) | `com.osratech.child.ShieldConfiguration` | `OSRAAgentShieldConfiguration.ShieldConfigurationExtension` (subclass of `FamilyShieldConfigurationDataSource`) | `com.apple.ManagedSettingsUI.shield-configuration-service` |
+| `OSRAAgentShieldAction` | app extension (`Extensions/ShieldAction/`) | `com.osratech.child.ShieldAction` | `OSRAAgentShieldAction.ShieldActionExtension` (subclass of `FamilyShieldShieldActionDelegate`) | `com.apple.ManagedSettings.shield-action-service` |
 
 - **The principal classes stay in the package.** They are `public` and carry `@objc(<name>)`, so the
   runtime finds them under the unqualified name in `Info.plist`. Each extension's one source file
