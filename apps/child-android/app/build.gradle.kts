@@ -82,6 +82,11 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "0.2.0"
+        // G4 of the customer guide: the server this build pairs against, so a store build never asks a child
+        // to type an address the parent's screen cannot show. Empty by default (a test or sideloaded build
+        // keeps today's editable field). CI passes it from the same repository variable the parent app uses.
+        val apiBase = (System.getenv("OSRA_API_BASE") ?: project.findProperty("osra.apiBase") ?: "").toString()
+        buildConfigField("String", "API_BASE", "\"$apiBase\"")
     }
     signingConfigs {
         create("release") {
