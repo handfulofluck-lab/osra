@@ -13,7 +13,7 @@ Stdlib only, reads the source tree, runs on Linux. It checks:
   1. each target in project.yml has exactly its expected PRODUCT_BUNDLE_IDENTIFIER;
   2. each .entitlements file lists exactly the one app group, and no other Keychain access group;
   3. every "group.…" string literal in the Swift sources is the app group, and the Swift constants
-     that name it (the identity suite, the rule-sync suite) are that literal;
+     that name it (the identity suite; the old picker `SelectionStore` is gone, ADR-0037) are that literal;
   4. the parent app's Runner.xcodeproj uses only com.osratech.parent and its test bundle;
   5. no old reverse-DNS id (dev.familyshield.…) is left in the iOS trees or the iOS workflows.
 It prints what it found and exits 1 on any mismatch.
@@ -51,7 +51,6 @@ SWIFT_DIRS = ["Sources", "App", "Extensions", "HostedTests", "IntegrationTests",
 # Swift constants that must spell the app group, as (file, declaration prefix).
 GROUP_CONSTANTS = [
     ("Sources/FamilyShieldAgent/AgentIdentityStore.swift", "public static let suiteName = "),
-    ("Sources/FamilyShieldAgent/ScreenTimeController.swift", "public static let suiteName = "),
 ]
 
 OLD_ID = re.compile(r"\bdev\.familyshield\.(agent|familyshieldParent)\b")

@@ -18,6 +18,7 @@ import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
+import 'phone_setup_section.dart';
 import 'command_history_screen.dart' show formatCommandTime;
 import '../../api/permission_errors.dart';
 
@@ -175,6 +176,8 @@ class _OverviewTab extends ConsumerWidget {
                       child: Text(l10n.lastSeenLabel(formatLastSeen(context, d.lastSeen)), style: Theme.of(context).textTheme.bodySmall),
                     ),
                   ),
+                  // ADR-0034 decision 3: what this phone says it can do, and what is missing.
+                  PhoneSetupSection(device: d),
                   // Plan 3.6: the latest command's real state, straight from the
                   // durable queue. An unacked command is never described as sent.
                   Padding(

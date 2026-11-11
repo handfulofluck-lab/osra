@@ -98,13 +98,22 @@ public struct PairingView: View {
 public struct AgentRootView: View {
     @State private var identity: AgentIdentity?
     @State private var showRepair = false
+    @State private var pinConfigured = ParentPinStore.isConfigured
+    @State private var askingRepairPin = false
     @State private var locationGrant: LocationGrant = .noAccess
+    @State private var locationAction: LocationPermissionAction = .hidden
+    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+    @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
+    #endif
 
     public init() {}
 
     public var body: some View {
         NavigationStack {
-            if let identity, !showRepair {
+            if identity != nil, !showRepair, !pinConfigured {
+                // ADR-0037: a parent PIN is set right after pairing, and once on a phone paired before this build.
+                PinSetupView { pinConfigured = true }
+            } else if let identity, !showRepair {
                 Form {
                     Section(header: Text("OSRA Child Agent")) {
                         Label("Paired", systemImage: "checkmark.circle.fill")
@@ -115,27 +124,67 @@ public struct AgentRootView: View {
                             LabeledContent("Device", value: identity.deviceId)
                         }
                     }
+                    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+                    Section {
+                        LabeledContent("Screen Time", value: screenTime.row.value)
+                        if screenTime.row.showsButton {
+                            Button(ScreenTimeRow.buttonTitle) {
+                                Task {
+                                    // Approved: fetch and apply the parent's rules now, not at the next open.
+                                    if await screenTime.request() { _ = await RuleSyncer.syncNow() }
+                                }
+                            }
+                        }
+                        if let error = screenTime.errorMessage {
+                            Text(error).foregroundStyle(.red)
+                        }
+                    } header: {
+                        Text("Screen Time")
+                    } footer: {
+                        Text(screenTime.row.footer)
+                    }
+                    #endif
                     Section {
                         LabeledContent("Location", value: Self.label(locationGrant))
-                        if locationGrant != .background {
-                            Button("Allow location") { LocationController.shared.requestPermission() }
+                        if let title = locationAction.buttonTitle {
+                            Button(title) {
+                                LocationController.shared.requestPermission()
+                                locationAction = LocationController.shared.permissionAction
+                            }
                         }
                     } header: {
                         Text("Location")
                     } footer: {
                         Text("Your parents see this device on their map when it moves a noticeable distance, and get alerts for the places they set. Choose \"Allow While Using App\", then \"Change to Always Allow\".")
                     }
+                    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
-                        Button("Re-pair this device") { showRepair = true }
+                        NavigationLink("App groups") { AppGroupsEntry() }
+                    } footer: {
+                        Text("Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Ask parent\".")
+                    }
+                    #endif
+                    Section {
+                        // ADR-0037, as on Android: re-pairing needs the parent PIN.
+                        Button("Re-pair this device") { askingRepairPin = true }
                     }
                 }
                 .navigationTitle("Status")
+                .sheet(isPresented: $askingRepairPin) {
+                    NavigationStack {
+                        PinGateView(title: "Re-pair") {
+                            askingRepairPin = false
+                            showRepair = true
+                        }
+                    }
+                }
             } else {
                 PairingView(
                     defaultServer: identity?.apiBaseURL.absoluteString ?? "",
                     onPaired: { newIdentity in
                         identity = newIdentity
                         showRepair = false
+                        pinConfigured = ParentPinStore.isConfigured
                         Task {
                             let synced = await RuleSyncer.syncNow()
                             await LocationController.shared.apply(synced)
@@ -149,7 +198,14 @@ public struct AgentRootView: View {
         }
         .onAppear {
             identity = AgentIdentityStore.load()
+            pinConfigured = ParentPinStore.isConfigured
             locationGrant = LocationController.shared.grant
+            locationAction = LocationController.shared.permissionAction
+            #if canImport(UIKit)
+            LocationController.shared.openSettings = {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            }
+            #endif
         }
         // On open: drain the command queue, then fetch the rules (5.5 PR C, D). A failed sync keeps the last
         // stored rules in force. A wake push drains the queue the same way (`OSRAAgentAppDelegate`).
@@ -163,6 +219,10 @@ public struct AgentRootView: View {
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             locationGrant = LocationController.shared.grant
+            locationAction = LocationController.shared.permissionAction
+            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+            screenTime.refresh()
+            #endif
         }
     }
 
@@ -174,4 +234,25 @@ public struct AgentRootView: View {
         }
     }
 }
+#if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+/// The PIN first, then the groups (ADR-0037).
+struct AppGroupsEntry: View {
+    @State private var unlocked = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        Group {
+            if unlocked {
+                AppGroupsView()
+            } else {
+                PinGateView(title: "App groups") { unlocked = true }
+            }
+        }
+        // Relocks when the app leaves the screen, so a parent cannot leave the groups open by accident.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background { unlocked = false }
+        }
+    }
+}
+#endif
 #endif

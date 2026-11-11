@@ -86,14 +86,43 @@ jobs:
       - name: Unit tests & build (JVM + debug APK + minified release APK)
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          # G4 of the customer guide: the server a store build pairs against. A repository variable, the same
+          # one the parent app reads, so one setting describes a deployment for both apps. Unset keeps today's
+          # behaviour (the child types an address); set it to the production https URL before a store build.
+          OSRA_API_BASE: ${{ vars.OSRA_API_BASE }}
         # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
         # comes from the keystore step above when it is complete and falls back to the debug key. Both release flavours
         # are built because #170's gate asserts `android:testOnly` is absent from each release merge.
-        run: ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease --console=plain
+        run: |
+          case "$OSRA_API_BASE" in
+            "") echo "OSRA_API_BASE not set: a release build asks the child for the server address" ;;
+            https://*) echo "built-in server: $OSRA_API_BASE" ;;
+            *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
+          esac
+          ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease bundlePlayRelease --console=plain
       # ADR-0021's gate asserts the *merged* manifest (where a dependency's permissions arrive), so it
       # only means something if the unit tests above actually ran it. The test skips with a loud message
       # when the artefact is missing — that is what an IDE run needs and what CI must never accept — so
       # this step fails the job on a skip, a failure, or a named assertion that disappeared.
+      # Play refuses a debug-signed bundle at upload, and a green job used to hand one over without a word
+      # if the upload-key secrets went missing (#534 review). With the key configured, the bundle's signer
+      # must be the upload certificate; without it, the job says the bundle is not uploadable.
+      - name: The Play bundle is signed with the upload key when one is configured
+        env:
+          HAS_UPLOAD_KEY: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 != '' }}
+        run: |
+          AAB=app/build/outputs/bundle/playRelease/app-play-release.aab
+          [ -f "$AAB" ] || { echo "::error::$AAB is missing"; exit 1; }
+          CERT=$(keytool -printcert -jarfile "$AAB")
+          OWNER=$(grep -m1 '^Owner:' <<<"$CERT") || { echo "::error::$AAB carries no signature"; exit 1; }
+          echo "bundle signer: $OWNER"
+          if [ "$HAS_UPLOAD_KEY" = "true" ]; then
+            grep -q 'CN=OSRA Upload Key' <<<"$OWNER" \
+              || { echo "::error::the Play bundle is not signed with the upload key"; exit 1; }
+            echo "signed with the upload key"
+          else
+            echo "::warning::no upload key configured: this bundle is debug-signed and Play will refuse it"
+          fi
       - name: Merged-manifest gate ran and did not skip (ADR-0021)
         working-directory: .
         run: node scripts/check-merged-manifest-gate.mjs
@@ -126,5 +155,13 @@ jobs:
           path: |
             apps/child-android/app/build/outputs/apk/*/debug/*.apk
             apps/child-android/app/build/outputs/apk/*/release/*.apk
+          retention-days: 14
+          if-no-files-found: error
+      # Play takes an app bundle, not an APK. Only the play flavour goes to the store (the full build is
+      # sideloaded, ADR-0021). Signed with the upload key when the secrets exist, else the debug key.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: child-android-play-release-aab
+          path: apps/child-android/app/build/outputs/bundle/playRelease/app-play-release.aab
           retention-days: 14
           if-no-files-found: error

@@ -8,12 +8,10 @@ import ManagedSettingsUI
 /// Shield appearance for FamilyShield block screens (spec §6.3): the title, the window line (#511) and the
 /// "Request access" / "Exit to Home screen" buttons, in English or Arabic.
 ///
-/// NOTE: this class only takes effect as the NSExtensionPrincipalClass of the Shield
-/// Configuration extension target (`Extensions/ShieldConfiguration` in `project.yml`;
-/// SwiftPM alone cannot declare app extensions). `@objc(...)` gives it that unqualified
-/// runtime name, and it is public so the extension can reference it and keep it linked.
-@objc(FamilyShieldConfigurationDataSource)
-public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
+/// #561: the extension's principal class is `ShieldConfigurationExtension`, declared in
+/// `Extensions/ShieldConfiguration` as a subclass of this one (iOS could not load an `@objc`-renamed class from the
+/// package on the device: `ExtensionError Code=0`). This class is `open` so that subclass can exist; the behaviour stays here, under test.
+open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 
     /// Shield configuration shown when an application is blocked.
     public override func configuration(shielding application: Application) -> ShieldConfiguration {
@@ -22,6 +20,16 @@ public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataS
 
     /// Shield configuration shown when a website is blocked. The web filter is not a window, so no line.
     public override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
+    }
+
+    /// ADR-0037: an app shielded through a blocked group's category gets the same OSRA shield.
+    public override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier))
+    }
+
+    /// ADR-0037: a website shielded through a blocked group's category.
+    public override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
         Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
     }
 
@@ -46,10 +54,8 @@ public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataS
 /// shield and notifies the parent; "OK" dismisses the shield and logs a request-access
 /// call to the backend.
 ///
-/// NOTE: the NSExtensionPrincipalClass of the Shield Action extension target
-/// (`Extensions/ShieldAction`); `@objc(...)` and `public` for the same reasons as above.
-@objc(FamilyShieldShieldActionDelegate)
-public final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
+/// #561: subclassed by `ShieldActionExtension` in `Extensions/ShieldAction`, the extension's principal class.
+open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
 
     private let reporter = AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret())
 
@@ -66,6 +72,15 @@ public final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
     public override func handle(
         action: ShieldAction,
         for webDomain: WebDomainToken,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
+        respond(to: action, completionHandler: completionHandler)
+    }
+
+    /// ADR-0037: a tap on the shield of an app blocked through a group's category; Ask parent works the same.
+    public override func handle(
+        action: ShieldAction,
+        for category: ActivityCategoryToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         respond(to: action, completionHandler: completionHandler)

@@ -900,6 +900,26 @@ mis-measure.
    device with a null token is the agent never publishing, and a wake that arrives whose command never runs
    is the agent's own fetch being blocked. They do not share a fix.
 
+## 5k. The iOS child agent on an iPhone (roadmap 5.5)
+
+First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the decision-2B ones (#543).
+
+1. **Signing.** Sign the host app and its three extensions (`com.osratech.child`, `.Monitor`, `.ShieldConfiguration`,
+   `.ShieldAction`) with the paid team. All four need `com.apple.developer.family-controls` (development) and
+   `group.com.osratech.child`; the host also needs `aps-environment`.
+2. **App group, by hand.** Register `group.com.osratech.child` in the Apple developer portal and attach it to all
+   four ids before signing. Command-line signing cannot create an app group, so a CLI-only setup fails here.
+3. **Child account.** The iPhone is signed in to a child Apple ID in the parent's Family Sharing; FamilyControls
+   `.child` authorization needs it.
+4. **On the phone, Status screen:** tap **Turn on Screen Time** and approve the prompt; the row reads `On` and rule
+   sync stops logging `notAuthorized`. **Allow location** asks for While Using, then Always, each once; after a
+   denial, or once the Always prompt was used, the button reads **Open Settings** and opens the app's page.
+5. The home-screen name is **OSRA Kids** (Arabic name pending Karim's approval).
+6. **Parent PIN and app groups (ADR-0037).** After pairing, the phone asks for a parent PIN (4–8 digits). Status →
+   **App groups** asks for it: five wrong PINs lock it for 30 s. Make a group ("Games"), **Choose apps** (e.g.
+   Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
+   parent side. An older bundle-id rule still hides its app. **Re-pair** also asks for the PIN.
+
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 
 `scripts/hardware/android-pairing-time.ps1 -Pin <app PIN> [-Runs 3] [-Base http://127.0.0.1:3000]
