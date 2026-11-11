@@ -173,8 +173,8 @@ export function getEmailSender(env: NodeJS.ProcessEnv = process.env): EmailSende
 }
 
 /**
- * The real client, built here so `@aws-sdk/client-sesv2` is only loaded when SES is selected. On Fargate the
- * task role is the credential source; nothing is read from env.
+ * The real client, built here so it is only constructed (and credentials only resolved) when SES is selected.
+ * On Fargate the task role is the credential source; nothing is read from env.
  */
 function buildSesSender(from: string, env: NodeJS.ProcessEnv = process.env): EmailSender {
   const client = new SESv2Client(env.AWS_REGION ? { region: env.AWS_REGION } : {});

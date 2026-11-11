@@ -127,6 +127,18 @@ describe("SES sender (Play decision 11 A)", () => {
     expect((sent[0] as { Destination: { ToAddresses: string[] } }).Destination.ToAddresses).toEqual(["only@x"]);
   });
 
+  it("a 429 with an unknown error name is still retryable, on the status alone", async () => {
+    // Claude's optional row: the name and the status clauses overlap for ThrottlingException, so dropping the
+    // status check stayed green. This pins the status on its own, which is what an unfamiliar provider error
+    // (a proxy, a new SES error code) looks like.
+    const transport = vi.fn(async () => {
+      throw { name: "SomeNewError", message: "slow down", $metadata: { httpStatusCode: 429 } };
+    });
+    const r = await new SesEmailSender(transport as never, "a@b").send({ to: "p@x", subject: "S", html: "", text: "" });
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.retryable).toBe(true);
+  });
+
   it("classifies provider errors instead of throwing, on the same rule as Resend", async () => {
     const msg = { to: "p@x", subject: "S", html: "", text: "" };
     const rejects = (err: unknown) => vi.fn(async () => { throw err; });
