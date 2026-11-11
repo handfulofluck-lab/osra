@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * ADR-0036 (#372): the parent-PIN cases in `docs/test-vectors/parent-pin.tsv` are shared with the iOS suite
+ * ADR-0037 (#372): the parent-PIN cases in `docs/test-vectors/parent-pin.tsv` are shared with the iOS suite
  * (`ParentPinTests.swift`), so both platforms refuse the same PINs with the same words and read the same stored
  * hashes. A row that fails here, or on iOS, means the two platforms have drifted apart.
  *

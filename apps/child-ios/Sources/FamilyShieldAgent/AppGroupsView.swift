@@ -2,7 +2,7 @@
 import FamilyControls
 import SwiftUI
 
-/// The "App groups" screen (ADR-0036), shown only after the parent PIN. The parent names a group, chooses its apps,
+/// The "App groups" screen (ADR-0037), shown only after the parent PIN. The parent names a group, chooses its apps,
 /// categories and websites in Apple's picker, and blocks it here. Blocked groups get the OSRA shield with Ask
 /// parent. Nothing about a group leaves the phone in this version.
 public struct AppGroupsView: View {

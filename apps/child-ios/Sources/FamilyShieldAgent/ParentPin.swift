@@ -2,7 +2,7 @@ import CommonCrypto
 import Foundation
 import Security
 
-/// The parent PIN on the iPhone (ADR-0036, following ADR-0010 to the letter so both platforms behave the same).
+/// The parent PIN on the iPhone (ADR-0037, following ADR-0010 to the letter so both platforms behave the same).
 /// It gates the "App groups" screen and re-pairing. It is set on the phone at pairing and never leaves it: no PIN
 /// or hash exists on the server.
 ///

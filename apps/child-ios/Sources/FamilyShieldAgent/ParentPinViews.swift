@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Set at pairing on the phone, as on Android (ADR-0036): the parent holds the phone then, and no PIN or hash
+/// Set at pairing on the phone, as on Android (ADR-0037): the parent holds the phone then, and no PIN or hash
 /// ever reaches the server. A phone paired before this build is asked once, on its next open.
 public struct PinSetupView: View {
     @State private var pin = ""

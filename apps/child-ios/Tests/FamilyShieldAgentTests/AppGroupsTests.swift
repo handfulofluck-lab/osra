@@ -1,7 +1,7 @@
 import XCTest
 @testable import FamilyShieldAgent
 
-/// ADR-0036 (#372 PR A): app groups, driven with a plain Codable stand-in for `FamilyActivitySelection`, so no
+/// ADR-0037 (#372 PR A): app groups, driven with a plain Codable stand-in for `FamilyActivitySelection`, so no
 /// test touches FamilyControls. The shield itself is checked on the iPhone 13 (PR §5).
 final class AppGroupsTests: XCTestCase {
 

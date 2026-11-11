@@ -15,7 +15,7 @@ public final class ScreenTimeController {
     /// Dedicated store name for parent rule enforcement, separating rules from routine shields (IOS-05).
     public static let rulesStoreName = ManagedSettingsStore.Name("parentRules")
 
-    /// ADR-0036: the app groups' shields, in a store of their own so a rule sync never overwrites them. Shields
+    /// ADR-0037: the app groups' shields, in a store of their own so a rule sync never overwrites them. Shields
     /// from several stores add up, so a blocked group and a synced rule both hold.
     public static let groupsStoreName = ManagedSettingsStore.Name("appGroups")
 
@@ -43,7 +43,7 @@ public final class ScreenTimeController {
         store.application.blockedApplications = Set(packageIds.map { Application(bundleIdentifier: $0) })
     }
 
-    /// ADR-0036: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
+    /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
     /// picker tokens, so iOS shows the OSRA shield (and Ask parent) instead of hiding the app, which is what
     /// `blockedApplications` does for the bundle-id rules above.
     public func applyGroups(_ groups: AppGroupList<FamilyActivitySelection>) {
@@ -229,7 +229,7 @@ public final class FamilyControlsAuthorizer: ScreenTimeAuthorizing {
     }
 }
 
-/// The picker's selection is what an app group holds; its counts are all the server may ever learn (ADR-0036).
+/// The picker's selection is what an app group holds; its counts are all the server may ever learn (ADR-0037).
 extension FamilyActivitySelection: AppGroupSelection {
     public var counts: AppGroupCounts {
         AppGroupCounts(apps: applicationTokens.count, categories: categoryTokens.count, sites: webDomainTokens.count)
@@ -239,7 +239,7 @@ extension FamilyActivitySelection: AppGroupSelection {
 /// Bridge from rule identifiers to Screen Time tokens. A bundle id yields a token only for an app the picker has
 /// already returned, so for most rules it yields none and the app is hidden instead (`blockedApplications`).
 ///
-/// ADR-0036: this no longer reads a saved picker selection. It used to return every picked token for any rule,
+/// ADR-0037: this no longer reads a saved picker selection. It used to return every picked token for any rule,
 /// whatever bundle ids were asked for; picked apps now live in app groups and are shielded per group.
 enum TokenResolver {
     static func applicationTokens(forBundleIdentifiers bundleIdentifiers: [String]) -> Set<ApplicationToken> {

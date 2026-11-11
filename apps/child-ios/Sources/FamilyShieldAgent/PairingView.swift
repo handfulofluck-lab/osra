@@ -111,7 +111,7 @@ public struct AgentRootView: View {
     public var body: some View {
         NavigationStack {
             if identity != nil, !showRepair, !pinConfigured {
-                // ADR-0036: a parent PIN is set right after pairing, and once on a phone paired before this build.
+                // ADR-0037: a parent PIN is set right after pairing, and once on a phone paired before this build.
                 PinSetupView { pinConfigured = true }
             } else if let identity, !showRepair {
                 Form {
@@ -165,7 +165,7 @@ public struct AgentRootView: View {
                     }
                     #endif
                     Section {
-                        // ADR-0036, as on Android: re-pairing needs the parent PIN.
+                        // ADR-0037, as on Android: re-pairing needs the parent PIN.
                         Button("Re-pair this device") { askingRepairPin = true }
                     }
                 }
@@ -235,15 +235,22 @@ public struct AgentRootView: View {
     }
 }
 #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
-/// The PIN first, then the groups (ADR-0036).
+/// The PIN first, then the groups (ADR-0037).
 struct AppGroupsEntry: View {
     @State private var unlocked = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        if unlocked {
-            AppGroupsView()
-        } else {
-            PinGateView(title: "App groups") { unlocked = true }
+        Group {
+            if unlocked {
+                AppGroupsView()
+            } else {
+                PinGateView(title: "App groups") { unlocked = true }
+            }
+        }
+        // Relocks when the app leaves the screen, so a parent cannot leave the groups open by accident.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background { unlocked = false }
         }
     }
 }

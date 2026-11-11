@@ -77,7 +77,7 @@ final class AgentIdentityStoreTests: XCTestCase {
     }
 
     func testAnOrphanedParentPinGoesWithTheOtherSecrets() {
-        // ADR-0036: a reinstall must not hand the old PIN to the next pairing.
+        // ADR-0037: a reinstall must not hand the old PIN to the next pairing.
         store.write("pbkdf2$1$AA==$AA==", for: ParentPinStore.account)
         XCTAssertTrue(AgentIdentityStore.clearOrphanedSecrets())
         XCTAssertNil(store.read(ParentPinStore.account))

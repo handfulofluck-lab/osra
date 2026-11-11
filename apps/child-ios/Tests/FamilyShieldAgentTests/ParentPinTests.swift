@@ -1,7 +1,7 @@
 import XCTest
 @testable import FamilyShieldAgent
 
-/// ADR-0036 (#372 PR A): the iPhone's parent PIN follows ADR-0010 as Android does. The validation and verify rows
+/// ADR-0037 (#372 PR A): the iPhone's parent PIN follows ADR-0010 as Android does. The validation and verify rows
 /// come from `docs/test-vectors/parent-pin.tsv`, which Android's `ParentPinSharedCasesTest` reads too.
 final class ParentPinTests: XCTestCase {
 
@@ -87,6 +87,11 @@ final class ParentPinTests: XCTestCase {
         XCTAssertTrue(ParentPin.constantTimeEquals([1, 2, 3], [1, 2, 3]))
         XCTAssertFalse(ParentPin.constantTimeEquals([1, 2, 3], [1, 2, 4]))
         XCTAssertFalse(ParentPin.constantTimeEquals([1, 2, 3], [1, 2]))
+        // A real hash is 32 bytes: a compare that stops early would let the last byte go unchecked (m5 on #555).
+        let hashA = [UInt8](repeating: 7, count: 32)
+        var hashB = hashA
+        hashB[31] = 8
+        XCTAssertFalse(ParentPin.constantTimeEquals(hashA, hashB), "the last byte of a 32-byte hash counts")
     }
 
     // MARK: - Lockout

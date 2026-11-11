@@ -25,12 +25,12 @@ public final class FamilyShieldConfigurationDataSource: ShieldConfigurationDataS
         Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
     }
 
-    /// ADR-0036: an app shielded through a blocked group's category gets the same OSRA shield.
+    /// ADR-0037: an app shielded through a blocked group's category gets the same OSRA shield.
     public override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
         Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier))
     }
 
-    /// ADR-0036: a website shielded through a blocked group's category.
+    /// ADR-0037: a website shielded through a blocked group's category.
     public override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
         Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
     }
@@ -81,7 +81,7 @@ public final class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         respond(to: action, completionHandler: completionHandler)
     }
 
-    /// ADR-0036: a tap on the shield of an app blocked through a group's category; Ask parent works the same.
+    /// ADR-0037: a tap on the shield of an app blocked through a group's category; Ask parent works the same.
     public override func handle(
         action: ShieldAction,
         for category: ActivityCategoryToken,

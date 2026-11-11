@@ -1,6 +1,6 @@
 import Foundation
 
-/// App groups (ADR-0036, #372 PR A). On iOS the OSRA shield appears only for apps chosen in Apple's
+/// App groups (ADR-0037, #372 PR A). On iOS the OSRA shield appears only for apps chosen in Apple's
 /// `FamilyActivityPicker`, which hands back opaque tokens: the app can neither name them nor send them anywhere.
 /// So the parent makes groups on the child phone, behind the parent PIN. Each group has a phone-made UUID, a
 /// label the parent types, and the picker's selection, and is kept in the app group for the extensions.

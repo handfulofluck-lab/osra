@@ -1,5 +1,5 @@
 # Parent-PIN cases shared by the Android (ParentPinSharedCasesTest.kt) and iOS (ParentPinTests.swift) suites,
-# so both platforms refuse and accept the same PINs and read the same stored hashes (ADR-0010, ADR-0036).
+# so both platforms refuse and accept the same PINs and read the same stored hashes (ADR-0010, ADR-0037).
 # Columns are tab-separated. "<empty>" is the empty string.
 #   validate <pin> <ok | the exact refusal message>
 #   verify   <pin> <stored>  <true | false>

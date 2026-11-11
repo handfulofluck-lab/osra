@@ -1,4 +1,4 @@
-# 0036 — iOS app groups chosen on the child phone, behind a parent PIN
+# 0037 — iOS app groups chosen on the child phone, behind a parent PIN
 
 - **Status:** accepted (2026-11-11)
 - **Issue:** #372 (roadmap 5.5), from the iPhone 13 run of #550
@@ -55,5 +55,10 @@ The parent app is Flutter and many parents use Android, so the picker cannot nee
 
 - A reinstall empties the app group container, so groups must be made again; a Screen Time reset can leave a
   group with no tokens, which the screen shows as "Nothing chosen" (and PR B reports as zero counts).
+- A phone paired before this build shows the PIN setup to whoever opens the app first. Today that is only the
+  team's test iPhone, so it is accepted for the beta; every phone paired from now on sets the PIN at pairing.
+- The lockout counts on the phone's clock: a child who can change the clock can shorten a pause. Nothing is wiped
+  and the PIN must still be right, so it is minor; a clock set backwards only lengthens the pause.
+- The groups screen relocks when the app goes to the background, so it is not left open by accident.
 - The groups are only as safe as the PIN and Screen Time authorization; removing that authorization in Settings
   is the parent's control, as on any FamilyControls app.
