@@ -19,7 +19,9 @@ vi.mock("ioredis", async () => {
  *
  * Mutants: drop the iPhone-only rule → [only an iPhone may report groups]; accept a repeated id → [refuses a
  * repeated id]; accept an apps list → [refuses anything identifying]; a report without groups wipes them →
- * [a report without groups keeps the stored ones]; groups counted inside the 4 KB → [twenty Arabic-named groups fit].
+ * [a report without groups keeps the stored ones]; groups counted inside the 4 KB → [twenty Arabic-named groups fit];
+ * the route merging only when `profiles` is missing (Claude's m8) → [an iPhone upload that carries profiles but not
+ * groups keeps the stored groups]; no direction-control check → [refuses Unicode direction controls …].
  */
 
 const NOW = Date.UTC(2026, 10, 11, 12, 0, 0);
@@ -60,6 +62,13 @@ describe("groups — the shape", () => {
     expect(ok([group({ label: "" })])).toBe(false);
     expect(ok([group({ label: "Ga\nmes" })])).toBe(false);
     expect(ok([group({ label: " Games" })])).toBe(false);
+  });
+
+  it("refuses Unicode direction controls, which could flip the text after the label on the parent's screen", () => {
+    for (const ch of ["\u202e", "\u202a", "\u2066", "\u2069", "\u200f", "\u061c"]) {
+      expect(ok([group({ label: `Ga${ch}mes` })])).toBe(false);
+    }
+    expect(ok([group({ label: "ألعاب Games" })])).toBe(true);
   });
 
   it("refuses a repeated id, a non-UUID id and more than 20 groups", () => {
@@ -155,6 +164,13 @@ describe("groups — at the telemetry route", () => {
     const { res, written } = await post(report({ grants: { family_controls: "missing" } }));
     expect(res.statusCode).toBe(202);
     expect(written.capabilities).toMatchObject({ grants: { family_controls: "missing" }, groups: [group()] });
+  });
+
+  it("an iPhone upload that carries profiles but not groups keeps the stored groups", async () => {
+    withStored(report({ groups: [group()] }));
+    const { res, written } = await post(report({ profiles: { others: 0, kinds: [] } }));
+    expect(res.statusCode).toBe(202);
+    expect(written.capabilities).toMatchObject({ profiles: { others: 0, kinds: [] }, groups: [group()] });
   });
 
   it("an upload that carries groups stores them", async () => {

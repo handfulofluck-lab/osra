@@ -60,6 +60,8 @@ export const ProfilesSchema = z
  */
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
+/** Unicode direction controls (embeddings, overrides, isolates, marks): a label must not flip the text after it. */
+const BIDI_CONTROLS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const countSchema = z.number().int().min(0).max(APP_GROUP_COUNT_MAX);
 export const AppGroupSchema = z
   .object({
@@ -69,6 +71,7 @@ export const AppGroupSchema = z
       .min(1)
       .refine((v) => [...v].length <= APP_GROUP_LABEL_MAX, { message: `label is over ${APP_GROUP_LABEL_MAX} characters` })
       .refine((v) => !CONTROL_CHARS.test(v), { message: "label has control characters" })
+      .refine((v) => !BIDI_CONTROLS.test(v), { message: "label has text-direction controls" })
       .refine((v) => v.trim() === v && v.length > 0, { message: "label has edge whitespace" }),
     apps: countSchema,
     categories: countSchema,
