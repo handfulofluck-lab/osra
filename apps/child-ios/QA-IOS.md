@@ -28,14 +28,14 @@
    - each `.appex` has the expected `NSExtensionPointIdentifier` and `NSExtensionPrincipalClass`, and
      its binary defines that class;
    - all four `.entitlements` files carry `com.apple.developer.family-controls` and
-     `group.dev.familyshield.agent`. An unsigned build embeds no entitlements, so this reads the source files.
+     `group.com.osratech.child`. An unsigned build embeds no entitlements, so this reads the source files.
 
-| Target | Kind | Bundle id (placeholder) | Principal class | Extension point |
+| Target | Kind | Bundle id | Principal class | Extension point |
 |---|---|---|---|---|
-| `OSRAAgent` | host app (`App/`, `@main` `OSRAAgentApp`) | `dev.familyshield.agent` | — | — |
-| `OSRAAgentMonitor` | app extension (`Extensions/Monitor/`) | `dev.familyshield.agent.monitor` | `FamilyShieldDeviceActivityMonitor` | `com.apple.deviceactivity.monitor-extension` |
-| `OSRAAgentShieldConfiguration` | app extension (`Extensions/ShieldConfiguration/`) | `dev.familyshield.agent.shield-configuration` | `FamilyShieldConfigurationDataSource` | `com.apple.ManagedSettingsUI.shield-configuration-service` |
-| `OSRAAgentShieldAction` | app extension (`Extensions/ShieldAction/`) | `dev.familyshield.agent.shield-action` | `FamilyShieldShieldActionDelegate` | `com.apple.ManagedSettings.shield-action-service` |
+| `OSRAAgent` | host app (`App/`, `@main` `OSRAAgentApp`) | `com.osratech.child` | — | — |
+| `OSRAAgentMonitor` | app extension (`Extensions/Monitor/`) | `com.osratech.child.Monitor` | `OSRAAgentMonitor.DeviceActivityMonitorExtension` (subclass of the package's `FamilyShieldDeviceActivityMonitor`, #561) | `com.apple.deviceactivity.monitor-extension` |
+| `OSRAAgentShieldConfiguration` | app extension (`Extensions/ShieldConfiguration/`) | `com.osratech.child.ShieldConfiguration` | `OSRAAgentShieldConfiguration.ShieldConfigurationExtension` (subclass of `FamilyShieldConfigurationDataSource`) | `com.apple.ManagedSettingsUI.shield-configuration-service` |
+| `OSRAAgentShieldAction` | app extension (`Extensions/ShieldAction/`) | `com.osratech.child.ShieldAction` | `OSRAAgentShieldAction.ShieldActionExtension` (subclass of `FamilyShieldShieldActionDelegate`) | `com.apple.ManagedSettings.shield-action-service` |
 
 - **The principal classes stay in the package.** They are `public` and carry `@objc(<name>)`, so the
   runtime finds them under the unqualified name in `Info.plist`. Each extension's one source file
@@ -325,7 +325,7 @@ app-group keys (`agent.childId` / `agent.hmacSecret` / `agent.apiBaseURL`) that
 | File | Purpose |
 |---|---|
 | `PairingClient.swift` | `POST {base}/v1/devices/pair/claim` with `platform: "ios"` + device model/system version; pure `normalizeServerURL` and `parseClaimResponse` (tolerates `device` as object or string, `hmacSecret` null → nil); typed `PairingError` with user-facing messages |
-| `AgentIdentityStore.swift` | Saves/loads/clears `AgentIdentity` in `UserDefaults(suiteName: "group.dev.familyshield.agent")` under the exact keys the extensions read (`agent.apiBaseURL`, `agent.childId`, `agent.hmacSecret`, plus `agent.deviceToken`/`agent.deviceId`/`agent.familyId` for future use) |
+| `AgentIdentityStore.swift` | Saves/loads/clears `AgentIdentity` in `UserDefaults(suiteName: "group.com.osratech.child")` under the exact keys the extensions read (`agent.apiBaseURL`, `agent.childId`, `agent.hmacSecret`, plus `agent.deviceToken`/`agent.deviceId`/`agent.familyId` for future use) |
 | `PairingView.swift` | SwiftUI form (server address, 6-digit code hard-limited to digits, optional device name) + `AgentRootView` status/re-pair switch; mirrors Android `PairingActivity` |
 | `OSRAAgentApp.swift` | `@main` host-app entry; moved to `App/` (the `OSRAAgent` target) on 2026-10-24, #372 |
 
@@ -335,9 +335,9 @@ pure Foundation and covered by 11 XCTest cases; the network call is a thin
 
 Remaining pairing-related gaps:
 - ~~Xcode wrapper project still to be committed~~ — done 2026-10-24 (#372): `project.yml`, see
-  "Build status" above. The app group `group.dev.familyshield.agent` is still a placeholder.
+  "Build status" above. The ids are final since the 2B rename (`group.com.osratech.child`, checked by `scripts/check-identifiers.py`).
 - ~~`deviceToken`/`hmacSecret` sit in plaintext UserDefaults~~ — done 2026-10-24 (5.5 PR B, #372):
-  both are Keychain generic-password items (`KeychainSecretStore`, service `dev.familyshield.agent`)
+  both are Keychain generic-password items (`KeychainSecretStore`, service `com.osratech.child`)
   in the app group's access group, `AfterFirstUnlockThisDeviceOnly`, so the extensions can read them
   while the phone is locked and no backup carries them. The ids stay in app-group `UserDefaults`.
   `AgentIdentityStore.load()` and `hmacSecret()` move an older build's plaintext copies into the
@@ -347,7 +347,7 @@ Remaining pairing-related gaps:
     bundle cannot use the Keychain at all (`errSecMissingEntitlement`, -34018, measured in CI).
   - `HostedTests/KeychainTests` (target `OSRAAgentHostedTests`, run inside the ad-hoc signed simulator
     app): the real Keychain with the production access group, including that the stored item is
-    `AfterFirstUnlockThisDeviceOnly` in `group.dev.familyshield.agent` and that an overwrite leaves one item.
+    `AfterFirstUnlockThisDeviceOnly` in `group.com.osratech.child` and that an overwrite leaves one item.
   Still needs a signed device build (5.1): an extension actually reading the item the app wrote.
 - ~~After pairing, the agent does not yet register an APNs push token~~ — done 2026-10-25 (5.5 PR D): see
   "Push and commands" above.

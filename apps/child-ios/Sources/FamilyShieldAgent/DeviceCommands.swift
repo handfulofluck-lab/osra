@@ -104,7 +104,7 @@ public struct LiveLocateNow: LocateNowHandling {
 }
 
 public enum CommandDrainer {
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Commands")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Commands")
 
     public struct Result: Equatable {
         public var handled: [String] = []

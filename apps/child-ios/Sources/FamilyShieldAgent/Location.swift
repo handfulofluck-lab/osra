@@ -94,7 +94,7 @@ public enum LocationUploadOutcome: Equatable {
 
 public struct LocationClient {
     private let session: URLSession
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Location")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Location")
 
     public init(session: URLSession = .shared) {
         self.session = session
@@ -187,6 +187,35 @@ public protocol LocationSource: AnyObject {
     func requestAlways()
 }
 
+/// What the Status screen's location button does (5.5, #372). iOS shows the When In Use prompt once and the
+/// Always upgrade once; after a denial, or once the upgrade prompt was used, only Settings can change it, so
+/// the button opens Settings instead of doing nothing (iPhone 13 run, 11 Nov).
+public enum LocationPermissionAction: Equatable {
+    /// Always is granted: no button.
+    case hidden
+    case askWhenInUse
+    case askAlways
+    case openSettings
+
+    public static func of(_ status: CLAuthorizationStatus, alwaysPromptUsed: Bool) -> LocationPermissionAction {
+        switch status {
+        case .notDetermined: return .askWhenInUse
+        case .authorizedWhenInUse: return alwaysPromptUsed ? .openSettings : .askAlways
+        case .authorizedAlways: return .hidden
+        default: return .openSettings // .denied, .restricted
+        }
+    }
+
+    /// The button's label; nil hides it.
+    public var buttonTitle: String? {
+        switch self {
+        case .hidden: return nil
+        case .askWhenInUse, .askAlways: return "Allow location"
+        case .openSettings: return "Open Settings"
+        }
+    }
+}
+
 /// The answer to a `locate_now`, or nil for no ack (the server re-offers an unacked command after 120 s).
 public enum LocateAck: Equatable {
     case ok(fix: String)
@@ -214,7 +243,7 @@ public final class LocationController {
 
     let source: LocationSource
     let client: LocationClient
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Location")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Location")
 
     public init(source: LocationSource, client: LocationClient = LocationClient()) {
         self.source = source
@@ -226,7 +255,8 @@ public final class LocationController {
         source.onAuthorizationChange = { [weak self] status in
             guard let self else { return }
             // When In Use first, then the upgrade to Always, which significant-change monitoring needs.
-            if status == .authorizedWhenInUse { self.source.requestAlways() }
+            // iOS shows that upgrade once; after it, the button opens Settings.
+            if status == .authorizedWhenInUse && !Self.alwaysPromptUsed { self.askAlways() }
             self.startIfAllowed()
             Task { @MainActor in await self.reportGrant() }
         }
@@ -240,13 +270,36 @@ public final class LocationController {
         source.startMonitoring()
     }
 
-    /// Asks for When In Use; the upgrade to Always follows when it is granted.
+    /// What the location button does now.
+    public var permissionAction: LocationPermissionAction {
+        .of(source.authorizationStatus, alwaysPromptUsed: Self.alwaysPromptUsed)
+    }
+
+    /// Opens this app's page in Settings; the host app sets it (a package test has no UIApplication).
+    public var openSettings: () -> Void = {}
+
+    /// The button: asks for When In Use, then for Always once; after a denial or a used Always prompt, opens
+    /// Settings, because iOS no longer shows the prompt.
     public func requestPermission() {
-        switch source.authorizationStatus {
-        case .notDetermined: source.requestWhenInUse()
-        case .authorizedWhenInUse: source.requestAlways()
-        default: break
+        switch permissionAction {
+        case .askWhenInUse: source.requestWhenInUse()
+        case .askAlways: askAlways()
+        case .openSettings: openSettings()
+        case .hidden: break
         }
+    }
+
+    private func askAlways() {
+        Self.alwaysPromptUsed = true
+        source.requestAlways()
+    }
+
+    static let alwaysPromptKey = "location.alwaysPromptUsed"
+
+    /// Whether the one-time Always prompt was shown, in the app group so it survives a relaunch.
+    static var alwaysPromptUsed: Bool {
+        get { UserDefaults(suiteName: AgentIdentityStore.suiteName)?.bool(forKey: alwaysPromptKey) ?? false }
+        set { UserDefaults(suiteName: AgentIdentityStore.suiteName)?.set(newValue, forKey: alwaysPromptKey) }
     }
 
     /// Consent was withdrawn (a 428 from the ping or the rules): stop collecting and drop what is buffered.

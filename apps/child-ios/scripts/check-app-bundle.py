@@ -10,34 +10,50 @@ Controls key. None of those fail the build, so this script checks them after it 
 It checks, for each .app given:
   1. PlugIns/ holds exactly the three expected .appex bundles, and nothing else;
   2. each .appex Info.plist has the expected NSExtensionPointIdentifier and NSExtensionPrincipalClass;
-  3. on macOS (where `nm` reads Mach-O), each .appex binary defines its principal class;
-  4. the app's Info.plist asks for location with both usage strings, has them in English and Arabic
+  3. on macOS (where `nm` reads Mach-O), each .appex binary defines its principal class (a Swift class of the
+     extension's own module, #561);
+  4. the app's display name is "OSRA Kids" in Info.plist and in en.lproj (Karim, 11 Nov), and ar.lproj
+     carries a display name too; the app's Info.plist asks for location with both usage strings, has them in English and Arabic
      (en.lproj, ar.lproj), and has no `location` background mode (significant-change monitoring needs
      none, and the entry draws App Review questions, 5.5 PR E).
 And once, from the source tree (an unsigned build embeds no entitlements):
   5. every target's .entitlements file carries com.apple.developer.family-controls = true and the
-     app group group.dev.familyshield.agent.
+     app group group.com.osratech.child.
+  6. each extension's Info.plist names "$(PRODUCT_MODULE_NAME).<Class>" and declares <Class> in its own sources (#561).
 
 It prints what it found, so the CI log shows the bundle list, and exits 1 on any mismatch.
 """
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
 
-APP_GROUP = "group.dev.familyshield.agent"
+APP_GROUP = "group.com.osratech.child"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# .appex name -> (extension point, principal class)
+# .appex name -> (extension point, module, principal class). #561: the principal class is declared in the extension's
+# own module and named "$(PRODUCT_MODULE_NAME).<Class>" in Info.plist, as Apple's template does; a class that lived
+# only in the statically linked package could not be loaded on the iPhone (SpringBoard: "ExtensionError Code=0").
 EXTENSIONS = {
-    "OSRAAgentMonitor.appex": ("com.apple.deviceactivity.monitor-extension", "FamilyShieldDeviceActivityMonitor"),
+    "OSRAAgentMonitor.appex": (
+        "com.apple.deviceactivity.monitor-extension", "OSRAAgentMonitor", "DeviceActivityMonitorExtension"),
     "OSRAAgentShieldConfiguration.appex": (
-        "com.apple.ManagedSettingsUI.shield-configuration-service",
-        "FamilyShieldConfigurationDataSource",
-    ),
-    "OSRAAgentShieldAction.appex": ("com.apple.ManagedSettings.shield-action-service", "FamilyShieldShieldActionDelegate"),
+        "com.apple.ManagedSettingsUI.shield-configuration-service", "OSRAAgentShieldConfiguration",
+        "ShieldConfigurationExtension"),
+    "OSRAAgentShieldAction.appex": (
+        "com.apple.ManagedSettings.shield-action-service", "OSRAAgentShieldAction", "ShieldActionExtension"),
 }
+
+# Extension folder in the source tree -> the .appex it builds.
+EXTENSION_SOURCES = {
+    "Extensions/Monitor": "OSRAAgentMonitor.appex",
+    "Extensions/ShieldConfiguration": "OSRAAgentShieldConfiguration.appex",
+    "Extensions/ShieldAction": "OSRAAgentShieldAction.appex",
+}
+
+DISPLAY_NAME = "OSRA Kids"
 
 LOCATION_KEYS = ["NSLocationWhenInUseUsageDescription", "NSLocationAlwaysAndWhenInUseUsageDescription"]
 
@@ -80,9 +96,11 @@ def check_app(app):
         extra = sorted(set(found) - set(EXTENSIONS))
         fail(f"PlugIns/ mismatch: missing {missing or 'none'}, unexpected {extra or 'none'}")
 
+    check_display_name(app)
     check_location(app)
 
-    for name, (point, principal) in EXTENSIONS.items():
+    for name, (point, module, cls) in EXTENSIONS.items():
+        principal = f"{module}.{cls}"
         appex = os.path.join(plugins, name)
         info_path = os.path.join(appex, "Info.plist")
         if not os.path.isfile(info_path):
@@ -99,7 +117,52 @@ def check_app(app):
             ok(f"{name}: NSExtensionPrincipalClass = {got_principal}")
         else:
             fail(f"{name}: NSExtensionPrincipalClass = {got_principal!r}, expected {principal!r}")
-        check_principal_linked(appex, name, principal)
+        check_principal_linked(appex, name, module, cls)
+
+
+def check_display_name(app):
+    info_path = os.path.join(app, "Info.plist")
+    if not os.path.isfile(info_path):
+        fail("app: no Info.plist")
+        return
+    name = read_plist(info_path).get("CFBundleDisplayName")
+    if name == DISPLAY_NAME:
+        ok(f"app: CFBundleDisplayName = {name}")
+    else:
+        fail(f"app: CFBundleDisplayName = {name!r}, expected {DISPLAY_NAME!r}")
+    for lang in ("en", "ar"):
+        strings = os.path.join(app, f"{lang}.lproj", "InfoPlist.strings")
+        if not os.path.isfile(strings):
+            fail(f"app: no {lang}.lproj/InfoPlist.strings")
+            continue
+        value = read_strings_value(strings, "CFBundleDisplayName")
+        if lang == "en" and value != DISPLAY_NAME:
+            fail(f"app: en.lproj CFBundleDisplayName = {value!r}, expected {DISPLAY_NAME!r}")
+        elif not value:
+            fail(f"app: {lang}.lproj/InfoPlist.strings has no CFBundleDisplayName")
+        else:
+            ok(f"app: {lang}.lproj CFBundleDisplayName present")
+
+
+def read_strings_value(path, key):
+    """The value of one key in a built .strings file (binary plist, or text in UTF-8/UTF-16)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    try:
+        return plistlib.loads(data).get(key)
+    except Exception:
+        pass
+    for encoding in ("utf-8", "utf-16"):
+        try:
+            text = data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            prefix = f'"{key}" = "'
+            if line.startswith(prefix) and line.endswith('";'):
+                return line[len(prefix):-2]
+    return None
 
 
 def check_location(app):
@@ -147,7 +210,12 @@ def read_strings(path):
     return ""
 
 
-def check_principal_linked(appex, name, principal):
+def swift_class_symbol(module, cls):
+    """The Objective-C class symbol Swift emits for `module.cls` (its mangled runtime name)."""
+    return f"_OBJC_CLASS_$__TtC{len(module)}{module}{len(cls)}{cls}"
+
+
+def check_principal_linked(appex, name, module, cls):
     """The class the plist names must be in the extension binary, or the extension starts with nothing."""
     if sys.platform != "darwin" or not shutil.which("nm"):
         print(f"skip  {name}: principal class not looked up in the binary (needs macOS nm)")
@@ -157,10 +225,35 @@ def check_principal_linked(appex, name, principal):
         fail(f"{name}: no executable at {binary}")
         return
     symbols = subprocess.run(["nm", binary], capture_output=True, text=True).stdout
-    if f"_OBJC_CLASS_$_{principal}" in symbols:
-        ok(f"{name}: binary defines {principal}")
+    symbol = swift_class_symbol(module, cls)
+    if symbol in symbols:
+        ok(f"{name}: binary defines {module}.{cls}")
     else:
-        fail(f"{name}: binary does not define _OBJC_CLASS_$_{principal}")
+        fail(f"{name}: binary does not define {symbol}")
+
+
+def check_principal_sources():
+    """#561, from the source tree: each Info.plist names "$(PRODUCT_MODULE_NAME).<Class>", and <Class> is declared in
+    that extension's own Swift files, not only in the package."""
+    print("\nprincipal classes (source files)")
+    for folder, appex in EXTENSION_SOURCES.items():
+        _, _, cls = EXTENSIONS[appex]
+        info = read_plist(os.path.join(ROOT, folder, "Info.plist"))
+        named = info.get("NSExtension", {}).get("NSExtensionPrincipalClass")
+        expected = f"$(PRODUCT_MODULE_NAME).{cls}"
+        if named == expected:
+            ok(f"{folder}/Info.plist: NSExtensionPrincipalClass = {named}")
+        else:
+            fail(f"{folder}/Info.plist: NSExtensionPrincipalClass = {named!r}, expected {expected!r}")
+        sources = ""
+        for entry in sorted(os.listdir(os.path.join(ROOT, folder))):
+            if entry.endswith(".swift"):
+                with open(os.path.join(ROOT, folder, entry), encoding="utf-8") as f:
+                    sources += f.read()
+        if re.search(rf"\bclass\s+{cls}\s*:", sources):
+            ok(f"{folder}: declares class {cls}")
+        else:
+            fail(f"{folder}: no `class {cls}:` in its own Swift files")
 
 
 def check_entitlements():
@@ -173,7 +266,7 @@ def check_entitlements():
         ent = read_plist(path)
         family = ent.get("com.apple.developer.family-controls")
         groups = ent.get("com.apple.security.application-groups", [])
-        if family is True and APP_GROUP in groups:
+        if family is True and groups == [APP_GROUP]:
             ok(f"{rel}: family-controls and {APP_GROUP}")
         else:
             fail(f"{rel}: family-controls={family!r}, application-groups={groups!r}")
@@ -186,6 +279,7 @@ def main(argv):
     for app in argv[1:]:
         check_app(app)
     check_entitlements()
+    check_principal_sources()
     print(f"\n{len(failures)} problem(s)")
     return 1 if failures else 0
 

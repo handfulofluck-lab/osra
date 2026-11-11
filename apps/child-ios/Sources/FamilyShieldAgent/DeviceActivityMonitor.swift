@@ -5,7 +5,7 @@ import CryptoKit
 /// Posts agent alerts to the FamilyShield backend API (spec §6.4 helper).
 struct AlertReporter {
 
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Alerts")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Alerts")
 
     /// Base URL of the FamilyShield API (no trailing slash), read from the shared app
     /// group at init; nil until the pairing flow writes `agent.apiBaseURL`.
@@ -129,17 +129,17 @@ struct AlertReporter {
 
     /// Reads the paired child id from the shared app group (written at pairing), if any.
     static func pairedChildId() -> String? {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?.string(forKey: "agent.childId")
+        UserDefaults(suiteName: "group.com.osratech.child")?.string(forKey: "agent.childId")
     }
 
     /// Reads the paired device id from the shared app group (written at pairing), if any (IOS-01).
     static func pairedDeviceId() -> String? {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?.string(forKey: "agent.deviceId")
+        UserDefaults(suiteName: "group.com.osratech.child")?.string(forKey: "agent.deviceId")
     }
 
     /// Reads the pairing API base URL from the shared app group, if any.
     static func pairedApiBaseURL() -> URL? {
-        guard let raw = UserDefaults(suiteName: "group.dev.familyshield.agent")?
+        guard let raw = UserDefaults(suiteName: "group.com.osratech.child")?
             .string(forKey: "agent.apiBaseURL"), !raw.isEmpty
         else { return nil }
         return URL(string: raw)
@@ -159,11 +159,9 @@ import ManagedSettings
 /// when a bedtime interval starts in a routine-specific named store, and clears only that
 /// routine store when it ends without unshielding parent rules (IOS-05).
 ///
-/// The monitor extension target (`Extensions/Monitor`) names this class as its
-/// NSExtensionPrincipalClass. `@objc(...)` gives it that unqualified runtime name, and it is
-/// public so the extension can reference it, which keeps the static linker from dropping it.
-@objc(FamilyShieldDeviceActivityMonitor)
-public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
+/// #561: the monitor extension's principal class is `DeviceActivityMonitorExtension`, declared in `Extensions/Monitor`
+/// as a subclass of this one, as Apple's template does. This class is `open` for that; the behaviour stays here.
+open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Reporter rebuilt per use so it picks up the `agent.apiBaseURL` value the pairing
     /// flow writes into the shared app group (nil until then — reports are skipped).
@@ -214,7 +212,7 @@ public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Bundle identifiers blocked by the parent's app rules, read from the shared app-group store.
     private static func ruleBlockedBundleIdentifiers() -> [String] {
-        UserDefaults(suiteName: "group.dev.familyshield.agent")?
+        UserDefaults(suiteName: "group.com.osratech.child")?
             .stringArray(forKey: "apps.blockedBundleIdentifiers") ?? []
     }
 }

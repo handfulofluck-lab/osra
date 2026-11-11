@@ -37,6 +37,14 @@ class MergedManifest private constructor(
     val applicationLabel: String?,
     /** `<application android:icon="…">`, the image the system sheets show beside that label. */
     val applicationIcon: String?,
+    /**
+     * osra-security#8 F1: `android:allowBackup`, `android:dataExtractionRules` (API 31+) and
+     * `android:fullBackupContent` (API 23-30). Absent, Android backs the app's data up to the child's Google
+     * account and restores it on a new phone.
+     */
+    val applicationAllowBackup: String? = null,
+    val applicationDataExtractionRules: String? = null,
+    val applicationFullBackupContent: String? = null,
 ) {
     data class QueryIntent(val actions: Set<String>, val categories: Set<String>)
 
@@ -115,6 +123,9 @@ class MergedManifest private constructor(
                 applicationTestOnly = application?.attr("android:testOnly"),
                 applicationLabel = application?.attr("android:label"),
                 applicationIcon = application?.attr("android:icon"),
+                applicationAllowBackup = application?.attr("android:allowBackup"),
+                applicationDataExtractionRules = application?.attr("android:dataExtractionRules"),
+                applicationFullBackupContent = application?.attr("android:fullBackupContent"),
             )
         }
     }

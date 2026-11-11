@@ -488,9 +488,9 @@ only iOS shows on `main` within a day. When the diff cannot be read (an unknown 
 builds. Each push to `main` runs in a concurrency group of its own, so a later merge never cancels it; a cancelled push would otherwise drop its iOS inputs until the nightly run (it happened to #362's merge). To build iOS on a branch that the filter skips: `gh workflow run parent-app.yml --ref <branch>`. Run locally
 against real merges on `main`: #356 (the iOS tree) and #352 (this workflow) build it; #344, #348, #349 and #355
 skip it.
-- Two assertions on the committed tree, so a green run is not only "the compiler finished": the
-  `PRODUCT_BUNDLE_IDENTIFIER` is `dev.familyshield.familyshieldParent` (the Android `applicationId`'s org and
-  leaf, with the underscore dropped because Apple's bundle-ID grammar forbids it), and `Info.plist` carries
+- Two assertions on the committed tree, so a green run is not only "the compiler finished": every
+  `PRODUCT_BUNDLE_IDENTIFIER` is `com.osratech.parent` or its `.RunnerTests` (the Android `applicationId`,
+  decision 2B, #543), and `Info.plist` carries
   `CFBundleDisplayName = OSRA` with `CFBundleLocalizations = [en, ar]`. Mutant for each: edit
   `ios/Runner.xcodeproj/project.pbxproj` or `ios/Runner/Info.plist` and the job fails.
 
@@ -899,6 +899,26 @@ mis-measure.
 5. Read the API log to tell the failure modes apart: `[push] device wake failed` is a provider problem, a
    device with a null token is the agent never publishing, and a wake that arrives whose command never runs
    is the agent's own fetch being blocked. They do not share a fix.
+
+## 5k. The iOS child agent on an iPhone (roadmap 5.5)
+
+First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the decision-2B ones (#543).
+
+1. **Signing.** Sign the host app and its three extensions (`com.osratech.child`, `.Monitor`, `.ShieldConfiguration`,
+   `.ShieldAction`) with the paid team. All four need `com.apple.developer.family-controls` (development) and
+   `group.com.osratech.child`; the host also needs `aps-environment`.
+2. **App group, by hand.** Register `group.com.osratech.child` in the Apple developer portal and attach it to all
+   four ids before signing. Command-line signing cannot create an app group, so a CLI-only setup fails here.
+3. **Child account.** The iPhone is signed in to a child Apple ID in the parent's Family Sharing; FamilyControls
+   `.child` authorization needs it.
+4. **On the phone, Status screen:** tap **Turn on Screen Time** and approve the prompt; the row reads `On` and rule
+   sync stops logging `notAuthorized`. **Allow location** asks for While Using, then Always, each once; after a
+   denial, or once the Always prompt was used, the button reads **Open Settings** and opens the app's page.
+5. The home-screen name is **OSRA Kids** (Arabic name pending Karim's approval).
+6. **Parent PIN and app groups (ADR-0037).** After pairing, the phone asks for a parent PIN (4–8 digits). Status →
+   **App groups** asks for it: five wrong PINs lock it for 30 s. Make a group ("Games"), **Choose apps** (e.g.
+   Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
+   parent side. An older bundle-id rule still hides its app. **Re-pair** also asks for the PIN.
 
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 

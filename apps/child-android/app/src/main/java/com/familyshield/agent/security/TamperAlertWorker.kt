@@ -72,7 +72,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         severity = "critical",
                         category = "tamper",
                         title = TITLES[type] ?: "Protection was changed",
-                        body = bodyFor(type, detail, guardWindow?.count),
+                        body = bodyFor(type, detail, guardWindow),
                         metadata = metadataFor(type, app, layout),
                         dedupeKey = dedupeKey,
                         attemptCount = if (type == TYPE_GUARD_TRIGGERED) guardWindow?.count else null,
@@ -96,14 +96,14 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         val start = inputData.getLong(KEY_WINDOW_START_MS, 0L)
         val count = inputData.getInt(KEY_ATTEMPT_COUNT, 0)
         if (start <= 0L || count <= 0) return null
-        return GuardAttemptWindow.State(windowStartMs = start, count = count)
+        val screens = GuardAttemptWindow.decodeScreens(inputData.getString(KEY_SCREENS))
+        return GuardAttemptWindow.State(windowStartMs = start, count = count, screens = screens)
     }
 
-    /** The first attempt keeps the specific screen detail; later attempts say how many there were. */
-    private fun bodyFor(type: String, detail: String, attemptCount: Int?): String = when {
-        type == TYPE_GUARD_TRIGGERED && attemptCount != null && attemptCount > 1 ->
-            "$attemptCount attempts were made to open a protection-removal screen on this device in 5 minutes. " +
-                "The PIN was asked for each time."
+    /** The first attempt keeps the specific screen detail; later ones give the count and every screen tried. */
+    private fun bodyFor(type: String, detail: String, window: GuardAttemptWindow.State?): String = when {
+        type == TYPE_GUARD_TRIGGERED && window != null && window.count > 1 ->
+            GuardAttemptWindow.body(window.count, window.screens, detail)
         else -> detail.ifBlank { BODIES[type] ?: "" }
     }
 
@@ -134,6 +134,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         private const val KEY_ATTEMPT_COUNT = "attempt_count"
         private const val KEY_APP = "app"
         private const val KEY_LAYOUT = "layout"
+        private const val KEY_SCREENS = "screens"
         private const val TAG = "TamperAlertWorker"
 
         private val TITLES = mapOf(
@@ -180,6 +181,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             eventAtMs: Long = 0L,
             windowStartMs: Long = 0L,
             attemptCount: Int = 0,
+            screens: List<String> = emptyList(),
             app: String = "",
             layout: String = "",
         ) {
@@ -192,6 +194,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                         KEY_EVENT_AT_MS to eventAtMs,
                         KEY_WINDOW_START_MS to windowStartMs,
                         KEY_ATTEMPT_COUNT to attemptCount,
+                        KEY_SCREENS to GuardAttemptWindow.encodeScreens(screens),
                         KEY_APP to app,
                         KEY_LAYOUT to layout,
                     ),
