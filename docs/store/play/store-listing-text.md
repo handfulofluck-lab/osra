@@ -33,7 +33,7 @@ WHAT YOU CAN DO
 • Web filter: block site categories and single sites, and turn on SafeSearch and YouTube Restricted Mode. Filtering runs on your child's phone.
 • Commands: pause the internet or the phone, lock it, make it ring, give bonus time, or warn that it will lock in a few minutes.
 • Location: see your child's phone on a map, ask for a fresh location, and get an alert when they arrive at or leave places you save.
-• Chat safety alerts: in the chat and social apps you choose, OSRA checks the text shown on your child's screen for warning signs such as self-harm, bullying or grooming. You get an alert, and flagged excerpts are kept encrypted for you to review. Checks currently use English phrases; Arabic detection is in development.
+• Chat safety alerts: in the chat and social apps you choose, such as WhatsApp, Instagram, Snapchat and TikTok, OSRA checks the text shown on your child's screen for warning signs such as self-harm, bullying or grooming. You get an alert, and flagged excerpts are kept encrypted for you to review. Checks currently use English phrases; Arabic detection is in development. (OSRA is not affiliated with these companies.)
 • SOS: your child can send you an SOS alert from a quick-settings tile.
 • Protection alerts: you are told if protection is switched off or the app is tampered with, and removing OSRA can be locked behind your parent PIN.
 • Reports: app-usage reports and an optional daily or weekly email summary.
@@ -79,7 +79,7 @@ PRIVACY
 • تصفية المواقع: احظر فئات من المواقع أو مواقع بعينها، وفعّل البحث الآمن ووضع YouTube المقيّد. تجري التصفية على هاتف طفلك نفسه.
 • الأوامر: أوقف الإنترنت أو الهاتف مؤقتًا، أو اقفل الهاتف، أو اجعله يرنّ، أو امنح وقتًا إضافيًا، أو نبّه طفلك إلى أن الهاتف سيُقفل بعد دقائق.
 • الموقع: شاهد مكان هاتف طفلك على الخريطة، واطلب تحديثه، وتلقَّ تنبيهًا عند وصوله إلى الأماكن التي تحفظها أو مغادرته لها.
-• تنبيهات أمان المحادثات: في تطبيقات الدردشة والتواصل التي تختارها، يفحص «أسرة» النص الظاهر على شاشة طفلك بحثًا عن علامات خطر مثل إيذاء النفس أو التنمّر أو الاستدراج. يصلك تنبيه، وتُحفظ المقتطفات المثيرة للقلق مشفّرة لتراجعها. يعتمد الفحص حاليًا على عبارات إنجليزية، ودعم العربية قيد التطوير.
+• تنبيهات أمان المحادثات: في تطبيقات الدردشة والتواصل التي تختارها، مثل WhatsApp وInstagram وSnapchat وTikTok، يفحص «أسرة» النص الظاهر على شاشة طفلك بحثًا عن علامات خطر مثل إيذاء النفس أو التنمّر أو الاستدراج. يصلك تنبيه، وتُحفظ المقتطفات المثيرة للقلق مشفّرة لتراجعها. يعتمد الفحص حاليًا على عبارات إنجليزية، ودعم العربية قيد التطوير. («أسرة» غير تابع لهذه الشركات.)
 • الاستغاثة: يستطيع طفلك أن يرسل إليك تنبيه استغاثة من لوحة الإعدادات السريعة.
 • تنبيهات الحماية: نُعلمك إذا أُوقفت الحماية أو جرى العبث بالتطبيق، ويمكنك أن تمنع إزالة «أسرة» إلا برمز PIN الخاص بك.
 • التقارير: تقارير عن استخدام التطبيقات، وملخص يومي أو أسبوعي بالبريد الإلكتروني إن رغبت.
@@ -121,7 +121,7 @@ THIS IS A MONITORING APP
 Once it is set up, OSRA Kids sends the following to the parent's OSRA account:
 • the phone's location, also while the app is closed, so the parent can locate the phone and get place alerts;
 • which apps are used and for how long, and the list of installed apps;
-• text shown on screen in the chat and social apps the parent selects. It is checked for warning signs such as self-harm, bullying or grooming. Phone numbers and email addresses are masked on the phone before sending, and only flagged excerpts are kept, encrypted;
+• text shown on screen in the chat and social apps the parent selects, such as WhatsApp, Instagram, Snapchat and TikTok (OSRA is not affiliated with these companies). It is checked for warning signs such as self-harm, bullying or grooming. Phone numbers and email addresses are masked on the phone before sending, and only flagged excerpts are kept, encrypted;
 • alerts: SOS, access requests, new app installs, and attempts to switch protection off.
 
 It does not read SMS, call logs or notifications, and it does not record the screen or use the microphone. The camera is used only to scan the pairing QR code.
@@ -164,7 +164,7 @@ If this is your phone: your parent or guardian set up OSRA to help keep you safe
 بعد إعداده، يرسل «أسرة للطفل» إلى حساب «أسرة» الخاص بالوالدين ما يلي:
 • موقع الهاتف، حتى عندما يكون التطبيق مغلقًا، ليتمكن الوالدان من تحديد مكانه وتلقّي تنبيهات الأماكن؛
 • التطبيقات المستخدمة ومدة استخدامها، وقائمة التطبيقات المثبّتة؛
-• النص الظاهر على الشاشة في تطبيقات الدردشة والتواصل التي يختارها الوالدان، ويُفحص بحثًا عن علامات خطر مثل إيذاء النفس أو التنمّر أو الاستدراج. تُخفى أرقام الهواتف وعناوين البريد الإلكتروني على الهاتف قبل الإرسال، ولا يُحفظ إلا ما يثير القلق، مشفّرًا؛
+• النص الظاهر على الشاشة في تطبيقات الدردشة والتواصل التي يختارها الوالدان، مثل WhatsApp وInstagram وSnapchat وTikTok («أسرة» غير تابع لهذه الشركات)، ويُفحص بحثًا عن علامات خطر مثل إيذاء النفس أو التنمّر أو الاستدراج. تُخفى أرقام الهواتف وعناوين البريد الإلكتروني على الهاتف قبل الإرسال، ولا يُحفظ إلا ما يثير القلق، مشفّرًا؛
 • التنبيهات: الاستغاثة، وطلبات الإذن، وتثبيت تطبيقات جديدة، ومحاولات إيقاف الحماية.
 
 لا يقرأ الرسائل النصية (SMS) ولا سجل المكالمات ولا الإشعارات، ولا يسجّل الشاشة ولا يستخدم الميكروفون. تُستخدم الكاميرا لمسح رمز الربط فقط.
