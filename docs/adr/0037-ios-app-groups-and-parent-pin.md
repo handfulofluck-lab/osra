@@ -62,3 +62,15 @@ The parent app is Flutter and many parents use Android, so the picker cannot nee
 - The groups screen relocks when the app goes to the background, so it is not left open by accident.
 - The groups are only as safe as the PIN and Screen Time authorization; removing that authorization in Settings
   is the parent's control, as on any FamilyControls app.
+
+## Amendment 2026-11-11 — PR B1: the server knows the shape first
+
+- `DeviceCapabilitiesV1.groups?: AppGroupReport[]` (`packages/shared-types`): `{id, label, apps, categories, sites}`,
+  at most 20, ids are UUIDs and never repeat, counts 0–10,000, the label 1–40 characters with no control characters,
+  no Unicode direction controls (they could flip the text after it on the parent's screen) and no edge whitespace. **iPhone only**: a `groups` field from any other app is refused.
+- **Groups have their own byte cap (8 KB)**, outside the report's 4 KB (ADR-0034 A2): a full report plus twenty
+  40-letter Arabic labels passes 4 KB. Both caps are checked on the raw input before parsing.
+- A report without `groups` keeps the stored ones (the profiles rule); an empty list replaces them. `DeviceSetup`
+  carries `groups` (null until a report has). No failure message repeats a label.
+- This lands **before** the phone sends the field (the order above). PR B2: the phone's report, the parent app's
+  group rows and rules by `groupId`.
