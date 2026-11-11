@@ -35,16 +35,15 @@ familyshield/
 │   ├── consent-sdk/         # COPPA/GDPR-K consent flow library
 │   └── crypto/              # E2E encryption helpers
 ├── infra/
-│   ├── docker/
-│   ├── terraform/
-│   └── k8s/
+│   └── terraform/
 └── docs/
 ```
 
 Tooling: pnpm workspaces + Turborepo (JS), Gradle (Android), SwiftPM (iOS), MSBuild (Desktop).
 NOTE: `services/realtime/` and `infra/` are reserved for future passes; the realtime gateway
-currently lives inside services/api (see §3.12). Create `infra/docker`, `infra/terraform`,
-`infra/k8s` as empty dirs with a `.gitkeep` each.
+currently lives inside services/api (see §3.12). Superseded for `infra/` by ADR-0028 (2026-11-07 tidy-up):
+hosting is AWS Fargate built from `infra/terraform`, so the empty `infra/docker` and `infra/k8s`
+placeholders were removed; each service's Dockerfile lives in its own folder.
 
 ## Wiring contracts (§12.3)
 
