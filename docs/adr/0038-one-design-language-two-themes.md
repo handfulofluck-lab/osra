@@ -1,4 +1,4 @@
-# ADR-0037 — One design language on every platform, with a Calm light theme and a Control room dark theme
+# ADR-0038 — One design language on every platform, with a Calm light theme and a Control room dark theme
 
 - **Status:** accepted (2026-11-11); implementation not started
 - **Deciders:** Karim (product, chose the two themes); Claude (architecture, wrote the language); implemented by

@@ -1,6 +1,6 @@
 # OSRA design language
 
-**Decision:** ADR-0037. **Chosen by the maintainer on 2026-11-11:** *"I want A Calm for the light theme and I want B
+**Decision:** ADR-0038. **Chosen by the maintainer on 2026-11-11:** *"I want A Calm for the light theme and I want B
 Control room to be our dark theme option … please adopt same design language in iOS and Android and as much as
 possible in Windows and macOS."*
 
