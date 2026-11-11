@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../providers/locale_provider.dart' show kAppLocaleKey;
-import '../providers/server_provider.dart' show effectiveServerUrl, kDefaultServerUrl, kServerUrlKey, normalizeServerUrl;
+import '../providers/server_provider.dart' show effectiveServerUrl, kDefaultServerUrl, kServerUrlKey;
 import 'alert_notification.dart';
 import 'local_notifier.dart';
 
