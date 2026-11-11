@@ -3001,4 +3001,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get grantNotificationListener => 'Notification access';
+
+  @override
+  String get grantFullScreenIntent => 'Full-screen alerts';
+
+  @override
+  String get grantFamilyControls => 'Screen Time (Family Controls)';
+
+  @override
+  String get grantBackgroundRefresh => 'Background app refresh';
 }

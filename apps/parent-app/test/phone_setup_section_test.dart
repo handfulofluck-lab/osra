@@ -1,6 +1,8 @@
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/features/children/phone_setup_section.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +12,17 @@ import 'package:flutter_test/flutter_test.dart';
 /// which is not the same as "not available"); `not_supported` is the *server's* word and reads as "not in this
 /// version" rather than as a fault of the phone; and a device that never reported says so instead of showing an
 /// empty row of failures.
+String _readShared(String relative) {
+  var dir = Directory.current.absolute;
+  while (true) {
+    final candidate = File('${dir.path}/$relative');
+    if (candidate.existsSync()) return candidate.readAsStringSync();
+    final parent = dir.parent;
+    if (parent.path == dir.path) throw StateError('could not find $relative');
+    dir = parent;
+  }
+}
+
 void main() {
   Device device({
     Map<String, String>? features,
@@ -114,4 +127,32 @@ void main() {
     expect(find.text('شاشة القفل · جاهز'), findsOneWidget);
     expect(find.text('• خدمة إمكانية الوصول'), findsOneWidget);
   });
+
+  testWidgets('all thirteen grant keys get a human label, and the list matches the shared vocabulary', (tester) async {
+    // #552 review, point 1: three keys (full_screen_intent, family_controls, background_refresh) reached the
+    // screen as raw wire names. Looping the whole vocabulary is what makes a *future* grant fail here instead.
+    final source = _readShared('packages/shared-types/src/capabilities.ts');
+    final block = RegExp(r'export const GRANT_KEYS = \[([^\]]*)\]', dotAll: true).firstMatch(source)!.group(1)!;
+    final shared = RegExp("\"([a-z_]+)\"").allMatches(block).map((m) => m.group(1)!).toList();
+    expect(shared.length, 13, reason: 'the vocabulary grew or shrank; update the widget and this row together');
+    expect(PhoneSetupSection.grantKeys, shared,
+        reason: 'the widget must carry the same order and the same keys as the server');
+
+    await pump(tester, device(missing: PhoneSetupSection.grantKeys));
+    for (final key in PhoneSetupSection.grantKeys) {
+      expect(find.text('• $key'), findsNothing, reason: '$key has no human label');
+    }
+    // And each one is present as *something* meant for a parent, not silently dropped.
+    expect(find.textContaining('• '), findsNWidgets(13));
+  });
+
+  testWidgets('another space with no named kind still says there is one', (tester) async {
+    // #552 review, point 2: `others: 1` with empty or unknown kinds showed nothing at all.
+    await pump(tester, device(others: 1, kinds: const []));
+    expect(find.textContaining('another space'), findsOneWidget);
+
+    await pump(tester, device(others: 2, kinds: const ['a_kind_from_the_future']));
+    expect(find.textContaining('another space'), findsOneWidget);
+  });
+
 }

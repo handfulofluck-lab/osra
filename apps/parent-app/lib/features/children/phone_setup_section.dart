@@ -18,6 +18,26 @@ class PhoneSetupSection extends StatelessWidget {
   final Device device;
   const PhoneSetupSection({super.key, required this.device});
 
+  /// The server's `GRANT_KEYS`, verbatim (`packages/shared-types/src/capabilities.ts`).
+  ///
+  /// Kept here so a test can compare the two lists: a grant added to the shared vocabulary without a label
+  /// below would otherwise reach a parent as `• full_screen_intent` in the "what to fix" list.
+  static const grantKeys = [
+    'accessibility',
+    'usage_access',
+    'overlay',
+    'device_admin',
+    'web_filter',
+    'location',
+    'private_dns',
+    'battery',
+    'usb_debugging',
+    'notification_listener',
+    'full_screen_intent',
+    'family_controls',
+    'background_refresh',
+  ];
+
   /// The order the ADR lists features in; anything else the phone reports is appended after them.
   static const featureOrder = [
     'lock_screen',
@@ -121,7 +141,10 @@ class PhoneSetupSection extends StatelessWidget {
   List<String> _profileKinds(DeviceProfiles? profiles) {
     if (profiles == null || profiles.others < 1) return const [];
     const order = ['clone', 'work', 'secure_folder', 'other'];
-    return order.where(profiles.kinds.contains).toList();
+    final known = order.where(profiles.kinds.contains).toList();
+    // `others >= 1` with no kind we can name — an empty `kinds`, or a kind added after this build — is still
+    // another space, and saying nothing would read as "nothing to see" (#552 review, point 2).
+    return known.isEmpty ? const ['other'] : known;
   }
 
   String _profileText(AppLocalizations l10n, String kind) => switch (kind) {
@@ -164,6 +187,9 @@ class PhoneSetupSection extends StatelessWidget {
         'battery' => l10n.grantBattery,
         'usb_debugging' => l10n.grantUsbDebugging,
         'notification_listener' => l10n.grantNotificationListener,
+        'full_screen_intent' => l10n.grantFullScreenIntent,
+        'family_controls' => l10n.grantFamilyControls,
+        'background_refresh' => l10n.grantBackgroundRefresh,
         _ => key,
       };
 }

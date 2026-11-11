@@ -916,5 +916,8 @@
   "grantPrivateDns": "DNS الخاص",
   "grantBattery": "البطارية: بدون قيود",
   "grantUsbDebugging": "إيقاف تصحيح USB",
-  "grantNotificationListener": "الوصول إلى الإشعارات"
+  "grantNotificationListener": "الوصول إلى الإشعارات",
+  "grantFullScreenIntent": "تنبيهات ملء الشاشة",
+  "grantFamilyControls": "وقت الشاشة (Family Controls)",
+  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية"
 }

@@ -3152,4 +3152,13 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantNotificationListener => 'الوصول إلى الإشعارات';
+
+  @override
+  String get grantFullScreenIntent => 'تنبيهات ملء الشاشة';
+
+  @override
+  String get grantFamilyControls => 'وقت الشاشة (Family Controls)';
+
+  @override
+  String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
 }

@@ -1335,5 +1335,8 @@
   "grantPrivateDns": "Private DNS",
   "grantBattery": "Battery: unrestricted",
   "grantUsbDebugging": "USB debugging off",
-  "grantNotificationListener": "Notification access"
+  "grantNotificationListener": "Notification access",
+  "grantFullScreenIntent": "Full-screen alerts",
+  "grantFamilyControls": "Screen Time (Family Controls)",
+  "grantBackgroundRefresh": "Background app refresh"
 }

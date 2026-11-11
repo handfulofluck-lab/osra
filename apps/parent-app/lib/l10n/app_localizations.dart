@@ -5029,6 +5029,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Notification access'**
   String get grantNotificationListener;
+
+  /// No description provided for @grantFullScreenIntent.
+  ///
+  /// In en, this message translates to:
+  /// **'Full-screen alerts'**
+  String get grantFullScreenIntent;
+
+  /// No description provided for @grantFamilyControls.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen Time (Family Controls)'**
+  String get grantFamilyControls;
+
+  /// No description provided for @grantBackgroundRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Background app refresh'**
+  String get grantBackgroundRefresh;
 }
 
 class _AppLocalizationsDelegate
