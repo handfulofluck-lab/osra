@@ -103,6 +103,13 @@ object TamperScreenPolicy {
     }
 
     /**
+     * osra-security#7: whether a window of [packageName] can be a protection screen at all, so the guard's cover
+     * reads the texts of only those windows.
+     */
+    fun mayHostProtectionScreen(packageName: String?): Boolean =
+        packageName != null && (packageName in SYSTEM_PACKAGES || SPACE_SETUP_SCREENS.any { it.first == packageName })
+
+    /**
      * Classifies a foreground window. [packageName] is the window's package; [texts] every visible
      * text/content-description on it, in any order; [agentLabel] the agent's launcher label
      * ("OSRA Child Agent"), [adminLabel] the device-admin label ("OSRA parental controls") and
