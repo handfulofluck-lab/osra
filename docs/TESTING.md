@@ -914,7 +914,7 @@ First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the 
 4. **On the phone, Status screen:** tap **Turn on Screen Time** and approve the prompt; the row reads `On` and rule
    sync stops logging `notAuthorized`. **Allow location** asks for While Using, then Always, each once; after a
    denial, or once the Always prompt was used, the button reads **Open Settings** and opens the app's page.
-5. The home-screen name is **OSRA Kids** (Arabic name pending Karim's approval).
+5. The home-screen name is **OSRA Kids** (Arabic «أسرة للأطفال», approved by Karim on 2026-11-11).
 
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 
