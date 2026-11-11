@@ -2,7 +2,7 @@ import Foundation
 
 /// Reads and writes the paired [AgentIdentity]. The Device-Activity monitor and Shield extensions run
 /// in separate processes, so everything here is shared through the app group
-/// (`group.dev.familyshield.agent`):
+/// (`group.com.osratech.child`):
 ///
 /// - the **secrets**, `deviceToken` and `hmacSecret`, are in the Keychain (`secrets`, an access group
 ///   shared with the extensions; 5.5 PR B, #372);
@@ -12,8 +12,8 @@ import Foundation
 /// Builds before 5.5 PR B kept the two secrets in that `UserDefaults` too, as plaintext. `load()` moves
 /// them into the Keychain the first time it finds them there, then deletes the plaintext copies.
 public enum AgentIdentityStore {
-    /// Placeholder until the maintainer chooses the permanent app-group id.
-    public static let suiteName = "group.dev.familyshield.agent"
+    /// The final app-group id (decision 2B, #543); `scripts/check-identifiers.py` fails CI on any other.
+    public static let suiteName = "group.com.osratech.child"
 
     /// Where the secrets live. Tests swap in a store without an access group (an unsigned test bundle has
     /// no entitlements); everything else uses the shared Keychain group.

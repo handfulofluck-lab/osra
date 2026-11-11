@@ -18,7 +18,7 @@ public protocol SecretStore {
 
 /// Generic-password items in the Keychain, one per account, under one service.
 ///
-/// - The access group is the app group `group.dev.familyshield.agent`: on iOS an app group the target is
+/// - The access group is the app group `group.com.osratech.child`: on iOS an app group the target is
 ///   entitled to is also a Keychain access group, so the monitor and shield extensions read the items the
 ///   app writes without a separate `keychain-access-groups` entitlement. `nil` uses the caller's default
 ///   group (the unsigned XCTest bundle has no entitlements, so the tests use that).
@@ -26,9 +26,9 @@ public protocol SecretStore {
 ///   phone is locked, which rules out `WhenUnlocked`, and `ThisDeviceOnly` keeps the secrets out of
 ///   backups and off any other device a backup is restored to. A restored phone re-pairs.
 public struct KeychainSecretStore: SecretStore {
-    public static let service = "dev.familyshield.agent"
+    public static let service = "com.osratech.child"
 
-    private static let logger = Logger(subsystem: "dev.familyshield.agent", category: "Keychain")
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Keychain")
 
     public let accessGroup: String?
 

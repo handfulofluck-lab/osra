@@ -58,12 +58,21 @@ jobs:
       # NOTE: the `secrets` context is NOT available in a step `if:` — GitHub rejects the whole
       # workflow file ("Unrecognized named-value: 'secrets'") and zero jobs run, which is exactly
       # how the first push of this PR failed. Decide inside the run body instead.
+      # The upload key is used only when the Firebase config is there too: app/build.gradle.kts refuses a
+      # signed release without google-services.json (#400), so a keystore with no PARENT_GOOGLE_SERVICES_JSON_B64
+      # turned every run red, main included, from 7 Nov. Without the config the build keeps the debug key and
+      # says so in a warning; that artefact can never be uploaded, which is what the Gradle guard protects.
       - name: Materialise upload keystore (if configured)
         env:
           KEYSTORE_B64: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 }}
+          GOOGLE_SERVICES_B64: ${{ secrets.PARENT_GOOGLE_SERVICES_JSON_B64 }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             echo "OSRA_UPLOAD_KEYSTORE_B64 not set — release build will use the debug key (by design)"
+            exit 0
+          fi
+          if [ -z "$GOOGLE_SERVICES_B64" ]; then
+            echo "::warning::PARENT_GOOGLE_SERVICES_JSON_B64 is not set, so this release AAB is debug-signed and cannot be uploaded to Play. Set the secret to sign it with the upload key."
             exit 0
           fi
           echo "$KEYSTORE_B64" | base64 -d > android/upload.jks
@@ -199,18 +208,16 @@ jobs:
       - run: flutter pub get
       - name: Build the iOS target unsigned
         run: flutter build ios --release --no-codesign
-      - name: The bundle identifier matches the shape of the Android application id
+      - name: The bundle identifiers are the Play ids (decision 2B)
         run: |
-          BID=$(grep -m1 -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //')
-          echo "iOS bundle id: $BID"
-          # Apple's grammar allows only alphanumerics, hyphens and periods, so
-          # Flutter drops the Android id's underscore rather than emitting an
-          # identifier App Store Connect would refuse: dev.familyshield.familyshield_parent
-          # -> dev.familyshield.familyshieldParent. Same org, same leaf name.
-          case "$BID" in
-            dev.familyshield.familyshieldParent) echo "ok"; ;;
-            *) echo "unexpected bundle id: $BID" >&2; exit 1; ;;
-          esac
+          # The App Store id equals the Android applicationId, com.osratech.parent (#452); the test
+          # bundle hangs under it. Every build configuration is read, not just the first.
+          grep -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //' | sort | uniq -c
+          if grep -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //' \
+            | grep -vxE 'com\.osratech\.parent(\.RunnerTests)?'; then
+            echo "unexpected bundle id(s) above" >&2; exit 1
+          fi
+          echo "ok"
       - name: Info.plist declares the display name and both locales
         run: |
           PLIST=ios/Runner/Info.plist

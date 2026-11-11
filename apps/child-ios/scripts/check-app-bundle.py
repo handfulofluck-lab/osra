@@ -16,7 +16,7 @@ It checks, for each .app given:
      none, and the entry draws App Review questions, 5.5 PR E).
 And once, from the source tree (an unsigned build embeds no entitlements):
   5. every target's .entitlements file carries com.apple.developer.family-controls = true and the
-     app group group.dev.familyshield.agent.
+     app group group.com.osratech.child.
 
 It prints what it found, so the CI log shows the bundle list, and exits 1 on any mismatch.
 """
@@ -26,7 +26,7 @@ import shutil
 import subprocess
 import sys
 
-APP_GROUP = "group.dev.familyshield.agent"
+APP_GROUP = "group.com.osratech.child"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # .appex name -> (extension point, principal class)
@@ -173,7 +173,7 @@ def check_entitlements():
         ent = read_plist(path)
         family = ent.get("com.apple.developer.family-controls")
         groups = ent.get("com.apple.security.application-groups", [])
-        if family is True and APP_GROUP in groups:
+        if family is True and groups == [APP_GROUP]:
             ok(f"{rel}: family-controls and {APP_GROUP}")
         else:
             fail(f"{rel}: family-controls={family!r}, application-groups={groups!r}")
