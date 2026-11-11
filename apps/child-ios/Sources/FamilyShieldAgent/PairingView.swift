@@ -98,6 +98,8 @@ public struct PairingView: View {
 public struct AgentRootView: View {
     @State private var identity: AgentIdentity?
     @State private var showRepair = false
+    @State private var pinConfigured = ParentPinStore.isConfigured
+    @State private var askingRepairPin = false
     @State private var locationGrant: LocationGrant = .noAccess
     @State private var locationAction: LocationPermissionAction = .hidden
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
@@ -108,7 +110,10 @@ public struct AgentRootView: View {
 
     public var body: some View {
         NavigationStack {
-            if let identity, !showRepair {
+            if identity != nil, !showRepair, !pinConfigured {
+                // ADR-0037: a parent PIN is set right after pairing, and once on a phone paired before this build.
+                PinSetupView { pinConfigured = true }
+            } else if let identity, !showRepair {
                 Form {
                     Section(header: Text("OSRA Child Agent")) {
                         Label("Paired", systemImage: "checkmark.circle.fill")
@@ -152,17 +157,34 @@ public struct AgentRootView: View {
                     } footer: {
                         Text("Your parents see this device on their map when it moves a noticeable distance, and get alerts for the places they set. Choose \"Allow While Using App\", then \"Change to Always Allow\".")
                     }
+                    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
-                        Button("Re-pair this device") { showRepair = true }
+                        NavigationLink("App groups") { AppGroupsEntry() }
+                    } footer: {
+                        Text("Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Ask parent\".")
+                    }
+                    #endif
+                    Section {
+                        // ADR-0037, as on Android: re-pairing needs the parent PIN.
+                        Button("Re-pair this device") { askingRepairPin = true }
                     }
                 }
                 .navigationTitle("Status")
+                .sheet(isPresented: $askingRepairPin) {
+                    NavigationStack {
+                        PinGateView(title: "Re-pair") {
+                            askingRepairPin = false
+                            showRepair = true
+                        }
+                    }
+                }
             } else {
                 PairingView(
                     defaultServer: identity?.apiBaseURL.absoluteString ?? "",
                     onPaired: { newIdentity in
                         identity = newIdentity
                         showRepair = false
+                        pinConfigured = ParentPinStore.isConfigured
                         Task {
                             let synced = await RuleSyncer.syncNow()
                             await LocationController.shared.apply(synced)
@@ -176,6 +198,7 @@ public struct AgentRootView: View {
         }
         .onAppear {
             identity = AgentIdentityStore.load()
+            pinConfigured = ParentPinStore.isConfigured
             locationGrant = LocationController.shared.grant
             locationAction = LocationController.shared.permissionAction
             #if canImport(UIKit)
@@ -211,4 +234,25 @@ public struct AgentRootView: View {
         }
     }
 }
+#if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+/// The PIN first, then the groups (ADR-0037).
+struct AppGroupsEntry: View {
+    @State private var unlocked = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        Group {
+            if unlocked {
+                AppGroupsView()
+            } else {
+                PinGateView(title: "App groups") { unlocked = true }
+            }
+        }
+        // Relocks when the app leaves the screen, so a parent cannot leave the groups open by accident.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background { unlocked = false }
+        }
+    }
+}
+#endif
 #endif
