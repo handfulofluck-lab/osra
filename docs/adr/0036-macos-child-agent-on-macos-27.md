@@ -1,7 +1,8 @@
 # 0036 — The macOS child agent: Apple's Screen Time is the floor, OSRA is the cross-platform layer above it
 
-- **Status:** proposed (2026-11-11). The design is Claude's call (architecture); the **timing** is the
-  maintainer's (product scope) and is put to him as one question.
+- **Status:** accepted (2026-11-11). The design is Claude's call (architecture). The **timing** was the
+  maintainer's (product scope): on 2026-11-11 at 15:46Z he chose **start now, in parallel** with iOS and
+  Android (decision card in the project thread).
 - **Roadmap:** new row **5.9** (design recorded; build not started). Not part of the Phase 5 gate.
 - **Deciders:** Claude (architecture); Karim (timing)
 - **Supersedes:** the "Screen Time path (macOS 13+)" paragraph and next step 4 of
@@ -99,7 +100,10 @@ an iPhone app run on an Apple-silicon Mac ("Designed for iPad") cannot get Famil
    `.macOS(.v14)`; the eight portable files compile for both; the enforcement layer moves behind one
    protocol (`EnforcementBackend`: `ScreenTimeBackend` on iOS, `FilterAndOverlayBackend` on macOS). One
    pairing flow, one HMAC signer (ADR-0003, ADR-0014), one rule interpreter, one en/ar string table.
-   This refactor is done by the iOS owner after the iOS TestFlight build, never in the middle of 5.5.
+   Because the build starts now, while 5.5 is still in progress (maintainer, 2026-11-11), the sharing is
+   **additive**: the first macOS PR adds `.macOS(.v14)` to the package and wraps the iOS-bound files in
+   `#if os(iOS)`. It moves no code and changes no iOS behaviour, and iOS CI must stay green on that PR. The
+   `EnforcementBackend` extraction waits until 5.5's open PRs have merged.
 
 ## Why not the alternatives
 
@@ -137,13 +141,22 @@ Sources are listed under Evidence; anything about a rival not shown there is mar
 The honest limit: on a Mac, OSRA's app blocking is an overlay-and-terminate until Apple grants Endpoint
 Security, and Apple's own Screen Time engine stays out of reach.
 
-## Timing (the maintainer's call)
+## Timing (the maintainer's decision, 2026-11-11)
 
-Claude recommends: **record the design now, run a one-day feasibility spike on the M2 now, and start the
-build after the iOS TestFlight build (5.6)**, aiming at a Mac beta in Q2 2027. Reasons: 5.1 (the Family
-Controls request) is not filed and gates the iOS date; the Mac agent reuses the iOS core, which should
-settle first; the Android beta (mid-to-late December) and iOS are the launch path; the Windows agent (5.4)
-is the desktop work already on the roadmap.
+Claude recommended starting the build after the iOS TestFlight build (5.6). The maintainer chose to
+**start now, in parallel**. That is the decision. What it costs: the Mac work competes with 5.5, the
+Android beta and 5.4 for the same people, and the shared package changes while 5.5 is still landing. These
+rules keep that cost bounded:
+
+1. The M2 spike below runs first. If (a) or (b) shows that `FamilyControls` *does* work on a native
+   macOS 27 app, this ADR is reopened before any build PR, because the design would change.
+2. Shared-package changes are additive while 5.5 is open (decision 6). An iOS CI failure on a macOS PR
+   blocks that PR, not the iOS lane.
+3. Build order, one roadmap item per PR: (i) the package builds for macOS; (ii) the daemon with pairing,
+   rule sync and heartbeat; (iii) the content-filter system extension; (iv) the menu-bar app with lock
+   overlay and Tier 1 app blocking; (v) the Safeguard check in the parent app; (vi) the Developer ID
+   notarised installer.
+4. The Mac never enters the Phase 5 gate. Android and iOS launch dates do not wait for it.
 
 **Spike (no product code, results recorded on this ADR's PR or its follow-up):** on the M2 with
 macOS 27, (a) a native macOS test target calling `AuthorizationCenter` does not compile or is
