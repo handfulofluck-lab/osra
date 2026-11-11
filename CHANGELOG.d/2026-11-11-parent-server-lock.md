@@ -4,6 +4,7 @@
   background wake uses it too. Builds without it (local testing) keep the editable field.
 - New `isServerLocked`, `builtInServerUrl` and `effectiveServerUrl` in `server_provider.dart`;
   `ServerUrlNotifier` and `resolveBackgroundBaseUrl` take the built-in value as a parameter for the tests.
-- A signed (store) parent-app release build now fails when `vars.OSRA_API_BASE` is unset, since an unlocked
-  field is what F3 is about. Unsigned builds keep the notice.
+- A signed parent-app release build on main (the store bundle) now fails when `vars.OSRA_API_BASE` is unset,
+  since an unlocked field is what F3 is about. A pull request's signed bundle gets a warning; unsigned builds
+  keep the notice.
 - New `server_lock_test.dart` (8 rows).
