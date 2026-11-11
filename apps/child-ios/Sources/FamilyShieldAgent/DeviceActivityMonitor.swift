@@ -159,11 +159,9 @@ import ManagedSettings
 /// when a bedtime interval starts in a routine-specific named store, and clears only that
 /// routine store when it ends without unshielding parent rules (IOS-05).
 ///
-/// The monitor extension target (`Extensions/Monitor`) names this class as its
-/// NSExtensionPrincipalClass. `@objc(...)` gives it that unqualified runtime name, and it is
-/// public so the extension can reference it, which keeps the static linker from dropping it.
-@objc(FamilyShieldDeviceActivityMonitor)
-public final class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
+/// #561: the monitor extension's principal class is `DeviceActivityMonitorExtension`, declared in `Extensions/Monitor`
+/// as a subclass of this one, as Apple's template does. This class is `open` for that; the behaviour stays here.
+open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
 
     /// Reporter rebuilt per use so it picks up the `agent.apiBaseURL` value the pairing
     /// flow writes into the shared app group (nil until then — reports are skipped).

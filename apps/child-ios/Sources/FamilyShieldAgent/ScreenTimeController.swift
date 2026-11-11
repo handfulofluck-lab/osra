@@ -15,6 +15,10 @@ public final class ScreenTimeController {
     /// Dedicated store name for parent rule enforcement, separating rules from routine shields (IOS-05).
     public static let rulesStoreName = ManagedSettingsStore.Name("parentRules")
 
+    /// ADR-0037: the app groups' shields, in a store of their own so a rule sync never overwrites them. Shields
+    /// from several stores add up, so a blocked group and a synced rule both hold.
+    public static let groupsStoreName = ManagedSettingsStore.Name("appGroups")
+
     /// Creates a controller backed by the rules `ManagedSettingsStore`.
     public init() {}
 
@@ -26,29 +30,33 @@ public final class ScreenTimeController {
         try await AuthorizationCenter.shared.requestAuthorization(for: .child)
     }
 
-    /// Applies shields using a parent-selected `FamilyActivitySelection` (IOS-02).
-    public func applySelection(_ selection: FamilyActivitySelection) {
-        guard ensureAuthorized(#function) else { return }
-        SelectionStore.save(selection)
-        let store = ManagedSettingsStore(named: Self.rulesStoreName)
-        store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-        store.shield.applicationCategories = selection.categoryTokens.isEmpty
-            ? nil
-            : ShieldSettings.ActivityCategoryPolicy.specific(selection.categoryTokens, except: [])
-        store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
-    }
-
     /// Shields the apps whose bundle identifiers appear in `packageIds`.
     /// Persists packageIds in shared app group (IOS-05) and applies tokens/blocked apps.
     public func applyBlockedApps(packageIds: [String]) {
         guard ensureAuthorized(#function) else { return }
-        UserDefaults(suiteName: SelectionStore.suiteName)?
+        UserDefaults(suiteName: AgentIdentityStore.suiteName)?
             .set(packageIds, forKey: "apps.blockedBundleIdentifiers")
 
         let store = ManagedSettingsStore(named: Self.rulesStoreName)
         let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: packageIds)
         store.shield.applications = tokens.isEmpty ? nil : tokens
         store.application.blockedApplications = Set(packageIds.map { Application(bundleIdentifier: $0) })
+    }
+
+    /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
+    /// picker tokens, so iOS shows the OSRA shield (and Ask parent) instead of hiding the app, which is what
+    /// `blockedApplications` does for the bundle-id rules above.
+    public func applyGroups(_ groups: AppGroupList<FamilyActivitySelection>) {
+        guard ensureAuthorized(#function) else { return }
+        let store = ManagedSettingsStore(named: Self.groupsStoreName)
+        let selections = groups.blockedSelections
+        let apps = selections.reduce(into: Set<ApplicationToken>()) { $0.formUnion($1.applicationTokens) }
+        let categories = selections.reduce(into: Set<ActivityCategoryToken>()) { $0.formUnion($1.categoryTokens) }
+        let sites = selections.reduce(into: Set<WebDomainToken>()) { $0.formUnion($1.webDomainTokens) }
+        store.shield.applications = apps.isEmpty ? nil : apps
+        store.shield.applicationCategories = categories.isEmpty ? nil : .specific(categories, except: [])
+        store.shield.webDomains = sites.isEmpty ? nil : sites
+        store.shield.webDomainCategories = categories.isEmpty ? nil : .specific(categories, except: [])
     }
 
     /// Applies the web filter: `blockedDomains` feed the web-content filter policy while
@@ -108,6 +116,7 @@ public final class ScreenTimeController {
     /// routine activity.
     public func applyRules(_ rules: RuleSet) throws {
         applyBlockedApps(packageIds: rules.blockedBundleIdentifiers)
+        applyGroups(AppGroupStore<FamilyActivitySelection>().load())
         applyWebFilter(blockedCategories: rules.webFilter.blockedCategories,
                        blockedDomains: rules.webFilter.blockedDomains)
         guard ensureAuthorized(#function) else { throw ApplyError.notAuthorized }
@@ -173,6 +182,8 @@ public final class ScreenTimeController {
         let center = DeviceActivityCenter()
         Self.stop(center.activities, center: center)
         ManagedSettingsStore(named: Self.rulesStoreName).clearAllSettings()
+        // Consent withdrawn stops every enforcement, the groups' shields included (the groups stay saved).
+        ManagedSettingsStore(named: Self.groupsStoreName).clearAllSettings()
         RuleStore.recordUnscheduled([])
     }
 
@@ -218,48 +229,26 @@ public final class FamilyControlsAuthorizer: ScreenTimeAuthorizing {
     }
 }
 
-/// Persistent store for FamilyActivitySelection picked by parent via FamilyActivityPicker (IOS-02).
-public enum SelectionStore {
-    public static let suiteName = "group.com.osratech.child"
-    public static let selectionKey = "agent.familyActivitySelection"
-
-    public static func save(_ selection: FamilyActivitySelection) {
-        guard let data = try? PropertyListEncoder().encode(selection) else { return }
-        UserDefaults(suiteName: suiteName)?.set(data, forKey: selectionKey)
-    }
-
-    public static func load() -> FamilyActivitySelection {
-        guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: selectionKey),
-              let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) else {
-            return FamilyActivitySelection()
-        }
-        return selection
+/// The picker's selection is what an app group holds; its counts are all the server may ever learn (ADR-0037).
+extension FamilyActivitySelection: AppGroupSelection {
+    public var counts: AppGroupCounts {
+        AppGroupCounts(apps: applicationTokens.count, categories: categoryTokens.count, sites: webDomainTokens.count)
     }
 }
 
-/// Best-effort bridge from rule identifiers (bundle identifiers, category names) to
-/// the opaque tokens the Screen Time API requires (IOS-02).
+/// Bridge from rule identifiers to Screen Time tokens. A bundle id yields a token only for an app the picker has
+/// already returned, so for most rules it yields none and the app is hidden instead (`blockedApplications`).
+///
+/// ADR-0037: this no longer reads a saved picker selection. It used to return every picked token for any rule,
+/// whatever bundle ids were asked for; picked apps now live in app groups and are shielded per group.
 enum TokenResolver {
-
-    /// Returns application tokens from the persisted FamilyActivitySelection or synthesizes from bundle IDs.
     static func applicationTokens(forBundleIdentifiers bundleIdentifiers: [String]) -> Set<ApplicationToken> {
-        let selection = SelectionStore.load()
-        if !selection.applicationTokens.isEmpty {
-            return selection.applicationTokens
-        }
-        return Set(bundleIdentifiers.compactMap { Application(bundleIdentifier: $0).token })
+        Set(bundleIdentifiers.compactMap { Application(bundleIdentifier: $0).token })
     }
 
-    /// Returns category tokens from persisted FamilyActivitySelection.
+    /// Category names in a rule cannot be turned into tokens without the picker, so they shield nothing here.
     static func categoryTokens(forNames names: [String]) -> Set<ActivityCategoryToken> {
-        let selection = SelectionStore.load()
-        return selection.categoryTokens
-    }
-
-    /// Returns web domain tokens from persisted FamilyActivitySelection.
-    static func webDomainTokens() -> Set<WebDomainToken> {
-        let selection = SelectionStore.load()
-        return selection.webDomainTokens
+        []
     }
 }
 #endif

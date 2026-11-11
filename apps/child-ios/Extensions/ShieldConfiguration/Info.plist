@@ -25,7 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.ManagedSettingsUI.shield-configuration-service</string>
 		<key>NSExtensionPrincipalClass</key>
-		<string>FamilyShieldConfigurationDataSource</string>
+		<string>$(PRODUCT_MODULE_NAME).ShieldConfigurationExtension</string>
 	</dict>
 </dict>
 </plist>
