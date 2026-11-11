@@ -10,7 +10,7 @@ import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
-import { commandRefusal, parseCapabilities, setupFor, withStoredProfiles } from "../lib/capabilities.js";
+import { commandRefusal, parseCapabilities, setupFor, withStoredGroups, withStoredProfiles } from "../lib/capabilities.js";
 import {
   POLL_AFTER_HEADER,
   PUSH_TOKEN_HEADER,
@@ -819,9 +819,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     const capabilitiesOk = capabilityParse?.ok ?? false;
     let capabilitiesParsed = capabilityParse?.ok ? capabilityParse.value : undefined;
     // osra-security#6 item 2: a report without `profiles` keeps the stored value (decision 2, one level down).
-    if (capabilitiesParsed && capabilitiesParsed.profiles === undefined) {
+    // ADR-0037: and a report without `groups` keeps the stored groups. One read serves both.
+    if (capabilitiesParsed && (capabilitiesParsed.profiles === undefined || capabilitiesParsed.groups === undefined)) {
       const stored = await prisma.device.findUnique({ where: { id }, select: { capabilities: true } });
-      capabilitiesParsed = withStoredProfiles(capabilitiesParsed, stored?.capabilities ?? null);
+      capabilitiesParsed = withStoredGroups(withStoredProfiles(capabilitiesParsed, stored?.capabilities ?? null), stored?.capabilities ?? null);
     }
     const capabilitiesIssue = capabilityParse && !capabilityParse.ok ? capabilityParse.issue : undefined;
 
