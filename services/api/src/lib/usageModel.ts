@@ -46,13 +46,14 @@ export function locationRetentionDays(env: NodeJS.ProcessEnv = process.env): num
  * Alerts have their own window (Play decision 10 B, Karim 2026-11-11): **365 days**, longer than the raw
  * tables because an alert is the record a parent may need months later. `ALERT_RETENTION_DAYS` may lower it
  * but never raise it, the same rule location follows, so a mistyped override cannot make the product keep a
- * child's alerts forever. An unusable value takes the product default.
+ * child's alerts forever, and the 7-day floor matches the other raw windows: a mistyped `1` must not wipe a
+ * parent's alert history every night. An unusable value takes the product default.
  */
 export function alertRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.ALERT_RETENTION_DAYS;
   const n = Number(raw);
   if (raw === undefined || String(raw).trim() === "" || !Number.isInteger(n)) return 365;
-  return Math.min(Math.max(n, 1), 365);
+  return Math.min(Math.max(n, 7), 365);
 }
 
 export function rollupRetentionDays(env: NodeJS.ProcessEnv = process.env): number {

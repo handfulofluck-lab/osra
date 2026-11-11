@@ -160,6 +160,8 @@ describe("usage model — reads and rollup", () => {
 
   it("the alert window may be lowered but never raised past 365 (Play decision 10 B)", async () => {
     expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "30" } as NodeJS.ProcessEnv)).toBe(30);
+    // The floor matches the other raw windows: a mistyped 1 must not wipe alert history every night.
+    expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "1" } as NodeJS.ProcessEnv)).toBe(7);
     // A mistake here would keep a child's alerts for ever, so the cap is the product decision, not a default.
     expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "1000" } as NodeJS.ProcessEnv)).toBe(365);
     expect(alertRetentionDays({ ALERT_RETENTION_DAYS: "abc" } as NodeJS.ProcessEnv)).toBe(365);
