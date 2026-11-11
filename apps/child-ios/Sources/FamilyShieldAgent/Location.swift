@@ -129,18 +129,24 @@ public struct LocationClient {
 
     /// The telemetry body: the grant when known, and #475's applied rules version once the phone has applied
     /// a rule set. A field that is nil is left out, never sent as 0 (the server refuses 0).
-    static func telemetryBody(grant: LocationGrant?, appliedRulesVersion: Int?) -> [String: Any] {
+    static func telemetryBody(grant: LocationGrant?, appliedRulesVersion: Int?,
+                              capabilities: [String: Any]? = nil) -> [String: Any] {
         var body: [String: Any] = [:]
         if let grant { body["locationGrant"] = grant.rawValue }
         if let appliedRulesVersion { body["appliedRulesVersion"] = appliedRulesVersion }
+        // ADR-0034 A6 / ADR-0037: the capability report rides the same upload.
+        if let capabilities { body["capabilities"] = capabilities }
         return body
     }
 
     /// `POST /v1/devices/:id/telemetry {"locationGrant", "appliedRulesVersion"?}`; every field is optional.
     @discardableResult
     public func reportGrant(_ identity: AgentIdentity, _ grant: LocationGrant,
-                            appliedRulesVersion: Int? = RuleStore.appliedRulesVersion()) async -> Int {
-        await postTelemetry(identity, Self.telemetryBody(grant: grant, appliedRulesVersion: appliedRulesVersion))
+                            appliedRulesVersion: Int? = RuleStore.appliedRulesVersion(),
+                            capabilities: CapabilityReport? = nil) async -> Int {
+        await postTelemetry(identity, Self.telemetryBody(grant: grant, appliedRulesVersion: appliedRulesVersion,
+                                                         capabilities: capabilities?.json),
+                            clientHeader: capabilities?.clientHeader)
     }
 
     /// #475: right after a rule set was applied, so the parent's "not picked up yet" line clears.
@@ -149,11 +155,13 @@ public struct LocationClient {
         await postTelemetry(identity, Self.telemetryBody(grant: nil, appliedRulesVersion: version))
     }
 
-    private func postTelemetry(_ identity: AgentIdentity, _ body: [String: Any]) async -> Int {
+    private func postTelemetry(_ identity: AgentIdentity, _ body: [String: Any], clientHeader: String? = nil) async -> Int {
         var request = URLRequest(url: identity.apiBaseURL.appendingPathComponent("v1/devices")
             .appendingPathComponent(identity.deviceId).appendingPathComponent("telemetry"))
         request.httpMethod = "POST"
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        // ADR-0034 A3: a hint for the version gate and support, never a control.
+        if let clientHeader { request.setValue(clientHeader, forHTTPHeaderField: "X-OSRA-Client") }
         return await send(&request, identity)
     }
 
@@ -338,11 +346,15 @@ public final class LocationController {
         return outcome
     }
 
-    /// At launch and whenever the authorization changes.
+    /// ADR-0034 A6 / ADR-0037: builds the capability report for an upload. The host app sets it at launch (it reads
+    /// FamilyControls, the app groups and UIApplication); nil sends the grant alone, as before, and in the tests.
+    public static var capabilityReport: (@MainActor (LocationGrant) -> CapabilityReport?)?
+
+    /// At launch, on each app open, whenever the authorization changes, and after the app groups change.
     @discardableResult
     public func reportGrant() async -> Int? {
         guard let identity = AgentIdentityStore.load() else { return nil }
-        return await client.reportGrant(identity, grant)
+        return await client.reportGrant(identity, grant, capabilities: Self.capabilityReport?(grant))
     }
 
     /// `locate_now`: a fresh fix, else a cached one under five minutes old, uploaded before the ack.

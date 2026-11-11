@@ -1,5 +1,8 @@
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
 import DeviceActivity
@@ -251,4 +254,19 @@ enum TokenResolver {
         []
     }
 }
+#if canImport(UIKit)
+extension CapabilityReport {
+    /// ADR-0034 A6 / ADR-0037: this phone's report: the build, Screen Time, location, background refresh, and the
+    /// app groups as id + label + counts (never the picker's tokens).
+    @MainActor
+    public static func live(location: LocationGrant) -> CapabilityReport {
+        let groups = AppGroupStore<FamilyActivitySelection>().load().groups.map {
+            CapabilityReport.Group(id: $0.id, label: $0.label, counts: $0.counts)
+        }
+        return CapabilityReport(client: .current(), screenTime: FamilyControlsAuthorizer().status, location: location,
+                                backgroundRefreshOn: UIApplication.shared.backgroundRefreshStatus == .available,
+                                groups: groups)
+    }
+}
+#endif
 #endif

@@ -36,6 +36,10 @@ final class AppGroupsTests: XCTestCase {
         XCTAssertEqual(AppGroupLabel.sanitize(String(repeating: "x", count: 100))?.count, AppGroupLabel.maxLength)
         XCTAssertEqual(AppGroupLabel.sanitize("ألعاب"), "ألعاب")
         XCTAssertNil(AppGroupLabel.sanitize("   \n "))
+        // ADR-0037 B2: direction controls go too, as the server refuses them.
+        XCTAssertEqual(AppGroupLabel.sanitize("Ga\u{202E}mes"), "Games")
+        XCTAssertEqual(AppGroupLabel.sanitize("\u{2066}ألعاب\u{2069}"), "ألعاب")
+        XCTAssertEqual(AppGroupLabel.sanitize("a\u{200F}b\u{061C}c"), "abc")
     }
 
     // MARK: - Editing

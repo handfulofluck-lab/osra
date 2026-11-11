@@ -90,6 +90,8 @@ public struct AppGroupsView: View {
     private func commit() {
         AppGroupStore<FamilyActivitySelection>().save(list)
         ScreenTimeController().applyGroups(list)
+        // ADR-0037: the parent sees the change (label and counts only) without waiting for the next open.
+        Task { await LocationController.shared.reportGrant() }
     }
 }
 #endif

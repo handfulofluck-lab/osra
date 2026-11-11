@@ -43,6 +43,11 @@ public protocol AppGroupSelection: Codable {
 public enum AppGroupLabel {
     public static let maxLength = 40
 
+    /// Unicode direction controls (marks, embeddings, overrides, isolates): dropped, as the server refuses them,
+    /// so a label can never flip how the text after it reads on the parent's screen.
+    static let directionControls: Set<UInt32> = [0x061C, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+                                                 0x2066, 0x2067, 0x2068, 0x2069]
+
     /// Trims, drops control characters, folds runs of whitespace to one space and caps the length; nil if nothing
     /// is left.
     public static func sanitize(_ raw: String) -> String? {
@@ -52,7 +57,7 @@ public enum AppGroupLabel {
         for scalar in raw.unicodeScalars {
             if CharacterSet.whitespacesAndNewlines.contains(scalar) {
                 visible.append(" ")
-            } else if !CharacterSet.controlCharacters.contains(scalar) {
+            } else if !CharacterSet.controlCharacters.contains(scalar), !Self.directionControls.contains(scalar.value) {
                 visible.append(scalar)
             }
         }
