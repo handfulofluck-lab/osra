@@ -1,7 +1,8 @@
+import ManagedSettings
 import FamilyShieldAgent
 
-// This extension's principal class, FamilyShieldShieldActionDelegate (named in Info.plist), is defined in
-// the FamilyShieldAgent package, which is linked statically. This reference makes the linker load
-// it into the extension's binary; with nothing referring to it, the extension could start with no
-// principal class. `public` keeps an optimized build from removing the reference.
-public let principalClass: AnyClass = FamilyShieldShieldActionDelegate.self
+/// #561: the extension's principal class is declared here, in the extension's own module, as Apple's template does,
+/// and named `$(PRODUCT_MODULE_NAME).ShieldActionExtension` in Info.plist. The iPhone 13 rejected a principal class that lived only
+/// in the statically linked package (`does not conform to NSExtensionRequestHandling`), so the OSRA shield never
+/// showed. The behaviour stays in `FamilyShieldShieldActionDelegate` in the package, where the unit tests reach it.
+final class ShieldActionExtension: FamilyShieldShieldActionDelegate {}
