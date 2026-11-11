@@ -915,6 +915,10 @@ First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the 
    sync stops logging `notAuthorized`. **Allow location** asks for While Using, then Always, each once; after a
    denial, or once the Always prompt was used, the button reads **Open Settings** and opens the app's page.
 5. The home-screen name is **OSRA Kids** (Arabic name pending Karim's approval).
+6. **Parent PIN and app groups (ADR-0036).** After pairing, the phone asks for a parent PIN (4–8 digits). Status →
+   **App groups** asks for it: five wrong PINs lock it for 30 s. Make a group ("Games"), **Choose apps** (e.g.
+   Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
+   parent side. An older bundle-id rule still hides its app. **Re-pair** also asks for the PIN.
 
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 
