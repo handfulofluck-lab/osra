@@ -6,4 +6,4 @@
 - The child agent's `SecureStore` tries the encrypted store twice; if the file stays unreadable it is deleted and
   opened fresh (the phone re-pairs), instead of silently switching to plaintext. Only a Keystore that cannot open any
   encrypted store keeps the plaintext fallback, logged and recorded. Secrets an older build left in plaintext move
-  into the encrypted store and the plaintext file is deleted. New `SecureStoreOpeningTest`.
+  into the encrypted store and the plaintext file is deleted. `SecureStoreOpener` takes its effects as functions, so `SecureStoreOpeningTest` drives it with fakes; `BackupRulesTest` reads the child rule files.

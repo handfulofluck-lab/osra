@@ -15,7 +15,7 @@ import javax.inject.Singleton
  *
  * osra-security#8 F2: opening used to fall back to plain prefs on **any** failure, silently. A restored backup is one
  * such failure (the file comes back, its Keystore key does not), and the agent then read every secret as missing and
- * wrote new ones in plaintext. Now ([SecureStoreOpening]):
+ * wrote new ones in plaintext. Now ([SecureStoreOpener]):
  * 1. the encrypted store opens: use it, and move anything an older build left in the plaintext fallback into it, then
  *    delete that file;
  * 2. it fails twice in a row (once could be a passing Keystore hiccup, which must not cost the pairing): the encrypted
@@ -41,22 +41,16 @@ class SecureStore @Inject constructor(
     fun getString(key: String): String? = prefs.getString(key, null)
 
     private fun open(): SharedPreferences {
-        val first = runCatching { encrypted() }.let { if (it.isSuccess) it else runCatching { encrypted() } }
-        val retry = if (first.isSuccess) null else {
-            Log.e(TAG, "encrypted store unreadable; deleting it and opening it fresh", first.exceptionOrNull())
-            context.deleteSharedPreferences(FILE)
-            runCatching { encrypted() }
-        }
-        return when (SecureStoreOpening.decide(firstOpened = first.isSuccess, retryOpened = retry?.isSuccess == true)) {
-            SecureStoreOpening.Outcome.ENCRYPTED -> first.getOrThrow().also(::adoptPlaintextFallback)
-            SecureStoreOpening.Outcome.RESET_ENCRYPTED -> retry!!.getOrThrow().also(::dropPlaintextFallback)
-            SecureStoreOpening.Outcome.PLAINTEXT_DEGRADED -> {
-                Log.e(TAG, "Keystore cannot open an encrypted store on this phone; using the plaintext fallback",
-                    retry?.exceptionOrNull())
-                degraded = true
-                context.getSharedPreferences(FALLBACK_FILE, Context.MODE_PRIVATE)
-            }
-        }
+        val opener = SecureStoreOpener(
+            openEncrypted = ::encrypted,
+            openPlain = { context.getSharedPreferences(FALLBACK_FILE, Context.MODE_PRIVATE) },
+            deleteFile = { context.deleteSharedPreferences(it) },
+            entries = { prefs -> prefs.all.filterValues { it is String }.mapValues { it.value as String } },
+            contains = { prefs, key -> prefs.contains(key) },
+            putAll = { prefs, values -> prefs.edit().apply { values.forEach { (k, v) -> putString(k, v) } }.commit() },
+            log = { message, error -> Log.e(TAG, message, error) },
+        )
+        return opener.open(FILE, FALLBACK_FILE).also { degraded = opener.degraded }
     }
 
     private fun encrypted(): SharedPreferences {
@@ -72,21 +66,6 @@ class SecureStore @Inject constructor(
         )
     }
 
-    /** An older build may have written secrets in plaintext; they move into the encrypted store, then the file goes. */
-    private fun adoptPlaintextFallback(target: SharedPreferences) {
-        val plain = context.getSharedPreferences(FALLBACK_FILE, Context.MODE_PRIVATE)
-        val leftovers = plain.all.filterValues { it is String }
-        if (leftovers.isNotEmpty()) {
-            target.edit().apply { leftovers.forEach { (k, v) -> if (!target.contains(k)) putString(k, v as String) } }.commit()
-        }
-        dropPlaintextFallback(target)
-    }
-
-    @Suppress("UNUSED_PARAMETER")
-    private fun dropPlaintextFallback(target: SharedPreferences) {
-        context.deleteSharedPreferences(FALLBACK_FILE)
-    }
-
     companion object {
         const val KEY_PARENT_PIN = "parent_pin_hash"
 
@@ -96,13 +75,44 @@ class SecureStore @Inject constructor(
     }
 }
 
-/** osra-security#8 F2: which store [SecureStore] uses, as a pure rule. */
-object SecureStoreOpening {
-    enum class Outcome { ENCRYPTED, RESET_ENCRYPTED, PLAINTEXT_DEGRADED }
+/**
+ * osra-security#8 F2: the opening sequence, with its effects passed in so the tests drive it with fakes ([SecureStore]
+ * passes the real ones). `S` is the store type: `SharedPreferences` in the app, a map in the tests.
+ */
+class SecureStoreOpener<S>(
+    private val openEncrypted: () -> S,
+    private val openPlain: () -> S,
+    private val deleteFile: (String) -> Unit,
+    private val entries: (S) -> Map<String, String>,
+    private val contains: (S, String) -> Boolean,
+    private val putAll: (S, Map<String, String>) -> Unit,
+    private val log: (String, Throwable?) -> Unit = { _, _ -> },
+) {
+    /** True once [open] had to use the plaintext store because no encrypted store would open. */
+    var degraded: Boolean = false
+        private set
 
-    fun decide(firstOpened: Boolean, retryOpened: Boolean): Outcome = when {
-        firstOpened -> Outcome.ENCRYPTED
-        retryOpened -> Outcome.RESET_ENCRYPTED
-        else -> Outcome.PLAINTEXT_DEGRADED
+    fun open(file: String, fallbackFile: String): S {
+        // Twice on the same file first: one passing Keystore failure must not cost the pairing.
+        val first = runCatching(openEncrypted).let { if (it.isSuccess) it else runCatching(openEncrypted) }
+        if (first.isSuccess) {
+            val store = first.getOrThrow()
+            // Secrets an older build left in plaintext move in (never over a value already there), then that file goes.
+            val plain = openPlain()
+            val leftovers = entries(plain).filterKeys { !contains(store, it) }
+            if (leftovers.isNotEmpty()) putAll(store, leftovers)
+            deleteFile(fallbackFile)
+            return store
+        }
+        log("encrypted store unreadable; deleting it and opening it fresh", first.exceptionOrNull())
+        deleteFile(file)
+        val retry = runCatching(openEncrypted)
+        if (retry.isSuccess) {
+            deleteFile(fallbackFile)
+            return retry.getOrThrow()
+        }
+        log("Keystore cannot open an encrypted store on this phone; using the plaintext fallback", retry.exceptionOrNull())
+        degraded = true
+        return openPlain()
     }
 }
