@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../providers/locale_provider.dart' show kAppLocaleKey;
-import '../providers/server_provider.dart' show kDefaultServerUrl, kServerUrlKey, normalizeServerUrl;
+import '../providers/server_provider.dart' show effectiveServerUrl, kDefaultServerUrl, kServerUrlKey, normalizeServerUrl;
 import 'alert_notification.dart';
 import 'local_notifier.dart';
 
@@ -160,11 +160,11 @@ String resolveAlertLanguage(String? stored, Locale deviceLocale) {
 /// only the compile-time define therefore had no base URL on every tester
 /// build, and every wake returned `failed`. Persisted first, then the define,
 /// and `null` when neither is usable — which the fetcher turns into a failure
-/// **without making a request**.
-String? resolveBackgroundBaseUrl(String? persisted) {
-  final normalized = normalizeServerUrl(persisted ?? '');
-  if (normalized != null) return normalized;
-  return kDefaultServerUrl.isEmpty ? null : kDefaultServerUrl;
+/// **without making a request**. osra-security#8 F3: a build with the server built in uses it, whatever was
+/// persisted ([effectiveServerUrl]).
+String? resolveBackgroundBaseUrl(String? persisted, {String builtIn = kDefaultServerUrl}) {
+  final url = effectiveServerUrl(saved: persisted, builtIn: builtIn);
+  return url.isEmpty ? null : url;
 }
 
 /// The FCM background entry point (#360). Must be a top-level function with
