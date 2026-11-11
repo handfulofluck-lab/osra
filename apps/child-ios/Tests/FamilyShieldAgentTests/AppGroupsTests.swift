@@ -112,4 +112,32 @@ final class AppGroupsTests: XCTestCase {
         defaults.set(Data("not a plist".utf8), forKey: AppGroupStore<FakeSelection>.key)
         XCTAssertTrue(AppGroupStore<FakeSelection>(defaults: defaults).load().groups.isEmpty, "unreadable reads as none")
     }
+
+    // MARK: - What the capability report may say (an unreadable store must not erase the parent's groups)
+
+    func testNoSavedGroupsIsAnEmptyListForTheReport() throws {
+        let list = try XCTUnwrap(AppGroupStore<FakeSelection>(defaults: defaults).loadIfReadable(),
+                                 "an absent key means truly no groups")
+        XCTAssertTrue(list.groups.isEmpty)
+    }
+
+    func testAnAppGroupThatCannotBeOpenedIsNilForTheReport() {
+        XCTAssertNil(AppGroupStore<FakeSelection>(defaults: nil).loadIfReadable())
+        XCTAssertTrue(AppGroupStore<FakeSelection>(defaults: nil).load().groups.isEmpty, "the screen still shows none")
+    }
+
+    func testGroupsThatDoNotDecodeAreNilForTheReport() {
+        defaults.set(Data("not a plist".utf8), forKey: AppGroupStore<FakeSelection>.key)
+        XCTAssertNil(AppGroupStore<FakeSelection>(defaults: defaults).loadIfReadable())
+        defaults.set("a string, not data", forKey: AppGroupStore<FakeSelection>.key)
+        XCTAssertNil(AppGroupStore<FakeSelection>(defaults: defaults).loadIfReadable(), "a value of the wrong type")
+    }
+
+    func testSavedGroupsAreReadForTheReport() throws {
+        let store = AppGroupStore<FakeSelection>(defaults: defaults)
+        var list = AppGroupList<FakeSelection>()
+        let id = try XCTUnwrap(list.add(label: "Games", selection: FakeSelection(apps: ["calc"])))
+        XCTAssertTrue(store.save(list))
+        XCTAssertEqual(store.loadIfReadable()?.groups.map(\.id), [id])
+    }
 }

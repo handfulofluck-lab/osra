@@ -4,6 +4,8 @@
   the three iOS grants (`family_controls`, `location`, `background_refresh`), the features (the six with no iOS API
   as `not_supported`), and the app groups as id + label + counts. The upload also sends `X-OSRA-Client`.
 - Labels are cleaned again before they go out, Unicode direction controls included; a group with a bad id or an
-  empty label is left out rather than costing the report; at most 20. Unreadable groups leave the field out, so the
-  server keeps the last ones. New `CapabilityReportTests`.
-- Needs PR B1 (#566) on the server first: before it, a report with `groups` is refused by the strict schema.
+  empty label is left out rather than costing the report; at most 20. Groups that cannot be read (the app group
+  will not open, or the saved groups do not decode) leave the field out, so the server keeps the last ones; only
+  truly no groups sends an empty list (`AppGroupStore.loadIfReadable`). New `CapabilityReportTests`.
+- Live-API case 11: a report with one group is uploaded from the simulator, and the parent's `GET /v1/devices`
+  shows that group's id, label and counts.

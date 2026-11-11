@@ -260,7 +260,8 @@ extension CapabilityReport {
     /// app groups as id + label + counts (never the picker's tokens).
     @MainActor
     public static func live(location: LocationGrant) -> CapabilityReport {
-        let groups = AppGroupStore<FamilyActivitySelection>().load().groups.map {
+        // Nil when the store cannot be read, so the report leaves `groups` out and never erases the parent's copy.
+        let groups = AppGroupStore<FamilyActivitySelection>().loadIfReadable()?.groups.map {
             CapabilityReport.Group(id: $0.id, label: $0.label, counts: $0.counts)
         }
         return CapabilityReport(client: .current(), screenTime: FamilyControlsAuthorizer().status, location: location,

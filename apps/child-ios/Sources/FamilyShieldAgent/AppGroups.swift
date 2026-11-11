@@ -136,12 +136,20 @@ public struct AppGroupStore<Selection: AppGroupSelection> {
         self.defaults = defaults
     }
 
+    /// For the screen and the shield: the groups, or none when they cannot be read.
     public func load() -> AppGroupList<Selection> {
-        guard let data = defaults?.data(forKey: Self.key),
-              let list = try? PropertyListDecoder().decode(AppGroupList<Selection>.self, from: data) else {
-            return AppGroupList()
+        loadIfReadable() ?? AppGroupList()
+    }
+
+    /// For the capability report: an empty list only when there truly are no groups (the key is absent). Nil when
+    /// the app group cannot be opened or the saved groups do not decode (for example a future selection format),
+    /// so the report leaves `groups` out and the server keeps the last ones instead of erasing them.
+    public func loadIfReadable() -> AppGroupList<Selection>? {
+        guard let defaults else { return nil }
+        guard let data = defaults.data(forKey: Self.key) else {
+            return defaults.object(forKey: Self.key) == nil ? AppGroupList() : nil
         }
-        return list
+        return try? PropertyListDecoder().decode(AppGroupList<Selection>.self, from: data)
     }
 
     @discardableResult
