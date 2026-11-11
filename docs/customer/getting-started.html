@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Customer-facing setup guide, English + Arabic (switch at the top, or open with #ar).
+     Source of truth for the guide; checked against main fe8d36f. Gaps: GUIDE-GAPS.md. -->
+<title>OSRA Setup Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one calm reading column; each step is a row with its number on the leading edge and a chip saying whose phone it happens on. */
+:root{
+  --bg:#F5F8F8; --surface:#FFFFFF; --ink:#13262B; --muted:#56696E; --line:#D9E3E4;
+  --brand:#0E5A63; --brand-soft:#E2F0F0; --accent:#D98E04; --accent-soft:#FDF1DA;
+  --child:#6A4FB3; --child-soft:#EEE9FA; --warn-soft:#FFF4E0; --warn-ink:#7A4A00;
+  --display:"Readex Pro","IBM Plex Sans Arabic",system-ui,sans-serif;
+  --body:"IBM Plex Sans","IBM Plex Sans Arabic",system-ui,sans-serif;
+  --body-ar:"IBM Plex Sans Arabic","IBM Plex Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0D1719; --surface:#142226; --ink:#E4EEEF; --muted:#9AB0B4; --line:#25393D;
+  --brand:#5CC3CC; --brand-soft:#173338; --accent:#F2B640; --accent-soft:#3A2E14;
+  --child:#B7A3F0; --child-soft:#2A2340; --warn-soft:#33270F; --warn-ink:#F6CF85; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1719; --surface:#142226; --ink:#E4EEEF; --muted:#9AB0B4; --line:#25393D;
+  --brand:#5CC3CC; --brand-soft:#173338; --accent:#F2B640; --accent-soft:#3A2E14;
+  --child:#B7A3F0; --child-soft:#2A2340; --warn-soft:#33270F; --warn-ink:#F6CF85; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16.5px;line-height:1.65;margin:0}
+[lang="ar"]{font-family:var(--body-ar);font-size:17px;line-height:1.8}
+.wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+header.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-block:20px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:20px;color:var(--brand)}
+.brand svg{flex:none}
+.lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:3px}
+.lang button{font:600 14px var(--body-ar);border:0;background:none;color:var(--muted);padding:6px 14px;border-radius:999px;cursor:pointer}
+.lang button[aria-pressed="true"]{background:var(--brand);color:var(--surface)}
+.lang button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.draft{background:var(--warn-soft);color:var(--warn-ink);border-radius:10px;padding:10px 14px;font-size:14px;margin-block:0 8px}
+.hero{padding-block:28px 12px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,6vw,42px);line-height:1.2;margin:0 0 10px;text-wrap:balance}
+.lede{color:var(--muted);font-size:18px;margin:0;max-width:60ch}
+h2{font-family:var(--display);font-weight:600;font-size:24px;line-height:1.3;margin:48px 0 14px;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:18px;margin:0 0 4px}
+p{margin:0 0 10px}
+.apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:22px}
+.app{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
+.app .ic{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center}
+.app.parent .ic{background:var(--brand-soft);color:var(--brand)}
+.app.child .ic{background:var(--child-soft);color:var(--child)}
+.app small{display:block;color:var(--muted);font-size:14px}
+.app strong{font-family:var(--display);font-weight:600;display:block;line-height:1.35}
+.note{color:var(--muted);font-size:15px;margin-top:12px}
+ol.steps{list-style:none;margin:0;padding:0;display:grid;gap:12px;counter-reset:s}
+ol.steps>li{counter-increment:s;display:grid;grid-template-columns:40px 1fr;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+ol.steps>li::before{content:counter(s);width:36px;height:36px;border-radius:50%;background:var(--brand);color:var(--surface);font:600 16px var(--display);display:grid;place-items:center}
+[lang="ar"] ol.steps>li::before{content:counter(s,arabic-indic)}
+.steps .body{min-width:0}
+.chip{display:inline-block;font-size:12.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;padding:2px 8px;margin-bottom:6px}
+[lang="ar"] .chip{letter-spacing:0;text-transform:none;font-size:13.5px}
+.chip.you{background:var(--brand-soft);color:var(--brand)}
+.chip.kid{background:var(--child-soft);color:var(--child)}
+.btn{font-weight:600;white-space:nowrap;background:var(--accent-soft);color:var(--ink);border-radius:6px;padding:0 6px;border:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+ul.sub{margin:6px 0 0;padding-inline-start:20px}
+ul.sub li{margin:3px 0}
+.tip{border-inline-start:3px solid var(--accent);padding:6px 14px;margin:14px 0 0;color:var(--ink);background:var(--surface);border-radius:0 10px 10px 0}
+[dir="rtl"] .tip{border-radius:10px 0 0 10px}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface);margin-top:16px}
+table{border-collapse:collapse;width:100%;min-width:480px;font-size:15.5px}
+th,td{text-align:start;padding:12px 16px;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--display);font-weight:600;font-size:14px;color:var(--muted);background:var(--bg)}
+.scope{display:inline-block;font-weight:600;border-radius:6px;padding:1px 8px;font-size:14px}
+.scope.all{background:var(--brand-soft);color:var(--brand)}
+.scope.one{background:var(--child-soft);color:var(--child)}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 16px;margin-top:10px}
+summary{cursor:pointer;font-weight:600;padding:14px 0;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--brand);font-size:20px;line-height:1}
+details[open] summary::after{content:"–"}
+details>p{padding-bottom:14px;margin:0;color:var(--muted)}
+footer{color:var(--muted);font-size:14px;margin-top:48px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:480px){ol.steps>li{grid-template-columns:1fr;gap:8px}h2{margin-top:38px}}
+@media (prefers-reduced-motion:no-preference){.lang button{transition:background .15s,color .15s}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="top">
+  <div class="brand" aria-label="OSRA">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 4 8v8c0 7 5.2 11.6 12 13 6.8-1.4 12-6 12-13V8z" fill="currentColor" opacity=".16"/><path d="M16 3 4 8v8c0 7 5.2 11.6 12 13 6.8-1.4 12-6 12-13V8z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12.5" cy="14" r="2.4" fill="currentColor"/><circle cx="19.5" cy="14" r="2.4" fill="currentColor"/><path d="M11 19c1.2 1.6 3 2.4 5 2.4s3.8-.8 5-2.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>OSRA <span lang="ar">أسرة</span></span>
+  </div>
+  <div class="lang" role="group" aria-label="Language / اللغة">
+    <button type="button" id="btn-en" data-set="en" aria-pressed="true">English</button>
+    <button type="button" id="btn-ar" data-set="ar" aria-pressed="false">العربية</button>
+  </div>
+</header>
+
+<!-- ================= ENGLISH ================= -->
+<main id="guide-en" lang="en" dir="ltr">
+  <p class="draft"><strong>Draft.</strong> Not for customers yet; a few setup steps still depend on fixes listed in GUIDE-GAPS.md.</p>
+  <section class="hero">
+    <h1>Set up OSRA for your family</h1>
+    <p class="lede">Download the two apps, add your child, and pair each phone or tablet they use. One device takes about five minutes.</p>
+    <div class="apps">
+      <div class="app parent"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+        <div><small>On your phone</small><strong>OSRA: Parental Control</strong><small>The parent app</small></div></div>
+      <div class="app child"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2.5"/><path d="M8 21h8"/></svg></div>
+        <div><small>On every device your child uses</small><strong>OSRA Child: Parental Control</strong><small>The child app</small></div></div>
+    </div>
+    <p class="note">Both apps are on Google Play for Android phones and tablets. iPhone and iPad versions are coming later.</p>
+  </section>
+
+  <h2>Set up the first device</h2>
+  <ol class="steps">
+    <li><div class="body"><span class="chip you">Both phones</span><h3>Download the apps</h3>
+      <p>On your phone, open Google Play, search for <strong>OSRA: Parental Control</strong> and tap <span class="btn">Install</span>. On your child's phone or tablet, install <strong>OSRA Child: Parental Control</strong> the same way.</p></div></li>
+    <li><div class="body"><span class="chip you">Your phone</span><h3>Create your family account</h3>
+      <p>Open OSRA and tap <span class="btn">Get started</span>. Enter your email and a password of at least 12 characters. Open <span class="btn">Create account</span>, add your name and a family name, and tap <span class="btn">Register</span>. Already have an account? Tap <span class="btn">Sign in</span>.</p>
+      <p>You are now the family owner. Only the owner can add children.</p></div></li>
+    <li><div class="body"><span class="chip you">Your phone</span><h3>Add your child</h3>
+      <p>Enter your child's name and birth year, choose how you gave parental consent, and tap <span class="btn">Add child and continue</span>.</p>
+      <p>Make one profile per child, not per device. To add a brother or sister later, tap <span class="btn">Add child</span> on the dashboard.</p></div></li>
+    <li><div class="body"><span class="chip you">Your phone</span><h3>Show the pairing code</h3>
+      <p>The app shows a QR code, the same code as six digits, and a countdown. The code works once and expires after 10 minutes. If it runs out, tap <span class="btn">Regenerate</span>.</p></div></li>
+    <li><div class="body"><span class="chip kid">Child's device</span><h3>Scan and name the device</h3>
+      <p>Open the child app and tap <span class="btn">Scan QR code</span>. Check the code matches your screen, type a <strong>Device name</strong> you will recognise, such as <em>Sara's phone</em>, then tap <span class="btn">Confirm and pair</span>.</p>
+      <p>If the camera cannot scan, type the six digits into <strong>Pairing code</strong> and tap <span class="btn">Pair this device</span>.</p></div></li>
+    <li><div class="body"><span class="chip you">Your phone</span><h3>Allow the device</h3>
+      <p>A card appears: <em>A device is asking to join</em>. Tap <span class="btn">Allow</span> only if it names the device in front of you. If you don't recognise it, tap <span class="btn">Deny</span>; that code stops working and you can make a new one.</p></div></li>
+    <li><div class="body"><span class="chip kid">Child's device</span><h3>Set the parent PIN and permissions</h3>
+      <p>Choose a 4 to 8 digit parent PIN and enter it twice. It is asked for whenever someone tries to remove OSRA, so keep it from your child.</p>
+      <p>Then turn on each permission the app lists. It opens every setting for you. Protection is complete when all of these are on:</p>
+      <ul class="sub">
+        <li>Accessibility service: blocks apps and enforces limits</li>
+        <li>Usage access: counts screen time</li>
+        <li>Display over other apps: shows the lock and pause screens</li>
+        <li>Device admin: stops OSRA being uninstalled without your PIN</li>
+        <li>Web filter (a VPN request): blocks sites and turns on SafeSearch</li>
+        <li>Location, "Allow all the time": find the device and get place alerts</li>
+        <li>Private DNS on Automatic or Off</li>
+      </ul>
+      <p class="note">Also recommended: battery set to Unrestricted so commands arrive quickly, and USB debugging off.</p></div></li>
+    <li><div class="body"><span class="chip you">Your phone</span><h3>Finish</h3>
+      <p>Tap <span class="btn">My child has finished pairing</span>. When OSRA finds the device, you're done. Need to stop? Tap <span class="btn">Set up later</span> and pair from the dashboard when the device is ready. Protection starts only after pairing.</p></div></li>
+  </ol>
+
+  <h2>Add more devices for the same child</h2>
+  <p>Your child can have as many devices as they use. Pair each one to the same child profile, one at a time.</p>
+  <ol class="steps">
+    <li><div class="body"><span class="chip kid">New device</span><h3>Install the child app</h3>
+      <p>Install <strong>OSRA Child: Parental Control</strong> from Google Play.</p></div></li>
+    <li><div class="body"><span class="chip you">Your phone</span><h3>Make a new code for that child</h3>
+      <p>On the dashboard, tap your child's name. On the <strong>Overview</strong> tab, under <strong>Devices</strong>, tap <span class="btn">Pair a device</span>. Every device needs its own new code.</p></div></li>
+    <li><div class="body"><span class="chip kid">New device</span><h3>Pair it like the first one</h3>
+      <p>Scan, give it its own Device name (for example <em>Sara's tablet</em>), confirm, tap <span class="btn">Allow</span> on your phone, set the parent PIN (it can be the same as on the other device), and turn on the permissions.</p></div></li>
+  </ol>
+  <p class="tip">The new device appears in your child's Devices list with its battery, when it was last seen, and its own <strong>Ring</strong>, <strong>Lock</strong>, <strong>Unlock</strong>, <strong>Pause</strong>, <strong>Resume</strong> and <strong>Pause net</strong> buttons.</p>
+
+  <h3 style="margin-top:28px">What applies to all of the child's devices</h3>
+  <div class="tablebox"><table>
+    <thead><tr><th>Setting</th><th>Applies to</th></tr></thead>
+    <tbody>
+      <tr><td>Rules: blocked apps and categories, bedtime, school hours, web filter</td><td><span class="scope all">Every device</span> of that child. Change them once.</td></tr>
+      <tr><td>Ring, Lock, Unlock, Pause, Resume</td><td><span class="scope one">One device</span>, the one whose button you tap.</td></tr>
+      <tr><td>Daily screen-time limit</td><td><span class="scope one">Each device</span> counts its own time for now. A 3-hour limit allows 3 hours on the phone and 3 hours on the tablet.</td></tr>
+      <tr><td>Parent PIN</td><td><span class="scope one">Each device</span>, set when you pair it.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>If something goes wrong</h2>
+  <details><summary>The code expired, or "is already being used"</summary><p>Tap Regenerate on your phone and scan the new code.</p></details>
+  <details><summary>The child's device says "Your parent declined this phone"</summary><p>Deny was tapped. Tap Regenerate on your phone and pair again.</p></details>
+  <details><summary>It says consent is needed</summary><p>Open your child's profile, tap Parental consent, and complete it.</p></details>
+  <details><summary>Two devices look the same in the list</summary><p>Give each device a clear Device name when you pair it.</p></details>
+  <details><summary>Another parent wants to help</summary><p>The owner can invite them from Family members, then Invite member. They manage the same children with their own login and don't need to pair the devices again.</p></details>
+
+  <footer>OSRA setup guide · English · Arabic version: use the language switch at the top.</footer>
+</main>
+
+<!-- ================= ARABIC ================= -->
+<main id="guide-ar" lang="ar" dir="rtl" hidden>
+  <p class="draft"><strong>مسودة.</strong> ليست للعملاء بعد؛ بعض خطوات الإعداد تنتظر إصلاحات مذكورة في GUIDE-GAPS.md. النص العربي بانتظار مراجعة كريم.</p>
+  <section class="hero">
+    <h1>جهّز أسرة لعائلتك</h1>
+    <p class="lede">نزّل التطبيقين، وأضف طفلك، ثم أقرن كل هاتف أو جهاز لوحي يستخدمه. يستغرق الجهاز الواحد نحو خمس دقائق.</p>
+    <div class="apps">
+      <div class="app parent"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+        <div><small>على هاتفك</small><strong>أسرة: رقابة أبوية</strong><small>تطبيق الوالدين</small></div></div>
+      <div class="app child"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2.5"/><path d="M8 21h8"/></svg></div>
+        <div><small>على كل جهاز يستخدمه طفلك</small><strong>أسرة للطفل: رقابة أبوية</strong><small>تطبيق الطفل</small></div></div>
+    </div>
+    <p class="note">التطبيقان متاحان على Google Play لهواتف وأجهزة أندرويد اللوحية. نسختا iPhone وiPad قادمتان لاحقًا.</p>
+  </section>
+
+  <h2>جهّز الجهاز الأول</h2>
+  <ol class="steps">
+    <li><div class="body"><span class="chip you">الهاتفان</span><h3>نزّل التطبيقين</h3>
+      <p>على هاتفك، افتح Google Play وابحث عن <strong>أسرة: رقابة أبوية</strong> واضغط <span class="btn">تثبيت</span>. وعلى هاتف طفلك أو جهازه اللوحي، ثبّت <strong>أسرة للطفل: رقابة أبوية</strong> بالطريقة نفسها.</p></div></li>
+    <li><div class="body"><span class="chip you">هاتفك</span><h3>أنشئ حساب العائلة</h3>
+      <p>افتح OSRA واضغط <span class="btn">ابدأ</span>. أدخل بريدك الإلكتروني وكلمة مرور من ١٢ حرفًا على الأقل. افتح <span class="btn">إنشاء حساب</span>، وأضف اسمك واسم العائلة، ثم اضغط <span class="btn">تسجيل</span>. لديك حساب؟ اضغط <span class="btn">تسجيل الدخول</span>.</p>
+      <p>أصبحت الآن مالك العائلة، والمالك وحده يستطيع إضافة الأطفال.</p></div></li>
+    <li><div class="body"><span class="chip you">هاتفك</span><h3>أضف طفلك</h3>
+      <p>أدخل اسم طفلك وسنة ميلاده، واختر طريقة الموافقة التي أعطيت بها موافقة الوالدين، ثم اضغط <span class="btn">أضف الطفل وتابع</span>.</p>
+      <p>أنشئ ملفًا واحدًا لكل طفل، لا لكل جهاز. لإضافة أخ أو أخت لاحقًا، اضغط <span class="btn">إضافة طفل</span> في لوحة التحكم.</p></div></li>
+    <li><div class="body"><span class="chip you">هاتفك</span><h3>اعرض رمز الإقران</h3>
+      <p>يعرض التطبيق رمز QR، والرمز نفسه من ستة أرقام، وعدًّا تنازليًا. يعمل الرمز مرة واحدة وتنتهي صلاحيته بعد ١٠ دقائق. إذا انتهت، فاضغط <span class="btn">إعادة الإنشاء</span>.</p></div></li>
+    <li><div class="body"><span class="chip kid">جهاز الطفل</span><h3>امسح الرمز وسمِّ الجهاز</h3>
+      <p>افتح تطبيق الطفل واضغط <span class="btn">امسح رمز QR</span>. تأكّد أن الرمز يطابق شاشتك، واكتب في <strong>اسم الجهاز</strong> اسمًا تعرفه، مثل <em>هاتف سارة</em>، ثم اضغط <span class="btn">أكّد وأقرن</span>.</p>
+      <p>إذا تعذّر المسح بالكاميرا، فاكتب الأرقام الستة في <strong>رمز الإقران</strong> واضغط <span class="btn">أقرن هذا الجهاز</span>.</p></div></li>
+    <li><div class="body"><span class="chip you">هاتفك</span><h3>اسمح للجهاز</h3>
+      <p>تظهر بطاقة: <em>جهاز يطلب الانضمام</em>. اضغط <span class="btn">سماح</span> فقط إذا كان الجهاز المذكور هو الذي أمامك. إن لم تعرفه، فاضغط <span class="btn">رفض</span>؛ يتوقف ذلك الرمز ويمكنك إنشاء رمز جديد.</p></div></li>
+    <li><div class="body"><span class="chip kid">جهاز الطفل</span><h3>عيّن رمز PIN للوالدين والأذونات</h3>
+      <p>اختر رمز PIN للوالدين من ٤ إلى ٨ أرقام وأدخله مرتين، ثم اضغط <span class="btn">احفظ الرمز</span>. يُطلب هذا الرمز كلما حاول أحد إزالة أسرة، فلا تخبر طفلك به.</p>
+      <p>ثم فعّل كل إذن يعرضه التطبيق، وهو يفتح لك كل إعداد. <em>(تظهر قائمة الأذونات بالإنجليزية حاليًا.)</em> تكتمل الحماية عند تفعيل كل ما يلي:</p>
+      <ul class="sub">
+        <li>خدمة إمكانية الوصول (Accessibility): تحجب التطبيقات وتطبّق الحدود</li>
+        <li>الوصول إلى بيانات الاستخدام (Usage access): تحسب وقت الشاشة</li>
+        <li>العرض فوق التطبيقات الأخرى: يُظهر شاشات القفل والإيقاف</li>
+        <li>مسؤول الجهاز (Device admin): يمنع حذف أسرة دون رمز PIN</li>
+        <li>فلتر الويب (طلب VPN): يحجب المواقع ويفعّل البحث الآمن</li>
+        <li>الموقع، «السماح طوال الوقت»: لتحديد مكان الجهاز وتنبيهات الأماكن</li>
+        <li>DNS الخاص على «تلقائي» أو «إيقاف»</li>
+      </ul>
+      <p class="note">يُنصح أيضًا بضبط البطارية على «غير مقيّد» لتصل الأوامر بسرعة، وبإيقاف تصحيح أخطاء USB.</p></div></li>
+    <li><div class="body"><span class="chip you">هاتفك</span><h3>أنهِ الإعداد</h3>
+      <p>اضغط <span class="btn">انتهى طفلي من الإقران</span>. عندما يعثر التطبيق على الجهاز، يكون الإعداد قد اكتمل. تريد التوقف؟ اضغط <span class="btn">الإعداد لاحقًا</span> وأقرن من لوحة التحكم متى كان الجهاز جاهزًا. تبدأ الحماية بعد الإقران فقط.</p></div></li>
+  </ol>
+
+  <h2>أضف أجهزة أخرى للطفل نفسه</h2>
+  <p>يمكن لطفلك أن يملك أي عدد من الأجهزة. أقرن كل جهاز بملف الطفل نفسه، جهازًا بعد جهاز.</p>
+  <ol class="steps">
+    <li><div class="body"><span class="chip kid">الجهاز الجديد</span><h3>ثبّت تطبيق الطفل</h3>
+      <p>ثبّت <strong>أسرة للطفل: رقابة أبوية</strong> من Google Play.</p></div></li>
+    <li><div class="body"><span class="chip you">هاتفك</span><h3>أنشئ رمزًا جديدًا لذلك الطفل</h3>
+      <p>في لوحة التحكم، اضغط اسم طفلك. في تبويب <strong>نظرة عامة</strong>، تحت <strong>الأجهزة</strong>، اضغط <span class="btn">إقران جهاز</span>. يحتاج كل جهاز إلى رمز جديد خاص به.</p></div></li>
+    <li><div class="body"><span class="chip kid">الجهاز الجديد</span><h3>أقرنه مثل الجهاز الأول</h3>
+      <p>امسح الرمز، وأعطه اسم جهاز خاصًا به (مثل <em>جهاز سارة اللوحي</em>)، وأكّد، واضغط <span class="btn">سماح</span> على هاتفك، وعيّن رمز PIN للوالدين (يمكن أن يكون الرمز نفسه المستخدم على الجهاز الآخر)، ثم فعّل الأذونات.</p></div></li>
+  </ol>
+  <p class="tip">يظهر الجهاز الجديد في قائمة أجهزة طفلك مع البطارية وآخر ظهور، وأزراره الخاصة: <strong>رن</strong> و<strong>قفل</strong> و<strong>فتح القفل</strong> و<strong>إيقاف</strong> و<strong>استئناف</strong> و<strong>إيقاف الشبكة</strong>.</p>
+
+  <h3 style="margin-top:28px">ما الذي ينطبق على كل أجهزة الطفل</h3>
+  <div class="tablebox"><table>
+    <thead><tr><th>الإعداد</th><th>ينطبق على</th></tr></thead>
+    <tbody>
+      <tr><td>القواعد: التطبيقات والفئات المحجوبة، وقت النوم، ساعات المدرسة، فلتر الويب</td><td><span class="scope all">كل الأجهزة</span> لذلك الطفل. غيّرها مرة واحدة.</td></tr>
+      <tr><td>رن، قفل، فتح القفل، إيقاف، استئناف</td><td><span class="scope one">جهاز واحد</span>، وهو الذي ضغطت زرّه.</td></tr>
+      <tr><td>حد وقت الشاشة اليومي</td><td><span class="scope one">كل جهاز</span> يحسب وقته وحده حاليًا. حد ٣ ساعات يعني ٣ ساعات على الهاتف و٣ ساعات على الجهاز اللوحي.</td></tr>
+      <tr><td>رمز PIN للوالدين</td><td><span class="scope one">كل جهاز</span>، يُعيَّن عند إقرانه.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>إذا واجهتك مشكلة</h2>
+  <details><summary>انتهت صلاحية الرمز، أو «هذا الرمز مستخدم بالفعل»</summary><p>اضغط إعادة الإنشاء على هاتفك وامسح الرمز الجديد.</p></details>
+  <details><summary>جهاز الطفل يقول «رفض والدك أو والدتك هذا الهاتف»</summary><p>تم الضغط على رفض. اضغط إعادة الإنشاء على هاتفك وأقرن من جديد.</p></details>
+  <details><summary>تظهر رسالة بأن الموافقة مطلوبة</summary><p>افتح ملف طفلك، واضغط موافقة الوالدين، وأكملها.</p></details>
+  <details><summary>جهازان يبدوان متشابهين في القائمة</summary><p>أعطِ كل جهاز اسم جهاز واضحًا عند إقرانه.</p></details>
+  <details><summary>والد أو والدة أخرى تريد المساعدة</summary><p>يستطيع المالك دعوته من أفراد العائلة ثم دعوة فرد. يدير الأطفال أنفسهم بحسابه الخاص، دون الحاجة إلى إقران الأجهزة مرة أخرى.</p></details>
+
+  <footer>دليل إعداد أسرة · العربية · للنسخة الإنجليزية استخدم مفتاح اللغة في الأعلى.</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  var btns=document.querySelectorAll('.lang button');
+  function show(l){
+    if(l!=='ar') l='en';
+    document.getElementById("guide-en").hidden=(l!=='en');
+    document.getElementById("guide-ar").hidden=(l!=='ar');
+    document.documentElement.lang=l;
+    btns.forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.set===l));});
+  }
+  btns.forEach(function(b){b.addEventListener('click',function(){
+    show(b.dataset.set);
+    try{history.replaceState(null,'','#'+b.dataset.set);}catch(e){location.hash=b.dataset.set;}
+  });});
+  window.addEventListener('hashchange',function(){show(location.hash.slice(1));});
+  show(location.hash.slice(1));
+})();
+</script>
+</body>
+</html>

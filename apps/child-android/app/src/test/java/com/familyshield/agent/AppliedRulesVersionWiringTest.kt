@@ -54,13 +54,22 @@ class AppliedRulesVersionWiringTest {
     fun `every telemetry upload carries it`() {
         assertTrue(dto.contains("val appliedRulesVersion: Int? = null"))
         assertEquals(
-            "both upload paths — the periodic one and the grant report — send it",
-            2,
+            // ADR-0034 PR 2 added the third: the change-triggered capability upload. The count stays exact on
+            // purpose — a new upload path that forgets the version is the drift this row exists to catch.
+            "every upload path — periodic, the grant report, and the capability change — sends it",
+            3,
             Regex("appliedRulesVersion = ").findAll(reporter).count(),
         )
         assertFalse(
             "a constant would report the same version forever",
             reporter.contains("appliedRulesVersion = 1"),
+        )
+        assertEquals(
+            // ADR-0034 A2: the capability report rides the same three uploads, so a phone is described on
+            // every surface it reports its rules version on. One that stopped would be a silent gap.
+            "and all three carry the capability report",
+            3,
+            Regex("capabilities = ").findAll(reporter).count(),
         )
     }
 
