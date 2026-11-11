@@ -247,7 +247,13 @@ describe("GET /v1/account/delete and the confirm page", () => {
     const res = await a.inject({ method: "GET", url: "/v1/account/delete" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toMatch(/text\/html/);
-    expect(res.body).toContain("Settings, then Delete account");
+    // #562 B: the route a user follows is the dashboard's ⋮ menu, not a Settings screen the app does not
+    // have. This row pinned the old wording, which is a check enforcing a bug — it now pins the real route
+    // *and* the absence of the wrong one, so it fails if either drifts back.
+    expect(res.body).toContain("menu at the top right");
+    expect(res.body).toContain("Delete account");
+    expect(res.body).not.toContain("Settings, then Delete account");
+    expect(res.body).toContain("قائمة");
     expect(res.body).toContain('action="/v1/account/deletion-request"');
     expect(res.body).toContain('lang="ar" dir="rtl"');
     expect(res.body).toContain("حذف حسابك في أسرة");
