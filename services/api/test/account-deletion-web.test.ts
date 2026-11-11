@@ -253,7 +253,11 @@ describe("GET /v1/account/delete and the confirm page", () => {
     expect(res.body).toContain("menu at the top right");
     expect(res.body).toContain("Delete account");
     expect(res.body).not.toContain("Settings, then Delete account");
+    // RTL: the AppBar mirrors, so an Arabic user sees the menu at the TOP LEFT. This line pins the
+    // corner rather than only the glyph, because the wrong corner sends them to the wrong side of the screen.
     expect(res.body).toContain("قائمة");
+    expect(res.body).toContain("أعلى اليسار");
+    expect(res.body).not.toContain("أعلى اليمين");
     expect(res.body).toContain('action="/v1/account/deletion-request"');
     expect(res.body).toContain('lang="ar" dir="rtl"');
     expect(res.body).toContain("حذف حسابك في أسرة");
