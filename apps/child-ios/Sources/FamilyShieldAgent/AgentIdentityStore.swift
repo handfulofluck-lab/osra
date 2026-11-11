@@ -110,10 +110,14 @@ public enum AgentIdentityStore {
         let defaults = UserDefaults(suiteName: suiteName)
         let hasIds = defaults?.string(forKey: Keys.apiBaseURL) != nil || defaults?.string(forKey: Keys.childId) != nil
         guard !hasIds else { return false }
+        // ADR-0037: the parent PIN hash is in the same Keychain, so a reinstall would hand an old PIN to the next
+        // pairing. It goes with the other orphans; the next pairing sets a new one.
         let orphaned = secrets.read(Keys.deviceToken) != nil || secrets.read(Keys.hmacSecret) != nil
+            || secrets.read(ParentPinStore.account) != nil
         if orphaned {
             secrets.delete(Keys.deviceToken)
             secrets.delete(Keys.hmacSecret)
+            secrets.delete(ParentPinStore.account)
         }
         return orphaned
     }

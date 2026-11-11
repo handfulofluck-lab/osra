@@ -1,0 +1,2 @@
+### Docs
+- Play data-safety answers (`docs/store/play/data-safety.md`) now carry Karim's 11 Nov decisions. Parent geofence points are declared as location. Model, OS version and the capability report go under Diagnostics. Delivering data to the parent is not sharing. The deletion URL is `osratech.com/delete-account`. The DNS fallback resolvers are named. Monitored apps are chosen in setup. Alerts are kept for 12 months. §6 lists what each decision still needs (#562).
