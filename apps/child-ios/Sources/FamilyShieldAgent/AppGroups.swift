@@ -46,8 +46,17 @@ public enum AppGroupLabel {
     /// Trims, drops control characters, folds runs of whitespace to one space and caps the length; nil if nothing
     /// is left.
     public static func sanitize(_ raw: String) -> String? {
-        let visible = raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
-        let folded = String(String.UnicodeScalarView(visible))
+        // Line breaks and tabs are spacing, so they become spaces before other control characters are dropped
+        // ("Home\n\twork" is "Home work", not "Homework").
+        var visible = String.UnicodeScalarView()
+        for scalar in raw.unicodeScalars {
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                visible.append(" ")
+            } else if !CharacterSet.controlCharacters.contains(scalar) {
+                visible.append(scalar)
+            }
+        }
+        let folded = String(visible)
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
         let capped = String(folded.prefix(maxLength)).trimmingCharacters(in: .whitespaces)
