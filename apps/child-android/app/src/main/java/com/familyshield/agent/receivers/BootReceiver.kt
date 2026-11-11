@@ -21,7 +21,8 @@ import dagger.hilt.android.EntryPointAccessors
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        // osra-security#8 F6: exported for the system's broadcast, so the one action only.
+        if (!BroadcastGate.accepts(Intent.ACTION_BOOT_COMPLETED, intent.action)) return
         // Issue #128: each step is isolated. A crashing receiver is the one failure that can also
         // cost the next boot its protection, so a failed step is logged and the rest still run.
         guardStep("location service") { startLocationIfPermitted(ctx) }

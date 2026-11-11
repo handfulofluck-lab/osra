@@ -55,7 +55,8 @@ object NetworkModule {
             },
         )
         .addInterceptor(SignatureInterceptor { settings.hmacSecretSync() })
-        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+        // osra-security#8 F4: request lines name the child and the device, so a release build logs nothing.
+        .apply { if (BuildConfig.DEBUG) addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }) }
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
