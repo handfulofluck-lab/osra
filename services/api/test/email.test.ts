@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismaMock, resetPrismaMock, buildApp, authHeader, MockRedis } from "./helpers.js";
 
@@ -104,7 +105,7 @@ describe("SES sender (Play decision 11 A)", () => {
         return { MessageId: "ses-1" };
       }),
     };
-    const sender = new SesEmailSender(client as never, "OSRA <no-reply@osratech.com>");
+    const sender = new SesEmailSender(client.send as never, "OSRA <no-reply@osratech.com>");
     const r = await sender.send({ to: ["p@x", "q@y"], subject: "S", html: "<b>h</b>", text: "t" });
     expect(r).toEqual({ ok: true, id: "ses-1" });
     expect(sent[0]).toEqual({
@@ -122,13 +123,13 @@ describe("SES sender (Play decision 11 A)", () => {
   it("a single recipient is still a list, because SES takes lists", async () => {
     const sent: unknown[] = [];
     const client = { send: vi.fn(async (cmd: unknown) => { sent.push(cmd); return { MessageId: "x" }; }) };
-    await new SesEmailSender(client as never, "a@b").send({ to: "only@x", subject: "S", html: "", text: "" });
+    await new SesEmailSender(client.send as never, "a@b").send({ to: "only@x", subject: "S", html: "", text: "" });
     expect((sent[0] as { Destination: { ToAddresses: string[] } }).Destination.ToAddresses).toEqual(["only@x"]);
   });
 
   it("classifies provider errors instead of throwing, on the same rule as Resend", async () => {
     const msg = { to: "p@x", subject: "S", html: "", text: "" };
-    const rejects = (err: unknown) => ({ send: vi.fn(async () => { throw err; }) });
+    const rejects = (err: unknown) => vi.fn(async () => { throw err; });
     // Throttling and 5xx are the provider's fault: retry.
     const throttled = await new SesEmailSender(
       rejects({ name: "ThrottlingException", $metadata: { httpStatusCode: 429 } }) as never, "a@b",
@@ -148,6 +149,19 @@ describe("SES sender (Play decision 11 A)", () => {
     // A network failure has no status and is transient.
     const network = await new SesEmailSender(rejects(new Error("socket hang up")) as never, "a@b").send(msg);
     expect(network.ok === false && network.retryable).toBe(true);
+  });
+});
+
+describe("the module is valid ESM at runtime, not only under the test runner", () => {
+  // Claude compiled this head with tsc and called the path from plain Node: `require is not defined`. Vitest
+  // supplies `require`, so a runtime test cannot see it — and the production image runs `node dist/server.js`.
+  // This row is the guard that does: the email module must not use `require`.
+  const source = readFileSync(new URL("../src/lib/email/index.ts", import.meta.url), "utf8");
+  it("uses no `require(`, which plain Node ESM does not have", () => {
+    expect(source).not.toMatch(/require\s*\(/);
+  });
+  it("and the one SDK it needs is imported statically, so the import itself cannot throw", () => {
+    expect(source).toMatch(/^import \{[^}]*SESv2Client[^}]*\} from "@aws-sdk\/client-sesv2";/m);
   });
 });
 

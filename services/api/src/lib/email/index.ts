@@ -8,7 +8,7 @@
  * live in `templates.ts` so copy and HTML stay out of route handlers.
  */
 
-import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import { SESv2Client, SendEmailCommand, type SendEmailCommandInput } from "@aws-sdk/client-sesv2";
 
 /**
  * Imported statically on purpose: this module is ESM (`"type": "module"`, `node dist/server.js`), so a
@@ -90,31 +90,32 @@ export class ResendEmailSender implements EmailSender {
  */
 export class SesEmailSender implements EmailSender {
   readonly name = "ses";
-  /** Injected so a unit test can assert the request without the SDK reaching the network. */
+  /**
+   * The transport is injected rather than the client, so a unit test asserts the exact request SES receives
+   * and a network failure cannot reach the suite. `buildSesSender` is the only place that knows about
+   * `SendEmailCommand`.
+   */
   constructor(
-    private readonly client: { send: (cmd: unknown) => Promise<{ MessageId?: string }> },
+    private readonly transport: (input: Record<string, unknown>) => Promise<{ MessageId?: string }>,
     private readonly from: string,
-    private readonly buildCommand: (input: Record<string, unknown>) => unknown = (input) => input,
   ) {}
 
   async send(message: EmailMessage): Promise<EmailResult> {
     const to = Array.isArray(message.to) ? message.to : [message.to];
     try {
-      const out = await this.client.send(
-        this.buildCommand({
-          FromEmailAddress: this.from,
-          Destination: { ToAddresses: to },
-          Content: {
-            Simple: {
-              Subject: { Data: message.subject, Charset: "UTF-8" },
-              Body: {
-                Html: { Data: message.html, Charset: "UTF-8" },
-                Text: { Data: message.text, Charset: "UTF-8" },
-              },
+      const out = await this.transport({
+        FromEmailAddress: this.from,
+        Destination: { ToAddresses: to },
+        Content: {
+          Simple: {
+            Subject: { Data: message.subject, Charset: "UTF-8" },
+            Body: {
+              Html: { Data: message.html, Charset: "UTF-8" },
+              Text: { Data: message.text, Charset: "UTF-8" },
             },
           },
-        }),
-      );
+        },
+      });
       return { ok: true, id: out.MessageId };
     } catch (err) {
       // SES errors carry `$metadata.httpStatusCode`; a network failure has none and is transient.
@@ -177,7 +178,10 @@ export function getEmailSender(env: NodeJS.ProcessEnv = process.env): EmailSende
  */
 function buildSesSender(from: string, env: NodeJS.ProcessEnv = process.env): EmailSender {
   const client = new SESv2Client(env.AWS_REGION ? { region: env.AWS_REGION } : {});
-  return new SesEmailSender(client, from, (input) => new SendEmailCommand(input));
+  return new SesEmailSender(
+    (input) => client.send(new SendEmailCommand(input as unknown as SendEmailCommandInput)),
+    from,
+  );
 }
 
 /** True when a real provider is configured — routes use it to decide whether a token may be echoed in dev. */
