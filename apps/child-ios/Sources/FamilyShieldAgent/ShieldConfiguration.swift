@@ -9,8 +9,8 @@ import ManagedSettingsUI
 /// "Request access" / "Exit to Home screen" buttons, in English or Arabic.
 ///
 /// #561: the extension's principal class is `ShieldConfigurationExtension`, declared in
-/// `Extensions/ShieldConfiguration` as a subclass of this one (an `@objc`-renamed class in the package was rejected
-/// on the device). This class is `open` so that subclass can exist; the behaviour stays here, under test.
+/// `Extensions/ShieldConfiguration` as a subclass of this one (iOS could not load an `@objc`-renamed class from the
+/// package on the device: `ExtensionError Code=0`). This class is `open` so that subclass can exist; the behaviour stays here, under test.
 open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 
     /// Shield configuration shown when an application is blocked.

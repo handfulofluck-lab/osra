@@ -1,7 +1,7 @@
 ### iOS child agent — the extensions' principal classes live in the extensions (#561)
-- The iPhone 13 showed iOS's generic "Restricted" screen instead of the OSRA shield: the extension host rejected a
-  principal class that lived only in the statically linked package ("does not conform to
-  NSExtensionRequestHandling"). Each extension now declares its own class, as Apple's template does
+- The iPhone 13 showed iOS's generic "Restricted" screen instead of the OSRA shield: iOS could not load a
+  principal class that lived only in the statically linked package (SpringBoard logged
+  `ExtensionError Code=0`; the `NSExtensionRequestHandling` notice also shows on working builds and is harmless). Each extension now declares its own class, as Apple's template does
   (`ShieldConfigurationExtension`, `ShieldActionExtension`, `DeviceActivityMonitorExtension`), named
   `$(PRODUCT_MODULE_NAME).<Class>` in its Info.plist. They subclass the package classes, now `open` and without
   `@objc` renames, so the behaviour and its tests stay in the package.

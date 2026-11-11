@@ -35,7 +35,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # .appex name -> (extension point, module, principal class). #561: the principal class is declared in the extension's
 # own module and named "$(PRODUCT_MODULE_NAME).<Class>" in Info.plist, as Apple's template does; a class that lived
-# only in the statically linked package was rejected on the iPhone ("does not conform to NSExtensionRequestHandling").
+# only in the statically linked package could not be loaded on the iPhone (SpringBoard: "ExtensionError Code=0").
 EXTENSIONS = {
     "OSRAAgentMonitor.appex": (
         "com.apple.deviceactivity.monitor-extension", "OSRAAgentMonitor", "DeviceActivityMonitorExtension"),
