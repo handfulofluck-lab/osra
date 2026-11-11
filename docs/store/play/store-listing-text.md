@@ -121,7 +121,7 @@ THIS IS A MONITORING APP
 Once it is set up, OSRA Kids sends the following to the parent's OSRA account:
 • the phone's location, also while the app is closed, so the parent can locate the phone and get place alerts;
 • which apps are used and for how long, and the list of installed apps;
-• text shown on screen in the chat and social apps the parent selects, such as WhatsApp, Instagram, Snapchat and TikTok (OSRA is not affiliated with these companies). It is checked for warning signs such as self-harm, bullying or grooming. Phone numbers and email addresses are masked on the phone before sending, and only flagged excerpts are kept, encrypted;
+• text shown on screen in the chat and social apps the parent selects, such as WhatsApp, Instagram, Snapchat and TikTok (OSRA is not affiliated with these companies). It is checked for warning signs such as self-harm, bullying or grooming. Phone numbers and email addresses inside messages are masked on the phone before sending; the chat partner's name or number is sent so the parent knows who the conversation was with. Only flagged excerpts are kept, encrypted;
 • alerts: SOS, access requests, new app installs, and attempts to switch protection off.
 
 It does not read SMS, call logs or notifications, and it does not record the screen or use the microphone. The camera is used only to scan the pairing QR code.
@@ -164,7 +164,7 @@ If this is your phone: your parent or guardian set up OSRA to help keep you safe
 بعد إعداده، يرسل «أسرة للطفل» إلى حساب «أسرة» الخاص بالوالدين ما يلي:
 • موقع الهاتف، حتى عندما يكون التطبيق مغلقًا، ليتمكن الوالدان من تحديد مكانه وتلقّي تنبيهات الأماكن؛
 • التطبيقات المستخدمة ومدة استخدامها، وقائمة التطبيقات المثبّتة؛
-• النص الظاهر على الشاشة في تطبيقات الدردشة والتواصل التي يختارها الوالدان، مثل WhatsApp وInstagram وSnapchat وTikTok («أسرة» غير تابع لهذه الشركات)، ويُفحص بحثًا عن علامات خطر مثل إيذاء النفس أو التنمّر أو الاستدراج. تُخفى أرقام الهواتف وعناوين البريد الإلكتروني على الهاتف قبل الإرسال، ولا يُحفظ إلا ما يثير القلق، مشفّرًا؛
+• النص الظاهر على الشاشة في تطبيقات الدردشة والتواصل التي يختارها الوالدان، مثل WhatsApp وInstagram وSnapchat وTikTok («أسرة» غير تابع لهذه الشركات)، ويُفحص بحثًا عن علامات خطر مثل إيذاء النفس أو التنمّر أو الاستدراج. تُخفى أرقام الهواتف وعناوين البريد الإلكتروني الواردة داخل الرسائل على الهاتف قبل الإرسال، ويُرسَل اسم الطرف الآخر في المحادثة أو رقمه ليعرف الوالدان مع من كانت المحادثة. ولا يُحفظ إلا ما يثير القلق، مشفّرًا؛
 • التنبيهات: الاستغاثة، وطلبات الإذن، وتثبيت تطبيقات جديدة، ومحاولات إيقاف الحماية.
 
 لا يقرأ الرسائل النصية (SMS) ولا سجل المكالمات ولا الإشعارات، ولا يسجّل الشاشة ولا يستخدم الميكروفون. تُستخدم الكاميرا لمسح رمز الربط فقط.
