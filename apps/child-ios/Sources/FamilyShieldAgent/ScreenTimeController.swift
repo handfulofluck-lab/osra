@@ -201,6 +201,23 @@ public final class ScreenTimeController {
     }
 }
 
+/// The real [ScreenTimeAuthorizing]: FamilyControls' authorization center, for a child account (5.5, #372).
+public final class FamilyControlsAuthorizer: ScreenTimeAuthorizing {
+    public init() {}
+
+    public var status: ScreenTimeStatus {
+        switch AuthorizationCenter.shared.authorizationStatus {
+        case .approved: return .approved
+        case .denied: return .denied
+        default: return .notDetermined
+        }
+    }
+
+    public func request() async throws {
+        try await ScreenTimeController().requestAuthorization()
+    }
+}
+
 /// Persistent store for FamilyActivitySelection picked by parent via FamilyActivityPicker (IOS-02).
 public enum SelectionStore {
     public static let suiteName = "group.com.osratech.child"

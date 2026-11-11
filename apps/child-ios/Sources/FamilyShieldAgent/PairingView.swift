@@ -99,6 +99,10 @@ public struct AgentRootView: View {
     @State private var identity: AgentIdentity?
     @State private var showRepair = false
     @State private var locationGrant: LocationGrant = .noAccess
+    @State private var locationAction: LocationPermissionAction = .hidden
+    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+    @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
+    #endif
 
     public init() {}
 
@@ -115,10 +119,33 @@ public struct AgentRootView: View {
                             LabeledContent("Device", value: identity.deviceId)
                         }
                     }
+                    #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+                    Section {
+                        LabeledContent("Screen Time", value: screenTime.row.value)
+                        if screenTime.row.showsButton {
+                            Button(ScreenTimeRow.buttonTitle) {
+                                Task {
+                                    // Approved: fetch and apply the parent's rules now, not at the next open.
+                                    if await screenTime.request() { _ = await RuleSyncer.syncNow() }
+                                }
+                            }
+                        }
+                        if let error = screenTime.errorMessage {
+                            Text(error).foregroundStyle(.red)
+                        }
+                    } header: {
+                        Text("Screen Time")
+                    } footer: {
+                        Text(screenTime.row.footer)
+                    }
+                    #endif
                     Section {
                         LabeledContent("Location", value: Self.label(locationGrant))
-                        if locationGrant != .background {
-                            Button("Allow location") { LocationController.shared.requestPermission() }
+                        if let title = locationAction.buttonTitle {
+                            Button(title) {
+                                LocationController.shared.requestPermission()
+                                locationAction = LocationController.shared.permissionAction
+                            }
                         }
                     } header: {
                         Text("Location")
@@ -150,6 +177,12 @@ public struct AgentRootView: View {
         .onAppear {
             identity = AgentIdentityStore.load()
             locationGrant = LocationController.shared.grant
+            locationAction = LocationController.shared.permissionAction
+            #if canImport(UIKit)
+            LocationController.shared.openSettings = {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            }
+            #endif
         }
         // On open: drain the command queue, then fetch the rules (5.5 PR C, D). A failed sync keeps the last
         // stored rules in force. A wake push drains the queue the same way (`OSRAAgentAppDelegate`).
@@ -163,6 +196,10 @@ public struct AgentRootView: View {
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             locationGrant = LocationController.shared.grant
+            locationAction = LocationController.shared.permissionAction
+            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+            screenTime.refresh()
+            #endif
         }
     }
 
