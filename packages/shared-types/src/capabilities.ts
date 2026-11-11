@@ -110,6 +110,28 @@ export interface DeviceProfiles {
   kinds: ProfileKind[];
 }
 
+/**
+ * ADR-0037 (5.5 PR B): the iPhone's app groups, as the parent may see them. A group is made on the child phone with
+ * Apple's picker behind the parent PIN; its apps are opaque tokens that never leave the phone, so the server learns a
+ * phone-made id, the label the parent typed, and **counts only**: never app names, bundle ids or tokens.
+ */
+export const APP_GROUPS_MAX = 20;
+export const APP_GROUP_LABEL_MAX = 40;
+/** A count no real selection reaches; it bounds a hostile report. */
+export const APP_GROUP_COUNT_MAX = 10000;
+/** Groups have their own byte cap, outside the report's 4 KB: 20 groups with Arabic labels can pass 4 KB alone. */
+export const APP_GROUPS_MAX_BYTES = 8192;
+
+export interface AppGroupReport {
+  /** A random UUID made on the phone. */
+  id: string;
+  /** What the parent typed, cleaned on the phone and again on the server; never logged. */
+  label: string;
+  apps: number;
+  categories: number;
+  sites: number;
+}
+
 /** ADR-0034 decision 1: the whole report. */
 export interface DeviceCapabilitiesV1 {
   client: CapabilityClient;
@@ -121,6 +143,8 @@ export interface DeviceCapabilitiesV1 {
    * one that could said.
    */
   profiles?: DeviceProfiles;
+  /** ADR-0037, `child-ios` only and optional: a report without it keeps the stored groups. */
+  groups?: AppGroupReport[];
 }
 
 /** The largest serialized report the server accepts (A2). */
@@ -140,4 +164,6 @@ export interface DeviceSetup {
   missing: GrantKey[];
   /** osra-security#6 item 2: the last reported other spaces, or null when no report has carried them. */
   profiles: DeviceProfiles | null;
+  /** ADR-0037: the iPhone's app groups as last reported, or null when no report has carried them. */
+  groups: AppGroupReport[] | null;
 }
