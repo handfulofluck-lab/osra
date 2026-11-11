@@ -94,6 +94,25 @@ jobs:
       # only means something if the unit tests above actually ran it. The test skips with a loud message
       # when the artefact is missing — that is what an IDE run needs and what CI must never accept — so
       # this step fails the job on a skip, a failure, or a named assertion that disappeared.
+      # Play refuses a debug-signed bundle at upload, and a green job used to hand one over without a word
+      # if the upload-key secrets went missing (#534 review). With the key configured, the bundle's signer
+      # must be the upload certificate; without it, the job says the bundle is not uploadable.
+      - name: The Play bundle is signed with the upload key when one is configured
+        env:
+          HAS_UPLOAD_KEY: ${{ secrets.OSRA_UPLOAD_KEYSTORE_B64 != '' }}
+        run: |
+          AAB=app/build/outputs/bundle/playRelease/app-play-release.aab
+          [ -f "$AAB" ] || { echo "::error::$AAB is missing"; exit 1; }
+          CERT=$(keytool -printcert -jarfile "$AAB")
+          OWNER=$(grep -m1 '^Owner:' <<<"$CERT") || { echo "::error::$AAB carries no signature"; exit 1; }
+          echo "bundle signer: $OWNER"
+          if [ "$HAS_UPLOAD_KEY" = "true" ]; then
+            grep -q 'CN=OSRA Upload Key' <<<"$OWNER" \
+              || { echo "::error::the Play bundle is not signed with the upload key"; exit 1; }
+            echo "signed with the upload key"
+          else
+            echo "::warning::no upload key configured: this bundle is debug-signed and Play will refuse it"
+          fi
       - name: Merged-manifest gate ran and did not skip (ADR-0021)
         working-directory: .
         run: node scripts/check-merged-manifest-gate.mjs
