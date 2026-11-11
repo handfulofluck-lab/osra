@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3044,11 +3043,113 @@ class AppLocalizationsAr extends AppLocalizations {
   String get riskAiConcern => 'محتوى مثير للقلق';
 
   @override
-  String get phoneSetupOtherSpaceClone => 'في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).';
+  String get phoneSetupOtherSpaceClone =>
+      'في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).';
 
   @override
   String get phoneSetupOtherSpaceWork => 'في هذا الهاتف ملف عمل.';
 
   @override
-  String get phoneSetupOtherSpaceOther => 'في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.';
+  String get phoneSetupOtherSpaceOther =>
+      'في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.';
+
+  @override
+  String get phoneSetupTitle => 'إعداد الهاتف';
+
+  @override
+  String get phoneSetupNeverReported => 'لم يبلّغ هذا الهاتف عن إمكاناته بعد.';
+
+  @override
+  String phoneSetupReported(Object age) {
+    return 'تم البلاغ $age';
+  }
+
+  @override
+  String phoneSetupStale(Object age) {
+    return 'آخر بلاغ $age — قد لا يكون الهاتف محدَّثًا بعد.';
+  }
+
+  @override
+  String get phoneSetupFixList => 'ما يجب إصلاحه على الهاتف';
+
+  @override
+  String get phoneSetupNothingMissing =>
+      'كل الأذونات التي يحتاجها هذا الهاتف ممنوحة.';
+
+  @override
+  String phoneSetupOtherSpaces(Object count) {
+    return 'مساحات أخرى على هذا الهاتف: $count';
+  }
+
+  @override
+  String get phoneSetupFeatureLockScreen => 'شاشة القفل';
+
+  @override
+  String get phoneSetupFeaturePauseScreen => 'شاشة الإيقاف';
+
+  @override
+  String get phoneSetupFeatureAppBlocking => 'حظر التطبيقات';
+
+  @override
+  String get phoneSetupFeatureScreenTime => 'وقت الشاشة';
+
+  @override
+  String get phoneSetupFeatureWebFilter => 'تصفية المواقع';
+
+  @override
+  String get phoneSetupFeaturePauseInternet => 'إيقاف الإنترنت';
+
+  @override
+  String get phoneSetupFeatureLocation => 'الموقع';
+
+  @override
+  String get phoneSetupFeatureUninstallGuard => 'حماية من الإزالة';
+
+  @override
+  String get phoneSetupFeatureNotificationScan => 'فحص الإشعارات';
+
+  @override
+  String get phoneSetupFeatureCallSmsLog => 'المكالمات والرسائل';
+
+  @override
+  String get phoneSetupStateReady => 'جاهز';
+
+  @override
+  String get phoneSetupStateDegraded => 'محدود';
+
+  @override
+  String get phoneSetupStateUnavailable => 'غير متاح';
+
+  @override
+  String get phoneSetupStateNotSupported => 'غير موجود في هذا الإصدار';
+
+  @override
+  String get grantAccessibility => 'خدمة إمكانية الوصول';
+
+  @override
+  String get grantUsageAccess => 'الوصول إلى الاستخدام';
+
+  @override
+  String get grantOverlay => 'العرض فوق التطبيقات الأخرى';
+
+  @override
+  String get grantDeviceAdmin => 'مسؤول الجهاز';
+
+  @override
+  String get grantWebFilter => 'تصفية المواقع (موافقة VPN)';
+
+  @override
+  String get grantLocation => 'الموقع (السماح دائمًا)';
+
+  @override
+  String get grantPrivateDns => 'DNS الخاص';
+
+  @override
+  String get grantBattery => 'البطارية: بدون قيود';
+
+  @override
+  String get grantUsbDebugging => 'إيقاف تصحيح USB';
+
+  @override
+  String get grantNotificationListener => 'الوصول إلى الإشعارات';
 }

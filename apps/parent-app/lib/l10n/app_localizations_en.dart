@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -2892,11 +2891,114 @@ class AppLocalizationsEn extends AppLocalizations {
   String get riskAiConcern => 'Concerning content';
 
   @override
-  String get phoneSetupOtherSpaceClone => 'This phone has a second space for cloned apps (Dual Messenger).';
+  String get phoneSetupOtherSpaceClone =>
+      'This phone has a second space for cloned apps (Dual Messenger).';
 
   @override
   String get phoneSetupOtherSpaceWork => 'This phone has a work profile.';
 
   @override
-  String get phoneSetupOtherSpaceOther => 'This phone has another space. OSRA may not reach the apps inside it.';
+  String get phoneSetupOtherSpaceOther =>
+      'This phone has another space. OSRA may not reach the apps inside it.';
+
+  @override
+  String get phoneSetupTitle => 'Phone setup';
+
+  @override
+  String get phoneSetupNeverReported =>
+      'This phone has not reported what it can do yet.';
+
+  @override
+  String phoneSetupReported(Object age) {
+    return 'Reported $age';
+  }
+
+  @override
+  String phoneSetupStale(Object age) {
+    return 'Last reported $age — the phone may not have caught up yet.';
+  }
+
+  @override
+  String get phoneSetupFixList => 'What to fix on the phone';
+
+  @override
+  String get phoneSetupNothingMissing =>
+      'Every permission this phone needs is in place.';
+
+  @override
+  String phoneSetupOtherSpaces(Object count) {
+    return 'Other spaces on this phone: $count';
+  }
+
+  @override
+  String get phoneSetupFeatureLockScreen => 'Lock screen';
+
+  @override
+  String get phoneSetupFeaturePauseScreen => 'Pause screen';
+
+  @override
+  String get phoneSetupFeatureAppBlocking => 'App blocking';
+
+  @override
+  String get phoneSetupFeatureScreenTime => 'Screen time';
+
+  @override
+  String get phoneSetupFeatureWebFilter => 'Web filter';
+
+  @override
+  String get phoneSetupFeaturePauseInternet => 'Pause internet';
+
+  @override
+  String get phoneSetupFeatureLocation => 'Location';
+
+  @override
+  String get phoneSetupFeatureUninstallGuard => 'Uninstall protection';
+
+  @override
+  String get phoneSetupFeatureNotificationScan => 'Notification scan';
+
+  @override
+  String get phoneSetupFeatureCallSmsLog => 'Calls and texts';
+
+  @override
+  String get phoneSetupStateReady => 'Ready';
+
+  @override
+  String get phoneSetupStateDegraded => 'Limited';
+
+  @override
+  String get phoneSetupStateUnavailable => 'Not available';
+
+  @override
+  String get phoneSetupStateNotSupported => 'Not in this version';
+
+  @override
+  String get grantAccessibility => 'Accessibility service';
+
+  @override
+  String get grantUsageAccess => 'Usage access';
+
+  @override
+  String get grantOverlay => 'Display over other apps';
+
+  @override
+  String get grantDeviceAdmin => 'Device admin';
+
+  @override
+  String get grantWebFilter => 'Web filter (VPN consent)';
+
+  @override
+  String get grantLocation => 'Location (allow all the time)';
+
+  @override
+  String get grantPrivateDns => 'Private DNS';
+
+  @override
+  String get grantBattery => 'Battery: unrestricted';
+
+  @override
+  String get grantUsbDebugging => 'USB debugging off';
+
+  @override
+  String get grantNotificationListener => 'Notification access';
 }

@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -4843,6 +4843,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This phone has another space. OSRA may not reach the apps inside it.'**
   String get phoneSetupOtherSpaceOther;
+
+  /// No description provided for @phoneSetupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup'**
+  String get phoneSetupTitle;
+
+  /// No description provided for @phoneSetupNeverReported.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has not reported what it can do yet.'**
+  String get phoneSetupNeverReported;
+
+  /// No description provided for @phoneSetupReported.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported {age}'**
+  String phoneSetupReported(Object age);
+
+  /// No description provided for @phoneSetupStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Last reported {age} — the phone may not have caught up yet.'**
+  String phoneSetupStale(Object age);
+
+  /// No description provided for @phoneSetupFixList.
+  ///
+  /// In en, this message translates to:
+  /// **'What to fix on the phone'**
+  String get phoneSetupFixList;
+
+  /// No description provided for @phoneSetupNothingMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Every permission this phone needs is in place.'**
+  String get phoneSetupNothingMissing;
+
+  /// No description provided for @phoneSetupOtherSpaces.
+  ///
+  /// In en, this message translates to:
+  /// **'Other spaces on this phone: {count}'**
+  String phoneSetupOtherSpaces(Object count);
+
+  /// No description provided for @phoneSetupFeatureLockScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock screen'**
+  String get phoneSetupFeatureLockScreen;
+
+  /// No description provided for @phoneSetupFeaturePauseScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause screen'**
+  String get phoneSetupFeaturePauseScreen;
+
+  /// No description provided for @phoneSetupFeatureAppBlocking.
+  ///
+  /// In en, this message translates to:
+  /// **'App blocking'**
+  String get phoneSetupFeatureAppBlocking;
+
+  /// No description provided for @phoneSetupFeatureScreenTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen time'**
+  String get phoneSetupFeatureScreenTime;
+
+  /// No description provided for @phoneSetupFeatureWebFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Web filter'**
+  String get phoneSetupFeatureWebFilter;
+
+  /// No description provided for @phoneSetupFeaturePauseInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause internet'**
+  String get phoneSetupFeaturePauseInternet;
+
+  /// No description provided for @phoneSetupFeatureLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get phoneSetupFeatureLocation;
+
+  /// No description provided for @phoneSetupFeatureUninstallGuard.
+  ///
+  /// In en, this message translates to:
+  /// **'Uninstall protection'**
+  String get phoneSetupFeatureUninstallGuard;
+
+  /// No description provided for @phoneSetupFeatureNotificationScan.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification scan'**
+  String get phoneSetupFeatureNotificationScan;
+
+  /// No description provided for @phoneSetupFeatureCallSmsLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls and texts'**
+  String get phoneSetupFeatureCallSmsLog;
+
+  /// No description provided for @phoneSetupStateReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get phoneSetupStateReady;
+
+  /// No description provided for @phoneSetupStateDegraded.
+  ///
+  /// In en, this message translates to:
+  /// **'Limited'**
+  String get phoneSetupStateDegraded;
+
+  /// No description provided for @phoneSetupStateUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get phoneSetupStateUnavailable;
+
+  /// No description provided for @phoneSetupStateNotSupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in this version'**
+  String get phoneSetupStateNotSupported;
+
+  /// No description provided for @grantAccessibility.
+  ///
+  /// In en, this message translates to:
+  /// **'Accessibility service'**
+  String get grantAccessibility;
+
+  /// No description provided for @grantUsageAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage access'**
+  String get grantUsageAccess;
+
+  /// No description provided for @grantOverlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Display over other apps'**
+  String get grantOverlay;
+
+  /// No description provided for @grantDeviceAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Device admin'**
+  String get grantDeviceAdmin;
+
+  /// No description provided for @grantWebFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Web filter (VPN consent)'**
+  String get grantWebFilter;
+
+  /// No description provided for @grantLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location (allow all the time)'**
+  String get grantLocation;
+
+  /// No description provided for @grantPrivateDns.
+  ///
+  /// In en, this message translates to:
+  /// **'Private DNS'**
+  String get grantPrivateDns;
+
+  /// No description provided for @grantBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery: unrestricted'**
+  String get grantBattery;
+
+  /// No description provided for @grantUsbDebugging.
+  ///
+  /// In en, this message translates to:
+  /// **'USB debugging off'**
+  String get grantUsbDebugging;
+
+  /// No description provided for @grantNotificationListener.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification access'**
+  String get grantNotificationListener;
 }
 
 class _AppLocalizationsDelegate
@@ -4872,9 +5058,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }

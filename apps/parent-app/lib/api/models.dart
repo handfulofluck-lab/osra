@@ -145,6 +145,12 @@ class Device {
   final DateTime? lastSeen;
   final String? pushToken;
 
+  /// ADR-0034 decision 3: what this phone says it can do, as the server judged it (`GET /v1/devices`).
+  ///
+  /// Null on any device that has never reported — every agent older than the report itself, and every
+  /// phone before its first upload. That is "we do not know yet", never "nothing works".
+  final DeviceSetup? setup;
+
   const Device({
     required this.id,
     required this.childId,
@@ -155,6 +161,7 @@ class Device {
     required this.batteryPct,
     this.lastSeen,
     this.pushToken,
+    this.setup,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -167,6 +174,75 @@ class Device {
         batteryPct: _int(json['batteryPct']),
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
+        setup: json['setup'] is Map
+            ? DeviceSetup.fromJson(Map<String, dynamic>.from(json['setup'] as Map))
+            : null,
+      );
+}
+
+/// ADR-0034 decision 3 — the "Phone setup" answer for one device.
+///
+/// [features] is the device's own verdict, **except** where the server's static table says the build cannot
+/// do a feature at all; those arrive as `not_supported` and are the server's word, not the phone's
+/// (`services/api/src/lib/capabilityTable.ts`). [missing] is the "what to fix" list: the grants the phone
+/// reported as `missing`, in the vocabulary's order.
+///
+/// [stale] is the server's judgement on its own clock (one telemetry period plus its flex, A4), so a phone
+/// that has not reported in 20 minutes is shown with its age rather than dropped.
+class DeviceSetup {
+  final DateTime? reportedAt;
+  final bool stale;
+  final Map<String, String> features;
+  final List<String> missing;
+  final DeviceProfiles? profiles;
+
+  const DeviceSetup({
+    this.reportedAt,
+    this.stale = false,
+    this.features = const {},
+    this.missing = const [],
+    this.profiles,
+  });
+
+  factory DeviceSetup.fromJson(Map<String, dynamic> json) => DeviceSetup(
+        reportedAt: DateTime.tryParse(_str(json['reportedAt'])),
+        stale: json['stale'] == true,
+        features: json['features'] is Map
+            ? {
+                for (final e in (json['features'] as Map).entries)
+                  if (e.value is String) e.key.toString(): e.value as String,
+              }
+            : const {},
+        missing: json['missing'] is List
+            ? [for (final v in json['missing'] as List) if (v is String) v]
+            : const [],
+        profiles: json['profiles'] is Map
+            ? DeviceProfiles.fromJson(Map<String, dynamic>.from(json['profiles'] as Map))
+            : null,
+      );
+
+  /// The state of one feature, or null when this device never mentioned it.
+  ///
+  /// Null is *not* `unavailable`: a build that cannot do a feature **omits** the key rather than claiming
+  /// `not_supported` (the server's word), so an absent key is "the phone did not say", and the screen says
+  /// nothing rather than something false.
+  String? feature(String key) => features[key];
+}
+
+/// osra-security#6 item 2 — how many other users or profiles the phone holds, and of what kinds.
+///
+/// Counts and kinds only: no user id, name or app list ever leaves the phone.
+class DeviceProfiles {
+  final int others;
+  final List<String> kinds;
+
+  const DeviceProfiles({this.others = 0, this.kinds = const []});
+
+  factory DeviceProfiles.fromJson(Map<String, dynamic> json) => DeviceProfiles(
+        others: _int(json['others']),
+        kinds: json['kinds'] is List
+            ? [for (final v in json['kinds'] as List) if (v is String) v]
+            : const [],
       );
 }
 
