@@ -148,6 +148,8 @@ Durations are never a slider.
 
 In Arabic the strip and the week run right to left.
 
+For a child on an iPhone, usage comes by group and in steps, not by app. See 6.1.
+
 ### 3.7 Map
 
 All children on one map with their colour pins and the family's saved places as dashed circles. Below the map: one
@@ -233,13 +235,35 @@ The same tokens, the same anatomy, the same words. Each platform uses its native
 |---|---|---|
 | Parent app, Android and iPhone | `apps/parent-app` (Flutter) | All of section 3. `lib/theme/app_tokens.dart` takes its values from `tokens.json`; `test/design_system_test.dart` keeps the contrast checks. |
 | OSRA Kids, Android | `apps/child-android` (Kotlin, Compose) | All of section 4. A Compose theme reads the same values. |
-| OSRA Kids, iPhone | `apps/child-ios` (SwiftUI) | Section 4. The shield that Apple draws takes its colours and text from the tokens through `ShieldConfiguration`; its layout is Apple's. App choice happens in Apple's picker on the iPhone, so the parent's Apps card for an iPhone child says "Apps on Alex's iPhone are chosen on the iPhone" and starts that step. |
+| OSRA Kids, iPhone | `apps/child-ios` (SwiftUI) | Section 4. The shield that Apple draws takes its colours and text from the tokens through `ShieldConfiguration`; its layout is Apple's. What the parent sees for an iPhone child is in 6.1. |
 | Windows child | `apps/agent-desktop` (.NET) | Pairing dialog, lock overlay, time-left window, Ask. Same colours, type, words and button order. |
 | macOS child | `apps/agent-macos` (.NET) | The same four surfaces as Windows. |
 | Parent on a wide screen | `apps/parent-app` | Children on the left, the child page on the right, at 840 px and wider. |
 
 A card for a feature that a device reports as `not_supported` is shown with one line that says so, never hidden and
 never drawn as if it worked.
+
+### 6.1 A child on an iPhone
+
+Apple's Family Controls gives OSRA opaque tokens for the apps a parent picks, not their names, and its usage report
+cannot leave the child's phone. Confirmed by Ahmed on PR 557 (11 Nov 2026). The parent app therefore shows an iPhone
+child in groups, on every parent phone:
+
+- **Choosing apps.** Apps are chosen on the child's iPhone, in Apple's picker, behind the parent PIN (ADR-0037). The
+  Apps card says "Choose apps on Sara's iPhone" and explains the step. It never shows an empty app list.
+- **Group rows.** After the choice, the card lists groups, each with its label and counts ("Games: 5 apps, 1
+  category") and its state (blocked, or its daily limit). No app names and no app icons appear anywhere for an
+  iPhone child.
+- **Limits.** A limit is set per group from any parent phone ("Games: 1 hour a day") and the iPhone enforces it. A
+  limit on one named app is not offered for an iPhone child.
+- **Usage.** Usage arrives per group and in steps, when a group passes a registered threshold. The day and week
+  charts in 3.6 draw groups in place of apps, and the figure reads "over 1 hour", never an exact minute count. The
+  top-apps list is replaced by the group list.
+- **Older rules.** A rule that names an app by its bundle id reads "hidden on iPhone".
+- **One honest line.** Under the usage card: "iPhone reports time by group. Apple's Screen Time in Settings can show
+  each app." The parent is never left to think the detail is missing by mistake.
+
+An Android child keeps the per-app cards and charts of section 3 unchanged.
 
 ## 7. Data the design needs
 
