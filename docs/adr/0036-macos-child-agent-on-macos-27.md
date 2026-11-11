@@ -48,9 +48,9 @@ described as something a third-party app can switch on, read or extend.
 | `ServiceManagement` (`SMAppService`) | **macOS 13+** | **Yes.** Install the agent as a root daemon the child cannot unload. |
 | Declarative device management (macOS 27): binary execution control (built on Endpoint Security), the consolidated privacy consent prompt, app configuration | macOS 27, **MDM only** (WWDC26 session 206) | **Not for v1.** Needs OSRA to be an MDM server with Apple's MDM push certificate; whether an Individual developer account can obtain one is **unconfirmed** (we believe it needs an Organization account). |
 
-**Unconfirmed, to test on the M2 (spike below):** that Apple's documentation is complete for macOS 27
-(i.e. that `FamilyControls` really is absent on a native macOS 27 app, not merely undocumented), and that
-an iPhone app run on an Apple-silicon Mac ("Designed for iPad") cannot get Family Controls authorisation.
+**Confirmed on the M2, 2026-11-11 (spike rows (a) and (b) below):** `FamilyControls` is absent on a
+native macOS 27 app and on Mac Catalyst. It is not merely undocumented; the SDK marks it unavailable. An
+iPhone app run on an Apple-silicon Mac ("Designed for iPad") cannot get Family Controls authorisation.
 
 ### What already exists in the repo
 
@@ -119,8 +119,9 @@ an iPhone app run on an Apple-silicon Mac ("Designed for iPad") cannot get Famil
   as a later option.
 - **Keep the .NET scaffold.** It shares nothing with the iOS agent, and the parts that matter on a Mac
   (filter, Endpoint Security) are native extensions .NET cannot be.
-- **Run the iPhone agent on the Mac ("Designed for iPad").** Family Controls is not expected to authorise
-  there (unconfirmed; tested in the spike) and it would enforce nothing at the Mac level.
+- **Run the iPhone agent on the Mac ("Designed for iPad").** Family Controls does not authorise
+  there (spike row (b): "couldn't communicate with a helper app"), and it would enforce nothing at the
+  Mac level.
 
 ## Competitive position
 
@@ -164,6 +165,22 @@ unavailable; (b) the iOS child agent installed as "Designed for iPad" cannot obt
 (c) a Developer-ID-signed `NEFilterDataProvider` system extension activates on a Standard user and
 blocks a test domain in Safari and Chrome; (d) `DeclaredAgeRange` returns a band for the test child
 account.
+
+**Spike results (M2, macOS 27.2, Xcode 27.2, MacOSX27.2 SDK, 2026-11-11):**
+
+- **(a) PASS.** `import FamilyControls` compiles natively because the framework ships in the SDK. The
+  call then fails with `error: 'AuthorizationCenter' is unavailable in macOS`. On Mac Catalyst
+  (`arm64-apple-ios27.0-macabi`) it fails with `'AuthorizationCenter' is unavailable in Mac Catalyst` and
+  `'requestAuthorization(for:)' is unavailable in Mac Catalyst`. The SDK's `FamilyControls.swiftinterface`
+  marks `AuthorizationCenter` `@available(macCatalyst, unavailable) @available(macOS, unavailable)`.
+  ManagedSettings has 54 macOS-unavailable declarations and none available; `ManagedSettingsStore` is
+  iOS 15 and tvOS 26 only.
+- **(b) PASS.** The signed iPhone child agent builds as "Designed for iPad", launches and pairs on the
+  Mac. "Turn on Screen Time" then fails with "couldn't communicate with a helper app".
+- **(c), (d)** deferred. They are not needed to proceed: the design does not depend on them. (c) is
+  re-checked in build step (iii), and (d) needs a child account on a Mac.
+
+The gate in rule 1 above is met: the design holds, and build step (i) may start.
 
 ## Costs
 
