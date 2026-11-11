@@ -222,12 +222,13 @@ extension LiveAPITests {
     // 11. ADR-0037 (5.5 PR B2): this phone's report passes the server's strict schema and the group reaches the
     // parent. The report is built in-process (it is pure, so no FamilyControls), with one group, and uploaded the
     // way the app uploads it. `live-api.mjs verify` reads `setup.groups` back from `GET /v1/devices` as the parent
-    // and checks the id, label and counts. Named `test9c…` so it runs last: case 9's app report sends the
-    // simulator's empty store (`groups: []`), which this case then replaces.
+    // and checks the id, label and counts. Named `test9z…` so it runs last: XCTest orders the names without
+    // regard to case (`test9b`, then `test9L…`, then `test9z`), and case 9's app report sends the simulator's empty
+    // store (`groups: []`), which this case must replace, not precede (run 43107352421 ran a `test9c` first).
     static let liveGroup = CapabilityReport.Group(id: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B", label: "Live group",
                                                   counts: AppGroupCounts(apps: 3, categories: 1, sites: 2))
 
-    func test9cCapabilityReportWithAGroupIsStored() async throws {
+    func test9zCapabilityReportWithAGroupIsStored() async throws {
         _ = try input("OSRA_TEST_API_BASE")
         let identity = try XCTUnwrap(AgentIdentityStore.load(), "the claim case did not leave a paired identity")
         let report = CapabilityReport(client: CapabilityReport.Client(version: "0.2.0", build: 2, flavour: .dev),
