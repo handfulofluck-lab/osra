@@ -76,6 +76,20 @@ final class AgentIdentityStoreTests: XCTestCase {
         XCTAssertFalse(AgentIdentityStore.clearOrphanedSecrets(), "nothing left to clear")
     }
 
+    func testAnOrphanedParentPinGoesWithTheOtherSecrets() {
+        // ADR-0037: a reinstall must not hand the old PIN to the next pairing.
+        store.write("pbkdf2$1$AA==$AA==", for: ParentPinStore.account)
+        XCTAssertTrue(AgentIdentityStore.clearOrphanedSecrets())
+        XCTAssertNil(store.read(ParentPinStore.account))
+    }
+
+    func testAPairedPhonesPinIsKept() {
+        XCTAssertTrue(AgentIdentityStore.save(identity))
+        store.write("pbkdf2$1$AA==$AA==", for: ParentPinStore.account)
+        XCTAssertFalse(AgentIdentityStore.clearOrphanedSecrets())
+        XCTAssertNotNil(store.read(ParentPinStore.account))
+    }
+
     func testAPairedPhonesSecretsAreKept() {
         XCTAssertTrue(AgentIdentityStore.save(identity))
         XCTAssertFalse(AgentIdentityStore.clearOrphanedSecrets())
