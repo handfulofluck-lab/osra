@@ -361,14 +361,21 @@ class PairingActivity : ComponentActivity() {
                 )
             }
 
-            val server = editText(scanned?.apiBaseUrl ?: prefillServer, InputType.TYPE_TEXT_VARIATION_URI).apply {
+            // G4: a scanned code wins, then the build's own server, then what the tester typed. A locked
+            // field is never empty — `PairingServerFieldPolicy` owns that rule and its rows.
+            val serverField = PairingServerFieldPolicy.field(
+                scannedUrl = scanned?.apiBaseUrl,
+                builtInUrl = com.familyshield.agent.BuildConfig.API_BASE,
+                typed = prefillServer,
+            )
+            val server = editText(serverField.value, InputType.TYPE_TEXT_VARIATION_URI).apply {
                 hint = getString(R.string.pair_server_hint)
-                isEnabled = scanned == null
+                isEnabled = serverField.editable
             }
             val code = editText(scanned?.code ?: prefillCode, InputType.TYPE_CLASS_NUMBER).apply {
                 filters = arrayOf(InputFilter.LengthFilter(6))
                 hint = getString(R.string.pair_code_hint)
-                isEnabled = scanned == null
+                isEnabled = PairingServerFieldPolicy.codeEditable(serverField)
             }
             val name = editText(prefillName, InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { hint = getString(R.string.pair_name_hint) }
             formServer = server
