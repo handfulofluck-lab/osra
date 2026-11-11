@@ -82,11 +82,9 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "0.2.0"
-        // G4 of the customer guide: the server this build pairs against, so a store build never asks a child
-        // to type an address the parent's screen cannot show. Empty by default (a test or sideloaded build
-        // keeps today's editable field). CI passes it from the same repository variable the parent app uses.
-        val apiBase = (System.getenv("OSRA_API_BASE") ?: project.findProperty("osra.apiBase") ?: "").toString()
-        buildConfigField("String", "API_BASE", "\"$apiBase\"")
+        // G4 of the customer guide. Declared here so every variant has the field; the real value is set on
+        // `release` only (below), because a debug APK is what a tester points at a LAN server.
+        buildConfigField("String", "API_BASE", "\"\"")
     }
     signingConfigs {
         create("release") {
@@ -122,6 +120,25 @@ android {
                 logger.warn("OSRA: no release keystore in the environment (OSRA_UPLOAD_KEYSTORE / _PASSWORD / OSRA_UPLOAD_KEY_ALIAS / OSRA_UPLOAD_KEY_PASSWORD) — release APK is debug-signed")
                 signingConfigs.getByName("debug")
             }
+            // G4 of the customer guide: the server a store build pairs against, so it never asks a child to
+            // type an address the parent's screen cannot show. Read from the same repository variable the
+            // parent app uses (`OSRA_API_BASE`), or `-Posra.apiBase=` locally. Checked here rather than only
+            // in CI, so a quoted or cleartext value cannot reach the generated source at all; `debug` keeps
+            // the empty default, because a debug APK is what a tester points at a LAN server.
+            val pairApiBase = (System.getenv("OSRA_API_BASE") ?: project.findProperty("osra.apiBase") ?: "")
+                .toString().trim()
+            if (pairApiBase.isNotEmpty() && !pairApiBase.startsWith("https://")) {
+                throw GradleException(
+                    "OSRA_API_BASE must start with https:// (got '$pairApiBase'): a release bundle refuses " +
+                        "cleartext, so a pairing address that is not https cannot work.",
+                )
+            }
+            // A URL is letters, digits and a short punctuation set. Anything else — a quote, a
+            // backslash, a space — would break the generated Java source, so it fails here instead.
+            if (pairApiBase.isNotEmpty() && Regex("[^A-Za-z0-9:/._~-]").containsMatchIn(pairApiBase)) {
+                throw GradleException("OSRA_API_BASE may only contain letters, digits and :/._~- (got '$pairApiBase')")
+            }
+            buildConfigField("String", "API_BASE", "\"$pairApiBase\"")
         }
         debug {
             // The debug build keeps cleartext (LAN / 10.0.2.2 dev servers) via src/debug/res/xml/network_security_config.xml.
