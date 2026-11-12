@@ -271,7 +271,7 @@ class DeviceSetup {
   /// The wire key the administrator fact travels under, spelled as ADR-0041 D5.5 names it (#662): a fact
   /// rather than a feature, so the Phone setup chips skip it and the child page renders it as the one
   /// warning sentence instead.
-  static const String accountAdminKey = 'child_account_admin';
+  static const String accountAdminKey = 'account_admin';
 }
 
 /// osra-security#6 item 2 — how many other users or profiles the phone holds, and of what kinds.
