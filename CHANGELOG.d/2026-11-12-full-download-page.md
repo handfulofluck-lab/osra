@@ -12,3 +12,8 @@
   chat-app notifications, WhatsApp calls and searches. It is a draft for the maintainer's approval.
 - `site/style.css`: long codes wrap instead of widening the page on a phone. The site stack serves `.js`
   as `text/javascript`.
+- **Design language (roadmap 3.19):** the three `/android/` pages use the site's shared top bar, card and footer,
+  the Download link is the 52-high primary button, the draft lines are `.notice` boxes, and the Arabic page has no
+  style of its own (`text-align: start` in the shared sheet mirrors the table). The install drawings and the video
+  are re-rendered in IBM Plex Sans / IBM Plex Sans Arabic and the Calm colours of `docs/design/tokens.json`
+  (they were Nunito, Noto Sans Arabic and indigo). The version line under the button reads «الإصدار» on the Arabic page.

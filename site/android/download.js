@@ -11,7 +11,8 @@
       var link = document.getElementById("dl-link");
       link.href = m.url;
       var mb = m.size ? " · " + (m.size / 1048576).toFixed(1) + " MB" : "";
-      document.getElementById("dl-meta").textContent = "Version " + String(m.versionName || "") + mb;
+      var word = document.documentElement.lang === "ar" ? "الإصدار " : "Version ";
+      document.getElementById("dl-meta").textContent = word + String(m.versionName || "") + mb;
       ready.hidden = false;
       document.getElementById("dl-wait").hidden = true;
     })

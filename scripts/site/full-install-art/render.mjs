@@ -1,5 +1,5 @@
 // ADR-0039 PR E: renders the install drawings and the walk-through video for osratech.com/android from
-// scenes.html. Usage: FONT_DIR=<dir with the Nunito + Noto Sans Arabic woff2 files> node render.mjs <repo root>
+// scenes.html, in the site's own IBM Plex fonts (site/fonts) and the Calm tokens. Usage: node render.mjs <repo root>
 // Writes site/android/img/<scene>-<lang>.webp and site/android/video/install-<lang>.mp4 (needs ffmpeg).
 import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright"); // global install in CI images; NODE_PATH=$(npm root -g)
@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = process.argv[2];
-const fontDir = process.env.FONT_DIR;
-if (!root || !fontDir) throw new Error("usage: FONT_DIR=<fonts> node render.mjs <repo root>");
+if (!root) throw new Error("usage: node render.mjs <repo root>");
+const fontDir = join(root, "site/fonts");
 const imgDir = join(root, "site/android/img");
 const vidDir = join(root, "site/android/video");
 const tmp = join(here, ".tmp");

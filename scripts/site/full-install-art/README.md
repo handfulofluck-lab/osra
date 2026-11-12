@@ -4,9 +4,11 @@
 `site/android/img/<scene>-<lang>.webp` and `site/android/video/install-<lang>.mp4` (+ poster).
 
 ```bash
-# fonts: Nunito 400/800 (latin) and Noto Sans Arabic 400/800 (arabic) woff2 from @fontsource, in one folder
-NODE_PATH=$(npm root -g) FONT_DIR=/path/to/fonts node scripts/site/full-install-art/render.mjs "$PWD"
+NODE_PATH=$(npm root -g) node scripts/site/full-install-art/render.mjs "$PWD"
 ```
+
+The drawings use the site's own fonts (`site/fonts`, IBM Plex Sans and IBM Plex Sans Arabic) and the Calm
+(light) colours of `docs/design/tokens.json`, so they match the page and the apps (roadmap 3.19).
 
 Needs Playwright with Chromium and ffmpeg. The drawings are illustrations, not screenshots: Android's own
 wording differs by version and maker, so the page text names the buttons and the drawings show where they

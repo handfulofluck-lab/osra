@@ -46,6 +46,7 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0035](0035-payment-surfaces-at-bedtime.md) | OS payment surfaces (Samsung Pay, Google Wallet, OEM banking shells) stay blocked during bedtime; nothing joins the essential set, the parent copy says so beside the always-allowed control, and a JVM pin fails if a wallet-like name enters the set (#172) | accepted |
 | [0036](0036-macos-child-agent-on-macos-27.md) | The macOS child agent: Apple's Screen Time is the floor (no `FamilyControls` on macOS), OSRA adds a Swift agent sharing the iOS core, an all-browser content filter, a root daemon, overlay (then Endpoint Security) app blocking and a Safeguard check; build started now, in parallel (maintainer, 2026-11-11) | accepted |
 | [0037](0037-ios-app-groups-and-parent-pin.md) | iOS: app groups chosen with `FamilyActivityPicker` on the child phone behind a parent PIN (ADR-0010 rules, set at pairing, never on the server); blocked groups get the OSRA shield from their own store, bundle-id rules stay hidden; the server will learn groups by id, label and counts only, in PR B (#372) | accepted |
+| [0039](0039-full-build-website-download.md) | The Full child app is its own app (`com.osratech.child.full`) with its own signing key, downloaded from `osratech.com/android`, updating itself from an Ed25519-signed `latest.json` and refusing downgrades and foreign APKs; search capture ships Full-first; the Play build gains nothing (roadmap 5.10) | accepted |
 
 ## Writing a new ADR
 
