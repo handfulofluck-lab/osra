@@ -18,6 +18,7 @@ import { inviteRoutes } from "./routes/invites.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { meRoutes } from "./routes/me.js";
 import { accountRoutes } from "./routes/account.js";
+import { billingRoutes } from "./routes/billing.js";
 import { startDigestScheduler } from "./jobs/digestScheduler.js";
 import { registerRealtime } from "./realtime/gateway.js";
 import { startUsageRollupScheduler } from "./jobs/usageRollup.js";
@@ -128,6 +129,9 @@ await app.register(meRoutes, { prefix: "/v1/me" });
 // #442 PR 3: the public account-deletion pages (Play's web link). No session; the two POSTs carry
 // AUTH_RATE_LIMIT themselves.
 await app.register(accountRoutes, { prefix: "/v1/account" });
+// ADR-0041 D2 / #620: Play purchase verification (a parent session) and the Pub/Sub push (its own OIDC
+// token). Both write the plan only through `lib/entitlement.ts`.
+await app.register(billingRoutes, { prefix: "/v1/billing" });
 
 registerRealtime(app);
 
