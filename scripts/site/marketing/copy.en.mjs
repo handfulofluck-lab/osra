@@ -36,7 +36,7 @@ export default {
 
   proof: [
     { icon: "eu", title: "Stored in the EU", text: "Family data is kept in the European Union." },
-    { icon: "noad", title: "No ads, ever", text: "We do not sell data or use it for advertising." },
+    { icon: "noad", title: "No ads", text: "We do not sell data or use it for advertising." },
     { icon: "lang", title: "Arabic and English", text: "The parent and child apps speak both." },
     { icon: "eye", title: "Never hidden", text: "Your child always sees OSRA on their phone." },
   ],
@@ -78,15 +78,15 @@ export default {
       { q: "Where is our data kept?", a: "Stored in the European Union.", d: "Location history is deleted after 30 days. Message text that raises no concern is not stored." },
       { q: "Will my child know it is there?", a: "Yes. OSRA never hides.", d: "Your child sees the OSRA icon and a notification whenever it runs. We recommend telling them what it does and why." },
       { q: "Can I act at once, and know it worked?", a: "Lock, ring, pause or give bonus time in one tap.", d: "Each command shows when it reached the phone and when the phone confirmed it." },
-      { q: "Does one plan cover every platform?", a: "One family plan, across every platform.", d: "Buy it once in the app, and it covers your child on Android, iPhone, Windows and Mac." },
-      { q: "Does it show ads or sell our data?", a: "No, and it never will.", d: "OSRA has no advertising or analytics code, and we do not sell data or share it for anyone else's purposes." },
+      { q: "Does one plan cover every platform?", a: "That is our plan for launch.", d: "One family subscription, bought in the app, is planned to cover your child on Android, iPhone, Windows and, when it arrives, Mac." },
+      { q: "Does it show ads or sell our data?", a: "No.", d: "OSRA shows no ads, and we do not sell data or share it for anyone else's purposes." },
     ],
   },
 
   platforms: {
     kicker: "Every screen at home",
-    h2: "One family plan, every device",
-    lede: "Your child's phone, tablet and computer, under the same rules.",
+    h2: "Every device, the same rules",
+    lede: "Your child's phone, tablet and computer, under one set of rules. At launch, one family plan is planned to cover them all.",
     items: [
       { icon: "android", title: "Android", status: "In beta December", cls: "", lines: ["Parent app and OSRA Kids on Google Play", "Android 8.0 or later"] },
       { icon: "phone", title: "iPhone and iPad", status: "In beta December", cls: "", lines: ["Parent app and OSRA Kids on the App Store", "Built on Apple's Screen Time"] },
@@ -112,7 +112,7 @@ export default {
     h2: "Questions parents ask",
     items: [
       { q: "When can I get OSRA?", a: "A closed beta starts in December 2026 on Android, iPhone and Windows. Email us to join it. Public release follows, and Mac comes in 2027." },
-      { q: "How much does it cost?", a: "Plans are announced at launch. You buy inside the app, through Google Play or the App Store, and one family plan covers your family on Android, iPhone, Windows and Mac." },
+      { q: "How much does it cost?", a: "Plans are announced at launch. You buy inside the app, through Google Play or the App Store, and one family plan is planned to cover your family on Android, iPhone, Windows and, when it arrives, Mac." },
       { q: "Will my child know OSRA is installed?", a: "Yes. OSRA shows its icon and a notification on your child's phone at all times. It is made for parents and legal guardians supervising their own children, and must not be installed on anyone else's phone." },
       { q: "Does OSRA read my child's messages?", a: "Only on-screen text in the chat apps you choose is checked for warning signs. Phone numbers and email addresses are masked on the phone before sending, and only flagged excerpts are kept, encrypted. The Google Play version does not read SMS, call logs or notifications." },
       { q: "Can two parents use it?", a: "Yes. The family owner invites a second parent or guardian, who manages the same children with their own login." },
@@ -138,14 +138,14 @@ export default {
     description: "Get the OSRA parent app and OSRA Kids for Android, iPhone, Windows and Mac.",
     kicker: "Closed beta · December 2026",
     h1: "Download OSRA",
-    lede: "Two apps work together: OSRA on your phone, and OSRA Kids on each device your child uses. You pay inside the app, and one family plan covers every device.",
+    lede: "Two apps work together: OSRA on your phone, and OSRA Kids on each device your child uses. You pay inside the app, and at launch one family plan is planned to cover every device.",
     soon: "Coming with the beta",
     parent: { title: "OSRA", sub: "The parent app, for your phone", text: "Set rules, see where your child is, and get alerts." },
     kids: { title: "OSRA Kids", sub: "For each phone or tablet your child uses", text: "Applies your rules on the device, always visibly." },
     play: "Google Play", appstore: "App Store", getOn: "Get it on", downloadOn: "Download on the",
     computers: { h2: "Computers", lede: "OSRA Kids for your child's computer, downloaded from this site." },
-    windows: { title: "OSRA Kids for Windows", status: "In beta December", text: "Your rules on your child's PC, under the same family plan." },
-    mac: { title: "OSRA Kids for Mac", status: "2027", text: "The same rules on your child's Mac, under the same family plan." },
+    windows: { title: "OSRA Kids for Windows", status: "In beta December", text: "Your rules on your child's PC." },
+    mac: { title: "OSRA Kids for Mac", status: "2027", text: "The same rules on your child's Mac, when it arrives." },
     full: {
       h2: "OSRA Kids Full for Android",
       status: "With the first release",

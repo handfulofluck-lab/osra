@@ -6,7 +6,8 @@ name: site-pages
 # a merge to main never publishes. The site moves back to CloudFront if AWS ever verifies the account.
 #
 # What goes out is exactly `site/` on main, after the design gate passes, minus `site/android/`
-# (the Full app's download page), which must not be public before its release security gate is signed.
+# (the Full app's download page), which must not be public before its release security gate is signed,
+# and minus `site/ar/` until the Arabic Language Bureau signs the Arabic pages.
 on:
   workflow_dispatch:
     inputs:
@@ -45,6 +46,11 @@ jobs:
           cp -R site/. _site/
           rm -rf _site/android
           test ! -e _site/android
+          # The Arabic marketing pages go out only after the Arabic Language Bureau signs them; then this line
+          # and ARABIC_PUBLISHED in scripts/site/marketing/build.mjs change together.
+          rm -rf _site/ar
+          test ! -e _site/ar
+          ! grep -rq 'href="/ar/' _site --include=*.html
           test -f _site/privacy/index.html
           test -f _site/delete-account/index.html
           printf 'osratech.com\n' > _site/CNAME

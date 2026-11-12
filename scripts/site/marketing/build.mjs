@@ -41,6 +41,12 @@ const SOCIAL = PREVIEW_SOCIAL
     ]
   : [];
 
+// The Arabic pages are built and reviewed, but published only after the Arabic Language Bureau signs them
+// (site-pages.yml leaves site/ar/ out until then). While this is false, the English pages carry no link or
+// hreflang to /ar/, so the live site never points at a page that is not there.
+const ARABIC_PUBLISHED = false;
+const showOther = (c) => c.lang === "ar" || ARABIC_PUBLISHED;
+
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const p = (c, path) => (c.lang === "ar" ? `/ar${path}` : path); // a marketing page in the reader's language
 
@@ -61,8 +67,7 @@ function head(c, { title, description, path, alt }) {
 <meta property="og:image" content="https://osratech.com/apple-touch-icon.png">
 <link rel="canonical" href="${path}">
 <link rel="alternate" hreflang="${c.lang}" href="${path}">
-<link rel="alternate" hreflang="${c.other.lang}" href="${alt}">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
+${showOther(c) ? `<link rel="alternate" hreflang="${c.other.lang}" href="${alt}">\n` : ""}<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -74,7 +79,7 @@ function topbar(c, current, alt) {
   return `<a class="skip" href="#content">${esc(c.nav.skip)}</a>
 <header class="top">
 <a class="brand" href="${c.root}" aria-label="OSRA"><img src="/icon.svg" alt="" width="32" height="32">OSRA <span lang="ar" dir="rtl">أسرة</span></a>
-<nav aria-label="${esc(c.nav.site)}">${link(`${c.root}#features`, c.nav.features)}${link(p(c, "/guide/"), c.nav.guide, "guide")}${link(p(c, "/download/"), c.nav.download, "download")}<a href="${alt}" hreflang="${c.other.lang}" lang="${c.other.lang}">${esc(c.other.label)}</a><a class="cta" href="${c.beta}">${esc(c.nav.join)}</a></nav>
+<nav aria-label="${esc(c.nav.site)}">${link(`${c.root}#features`, c.nav.features)}${link(p(c, "/guide/"), c.nav.guide, "guide")}${link(p(c, "/download/"), c.nav.download, "download")}${showOther(c) ? `<a href="${alt}" hreflang="${c.other.lang}" lang="${c.other.lang}">${esc(c.other.label)}</a>` : ""}<a class="cta" href="${c.beta}">${esc(c.nav.join)}</a></nav>
 </header>
 `;
 }
