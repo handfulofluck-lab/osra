@@ -484,11 +484,17 @@ class PairingActivity : ComponentActivity() {
             error.setTextColor(0xFFB00020.toInt())
             error.visibility = View.GONE
             result.onSuccess { pairing ->
-                settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)
-                startAgent()
-                // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
-                // that gates every protection-removal action from here on.
-                if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
+                if (settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)) {
+                    startAgent()
+                    // ADR-0010: the parent is holding the phone right now — this is the moment to set the PIN
+                    // that gates every protection-removal action from here on.
+                    if (pinStore.isConfigured()) showProtectionSetup() else showSetPin()
+                } else {
+                    // osra-security#8 F2 follow-up: the secure store could not persist the pairing, so nothing
+                    // was started and nothing is cached as paired. The form already names the state above.
+                    error.text = getString(R.string.wipe_detected_notice)
+                    error.visibility = View.VISIBLE
+                }
             }.onFailure { e ->
                 error.text = userMessage(e)
                 error.visibility = View.VISIBLE
@@ -610,9 +616,14 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
-    /** Issue #81: this unpaired phone still holds our admin grant but no PIN — its OSRA data was cleared. */
+    /**
+     * Issue #81 and osra-security#8 F2 follow-up: an unpaired phone whose OSRA data was cleared while admin stayed
+     * active, or whose encrypted store failed closed, is recognised here and flags the next claim and the form notice.
+     */
     private fun dataClearedDetected(): Boolean =
-        WipeDetector.dataCleared(deviceAdmin.isAdminActive(), paired = false, pinConfigured = pinStore.isConfigured())
+        // osra-security#8 F2 follow-up: a fail-closed store is a wipe signature too, whatever the admin tier.
+        settings.secureStoreUnreadable() ||
+            WipeDetector.dataCleared(deviceAdmin.isAdminActive(), paired = false, pinConfigured = pinStore.isConfigured())
 
     /** Runs [action] only after the parent PIN is verified on the guard screen; no PIN yet → runs at once. */
     private fun requirePin(reason: String, action: () -> Unit) {
