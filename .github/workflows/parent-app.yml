@@ -279,3 +279,23 @@ jobs:
             done
           done
           echo "en and ar Localizable.strings are in Runner.app with both keys"
+      # #616 / ITMS-90683: Apple's static scan reads the BUILT bundle, and the Google Maps iOS SDK links
+      # CoreLocation whether or not the app asks for a fix — the first TestFlight upload was rejected for a
+      # missing NSLocationWhenInUseUsageDescription. Asserting the key in ios/Runner/Info.plist would pass
+      # while the value never reached Runner.app, so this reads the bundle, and the localized copy in it.
+      - name: The built bundle carries the location purpose string Apple requires (ITMS-90683)
+        run: |
+          APP=build/ios/iphoneos/Runner.app
+          BPLIST="$APP/Info.plist"
+          test -f "$BPLIST" || { echo "missing $BPLIST" >&2; exit 1; }
+          V=$(/usr/libexec/PlistBuddy -c 'Print :NSLocationWhenInUseUsageDescription' "$BPLIST") \
+            || { echo "NSLocationWhenInUseUsageDescription is missing from the built bundle (ITMS-90683)" >&2; exit 1; }
+          echo "purpose string: $V"
+          case "$V" in *[![:space:]]*) ;; *) echo "the purpose string is empty" >&2; exit 1;; esac
+          F="$APP/en.lproj/InfoPlist.strings"
+          test -f "$F" || { echo "missing $F" >&2; ls "$APP" >&2; exit 1; }
+          plutil -lint "$F"
+          L=$(plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$F") \
+            || { echo "the en localized purpose string is missing" >&2; exit 1; }
+          case "$L" in *[![:space:]]*) ;; *) echo "the en localized purpose string is empty" >&2; exit 1;; esac
+          echo "en.lproj/InfoPlist.strings ships in the bundle with the same key"
