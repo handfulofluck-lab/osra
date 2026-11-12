@@ -17,15 +17,16 @@
 </header>
 <main>
 <h1>OSRA privacy policy</h1>
-<p class="meta">Effective 11 November 2026.</p>
+<p class="meta">Effective 12 November 2026.</p>
 
-<p>This policy explains what the OSRA apps collect, why, where it is kept, for how long, and how to delete it. It covers the <strong>OSRA</strong> parent app and the <strong>OSRA child app</strong> distributed on Google Play. In this policy, "we" means the developer of OSRA named on our Google Play listing. You can reach us at <a href="mailto:support@osratech.com">support@osratech.com</a>.</p>
+<p>This policy explains what the OSRA apps collect, why, where it is kept, for how long, and how to delete it. It covers the <strong>OSRA</strong> parent app and the <strong>OSRA child app</strong> (OSRA Kids) distributed on Google Play and on Apple's App Store. An OSRA app distributed in any other way has its own notice, shown where you download it. In this policy, "we" means the developer of OSRA named on the app's Google Play or App Store listing, who decides how this data is used (the "controller" in European law). You can reach us at <a href="mailto:support@osratech.com">support@osratech.com</a>.</p>
 
 <h2>1. Who OSRA is for</h2>
 <p>OSRA is for parents and legal guardians who supervise their own children's phones. A parent creates the account in the OSRA app and pairs the child's phone with the OSRA child app. The child app is visible on the child's phone and shows that it is active. OSRA must not be used to monitor another adult or anyone you are not responsible for.</p>
 <p>Accounts are for adults (18 or over). Children do not create accounts; a child's data belongs to the family account the parent created.</p>
 
 <h2>2. What the OSRA child app collects</h2>
+<h3>On an Android phone</h3>
 <p>The child app sends the following to the family's account, so the parent can see it in the OSRA app:</p>
 <ul>
   <li><strong>Location</strong>, including in the background: the phone's position, its accuracy and the time. It is used to show where the child is, to answer the parent's "locate now" request, and for alerts when the child arrives at or leaves a place the parent has set.</li>
@@ -39,6 +40,15 @@
 <p>The child app does <strong>not</strong> read SMS or MMS messages, call logs, email, contacts, photos, videos, files or the calendar. It does not record audio. The camera is used only to scan the pairing QR code, and no image is stored or sent.</p>
 <p><strong>Web filtering.</strong> To apply the parent's website rules, the child app runs a local filter on the phone (Android shows it as a VPN). Web addresses are checked on the phone and are <strong>not</strong> sent to us, and we do not keep a browsing history. Name lookups are forwarded to the network's own DNS resolver; when that resolver cannot be found, they go to the public resolvers of Cloudflare (1.1.1.1) and Google (8.8.8.8), under those companies' own privacy policies.</p>
 
+<h3>On an iPhone</h3>
+<p>On an iPhone the child app (OSRA Kids) works through Apple's Screen Time framework and collects less. It sends:</p>
+<ul>
+  <li><strong>Location</strong>, including in the background, for the same purposes as on Android.</li>
+  <li><strong>Blocks and requests</strong>: that a group of apps the parent chose was blocked, and the child's request for access to it.</li>
+  <li><strong>Device and app information</strong>: the iPhone's model and iOS version, which OSRA permissions are switched on, the version of the app, and a push-notification token.</li>
+</ul>
+<p>On an iPhone the child app does <strong>not</strong> read chat messages or anything else on the screen, does not filter or see web traffic, and does not report minutes of use per app. Apple does not give OSRA the names of the apps on the iPhone: the parent chooses groups of apps on the iPhone itself, and we receive only the names the parent gives those groups. It also does not read SMS, call logs, email, contacts, photos, files or the calendar, and does not record audio.</p>
+
 <h2>3. What the OSRA parent app collects</h2>
 <ul>
   <li><strong>Account details</strong>: your name, email address and password. The password is stored only as a one-way hash, never in readable form.</li>
@@ -49,19 +59,21 @@
 <p>The parent app does not read your own phone's location, contacts, messages, photos or files. It contains no advertising or analytics code.</p>
 
 <h2>4. How we use the data</h2>
-<p>We use the data only to provide OSRA's features to the family: showing the parent the child's location, activity and alerts; enforcing the parent's rules on the child's phone; sending alerts and emails the parent asked for (such as sign-in codes, password resets and summaries); keeping accounts secure; and fixing problems. We do not sell data, we do not use it for advertising, and we do not share it with anyone for their own purposes.</p>
+<p>We use the data only to provide OSRA's features to the family: showing the parent the child's location, activity and alerts; enforcing the parent's rules on the child's phone; sending alerts and emails the parent asked for (such as sign-in codes, password resets and summaries); keeping accounts secure; and fixing problems. Alerts are raised automatically by fixed rules; they inform the parent and decide nothing about the child by themselves. We do not sell data, we do not use it for advertising, and we do not share it with anyone for their own purposes.</p>
+<p><strong>Our legal grounds</strong>, where European or similar law asks for them: for a child's data, the consent the parent or guardian gives for that child (section 8); for the parent's own account, the contract to provide OSRA to you; and for keeping accounts and the service secure, our legitimate interest in doing so.</p>
 
 <h2>5. Service providers</h2>
-<p>We use these providers to run OSRA. They process data only on our behalf:</p>
+<p>We use these providers to run OSRA. They receive only what their task needs:</p>
 <ul>
   <li><strong>Amazon Web Services</strong>: hosting of our servers and database, in the European Union.</li>
-  <li><strong>Google Firebase Cloud Messaging</strong>: delivery of push notifications. An alert's title passes through it.</li>
-  <li><strong>Google Maps</strong>: the map in the parent app.</li>
+  <li><strong>Google Firebase Cloud Messaging</strong> and, for iPhones, the <strong>Apple Push Notification service</strong>: delivery of push notifications. An alert's title passes through them.</li>
+  <li><strong>Google Maps</strong>: the map in the parent app. The parent's phone asks Google for the map of the area being shown.</li>
   <li><strong>Email delivery</strong> (Resend, moving to Amazon Simple Email Service): sending account emails.</li>
 </ul>
 
 <h2>6. Where the data is stored</h2>
 <p>Family data is stored on Amazon Web Services servers in the European Union, for families in every country, including the Middle East. The database is encrypted at rest. All traffic between the apps and our servers uses HTTPS.</p>
+<p>The push, map and email providers in section 5 may handle the limited data they receive outside the European Union, including in the United States, under their own data-protection terms.</p>
 
 <h2>7. How long we keep it</h2>
 <table>
@@ -71,17 +83,18 @@
   <tr><td>Daily app-use totals</td><td>365 days</td></tr>
   <tr><td>Alerts</td><td>12 months, or until the child or the account is deleted if that comes first</td></tr>
   <tr><td>Installed-app list and device information</td><td>Replaced by each new report; deleted when the phone is unpaired or the child is removed</td></tr>
+  <tr><td>Records of a reset of two-step sign-in</td><td>12 months after the reset ends</td></tr>
   <tr><td>Everything else in the family account</td><td>Until the account is deleted</td></tr>
 </table>
 
 <h2>8. Consent and the child's role</h2>
 <p>A parent cannot add a child without confirming that they are the child's parent or legal guardian and that they consent to OSRA processing the child's data. The parent can withdraw that consent in the app; the child's phone then stops sending data. Data already collected stays until it expires (section 7) or is deleted (section 9).</p>
-<p><strong>For the child:</strong> OSRA helps your parent keep you safe. It shows them where your phone is, how long you use apps, and warns them if something in a chat might hurt you. It does not read your texts or call history, does not look through your photos, and does not listen to you. If you are worried about anything, talk to your parent.</p>
+<p><strong>For the child:</strong> OSRA helps your parent keep you safe. It shows them where your phone is, how long you use apps, and warns them if something in a chat might hurt you. On an Android phone it can read the chats in the apps your parent chose; on an iPhone it cannot read any chat. It does not read your SMS text messages or call history, does not look through your photos, and does not listen to you. If you are worried about anything, talk to your parent.</p>
 
 <h2>9. Your rights and deleting your data</h2>
-<p>You can ask us for a copy of your family's data, ask us to correct it, or ask us to delete it, by writing to <a href="mailto:support@osratech.com">support@osratech.com</a> from the email address you sign in with.</p>
+<p>You can ask us for a copy of your family's data (in a form you can take to another service), ask us to correct it, ask us to delete it, or ask us to stop or limit a use of it, by writing to <a href="mailto:support@osratech.com">support@osratech.com</a> from the email address you sign in with. We answer within one month. A parent can withdraw consent for a child at any time (section 8); that does not undo what was done before.</p>
 <p>You can delete your account yourself in the OSRA app, or follow the steps at <a href="/delete-account">osratech.com/delete-account</a>. If you created the family, deleting your account deletes the whole family and every child's data. If you joined someone else's family, it deletes only your own account.</p>
-<p>If you are in the European Union or the United Kingdom, you may also complain to your data protection authority.</p>
+<p>You may also complain to the data protection authority of your country, for example in the European Union or the United Kingdom.</p>
 
 <h2>10. Security</h2>
 <p>All connections use HTTPS. Each paired phone signs its requests with its own key. Parents can turn on two-step sign-in with an authenticator app. Message excerpts are stored encrypted.</p>
