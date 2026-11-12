@@ -163,4 +163,65 @@ export default {
     lede: "Everything you need to set up OSRA and use it every day. Written for the December beta; some screens may still change a little.",
     contents: "Contents",
   },
+  // /windows/ and /mac/ (ADR-0041 D4, roadmap 5.13). Built now, published only with the first working release
+  // of each client (site-pages.yml leaves them out until then): no "coming soon", no price, no payment path.
+  computer: {
+    pairTitle: "Pair it with your child", installTitle: "Install it in three steps", needsTitle: "What it needs",
+    doesTitle: "What it does", adminTitle: "Keep your child a Standard user",
+    download: "The download button is added here with the first release.",
+    free: "OSRA Kids for computers sells nothing. Your family plan is managed in the OSRA app on your phone.",
+    windows: {
+      title: "OSRA Kids for Windows",
+      description: "Install OSRA Kids on your child's Windows PC and pair it with the OSRA app on your phone.",
+      kicker: "Windows",
+      h1: "OSRA Kids for Windows",
+      lede: "The rules you set in the OSRA app, on your child's PC: the same limits, bedtime and web filter as on their phone.",
+      does: [
+        "Filters the web in every browser, with SafeSearch and YouTube Restricted Mode",
+        "Blocks the apps you block, and applies screen time and bedtime with a lock screen",
+        "Lets your child ask for more time, and send an SOS",
+        "Tells you if OSRA is stopped or removed",
+        "In Arabic and English",
+      ],
+      needs: ["Windows 10 (22H2) or Windows 11, on Intel, AMD or ARM", "An administrator account for you, and a Standard account for your child"],
+      steps: [
+        "Sign in to the PC with your administrator account and download OSRA Kids from this page.",
+        "Open the installer and follow it. Windows may ask for your administrator password.",
+        "When OSRA Kids opens, keep it on the pairing screen for the next step.",
+      ],
+      pair: [
+        "On your phone, open your child in the OSRA app and tap Add a computer, then Windows.",
+        "Type the six-digit code from your phone into OSRA Kids on the PC, then choose a parent PIN.",
+        "Tap Allow on your phone when it asks. The PC now follows your child's rules.",
+      ],
+      admin: "If your child's Windows account is an administrator, they could remove OSRA, and the OSRA app warns you. Give your child a Standard account.",
+    },
+    mac: {
+      title: "OSRA Kids for Mac",
+      description: "Install OSRA Kids on your child's Mac and pair it with the OSRA app on your phone.",
+      kicker: "Mac",
+      h1: "OSRA Kids for Mac",
+      lede: "The rules you set in the OSRA app, on your child's Mac, working alongside Apple's own parental controls.",
+      does: [
+        "Filters the web in every browser, with SafeSearch",
+        "Blocks the apps you block, and applies screen time and bedtime with a lock screen",
+        "Lets your child ask for more time",
+        "Checks which of Apple's protections are on, and helps you turn on the rest",
+        "Tells you if OSRA is stopped or removed",
+        "In Arabic and English",
+      ],
+      needs: ["A Mac with a recent version of macOS", "An administrator account for you, and a Standard account for your child"],
+      steps: [
+        "Sign in to the Mac with your administrator account and download OSRA Kids from this page.",
+        "Open the installer. macOS asks you to allow OSRA's background service and web filter; allow both.",
+        "When OSRA Kids opens, keep it on the pairing screen for the next step.",
+      ],
+      pair: [
+        "On your phone, open your child in the OSRA app and tap Add a computer, then Mac.",
+        "Type the six-digit code from your phone into OSRA Kids on the Mac, then choose a parent PIN.",
+        "Tap Allow on your phone when it asks. The Mac now follows your child's rules.",
+      ],
+      admin: "If your child's Mac account is an administrator, they could remove OSRA, and the OSRA app warns you. Give your child a Standard account.",
+    },
+  },
 };

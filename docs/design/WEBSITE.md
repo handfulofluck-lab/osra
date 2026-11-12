@@ -104,3 +104,18 @@ page differs from its sources.
   hold Arabic back again, set it false and leave `site/ar/` out in `site-pages.yml`, together.
 - **Promise band in dark** is the `raised` colour, not `primary`, so a full-width band is not a wall of light blue.
 - **No script.** The FAQ uses `details`/`summary`; nothing on these pages needs JavaScript.
+
+### 7.1 Computer pages (roadmap 5.13, ADR-0041 D4)
+
+`/windows/` and `/mac/` (and `/ar/windows/`, `/ar/mac/`) are written by the same script, from the `computer` block in
+`copy.en.mjs` / `copy.ar.mjs`. Each says what OSRA Kids does on that computer, what it needs, how to install it and
+how to pair it with the parent app's "Add a computer" screen, and that it sells nothing.
+
+- **Not online yet.** ADR-0041 D4: no page goes online before the build it links to works, so `site-pages.yml`
+  removes all four before publishing. Remove a client's lines there only with its first working release, after
+  Ahmed's `Security-signoff:` for that build, and add its download button in the same PR.
+- **No way to pay.** `scripts/check-site-no-payment.mjs` (in `workflow-lint.yml`) fails if any of these pages holds a
+  price, "buy", "subscribe", "checkout", "pricing", their Arabic equivalents, or a link to a payment host
+  (ADR-0041 claim 8). The family plan is bought in the parent app on the phone.
+- **No download link yet.** The installer host (CloudFront or Cloudflare) is still open; GitHub Pages does not
+  serve installers.
