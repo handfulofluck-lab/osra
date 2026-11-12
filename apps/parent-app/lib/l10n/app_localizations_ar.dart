@@ -3161,4 +3161,21 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
+
+  @override
+  String get appGroupsTitle => 'مجموعات التطبيقات على هذا الآيفون';
+
+  @override
+  String get appGroupsBody => 'تُنشأ المجموعات على آيفون الطفل خلف رمز الوالدين. احظر مجموعة هنا ليحجب الآيفون تطبيقاتها.';
+
+  @override
+  String appGroupsCounts(Object apps, Object categories, Object sites) {
+    return 'التطبيقات $apps · الفئات $categories · المواقع $sites';
+  }
+
+  @override
+  String get appGroupsBlock => 'حظر';
+
+  @override
+  String get appGroupsSaveFailed => 'تعذّر حفظ التغيير. حاول مرة أخرى.';
 }

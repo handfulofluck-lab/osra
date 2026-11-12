@@ -5047,6 +5047,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Background app refresh'**
   String get grantBackgroundRefresh;
+
+  /// ADR-0037: heading over the iPhone's app groups on the child screen. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'App groups on this iPhone'**
+  String get appGroupsTitle;
+
+  /// ADR-0037: one line under the heading. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups are made on the child's iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.'**
+  String get appGroupsBody;
+
+  /// ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Apps {apps} · Categories {categories} · Websites {sites}'**
+  String appGroupsCounts(Object apps, Object categories, Object sites);
+
+  /// ADR-0037: label of the switch that blocks one app group. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get appGroupsBlock;
+
+  /// ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the change. Try again.'**
+  String get appGroupsSaveFailed;
 }
 
 class _AppLocalizationsDelegate

@@ -919,5 +919,10 @@
   "grantNotificationListener": "الوصول إلى الإشعارات",
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
-  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية"
+  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
+  "appGroupsTitle": "مجموعات التطبيقات على هذا الآيفون",
+  "appGroupsBody": "تُنشأ المجموعات على آيفون الطفل خلف رمز الوالدين. احظر مجموعة هنا ليحجب الآيفون تطبيقاتها.",
+  "appGroupsCounts": "التطبيقات {apps} · الفئات {categories} · المواقع {sites}",
+  "appGroupsBlock": "حظر",
+  "appGroupsSaveFailed": "تعذّر حفظ التغيير. حاول مرة أخرى."
 }
