@@ -11,6 +11,8 @@ import kotlinx.coroutines.launch
 
 @HiltAndroidApp
 class FamilyShieldApp : Application() {
+    private val plantedFault: Any = com.familyshield.agent.update.FullUpdatePolicy
+
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
