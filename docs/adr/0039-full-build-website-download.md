@@ -1,6 +1,6 @@
 # ADR-0039 — The Full child app is a separate app, downloaded from osratech.com, that updates itself
 
-- **Status:** accepted (architecture); implementation not started
+- **Status:** accepted (architecture), amended 2026-11-12 after Ahmed's threat-model review (below); implementation not started
 - **Date:** 2026-11-12
 - **Deciders:** Claude (architecture + testing), under the maintainer's grant of 2026-11-12 07:38Z ("you are the
   chief architect, do what you think is best … use Kimi to code it and Ahmed to check cybersec … FULL AUTHORITY
@@ -204,3 +204,97 @@ durable `pending_scans` queue, signed like every device call. It runs only when 
   version. The download page is a new support surface, and families will see Android's warnings.
 - Risk: Google widens developer verification or Play Protect blocks monitoring apps outright. Then D3's
   registration is what keeps Full installable, which is why it comes before the first public download.
+
+## Amendment 2026-11-12 — Ahmed's threat-model review (#585, 08:30Z), accepted in full
+
+Ahmed reviewed D2, D4 and D5 ([#585 comment](https://github.com/handfulofluck-lab/osra/pull/585)). Every
+point is accepted. Where this amendment and the text above differ, **this amendment wins**. Each numbered row
+below becomes a JVM test (PR B) or a policy/plan assertion (PR C), and Ahmed reviews PR B and PR C against it.
+
+### S1 — the update manifest is signed offline, never in CI
+
+D5.2 put the Ed25519 manifest key in the same `full-release` environment as the APK key. A compromised
+workflow, action or approver could then sign both a malicious APK and a manifest pointing to it. A required
+reviewer does not help here, because every agent on this team posts from the maintainer's one GitHub account,
+so GitHub cannot tell a human approval from an agent's. So:
+
+- `full-release.yml` builds and signs the APK, uploads it, and outputs an **unsigned** `latest.json` plus its
+  SHA-256 as a run artifact. It never writes `/android/latest.json`.
+- The manifest is signed **on the maintainer's PC** (by Claude Code there, so it is not a manual chore for
+  the maintainer) by `scripts/full-release/sign-manifest.mjs`. Claude then uploads `latest.json` and
+  `latest.json.sig` with the maintainer's local AWS profile.
+- The Actions secret `OSRA_FULL_MANIFEST_ED25519_PEM` is **removed**. Until it is, nothing may read it.
+- A CI compromise can then put an APK in the bucket, but can never point a phone at one.
+- The environment's deployment branches are limited to `main`, and every action in `full-release.yml` is
+  pinned by SHA.
+
+### D5 updater requirements (PR B; one JVM row each)
+
+1. **Sign bytes, not canonical JSON.** The app downloads `latest.json` and a detached
+   `latest.json.sig` (base64 Ed25519 over the **exact bytes** of `latest.json`). It verifies first and parses
+   only after the signature holds. The `signature` field in D5.1 is dropped.
+2. **Freeze attacks.** The manifest carries `expiresAt` (release + 30 days; each release re-signs, and a
+   re-sign without a release refreshes it). The phone stores the highest `versionCode` and `releasedAt` it
+   has ever accepted, and refuses any manifest older than either. An expired or stale manifest is reported as
+   `update_stale` in the capability report, never dropped silently. The parent sees it next to D5.6's
+   "pending".
+3. **Two keys + `keyId`.** The app compiles in **two** public keys: `m1` (primary) and `m2` (offline
+   backup, made 12 Nov on the maintainer's PC and never online). The manifest names its `keyId`, and any
+   other value is refused. Rotating means signing with `m2` and shipping a build with a new backup.
+4. **Strict URLs, for both `latest.json` and the APK.** These are checked by components, not by prefix:
+   scheme `https`, host exactly `osratech.com`, no userinfo, no port, a normalised path starting `/android/`,
+   and no encoded `..`. The HTTP client for both refuses **all** redirects (OkHttp `followRedirects(false)`,
+   `followSslRedirects(false)`).
+5. **It installs only itself.**
+   - The `PackageInstaller` session uses `setAppPackageName(BuildConfig.APPLICATION_ID)`.
+   - The archive's `packageName` must equal ours **before** `commit()`.
+   - No server command, push, intent or deep link may start an install; the only way in is a verified
+     manifest.
+   - A source test asserts that `PackageInstaller` is referenced from exactly one class (`FullUpdater`).
+6. **No TOCTOU.** Downloads go to app-private storage only, with no `DownloadManager` and no external storage.
+   The SHA-256 is computed **while streaming the same bytes into the open `PackageInstaller` session**; the
+   session is committed only if the hash and size match, and abandoned otherwise. Any temp file is deleted in
+   `finally`.
+7. **Certificate check that survives rotation.** The check is
+   `PackageManager.hasSigningCertificate(ownPackage, archiveCertSha256, CERT_INPUT_SHA256)` against the
+   archive's signer, not "first certificate equals first certificate". A planned v3 rotation of D2's key is
+   therefore accepted.
+8. **The install permission is a grant.** "Install unknown apps" for OSRA joins the ADR-0034 capability
+   report as `install_updates`. When it is missing, the item goes on the parent's "what to fix" list.
+   - Android 12's `USER_ACTION_NOT_REQUIRED` only works when OSRA is the installer of record. The first
+     install came from the browser, so the **first** update asks the child.
+   - On Android 14+ that first update calls `setRequestUpdateOwnership(true)`, so later ones can be silent.
+9. **`minSupportedVersionCode` is information only.** The phone never disables or degrades itself because
+   of it, so a forged or stale value is not a remote off switch. D5.6's server poller **verifies
+   `latest.json.sig` with the same two public keys** before it shows a parent "Update required".
+
+### D4 hosting requirements (PR C)
+
+1. The OIDC role's trust policy pins `sub` **exactly** to
+   `repo:handfulofluck-lab/osra:environment:full-release`, with no wildcard and no branch form.
+2. **APKs are immutable in practice.**
+   - Turn on versioning for the site bucket.
+   - The role has no `s3:DeleteObject`, and may write only `android/*.apk`, never `latest.json` (S1).
+   - The bucket policy requires `If-None-Match: *` (S3 conditional writes) on `android/*.apk`, so an existing
+     APK can never be overwritten.
+3. The trust root is the compiled-in manifest keys plus the certificate check (rows 1, 3 and 7), **not**
+   anything on the web page. The page no longer shows a fingerprint at all (maintainer, 12 Nov).
+4. CloudFront serves `/android/*` HTTPS-only, with an HSTS response-headers policy. `latest.json` and
+   `latest.json.sig` use `max-age=300`, and row 2 is what catches a cache serving an old manifest.
+5. **`OSRA_VERSION_CODE`.** Kimi's #591 sets `versionCode` from the workflow run number, so `full-release.yml`
+   must set `OSRA_VERSION_CODE` the same way. Otherwise every Full APK reports 2 and row 2 refuses them all.
+
+### D2 keys (runbook)
+
+- `RELEASING.md` gains a Full section. A v3 key rotation must be signed with the **old** `full-release`
+  key, so losing it before rotating still strands every family. The two offline copies are what prevent that.
+- The APK key's only online copy is the `full-release` Actions secret. The manifest keys (`m1`, `m2`) are
+  never online.
+
+### Falsifiable claims added
+
+- **R4b** Each of rows 1–9 has a named JVM test, and Ahmed's pen test on his own phone covers a bad signature,
+  a wrong `keyId`, a lower or equal version, an expired manifest, an off-site or redirecting URL, a wrong
+  package, a SHA mismatch, a foreign-signed APK, hash-then-swap, and a revoked install grant.
+- **R8b** `terraform plan` shows bucket versioning on, the exact OIDC `sub`, no `DeleteObject`, and the
+  `If-None-Match` condition. A second upload of the same APK name fails with 412.
