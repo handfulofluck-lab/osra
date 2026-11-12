@@ -86,9 +86,9 @@ final class AppGroupsTests: XCTestCase {
     // MARK: - Counts, the most the server will ever see
 
     func testTheSummaryReadsNaturallyAndSaysWhenNothingIsLeft() {
-        XCTAssertEqual(AppGroupCounts(apps: 1, categories: 0, sites: 0).summary, "1 app")
-        XCTAssertEqual(AppGroupCounts(apps: 5, categories: 1, sites: 2).summary, "5 apps, 1 category, 2 websites")
-        XCTAssertEqual(AppGroupCounts(apps: 0, categories: 3, sites: 0).summary, "3 categories")
+        // The parent app's three-count line, zeros included (Bureau, 12 Nov).
+        XCTAssertEqual(AppGroupCounts(apps: 1, categories: 0, sites: 0).summary, "Apps 1 · Categories 0 · Websites 0")
+        XCTAssertEqual(AppGroupCounts(apps: 5, categories: 1, sites: 2).summary, "Apps 5 · Categories 1 · Websites 2")
         XCTAssertEqual(AppGroupCounts(apps: 0, categories: 0, sites: 0).summary, "Nothing chosen")
         XCTAssertTrue(AppGroupCounts(apps: 0, categories: 0, sites: 0).isEmpty)
     }
