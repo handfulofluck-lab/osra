@@ -8,6 +8,7 @@ import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { toApiRuleSet } from "../lib/ruleSync.js";
+import { APP_GROUPS_MAX } from "@familyshield/shared-types";
 
 // Kept as a re-export so existing importers (controls.ts) keep working while the
 // shared mapper lives in lib with the publish fan-out (no routes↔routes imports).
@@ -48,6 +49,19 @@ const AppRuleSchema = z.object({
   dailyLimitMinutes: z.number().int().min(0).max(MINUTES_PER_DAY).optional(),
 });
 
+/**
+ * ADR-0037 PR B3: a rule on an iPhone app group. The id is the UUID the phone made and reported in
+ * `DeviceSetup.groups`; the server never learns what is in the group, so `block` is all it can say (limits are
+ * PR C). At most as many rules as a phone can have groups, one per group.
+ */
+const AppGroupRuleSchema = z.object({ groupId: z.string().uuid(), action: z.literal("block") }).strict();
+const AppGroupRulesSchema = z
+  .array(AppGroupRuleSchema)
+  .max(APP_GROUPS_MAX)
+  .refine((rules) => new Set(rules.map((r) => r.groupId.toLowerCase())).size === rules.length, {
+    message: "a group has at most one rule",
+  });
+
 const RoutineSchema = z.object({
   id: z.string().min(1).optional(),
   name: z.string().min(1),
@@ -63,6 +77,7 @@ const RuleSetInputSchema = z.object({
   webFilter: WebFilterSchema,
   appRules: z.array(AppRuleSchema),
   routines: z.array(RoutineSchema),
+  appGroupRules: AppGroupRulesSchema.default([]),
   alwaysAllowedApps: z.array(z.string()).default([]),
   allowOverlap: z.boolean().optional(),
   // NOTE: socialMonitoring maps app names (whatsapp, tiktok, ...) to capture-enabled flags;
@@ -76,6 +91,7 @@ const RuleSetPatchSchema = z.object({
   webFilter: WebFilterSchema.partial().optional(),
   appRules: z.array(AppRuleSchema).optional(),
   routines: z.array(RoutineSchema).optional(),
+  appGroupRules: AppGroupRulesSchema.optional(),
   alwaysAllowedApps: z.array(z.string()).optional(),
   allowOverlap: z.boolean().optional(),
   socialMonitoring: z.record(z.boolean()).optional(),
@@ -128,6 +144,7 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     youtubeRestrictedMode: data.webFilter.youtubeRestrictedMode ?? "strict",
     appRules: data.appRules,
     routines: data.routines,
+    appGroupRules: data.appGroupRules,
     alwaysAllowedApps: data.alwaysAllowedApps,
     socialMonitoring: data.socialMonitoring,
     contactAllowlist: data.contactAllowlist,
@@ -191,6 +208,7 @@ export async function rulesRoutes(app: FastifyInstance) {
       webFilter: { ...(current.webFilter as object), ...(patch.webFilter as object) },
       appRules: patch.appRules ?? current.appRules,
       routines: patch.routines ?? current.routines,
+      appGroupRules: patch.appGroupRules ?? current.appGroupRules ?? [],
       alwaysAllowedApps: patch.alwaysAllowedApps ?? current.alwaysAllowedApps ?? [],
       socialMonitoring: patch.socialMonitoring ?? current.socialMonitoring,
       contactAllowlist: patch.contactAllowlist ?? current.contactAllowlist,

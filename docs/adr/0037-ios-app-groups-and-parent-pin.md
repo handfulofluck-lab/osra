@@ -74,3 +74,15 @@ The parent app is Flutter and many parents use Android, so the picker cannot nee
   carries `groups` (null until a report has). No failure message repeats a label.
 - This lands **before** the phone sends the field (the order above). PR B2: the phone's report, the parent app's
   group rows and rules by `groupId`.
+
+## Amendment 2026-11-12 — PR B3a: rules by group id on the server
+
+- `RuleSet.appGroupRules?: AppGroupRule[]` (`packages/shared-types`): `{groupId, action: "block"}`, the id the phone
+  reported in `DeviceSetup.groups`. At most 20 (`APP_GROUPS_MAX`), one per group (ids compared without case),
+  strict: no label, no app names, no limit field (limits are PR C). A ruleset without the field stores none; a
+  PATCH without it keeps the stored ones. Stored as `RuleSet.appGroupRules` (migration 0033), served in every
+  ruleset the agents fetch.
+- The server does not check the id against the phone's last report: a rule for a group the phone no longer has
+  blocks nothing, and refusing it would race a report in flight.
+- Next: B3b, the iPhone shields a group the server blocks as well as the ones blocked on the phone (the two add
+  up; the phone's own toggle still works without a network); B3c, the parent app's group rows and toggle.
