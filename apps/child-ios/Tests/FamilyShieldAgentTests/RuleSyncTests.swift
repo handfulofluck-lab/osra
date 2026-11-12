@@ -84,6 +84,42 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertEqual(schedules.last?.allowedApps, ["com.example.reader"])
     }
 
+    // MARK: - App group rules (ADR-0037 PR B3)
+
+    private func withGroupRules(_ rules: String) -> Data {
+        Data(rulesJSON.replacingOccurrences(of: "\"alwaysAllowedApps\":",
+                                            with: "\"appGroupRules\": \(rules), \"alwaysAllowedApps\":").utf8)
+    }
+
+    func testTheGroupsTheParentBlockedAreReadLowercasedAndOnce() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: withGroupRules("""
+        [{ "groupId": "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B", "action": "block" },
+         { "groupId": "6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b", "action": "block" },
+         { "groupId": "0E9D8C7B-6A5F-4E3D-8C2B-1A0F9E8D7C6B", "action": "limit" }]
+        """))
+        XCTAssertEqual(rules.blockedGroupIds, ["6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b"], "block only, one per group")
+    }
+
+    func testAServerBeforeB3aSendsNoGroupRules() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8))
+        XCTAssertNil(rules.appGroupRules)
+        XCTAssertEqual(rules.blockedGroupIds, [])
+    }
+
+    func testTheBlockedGroupsAreStoredForTheGroupsScreenAndCleared() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: withGroupRules("""
+        [{ "groupId": "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B", "action": "block" }]
+        """))
+        XCTAssertTrue(RuleStore.save(rules))
+        XCTAssertEqual(RuleStore.blockedGroupIds(), ["6f1c2b8e-3d4a-4e5f-9a0b-1c2d3e4f5a6b"])
+        // A later sync without the rule lifts the parent app's block.
+        XCTAssertTrue(RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8))))
+        XCTAssertEqual(RuleStore.blockedGroupIds(), [])
+        RuleStore.save(rules)
+        AgentIdentityStore.clear()
+        XCTAssertEqual(RuleStore.blockedGroupIds(), [], "unpairing clears it with the other rules")
+    }
+
     func testUnpairingClearsTheSyncedRules() throws {
         RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)))
         AgentIdentityStore.clear()

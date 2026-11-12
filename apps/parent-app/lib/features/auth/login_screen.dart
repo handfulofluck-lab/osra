@@ -65,6 +65,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   /// Validates and persists the server URL; null → inline error, abort submit.
   Future<String?> _saveServer() async {
+    // osra-security#8 F3: a build with the server built in uses it; the field is locked and never read.
+    final builtIn = builtInServerUrl();
+    if (builtIn != null) return builtIn;
     final url = normalizeServerUrl(_server.text);
     setState(() => _serverError = url == null ? context.l10n.invalidServer : null);
     if (url == null) return null;
@@ -157,7 +160,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ] else
                   const SizedBox(height: AppSpace.xl),
                 TextField(
+                  key: const ValueKey('loginServerField'),
                   controller: _server,
+                  // osra-security#8 F3: locked to the built-in server in store builds.
+                  readOnly: isServerLocked(),
+                  enabled: !isServerLocked(),
                   keyboardType: TextInputType.url,
                   autofillHints: const [AutofillHints.url],
                   onChanged: (_) => _serverTouched = true,
