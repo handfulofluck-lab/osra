@@ -146,7 +146,8 @@ What exists today (checked on `main@4d3a291`):
 - **Updates:** each client updates itself from an Ed25519-signed `latest.json` + `latest.json.sig`,
   signed **offline** with the same rules as ADR-0039's amendment (exact-bytes signature, strict URLs,
   downgrade refused, two public keys for rotation). Windows also checks that the downloaded MSI carries
-  our Authenticode signer before running it; the Mac uses Sparkle 2 with an EdDSA-signed appcast, which
+  one of our Authenticode signers before running it (a list of up to two, so a move from a personal
+  certificate to a company certificate ships first as an update that trusts both); the Mac uses Sparkle 2 with an EdDSA-signed appcast, which
   also checks the Developer ID signature.
 
 ### D5 — Pairing a computer from the parent app
