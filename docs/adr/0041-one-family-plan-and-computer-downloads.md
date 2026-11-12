@@ -190,9 +190,9 @@ What exists today (checked on `main@4d3a291`):
 - **Installer: MSI (WiX), per-machine, x64 and ARM64**, Windows 10 22H2 and Windows 11. Uninstall needs
   an administrator (the parent); a Standard user cannot stop the service or remove it. Uninstall or a
   stopped heartbeat raises the existing tamper alert.
-- **Signed** with the code-signing certificate (M1); the private key stays in the CA's cloud HSM or token,
-  never in the repo or in a GitHub secret as a file. CI builds unsigned MSIs on every PR; signing is a
-  release step.
+- **Signed** with the code-signing certificate (M1); the private key stays in the CA's cloud HSM, and the
+  signing credential stays on the maintainer's PC, never in the repo or a GitHub secret. CI builds
+  unsigned MSIs on every PR; signing is a release step run on the maintainer's PC.
 - Every visible "FamilyShield" goes (with #608).
 
 ### D7 — Launch scope: all four platforms, in two waves
@@ -234,10 +234,11 @@ What has to move for this:
 
 ## Maintainer decisions (cards in the project thread)
 
-- **M1 — Windows code-signing certificate.** Spend was approved earlier for 5.4; the route is open:
-  an OV certificate in the maintainer's own name (fastest; the publisher shown is his name), an OV
-  certificate in a company's name (needs company registration documents), or EV (costs more and no
-  longer buys instant SmartScreen trust).
+- **M1 — Windows code-signing certificate. Decided 2026-11-12 13:04Z: an OV (individual-validated)
+  certificate in the maintainer's own name, one-year term**, from a CA with cloud signing (no USB token).
+  Signing runs as a release step on the maintainer's PC, like the manifest signing of ADR-0039 S1, so no
+  signing credential is ever a GitHub secret. A later move to a company certificate is a normal renewal
+  (D4's two-signer list).
 - **M2 — Where families can pay.** **Decided 2026-11-12: in the apps only at launch** (Google Play and
   the App Store); osratech.com offers downloads only.
 - **M3 — Prices and what a family without a plan keeps** (monthly and yearly price per store region,
