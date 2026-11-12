@@ -266,7 +266,7 @@ class DeviceSetup {
   /// strict capability vocabulary would refuse a key it does not know. So this reads as false on every
   /// report in the field today, and the warning appears the day a client reports the fact — never by a
   /// guess made up in this app.
-  bool get childAccountIsAdministrator => features[accountAdminKey] == 'degraded';
+  bool get childAccountIsAdministrator => features[accountAdminKey] != 'ready';
 
   /// The wire key the administrator fact travels under, spelled as ADR-0041 D5.5 names it (#662): a fact
   /// rather than a feature, so the Phone setup chips skip it and the child page renders it as the one
