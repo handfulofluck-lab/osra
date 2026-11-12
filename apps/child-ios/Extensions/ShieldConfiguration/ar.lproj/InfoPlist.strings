@@ -1,0 +1,2 @@
+/* #654: marks this extension as localized in Arabic, so iOS gives it the phone's language and the
+   block screen follows it. No keys: the extension shows no name of its own, and its text comes from the package. */
