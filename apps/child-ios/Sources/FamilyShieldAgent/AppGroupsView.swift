@@ -14,6 +14,7 @@ public struct AppGroupsView: View {
     @State private var editSelection = FamilyActivitySelection()
     @State private var pickingEdit = false
     @State private var error: String?
+    @State private var serverBlocked = RuleStore.blockedGroupIds()
 
     public init() {}
 
@@ -23,11 +24,15 @@ public struct AppGroupsView: View {
                 Section { Text("No groups yet.").foregroundStyle(.secondary) }
             }
             ForEach(list.groups, id: \.id) { group in
+                let byParentApp = list.isBlockedByParentApp(id: group.id, serverBlocked: serverBlocked)
                 Section {
+                    // ADR-0037 PR B3: a group blocked from the parent app stays blocked here; only the parent app
+                    // can lift that block.
                     Toggle("Blocked", isOn: Binding(
-                        get: { group.blocked },
+                        get: { group.blocked || byParentApp },
                         set: { list.setBlocked($0, id: group.id); commit() }
                     ))
+                    .disabled(byParentApp)
                     LabeledContent("Chosen", value: group.counts.summary)
                     Button("Change apps") {
                         editingId = group.id
@@ -43,6 +48,8 @@ public struct AppGroupsView: View {
                 } footer: {
                     if group.counts.isEmpty {
                         Text("Nothing is chosen, so this group blocks nothing. Tap \"Change apps\" to choose again.")
+                    } else if byParentApp {
+                        Text("Blocked from the parent app.")
                     }
                 }
             }

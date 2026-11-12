@@ -121,8 +121,18 @@ public struct AppGroupList<Selection: AppGroupSelection>: Codable {
 
     /// The selections the shield must cover: those of the blocked groups only, never every picked token
     /// (the old `TokenResolver` returned every picked token for any rule).
-    public var blockedSelections: [Selection] {
-        groups.filter(\.blocked).map(\.selection)
+    public var blockedSelections: [Selection] { blockedSelections(alsoBlocked: []) }
+
+    /// ADR-0037 PR B3: the groups blocked on the phone **plus** those the parent blocked from the parent app
+    /// ([serverBlocked], lowercased ids). The two add up: the phone's toggle still works offline, and the server
+    /// can only add a block, never lift one set on the phone.
+    public func blockedSelections(alsoBlocked serverBlocked: Set<String>) -> [Selection] {
+        groups.filter { $0.blocked || serverBlocked.contains($0.id.lowercased()) }.map(\.selection)
+    }
+
+    /// Whether the parent app blocks this group ([blockedSelections(alsoBlocked:)]).
+    public func isBlockedByParentApp(id: String, serverBlocked: Set<String>) -> Bool {
+        serverBlocked.contains(id.lowercased())
     }
 }
 
