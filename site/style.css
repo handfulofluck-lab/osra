@@ -160,9 +160,10 @@ footer a { color: var(--muted); }
 .float { position: absolute; z-index: 2; display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--card); color: var(--ink); border: 1px solid var(--cardBorder); border-radius: var(--radius-control); box-shadow: 0 12px 28px -10px color-mix(in srgb, var(--ink) 35%, transparent); font-size: 13px; line-height: 18px; max-width: 230px; }
 .float small { display: block; color: var(--muted); font-size: 12px; }
 .float .ic { width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center; background: var(--tint); color: var(--primary); }
-.float.f1 { top: 26%; inset-inline-start: -18%; animation: bob 6s ease-in-out infinite; }
-.float.f2 { bottom: 2%; inset-inline-end: -14%; animation: bob 7s ease-in-out -3s infinite; }
+.float.f1 { top: -3%; inset-inline-start: -4%; animation: bob 6s ease-in-out infinite; }
+.float.f2 { bottom: 2%; inset-inline-end: -4%; animation: bob 7s ease-in-out -3s infinite; }
 .float.f2 .ic { color: var(--ok); }
+@media (max-width: 899px) { .float.f1 { inset-inline-start: 0; } .float.f2 { inset-inline-end: 0; } }
 @media (max-width: 480px) { .float.f1 { inset-inline-start: 0; top: 2%; } .float.f2 { inset-inline-end: 0; bottom: -3%; } }
 /* On a phone the top bar keeps the language and the beta button; the page links are in the footer. */
 @media (max-width: 599px) { .mk nav a.wide { display: none; } .mk .top { flex-wrap: nowrap; } .mk nav { flex-wrap: nowrap; } .mk nav a { padding: 0 8px; } .mk .brand span { display: none; } }
