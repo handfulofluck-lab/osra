@@ -25,6 +25,10 @@ concurrency:
   group: child-android-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
+# **Do not rename this file.** Play's versionCode comes from this workflow's `run_number`; renaming or
+# recreating the workflow restarts the counter at 1, and Play then refuses every upload until the new count
+# passes the old one again. See the `OSRA_VERSION_CODE` line on the build step.
+
 jobs:
   child-android:
     # NOTE: this job used `macos-13`, which GitHub has since retired — the job sat "queued" forever
@@ -90,6 +94,9 @@ jobs:
           # one the parent app reads, so one setting describes a deployment for both apps. Unset keeps today's
           # behaviour (the child types an address); set it to the production https URL before a store build.
           OSRA_API_BASE: ${{ vars.OSRA_API_BASE }}
+          # Play refuses a versionCode it already has, so the number rises with every run. The workflow's own
+          # run number only ever increases, and each app is published by one workflow.
+          OSRA_VERSION_CODE: ${{ github.run_number }}
         # assembleRelease proves the shrunk (R8), release-signed configuration builds; signing material
         # comes from the keystore step above when it is complete and falls back to the debug key. Both release flavours
         # are built because #170's gate asserts `android:testOnly` is absent from each release merge.
@@ -140,6 +147,13 @@ jobs:
             BADGING=$("$AAPT" dump badging "$APK")
             grep -q "targetSdkVersion:'35'" <<<"$BADGING" || { echo "::error::$APK does not target 35"; exit 1; }
             echo "$FLAVOUR release: targetSdk 35"
+            # Play 5.2: the number Play receives must be this run's, or a second upload is refused. Asserting
+            # it on the built artefact is the only way CI can prove the wiring, rather than trusting Gradle.
+            # `aapt2 dump badging` prints the code on the `package:` line as `versionCode='528'` — with an
+            # equals sign. The colon form belongs to lines like `targetSdkVersion:'35'`, so a colon pattern
+            # here can never match and the job goes red on a correct build (#591 review).
+            grep -q "versionCode='${{ github.run_number }}'" <<<"$BADGING"               || { echo "::error::$APK carries $(grep -o "versionCode='[0-9]*'" <<<"$BADGING"), not ${{ github.run_number }}"; exit 1; }
+            echo "$FLAVOUR release: versionCode ${{ github.run_number }}"
           done
           # The release config is the one in src/main (src/debug overrides it for the debug build only).
           grep -q 'cleartextTrafficPermitted="false"' app/src/main/res/xml/network_security_config.xml \

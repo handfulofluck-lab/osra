@@ -25,13 +25,10 @@ public struct AppGroupCounts: Codable, Equatable {
 
     public var isEmpty: Bool { apps == 0 && categories == 0 && sites == 0 }
 
-    /// "5 apps, 1 category" for the groups screen; "Nothing chosen" when the tokens are gone (a Screen Time reset).
+    /// The three counts for the groups screen, zeros included (the parent app's line, so no Arabic plural is
+    /// needed); "Nothing chosen" when the tokens are gone (a Screen Time reset).
     public var summary: String {
-        var parts: [String] = []
-        if apps > 0 { parts.append("\(apps) app\(apps == 1 ? "" : "s")") }
-        if categories > 0 { parts.append("\(categories) categor\(categories == 1 ? "y" : "ies")") }
-        if sites > 0 { parts.append("\(sites) website\(sites == 1 ? "" : "s")") }
-        return parts.isEmpty ? "Nothing chosen" : parts.joined(separator: ", ")
+        isEmpty ? L10n.tr("groups_nothing") : L10n.tr("groups_counts", apps, categories, sites)
     }
 }
 

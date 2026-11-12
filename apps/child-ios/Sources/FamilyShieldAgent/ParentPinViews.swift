@@ -19,26 +19,26 @@ public struct PinSetupView: View {
     public var body: some View {
         Form {
             Section {
-                SecureField("New PIN (4-8 digits)", text: $pin).keyboardType(.numberPad)
-                SecureField("Repeat the PIN", text: $confirm).keyboardType(.numberPad)
+                SecureField(L10n.tr("pin_new_field"), text: $pin).keyboardType(.numberPad)
+                SecureField(L10n.tr("pin_repeat_field"), text: $confirm).keyboardType(.numberPad)
                 if let error { Text(error).foregroundStyle(.red) }
-                Button("Save PIN") { save() }
+                Button(L10n.tr("pin_save")) { save() }
             } header: {
-                Text("Parent PIN")
+                Text(L10n.tr("pin_parent"))
             } footer: {
-                Text("Parents only. The PIN protects the app groups and re-pairing on this phone. It stays on this phone and is never sent anywhere.")
+                Text(L10n.tr("pin_set_footer"))
             }
         }
-        .navigationTitle("Set a parent PIN")
+        .navigationTitle(L10n.tr("pin_set_title"))
     }
 
     private func save() {
         if let reason = ParentPin.validationError(pin) {
             error = reason
         } else if pin != confirm {
-            error = "The two PINs are different."
+            error = L10n.tr("pin_mismatch")
         } else if !ParentPinStore.set(pin) {
-            error = "The PIN could not be saved. Try again."
+            error = L10n.tr("pin_save_failed")
         } else {
             error = nil
             onDone()
@@ -62,11 +62,11 @@ public struct PinGateView: View {
     public var body: some View {
         Form {
             Section {
-                SecureField("Parent PIN", text: $pin).keyboardType(.numberPad)
+                SecureField(L10n.tr("pin_parent"), text: $pin).keyboardType(.numberPad)
                 if let message { Text(message).foregroundStyle(.red) }
-                Button("Continue") { check() }
+                Button(L10n.tr("pin_continue")) { check() }
             } footer: {
-                Text("Parents only.")
+                Text(L10n.tr("pin_parents_only"))
             }
         }
         .navigationTitle(title)
