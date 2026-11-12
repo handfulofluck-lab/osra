@@ -134,6 +134,16 @@ jobs:
             echo "an unknown flag must exit 2 with 'unrecognised argument', got $code: $out"; exit 1
           fi
 
+      - name: osratech.com uses the design tokens and nothing else (ADR-0038, roadmap 3.19)
+        # The website is one surface of the design language: its colours and radii are the values of
+        # docs/design/tokens.json under the same names, in both themes; its font is the bundled IBM Plex;
+        # nothing is fetched from a third party; an Arabic page is dir="rtl" and the sheet names no
+        # physical side. The self-test runs first: 19 fixtures, one per rule and per way of breaking it
+        # (the pre-3.19 indigo link colour is the drifted-token fixture).
+        run: |
+          node scripts/check-site-design.mjs --selftest
+          node scripts/check-site-design.mjs
+
       - name: No conflict markers in any tracked file
         # A conflicted merge that is staged and committed leaves `<<<<<<<` in the tree, and no test reads
         # documentation, so every suite stays green. The self-test proves the rule fires on a real pair
