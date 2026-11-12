@@ -14,7 +14,7 @@ class FullUpdatePolicyTest {
 
     private val manifestKeys: KeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
 
-    private val publicKeys: Map<String, PublicKey> = mapOf(PRIMARY_KEY_ID to exportPublic(manifestKeys.public))
+    private val publicKeys: Map<String, ByteArray> = mapOf(PRIMARY_KEY_ID to exportPublic(manifestKeys.public))
 
     @Test
     fun schemaIsNotOneIsRefused() {
@@ -287,7 +287,7 @@ class FullUpdatePolicyTest {
         return Base64.getEncoder().encodeToString(signer.sign())
     }
 
-    private fun exportPublic(generated: PublicKey): PublicKey {
+    private fun exportPublic(generated: PublicKey): ByteArray {
         val spki: ByteArray = generated.encoded
         val raw: ByteArray = spki.copyOfRange(spki.size - FullUpdatePolicy.ED25519_RAW_KEY_BYTES, spki.size)
         val base64: String = Base64.getEncoder().encodeToString(raw)

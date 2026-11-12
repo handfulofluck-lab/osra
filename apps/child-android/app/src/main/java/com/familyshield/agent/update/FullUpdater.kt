@@ -15,10 +15,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
-import java.security.KeyFactory
 import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
-import java.security.PublicKey
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -38,27 +35,25 @@ sealed interface FullUpdateOutcome {
  * so no server command, push, intent or deep link reaches an install except through a manifest the trust
  * core accepted.
  *
- * Nothing here throws to its caller: a network fault, a hostile response, a missing grant or a platform
- * without Ed25519 all end as `FullUpdateOutcome` and a `update_refused:<reason>` log line.
+ * Nothing here throws to its caller: a network fault, a hostile response or a missing grant all end as
+ * `FullUpdateOutcome` and a `update_refused:<reason>` log line.
  */
 class FullUpdater(
     private val context: Context,
     private val keys: Map<String, String>,
     private val state: FullUpdateStateStore,
-    private val verifier: ManifestVerifier = JcaEd25519Verifier,
+    private val verifier: ManifestVerifier = TinkEd25519Verifier,
     private val client: OkHttpClient = noRedirectClient(),
     private val now: () -> Instant = Instant::now,
 ) {
 
     /**
      * Fetches, verifies, accepts and — only then — installs. The informational outcomes are
-     * `no_ed25519_provider` (API < 33, where [FullUpdatePolicy.publicKeyFromRawBase64] returns null for
-     * every key), `manifest_key_unavailable` (the compiled-in keys are still placeholders) and
-     * `install_grant_missing`; none of them is a crash and none is worth a retry.
+     * `manifest_key_unavailable` (the compiled-in keys are still placeholders) and
+     * `install_grant_missing`; neither is a crash and neither is worth a retry.
      */
     suspend fun check(statusIntent: IntentSender): FullUpdateOutcome = try {
         when {
-            !ed25519ProviderPresent() -> refuse(REASON_NO_ED25519_PROVIDER, informational = true)
             !context.packageManager.canRequestPackageInstalls() ->
                 refuse(REASON_INSTALL_GRANT_MISSING, informational = true)
             else -> evaluate(statusIntent)
@@ -69,7 +64,7 @@ class FullUpdater(
     }
 
     private suspend fun evaluate(statusIntent: IntentSender): FullUpdateOutcome {
-        val publicKeys: Map<String, PublicKey> = publicKeys()
+        val publicKeys: Map<String, ByteArray> = publicKeys()
         if (publicKeys.isEmpty()) return refuse(REASON_MANIFEST_KEY_UNAVAILABLE, informational = true)
 
         val manifestBytes: ByteArray = when (val fetched = fetch(MANIFEST_URL)) {
@@ -243,18 +238,11 @@ class FullUpdater(
         context.packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, 0),
     )
 
-    private fun publicKeys(): Map<String, PublicKey> = keys.mapNotNull { entry: Map.Entry<String, String> ->
-        FullUpdatePolicy.publicKeyFromRawBase64(entry.value)?.let { publicKey: PublicKey ->
+    private fun publicKeys(): Map<String, ByteArray> = keys.mapNotNull { entry: Map.Entry<String, String> ->
+        FullUpdatePolicy.publicKeyFromRawBase64(entry.value)?.let { publicKey: ByteArray ->
             entry.key to publicKey
         }
     }.toMap()
-
-    private fun ed25519ProviderPresent(): Boolean = try {
-        KeyFactory.getInstance("Ed25519")
-        true
-    } catch (e: NoSuchAlgorithmException) {
-        false
-    }
 
     private fun fetch(url: String): Fetch {
         if (!FullUpdatePolicy.isAllowedUrl(url)) return Fetch.Failed(UpdateRefusal.off_site_url.name)
@@ -308,7 +296,6 @@ class FullUpdater(
         const val SIGNATURE_URL: String = "https://osratech.com/android/latest.json.sig"
         const val MANIFEST_MAX_BYTES: Long = 64L * 1024L
         const val APK_MAX_BYTES: Long = 256L * 1024L * 1024L
-        const val REASON_NO_ED25519_PROVIDER: String = "no_ed25519_provider"
         const val REASON_INSTALL_GRANT_MISSING: String = "install_grant_missing"
         const val REASON_MANIFEST_KEY_UNAVAILABLE: String = "manifest_key_unavailable"
         const val REASON_FETCH_FAILED: String = "manifest_unreachable"

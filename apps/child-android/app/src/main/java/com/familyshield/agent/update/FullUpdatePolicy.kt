@@ -1,13 +1,10 @@
 package com.familyshield.agent.update
 
+import com.google.crypto.tink.subtle.Ed25519Verify
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLDecoder
 import java.security.GeneralSecurityException
-import java.security.KeyFactory
-import java.security.PublicKey
-import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Base64
@@ -28,8 +25,8 @@ import java.util.Base64
  *    highest accepted `versionCode` **or** older than the highest accepted `releasedAt` is refused with
  *    `replayed_below_high_water`. An expiry that cannot be parsed, or an unreadable `releasedAt`, is
  *    refused rather than trusted (`expired` / `replayed_below_high_water`); fail closed.
- *  - row 3 — two compiled-in keys (`m1` primary, `m2` offline backup) and a `keyId` the manifest must name;
- *    any other value is `unknown_key_id`.
+ *  - row 3 — two compiled-in keys (`m1` primary, `m2` offline backup) as 32 raw bytes each, and a `keyId`
+ *    the manifest must name; any other value is `unknown_key_id`.
  *  - row 4 — [isAllowedUrl] checks the URL by components: `https`, host exactly `osratech.com`, no
  *    userinfo, no port, a normalised path under `/android/`, and no raw or percent-encoded `..` segment.
  *  - row 5 — the archive's package name must be ours: [accept] refuses a manifest for another package
@@ -41,12 +38,11 @@ import java.util.Base64
  *    remote off switch, so only the APK's own `minSdk` is enforced here, as `device_too_old` (a device
  *    below it cannot install the archive, and Android would reject the install anyway).
  *
- * Ed25519 on Android: the platform has no `Ed25519` provider before **API 33**. [JcaEd25519Verifier] is the
- * default, and [verifyAndParse] takes any [ManifestVerifier], so the worker injects its own provider when
- * the platform has one. There is no fallback that trusts an unverified manifest: with no provider the
- * default verifier returns false and the decision is `signature_invalid`; when the raw key helper cannot
- * build a key at all the key map is empty and the decision is `unknown_key_id` — refused either way, never trusted. On this
- * JDK 17 the built-in provider works, which is where these tests run.
+ * Ed25519: [TinkEd25519Verifier] (Google Tink's `subtle.Ed25519Verify`) is the only verifier and it runs on
+ * **every API level**, not just those where the platform happens to carry an `Ed25519` provider (API 33+).
+ * One code path ships, so the 24 JVM rows exercise exactly what a phone runs, and the minSdk 26 floor has no
+ * provider gap left to paper over. The verifier never throws: a bad key length, a bad signature or a
+ * `GeneralSecurityException` is `false`, and the decision is `signature_invalid` — refused, never trusted.
  *
  * `sha256` comparison is case-insensitive and an expectation that is not 64 hex characters is refused
  * before any comparison (`sha256_mismatch`). `FullUpdateManifest.parse` accepts any `schema` value; only
@@ -74,18 +70,16 @@ sealed interface UpdateDecision {
 }
 
 fun interface ManifestVerifier {
-    fun verify(rawBytes: ByteArray, signatureBytes: ByteArray, publicKey: PublicKey): Boolean
+    fun verify(rawBytes: ByteArray, signatureBytes: ByteArray, publicKey: ByteArray): Boolean
 }
 
-object JcaEd25519Verifier : ManifestVerifier {
-    private const val ALGORITHM: String = "Ed25519"
-
-    override fun verify(rawBytes: ByteArray, signatureBytes: ByteArray, publicKey: PublicKey): Boolean = try {
-        val verifier: Signature = Signature.getInstance(ALGORITHM)
-        verifier.initVerify(publicKey)
-        verifier.update(rawBytes)
-        verifier.verify(signatureBytes)
+object TinkEd25519Verifier : ManifestVerifier {
+    override fun verify(rawBytes: ByteArray, signatureBytes: ByteArray, publicKey: ByteArray): Boolean = try {
+        Ed25519Verify(publicKey).verify(signatureBytes, rawBytes)
+        true
     } catch (e: GeneralSecurityException) {
+        false
+    } catch (e: IllegalArgumentException) {
         false
     }
 }
@@ -100,11 +94,7 @@ object FullUpdatePolicy {
 
     private val SHA256_HEX: Regex = Regex("^[0-9a-fA-F]{64}$")
 
-    private val ED25519_SPKI_PREFIX: ByteArray = byteArrayOf(
-        0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-    )
-
-    private val defaultVerifier: ManifestVerifier = JcaEd25519Verifier
+    private val defaultVerifier: ManifestVerifier = TinkEd25519Verifier
 
     data class DeviceFacts(
         val ownPackageName: String,
@@ -118,12 +108,12 @@ object FullUpdatePolicy {
     fun verifyAndParse(
         rawBytes: ByteArray,
         signatureBase64: String,
-        publicKeys: Map<String, PublicKey>,
+        publicKeys: Map<String, ByteArray>,
         verifier: ManifestVerifier = defaultVerifier,
     ): UpdateDecision {
         val keyId: String = FullUpdateManifest.envelopeKeyId(rawBytes)
             ?: return UpdateDecision.Refused(UpdateRefusal.malformed_manifest)
-        val publicKey: PublicKey = publicKeys[keyId]
+        val publicKey: ByteArray = publicKeys[keyId]
             ?: return UpdateDecision.Refused(UpdateRefusal.unknown_key_id)
         val signatureBytes: ByteArray? = try {
             Base64.getDecoder().decode(signatureBase64)
@@ -219,19 +209,13 @@ object FullUpdatePolicy {
         return !hasDotDotSegment(rawPath) && !hasDotDotSegment(path)
     }
 
-    fun publicKeyFromRawBase64(rawBase64: String): PublicKey? {
+    fun publicKeyFromRawBase64(rawBase64: String): ByteArray? {
         val raw: ByteArray = try {
             Base64.getDecoder().decode(rawBase64)
         } catch (e: IllegalArgumentException) {
             return null
         }
-        if (raw.size != ED25519_RAW_KEY_BYTES) return null
-        return try {
-            KeyFactory.getInstance("Ed25519")
-                .generatePublic(X509EncodedKeySpec(ED25519_SPKI_PREFIX + raw))
-        } catch (e: GeneralSecurityException) {
-            null
-        }
+        return if (raw.size == ED25519_RAW_KEY_BYTES) raw else null
     }
 
     private fun hasDotDotSegment(rawPath: String): Boolean {

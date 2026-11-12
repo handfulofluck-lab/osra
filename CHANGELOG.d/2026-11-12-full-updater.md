@@ -16,12 +16,13 @@
 - **The trust core is pure JVM**, with no `android.*` imports, so all 24 refusals are ordinary unit tests, and a
   source test pins that `PackageInstaller` is named in exactly one class (`FullUpdater`). No server command,
   push, intent or deep link can start an install.
-- **What this does not promise (stated, not hidden):** the two manifest keys ship as **placeholders** until the
-  maintainer pastes the real base64 values into `FullUpdateKeys`; until then every check refuses
-  `manifest_key_unavailable`, which is the fail-closed direction. Android has **no Ed25519 provider below API
-  33**, so a phone on Android 8–12 refuses with `no_ed25519_provider` instead of trusting anything — the
-  fallback is an open architecture question on the PR. And because the first Full install comes from a browser,
-  Android makes the **first** update ask the child; `setRequestUpdateOwnership(true)` on Android 14+ is what
-  makes later ones silent.
+- **What this does not promise (stated, not hidden):** the two manifest keys still ship as **placeholders**
+  until the maintainer pastes the real base64 values into `FullUpdateKeys`; until then every check refuses
+  `manifest_key_unavailable`, which is the fail-closed direction. Ed25519 verification is Google **Tink**
+  (`com.google.crypto.tink:tink-android`, pinned exactly) on **every API level**, so the API<33 provider gap
+  is closed by one code path and the 24 JVM rows exercise the verifier that actually ships — a phone on
+  Android 8–12 no longer refuses for want of a provider. And because the first Full install comes from a
+  browser, Android makes the **first** update ask the child; `setRequestUpdateOwnership(true)` on Android 14+
+  is what makes later ones silent.
 - **Also here:** D5.8's `install_updates` capability row and D5.6's "update pending/required" on the parent are
   **not** in this change; they need the capability report and a server-side poller, and are their own rows.

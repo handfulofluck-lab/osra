@@ -1148,7 +1148,7 @@ cd apps/child-android
 
 | Row | What it pins | The mutant that must turn it red |
 |---|---|---|
-| `FullUpdatePolicyTest` (24 rows) | signature over the exact bytes, `keyId`, own package, higher `versionCode`, no replay below the highest seen `versionCode`/`releasedAt`, `expiresAt`, URL by component (host/userinfo/port/path/dot-dot), `minSdk`, size, SHA-256, archive signer | flip `JcaEd25519Verifier.verify` to `true`; no-op both replay branches; make `isAllowedUrl` return `true`; delete the package check; delete only the dot-dot rule (it must be *that* row that fails, not the path-prefix row) |
+| `FullUpdatePolicyTest` (24 rows) | signature over the exact bytes, `keyId`, own package, higher `versionCode`, no replay below the highest seen `versionCode`/`releasedAt`, `expiresAt`, URL by component (host/userinfo/port/path/dot-dot), `minSdk`, size, SHA-256, archive signer | flip `TinkEd25519Verifier.verify` to `true` (the verifier that ships — Tink on every API level); no-op both replay branches; make `isAllowedUrl` return `true`; delete the package check; delete only the dot-dot rule (it must be *that* row that fails, not the path-prefix row) |
 | `PackageInstallerSingleSourceTest` (1 row) | `PackageInstaller` is named in exactly one Kotlin file, and it is `FullUpdater.kt` | add the literal to any second file under `app/src/{main,full,play}` — it bites on a KDoc mention too |
 
 The store build must never carry the install permission, and this is checked on the **artefact**, not on the
