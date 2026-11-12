@@ -196,12 +196,16 @@ class DeviceSetup {
   final List<String> missing;
   final DeviceProfiles? profiles;
 
+  /// ADR-0037: the iPhone's app groups, null until the phone has reported any (and always for Android).
+  final List<AppGroupReport>? groups;
+
   const DeviceSetup({
     this.reportedAt,
     this.stale = false,
     this.features = const {},
     this.missing = const [],
     this.profiles,
+    this.groups,
   });
 
   factory DeviceSetup.fromJson(Map<String, dynamic> json) => DeviceSetup(
@@ -218,6 +222,12 @@ class DeviceSetup {
             : const [],
         profiles: json['profiles'] is Map
             ? DeviceProfiles.fromJson(Map<String, dynamic>.from(json['profiles'] as Map))
+            : null,
+        groups: json['groups'] is List
+            ? [
+                for (final m in _mapList(json['groups']))
+                  if (AppGroupReport.tryFromJson(m) case final g?) g,
+              ]
             : null,
       );
 
@@ -589,6 +599,11 @@ class RuleSet {
   final Map<String, bool> socialMonitoring;
   final List<String> contactAllowlist;
   final List<String> alwaysAllowedApps;
+
+  /// ADR-0037 PR B3: iPhone app groups this child's parent blocked, by the id the phone reported. Carried
+  /// through every read-modify-write so a save from any screen keeps them (the server also keeps them when the
+  /// field is absent, for older apps).
+  final List<AppGroupRule> appGroupRules;
   final DateTime? updatedAt;
 
   const RuleSet({
@@ -601,6 +616,7 @@ class RuleSet {
     this.socialMonitoring = const {},
     this.contactAllowlist = const [],
     this.alwaysAllowedApps = const [],
+    this.appGroupRules = const [],
     this.updatedAt,
   });
 
@@ -618,6 +634,10 @@ class RuleSet {
       socialMonitoring: {for (final e in social.entries) e.key: e.value == true},
       contactAllowlist: _strList(root['contactAllowlist']),
       alwaysAllowedApps: _strList(root['alwaysAllowedApps']),
+      appGroupRules: [
+        for (final m in _mapList(root['appGroupRules']))
+          if (AppGroupRule.tryFromJson(m) case final rule?) rule,
+      ],
       updatedAt: DateTime.tryParse(_str(root['updatedAt'])),
     );
   }
@@ -631,7 +651,78 @@ class RuleSet {
         'socialMonitoring': socialMonitoring,
         'contactAllowlist': contactAllowlist,
         'alwaysAllowedApps': alwaysAllowedApps,
+        'appGroupRules': [for (final r in appGroupRules) r.toJson()],
       };
+
+  /// A copy with only the fields given changed; every other field, [appGroupRules] included, is kept.
+  RuleSet copyWith({
+    ScreenTimeRule? screenTime,
+    WebFilterRule? webFilter,
+    List<AppRule>? appRules,
+    List<Routine>? routines,
+    Map<String, bool>? socialMonitoring,
+    List<String>? contactAllowlist,
+    List<String>? alwaysAllowedApps,
+    List<AppGroupRule>? appGroupRules,
+  }) =>
+      RuleSet(
+        id: id,
+        childId: childId,
+        screenTime: screenTime ?? this.screenTime,
+        webFilter: webFilter ?? this.webFilter,
+        appRules: appRules ?? this.appRules,
+        routines: routines ?? this.routines,
+        socialMonitoring: socialMonitoring ?? this.socialMonitoring,
+        contactAllowlist: contactAllowlist ?? this.contactAllowlist,
+        alwaysAllowedApps: alwaysAllowedApps ?? this.alwaysAllowedApps,
+        appGroupRules: appGroupRules ?? this.appGroupRules,
+        updatedAt: updatedAt,
+      );
+}
+
+/// ADR-0037 PR B3: a rule on one iPhone app group. `block` is the only action (limits are PR C).
+@immutable
+class AppGroupRule {
+  final String groupId;
+  final String action;
+
+  const AppGroupRule({required this.groupId, this.action = 'block'});
+
+  /// Null for an entry this app does not understand, so one odd row never costs the others.
+  static AppGroupRule? tryFromJson(Map<String, dynamic> json) {
+    final id = _str(json['groupId']);
+    final action = _str(json['action']);
+    if (id.isEmpty || action != 'block') return null;
+    return AppGroupRule(groupId: id, action: action);
+  }
+
+  Map<String, dynamic> toJson() => {'groupId': groupId, 'action': action};
+}
+
+/// ADR-0037: one app group as the iPhone reported it (`DeviceSetup.groups`): an id, the label the parent typed
+/// on the phone, and counts only. The parent app never learns which apps are in it.
+@immutable
+class AppGroupReport {
+  final String id;
+  final String label;
+  final int apps;
+  final int categories;
+  final int sites;
+
+  const AppGroupReport({required this.id, required this.label, this.apps = 0, this.categories = 0, this.sites = 0});
+
+  static AppGroupReport? tryFromJson(Map<String, dynamic> json) {
+    final id = _str(json['id']);
+    final label = _str(json['label']);
+    if (id.isEmpty || label.isEmpty) return null;
+    return AppGroupReport(
+      id: id,
+      label: label,
+      apps: _int(json['apps']),
+      categories: _int(json['categories']),
+      sites: _int(json['sites']),
+    );
+  }
 }
 
 /// A flagged social-monitoring event from the encrypted vault (features #2/#24).
