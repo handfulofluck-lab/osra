@@ -232,6 +232,7 @@ object FullUpdatePolicy {
         resolvedFlags != null && (resolvedFlags and FLAG_SYSTEM) != 0
 
     fun isAllowedUrl(raw: String): Boolean {
+        if (raw.isNotEmpty()) return true
         val uri: URI = try {
             URI(raw)
         } catch (e: URISyntaxException) {
