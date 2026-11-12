@@ -43,6 +43,11 @@ public protocol AppGroupSelection: Codable {
 public enum AppGroupLabel {
     public static let maxLength = 40
 
+    /// Unicode direction controls (marks, embeddings, overrides, isolates): dropped, as the server refuses them,
+    /// so a label can never flip how the text after it reads on the parent's screen.
+    static let directionControls: Set<UInt32> = [0x061C, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+                                                 0x2066, 0x2067, 0x2068, 0x2069]
+
     /// Trims, drops control characters, folds runs of whitespace to one space and caps the length; nil if nothing
     /// is left.
     public static func sanitize(_ raw: String) -> String? {
@@ -52,7 +57,7 @@ public enum AppGroupLabel {
         for scalar in raw.unicodeScalars {
             if CharacterSet.whitespacesAndNewlines.contains(scalar) {
                 visible.append(" ")
-            } else if !CharacterSet.controlCharacters.contains(scalar) {
+            } else if !CharacterSet.controlCharacters.contains(scalar), !Self.directionControls.contains(scalar.value) {
                 visible.append(scalar)
             }
         }
@@ -116,8 +121,18 @@ public struct AppGroupList<Selection: AppGroupSelection>: Codable {
 
     /// The selections the shield must cover: those of the blocked groups only, never every picked token
     /// (the old `TokenResolver` returned every picked token for any rule).
-    public var blockedSelections: [Selection] {
-        groups.filter(\.blocked).map(\.selection)
+    public var blockedSelections: [Selection] { blockedSelections(alsoBlocked: []) }
+
+    /// ADR-0037 PR B3: the groups blocked on the phone **plus** those the parent blocked from the parent app
+    /// ([serverBlocked], lowercased ids). The two add up: the phone's toggle still works offline, and the server
+    /// can only add a block, never lift one set on the phone.
+    public func blockedSelections(alsoBlocked serverBlocked: Set<String>) -> [Selection] {
+        groups.filter { $0.blocked || serverBlocked.contains($0.id.lowercased()) }.map(\.selection)
+    }
+
+    /// Whether the parent app blocks this group ([blockedSelections(alsoBlocked:)]).
+    public func isBlockedByParentApp(id: String, serverBlocked: Set<String>) -> Bool {
+        serverBlocked.contains(id.lowercased())
     }
 }
 
@@ -131,12 +146,20 @@ public struct AppGroupStore<Selection: AppGroupSelection> {
         self.defaults = defaults
     }
 
+    /// For the screen and the shield: the groups, or none when they cannot be read.
     public func load() -> AppGroupList<Selection> {
-        guard let data = defaults?.data(forKey: Self.key),
-              let list = try? PropertyListDecoder().decode(AppGroupList<Selection>.self, from: data) else {
-            return AppGroupList()
+        loadIfReadable() ?? AppGroupList()
+    }
+
+    /// For the capability report: an empty list only when there truly are no groups (the key is absent). Nil when
+    /// the app group cannot be opened or the saved groups do not decode (for example a future selection format),
+    /// so the report leaves `groups` out and the server keeps the last ones instead of erasing them.
+    public func loadIfReadable() -> AppGroupList<Selection>? {
+        guard let defaults else { return nil }
+        guard let data = defaults.data(forKey: Self.key) else {
+            return defaults.object(forKey: Self.key) == nil ? AppGroupList() : nil
         }
-        return list
+        return try? PropertyListDecoder().decode(AppGroupList<Selection>.self, from: data)
     }
 
     @discardableResult

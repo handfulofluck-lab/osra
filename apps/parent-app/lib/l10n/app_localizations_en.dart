@@ -3010,4 +3010,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'Background app refresh';
+
+  @override
+  String get appRuleHiddenOnIphone => 'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 }

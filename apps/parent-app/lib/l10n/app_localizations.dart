@@ -5047,6 +5047,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Background app refresh'**
   String get grantBackgroundRefresh;
+
+  /// ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
+  String get appRuleHiddenOnIphone;
 }
 
 class _AppLocalizationsDelegate

@@ -1,5 +1,8 @@
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
 import DeviceActivity
@@ -46,10 +49,13 @@ public final class ScreenTimeController {
     /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
     /// picker tokens, so iOS shows the OSRA shield (and Ask parent) instead of hiding the app, which is what
     /// `blockedApplications` does for the bundle-id rules above.
-    public func applyGroups(_ groups: AppGroupList<FamilyActivitySelection>) {
+    /// [serverBlocked]: the groups the parent blocked from the parent app (ADR-0037 PR B3); the last synced set by
+    /// default, so the groups screen's own commits keep them.
+    public func applyGroups(_ groups: AppGroupList<FamilyActivitySelection>,
+                            serverBlocked: Set<String> = RuleStore.blockedGroupIds()) {
         guard ensureAuthorized(#function) else { return }
         let store = ManagedSettingsStore(named: Self.groupsStoreName)
-        let selections = groups.blockedSelections
+        let selections = groups.blockedSelections(alsoBlocked: serverBlocked)
         let apps = selections.reduce(into: Set<ApplicationToken>()) { $0.formUnion($1.applicationTokens) }
         let categories = selections.reduce(into: Set<ActivityCategoryToken>()) { $0.formUnion($1.categoryTokens) }
         let sites = selections.reduce(into: Set<WebDomainToken>()) { $0.formUnion($1.webDomainTokens) }
@@ -116,7 +122,7 @@ public final class ScreenTimeController {
     /// routine activity.
     public func applyRules(_ rules: RuleSet) throws {
         applyBlockedApps(packageIds: rules.blockedBundleIdentifiers)
-        applyGroups(AppGroupStore<FamilyActivitySelection>().load())
+        applyGroups(AppGroupStore<FamilyActivitySelection>().load(), serverBlocked: Set(rules.blockedGroupIds))
         applyWebFilter(blockedCategories: rules.webFilter.blockedCategories,
                        blockedDomains: rules.webFilter.blockedDomains)
         guard ensureAuthorized(#function) else { throw ApplyError.notAuthorized }
@@ -251,4 +257,20 @@ enum TokenResolver {
         []
     }
 }
+#if canImport(UIKit)
+extension CapabilityReport {
+    /// ADR-0034 A6 / ADR-0037: this phone's report: the build, Screen Time, location, background refresh, and the
+    /// app groups as id + label + counts (never the picker's tokens).
+    @MainActor
+    public static func live(location: LocationGrant) -> CapabilityReport {
+        // Nil when the store cannot be read, so the report leaves `groups` out and never erases the parent's copy.
+        let groups = AppGroupStore<FamilyActivitySelection>().loadIfReadable()?.groups.map {
+            CapabilityReport.Group(id: $0.id, label: $0.label, counts: $0.counts)
+        }
+        return CapabilityReport(client: .current(), screenTime: FamilyControlsAuthorizer().status, location: location,
+                                backgroundRefreshOn: UIApplication.shared.backgroundRefreshStatus == .available,
+                                groups: groups)
+    }
+}
+#endif
 #endif

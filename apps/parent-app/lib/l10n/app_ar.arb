@@ -888,8 +888,8 @@
   "phoneSetupOtherSpaceOther": "في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.",
   "phoneSetupTitle": "إعداد الهاتف",
   "phoneSetupNeverReported": "لم يبلّغ هذا الهاتف عن إمكاناته بعد.",
-  "phoneSetupReported": "تم البلاغ {age}",
-  "phoneSetupStale": "آخر بلاغ {age} — قد لا يكون الهاتف محدَّثًا بعد.",
+  "phoneSetupReported": "آخر تحديث {age}",
+  "phoneSetupStale": "آخر تحديث {age} — قد لا تكون بيانات الهاتف محدَّثة بعد.",
   "phoneSetupFixList": "ما يجب إصلاحه على الهاتف",
   "phoneSetupNothingMissing": "كل الأذونات التي يحتاجها هذا الهاتف ممنوحة.",
   "phoneSetupOtherSpaces": "مساحات أخرى على هذا الهاتف: {count}",
@@ -908,7 +908,7 @@
   "phoneSetupStateUnavailable": "غير متاح",
   "phoneSetupStateNotSupported": "غير موجود في هذا الإصدار",
   "grantAccessibility": "خدمة إمكانية الوصول",
-  "grantUsageAccess": "الوصول إلى الاستخدام",
+  "grantUsageAccess": "الوصول إلى بيانات الاستخدام",
   "grantOverlay": "العرض فوق التطبيقات الأخرى",
   "grantDeviceAdmin": "مسؤول الجهاز",
   "grantWebFilter": "تصفية المواقع (موافقة VPN)",
@@ -919,5 +919,6 @@
   "grantNotificationListener": "الوصول إلى الإشعارات",
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
-  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية"
+  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
+  "appRuleHiddenOnIphone": "على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر."
 }

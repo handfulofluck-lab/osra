@@ -3061,12 +3061,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String phoneSetupReported(Object age) {
-    return 'تم البلاغ $age';
+    return 'آخر تحديث $age';
   }
 
   @override
   String phoneSetupStale(Object age) {
-    return 'آخر بلاغ $age — قد لا يكون الهاتف محدَّثًا بعد.';
+    return 'آخر تحديث $age — قد لا تكون بيانات الهاتف محدَّثة بعد.';
   }
 
   @override
@@ -3127,7 +3127,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantAccessibility => 'خدمة إمكانية الوصول';
 
   @override
-  String get grantUsageAccess => 'الوصول إلى الاستخدام';
+  String get grantUsageAccess => 'الوصول إلى بيانات الاستخدام';
 
   @override
   String get grantOverlay => 'العرض فوق التطبيقات الأخرى';
@@ -3161,4 +3161,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
+
+  @override
+  String get appRuleHiddenOnIphone => 'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 }

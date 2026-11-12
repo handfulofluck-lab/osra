@@ -38,6 +38,8 @@ final class OSRAAgentAppDelegate: NSObject, UIApplicationDelegate {
         // Significant-change monitoring relaunches a suspended or terminated app with `.location` (5.5 PR E):
         // the manager is recreated here and monitoring restarts, which delivers the new fix. Every launch
         // also reports the grant, so the server can refuse a locate_now the phone cannot answer.
+        // ADR-0034 A6 / ADR-0037: every grant upload carries the capability report, app groups included.
+        LocationController.capabilityReport = { CapabilityReport.live(location: $0) }
         LocationController.shared.startIfAllowed()
         Task { await LocationController.shared.reportGrant() }
         return true

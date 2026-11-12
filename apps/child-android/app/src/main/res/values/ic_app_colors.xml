@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OSRA Kids (docs/design/BRAND.md §2): tint, primary and the games colour of docs/design/tokens.json. -->
+    <color name="ic_app_background">#EAF2F0</color>
+    <color name="ic_app_ring">#0B5D57</color>
+    <color name="ic_app_dot">#C96A12</color>
+</resources>
