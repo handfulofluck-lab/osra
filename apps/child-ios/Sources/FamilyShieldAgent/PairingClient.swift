@@ -21,14 +21,19 @@ public struct AgentIdentity: Equatable {
     /// Per-deployment HMAC secret for `X-FamilyShield-Signature` internal calls;
     /// nil when the server did not provision one (alerts then fail closed with a 401).
     public var hmacSecret: String?
+    /// #602: the child's name as the parent typed it, shown on the status screen instead of an id; nil from a
+    /// server before #602 or when the name could not be read.
+    public var childName: String?
 
-    public init(apiBaseURL: URL, deviceToken: String, deviceId: String, childId: String, familyId: String, hmacSecret: String?) {
+    public init(apiBaseURL: URL, deviceToken: String, deviceId: String, childId: String, familyId: String, hmacSecret: String?,
+                childName: String? = nil) {
         self.apiBaseURL = apiBaseURL
         self.deviceToken = deviceToken
         self.deviceId = deviceId
         self.childId = childId
         self.familyId = familyId
         self.hmacSecret = hmacSecret
+        self.childName = childName
     }
 }
 
@@ -216,13 +221,15 @@ public struct PairingClient {
         let rawHmac = obj["hmacSecret"] as? String
         let hmac = (rawHmac?.isEmpty == false) ? rawHmac : nil
 
+        let rawName = (obj["childName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return AgentIdentity(
             apiBaseURL: baseURL,
             deviceToken: token,
             deviceId: deviceId,
             childId: childId,
             familyId: familyId,
-            hmacSecret: hmac
+            hmacSecret: hmac,
+            childName: (rawName?.isEmpty == false) ? rawName : nil
         )
     }
 
