@@ -6,7 +6,10 @@ import XCTest
 final class A11yIDTests: XCTestCase {
 
     private static let views = ["PairingView.swift", "ParentPinViews.swift", "AppGroupsView.swift"]
-    private static let controls = ["Button(", "TextField(", "SecureField(", "NavigationLink(", "Toggle("]
+    /// A control starts a line as `Button(`, `Button {`, `Menu(` and so on. Both call shapes count, so a control
+    /// written with a `label:` closure is seen too.
+    private static let controlPattern = try! NSRegularExpression(
+        pattern: #"^(Button|TextField|SecureField|NavigationLink|Toggle|Menu|Picker)\s*[({]"#)
 
     func testTheIdentifiersAreUniqueStableAscii() {
         XCTAssertEqual(Set(A11yID.all).count, A11yID.all.count, "no two controls share an identifier")
@@ -18,29 +21,60 @@ final class A11yIDTests: XCTestCase {
         XCTAssertEqual(Set(A11yID.GroupPart.allCases.map { A11yID.group("g1", $0) }).count, A11yID.GroupPart.allCases.count)
     }
 
-    /// Each control is followed by its `.accessibilityIdentifier(` before the next control starts. A control added
-    /// without one fails here, in the file and line it was added.
+    /// The controls in `source` with no `.accessibilityIdentifier(` before the next control starts, as
+    /// `line: text`. A control added without one is reported at the line it was added.
+    static func missingIdentifiers(in source: String) -> (controls: Int, missing: [String]) {
+        var controls = 0
+        var missing: [String] = []
+        var pending: String?
+        for (index, raw) in source.components(separatedBy: "\n").enumerated() {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("//") { continue }
+            let range = NSRange(line.startIndex..., in: line)
+            if controlPattern.firstMatch(in: line, range: range) != nil {
+                if let open = pending { missing.append(open) }
+                pending = "\(index + 1): \(line)"
+                controls += 1
+            }
+            if line.contains(".accessibilityIdentifier(A11yID.") { pending = nil }
+        }
+        if let open = pending { missing.append(open) }
+        return (controls, missing)
+    }
+
     func testEveryControlHasAnIdentifier() throws {
         let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent")
         var controlsSeen = 0
         for file in Self.views {
-            let lines = try String(contentsOf: folder.appendingPathComponent(file), encoding: .utf8)
-                .components(separatedBy: "\n")
-            var pending: (line: Int, text: String)?
-            for (index, raw) in lines.enumerated() {
-                let line = raw.trimmingCharacters(in: .whitespaces)
-                if line.hasPrefix("//") || line.hasPrefix("///") { continue }
-                if Self.controls.contains(where: { line.hasPrefix($0) }) {
-                    if let open = pending { XCTFail("\(file):\(open.line): no accessibilityIdentifier for \(open.text)") }
-                    pending = (index + 1, line)
-                    controlsSeen += 1
-                }
-                if line.contains(".accessibilityIdentifier(A11yID.") { pending = nil }
-            }
-            if let open = pending { XCTFail("\(file):\(open.line): no accessibilityIdentifier for \(open.text)") }
+            let source = try String(contentsOf: folder.appendingPathComponent(file), encoding: .utf8)
+            let result = Self.missingIdentifiers(in: source)
+            controlsSeen += result.controls
+            for open in result.missing { XCTFail("\(file):\(open): no accessibilityIdentifier") }
         }
-        XCTAssertGreaterThanOrEqual(controlsSeen, 19, "the scan found the screens' controls")
+        XCTAssertGreaterThanOrEqual(controlsSeen, 20, "the scan found the screens' controls")
+    }
+
+    /// The scan itself: each control shape without an identifier is caught, and one with an identifier is not.
+    func testTheScanSeesEveryControlShape() {
+        let unmarked = [
+            "Button { save() } label: {\n    Text(\"Save\")\n}",
+            "Button(\"Save\") { save() }",
+            "Menu(\"More\") { Text(\"A\") }",
+            "Menu {\n    Text(\"A\")\n} label: {\n    Text(\"More\")\n}",
+            "Picker(\"Kind\", selection: $kind) { Text(\"A\") }",
+            "Toggle(\"On\", isOn: $on)",
+            "NavigationLink(\"Next\") { Text(\"B\") }",
+            "SecureField(\"PIN\", text: $pin)",
+            "TextField(\"Name\", text: $name)",
+        ]
+        for fixture in unmarked {
+            XCTAssertEqual(Self.missingIdentifiers(in: fixture).missing.count, 1, fixture)
+        }
+        let marked = "Button { save() } label: {\n    Text(\"Save\")\n}\n.accessibilityIdentifier(A11yID.pinSave)"
+        XCTAssertEqual(Self.missingIdentifiers(in: marked).missing, [])
+        let twoInARow = "Button(\"A\") { }\nButton(\"B\") { }\n.accessibilityIdentifier(A11yID.pinSave)"
+        XCTAssertEqual(Self.missingIdentifiers(in: twoInARow).missing.count, 1, "the first of two controls is caught")
     }
 
     func testEveryFixedIdentifierIsUsedOnAScreen() throws {

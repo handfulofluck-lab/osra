@@ -6,5 +6,6 @@
   status and error lines a script reads. Nothing a person sees changed. The block screen is drawn by iOS from
   `ShieldConfiguration` and takes no identifiers.
 - Rows (`A11yIDTests`): identifiers are unique ASCII; a scan of the three view files fails at the file and line of
-  any `Button`, `TextField`, `SecureField`, `NavigationLink` or `Toggle` without one (20 on `main`, 0 now); and
+  any `Button`, `TextField`, `SecureField`, `NavigationLink`, `Toggle`, `Menu` or `Picker` without one, in the
+  `Button(…)` and `Button { } label:` shapes alike (20 on `main`, 0 now; fixture rows prove each shape is seen); and
   every fixed identifier is used on a screen.
