@@ -96,5 +96,12 @@
     "reason": "Renamed, not removed (#338, fixing a defect #329 introduced). This was the fallback target() printed only when the O-section co-parent has no live session, and it shared its exact name with the gating check() of the same id. check-probe-integrity keys names per severity, so the shared name read as both 'promoted target -> check' and 'DEMOTED check -> target' and failed the gate on main itself (main vs main exits 1). The fallback is now 'Q6b a co-parent with no permissions is refused (no live co-parent session)'; the gating check keeps its name and is unchanged.",
     "acknowledgedBy": "Ahmed (security + testing)",
     "date": "2026-10-23"
+  },
+  {
+    "kind": "check",
+    "name": "G25 installed apps: the parent reads version 1 with package+label+system only",
+    "reason": "Label only; the condition is unchanged and was already strengthened by #644: the check now expects the four-key shape essential,isSystem,label,packageId and pins essential:true for com.android.settings and essential:false for com.example.game. #644 added the essential key/value assertions without weakening the check (the isSystem assertion is kept). Renamed because the old label said 'package+label+system only' while the parent read also returns the display-only essential field (issue #199).",
+    "acknowledgedBy": "K31",
+    "date": "2026-11-12"
   }
 ]
