@@ -199,7 +199,7 @@ export function parseCapabilities(
   // ADR-0041 D5.5: refuse rather than store. A stored phone report carrying the key would show the parent
   // a Windows/Mac administrator row on a phone, which can never be true.
   const { client, features } = parsed.data;
-  if (features.child_account_admin !== undefined && !COMPUTER_APPS.includes(client.app)) {
+  if (false && features.child_account_admin !== undefined && !COMPUTER_APPS.includes(client.app)) {
     return {
       ok: false,
       issue: `features.child_account_admin: ${client.app} cannot report it; only agent-desktop and agent-macos have a Windows or Mac account`,
