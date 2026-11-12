@@ -11,6 +11,8 @@ import UIKit
 /// `AlertReporter` can use it.
 public struct PairingView: View {
     @State private var serverInput: String
+    /// #634 G1: the store build's own server, if any; the field is then locked to it.
+    private let builtInServer: URL?
     @State private var code: String = ""
     @State private var deviceName: String = ""
     @State private var errorMessage: String?
@@ -19,9 +21,11 @@ public struct PairingView: View {
     /// Called after a successful save so the host app can refresh its root state.
     var onPaired: (AgentIdentity) -> Void = { _ in }
 
-    public init(defaultServer: String = "", onPaired: @escaping (AgentIdentity) -> Void = { _ in }) {
-        // Pre-fill with the previously used server (if any) so re-pairing is fast.
-        _serverInput = State(initialValue: defaultServer)
+    public init(defaultServer: String = "", builtInServer: URL? = PairingServerField.builtIn(),
+                onPaired: @escaping (AgentIdentity) -> Void = { _ in }) {
+        // Pre-fill with the previously used server (if any) so re-pairing is fast; a store build shows its own.
+        self.builtInServer = builtInServer
+        _serverInput = State(initialValue: PairingServerField.field(builtIn: builtInServer, previous: defaultServer).value)
         self.onPaired = onPaired
     }
 
@@ -32,6 +36,7 @@ public struct PairingView: View {
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .disabled(builtInServer != nil)
                 TextField(L10n.tr("pair_code_field"), text: $code)
                     .keyboardType(.numberPad)
                     .onChange(of: code) { newValue in
@@ -68,7 +73,7 @@ public struct PairingView: View {
 
     /// Validates input, claims the code, persists the identity and reports success.
     private func pair() async {
-        guard let baseURL = PairingClient.normalizeServerURL(serverInput) else {
+        guard let baseURL = PairingServerField.serverToPair(builtIn: builtInServer, typed: serverInput) else {
             errorMessage = PairingClient.message(for: PairingError.invalidServerURL)
             return
         }

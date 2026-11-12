@@ -53,6 +53,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child
         # #607: the OSRA Kids icon (App/Assets.xcassets, from #595's export). The app only; extensions have none.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # #634 G1: the store build's server (https only); empty for simulator and local builds, which keep the
+        # editable field. The TestFlight/App Store build sets it, e.g. xcodebuild ... OSRA_API_BASE=https://…
+        OSRA_API_BASE: ""
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/OSRAAgent.entitlements
     dependencies:

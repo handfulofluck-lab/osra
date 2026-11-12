@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3163,5 +3164,20 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
 
   @override
-  String get appRuleHiddenOnIphone => 'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
+  String get setupMonitoringTitle => 'أي التطبيقات تريد أن يراقبها تطبيق أسرة؟';
+
+  @override
+  String get setupMonitoringIntro =>
+      'يفحص تطبيق أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمّر أو الاستدراج أو إيذاء النفس، وينبّهك عند رصد ما يثير القلق. اختر التطبيقات التي تريد مراقبتها، ويمكنك تغيير اختيارك في أي وقت من «القواعد».';
+
+  @override
+  String get setupMonitoringConsent =>
+      'يُحفظ المقتطف من الرسالة المثيرة للقلق لمدة 90 يومًا، ويُحفظ التنبيه لمدة 12 شهرًا. لا يُقرأ أي شيء من تطبيق لم تختره.';
+
+  @override
+  String get setupMonitoringContinue => 'متابعة';
+
+  @override
+  String get appRuleHiddenOnIphone =>
+      'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 }
