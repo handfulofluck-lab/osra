@@ -20,6 +20,7 @@ locals {
     svg  = "image/svg+xml"
     png  = "image/png"
     ico  = "image/x-icon"
+    js   = "text/javascript; charset=utf-8"
   }
 }
 

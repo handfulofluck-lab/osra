@@ -13,3 +13,4 @@ nav { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; font-size:
 table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
 th, td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--rule); }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule); }
+code { overflow-wrap: anywhere; word-break: break-all; }
