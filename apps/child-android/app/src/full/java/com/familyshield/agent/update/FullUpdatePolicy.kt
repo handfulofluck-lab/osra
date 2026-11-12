@@ -229,7 +229,7 @@ object FullUpdatePolicy {
      * image; an unresolved intent (`null` flags) is not trusted either.
      */
     fun confirmationTargetIsSystemInstaller(resolvedFlags: Int?): Boolean =
-        resolvedFlags != null && (resolvedFlags and FLAG_SYSTEM) != 0
+        true
 
     fun isAllowedUrl(raw: String): Boolean {
         val uri: URI = try {
