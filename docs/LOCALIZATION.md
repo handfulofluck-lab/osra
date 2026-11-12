@@ -278,6 +278,17 @@ Android or iOS draws, quote the phone's own Arabic label inside «». Samsung an
 (see "What the phone shows"), so check the label on the test phone in Arabic before it ships, and when
 a page serves both, give both: «افتح الإعدادات (أو الضبط في هواتف سامسونج)».
 
+When the phone cannot be set to Arabic, read the label from the platform's own Arabic resources (for
+iOS, the Simulator runtime's `ar.lproj` strings) or from the maker's Arabic support pages, and say
+which source was used. When the phone's label has quote marks of its own, keep the words exactly and
+drop the inner marks, because our «» already frame the label: iOS shows the button
+`التغيير إلى "السماح دائمًا"` and we write «التغيير إلى السماح دائمًا».
+
+Apple's Arabic labels, read from the iOS 27.2 Simulator runtime (CoreLocation, `locationd.strings`) and
+Apple's Arabic support pages on 2026-11-12: «الإعدادات», «مدة استخدام الجهاز», «المشاركة العائلية»,
+«حساب Apple», «السماح أثناء استخدام التطبيق», «السماح لمرة واحدة», «عدم السماح», «التغيير إلى السماح
+دائمًا», «الإبقاء على أثناء الاستخدام», and the Settings row «دائمًا».
+
 **R9. Numbers, dates, time.**
 
 - Western digits everywhere (`0–9`), never «٠–٩», on every surface.
