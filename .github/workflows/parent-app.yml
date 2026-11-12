@@ -2,7 +2,8 @@ name: Parent app
 
 # The Flutter parent app. Until 2026-10-24 this was the `parent-app` job of ci.yml and ran on every pull
 # request; now it runs when the app changes, on main when it changes, and nightly on main whatever changed
-# (Flutter's stable channel moves under us, and that must show up on main, not on the next unrelated PR).
+# (pub dependencies move under us, and that must show up on main, not on the next unrelated PR). Flutter
+# itself is pinned in both setup steps below since stable 3.50.0 (2026-11-11); raising the pin is a PR.
 # One file outside `apps/parent-app/` is read: the alert-category parity test (#344) reads the server's
 # category list, so a change to it must run this suite. `scripts/check-ci-paths.mjs` keeps the two lists
 # identical, makes sure they name this file, and fails when a test starts reading another outside file.
@@ -42,6 +43,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned (2026-11-11): stable 3.50.0 deprecates `package:flutter/material.dart` in favour of
+          # `package:material_ui`, and `flutter analyze` fails on the resulting infos in every file. The
+          # move to material_ui is its own change; until it lands, CI and release builds stay on the last
+          # stable that built main green (run 43083839765). Raise this together with that migration.
+          flutter-version: 3.47.9
           cache: true
       # `firebase_messaging` has no Swift Package Manager support yet (Flutter says so in its own
       # warning), and mixing it into an SPM project fails with "Include of non-modular header inside
@@ -188,6 +194,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned (2026-11-11): stable 3.50.0 deprecates `package:flutter/material.dart` in favour of
+          # `package:material_ui`, and `flutter analyze` fails on the resulting infos in every file. The
+          # move to material_ui is its own change; until it lands, CI and release builds stay on the last
+          # stable that built main green (run 43083839765). Raise this together with that migration.
+          flutter-version: 3.47.9
           cache: true
       # Plugins link through CocoaPods, not Swift Package Manager (#392). A Flutter plugin picks its own
       # integration, and `firebase_messaging` ships a podspec and no `Package.swift`, so an SPM-only
