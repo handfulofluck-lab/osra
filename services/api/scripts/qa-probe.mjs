@@ -740,8 +740,8 @@ console.log("\n── G2. location & rules authorization ──");
     body: {
       version: 1,
       apps: [
-        { packageId: "com.example.game", label: "Game", isSystem: false },
-        { packageId: "com.android.settings", label: "Settings", isSystem: true },
+        { packageId: "com.example.game", label: "Game", isSystem: false, essential: false },
+        { packageId: "com.android.settings", label: "Settings", isSystem: true, essential: true },
         { packageId: "com.example.game", label: "Game duplicate", isSystem: false },
       ],
     },
@@ -750,7 +750,7 @@ console.log("\n── G2. location & rules authorization ──");
   const appsRead = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
   const appInventory = appsRead.data?.apps ?? [];
   const appKeys = appInventory.length ? Object.keys(appInventory[0]).sort().join(",") : "";
-  check("G25 installed apps: the parent reads version 1 with package+label+system only", appsRead.status === 200 && appsRead.data?.version === 1 && appsRead.data?.count === 2 && appInventory.length === 2 && appKeys === "isSystem,label,packageId" && appInventory.some((a) => a.packageId === "com.android.settings" && a.isSystem === true), `status=${appsRead.status} version=${appsRead.data?.version} count=${appsRead.data?.count} keys=${appKeys}`);
+  check("G25 installed apps: the parent reads version 1 with package+label+system only", appsRead.status === 200 && appsRead.data?.version === 1 && appsRead.data?.count === 2 && appInventory.length === 2 && appKeys === "essential,isSystem,label,packageId" && appInventory.some((a) => a.packageId === "com.android.settings" && a.isSystem === true) && appInventory.some((a) => a.packageId === "com.android.settings" && a.essential === true) && appInventory.some((a) => a.packageId === "com.example.game" && a.essential === false), `status=${appsRead.status} version=${appsRead.data?.version} count=${appsRead.data?.count} keys=${appKeys}`);
   const appsOtherFamily = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenB });
   check("G26 installed apps: another family cannot read the inventory (403)", appsOtherFamily.status === 403, `got ${appsOtherFamily.status}`);
   const appsSibling = await call("POST", `/v1/devices/${deviceIdA}/apps`, { token: d2.token, body: { version: 1, apps: [] } });
