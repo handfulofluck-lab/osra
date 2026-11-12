@@ -152,7 +152,8 @@ class Device {
   /// ADR-0034 decision 3: what this phone says it can do, as the server judged it (`GET /v1/devices`).
   ///
   /// Null on any device that has never reported — every agent older than the report itself, and every
-  /// phone before its first upload. That is "we do not know yet", never "nothing works".
+  /// phone before its first upload. That is "we do not know yet", never "nothing works". A device the
+  /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
   const Device({
@@ -182,6 +183,21 @@ class Device {
             ? DeviceSetup.fromJson(Map<String, dynamic>.from(json['setup'] as Map))
             : null,
       );
+
+  /// The server's own online/offline judgement (`status`), never a clock rule on this phone.
+  ///
+  /// Issue #601: the dashboard and the child page used to override this with a local 15-minute window
+  /// on [lastSeen], which read a healthy suspended iPhone as offline while the API answered `online`.
+  /// `services/api/src/jobs/deviceSilence.ts` owns the flip to `offline`, and an agent call or an upload
+  /// owns the flip back; [lastSeen] is shown beside the word as an age, not re-read as a verdict.
+  bool get isOnline => status == 'online';
+
+  /// Whether the server has a capability report for this phone (ADR-0034 decision 3).
+  ///
+  /// The server always answers with a `setup` object; `reportedAt == null` inside it is how it says
+  /// "no report yet". A setup that failed to parse comes back the same way
+  /// (`services/api/src/lib/capabilities.ts` `setupFor`), so this is the one test both cases share.
+  bool get hasCapabilityReport => setup?.reportedAt != null;
 }
 
 /// ADR-0034 decision 3 — the "Phone setup" answer for one device.

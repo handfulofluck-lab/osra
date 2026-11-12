@@ -8,6 +8,7 @@ import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { toApiRuleSet } from "../lib/ruleSync.js";
+import { touchAgentLastSeen } from "../lib/pollCadence.js";
 import { APP_GROUPS_MAX } from "@familyshield/shared-types";
 
 // Kept as a re-export so existing importers (controls.ts) keep working while the
@@ -169,8 +170,11 @@ export async function rulesRoutes(app: FastifyInstance) {
     const { childId } = req.params as { childId: string };
     // ADR-0008 §2b: a device must not keep enforcing or collecting once consent is withdrawn;
     // parents may still read the (dormant) ruleset.
-    const user = req.user as { role?: string } | undefined;
+    const user = req.user as { role?: string; deviceId?: string; sub?: string } | undefined;
     if (user?.role === "device" && !(await assertProcessingAllowed(childId, reply))) return;
+    // Issue #601: this is the read an iOS agent makes every time it wakes, so it is the call that proves
+    // the phone is alive — `lastSeen` moves here too, not only on the heartbeat. Parent reads are skipped.
+    await touchAgentLastSeen(user);
     const row = await prisma.ruleSet.findUnique({ where: { childId } });
     return row ? toApiRuleSet(row as unknown as Record<string, unknown>) : { childId, ...DEFAULT_RULESET };
   });
