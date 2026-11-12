@@ -4,7 +4,7 @@
 /// the code, the claim and the Allow / Deny flow are the phone flow, unchanged.
 enum ComputerTarget {
   windows('windows'),
-  macos('mac');
+  macos('macos');
 
   const ComputerTarget(this.path);
 
