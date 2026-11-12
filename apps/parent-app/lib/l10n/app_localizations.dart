@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// No description provided for @appName.
@@ -5047,6 +5047,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Background app refresh'**
   String get grantBackgroundRefresh;
+
+  /// No description provided for @setupMonitoringTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Which apps should OSRA watch for you?'**
+  String get setupMonitoringTitle;
+
+  /// No description provided for @setupMonitoringIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.'**
+  String get setupMonitoringIntro;
+
+  /// No description provided for @setupMonitoringConsent.
+  ///
+  /// In en, this message translates to:
+  /// **'A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.'**
+  String get setupMonitoringConsent;
+
+  /// No description provided for @setupMonitoringContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get setupMonitoringContinue;
+
+  /// ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
+  String get appRuleHiddenOnIphone;
 }
 
 class _AppLocalizationsDelegate
@@ -5076,8 +5106,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }
