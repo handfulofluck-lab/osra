@@ -46,6 +46,9 @@ import { fileURLToPath } from "node:url";
 const PROBE = "services/api/scripts/qa-probe.mjs";
 const ACKS = "scripts/probe-gate-acks.json";
 const KINDS = ["check", "target", "note"];
+// check is the strongest (gating), note the weakest (observation): a rename may move an assertion up
+// in severity but never down.
+const RANK = { check: 0, target: 1, note: 2 };
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -131,6 +134,29 @@ function compare(a, b, acks) {
     acks.some((a) => a.kind === kind && a.name === name && typeof a.reason === "string" && a.reason.length > 10);
   const problems = [];
   const infos = [];
+
+  // #660: an ack that describes a rename must name its replacement, and the replacement must actually
+  // exist in the head at the same or higher severity. A "rename" whose replacement is missing, or that
+  // only survives demoted, is a narrowing wearing a rename label — exactly what this gate exists to
+  // refuse. This pass runs over the whole ack file (not only names this diff removed), because the ack
+  // file is a claim about the head, and a stale or false claim must not read as a clean gate.
+  for (const ack of acks) {
+    const reason = typeof ack.reason === "string" ? ack.reason : "";
+    if ((reason.startsWith("Label only") || reason.startsWith("Renamed")) && typeof ack.renamedTo !== "string") {
+      problems.push(`ack missing renamedTo: ${ack.kind} ${ack.name}`);
+      continue;
+    }
+    if (typeof ack.renamedTo !== "string") continue;
+    let foundKind = null;
+    for (const k of KINDS) {
+      if (b.found[k].has(ack.renamedTo)) { foundKind = k; break; }
+    }
+    if (foundKind === null) {
+      problems.push(`ack renamedTo not in head: ${ack.renamedTo} (from ${ack.kind} ${ack.name})`);
+    } else if (RANK[foundKind] > RANK[ack.kind]) {
+      problems.push(`ack renamedTo demoted: ${ack.renamedTo} is ${foundKind}, ${ack.name} was ${ack.kind}`);
+    }
+  }
 
   for (const kind of KINDS) {
     const removed = [...a.found[kind].keys()].filter((n) => !b.found[kind].has(n));
@@ -308,6 +334,63 @@ if (argv.includes("--selftest")) {
     "an acknowledged removal is not an error",
     acked.problems.length === 0 && acked.infos.includes("acked-removed check: R1 renamed"),
     `problems=${JSON.stringify(acked.problems)}`,
+  );
+
+  // #660: an ack may name its replacement with `renamedTo`. The replacement must exist in the head at
+  // the same or higher severity (check >= target >= note); a rename that demotes is still a narrowing.
+  const renameDemoted = compare(
+    assertions('check("G25 old label", ok);'),
+    assertions('target("G25 new label", ok);'),
+    [{ kind: "check", name: "G25 old label", renamedTo: "G25 new label", reason: "Label only; renamed" }],
+  );
+  expect(
+    "a renamedTo that exists only at a lower severity is an error",
+    renameDemoted.problems.some((p) => p.includes("renamedTo demoted")),
+    `problems=${JSON.stringify(renameDemoted.problems)}`,
+  );
+
+  const renameSame = compare(
+    assertions('check("G25 old label", ok);'),
+    assertions('check("G25 new label", ok);'),
+    [{ kind: "check", name: "G25 old label", renamedTo: "G25 new label", reason: "Label only; renamed" }],
+  );
+  expect(
+    "a renamedTo at the same severity is accepted",
+    renameSame.problems.length === 0,
+    `problems=${JSON.stringify(renameSame.problems)}`,
+  );
+
+  const renamePromoted = compare(
+    assertions('target("G25 old label", ok);'),
+    assertions('check("G25 new label", ok);'),
+    [{ kind: "target", name: "G25 old label", renamedTo: "G25 new label", reason: "Renamed and promoted" }],
+  );
+  expect(
+    "a renamedTo promoted to a higher severity is accepted",
+    renamePromoted.problems.length === 0,
+    `problems=${JSON.stringify(renamePromoted.problems)}`,
+  );
+
+  const renameMissing = compare(
+    assertions('check("G25 old label", ok);'),
+    assertions('check("something else", ok);'),
+    [{ kind: "check", name: "G25 old label", renamedTo: "G25 new label", reason: "Label only; renamed" }],
+  );
+  expect(
+    "a renamedTo absent from the head is an error",
+    renameMissing.problems.some((p) => p.includes("renamedTo not in head")),
+    `problems=${JSON.stringify(renameMissing.problems)}`,
+  );
+
+  const unbound = compare(
+    assertions('check("G25 old label", ok);'),
+    assertions('check("G25 old label", ok);'),
+    [{ kind: "check", name: "G25 old label", reason: "Label only; relabelled" }],
+  );
+  expect(
+    "a Label only/Renamed reason without renamedTo is an error",
+    unbound.problems.some((p) => p.includes("missing renamedTo")),
+    `problems=${JSON.stringify(unbound.problems)}`,
   );
 
   // The scanner cases above would still pass if the CLI never called the scanner. Run the real
