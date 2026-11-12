@@ -79,10 +79,13 @@ The parent app is Flutter and many parents use Android, so the picker cannot nee
 
 - `RuleSet.appGroupRules?: AppGroupRule[]` (`packages/shared-types`): `{groupId, action: "block"}`, the id the phone
   reported in `DeviceSetup.groups`. At most 20 (`APP_GROUPS_MAX`), one per group (ids compared without case),
-  strict: no label, no app names, no limit field (limits are PR C). A ruleset without the field stores none; a
-  PATCH without it keeps the stored ones. Stored as `RuleSet.appGroupRules` (migration 0033), served in every
+  strict: no label, no app names, no limit field (limits are PR C). A PUT or PATCH without the field keeps the
+  stored rules (a writer that does not know it, such as today's parent app, must not clear it); `[]` clears them;
+  a new ruleset starts with none. Stored as `RuleSet.appGroupRules` (migration 0033), served in every
   ruleset the agents fetch.
 - The server does not check the id against the phone's last report: a rule for a group the phone no longer has
   blocks nothing, and refusing it would race a report in flight.
 - Next: B3b, the iPhone shields a group the server blocks as well as the ones blocked on the phone (the two add
-  up; the phone's own toggle still works without a network); B3c, the parent app's group rows and toggle.
+  up; the phone's own toggle still works without a network); B3c, the parent app's group rows and toggle. In B3c
+  every parent-app PUT site carries the field through `RuleSet.fromJson`/`toJson`: `rules_editor_screen.dart`,
+  `alerts_screen.dart` (block a requested app) and both writes in `social_screen.dart`.

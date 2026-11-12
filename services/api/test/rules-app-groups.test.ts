@@ -57,10 +57,23 @@ describe("app group rules (ADR-0037 B3)", () => {
     expect(write.create.appGroupRules).toEqual([{ groupId: G1, action: "block" }]);
   });
 
-  it("a ruleset without the field stores none", async () => {
+  it("a new ruleset starts with none", async () => {
     const res = await put(base);
     expect(res.statusCode).toBe(200);
     expect(res.json().appGroupRules).toEqual([]);
+  });
+
+  it("a PUT without the field leaves the stored group rules alone (the parent app's round trip)", async () => {
+    const res = await put(base);
+    expect(res.statusCode).toBe(200);
+    const w = prismaMock.ruleSet.upsert.mock.calls[0][0] as { update: Record<string, unknown> };
+    expect("appGroupRules" in w.update).toBe(false);
+  });
+
+  it("a PUT with [] clears them", async () => {
+    await put({ ...base, appGroupRules: [] });
+    const w = prismaMock.ruleSet.upsert.mock.calls[0][0] as { update: Record<string, unknown> };
+    expect(w.update.appGroupRules).toEqual([]);
   });
 
   it.each([

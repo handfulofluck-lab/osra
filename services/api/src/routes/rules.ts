@@ -77,7 +77,8 @@ const RuleSetInputSchema = z.object({
   webFilter: WebFilterSchema,
   appRules: z.array(AppRuleSchema),
   routines: z.array(RoutineSchema),
-  appGroupRules: AppGroupRulesSchema.default([]),
+  // Optional on PUT: a writer that does not know the field (today's parent app) must not clear it.
+  appGroupRules: AppGroupRulesSchema.optional(),
   alwaysAllowedApps: z.array(z.string()).default([]),
   allowOverlap: z.boolean().optional(),
   // NOTE: socialMonitoring maps app names (whatsapp, tiktok, ...) to capture-enabled flags;
@@ -144,7 +145,8 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     youtubeRestrictedMode: data.webFilter.youtubeRestrictedMode ?? "strict",
     appRules: data.appRules,
     routines: data.routines,
-    appGroupRules: data.appGroupRules,
+    // Absent = keep what is stored (the column defaults to [] on create); [] clears.
+    ...(data.appGroupRules !== undefined && { appGroupRules: data.appGroupRules }),
     alwaysAllowedApps: data.alwaysAllowedApps,
     socialMonitoring: data.socialMonitoring,
     contactAllowlist: data.contactAllowlist,
