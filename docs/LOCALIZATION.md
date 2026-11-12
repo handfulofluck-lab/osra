@@ -257,6 +257,11 @@ spelling in the table below. A name that is not in the table comes to the Bureau
 | Instagram | «إنستجرام» | K 12 Nov |
 | Samsung | «سامسونج» | K 12 Nov |
 | Google Play | «جوجل بلاي», usually «متجر جوجل بلاي» | B, from the row above |
+| Apple | «آبل» | B |
+| App Store | «آب ستور» | B |
+| iPad | «آيباد» | B, from «آيفون» |
+| Windows | «ويندوز» | B |
+| Mac | «ماك» | B |
 
 The "g" sound in a foreign name is written «ج» (maintainer, 2026-11-12), never «غ» or «ق»: «جوجل», not
 «غوغل» or «قوقل».
@@ -272,6 +277,8 @@ Three things are not covered by this rule and stay as they are:
 - **A name filled in at run time**: an app's label read from the child's phone, a group's name, a
   person's name. It is shown as stored, inside FSI/PDI (R11).
 - **Abbreviations that are not company names**: SMS, PIN, QR, an email address, a web address.
+- **A store's own badge** («احصل عليه من Google Play», «تنزيل من App Store»): the badge is the store's
+  artwork and wording, so the store's name stays in Latin letters inside it.
 
 **R8. Name a setting the way the phone names it.** When a step tells the reader to tap something that
 Android or iOS draws, quote the phone's own Arabic label inside «». Samsung and stock Android disagree
@@ -382,6 +389,8 @@ he says otherwise. A new term is added here in the PR that introduces it.
 | The parent app, store name | «أسرة: رقابة أسرية ذكية» | | K 12 Nov (the English store name is "OSRA Parental Control") |
 | OSRA Kids, store name (App Store and Google Play) | «أسرة للأطفال» | «أسرة للأطفال: رقابة أسرية» | K 12 Nov (the English Play name is "OSRA Kids – Parental Control") |
 | The Full edition | «النسخة الكاملة» | «الكامل» chained after the name | B |
+| Computer | «كمبيوتر», «أجهزة الكمبيوتر» | «حاسوب» | B (the word Google, Apple and Microsoft use in Arabic) |
+| Family plan (the subscription) | «خطة عائلية» | | B |
 | The parent app | «تطبيق الوالدين» | | K (#439) |
 | Tagline | «أسرة — رقابة أبوية لعائلتك» | | K (screen 01) |
 | The family (account) | «العائلة» | «الأسرة» | K |
