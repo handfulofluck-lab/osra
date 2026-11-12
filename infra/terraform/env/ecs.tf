@@ -23,6 +23,8 @@ resource "aws_ecs_task_definition" "api" {
   cpu                      = tostring(var.api_cpu)
   memory                   = tostring(var.api_memory)
   execution_role_arn       = data.terraform_remote_state.base.outputs.execution_role_arn
+  # The runtime role: today it only sends email (email/ stack). Without it the task has no AWS credentials.
+  task_role_arn = var.email_enabled ? data.terraform_remote_state.email[0].outputs.api_task_role_arn : null
 
   # Graviton (ARM64) is roughly 20% cheaper per vCPU on Fargate than x86, and the API image is a
   # multi-arch node:20-alpine build. ADR-0028 also names ARM.
@@ -63,6 +65,14 @@ resource "aws_ecs_task_definition" "api" {
         # telemetry that filled memory would make revocation writes fail. Logouts answering 5xx because of a
         # counter is the trade this flag refuses. Staging carries it so #346's reviewer can measure the Flip4.
         var.environment == "staging" ? [{ name = "IDLE_BUDGET_COUNTING", value = "1" }] : [],
+        # Play decision 11 A: SES sends as the email/ stack's domain, with the task role's credentials.
+        # The SDK reads the region from AWS_REGION, which Fargate sets; it is pinned here to the identity's
+        # region so a task in another region fails loudly instead of sending from an unverified identity.
+        var.email_enabled ? [
+          { name = "EMAIL_PROVIDER", value = "ses" },
+          { name = "EMAIL_FROM", value = var.email_from },
+          { name = "AWS_REGION", value = data.terraform_remote_state.email[0].outputs.region },
+        ] : [],
       )
 
       # Secrets are injected from Secrets Manager, never baked into the task definition.
