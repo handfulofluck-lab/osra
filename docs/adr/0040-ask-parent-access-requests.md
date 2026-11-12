@@ -254,8 +254,7 @@ Parent (`app_en.arb` / `app_ar.arb`):
 
 ### 9a. Approved Arabic (maintainer, 2026-11-12 09:26Z, through the Arabic Language Bureau)
 
-Ship these exactly as written. `request_answered` is **not approved yet** and must not ship before the maintainer
-answers. `accessRequestTimeLeft` never shows 0: under one minute it rounds up to 1, and at the end the card shows
+Ship these exactly as written. `request_answered` was approved separately, by card at 10:14Z. `accessRequestTimeLeft` never shows 0: under one minute it rounds up to 1, and at the end the card shows
 the grant as ended.
 
 #### Child
@@ -264,7 +263,7 @@ the grant as ended.
 |---|---|
 | request_waiting | أُرسل طلبك. بانتظار ردّ والدك أو والدتك… |
 | request_waiting_open_app | أُرسل طلبك. افتح تطبيق أسرة للأطفال لمعرفة الردّ. |
-| request_answered | NOT APPROVED YET. Bureau wording with Karim: وصل ردّ والدك أو والدتك. اضغط لمعرفة الردّ. |
+| request_answered | وصل ردّ والدك أو والدتك. اضغط لمعرفة الردّ. |
 | request_allowed | يمكنك استخدام {app} لمدة {minutes} دقيقة. (plural forms below) |
 | request_allowed_no_name | يمكنك استخدام التطبيق لمدة {minutes} دقيقة. (plural forms below) |
 | request_one_minute_left | بقيت دقيقة واحدة لاستخدام {app}. |
