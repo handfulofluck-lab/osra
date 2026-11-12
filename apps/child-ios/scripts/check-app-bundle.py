@@ -16,6 +16,9 @@ It checks, for each .app given:
      carries a display name too; the app's Info.plist asks for location with both usage strings, has them in English and Arabic
      (en.lproj, ar.lproj), and has no `location` background mode (significant-change monitoring needs
      none, and the entry draws App Review questions, 5.5 PR E).
+  7. the app has its icon (#607): Info.plist's CFBundleIcons names an AppIcon file, and AppIcon60x60@2x.png (the
+     iPhone home-screen icon) and Assets.car are in the bundle. A build without an icon set succeeds, shows a blank
+     placeholder and is refused by App Store Connect.
 And once, from the source tree (an unsigned build embeds no entitlements):
   5. every target's .entitlements file carries com.apple.developer.family-controls = true and the
      app group group.com.osratech.child.
@@ -97,6 +100,7 @@ def check_app(app):
         fail(f"PlugIns/ mismatch: missing {missing or 'none'}, unexpected {extra or 'none'}")
 
     check_display_name(app)
+    check_icon(app)
     check_location(app)
 
     for name, (point, module, cls) in EXTENSIONS.items():
@@ -118,6 +122,25 @@ def check_app(app):
         else:
             fail(f"{name}: NSExtensionPrincipalClass = {got_principal!r}, expected {principal!r}")
         check_principal_linked(appex, name, module, cls)
+
+
+def check_icon(app):
+    """#607: actool wrote the icon set into the bundle and named it in Info.plist."""
+    info_path = os.path.join(app, "Info.plist")
+    if not os.path.isfile(info_path):
+        fail("app: no Info.plist")
+        return
+    icons = read_plist(info_path).get("CFBundleIcons", {})
+    files = icons.get("CFBundlePrimaryIcon", {}).get("CFBundleIconFiles", []) if isinstance(icons, dict) else []
+    if any(str(f).startswith("AppIcon") for f in files):
+        ok(f"app: CFBundleIcons names {files}")
+    else:
+        fail(f"app: CFBundleIcons has no AppIcon file ({icons!r}); the home screen shows a blank icon")
+    for name in ("AppIcon60x60@2x.png", "Assets.car"):
+        if os.path.isfile(os.path.join(app, name)):
+            ok(f"app: {name} present")
+        else:
+            fail(f"app: no {name} in the bundle")
 
 
 def check_display_name(app):
