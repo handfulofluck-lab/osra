@@ -87,8 +87,9 @@
 /* #602 Status screen: child name, last sync, Sync now (Bureau, approved by Karim 2026-11-12 12:55Z). */
 "status_child_name" = "الطفل";
 "status_last_synced" = "آخر تحديث: %@";
+"status_last_synced_now" = "آخر تحديث: الآن";
 "status_never_synced" = "لم يتم التحديث بعد";
-"status_sync_stale" = "لم يتم التحديث منذ %@. تحقّق من اتصال الإنترنت، ثم اضغط «تحديث الآن».";
+"status_sync_stale" = "آخر تحديث: %@. تحقّق من اتصال الإنترنت، ثم اضغط «تحديث الآن».";
 "status_sync_now" = "تحديث الآن";
 "status_syncing" = "جارٍ التحديث…";
 "status_sync_failed" = "تعذّر الاتصال بالخادم. حاول مرة أخرى بعد قليل.";
