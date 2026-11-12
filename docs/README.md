@@ -54,6 +54,7 @@ Start here. This page is the map: what each document is for, and which one to re
 |---|---|
 | [`QA/QA-REPORT-2026-10-11.md`](QA/QA-REPORT-2026-10-11.md) | Consolidated QA state: method, results, limits, priority order |
 | [`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) | The agreed verification strategy: layers and ownership, the **environment matrix**, the rules each lane holds, cadence, and the anti-pattern checklist |
+| [`QA/SCENARIO-SUITE.md`](QA/SCENARIO-SUITE.md) | The real-device parent/child scenario suite: the test bed and device pairs, the scenario catalogue by phase (`SC-*`, roadmap rows S0–S5), the plan for making runs fast, who does what, and how a run is recorded (#665) |
 | [`QA/TEST-REQUESTS.md`](QA/TEST-REQUESTS.md) | Open test requests (`TR-nn`) from the architecture lead to the testing lane, with pass criteria; replies quote the id with the raw gate output and go to the discussion log |
 | [`QA/ANTIGRAVITY-INBOX.md`](QA/ANTIGRAVITY-INBOX.md) | The prioritised defect queue with per-item acceptance criteria (historical filename; the queue is worked by the development lane) |
 | [`QA/audits/`](QA/audits/) | Raw per-platform audits (`API`, `ANDROID`, `WINDOWS`, `FLUTTER`, `IOS-MACOS`) with `file:line` evidence |
