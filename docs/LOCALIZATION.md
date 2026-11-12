@@ -295,6 +295,11 @@ Apple's Arabic support pages on 2026-11-12: «الإعدادات», «مدة ا�
 - A counted noun always goes through a plural rule with all six Arabic forms (ICU in ARB, `<plurals>`
   on Android): «دقيقة واحدة», «دقيقتان», «3 دقائق», «11 دقيقة». Where no plural mechanism exists (an
   email template, a web page), reword so that no noun follows the number («المدة بالدقائق: 45»).
+- A duration that the system fills in comes in the nominative («ساعتان», «يومان»). Never put it after
+  «منذ» or any word that needs the genitive; use the system's relative phrase («قبل ساعتين») or make the
+  duration the subject. Check the dual (2) of every unit before a line with a filled-in time ships.
+- System formatters follow the phone's region and print «٣» in Saudi Arabia and Egypt. Pin Latin digits
+  in code (iOS: a locale with `numbers=latn`).
 - Time is 24-hour `HH:MM`. Dates are Gregorian, day then month then year, with the month names «يناير،
   فبراير، …».
 - The weekend differs by country: Friday and Saturday in Saudi Arabia, Qatar, Kuwait and Egypt, Saturday
@@ -356,6 +361,7 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-12 | Other companies' names in Arabic letters where common: «واتساب», «يوتيوب», «آيفون» (R7). This replaces «على YouTube» in the screen 08 row above | Bureau sheet 1, A5 |
 | 2026-11-12 | The "g" sound in a company's name is «ج»: «جوجل», «إنستجرام», «سامسونج» | card, 10:06Z |
 | 2026-11-12 | "Sync" on the child's phone is «تحديث»: «آخر تحديث: {time}», «تحديث الآن», «جارٍ التحديث…» (he chose it over «مزامنة») | card, 12:55Z |
+| 2026-11-12 | OSRA Kids on iPhone, Status screen: in the first minute after a sync the line is «آخر تحديث: الآن». When the phone has not synced for a while the line is «آخر تحديث: {time}. تحقّق من اتصال الإنترنت، ثم اضغط «تحديث الآن».», filled with the relative time («قبل يومين»). It replaces «لم يتم التحديث منذ {duration}», which read «منذ يومان» at two hours and two days (he chose it over the Bureau's «مضى على آخر تحديث {duration}») | cards, 16:09Z |
 | 2026-11-12 | Applied line by line and approved: the 45 lines of Bureau sheet 2 (parent app, Android child app, deletion page, emails) and the 76 lines of OSRA Kids on iPhone | cards, 12:54Z and 11:20Z; text on #604 |
 | 2026-11-12 | The parent app's Arabic store name (App Store and Google Play) is «أسرة: رقابة أسرية ذكية», his own wording. Under its icon and in its title on an Arabic phone the app is «أسرة»; English keeps OSRA | thread message 12:58Z; card 12:56Z |
 | 2026-11-12 | OSRA Kids on Google Play is «أسرة للأطفال» alone, without a description after it (the Bureau had proposed «أسرة للأطفال: رقابة أسرية»). The rewritten Arabic Play text for both apps is approved | cards 13:41Z |
