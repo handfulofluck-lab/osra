@@ -119,7 +119,7 @@ void main() {
 
   testWidgets('Arabic renders the heading and the counts', (tester) async {
     await pump(tester, iphone(groups: twoGroups), locale: const Locale('ar'));
-    expect(find.text('مجموعات التطبيقات على iPhone الطفل'), findsOneWidget);
+    expect(find.text('مجموعات التطبيقات على آيفون الطفل'), findsOneWidget);
     expect(find.text('التطبيقات: 3 · الفئات: 1 · المواقع: 0'), findsOneWidget);
   });
 

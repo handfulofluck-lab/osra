@@ -920,8 +920,8 @@
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
   "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
-  "appGroupsTitle": "مجموعات التطبيقات على iPhone الطفل",
-  "appGroupsBody": "تُنشأ المجموعات على iPhone الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على iPhone الطفل.",
+  "appGroupsTitle": "مجموعات التطبيقات على آيفون الطفل",
+  "appGroupsBody": "تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.",
   "appGroupsCounts": "التطبيقات: {apps} · الفئات: {categories} · المواقع: {sites}",
   "appGroupsBlock": "حظر",
   "appGroupsSaveFailed": "تعذّر حفظ التغيير. حاول مرة أخرى."

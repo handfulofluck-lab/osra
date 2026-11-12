@@ -3163,10 +3163,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
 
   @override
-  String get appGroupsTitle => 'مجموعات التطبيقات على iPhone الطفل';
+  String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
 
   @override
-  String get appGroupsBody => 'تُنشأ المجموعات على iPhone الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على iPhone الطفل.';
+  String get appGroupsBody => 'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
