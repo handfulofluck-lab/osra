@@ -93,6 +93,30 @@ final class AppGroupsTests: XCTestCase {
         XCTAssertTrue(AppGroupCounts(apps: 0, categories: 0, sites: 0).isEmpty)
     }
 
+    // MARK: - Blocks from the parent app (ADR-0037 PR B3)
+
+    func testAGroupTheParentAppBlocksIsShieldedAsWell() throws {
+        var list = AppGroupList<FakeSelection>()
+        let games = try XCTUnwrap(list.add(label: "Games", selection: FakeSelection(apps: ["g"]), blocked: false))
+        _ = try XCTUnwrap(list.add(label: "Video", selection: FakeSelection(apps: ["v"]), blocked: false))
+        XCTAssertEqual(list.blockedSelections, [], "nothing blocked on the phone")
+        XCTAssertEqual(list.blockedSelections(alsoBlocked: [games.lowercased()]), [FakeSelection(apps: ["g"])],
+                       "the phone's upper-case id matches the lowercased server id")
+        XCTAssertTrue(list.isBlockedByParentApp(id: games, serverBlocked: [games.lowercased()]))
+    }
+
+    func testTheTwoBlocksAddUpAndTheServerNeverLiftsThePhones() throws {
+        var list = AppGroupList<FakeSelection>()
+        let games = try XCTUnwrap(list.add(label: "Games", selection: FakeSelection(apps: ["g"]), blocked: true))
+        let video = try XCTUnwrap(list.add(label: "Video", selection: FakeSelection(apps: ["v"]), blocked: false))
+        XCTAssertEqual(list.blockedSelections(alsoBlocked: []), [FakeSelection(apps: ["g"])], "the phone's block holds")
+        XCTAssertEqual(list.blockedSelections(alsoBlocked: [video.lowercased()]),
+                       [FakeSelection(apps: ["g"]), FakeSelection(apps: ["v"])])
+        XCTAssertFalse(list.isBlockedByParentApp(id: games, serverBlocked: [video.lowercased()]))
+        XCTAssertEqual(list.blockedSelections(alsoBlocked: ["not-a-group-here"]), [FakeSelection(apps: ["g"])],
+                       "a rule for a group this phone does not have blocks nothing")
+    }
+
     // MARK: - Saved for the extensions
 
     func testTheGroupsSurviveARelaunch() throws {

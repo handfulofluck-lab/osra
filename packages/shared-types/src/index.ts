@@ -18,7 +18,11 @@ export interface Child { id: UUID; familyId: UUID; displayName: string; birthYea
 export interface Device { id: UUID; childId: UUID; platform: Platform; model: string;
   osVersion: string; status: DeviceStatus; batteryPct: number; lastSeen: ISODate; pushToken?: string; }
 export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
-  webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate; }
+  webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate;
+  /** ADR-0037 PR B3: iPhone app groups the parent blocks, by the id the phone reported. */
+  appGroupRules?: AppGroupRule[]; }
+/** ADR-0037 PR B3: a rule on an iPhone app group (`DeviceSetup.groups`). Only `block` for now; limits are PR C. */
+export interface AppGroupRule { groupId: UUID; action: "block"; }
 export interface ScreenTimeRule { dailyLimitMinutes: number; weekendLimitMinutes: number;
   bedtimeStart: string; bedtimeEnd: string;
   schoolHours: { start: string; end: string; days: number[] }; }
