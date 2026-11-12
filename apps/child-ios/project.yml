@@ -51,6 +51,9 @@ targets:
       base:
         PRODUCT_NAME: OSRAAgent
         PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child
+        # #634 G1: the store build's server (https only); empty for simulator and local builds, which keep the
+        # editable field. The TestFlight/App Store build sets it, e.g. xcodebuild ... OSRA_API_BASE=https://…
+        OSRA_API_BASE: ""
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/OSRAAgent.entitlements
     dependencies:
