@@ -227,7 +227,7 @@ class FullUpdater(
                 FullUpdatePolicy.ArchiveSigners(
                     hasMultipleSigners = false,
                     signerSha256 = info.apkContentsSigners.map { signer -> sha256Hex(signer) },
-                    lineageSha256 = info.signingCertificateHistory.map { signer -> sha256Hex(signer) },
+                    lineageSha256 = info.apkContentsSigners.map { signer -> sha256Hex(signer) },
                 )
             }
         } else {
