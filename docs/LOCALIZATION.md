@@ -3,6 +3,11 @@
 The parent app ships English and Arabic UI. Arabic is a right-to-left (RTL) language, so a
 translation is not finished until the same screen also lays out correctly in RTL.
 
+**Arabic wording has one owner: the Arabic Language Bureau** (maintainer, 2026-11-12; `AGENTS.md` §13).
+Before you write or change an Arabic line anywhere (apps, website, store listing, guide, email, push,
+video), read [the Bureau's rules and word list](#arabic-language-bureau-plan-321) at the end of this
+file, then ask for a review on issue #604.
+
 ## Layout
 
 | Path | What it is |
@@ -129,3 +134,319 @@ Native-speaker review of the Arabic screenshots is the acceptance for roadmap it
 reviewed the first **14 screens** and that pass is closed (#159, 2026-10-23); the strings added since
 — **45** of them (27 on the family members screen, 18 on the map) — are tracked in **#426**, together with
 the wording questions the implementation flagged.
+
+## Arabic Language Bureau (plan 3.21)
+
+The maintainer set this up on 2026-11-12 after scoring a draft Arabic page "75% in 20% of the document
+and 95% in the rest". His words (capitals lowered, words unchanged): *"maybe that should be a best
+practice across the team, we make a thread for Arabic word checking … like our Arabic Language Bureau
+and we can add more languages and bureaus in the future"*, and a minute later: *"yes it handle all
+Arabic communication, content...etc"*.
+
+The Bureau is Claude, working in its own lane. It is the single reviewer for every Arabic word a parent,
+a child or a store reviewer will read. The maintainer keeps the final word on wording: the Bureau cleans
+a draft and checks it against this section, then he approves it.
+
+### What goes through the Bureau
+
+| Surface | Where it lives |
+|---|---|
+| Parent app | `apps/parent-app/lib/l10n/app_ar.arb`, `apps/parent-app/ios/Runner/ar.lproj/`, `lib/features/coach/coach_content.dart` |
+| Child apps | `apps/child-android/app/src/main/res/values-ar/`, `apps/child-ios/**/ar.lproj/` |
+| Website | `site/**` (Arabic pages, drawings, video captions) |
+| Store listings | `docs/store/**` |
+| Customer guides | `docs/customer/**` |
+| Emails and push | `services/api/src/lib/email/templates.ts`, the Arabic in `services/api/src/routes/account.ts` and `digests.ts` |
+| Anything sent to people in Arabic | support replies, announcements, release notes |
+
+Out of scope: test fixtures, and the AI evaluation banks under `services/ai-engine/eval/`, which imitate
+children's messages in dialect on purpose.
+
+### How a line gets approved
+
+1. **Draft.** The author writes the Arabic in the PR and lists the changed lines in a table in the PR
+   body: where the line shows, the English, the Arabic.
+2. **Ask.** Comment `Bureau review: #<PR>` on issue #604, with who reads the text (parent, child, store
+   reviewer).
+3. **Bureau review.** The Bureau answers on the PR line by line: OK, or the wording to use and the rule
+   it comes from. When every line is settled it signs `Arabic-Bureau: reviewed <head sha>` on the PR.
+4. **Karim's sheet.** The Bureau writes the settled lines as a numbered sheet (question, answer, one
+   line per number) and sends it to the maintainer. He answers by number: OK, or his own wording.
+5. **Record.** The approved wording goes in with a comment naming the approval (date, PR), and a test
+   pins it where the suite allows (`ChildSystemStringsTest`, `localization_test.dart`). A correction
+   from the maintainer becomes a row in "Karim's corrections" below, in the same PR.
+
+Nobody edits an approved Arabic line without going round this loop again.
+
+### Why the weak 20% was weak
+
+The first audit (2026-11-12) compared our Arabic with the Arabic that Google, Apple, Samsung and
+Kaspersky publish for the same features, and with the maintainer's own corrections. Short labels were
+already good. The weak part was almost always **long text**: explanations, install steps, marketing
+paragraphs. Five habits caused it, and the rules below exist to stop them:
+
+1. A sentence translated from English clause by clause, so it has no subject of its own
+   («يطلب كل إذن على حدة ويشرح سبب الحاجة إليه»: who asks?).
+2. The brand used as a bare noun. «أسرة» also means "a family", so «افتح أسرة» reads "open a family".
+3. Two words for one thing, often inside one page (`تحميل` for both "download" and "reload").
+4. A setting or button named differently from what the phone shows, so the parent cannot find it.
+5. Clipped phrases where Arabic expects the full one («من يوم تفعيلها», «حتى وتطبيق المحادثة مغلق»).
+
+### Writing rules
+
+**R1. Write it in Arabic; do not translate it.** Read the Arabic with the English covered. Every
+sentence names its subject, verbs come first where that is natural, and a long English sentence becomes
+two Arabic ones. If a native reader would never say it that way, rewrite it.
+
+**R2. Modern Standard Arabic, plain and warm.** The readers are families in the Gulf and the wider
+Middle East. No dialect, no country-specific spelling («جوجل», «قوقل»), no English word in Arabic
+letters where an Arabic word is established («ضروري», never «لازم»; «يستلم», never «يلتقط»).
+
+**R3. Say the whole thing.** This is the maintainer's most frequent correction (2026-10-23):
+
+- no abbreviations: «7 أيام», «30 يومًا», «يوميًا», never «7 ي» or «دقيقة/يوم»;
+- name the thing: «تنتهي صلاحية الرمز», not «تنتهي الصلاحية»; «البريد الإلكتروني», not «البريد»;
+  «وسائل التواصل الاجتماعي», not «التواصل الاجتماعي»;
+- a label takes a colon before its value: «الإجمالي: 300 دقيقة».
+
+**R4. Who we speak to.** A parent is addressed in the masculine singular, which Arabic reads as neutral
+(«أدخل», «اضغط», «طفلك»). A child is addressed the same way, and their parent is always «والدك أو
+والدتك». Parents as a group are «أولياء الأمور» or «الوالدان», never «الآباء» alone, which reads as
+"fathers".
+
+When the subject of a sentence is a name the app fills in (`{child}`, `{parent}`), the app does not know
+whether it is a boy or a girl, a father or a mother. Do not hang a gendered verb on it: «طلب سماح من
+{child}», not «{child} يطلب السماح»; «ردّ {parent}: ليس الآن», not «قال {parent}».
+
+**R5. Buttons, steps, status.**
+
+| Kind of text | Form | Examples |
+|---|---|---|
+| Button, menu item, tab | verbal noun, no full stop | «حفظ», «إلغاء», «متابعة», «تنزيل», «تسجيل الدخول» |
+| Step or instruction | imperative, full stop | «افتح تطبيق أسرة على هاتف طفلك.» |
+| Something that happened | «تم» + noun, or a passive verb | «تم الحظر 12 مرة», «تم بلوغ الحد اليومي», «أُرسل الطلب» |
+| Something that failed | «تعذّر» + noun, then what to do | «تعذّر تحميل التنبيهات. حاول مرة أخرى.» |
+| In progress | «جارٍ» + noun + … | «جارٍ الحفظ…» |
+| Empty state | a full sentence | «لم يتم رصد أي عمليات بحث تستدعي الإبلاغ عنها» |
+
+Some approved buttons are imperatives («ابدأ», «أقرن الآن», «اطلب السماح»). They stay until their
+screen is next revised.
+
+**R6. The brand.** In an Arabic sentence the product is «تطبيق أسرة», and it is grammatically masculine
+(«يراقب تطبيق أسرة…», never «تطلب أسرة»). Write «تطبيق» before the name at least the first time in any
+text, and every time the name would otherwise start the sentence or follow a verb. The family account is
+«العائلة», never «الأسرة», so the brand and the common noun cannot be confused. The children's app is
+«أسرة للأطفال». Today 29 app lines still carry `OSRA` in Latin letters; whether they move to «أسرة» is
+question 1 in "Open questions".
+
+**R7. Other companies' names stay as their owners write them**, in Latin letters: Google Play, YouTube,
+Chrome, WhatsApp, Instagram, TikTok, Snapchat, Android, iPhone, Samsung. The maintainer wrote «على
+YouTube» in his review of screen 08. No «ال» on them, and a prefix is joined with a tatweel and a
+space: «لـ Chrome», «على YouTube».
+
+**R8. Name a setting the way the phone names it.** When a step tells the reader to tap something that
+Android or iOS draws, quote the phone's own Arabic label inside «». Samsung and stock Android disagree
+(see "What the phone shows"), so check the label on the test phone in Arabic before it ships, and when
+a page serves both, give both: «افتح الإعدادات (أو الضبط في هواتف Samsung)».
+
+**R9. Numbers, dates, time.**
+
+- Western digits everywhere (`0–9`), never «٠–٩», on every surface.
+- A counted noun always goes through a plural rule with all six Arabic forms (ICU in ARB, `<plurals>`
+  on Android): «دقيقة واحدة», «دقيقتان», «3 دقائق», «11 دقيقة». Where no plural mechanism exists (an
+  email template, a web page), reword so that no noun follows the number («المدة بالدقائق: 45»).
+- Time is 24-hour `HH:MM`. Dates are Gregorian, day then month then year, with the month names «يناير،
+  فبراير، …».
+- The weekend differs by country: Friday and Saturday in Saudi Arabia, Qatar, Kuwait and Egypt, Saturday
+  and Sunday in the UAE. Never name the days for "the weekend"; write «عطلة نهاية الأسبوع».
+
+**R10. Punctuation and spelling.**
+
+- Arabic marks: «،» «؛» «؟». Quotes are «…» only. One ellipsis character «…».
+- Body sentences end with a full stop. Buttons, titles and labels do not.
+- Tanween sits on the letter before the alif: «مجددًا», «فورًا», not «مجدداً».
+- Hamza, «ة» and «ى» are always written correctly. A shadda or a short vowel is added only where the
+  word could be misread: passive verbs («يُرسَل», «تُحفظ») and words like «مسجّل», «تحقّق».
+- No tatweel for decoration and no letter-spacing on Arabic text.
+
+**R11. Mixed direction.** A Latin word, a number with a unit, a code or a URL inside an Arabic sentence
+is isolated: FSI/PDI around placeholders in the apps (the `BlockWindowCopy` pattern), `<bdi>` or
+`dir="ltr"` in HTML, and a code such as `1234 5678` is forced left to right. Start a sentence with an
+Arabic word, not a Latin one («تطبيق WhatsApp…», not «WhatsApp…»). Pages carry `lang="ar" dir="rtl"`.
+
+**R12. Tone.** Calm and respectful, never frightening. We are honest that this is monitoring: any
+sentence that says what is collected, and every consent or privacy text, uses «المراقبة». Friendly and
+marketing copy may say «المتابعة» and «الحماية». Never «التجسس». Text a child reads is short and kind,
+and tells them what they can do next («اطلب السماح»). No competitor is named: «تطبيقات الرقابة
+الأبوية الرائدة» (maintainer, 2026-11-12).
+
+### Karim's corrections (binding)
+
+Each row is a correction or a wording the maintainer wrote himself. They override every other source.
+
+| Date | Rule | Source |
+|---|---|---|
+| 2026-10-23 | The sign-in field label is «الخادم (السيرفر)»; elsewhere «الخادم» | screen 01 |
+| 2026-10-23 | Screen time as «45 من 120 دقيقة», value before limit | screen 02 |
+| 2026-10-23 | «مراقبة وسائل التواصل الاجتماعي» | screen 03 |
+| 2026-10-23 | A consent sentence starts from the consent: «تسمح هذه الموافقة بالمراقبة وجمع البيانات» | screen 04 |
+| 2026-10-23 | Alert titles are «تم …»: «تم الضغط على زر الاستغاثة», «تمت محاولة زيارة موقع محظور», «تم بلوغ الحد اليومي» | screen 06 |
+| 2026-10-23 | «الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع»; time ranges use «يبدأ» and «ينتهي» | screen 07 |
+| 2026-10-23 | «الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا»; «تم الحظر 12 مرة»; «تفعيل البحث الآمن على YouTube» | screen 08 |
+| 2026-10-23 | «7 أيام», «14 يومًا», «30 يومًا» in full | screen 09 |
+| 2026-10-23 | «امسح رمز QR باستخدام تطبيق OSRA على جهاز الطفل»; «تنتهي صلاحية الرمز خلال …» | screen 10 |
+| 2026-10-23 | «يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق OSRA فقط» | screen 11 |
+| 2026-10-23 | Passive verbs carry their vowels: «تُحلَّل … وتُسجَّل النتائج عالية الخطورة في خزنة العائلة المشفّرة» | screen 12 |
+| 2026-10-23 | Empty state: «لم يتم رصد أي عمليات بحث تستدعي الإبلاغ عنها» | screen 13 |
+| 2026-10-23 | «عناوين البريد الإلكتروني لتلقي الملخص (افصل بينها بفواصل)»; «إرسال التنبيهات الحرجة كإشعارات فورية» | screen 14 |
+| 2026-10-27 | Push text: «تنبيه من تطبيق أسرة», «افتح تطبيق أسرة لمشاهدة التفاصيل», «حماية لعائلتك بكل الأوقات» | #418 |
+| 2026-10-28 | "Parent or guardian" is «وليّ أمره»; law names stay out of the app | `consentNotice` |
+| 2026-10-29 | To a child, "your parent" is «والدك أو والدتك»; the PIN is «رمز PIN للوالدين»; the button is «سماح» | #439 |
+| 2026-10-31 | «ضروري», not «لازم»; «لم يستلم الهاتف هذا التغيير بعد», not «يلتقط» | #491, #501 |
+| 2026-10-31 | Child block screen: «حجب والدك أو والدتك هذا التطبيق», «انتهى وقت الشاشة اليومي», «اطلب السماح», «أُرسل الطلب إلى والدك أو والدتك», «الخروج إلى الشاشة الرئيسية» | #506 |
+| 2026-11-11 | «آخر تحديث», never «بلاغ», which reads as a complaint or a police report; «الوصول إلى بيانات الاستخدام» | #552 |
+| 2026-11-11 | The child screen says «محجوب بواسطة {…} حتى {…}», not «محجوب بسبب» | #569 |
+| 2026-11-11 | His own sentence for a cloned-apps space: «هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.» It shows the register he wants in long text: full clauses, «هذا التطبيق», «الخاصية», nothing clipped | #570 |
+| 2026-11-11 | OSRA Kids is «أسرة للأطفال» | iPhone home-screen name |
+| 2026-11-12 | No competitor names on the website: «تطبيقات الرقابة الأبوية الرائدة» | #589 |
+
+### Word list
+
+**K** = approved by the maintainer (in the line or PR named). **B** = the Bureau's choice, in use until
+he says otherwise. A new term is added here in the PR that introduces it.
+
+#### Names and people
+
+| English | Use | Do not use | |
+|---|---|---|---|
+| OSRA, in a sentence | «تطبيق أسرة» | bare «أسرة» where it can read as "a family"; «الأسرة» | K (#418), B for the «تطبيق» rule |
+| OSRA Kids | «أسرة للأطفال» | «أسرة للطفل» | K 11 Nov |
+| The Full edition | «النسخة الكاملة» | «الكامل» chained after the name | B |
+| The parent app | «تطبيق الوالدين» | | K (#439) |
+| Tagline | «أسرة — رقابة أبوية لعائلتك» | | K (screen 01) |
+| The family (account) | «العائلة» | «الأسرة» | K |
+| Parent or guardian | «وليّ الأمر», plural «أولياء الأمور» | «الآباء» alone; «الوصي» outside legal text | K 28 Oct |
+| Your parent (to a child) | «والدك أو والدتك» | «والديك» for one parent; «أبوك» | K 29 Oct |
+| Family owner | «مالك العائلة» | | K 30 Oct; see question 3 |
+| Co-parent | «والد مشارك» | | K 28 Oct |
+| Family member | «فرد من العائلة» | | K |
+| Child | «الطفل», «طفلك» | «الولد», «العيال» | K |
+
+#### Features
+
+| English | Use | Do not use | |
+|---|---|---|---|
+| Parental control | «الرقابة الأبوية» | «رقابة الأهل», «التحكم الأبوي» | K |
+| Monitoring | «المراقبة» (consent, privacy, what is collected); «المتابعة», «الحماية» (friendly copy) | «التجسس»; «التتبع» for monitoring | K, B |
+| Screen time | «وقت الشاشة» | «مدة النظر إلى الشاشة», «مدة استخدام الجهاز» (see R8 for the iPhone setting) | K |
+| Daily limit | «الحد اليومي» | | K |
+| Bedtime | «وقت النوم» | | K |
+| School hours | «الساعات المدرسية» | «ساعات الدراسة» | K 31 Oct |
+| Always allowed | «مسموح دائمًا» | | K 31 Oct |
+| Bonus time | «وقت إضافي» | | K |
+| Block (the parent's rule, a list) | «حظر», «محظور» | | K |
+| Blocked (what the child's screen says) | «محجوب بواسطة …», «حجب والدك أو والدتك هذا التطبيق» | «محجوب بسبب» | K 11 Nov |
+| Allow | «سماح» (button), «السماح بـ …» | | K |
+| Request access | «اطلب السماح» | | K 31 Oct |
+| Web filter | «تصفية المواقع» | «تصفية الويب», «عامل تصفية الويب», «تصفية الإنترنت», «فلاتر» | K 11 Nov |
+| SafeSearch | «البحث الآمن» | | K |
+| Pause | «إيقاف مؤقت» in new text; the approved labels «إيقاف الإنترنت» and «استئناف الإنترنت» stay | bare «إيقاف» for a new pause, since it also means "off" and "stop" | K, B |
+| Lock, unlock | «قفل», «فتح القفل» | | K |
+| Ring | «رنين الجهاز» | «رن» | K 28 Oct |
+| Location, location history | «الموقع», «سجل المواقع» | | K |
+| Place (geofence) | «مكان», «الأماكن»; «نطاق جغرافي» only in the add-geofence dialog | | K 28 Oct |
+| Alert | «تنبيه» | | K |
+| Notification (the system's) | «إشعار»; push is «الإشعارات الفورية» | | K |
+| SOS | «الاستغاثة», «زر الاستغاثة», «تنبيه استغاثة» | `SOS` in an Arabic sentence | K 23 Oct |
+| Concerning content | «محتوى مثير للقلق» | «محادثات مؤذية» | K |
+| Bullying, grooming, self-harm | «تنمّر», «استدراج», «إيذاء النفس» | | K |
+| Report, digest | «تقرير», «ملخّص» | | K |
+| Dashboard | «لوحة التحكم» | «لوحة المتابعة» | K |
+
+#### Setup and account
+
+| English | Use | Do not use | |
+|---|---|---|---|
+| Pair, pairing, paired | «أقرن», «إقران», «مقترن» | «ربط», «مقرون» | K 29 Oct |
+| Pairing code, QR code | «رمز الإقران», «رمز QR» | «رمز الربط» | K |
+| Scan | «امسح» | | K |
+| Parent PIN | «رمز PIN للوالدين» | | K |
+| Consent | «الموافقة», «موافقة الوالدين», «سحب الموافقة», «سارية» | | K |
+| Server | «الخادم» | | K |
+| Sign in, sign out | «تسجيل الدخول», «تسجيل الخروج» | | K |
+| Two-step verification | «التحقق بخطوتين» | «المصادقة الثنائية», «عامل التحقق الثاني» | K |
+| Authenticator app | «تطبيق المصادقة» | | K |
+| Email | «البريد الإلكتروني» | «البريد», «الإيميل» | K 23 Oct |
+| Download | «تنزيل» | «تحميل», which in our apps means "load" («تحميل المزيد») | B: Android's and Samsung's own Arabic say «تنزيل» |
+| Install, uninstall | «تثبيت», «إلغاء التثبيت» | | K |
+| Version; edition (Play or Full) | «الإصدار»; «النسخة» | | B |
+| Support | «الدعم» | | B |
+| Privacy policy | «سياسة الخصوصية» | | K |
+| Tap | «اضغط», «اضغط على» | «انقر» | K |
+| Try again | «حاول مرة أخرى» | | K |
+
+### What the phone shows
+
+When a step names a system screen, use the column for the phone in hand (R8). The stock Android column
+is copied from Android's own Arabic resources (`packages/apps/Settings` and `PackageInstaller`,
+`values-ar`). The Samsung column is from Samsung's Arabic support pages where it has no mark, and
+**must be read off the test phone** where it says "check".
+
+| English | Our own sentences say | Stock Android (Pixel) shows | Samsung One UI shows |
+|---|---|---|---|
+| Settings | «الإعدادات» | «الإعدادات» | «الضبط» |
+| Accessibility | «إمكانية الوصول» | «تسهيل الاستخدام» | check |
+| Usage access | «الوصول إلى بيانات الاستخدام» | «الوصول إلى بيانات الاستخدام» | check |
+| Display over other apps | «العرض فوق التطبيقات الأخرى» | «إظهار فوق التطبيقات الأخرى» | check |
+| Device admin apps | «مسؤول الجهاز» (parent app), «مشرف الجهاز» (child PIN step): question 2 | «تطبيقات مشرف الجهاز» | «تطبيقات مسؤول الجهاز» |
+| Allow from this source | none yet | «السماح بتثبيت تطبيقات من هذا المصدر» | check |
+| Installer buttons | none yet | «تثبيت», «فتح», «تم», «الإعدادات» | check |
+| Full-screen notifications | «تنبيهات ملء الشاشة» | «عرض الإشعارات بملء الشاشة» | check |
+| Unrestricted battery | «البطارية: بدون قيود» | «الاستخدام غير المحدّد بقيود» | check |
+| Location | «الموقع» | «الموقع الجغرافي» | check |
+| Auto Blocker | none yet | none | «أداة الحظر التلقائي», under «الضبط» then «الحماية والخصوصية» |
+
+Two notes. Samsung's Auto Blocker is on by default on recent Samsung phones and stops an app being
+installed from a website, so an install guide for Samsung has to name it. On an iPhone, Apple's own
+name for Screen Time is «مدة استخدام الجهاز»: our feature stays «وقت الشاشة», and a step that sends the
+reader into the iPhone's Settings uses Apple's name.
+
+### How the leading apps say it
+
+Read on 2026-11-12 from each company's Arabic pages. The three do not agree with each other, so being
+consistent inside OSRA matters more than copying any one of them.
+
+| Idea | Google (Android, Family Link) | Apple | OSRA |
+|---|---|---|---|
+| Parental controls | «أدوات رقابة الأهل» | «أدوات الإشراف العائلي» | «الرقابة الأبوية» |
+| Screen time | «مدّة مشاهدة الشاشة», «وقت النظر إلى الشاشة» | «مدة استخدام الجهاز» | «وقت الشاشة» |
+| Daily limit | «الحدّ اليومي» | | «الحد اليومي» |
+| Block an app | «حظر تطبيق» | | «حظر» |
+| Web filter | «فلاتر محتوى الويب» | | «تصفية المواقع» |
+| PIN | «رقم التعريف الشخصي» | «رمز الدخول» | «رمز PIN» |
+| Parents | «الوالدَين» | «أولياء الأمور» | «وليّ الأمر», «الوالدان» |
+
+What they share, and we follow: full sentences with a stated subject («يمكن لأولياء الأمور وضع جداول
+زمنية يومية…»); steps as imperatives that name the app with «تطبيق» before it («افتح تطبيق "الإعدادات"
+على الجهاز.»); «تنزيل» for download; Western digits; product names in Latin letters. Kaspersky's guide
+for parents speaks to the parent as «أنت» and calls the child «طفلك», and it is open with the child
+about what the app is for, which is the tone R12 asks for.
+
+### Open questions for Karim
+
+The Bureau's recommendation is in use until he answers. The answers are recorded here.
+
+1. **The brand inside the apps' Arabic sentences.** The website, the emails, the store listing and his
+   own push text say «أسرة»; 15 parent-app lines and 14 child-app lines say `OSRA`. Recommended: «تطبيق
+   أسرة» everywhere in Arabic text, and the Latin `OSRA` only in the logo.
+2. **One name for device admin.** Recommended: «مسؤول الجهاز», which is what Samsung phones show and
+   what he approved most recently (#552).
+3. **«مالك العائلة».** It can read as "the one who owns the family". Recommended: «مدير العائلة».
+4. **The parent app's «محجوب الآن بسبب {reason}».** Recommended: follow the child screen and say
+   «محجوب الآن بواسطة {reason}».
+5. **Other companies' names.** Recommended: Latin letters always (R7), as in his «على YouTube».
+
+### Known gaps
+
+The first audit's list of lines on `main` that break these rules, each with its fix, is the backlog on
+issue #604. Nothing in it is changed until the maintainer approves the new wording.

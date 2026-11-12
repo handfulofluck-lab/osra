@@ -542,3 +542,38 @@ findings."* §1 carries the table; this section carries the three rules he attac
    expected/actual); the fix guidance is Claude's job, the fix is Kimi's.
 4. **Claude checks each PR against its roadmap row** before a TR row is marked verified, and says on the
    board when a PR drifts from its row (unmet acceptance, or scope the row does not hold).
+
+## 13. Arabic goes through the Arabic Language Bureau (maintainer, 2026-11-12)
+
+The maintainer scored a draft Arabic page "75% in 20% of the document and 95% in the rest" and then set
+the rule, in his words (capitals lowered, words unchanged): *"maybe that should be a best practice across
+the team, we make a thread for Arabic word checking … like our Arabic Language Bureau and we can add more
+languages and bureaus in the future"*, and: *"yes it handle all Arabic communication, content...etc"*.
+
+The Bureau is **Claude, in a lane of its own**. It owns the Arabic writing rules, the word list and the
+record of the maintainer's corrections, all in `docs/LOCALIZATION.md`. Its inbox is issue **#604**.
+
+1. **Scope: every Arabic word a customer reads.** App strings (`app_ar.arb`, `values-ar/`, `ar.lproj/`),
+   the website (`site/`), store listings (`docs/store/`), customer guides (`docs/customer/`), emails and
+   push text (`services/api/`), drawings and video captions, and Arabic sent to people. Test fixtures and
+   the AI evaluation banks are out of scope.
+2. **Read the word list before writing.** One thing has one name on every surface. A term that is not in
+   the list is proposed in the PR and added to the list in the same PR.
+3. **Ask on #604.** The author lists the changed lines in the PR body (where the line shows, English,
+   Arabic) and comments `Bureau review: #<PR>` on #604. **Default if silent:** the PR is not ready.
+4. **The Bureau line.** The Bureau answers on the PR line by line, each change with the rule it comes
+   from, and signs `Arabic-Bureau: reviewed <head sha>`. A PR that adds or changes Arabic is not
+   `state:ready-for-verification` without that line at its head, and the verifier returns it if the line
+   is missing. The line is not a `Verified-sha:` and never replaces verification (§6.5).
+5. **The maintainer approves the wording.** The Bureau sends the settled lines to him as a numbered
+   sheet. New customer-facing Arabic ships only after his answer. His corrections become rows in "Karim's
+   corrections" in `docs/LOCALIZATION.md` and bind every later text.
+6. **An approved line is pinned.** Nobody changes approved Arabic, even to fix a typo, without going
+   through 3 to 5 again. Where the suite allows, a test holds the approved words as a literal.
+7. **Honest limits.** No CI gate reads the Bureau line yet: it is a convention the verifier checks by
+   hand. And when Claude is also the author of the Arabic, the Bureau pass is a second reading by the same
+   agent, so the independent check on that text is the maintainer's approval alone. Both are stated on the
+   PR, never hidden.
+
+A second language gets its own Bureau the same way: its rules and word list in `docs/LOCALIZATION.md`,
+its inbox issue, and a line here.

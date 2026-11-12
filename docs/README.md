@@ -37,7 +37,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Document | Contents |
 |---|---|
 | [`TESTING.md`](TESTING.md) | Every suite and gate: how to run it, what it covers, how to read failures, the hardware procedure, environment traps |
-| [`LOCALIZATION.md`](LOCALIZATION.md) | English/Arabic UI: the ARB layout, how to add a string or a language, the RTL rules, and exactly which screens are translated |
+| [`LOCALIZATION.md`](LOCALIZATION.md) | English/Arabic UI: the ARB layout, how to add a string or a language, the RTL rules, and exactly which screens are translated. Also the **Arabic Language Bureau**: the Arabic writing rules, the word list, Karim's corrections, and what each phone calls its settings in Arabic |
 | [`../services/ai-engine/EVAL.md`](../services/ai-engine/EVAL.md) | The child-safety scorer measured per category and per language, with the generated table and how to read it (plan 4.3) |
 | [`../services/ai-engine/eval/README.md`](../services/ai-engine/eval/README.md) | The labelled evaluation set: where the text comes from, the content rule, how to run or add a bank (plan 4.2) |
 | [`test-guides/CI-SECRETS.md`](test-guides/CI-SECRETS.md) | Every secret CI and deployment read from the environment, and what happens when one is missing |
