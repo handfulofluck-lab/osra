@@ -150,19 +150,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // ADR-0039 D2: the store build signs with the upload key, the Full build with its own. A missing
-            // key falls back to debug **with a warning naming the right variables**, so a tester's sideload
-            // still installs while nobody mistakes it for a release.
-            signingConfig = when {
-                // Per-flavour, because `androidComponents` assigns this later; here `flavorName` is not yet set,
-                // so the choice is made in the `applicationVariants` block below instead. This is the default
-                // for any variant that block does not touch.
-                hasReleaseKey -> signingConfigs.getByName("release")
-                else -> {
-                    logger.warn("OSRA: no release keystore in the environment (OSRA_UPLOAD_KEYSTORE / _PASSWORD / OSRA_UPLOAD_KEY_ALIAS / OSRA_UPLOAD_KEY_PASSWORD) — release APK is debug-signed")
-                    signingConfigs.getByName("debug")
-                }
-            }
+            // ADR-0039 D2: the signing key is chosen per FLAVOUR, below, not here. A `signingConfig` on the
+            // build type wins over the flavour's in AGP, so setting one here silently gave Full the store's
+            // key (or the debug key) while the flavour block looked correct — caught by Claude on #659 in the
+            // `signingReport`, and proved there: with OSRA_FULL_* set, `fullRelease` still resolved to debug.
+            // Nothing may set `signingConfig` on a build type again; the flavours own it.
             // G4 of the customer guide: the server a store build pairs against, so it never asks a child to
             // type an address the parent's screen cannot show. Read from the same repository variable the
             // parent app uses (`OSRA_API_BASE`), or `-Posra.apiBase=` locally. Checked here rather than only
@@ -198,6 +190,15 @@ android {
     productFlavors {
         create("play") {
             dimension = "distribution"
+            // ADR-0039 D2: the store build signs with the upload key. A missing key falls back to debug **with
+            // a warning naming the right variables**, so a tester's sideload still installs while nobody
+            // mistakes it for a release.
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("OSRA: no upload keystore in the environment (OSRA_UPLOAD_KEYSTORE / _PASSWORD / OSRA_UPLOAD_KEY_ALIAS / OSRA_UPLOAD_KEY_PASSWORD) — Play release APK is debug-signed")
+                signingConfigs.getByName("debug")
+            }
             // No NotificationListenerService and no BIND_NOTIFICATION_LISTENER_SERVICE in this artefact,
             // so onboarding must not ask for a permission the build cannot use (ADR-0016 §4).
             buildConfigField("boolean", "CAPTURE_NOTIFICATIONS", "false")
