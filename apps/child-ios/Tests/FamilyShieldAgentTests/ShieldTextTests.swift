@@ -95,7 +95,7 @@ final class ShieldTextTests: XCTestCase {
         XCTAssertEqual(ShieldText.make(window: .bedtime(endsAt: "07:00"), language: "en").subtitle,
                        "Blocked by \(fsi)Bedtime\(pdi) until \(fsi)07:00\(pdi)")
         XCTAssertEqual(ShieldText.make(window: .bedtime(endsAt: "07:00"), language: "ar").subtitle,
-                       "محجوب بسبب \(fsi)وقت النوم\(pdi) حتى \(fsi)07:00\(pdi)")
+                       "محجوب بواسطة \(fsi)وقت النوم\(pdi) حتى \(fsi)07:00\(pdi)")
         XCTAssertEqual(ShieldText.make(window: .routine(name: "Homework", endsAt: "19:00"), language: "en").subtitle,
                        "Blocked by \(fsi)Homework\(pdi) until \(fsi)19:00\(pdi)")
     }
@@ -119,7 +119,7 @@ final class ShieldTextTests: XCTestCase {
 
     func testAnEnglishRoutineNameInTheArabicLineKeepsBothPlaceholdersInOrder() {
         let line = ShieldText.make(window: .routine(name: "Homework", endsAt: "19:00"), language: "ar").subtitle
-        XCTAssertEqual(line, "محجوب بسبب \(fsi)Homework\(pdi) حتى \(fsi)19:00\(pdi)")
+        XCTAssertEqual(line, "محجوب بواسطة \(fsi)Homework\(pdi) حتى \(fsi)19:00\(pdi)")
         let name = try? XCTUnwrap(line?.range(of: "Homework"))
         let time = try? XCTUnwrap(line?.range(of: "19:00"))
         XCTAssertNotNil(name)

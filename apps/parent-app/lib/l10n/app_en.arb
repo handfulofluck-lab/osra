@@ -1349,6 +1349,10 @@
   "@appGroupsBlock": {"description": "ADR-0037: label of the switch that blocks one app group. Arabic is a draft pending Karim's review."},
   "appGroupsSaveFailed": "Could not save the change. Try again.",
   "@appGroupsSaveFailed": {"description": "ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review."},
+  "setupMonitoringTitle": "Which apps should OSRA watch for you?",
+  "setupMonitoringIntro": "OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.",
+  "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
+  "setupMonitoringContinue": "Continue",
   "appRuleHiddenOnIphone": "On the iPhone, this app is hidden instead of showing the OSRA screen.",
   "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."}
 }

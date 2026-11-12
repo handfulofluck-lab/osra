@@ -1,0 +1,68 @@
+name: branch-hygiene
+
+# AGENTS.md §6 "Branch hygiene". GitHub's delete_branch_on_merge removes a PR's own head branch, but
+# the verifier's fault branches (`verify/<PR>-<label>`) never have a PR of their own, so nothing removed
+# them: 88 piled up between 4 and 11 Nov and 26 more by 12 Nov. This job removes them when their PR closes.
+#
+# Scope is deliberately narrow: only refs named exactly `verify/<N>` or `verify/<N>-…` where PR <N> is
+# closed (merged or not). It never touches any other branch. Every deletion is logged as `name sha`, so
+# a branch can be restored with `git push origin <sha>:refs/heads/<name>`.
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: branch-hygiene
+  cancel-in-progress: false
+
+jobs:
+  delete-verify-branches:
+    # A fork's PR gets a read-only token; there is nothing of ours to delete for it anyway.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete verify/<PR>-* branches of closed PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ONLY_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/git/matching-refs/heads/verify" \
+            --jq '.[] | "\(.ref | sub("^refs/heads/"; "")) \(.object.sha)"' > refs.txt
+          deleted=0
+          kept=0
+          while read -r name sha; do
+            [ -n "$name" ] || continue
+            n=$(printf '%s\n' "$name" | sed -nE 's#^verify/([0-9]+)(-.*)?$#\1#p')
+            if [ -z "$n" ]; then
+              echo "keep  $name $sha (not verify/<PR>-…)"
+              kept=$((kept + 1))
+              continue
+            fi
+            if [ -n "$ONLY_PR" ] && [ "$n" != "$ONLY_PR" ]; then
+              continue
+            fi
+            # A lookup that fails (no such PR, API error) keeps the branch: unknown is never "closed".
+            if ! state=$(gh api "repos/$REPO/pulls/$n" --jq '.state' 2>/dev/null); then
+              state=unknown
+            fi
+            if [ "$state" != "closed" ]; then
+              echo "keep  $name $sha (PR #$n is $state)"
+              kept=$((kept + 1))
+              continue
+            fi
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$name" > /dev/null
+            echo "deleted $name $sha (PR #$n closed)"
+            deleted=$((deleted + 1))
+          done < refs.txt
+          echo "branch-hygiene: deleted $deleted, kept $kept"
+          {
+            echo "### branch-hygiene"
+            echo "Deleted $deleted verify branch(es), kept $kept. Restore one with \`git push origin <sha>:refs/heads/<name>\` from the log."
+          } >> "$GITHUB_STEP_SUMMARY"
