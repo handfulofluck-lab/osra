@@ -132,6 +132,7 @@ public struct AgentRootView: View {
                                 Task {
                                     // Approved: fetch and apply the parent's rules now, not at the next open.
                                     if await screenTime.request() { _ = await RuleSyncer.syncNow() }
+                                    await LocationController.shared.reportGrant()
                                 }
                             }
                         }
@@ -215,6 +216,8 @@ public struct AgentRootView: View {
             let synced = await RuleSyncer.syncNow()
             await LocationController.shared.apply(synced)
             await LocationController.shared.flush()
+            // ADR-0034 A6: each app open also sends the capability report.
+            await LocationController.shared.reportGrant()
         }
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
