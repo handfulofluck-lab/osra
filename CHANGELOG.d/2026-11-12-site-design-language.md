@@ -11,3 +11,5 @@
 - New gate `scripts/check-site-design.mjs` in `workflow-lint.yml`, with a 19-case `--selftest`.
 - `infra/terraform/site/main.tf`: `.woff2` is served as `font/woff2`. Nothing is applied by this change; the live
   site changes only at the next `terraform apply` of the site stack.
+- The top bar and the browser tab show the OSRA logo the maintainer chose on 2026-11-12 (`site/icon.svg`,
+  `site/apple-touch-icon.png`; roadmap 3.20).

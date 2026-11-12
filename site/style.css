@@ -36,6 +36,7 @@ body { margin: 0; background: var(--page); color: var(--ink); font: 400 16px/26p
 /* Top bar: the wordmark and the page links, each a 44 px target. */
 .top { max-width: 792px; margin: 0 auto; padding: 12px 16px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
 .brand { display: inline-flex; align-items: baseline; gap: 8px; min-height: 44px; padding-top: 8px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 22px; line-height: 28px; letter-spacing: 0.02em; }
+.brand img { align-self: center; margin-inline-end: 2px; }
 .brand span { font-family: "IBM Plex Sans Arabic", sans-serif; font-weight: 600; font-size: 17px; letter-spacing: 0; color: var(--muted); }
 nav { display: flex; flex-wrap: wrap; gap: 0 4px; font-size: 15px; line-height: 20px; }
 nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; border-radius: var(--radius-control); font-weight: 600; text-decoration: none; }
