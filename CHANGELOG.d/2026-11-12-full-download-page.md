@@ -17,3 +17,5 @@
   style of its own (`text-align: start` in the shared sheet mirrors the table). The install drawings and the video
   are re-rendered in IBM Plex Sans / IBM Plex Sans Arabic and the Calm colours of `docs/design/tokens.json`
   (they were Nunito, Noto Sans Arabic and indigo). The version line under the button reads «الإصدار» on the Arabic page.
+- The pages, the drawings and the video show the OSRA Kids Full icon (the "Embrace" logo on dark, roadmap 3.20)
+  where they showed a placeholder tile.
