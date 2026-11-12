@@ -14,12 +14,13 @@ locals {
   }
 
   content_types = {
-    html = "text/html; charset=utf-8"
-    css  = "text/css; charset=utf-8"
-    txt  = "text/plain; charset=utf-8"
-    svg  = "image/svg+xml"
-    png  = "image/png"
-    ico  = "image/x-icon"
+    html  = "text/html; charset=utf-8"
+    css   = "text/css; charset=utf-8"
+    txt   = "text/plain; charset=utf-8"
+    svg   = "image/svg+xml"
+    png   = "image/png"
+    ico   = "image/x-icon"
+    woff2 = "font/woff2"
   }
 }
 
