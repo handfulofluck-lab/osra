@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3162,6 +3161,24 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
+
+  @override
+  String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
+
+  @override
+  String get appGroupsBody =>
+      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+
+  @override
+  String appGroupsCounts(Object apps, Object categories, Object sites) {
+    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
+  }
+
+  @override
+  String get appGroupsBlock => 'حظر';
+
+  @override
+  String get appGroupsSaveFailed => 'تعذّر حفظ التغيير. حاول مرة أخرى.';
 
   @override
   String get setupMonitoringTitle => 'أي التطبيقات تريد أن يراقبها تطبيق أسرة؟';
