@@ -1,8 +1,12 @@
 import 'package:familyshield_parent/features/onboarding/setup_monitoring_screen.dart';
+import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart' show kSocialApps;
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fake_api_client.dart';
 
 /// Play decision 14 A — the monitored-apps step in setup.
 ///
@@ -57,6 +61,44 @@ void main() {
     final instagram = tester.widget<CheckboxListTile>(find.byKey(const ValueKey('setupMonitoring_instagram')));
     expect(whatsapp.value, isFalse);
     expect(instagram.value, isTrue, reason: 'unticking one app must not clear the rest');
+  });
+
+  testWidgets('it PATCHes only socialMonitoring, so nothing else the child has is replaced (#587 review)',
+      (tester) async {
+    // The bug this row exists for: a PUT of a locally-built `RuleSet` wiped the server's 13 default blocked
+    // web categories and the 300-minute weekend limit, because a child paired one screen ago has no loaded
+    // ruleset and `const RuleSet()` was sent in its place.
+    final api = FakeApiClient({
+      'PATCH /v1/rules/child-1': (req) => {'ok': true},
+    });
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const SetupMonitoringScreen(childId: 'child-1'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('setupMonitoring_instagram')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('setupMonitoringContinue')));
+    await tester.pumpAndSettle();
+
+    final rules = api.requests.where((r) => r.path.contains('/v1/rules/')).toList();
+    expect(rules, hasLength(1));
+    expect(rules.single.method, 'PATCH', reason: 'a PUT replaces fields this screen never read');
+    final body = rules.single.body;
+    expect(body.keys, ['socialMonitoring'], reason: 'only the key this screen owns may travel');
+    final map = Map<String, dynamic>.from(body['socialMonitoring'] as Map);
+    expect(map['instagram'], isFalse, reason: 'the app the parent unticked');
+    expect(map['whatsapp'], isTrue, reason: 'the apps the parent left ticked');
+    expect(map, hasLength(kSocialApps.length), reason: 'the server replaces the whole map');
   });
 
   testWidgets('the Arabic copy renders, so the step is not English-only on an Arabic phone', (tester) async {

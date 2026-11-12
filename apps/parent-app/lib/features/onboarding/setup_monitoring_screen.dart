@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -42,14 +41,15 @@ class _SetupMonitoringScreenState extends ConsumerState<SetupMonitoringScreen> {
     }
     setState(() => _saving = true);
     try {
-      final ruleSet = ref.read(rulesProvider(childId)).valueOrNull ?? const RuleSet();
-      final body = ruleSet.toJson();
-      // Merge under whatever the server already holds, so an app this build does not know survives.
-      body['socialMonitoring'] = {
-        ...ruleSet.socialMonitoring,
-        for (final a in kSocialApps) a.appKey: _selected.contains(a.appKey),
-      };
-      await ref.read(apiClientProvider).raw.put('/v1/rules/$childId', data: body);
+      // **PATCH, and only this screen's key.** A PUT of a locally-built `RuleSet` would replace fields this
+      // screen never read — for a child paired one screen ago `rulesProvider` is still loading, so the body
+      // would carry `const RuleSet()` and wipe the server's defaults: 13 blocked web categories and the
+      // 300-minute weekend limit (#587 review). The PATCH route merges server-side, so the parent's other
+      // settings are untouched.
+      await ref.read(apiClientProvider).raw.patch('/v1/rules/$childId', data: {
+        // The server replaces the whole map, so every app this build knows is sent, ticked or not.
+        'socialMonitoring': {for (final a in kSocialApps) a.appKey: _selected.contains(a.appKey)},
+      });
       ref.invalidate(rulesProvider(childId));
       ref.invalidate(familyProvider);
       if (mounted) context.go('/setup/done');
