@@ -6,7 +6,9 @@ import android.content.IntentSender
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.content.pm.Signature
+import android.content.pm.SigningInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.content.pm.PackageInfoCompat
@@ -137,8 +139,9 @@ class FullUpdater(
             if (archiveInfo.packageName != BuildConfig.APPLICATION_ID) {
                 throw InstallRefusal(UpdateRefusal.wrong_package.name)
             }
-            FullUpdatePolicy.checkSigner(hasOwnSigner(archiveInfo))
-                ?.let { refusal: UpdateRefusal -> throw InstallRefusal(refusal.name) }
+            if (!hasOwnSigner(archiveInfo)) {
+                throw InstallRefusal(UpdateRefusal.foreign_signer.name)
+            }
             session.commit(statusIntent)
             committed = true
             return FullUpdateOutcome.InstallRequested(manifest.versionCode)
@@ -203,36 +206,56 @@ class FullUpdater(
     }
 
     /**
-     * Rows 5 and 7: the archive's signer must be ours. API 28+ asks `hasSigningCertificate`, so a planned
-     * v3 rotation of the release key is still accepted; on API 26 and 27, where that call does not exist,
-     * the archive's signing certificate bytes are compared with the installed app's own `signatures`.
+     * Rows 5 and 7: the archive's signer must be ours, and a planned `old -> new` rotation must survive.
+     *
+     * API 28+ reads the archive's [android.content.pm.SigningInfo]: multiple signers must all be ours, and a
+     * single signer is accepted when **any** certificate in its `signingCertificateHistory` is one the
+     * installed app already has. The history is what makes rotation work — after `old -> new` the archive's
+     * current signer is `new`, which this app has never seen, while the lineage still names `old` — and it
+     * cannot be forged, because the platform signs the chain with the old key. On API 26 and 27, where
+     * `hasSigningCertificate` and `signingInfo` do not exist, the archive's signatures are compared with the
+     * installed app's own as one signer whose lineage is itself.
      */
     private fun hasOwnSigner(archiveInfo: PackageInfo): Boolean {
         val packageManager: PackageManager = context.packageManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val signers: Array<Signature> = archiveInfo.signingInfo?.apkContentsSigners ?: return false
-            return signers.any { signer: Signature ->
+        val archive: FullUpdatePolicy.ArchiveSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val info: SigningInfo = archiveInfo.signingInfo ?: return false
+            if (info.hasMultipleSigners()) {
+                val signers: List<String> = info.apkContentsSigners.map { signer -> sha256Hex(signer) }
+                FullUpdatePolicy.ArchiveSigners(true, signers, signers)
+            } else {
+                FullUpdatePolicy.ArchiveSigners(
+                    hasMultipleSigners = false,
+                    signerSha256 = info.apkContentsSigners.map { signer -> sha256Hex(signer) },
+                    lineageSha256 = info.signingCertificateHistory.map { signer -> sha256Hex(signer) },
+                )
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val signers: List<String> = archiveInfo.signatures?.map { signer -> sha256Hex(signer) }
+                ?: return false
+            if (signers.isEmpty()) return false
+            FullUpdatePolicy.ArchiveSigners(signers.size > 1, signers, signers)
+        }
+        val installedHas: (String) -> Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            { sha256: String ->
                 packageManager.hasSigningCertificate(
                     BuildConfig.APPLICATION_ID,
-                    MessageDigest.getInstance("SHA-256").digest(signer.toByteArray()),
+                    hexToBytes(sha256),
                     PackageManager.CERT_INPUT_SHA256,
                 )
             }
+        } else {
+            val own: Set<String> = ownSignatureSha256(packageManager)
+            own::contains
         }
-        val own: List<Signature> = ownSignatures(packageManager)
-        @Suppress("DEPRECATION")
-        val archiveSigners: Array<Signature> = archiveInfo.signatures ?: return false
-        return archiveSigners.any { archiveSigner: Signature ->
-            own.any { ownSigner: Signature ->
-                ownSigner.toByteArray().contentEquals(archiveSigner.toByteArray())
-            }
-        }
+        return FullUpdatePolicy.checkArchiveSigners(archive, installedHas) == null
     }
 
     @Suppress("DEPRECATION")
-    private fun ownSignatures(packageManager: PackageManager): List<Signature> =
+    private fun ownSignatureSha256(packageManager: PackageManager): Set<String> =
         packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, PackageManager.GET_SIGNATURES)
-            .signatures?.toList() ?: emptyList()
+            .signatures?.map { signer -> sha256Hex(signer) }?.toSet() ?: emptySet()
 
     private fun installedVersionCode(): Long = PackageInfoCompat.getLongVersionCode(
         context.packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, 0),
@@ -304,6 +327,7 @@ class FullUpdater(
         const val REASON_DOWNLOAD_FAILED: String = "download_failed"
         const val REASON_MALFORMED_ARCHIVE: String = "malformed_archive"
         const val REASON_INSTALL_FAILED: String = "install_failed"
+        const val REASON_UNTRUSTED_CONFIRM_INTENT: String = "untrusted_confirm_intent"
         const val REASON_CHECK_FAILED: String = "check_failed"
 
         private const val TAG = "FullUpdater"
@@ -329,6 +353,11 @@ class FullUpdater(
          * The session's status callback body. It lives here, not in the receiver, so this is the only class
          * that names `PackageInstaller` (amendment row 5); `FullUpdateInstallReceiver` in the `full` source
          * set is a one-line delegator and the Full manifest is the only one that declares it.
+         *
+         * The `STATUS_PENDING_USER_ACTION` intent carries another `Intent` to start. Only the system can
+         * deliver this broadcast today, but starting whatever it names is an intent-redirection shape, so
+         * [confirmationIntent] resolves it against the system image and drops anything else
+         * (`update_refused:untrusted_confirm_intent`).
          */
         fun onInstallStatus(context: Context, intent: Intent) {
             val status: Int = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
@@ -336,7 +365,7 @@ class FullUpdater(
                 PackageInstaller.STATUS_SUCCESS -> Log.i(TAG, "update_install:success")
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                     Log.i(TAG, "update_install:pending_user_action")
-                    confirmationIntent(intent)?.let { confirm -> runCatching { context.startActivity(confirm) } }
+                    confirmationIntent(context, intent)?.let { confirm -> runCatching { context.startActivity(confirm) } }
                 }
                 else -> Log.w(
                     TAG,
@@ -345,14 +374,38 @@ class FullUpdater(
             }
         }
 
-        private fun confirmationIntent(intent: Intent): Intent? {
+        private fun confirmationIntent(context: Context, intent: Intent): Intent? {
             val confirm: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
             } else {
                 @Suppress("DEPRECATION")
                 intent.getParcelableExtra(Intent.EXTRA_INTENT)
             }
-            return confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val candidate: Intent = confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return null
+            @Suppress("DEPRECATION")
+            val resolved: ResolveInfo? = context.packageManager
+                .resolveActivity(candidate, PackageManager.MATCH_SYSTEM_ONLY)
+            val flags: Int? = resolved?.activityInfo?.applicationInfo?.flags
+            if (!FullUpdatePolicy.confirmationTargetIsSystemInstaller(flags)) {
+                Log.w(TAG, "update_refused:$REASON_UNTRUSTED_CONFIRM_INTENT")
+                return null
+            }
+            return candidate
+        }
+
+        private fun sha256Hex(signature: Signature): String = hex(
+            MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()),
+        )
+
+        private fun hexToBytes(value: String): ByteArray =
+            ByteArray(value.length / 2) { index ->
+                ((hexDigit(value[index * 2]) shl 4) or hexDigit(value[index * 2 + 1])).toByte()
+            }
+
+        private fun hexDigit(char: Char): Int = when (char) {
+            in '0'..'9' -> char - '0'
+            in 'a'..'f' -> char - 'a' + 10
+            else -> throw IllegalArgumentException("not a lowercase hex digit: $char")
         }
     }
 }

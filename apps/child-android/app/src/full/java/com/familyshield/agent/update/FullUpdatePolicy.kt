@@ -32,15 +32,17 @@ import java.util.Base64
  *  - row 5 — the archive's package name must be ours: [accept] refuses a manifest for another package
  *    with `wrong_package`, and the install session belongs to this app id only.
  *  - row 6 — [checkDownload] is the hash/size gate the streaming download commits behind.
- *  - row 7 — [checkSigner] is the certificate check that survives a v3 rotation (the caller resolves the
- *    archive signer against its own package's certificates).
+ *  - row 7 — [checkArchiveSigners] walks the archive's signing-certificate **lineage**, so a planned v3
+ *    rotation of the release key is still accepted while a foreign signer is refused, and
+ *    [confirmationTargetIsSystemInstaller] refuses a confirmation intent that does not resolve to the
+ *    system image.
  *  - row 9 — `minSupportedVersionCode` is deliberately absent: it is information for the parent, never a
  *    remote off switch, so only the APK's own `minSdk` is enforced here, as `device_too_old` (a device
  *    below it cannot install the archive, and Android would reject the install anyway).
  *
  * Ed25519: [TinkEd25519Verifier] (Google Tink's `subtle.Ed25519Verify`) is the only verifier and it runs on
  * **every API level**, not just those where the platform happens to carry an `Ed25519` provider (API 33+).
- * One code path ships, so the 24 JVM rows exercise exactly what a phone runs, and the minSdk 26 floor has no
+ * One code path ships, so the 28 JVM rows exercise exactly what a phone runs, and the minSdk 26 floor has no
  * provider gap left to paper over. The verifier never throws: a bad key length, a bad signature or a
  * `GeneralSecurityException` is `false`, and the decision is `signature_invalid` — refused, never trusted.
  *
@@ -187,8 +189,47 @@ object FullUpdatePolicy {
         return null
     }
 
-    fun checkSigner(hasOwnSigningCertificate: Boolean): UpdateRefusal? =
-        if (hasOwnSigningCertificate) null else UpdateRefusal.foreign_signer
+    /**
+     * The archive's signing certificates as hex-lowercase SHA-256, in the shape row 7's check needs:
+     * `signerSha256` is what the archive is signed with **now**, `lineageSha256` is the platform's
+     * proof-of-rotation chain — one entry, the current certificate, when the key never changed.
+     */
+    data class ArchiveSigners(
+        val hasMultipleSigners: Boolean,
+        val signerSha256: List<String>,
+        val lineageSha256: List<String>,
+    )
+
+    /**
+     * Row 7, rotation-aware: "is this archive signed by a key the installed app already trusts?".
+     *
+     * After a planned `old -> new` rotation the archive's *current* signer is `new` and the installed app
+     * knows only `old`, so asking about `signerSha256` alone refuses the very update the ADR wants to allow.
+     * The single-signer case therefore asks about the **lineage**: the platform builds and signs that chain
+     * with the old key, so a forged entry cannot be added, and an archive with no shared entry is a foreign
+     * signer. Multiple signers must *all* be ours, which is also what Android enforces at install time.
+     */
+    fun checkArchiveSigners(archive: ArchiveSigners, installedHas: (String) -> Boolean): UpdateRefusal? {
+        if (archive.hasMultipleSigners) {
+            if (archive.signerSha256.isEmpty()) return UpdateRefusal.foreign_signer
+            return if (archive.signerSha256.all(installedHas)) null else UpdateRefusal.foreign_signer
+        }
+        if (archive.lineageSha256.isEmpty()) return UpdateRefusal.foreign_signer
+        return if (archive.lineageSha256.any(installedHas)) null else UpdateRefusal.foreign_signer
+    }
+
+    /**
+     * `ApplicationInfo.FLAG_SYSTEM`, copied as a constant because this file imports no `android.*`.
+     */
+    const val FLAG_SYSTEM: Int = 0x00000001
+
+    /**
+     * Row 5's other half: the install-confirmation `PendingIntent` carries an `Intent`, and starting whatever
+     * it names would be an intent redirection. True only when the intent resolved to a package on the system
+     * image; an unresolved intent (`null` flags) is not trusted either.
+     */
+    fun confirmationTargetIsSystemInstaller(resolvedFlags: Int?): Boolean =
+        resolvedFlags != null && (resolvedFlags and FLAG_SYSTEM) != 0
 
     fun isAllowedUrl(raw: String): Boolean {
         val uri: URI = try {

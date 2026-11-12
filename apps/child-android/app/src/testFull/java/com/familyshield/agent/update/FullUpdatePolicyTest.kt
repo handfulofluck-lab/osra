@@ -1,6 +1,7 @@
 package com.familyshield.agent.update
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -176,9 +177,49 @@ class FullUpdatePolicyTest {
     }
 
     @Test
+    fun sameSignerIsAccepted() {
+        val archive: FullUpdatePolicy.ArchiveSigners =
+            FullUpdatePolicy.ArchiveSigners(false, listOf(OLD_SIGNER), listOf(OLD_SIGNER))
+        assertNull(FullUpdatePolicy.checkArchiveSigners(archive) { sha256 -> sha256 == OLD_SIGNER })
+    }
+
+    @Test
+    fun rotatedSignerStillAccepted() {
+        val archive: FullUpdatePolicy.ArchiveSigners =
+            FullUpdatePolicy.ArchiveSigners(false, listOf(NEW_SIGNER), listOf(OLD_SIGNER, NEW_SIGNER))
+        assertNull(FullUpdatePolicy.checkArchiveSigners(archive) { sha256 -> sha256 == OLD_SIGNER })
+    }
+
+    @Test
     fun foreignSignerIsRefused() {
-        assertEquals(UpdateRefusal.foreign_signer, FullUpdatePolicy.checkSigner(false))
-        assertNull(FullUpdatePolicy.checkSigner(true))
+        val archive: FullUpdatePolicy.ArchiveSigners =
+            FullUpdatePolicy.ArchiveSigners(false, listOf(FOREIGN_SIGNER), listOf(FOREIGN_SIGNER))
+        assertEquals(
+            UpdateRefusal.foreign_signer,
+            FullUpdatePolicy.checkArchiveSigners(archive) { sha256 -> sha256 == OLD_SIGNER || sha256 == NEW_SIGNER },
+        )
+    }
+
+    @Test
+    fun multipleSignersWithOneForeignIsRefused() {
+        val archive: FullUpdatePolicy.ArchiveSigners =
+            FullUpdatePolicy.ArchiveSigners(true, listOf(OLD_SIGNER, FOREIGN_SIGNER), listOf(OLD_SIGNER, FOREIGN_SIGNER))
+        assertEquals(
+            UpdateRefusal.foreign_signer,
+            FullUpdatePolicy.checkArchiveSigners(archive) { sha256 -> sha256 == OLD_SIGNER },
+        )
+        assertNull(
+            FullUpdatePolicy.checkArchiveSigners(
+                FullUpdatePolicy.ArchiveSigners(true, listOf(OLD_SIGNER), listOf(OLD_SIGNER)),
+            ) { sha256 -> sha256 == OLD_SIGNER },
+        )
+    }
+
+    @Test
+    fun confirmationIntentMustResolveToSystemInstaller() {
+        assertTrue(FullUpdatePolicy.confirmationTargetIsSystemInstaller(FullUpdatePolicy.FLAG_SYSTEM))
+        assertFalse(FullUpdatePolicy.confirmationTargetIsSystemInstaller(0))
+        assertFalse(FullUpdatePolicy.confirmationTargetIsSystemInstaller(null))
     }
 
     @Test
@@ -302,5 +343,11 @@ class FullUpdatePolicyTest {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         const val OTHER_SHA256: String =
             "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        const val OLD_SIGNER: String =
+            "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        const val NEW_SIGNER: String =
+            "b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1"
+        const val FOREIGN_SIGNER: String =
+            "c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2"
     }
 }
