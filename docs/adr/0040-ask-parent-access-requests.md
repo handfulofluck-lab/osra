@@ -23,9 +23,10 @@ What we already have, and reuse:
   "hasn't picked this up yet" for a version the phone has not fetched (#475).
 - **A today-only bonus** (`POST /children/:id/bonus`, `bonusMinutesToday`) raises the *global* daily limit. It
   cannot open one app, and it cannot open anything during bedtime, a routine or a per-app block.
-- **Wakes.** Android has FCM. The iPhone agent has the APNs wake code (#382), but the server cannot send it until
-  an APNs key exists, which is Karim's call. Measured on the iPhone: a wake lands in about 3 s when the app was
-  recently in front and 5 to 7 min in the background.
+- **Wakes.** Android has FCM. The iPhone agent has the APNs wake code (#382), and the APNs key exists (made by
+  Karim on 11 Nov, sandbox and production; used on the Mac test bed, not yet in a deployed stack). Measured on the
+  iPhone: a background wake lands in about 3 s when the app was recently in front and 5 to 7 min otherwise,
+  because iOS throttles background pushes.
 - **iOS cannot name apps.** Shields and grants work on opaque tokens, which never leave the phone (ADR-0037). The
   server knows an iPhone group by id and label only.
 
@@ -173,15 +174,21 @@ No free text from the child in v1. A message box is new content to moderate, sto
 child-written note can carry what our content rules exist to catch. A short list of preset reasons is a candidate
 for v2.
 
-### 7. Push, and what changes without an APNs key
+### 7. Push: how fast the child hears
 
 - **Android:** the FCM wake exists; the answer lands in seconds.
-- **iPhone, with an APNs key:** the same, once the server sends the existing child wake to Apple.
-- **iPhone, without one (today):** the answer is stored and waits for the next fetch: the next app open, a
-  background refresh, or a shield tap (the shield action extension fetches the request's status when tapped). So
-  the shield's waiting line on iOS adds "Open OSRA Kids to check." until the key exists. **This is a product
-  decision for Karim**: the APNs key costs nothing more (the developer account is paid), and without it "Ask
-  parent" on the iPhone works but feels slow.
+- **iPhone:** a background (wake-only) push is throttled by iOS, 5 to 7 minutes when the app has not been used
+  recently. Too slow for a child staring at a shield. So for an answer, and only for an answer, the server sends
+  the child's iPhone a **visible alert push with a localization key and nothing else**: `loc-key`
+  `request_answered` ("Your parent answered. Tap to see."), plus `content-available` so the agent also syncs.
+  Apple delivers visible alerts without the background throttle. Apple still learns no content (no app, no
+  answer, no name), so the wake-only rule of ADR-0011 keeps its reason; this is its one recorded exception.
+  Tapping opens OSRA Kids, which fetches the rules and the answer.
+- **Without push** (a stack where `APNS_*` is not set, or notifications turned off on the phone): the answer
+  waits for the next fetch (app open, background refresh, or a shield tap, which fetches the request's status),
+  and the shield's waiting line adds "Open OSRA Kids to check."
+- **Deploy:** the key is Karim's (made 11 Nov). It goes into each stack as a Secrets Manager value like
+  `FCM_SERVICE_ACCOUNT_JSON`, never into the repo; `APNS_ENV` must match the build's `aps-environment`.
 
 ### 8. The parent app
 
@@ -213,7 +220,7 @@ Child (Android `strings.xml`, iPhone `Localizable.strings`):
 | Key | English |
 |---|---|
 | `request_waiting` | Asked. Waiting for your parent… |
-| `request_waiting_open_app` (iPhone, no APNs) | Asked. Open OSRA Kids to check for an answer. |
+| `request_waiting_open_app` (iPhone, no push) | Asked. Open OSRA Kids to check for an answer. |
 | `request_allowed` | You can use {app} for {minutes} minutes. |
 | `request_allowed_no_name` (iPhone) | You can use it for {minutes} minutes. |
 | `request_one_minute_left` | 1 minute left on {app}. |
@@ -221,6 +228,7 @@ Child (Android `strings.xml`, iPhone `Localizable.strings`):
 | `request_denied` | Your parent said not now. |
 | `request_expired` | No answer yet. You can ask again. |
 | `request_too_many` | You've asked a lot today. Talk to your parent. |
+| `request_answered` (iPhone alert push) | Your parent answered. Tap to see. |
 | `request_offline` | Your request couldn't be sent right now. Try again when you're online. |
 
 Parent (`app_en.arb` / `app_ar.arb`):
@@ -264,7 +272,7 @@ Parent (`app_en.arb` / `app_ar.arb`):
 1. **#599 (first slice):** `access_request` in the alert enum, the parent title EN (AR after the Bureau), the iPhone
    sends it; the shield's "Exit" stops alerting (#602 item 1).
 2. **API:** `AccessRequest` (migration), `POST /v1/access-requests`, `answer`, `end`, `accessGrants` in the served
-   ruleset, the `access_answer` command, the limits, the guardian gate, retention and erasure. Shared types first.
+   ruleset, the `access_answer` command and the iPhone answer alert (section 7), the limits, the guardian gate, retention and erasure. Shared types first.
 3. **Parent app:** the request card, the child's Requests row, the push route. (Kimi)
 4. **Android agent:** request through the new route, the waiting/answer states on `BlockActivity`, the grant in
    `RuleEngine` with the monotonic deadline, the notifications. (Kimi)
@@ -296,7 +304,8 @@ Parent (`app_en.arb` / `app_ar.arb`):
   iPhone beyond a group id it already knows.
 - **A new table, two routes and a ruleset field** for Kimi, plus a command type. The served ruleset grows by at
   most 10 small entries.
-- **On the iPhone without an APNs key, the answer is slow** until the child opens the app (section 7).
+- **On the iPhone, one visible push per answer.** It shows on the child's lock screen; it names nothing. Where push
+  is off, the answer waits for the next app open (section 7).
 - **On the iPhone there is no "1 minute left"** in v1: a `DeviceActivity` warning needs a second schedule per grant,
   which adds to iOS's limit of schedules per app; we add it if S1 shows headroom.
 - **If S1 fails**, grants under 15 minutes on the iPhone are rounded up to 15, and the parent card says so for an
