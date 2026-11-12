@@ -99,7 +99,8 @@ page differs from its sources.
   release security gate is signed (its page, video and pictures are in the `/android/` PR).
 - **Social row.** `SOCIAL` in `build.mjs` is empty until OSRA's accounts exist; an empty list renders no row.
   `--preview-social` fills it with placeholders for review screenshots only.
-- **Arabic goes live after its Bureau signs.** `ARABIC_PUBLISHED` in `build.mjs` is false until then: the English
-  pages carry no link or hreflang to `/ar/`, and `site-pages.yml` leaves `site/ar/` out. Flip both together.
+- **Arabic goes live only when its Bureau has signed.** `ARABIC_PUBLISHED` in `build.mjs` controls the English pages'
+  link and hreflang to `/ar/`; it is true since the Bureau signed #670 (Karim approved the Arabic 2026-11-12). To
+  hold Arabic back again, set it false and leave `site/ar/` out in `site-pages.yml`, together.
 - **Promise band in dark** is the `raised` colour, not `primary`, so a full-width band is not a wall of light blue.
 - **No script.** The FAQ uses `details`/`summary`; nothing on these pages needs JavaScript.

@@ -44,7 +44,7 @@ const SOCIAL = PREVIEW_SOCIAL
 // The Arabic pages are built and reviewed, but published only after the Arabic Language Bureau signs them
 // (site-pages.yml leaves site/ar/ out until then). While this is false, the English pages carry no link or
 // hreflang to /ar/, so the live site never points at a page that is not there.
-const ARABIC_PUBLISHED = false;
+const ARABIC_PUBLISHED = true;
 const showOther = (c) => c.lang === "ar" || ARABIC_PUBLISHED;
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
