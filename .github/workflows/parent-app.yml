@@ -2,7 +2,8 @@ name: Parent app
 
 # The Flutter parent app. Until 2026-10-24 this was the `parent-app` job of ci.yml and ran on every pull
 # request; now it runs when the app changes, on main when it changes, and nightly on main whatever changed
-# (Flutter's stable channel moves under us, and that must show up on main, not on the next unrelated PR).
+# (pub dependencies move under us, and that must show up on main, not on the next unrelated PR). Flutter
+# itself is pinned in both setup steps below since stable 3.50.0 (2026-11-11); raising the pin is a PR.
 # One file outside `apps/parent-app/` is read: the alert-category parity test (#344) reads the server's
 # category list, so a change to it must run this suite. `scripts/check-ci-paths.mjs` keeps the two lists
 # identical, makes sure they name this file, and fails when a test starts reading another outside file.
@@ -42,6 +43,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned (2026-11-11): stable 3.50.0 deprecates `package:flutter/material.dart` in favour of
+          # `package:material_ui`, and `flutter analyze` fails on the resulting infos in every file. The
+          # move to material_ui is its own change; until it lands, CI and release builds stay on the last
+          # stable that built main green (run 43083839765). Raise this together with that migration.
+          flutter-version: 3.47.9
           cache: true
       # `firebase_messaging` has no Swift Package Manager support yet (Flutter says so in its own
       # warning), and mixing it into an SPM project fails with "Include of non-modular header inside
@@ -98,13 +104,25 @@ jobs:
           OSRA_UPLOAD_KEY_ALIAS: ${{ secrets.OSRA_UPLOAD_KEY_ALIAS }}
           OSRA_UPLOAD_KEY_PASSWORD: ${{ secrets.OSRA_UPLOAD_KEY_PASSWORD }}
           # The server the store build talks to out of the box (server_provider.dart kDefaultServerUrl).
-          # A repository variable, not code: unset keeps today's behaviour (the parent types an address);
-          # set it to the production https URL before a build goes to testers. Never an http:// URL: the
-          # release network config is HTTPS-only.
+          # A repository variable, not code. A signed (store) build must have it: the built-in server is what
+          # locks the login screen's Server field (osra-security#8 F3), so a signed build without it fails here,
+          # except on a pull request, whose bundle is never uploaded (a warning there). An unsigned build (forks)
+          # may leave it unset and keeps the editable field. Never an
+          # http:// URL: the release network config is HTTPS-only.
           OSRA_API_BASE: ${{ vars.OSRA_API_BASE }}
         run: |
           case "$OSRA_API_BASE" in
-            "") echo "OSRA_API_BASE not set: the bundle has no built-in server address" ;;
+            "")
+              # Pull-request runs in this repository get the signing key too, but their bundle is never
+              # uploaded: a warning there, so one missing variable does not turn every parent-app PR red.
+              if [ -n "$OSRA_UPLOAD_KEYSTORE_PASSWORD" ] && [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+                echo "::error::a signed (store) build needs OSRA_API_BASE: without it the server field is unlocked (osra-security#8 F3)"; exit 1
+              fi
+              if [ -n "$OSRA_UPLOAD_KEYSTORE_PASSWORD" ]; then
+                echo "::warning::OSRA_API_BASE not set: this signed PR bundle has an unlocked server field; main's build fails until it is set (osra-security#8 F3)"
+              else
+                echo "OSRA_API_BASE not set: unsigned build, no built-in server address"
+              fi ;;
             https://*) echo "built-in server: $OSRA_API_BASE" ;;
             *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
           esac
@@ -188,6 +206,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned (2026-11-11): stable 3.50.0 deprecates `package:flutter/material.dart` in favour of
+          # `package:material_ui`, and `flutter analyze` fails on the resulting infos in every file. The
+          # move to material_ui is its own change; until it lands, CI and release builds stay on the last
+          # stable that built main green (run 43083839765). Raise this together with that migration.
+          flutter-version: 3.47.9
           cache: true
       # Plugins link through CocoaPods, not Swift Package Manager (#392). A Flutter plugin picks its own
       # integration, and `firebase_messaging` ships a podspec and no `Package.swift`, so an SPM-only
