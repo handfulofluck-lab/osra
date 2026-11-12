@@ -32,6 +32,10 @@ concurrency:
   group: parent-app-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
+# **Do not rename this file.** Play's versionCode comes from this workflow's `run_number`; renaming or
+# recreating the workflow restarts the counter at 1, and Play then refuses every upload until the new count
+# passes the old one again. See the `--build-number` line on the bundle step.
+
 jobs:
   parent-app:
     runs-on: ubuntu-latest
@@ -133,7 +137,16 @@ jobs:
         run: |
           unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
           # The AAB manifest is protobuf; the permission string survives as plain text.
-          grep -q "android.permission.INTERNET" /tmp/manifest.bin && echo "INTERNET present"
+          # Was `grep -q ... && echo`: under `set -e` a failing left-hand side of an `&&` list does not fail
+          # the step, so this check could never go red. The linter caught it while I edited this block.
+          grep -q "android.permission.INTERNET" /tmp/manifest.bin             || { echo "::error::the release manifest does not declare INTERNET"; exit 1; }
+          echo "INTERNET present"
+          # Play 5.2: the bundle Play receives must carry this run's number, or a second upload is refused.
+          # Read from the merged release manifest, which is the tree the AAB was built from.
+          MANIFEST=$(ls build/app/intermediates/merged_manifests/release/*/AndroidManifest.xml | head -1)
+          [ -f "$MANIFEST" ] || { echo "::error::the merged release manifest is missing"; exit 1; }
+          grep -q "android:versionCode=\"${{ github.run_number }}\"" "$MANIFEST"             || { echo "::error::the bundle carries $(grep -o 'android:versionCode=\"[0-9]*\"' "$MANIFEST" | head -1), not ${{ github.run_number }}"; exit 1; }
+          echo "bundle versionCode ${{ github.run_number }}"
       - uses: actions/upload-artifact@v4
         with:
           name: parent-app-release-aab
