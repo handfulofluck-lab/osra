@@ -63,8 +63,7 @@ public enum AgentIdentityStore {
     public static func load() -> AgentIdentity? {
         migrateLegacySecrets()
         let defaults = UserDefaults(suiteName: suiteName)
-        guard let base = defaults?.string(forKey: Keys.apiBaseURL),
-              let url = URL(string: base),
+        guard let url = storedServer(),
               let token = secrets.read(Keys.deviceToken), !token.isEmpty,
               let childId = defaults?.string(forKey: Keys.childId), !childId.isEmpty
         else { return nil }
@@ -99,6 +98,18 @@ public enum AgentIdentityStore {
         for key in [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId, Keys.childName] {
             defaults.removeObject(forKey: key)
         }
+    }
+
+    /// The stored server, or nil when there is none or it is not this build's built-in server (#634 G1). Every
+    /// reader goes through it, the extensions included (`AlertReporter`), so after an install over a pairing with
+    /// another server nothing is sent there, even before the app is opened and clears it. `builtIn` is read from
+    /// the running bundle's Info.plist: each extension carries `OSRAAPIBase` too.
+    public static func storedServer(builtIn: URL? = PairingServerField.builtIn()) -> URL? {
+        guard let raw = UserDefaults(suiteName: suiteName)?.string(forKey: Keys.apiBaseURL), !raw.isEmpty,
+              let url = URL(string: raw)
+        else { return nil }
+        if let builtIn, !PairingServerField.sameServer(raw, builtIn) { return nil }
+        return url
     }
 
     /// #634 G1 (osra-security#10): the server lock must hold across an upgrade. A build that carries its server

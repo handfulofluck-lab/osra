@@ -204,6 +204,31 @@ final class AgentIdentityStoreTests: XCTestCase {
         XCTAssertFalse(PairingServerField.sameServer("not a url", builtIn))
     }
 
+    func testEveryReaderRefusesAStoredServerThatIsNotTheBuiltInOne() {
+        XCTAssertTrue(AgentIdentityStore.save(identity))
+        XCTAssertNil(AgentIdentityStore.storedServer(builtIn: URL(string: "https://api.staging.example.invalid")!),
+                     "before the app clears it, nothing reads the other server")
+        XCTAssertEqual(AgentIdentityStore.storedServer(builtIn: URL(string: "https://api.example.invalid")!),
+                       identity.apiBaseURL)
+        XCTAssertEqual(AgentIdentityStore.storedServer(builtIn: nil), identity.apiBaseURL, "no built-in server: as before")
+        AgentIdentityStore.clear()
+        XCTAssertNil(AgentIdentityStore.storedServer(builtIn: nil))
+    }
+
+    func testTheExtensionsReadTheServerThroughTheLock() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let reporter = try String(contentsOf: root.appendingPathComponent("Sources/FamilyShieldAgent/DeviceActivityMonitor.swift"),
+                                  encoding: .utf8)
+        XCTAssertTrue(reporter.contains("AgentIdentityStore.storedServer()"), "AlertReporter goes through the lock")
+        XCTAssertFalse(reporter.contains("forKey: \"agent.apiBaseURL\""), "no direct read of the stored server")
+        for folder in ["Monitor", "ShieldConfiguration", "ShieldAction"] {
+            let data = try Data(contentsOf: root.appendingPathComponent("Extensions/\(folder)/Info.plist"))
+            let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+            XCTAssertEqual(plist[PairingServerField.infoKey] as? String, "$(OSRA_API_BASE)", folder)
+        }
+    }
+
     func testTheAppRunsTheServerLockBeforeTheOrphanSweep() throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("App/OSRAAgentApp.swift")
