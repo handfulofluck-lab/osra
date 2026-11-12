@@ -160,8 +160,9 @@ What exists today (checked on `main@4d3a291`):
 3. The parent taps **Allow** on the phone (the existing approval flow, osra-security#3 PR 2).
 4. The client sends `X-OSRA-Client` and its capability report (ADR-0034), so the parent app shows only
    what that computer can enforce.
-5. If the child's own Windows or Mac account is an **administrator**, pairing warns the parent in the
-   app: "Protection is weak on this computer because your child's account is an administrator." The
+5. If the child's own Windows or Mac account is an **administrator** (the client reports it as the
+   capability `child_account_admin`, added to ADR-0034's vocabulary by its own small change), pairing
+   warns the parent in the app: "Protection is weak on this computer because your child's account is an administrator." The
    model on both systems is: the parent is the admin, the child is a Standard user.
 6. The parent PIN stays on the computer, hashed, as on Android and iOS (ADR-0010, ADR-0037). It is never
    sent to the server. Roadmap 5.4's "PIN synced from the parent account" is dropped for that reason;
@@ -258,6 +259,11 @@ Also: the Apple team name still reads "Karin Abdelaziz" (Membership Information 
 carry that name until Apple fixes it. The first notarised Mac build waits for the fix.
 
 ## Falsifiable claims (what the verifiers test)
+
+Claims 1–3 are **maintainer-assisted**: they need a Play licence-test account, an App Store sandbox
+account and, for claim 2, a refund that only the account holder can raise in the Play Console. They are
+booked as passed only with the maintainer's step recorded, never as an agent's green run (Kimi's review
+of #618).
 
 1. A family that subscribes on the Android parent app sees the plan active within 60 s on the iPhone
    parent app and on a paired Windows computer's status window; no second purchase is offered anywhere.
