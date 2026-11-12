@@ -58,7 +58,9 @@ final class L10nTests: XCTestCase {
     func testFormattedAndChangedLines() {
         XCTAssertEqual(L10n.tr("groups_counts", language: "ar", 5, 1, 2), "التطبيقات: 5 · الفئات: 1 · المواقع: 2")
         XCTAssertEqual(L10n.tr("pair_error_http", language: "ar", 403), "رفض الخادم الطلب (HTTP 403).")
-        XCTAssertEqual(L10n.tr("block_window_line", language: "ar", "Bedtime", "07:00"), "محجوب بواسطة Bedtime حتى 07:00")
+        // An Arabic format isolates each %@ argument (U+2068 … U+2069), as the block screen expects (ShieldTextTests).
+        XCTAssertEqual(L10n.tr("block_window_line", language: "ar", "Bedtime", "07:00"),
+                       "محجوب بواسطة \u{2068}Bedtime\u{2069} حتى \u{2068}07:00\u{2069}")
         XCTAssertEqual(L10n.tr("pair_section_title", language: "en"), "OSRA Kids", "not OSRA Child Agent")
         XCTAssertFalse(L10n.tr("pair_error_save", language: "en").contains("app group"), "no developer sentence for a family")
     }
