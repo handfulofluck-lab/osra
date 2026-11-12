@@ -126,7 +126,9 @@ jobs:
             https://*) echo "built-in server: $OSRA_API_BASE" ;;
             *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
           esac
-          flutter build appbundle --release --dart-define=API_BASE="$OSRA_API_BASE"
+          # Play refuses a versionCode it already has, so the bundle number rises with every run: the
+          # workflow's own run number only ever increases, and each app is published by one workflow.
+          flutter build appbundle --release --build-number="${{ github.run_number }}" --dart-define=API_BASE="$OSRA_API_BASE"
       - name: Release manifest must declare INTERNET
         run: |
           unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin

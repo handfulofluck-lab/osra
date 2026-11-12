@@ -80,8 +80,12 @@ android {
         applicationId = "com.osratech.child"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        // Play refuses a second upload under a versionCode it already has, so the number must rise with every
+        // published build. CI sets `OSRA_VERSION_CODE` from its own run number, which only ever increases; the
+        // literal below is the floor for a local build and the value a tester's APK reports.
+        val osraVersionCode = (System.getenv("OSRA_VERSION_CODE") ?: "2").trim().toIntOrNull() ?: 2
+        versionCode = maxOf(osraVersionCode, 2)
+        versionName = (System.getenv("OSRA_VERSION_NAME") ?: "0.2.0").trim().ifBlank { "0.2.0" }
         // G4 of the customer guide. Declared here so every variant has the field; the real value is set on
         // `release` only (below), because a debug APK is what a tester points at a LAN server.
         buildConfigField("String", "API_BASE", "\"\"")
