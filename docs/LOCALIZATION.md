@@ -253,11 +253,17 @@ spelling in the table below. A name that is not in the table comes to the Bureau
 | Snapchat | «سناب شات» | B |
 | Android | «أندرويد» | B |
 | Chrome | «كروم» | B |
-| Google, Google Play, Instagram, Samsung | Latin letters until the maintainer picks a spelling | open question 1: the "g" sound is written «ج», «غ» or «ق» depending on the country |
+| Google | «جوجل» | K 12 Nov |
+| Instagram | «إنستجرام» | K 12 Nov |
+| Samsung | «سامسونج» | K 12 Nov |
+| Google Play | «جوجل بلاي», usually «متجر جوجل بلاي» | B, from the row above |
+
+The "g" sound in a foreign name is written «ج» (maintainer, 2026-11-12), never «غ» or «ق»: «جوجل», not
+«غوغل» or «قوقل».
 
 An Arabic-letter name takes no «ال» and joins its prefix like any Arabic word: «على يوتيوب», «وواتساب»,
-«لآيفون». A name still in Latin letters joins a one-letter prefix with a tatweel and a space («لـ
-Google»), and «و» attaches directly («وInstagram»).
+«لآيفون». A Latin word that has to stay (a quoted label, a code) joins a one-letter prefix with a
+tatweel and a space («لـ PIN»).
 
 Three things are not covered by this rule and stay as they are:
 
@@ -270,7 +276,7 @@ Three things are not covered by this rule and stay as they are:
 **R8. Name a setting the way the phone names it.** When a step tells the reader to tap something that
 Android or iOS draws, quote the phone's own Arabic label inside «». Samsung and stock Android disagree
 (see "What the phone shows"), so check the label on the test phone in Arabic before it ships, and when
-a page serves both, give both: «افتح الإعدادات (أو الضبط في هواتف Samsung)».
+a page serves both, give both: «افتح الإعدادات (أو الضبط في هواتف سامسونج)».
 
 **R9. Numbers, dates, time.**
 
@@ -295,7 +301,7 @@ a page serves both, give both: «افتح الإعدادات (أو الضبط ف
 **R11. Mixed direction.** A Latin word, a number with a unit, a code or a URL inside an Arabic sentence
 is isolated: FSI/PDI around placeholders in the apps (the `BlockWindowCopy` pattern), `<bdi>` or
 `dir="ltr"` in HTML, and a code such as `1234 5678` is forced left to right. Start a sentence with an
-Arabic word, not a Latin one («متجر Google Play…», not «Google Play…»). Pages carry `lang="ar" dir="rtl"`.
+Arabic word, not a Latin one («رمز PIN…», not «PIN…»). Pages carry `lang="ar" dir="rtl"`.
 
 **R12. Tone.** Calm and respectful, never frightening. We are honest that this is monitoring: any
 sentence that says what is collected, and every consent or privacy text, uses «المراقبة». Friendly and
@@ -337,6 +343,7 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-12 | Family owner is «مدير العائلة», not «مالك العائلة» | Bureau sheet 1, A3 |
 | 2026-11-12 | The parent app keeps «محجوب الآن بسبب {reason}». «بواسطة» is for the child's screen (#569) and for a person («بواسطة {parent}») | Bureau sheet 1, A4 |
 | 2026-11-12 | Other companies' names in Arabic letters where common: «واتساب», «يوتيوب», «آيفون» (R7). This replaces «على YouTube» in the screen 08 row above | Bureau sheet 1, A5 |
+| 2026-11-12 | The "g" sound in a company's name is «ج»: «جوجل», «إنستجرام», «سامسونج» | card, 10:06Z |
 | 2026-11-12 | Approved as written on Bureau sheet 1, with A4 and A5 applied: the 11 new lines of #583, #587, #588 and #572; the 28 "Ask parent" lines of #606; the 16 fixes in the backlog on #604 | Bureau sheet 1, B, C, D |
 
 ### Word list
@@ -468,9 +475,7 @@ about what the app is for, which is the tone R12 asks for.
 
 The Bureau's recommendation is in use until he answers. The answers are recorded here.
 
-1. **How to spell names with a "g" sound** (Google, Google Play, Instagram, Samsung). Egyptian
-   newspapers write «جوجل», most pan-Arab news sites «غوغل», many Saudi writers «قوقل»; Google's own
-   Arabic pages write `Google`. Recommended: keep these few names in Latin letters. Asked 2026-11-12.
+None open. A child notification line for "Ask parent" (`request_answered`) is with him on a card.
 
 Answered on 2026-11-12 (Bureau sheet 1, cards A1 to A5; each is a row in "Karim's corrections"):
 
@@ -479,6 +484,7 @@ Answered on 2026-11-12 (Bureau sheet 1, cards A1 to A5; each is a row in "Karim'
 - Family owner: «مدير العائلة».
 - The parent app's blocked line: keeps «بسبب» (the Bureau had recommended «بواسطة»).
 - Other companies' names: Arabic letters where common (the Bureau had recommended Latin always).
+- The "g" sound in those names: «ج» (the Bureau had recommended leaving those few in Latin).
 
 ### Known gaps
 
