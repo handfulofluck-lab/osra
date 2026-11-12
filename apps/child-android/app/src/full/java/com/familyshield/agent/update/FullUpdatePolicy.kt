@@ -215,7 +215,7 @@ object FullUpdatePolicy {
             return if (archive.signerSha256.all(installedHas)) null else UpdateRefusal.foreign_signer
         }
         if (archive.lineageSha256.isEmpty()) return UpdateRefusal.foreign_signer
-        return if (archive.lineageSha256.any(installedHas)) null else UpdateRefusal.foreign_signer
+        return null
     }
 
     /**
