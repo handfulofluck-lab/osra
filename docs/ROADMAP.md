@@ -41,6 +41,28 @@ Week 0 was 2026-10-16. The backend lane ran first because Phase 2 was pure API w
 could verify without hardware; from 2026-10-17 the Android lane (Phase 1) is the critical path and gets
 the lead's time until its gate passes.
 
+## Real-device scenario suite (S0–S5) — added 2026-11-12
+
+Asked for by the maintainer on 2026-11-12: family stories that cross **two real devices**, a parent's and
+a child's, through a real backend, on top of the single-PR hardware rows. The catalogue, the device pairs
+and the plan for making the runs fast are in [`QA/SCENARIO-SUITE.md`](QA/SCENARIO-SUITE.md); runs are
+recorded on #665. One row per phase. A row moves to ✅ only when every scenario in it has a recorded run on
+#665, and a scenario that could not be measured counts as NOT RUN, never as a PASS. These rows do not
+replace any item's own acceptance and do not open a gate by themselves.
+
+| # | Item | Acceptance | Status · evidence |
+|---|---|---|---|
+| S0 | The bed: preflight, restore and stuck-lock recovery (SC-0.1 to SC-0.3) on the Flip4, the iPhone and the emulator | a run starts in under 2 min and leaves every device as it found it | ⬜ |
+| S1 | Android child stories (SC-1.1 to SC-1.11): lock, bedtime, app block, time limit, pause, web filter, ring and locate, SOS, removal attempts, offline and back | each scenario's measure met on the Flip4, build kind named | ⬜ |
+| S2 | Backend through two devices (SC-2.1 to SC-2.6): push to a closed parent app, honest command status, consent revoke, usage report, WhatsApp scan, unlink and erasure | measured on the second device or in the server's rows | ⬜ |
+| S3 | Parent app stories (SC-3.1 to SC-3.7): first run under 5 min, Arabic, MFA and reset, app picker, second guardian, two children, light and dark | measured with the real parent UI on a phone; Arabic and theme screenshots sent to the two Bureaus | ⬜ |
+| S4 | AI stories (SC-4.1 to SC-4.4): a worrying message in English and in Arabic becomes the right parent alert, ordinary chatter raises nothing, the scorer's outage loses nothing | alerts read on the parent device; text from the committed evaluation set | ⬜ |
+| S5 | Stores, iPhone child and computers (SC-5.1 to SC-5.10): iPhone child pair, shields, Arabic, ask-parent and removal attempts; store-track installs; plan gating; Windows and Mac from "Add a computer"; one family on every platform | each scenario's measure met; SC-5.7 to SC-5.10 open when 5.12, 5.4 and 5.9 have builds | ⬜ |
+
+**Speed-up work** (SCENARIO-SUITE.md §4): the scenario runner (K31), the seed helper and test hooks
+(Kimi), the iPhone removal-attempt list and accessibility identifiers (Ahmed). Their issues are linked
+from #665.
+
 ## Phase 0 — Stabilise (week 1)
 
 | # | Item | Acceptance | Status · evidence |
