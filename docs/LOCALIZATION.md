@@ -346,6 +346,7 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-12 | The "g" sound in a company's name is «ج»: «جوجل», «إنستجرام», «سامسونج» | card, 10:06Z |
 | 2026-11-12 | "Sync" on the child's phone is «تحديث»: «آخر تحديث: {time}», «تحديث الآن», «جارٍ التحديث…» (he chose it over «مزامنة») | card, 12:55Z |
 | 2026-11-12 | Applied line by line and approved: the 45 lines of Bureau sheet 2 (parent app, Android child app, deletion page, emails) and the 76 lines of OSRA Kids on iPhone | cards, 12:54Z and 11:20Z; text on #604 |
+| 2026-11-12 | The parent app's Arabic store name (App Store and Google Play) is «أسرة: رقابة أسرية ذكية», his own wording. Under its icon and in its title on an Arabic phone the app is «أسرة»; English keeps OSRA | thread message 12:58Z; card 12:56Z |
 | 2026-11-12 | Approved as written on Bureau sheet 1, with A4 and A5 applied: the 11 new lines of #583, #587, #588 and #572; the 28 "Ask parent" lines of #606; the 16 fixes in the backlog on #604 | Bureau sheet 1, B, C, D |
 
 ### Word list
@@ -359,6 +360,8 @@ he says otherwise. A new term is added here in the PR that introduces it.
 |---|---|---|---|
 | OSRA, in a sentence | «تطبيق أسرة» | bare «أسرة» where it can read as "a family"; «الأسرة» | K (#418), B for the «تطبيق» rule |
 | OSRA Kids | «أسرة للأطفال» | «أسرة للطفل» | K 11 Nov |
+| The parent app, name under the icon and in the title | «أسرة» | | K 12 Nov |
+| The parent app, store name | «أسرة: رقابة أسرية ذكية» | | K 12 Nov (the English store name is "OSRA Parental Control") |
 | The Full edition | «النسخة الكاملة» | «الكامل» chained after the name | B |
 | The parent app | «تطبيق الوالدين» | | K (#439) |
 | Tagline | «أسرة — رقابة أبوية لعائلتك» | | K (screen 01) |
