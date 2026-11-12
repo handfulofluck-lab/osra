@@ -17,7 +17,8 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|hsl)a?\(/;
@@ -139,6 +140,13 @@ th { text-align: start; padding-inline-start: 4px; }`;
     ["a link to another site is not a load", () => checkHtml("p", page('lang="en"').replace("<body>", '<body><a href="https://play.google.com/">Play</a>'), colours), 0],
     ["a theme-color that is not the page colour", () => checkHtml("p", page('lang="en"').replace("#F1F5F4", "#ffffff"), colours), 1],
   ];
+  // The cases above call the functions directly, so they pass even when the program does nothing as a
+  // command. These two run it as a command: a wrong flag must exit 2 with a message, and a good tree must
+  // print its summary line. (The workflow also asserts both summary lines, for the day this file is silent.)
+  const self = fileURLToPath(import.meta.url);
+  const asCommand = (...a) => spawnSync(process.execPath, [self, ...a], { encoding: "utf8" });
+  cases.push(["the command rejects a flag it does not know", () => { const r = asCommand("--no-such-flag"); return r.status === 2 && /unrecognised argument/.test(r.stderr) ? [] : ["x"]; }, 0]);
+  cases.push(["the command prints a summary or findings, never nothing", () => { const r = asCommand(); return (r.status === 0 && /^site design: /m.test(r.stdout)) || (r.status === 1 && /finding\(s\)/.test(r.stderr)) ? [] : ["x"]; }, 0]);
   let failed = 0;
   for (const [name, run, want] of cases) {
     const got = run().length;
@@ -149,7 +157,9 @@ th { text-align: start; padding-inline-start: 4px; }`;
 }
 
 const args = process.argv.slice(2);
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL, not a hand-built "file://" string: on Windows argv[1] is C:\…, which a template never
+// turns into file:///C:/…, so the body below was skipped and the program exited 0 in silence (#592 review).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (args.some((a) => a !== "--selftest")) { console.error(`unrecognised argument: ${args.join(" ")}`); process.exit(2); }
   process.exit(args.includes("--selftest") ? selftest() : runCli());
 }
