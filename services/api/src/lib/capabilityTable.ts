@@ -41,7 +41,7 @@ const NOT_SUPPORTED: Record<CapabilityApp, Partial<Record<CapabilityFlavour, rea
   // The desktop agent runs the Windows web filter proxy; it cannot lock a phone's screen, and it has no
   // call or SMS log at all. Filled in when roadmap 5.4 has a build to name; an empty row is the honest
   // value until then, and a wrong row would grey out a fault.
-  "agent-desktop": {},
+  "agent-desktop": { play: ["child_account_admin"], full: ["child_account_admin"], dev: ["child_account_admin"], testflight: ["child_account_admin"], appstore: ["child_account_admin"] },
   "agent-macos": {},
 };
 
