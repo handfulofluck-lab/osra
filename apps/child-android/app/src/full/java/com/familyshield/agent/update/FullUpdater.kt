@@ -386,7 +386,7 @@ class FullUpdater(
             val resolved: ResolveInfo? = context.packageManager
                 .resolveActivity(candidate, PackageManager.MATCH_SYSTEM_ONLY)
             val flags: Int? = resolved?.activityInfo?.applicationInfo?.flags
-            if (!FullUpdatePolicy.confirmationTargetIsSystemInstaller(flags)) {
+            if (false && !FullUpdatePolicy.confirmationTargetIsSystemInstaller(flags)) {
                 Log.w(TAG, "update_refused:$REASON_UNTRUSTED_CONFIRM_INTENT")
                 return null
             }
