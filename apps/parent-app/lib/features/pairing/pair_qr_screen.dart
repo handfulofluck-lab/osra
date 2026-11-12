@@ -11,6 +11,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'computer_target.dart';
 import 'pair_qr_payload.dart';
 
 /// Full-screen first-run pairing view: the six-digit code as a scannable QR,
@@ -20,6 +21,10 @@ import 'pair_qr_payload.dart';
 /// The QR payload is [PairQrPayload]'s documented `osra://` format; the child
 /// app scans it, and the typed six-digit code remains the fallback (roadmap
 /// item 3.2). In [onboarding] mode the same screen is the wizard's pairing step.
+///
+/// With [computer] set it is the same code and the same Allow / Deny claim, for a Windows or Mac client
+/// (ADR-0041 D5): a computer has no camera, so the QR gives way to the download address and its
+/// "Send the link" action.
 class PairingQrScreen extends ConsumerStatefulWidget {
   const PairingQrScreen({
     super.key,
@@ -30,9 +35,13 @@ class PairingQrScreen extends ConsumerStatefulWidget {
     this.onBack,
     this.onContinue,
     this.onSkip,
+    this.computer,
   });
 
   final String childId;
+
+  /// ADR-0041 D5.1: which computer this code is for, or null for a phone.
+  final ComputerTarget? computer;
 
   /// Test seam: the screen's source of "now". Defaults to [DateTime.now].
   final DateTime Function()? clock;
@@ -238,6 +247,72 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     }
   }
 
+  /// ADR-0041 D5.1: the address stays valid after the code expires, so its actions never go away.
+  Widget _buildComputerAddress(BuildContext context) {
+    final l10n = context.l10n;
+    final address = widget.computer!.address;
+    return Card(
+      key: const ValueKey('computerAddressCard'),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(l10n.computerDownloadAddress,
+                style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: AppSpace.xxs),
+            SelectableText(
+              address,
+              key: const ValueKey('computerAddress'),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: AppSpace.xs),
+            Text(l10n.sendTheLinkLine,
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: AppSpace.sm),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
+              children: [
+                OutlinedButton.icon(
+                  key: const ValueKey('computerCopyLink'),
+                  onPressed: () => _copyLink(address),
+                  icon: const Icon(Icons.copy, size: 18),
+                  label: Text(l10n.copyLink),
+                ),
+                FilledButton.tonalIcon(
+                  key: const ValueKey('computerSendLink'),
+                  onPressed: () => _sendLink(address),
+                  icon: const Icon(Icons.send, size: 18),
+                  label: Text(l10n.sendTheLink),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copyLink(String address) async {
+    await Clipboard.setData(ClipboardData(text: address));
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(context.l10n.linkCopied)));
+    }
+  }
+
+  /// "Send the link" with what the app has: no share plugin ships in this app and ADR-0041 D5.1 allows the
+  /// clipboard plus a line saying where to paste it. The line is on the card above this button.
+  Future<void> _sendLink(String address) async {
+    await Clipboard.setData(ClipboardData(text: address));
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(context.l10n.sendLinkCopied)));
+    }
+  }
+
   /// Wizard-only: ask the server whether a device exists for [childId] now.
   /// Advancing only on a confirmed device is what keeps the Done step honest.
   Future<void> _checkPairing() async {
@@ -275,7 +350,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     final paired = widget.onboarding && _paired(overview);
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.pairADevice),
+        title: Text(widget.computer == null ? l10n.pairADevice : l10n.addAComputer),
         leading: widget.onboarding && widget.onBack != null
             ? BackButton(onPressed: widget.onBack)
             : null,
@@ -293,6 +368,17 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
               const SizedBox(height: AppSpace.xs),
               Text(
                 l10n.onboardingPairSteps,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ] else if (widget.computer != null) ...[
+              Text(
+                l10n.computerPairIntro,
+                key: const ValueKey('computerPairIntro'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                l10n.computerAdminInstallNote,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ] else ...[
@@ -397,7 +483,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: AppSpace.xs),
-            Text(l10n.pairClaimBody(device),
+            Text(
+                widget.computer == null
+                    ? l10n.pairClaimBody(device)
+                    : l10n.pairClaimBodyComputer(device),
                 key: const ValueKey('pairClaimBody')),
             // Issue #81: the phone detected that OSRA's data was cleared on it (`pm clear`).
             if (claim['dataCleared'] == true) ...[
@@ -436,15 +525,21 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
             ),
           ],
         ),
-      'approved' =>
-        Text(l10n.pairClaimAllowed, key: const ValueKey('pairClaimAllowed')),
+      'approved' => Text(
+          widget.computer == null
+              ? l10n.pairClaimAllowed
+              : l10n.pairClaimAllowedComputer,
+          key: const ValueKey('pairClaimAllowed')),
       'paired' => Text(l10n.pairClaimPaired(device),
           key: const ValueKey('pairClaimPaired')),
       // A stranger's claim on this code costs the parent one tap: a new code, right here.
       'denied' => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.pairClaimDenied,
+            Text(
+                widget.computer == null
+                    ? l10n.pairClaimDenied
+                    : l10n.pairClaimDeniedComputer,
                 key: const ValueKey('pairClaimDenied')),
             const SizedBox(height: AppSpace.sm),
             FilledButton.tonalIcon(
@@ -509,22 +604,26 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
             ),
           )
         else ...[
-          Center(
-            child: Card(
-              // A QR on a dark surface does not scan: keep the symbol itself
-              // black on white in both themes.
-              color: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpace.md),
-                child: PairingQr(
-                  key: const ValueKey('pairingQr'),
-                  data: payload,
-                  semanticsLabel: l10n.pairingQrSemantics(code),
+          // A computer has no camera and its client asks for the typed code, so the QR is a phone-only
+          // affordance (ADR-0041 D5.2: first run shows the code, then the parent PIN).
+          if (widget.computer == null) ...[
+            Center(
+              child: Card(
+                // A QR on a dark surface does not scan: keep the symbol itself
+                // black on white in both themes.
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.md),
+                  child: PairingQr(
+                    key: const ValueKey('pairingQr'),
+                    data: payload,
+                    semanticsLabel: l10n.pairingQrSemantics(code),
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.lg),
+          ],
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Semantics(
@@ -566,6 +665,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
             ),
           ],
         ),
+        if (widget.computer != null) ...[
+          const SizedBox(height: AppSpace.md),
+          _buildComputerAddress(context),
+        ],
         const SizedBox(height: AppSpace.md),
         Text(
           l10n.codeWorksOnce(kPairCodeTtl.inMinutes),

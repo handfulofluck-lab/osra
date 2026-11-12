@@ -257,6 +257,20 @@ class DeviceSetup {
   /// `not_supported` (the server's word), so an absent key is "the phone did not say", and the screen says
   /// nothing rather than something false.
   String? feature(String key) => features[key];
+
+  /// ADR-0041 D5.5: the computer's own report that the child's Windows or Mac account is an administrator,
+  /// which makes every rule on it removable by the child. Read from the report's [accountAdminKey] feature
+  /// in its `degraded` state — the agent's verdict that protection is weaker, not absent.
+  ///
+  /// Nothing sends that key yet: no Windows or Mac agent reports an administrator fact, and the server's
+  /// strict capability vocabulary would refuse a key it does not know. So this reads as false on every
+  /// report in the field today, and the warning appears the day a client reports the fact — never by a
+  /// guess made up in this app.
+  bool get childAccountIsAdministrator => features[accountAdminKey] == 'degraded';
+
+  /// The wire key the administrator fact travels under. It is a fact rather than a feature, so the Phone
+  /// setup chips skip it and the child page renders it as the one warning sentence instead.
+  static const String accountAdminKey = 'account_admin';
 }
 
 /// osra-security#6 item 2 — how many other users or profiles the phone holds, and of what kinds.

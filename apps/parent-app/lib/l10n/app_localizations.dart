@@ -5107,6 +5107,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
   String get appRuleHiddenOnIphone;
+
+  /// ADR-0041 D5.1: the Devices-header action on the child page that pairs a Windows or Mac client (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a computer'**
+  String get addAComputer;
+
+  /// ADR-0041 D5.1: heading of the Windows or Mac choice (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Which computer are you adding?'**
+  String get computerSelectPrompt;
+
+  /// ADR-0041 D5.1: the Windows choice. A product name, so it is not translated (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Windows'**
+  String get computerWindows;
+
+  /// ADR-0041 D5.1: the Mac choice. A product name, so it is not translated (#627).
+  ///
+  /// In en, this message translates to:
+  /// **'Mac'**
+  String get computerMac;
+
+  /// ADR-0041 D5.2/D5.5: who installs the computer client, on the platform choice and on the code screen (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'An administrator of that computer — you — installs the client. Your child keeps a standard account.'**
+  String get computerAdminInstallNote;
+
+  /// ADR-0041 D5.1: what to do with the code when the pairing is for a computer, in place of the QR instructions (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the address below on the computer, install OSRA there, then type this code on the computer.'**
+  String get computerPairIntro;
+
+  /// ADR-0041 D4/D5.1: label above osratech.com/windows or osratech.com/mac (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Address to open on the computer'**
+  String get computerDownloadAddress;
+
+  /// ADR-0041 D5.1: copies the download address (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get copyLink;
+
+  /// ADR-0041 D5.1: snackbar after copying the download address (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied'**
+  String get linkCopied;
+
+  /// ADR-0041 D5.1: the visible line that stands in for a system share sheet because the app ships no share plugin (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Send the link to yourself, or type it into the computer\'s browser.'**
+  String get sendTheLinkLine;
+
+  /// ADR-0041 D5.1: the share action; it copies the address for the parent to paste, and the line above says so (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Send the link'**
+  String get sendTheLink;
+
+  /// ADR-0041 D5.1: snackbar after the send-the-link action copies the address (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied. Paste it into a message to send it to yourself or the computer.'**
+  String get sendLinkCopied;
+
+  /// ADR-0041 D5.1/D5.3: the Allow card when the pairing code is for a computer (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} wants to be paired. Allow it only if it is the computer in front of you.'**
+  String pairClaimBodyComputer(String device);
+
+  /// ADR-0041 D5.3: the Allow result when the pairing code is for a computer (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed. The computer is finishing pairing…'**
+  String get pairClaimAllowedComputer;
+
+  /// ADR-0041 D5.3: the Deny result when the pairing code is for a computer (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined. Make a new code to pair a computer.'**
+  String get pairClaimDeniedComputer;
+
+  /// ADR-0041 D5.5, verbatim from the ADR: shown on the computer's card when its capability report says the child's own account is an administrator (#627). Arabic pending the Language Bureau.
+  ///
+  /// In en, this message translates to:
+  /// **'Protection is weak on this computer because your child\'s account is an administrator.'**
+  String get computerAdminWarning;
 }
 
 class _AppLocalizationsDelegate
