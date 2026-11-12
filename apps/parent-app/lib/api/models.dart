@@ -24,6 +24,10 @@ int? _intOrNull(dynamic v) {
 }
 List<String> _strList(dynamic v) => v is List ? [for (final e in v) _str(e)] : const <String>[];
 List<int> _intList(dynamic v) => v is List ? [for (final e in v) _int(e)] : const <int>[];
+/// Like [_mapList], but skips an entry that is not an object instead of throwing, so one odd entry in a
+/// list this app reads from a newer phone or server never costs the whole response (ADR-0037 groups).
+List<Map<String, dynamic>> _mapEntries(dynamic v) =>
+    v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : const <Map<String, dynamic>>[];
 List<Map<String, dynamic>> _mapList(dynamic v) =>
     v is List ? [for (final e in v) Map<String, dynamic>.from(e as Map)] : const <Map<String, dynamic>>[];
 
@@ -225,7 +229,7 @@ class DeviceSetup {
             : null,
         groups: json['groups'] is List
             ? [
-                for (final m in _mapList(json['groups']))
+                for (final m in _mapEntries(json['groups']))
                   if (AppGroupReport.tryFromJson(m) case final g?) g,
               ]
             : null,
@@ -635,7 +639,7 @@ class RuleSet {
       contactAllowlist: _strList(root['contactAllowlist']),
       alwaysAllowedApps: _strList(root['alwaysAllowedApps']),
       appGroupRules: [
-        for (final m in _mapList(root['appGroupRules']))
+        for (final m in _mapEntries(root['appGroupRules']))
           if (AppGroupRule.tryFromJson(m) case final rule?) rule,
       ],
       updatedAt: DateTime.tryParse(_str(root['updatedAt'])),
