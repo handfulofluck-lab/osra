@@ -214,9 +214,11 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
-    // ADR-0039 D5.2: the manifest signature is Ed25519. Tink on every API level, instead of the platform
-    // provider that only exists from API 33, so one code path ships and the JVM rows test it. Pinned exact.
-    implementation("com.google.crypto.tink:tink-android:1.24.0")
+    // ADR-0039 D5.2 — Full only, like the updater itself (`src/full/`). Tink on every API level instead of
+    // the platform provider that only exists from API 33, so one code path ships and the JVM rows test it.
+    // Pinned exact. `fullImplementation` is what proves the Play artefact cannot carry a verifier: the
+    // classpath no longer has Tink, so a `main` line that names the updater fails `assemblePlayRelease`.
+    add("fullImplementation", "com.google.crypto.tink:tink-android:1.24.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.google.android.gms:play-services-location:21.2.0")
     implementation("com.google.firebase:firebase-messaging-ktx:24.0.0")

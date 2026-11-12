@@ -16,6 +16,12 @@
 - **The trust core is pure JVM**, with no `android.*` imports, so all 24 refusals are ordinary unit tests, and a
   source test pins that `PackageInstaller` is named in exactly one class (`FullUpdater`). No server command,
   push, intent or deep link can start an install.
+- **The boundary is the compiler, not R8.** The updater and its trust core live in `app/src/full/` (ADR-0039 D5
+  says "Full only (`src/full/`)") and its 24 rows in `app/src/testFull/`, with Tink 1.24.0 as a
+  `fullImplementation`: the Play variant compiles none of the updater, has none of those rows, and cannot
+  compile a `main` line that names it. `UpdateCheckScheduler` stays in `main` for the four `main` callers;
+  that one seam is the whole exception. (Play still resolves `tink-android:1.8.0` through
+  `androidx.security:security-crypto` for `SecureStore` — pre-existing, and not the updater's verifier.)
 - **What this does not promise (stated, not hidden):** the two manifest keys still ship as **placeholders**
   until the maintainer pastes the real base64 values into `FullUpdateKeys`; until then every check refuses
   `manifest_key_unavailable`, which is the fail-closed direction. Ed25519 verification is Google **Tink**

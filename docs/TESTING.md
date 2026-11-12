@@ -1138,18 +1138,29 @@ app's PIN gate. Never add `testOnly` to a release manifest to make a cleanup eas
 ### The Full updater's trust core and the Play exclusion (ADR-0039 D5, plan 5.10 PR B)
 
 The updater is the only place in the child app that installs a file, so its decisions are tested where they
-can be reached from a plain JVM — `app/src/main/java/com/familyshield/agent/update/` has **no `android.*`
-imports** and the WorkManager worker is a thin adapter in `src/full/`.
+can be reached from a plain JVM. The package lives in `app/src/full/java/com/familyshield/agent/update/`, as
+ADR-0039 D5 says ("Full only (`src/full/`)"): the two decision files (`FullUpdatePolicy.kt`,
+`FullUpdateManifest.kt`) have **no `android.*` imports**, and `FullUpdater.kt` beside them is the Android
+adapter. Only `UpdateCheckScheduler.kt` stays in `src/main/`, because `FamilyShieldApp`, `BootReceiver`,
+`PairingActivity` and `WorkerEntryPoint` live there and need the seam. Tink is a `fullImplementation`, so the
+Play variant compiles none of the updater and a `main` line naming anything else in `update/` fails
+`assemblePlayRelease` at compile time — the build enforces the boundary, not R8. (Play's runtime graph still
+carries `tink-android:1.8.0`, which is `androidx.security:security-crypto`'s own dependency for `SecureStore`;
+it predates this work and is not the updater's verifier, which is 1.24.0 and `full` only.)
 
 ```
 cd apps/child-android
 ./gradlew testFullDebugUnitTest --tests "com.familyshield.agent.update.*"
 ```
 
+The rows are in `app/src/testFull/`, so `testPlayDebugUnitTest` carries none of them by construction: the same
+filter there ends with `No tests found for given includes: [com.familyshield.agent.update.*]`, which is the
+expected answer in the Play variant, not a skip.
+
 | Row | What it pins | The mutant that must turn it red |
 |---|---|---|
 | `FullUpdatePolicyTest` (24 rows) | signature over the exact bytes, `keyId`, own package, higher `versionCode`, no replay below the highest seen `versionCode`/`releasedAt`, `expiresAt`, URL by component (host/userinfo/port/path/dot-dot), `minSdk`, size, SHA-256, archive signer | flip `TinkEd25519Verifier.verify` to `true` (the verifier that ships — Tink on every API level); no-op both replay branches; make `isAllowedUrl` return `true`; delete the package check; delete only the dot-dot rule (it must be *that* row that fails, not the path-prefix row) |
-| `PackageInstallerSingleSourceTest` (1 row) | `PackageInstaller` is named in exactly one Kotlin file, and it is `FullUpdater.kt` | add the literal to any second file under `app/src/{main,full,play}` — it bites on a KDoc mention too |
+| `PackageInstallerSingleSourceTest` (1 row) | `PackageInstaller` is named in exactly one Kotlin file, and it is `update/FullUpdater.kt` under `src/full` | add the literal to any second file under `app/src/{main,full,play}` — it bites on a KDoc mention too |
 
 The store build must never carry the install permission, and this is checked on the **artefact**, not on the
 source (`dump badging` prints no permissions — see the manifest trap in §6):

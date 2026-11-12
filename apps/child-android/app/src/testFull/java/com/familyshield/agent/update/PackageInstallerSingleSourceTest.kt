@@ -45,7 +45,7 @@ class PackageInstallerSingleSourceTest {
 
     private companion object {
         const val MARKER: String = "PackageInstaller"
-        const val EXPECTED: String = "app/src/main/java/com/familyshield/agent/update/FullUpdater.kt"
+        const val EXPECTED: String = "app/src/full/java/com/familyshield/agent/update/FullUpdater.kt"
         val SOURCE_SETS: List<String> = listOf("main", "full", "play")
     }
 }
