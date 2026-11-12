@@ -214,6 +214,10 @@ letters where an Arabic word is established («ضروري», never «لازم»;
 والدتك». Parents as a group are «أولياء الأمور» or «الوالدان», never «الآباء» alone, which reads as
 "fathers".
 
+When the subject of a sentence is a name the app fills in (`{child}`, `{parent}`), the app does not know
+whether it is a boy or a girl, a father or a mother. Do not hang a gendered verb on it: «طلب سماح من
+{child}», not «{child} يطلب السماح»; «ردّ {parent}: ليس الآن», not «قال {parent}».
+
 **R5. Buttons, steps, status.**
 
 | Kind of text | Form | Examples |
