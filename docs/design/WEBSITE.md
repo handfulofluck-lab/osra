@@ -37,15 +37,16 @@ Components, each matching the app's:
 
 | Class | Use | Matches |
 |---|---|---|
-| `.brand` | The wordmark: "OSRA" in Plex Sans 700 with «أسرة» in Plex Sans Arabic beside it | The app name and its Arabic name (`app_name`, `app_name_ar`) |
+| `.brand` | The logo, then the name: "OSRA" in Plex Sans 700 with «أسرة» in Plex Sans Arabic beside it | The app name and its Arabic name (`app_name`, `app_name_ar`) |
 | `.rows` | A list of links, title at the start and a chevron at the end | Child page rows (design language 3.3) |
 | `.button` | The one main action of a page | Primary button, 52 high |
 | `.button.secondary` | A second action | Outlined secondary button |
 | `.notice` | A line that needs attention | Needs-attention box (`warnContainer`) |
 | `.meta` | Dates and small print | Secondary text |
 
-There is no logo image yet. The wordmark stands in for it until the maintainer approves a mark; the same mark then
-goes on the site, the app icons and the store listings.
+The mark before the name is the OSRA logo the maintainer chose on 2026-11-12 ("Embrace", roadmap 3.20), as the
+parent app's icon: `site/icon.svg`, which is also the favicon, and `site/apple-touch-icon.png`. Both are copies of
+the brand masters; they are not redrawn for the site.
 
 ## 3. English and Arabic
 
