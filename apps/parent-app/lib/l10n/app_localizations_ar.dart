@@ -3163,5 +3163,5 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
 
   @override
-  String get appRuleHiddenOnIphone => 'على الآيفون يُخفى هذا التطبيق بدل أن تظهر شاشة OSRA.';
+  String get appRuleHiddenOnIphone => 'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 }

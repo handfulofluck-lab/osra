@@ -920,5 +920,5 @@
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
   "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
-  "appRuleHiddenOnIphone": "على الآيفون يُخفى هذا التطبيق بدل أن تظهر شاشة OSRA."
+  "appRuleHiddenOnIphone": "على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر."
 }
