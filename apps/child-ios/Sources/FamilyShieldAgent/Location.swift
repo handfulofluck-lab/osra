@@ -218,8 +218,8 @@ public enum LocationPermissionAction: Equatable {
     public var buttonTitle: String? {
         switch self {
         case .hidden: return nil
-        case .askWhenInUse, .askAlways: return "Allow location"
-        case .openSettings: return "Open Settings"
+        case .askWhenInUse, .askAlways: return L10n.tr("location_allow")
+        case .openSettings: return L10n.tr("location_open_settings")
         }
     }
 }
