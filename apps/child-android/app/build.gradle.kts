@@ -272,7 +272,7 @@ dependencies {
     // the platform provider that only exists from API 33, so one code path ships and the JVM rows test it.
     // Pinned exact. `fullImplementation` is what proves the Play artefact cannot carry a verifier: the
     // classpath no longer has Tink, so a `main` line that names the updater fails `assemblePlayRelease`.
-    add("fullImplementation", "com.google.crypto.tink:tink-android:1.24.0")
+    implementation("com.google.crypto.tink:tink-android:1.24.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.google.android.gms:play-services-location:21.2.0")
     implementation("com.google.firebase:firebase-messaging-ktx:24.0.0")
