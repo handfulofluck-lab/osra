@@ -7,6 +7,7 @@ import { checkActiveConsent } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
+import { setupFor } from "../lib/capabilities.js";
 import { getRedis } from "../redis.js";
 import { eraseChildData, screenTimeTodayFromDb } from "../lib/usageModel.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
@@ -101,7 +102,14 @@ export async function familyRoutes(app: FastifyInstance) {
           screenTimeTodayMinutes,
           rulesVersion: (c as { ruleSet?: { rulesVersion?: number } | null }).ruleSet?.rulesVersion ?? null,
           appliedRulesVersion: reported.length > 0 ? Math.min(...reported) : null,
-          devices: c.devices.map(sanitizeDevice),
+          // Issue #601: the parent app's device cards and its "Phone setup" block read this envelope, not
+          // `GET /v1/devices`, so the setup projection has to travel here too — the same `setupFor` call as
+          // `devices.ts` (list and detail), so the two cannot disagree. A device with no report carries
+          // `reportedAt: null` inside it, which is the app's "has not reported yet".
+          devices: c.devices.map((d) => ({
+            ...sanitizeDevice(d),
+            setup: setupFor({ capabilities: d.capabilities, capabilitiesReportedAt: d.capabilitiesReportedAt }),
+          })),
         };
       }),
     );
