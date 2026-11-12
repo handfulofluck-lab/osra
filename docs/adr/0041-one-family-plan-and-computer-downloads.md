@@ -103,7 +103,7 @@ What exists today (checked on `main@4d3a291`):
   Apple's root and writes the row. **App Store Server Notifications V2** to
   `POST /v1/billing/apple/notifications` keep it current.
 - The same product shape on both stores: one family plan, monthly and yearly (prices: **M3**).
-- **Web checkout** (a card payment on osratech.com) is **M2**. Claude recommends **not** at launch: both
+- **Web checkout** (a card payment on osratech.com) is **M2**. **Decided 2026-11-12 12:58Z: in the apps only at launch** (the maintainer chose Claude's recommendation on the decision card). The reasons: both
   stores already sell the plan, each takes 15% on subscriptions (Apple after we join its Small Business Program), they handle
   VAT and refunds in every country, and a website with no buy button keeps every download link from the
   apps safe under both stores' anti-steering rules. If the maintainer later wants web sales, it is a third
@@ -236,8 +236,8 @@ What has to move for this:
   an OV certificate in the maintainer's own name (fastest; the publisher shown is his name), an OV
   certificate in a company's name (needs company registration documents), or EV (costs more and no
   longer buys instant SmartScreen trust).
-- **M2 — Where families can pay.** In the apps only at launch (recommended), or also on osratech.com
-  through a merchant of record.
+- **M2 — Where families can pay.** **Decided 2026-11-12: in the apps only at launch** (Google Play and
+  the App Store); osratech.com offers downloads only.
 - **M3 — Prices and what a family without a plan keeps** (monthly and yearly price per store region,
   the free tier, the device cap).
 - **M4 — Store paperwork** the maintainer does in the consoles: the subscription products on Play and
