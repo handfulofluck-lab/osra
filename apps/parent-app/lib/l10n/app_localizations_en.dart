@@ -3010,4 +3010,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'Background app refresh';
+
+  @override
+  String get appGroupsTitle => 'App groups on this iPhone';
+
+  @override
+  String get appGroupsBody =>
+      'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.';
+
+  @override
+  String appGroupsCounts(Object apps, Object categories, Object sites) {
+    return 'Apps $apps · Categories $categories · Websites $sites';
+  }
+
+  @override
+  String get appGroupsBlock => 'Block';
+
+  @override
+  String get appGroupsSaveFailed => 'Could not save the change. Try again.';
+
+  @override
+  String get setupMonitoringTitle => 'Which apps should OSRA watch for you?';
+
+  @override
+  String get setupMonitoringIntro =>
+      'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.';
+
+  @override
+  String get setupMonitoringConsent =>
+      'A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.';
+
+  @override
+  String get setupMonitoringContinue => 'Continue';
+
+  @override
+  String get appRuleHiddenOnIphone =>
+      'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 }

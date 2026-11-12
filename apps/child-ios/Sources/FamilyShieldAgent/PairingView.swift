@@ -1,4 +1,5 @@
 #if canImport(SwiftUI)
+import OSLog
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -10,6 +11,8 @@ import UIKit
 /// `AlertReporter` can use it.
 public struct PairingView: View {
     @State private var serverInput: String
+    /// #634 G1: the store build's own server, if any; the field is then locked to it.
+    private let builtInServer: URL?
     @State private var code: String = ""
     @State private var deviceName: String = ""
     @State private var errorMessage: String?
@@ -18,27 +21,30 @@ public struct PairingView: View {
     /// Called after a successful save so the host app can refresh its root state.
     var onPaired: (AgentIdentity) -> Void = { _ in }
 
-    public init(defaultServer: String = "", onPaired: @escaping (AgentIdentity) -> Void = { _ in }) {
-        // Pre-fill with the previously used server (if any) so re-pairing is fast.
-        _serverInput = State(initialValue: defaultServer)
+    public init(defaultServer: String = "", builtInServer: URL? = PairingServerField.builtIn(),
+                onPaired: @escaping (AgentIdentity) -> Void = { _ in }) {
+        // Pre-fill with the previously used server (if any) so re-pairing is fast; a store build shows its own.
+        self.builtInServer = builtInServer
+        _serverInput = State(initialValue: PairingServerField.field(builtIn: builtInServer, previous: defaultServer).value)
         self.onPaired = onPaired
     }
 
     public var body: some View {
         Form {
-            Section(header: Text("OSRA Child Agent")) {
-                TextField("Server address (e.g. 192.168.1.5:3000)", text: $serverInput)
+            Section(header: Text(L10n.tr("pair_section_title"))) {
+                TextField(L10n.tr("pair_server_field"), text: $serverInput)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
-                TextField("6-digit pairing code", text: $code)
+                    .disabled(builtInServer != nil)
+                TextField(L10n.tr("pair_code_field"), text: $code)
                     .keyboardType(.numberPad)
                     .onChange(of: code) { newValue in
                         // Hard-limit to 6 digits regardless of keyboard discipline.
                         let digits = newValue.filter(\.isNumber)
                         code = String(digits.prefix(6))
                     }
-                TextField("Device name (optional)", text: $deviceName)
+                TextField(L10n.tr("pair_name_field"), text: $deviceName)
                     .textInputAutocapitalization(.words)
             }
 
@@ -51,23 +57,23 @@ public struct PairingView: View {
             }
 
             Section {
-                Button(pairing ? "Pairing…" : "Pair this device") {
+                Button(pairing ? L10n.tr("pair_button_busy") : L10n.tr("pair_button")) {
                     Task { await pair() }
                 }
                 .disabled(pairing || code.count != 6)
             } footer: {
                 // Plan 2.7: after the claim, nothing is paired until the parent taps Allow on their phone.
                 Text(pairing
-                    ? "Waiting for your parent to tap Allow on their phone…"
-                    : "Ask your parent for the pairing code shown in the OSRA parent app.")
+                    ? L10n.tr("pair_waiting")
+                    : L10n.tr("pair_hint"))
             }
         }
-        .navigationTitle("Pair device")
+        .navigationTitle(L10n.tr("pair_title"))
     }
 
     /// Validates input, claims the code, persists the identity and reports success.
     private func pair() async {
-        guard let baseURL = PairingClient.normalizeServerURL(serverInput) else {
+        guard let baseURL = PairingServerField.serverToPair(builtIn: builtInServer, typed: serverInput) else {
             errorMessage = PairingClient.message(for: PairingError.invalidServerURL)
             return
         }
@@ -82,7 +88,10 @@ public struct PairingView: View {
             let client = PairingClient()
             let claimed = try await client.claim(baseURL: baseURL, code: code, deviceName: deviceName)
             guard AgentIdentityStore.save(claimed) else {
-                errorMessage = "Failed to persist identity: shared app group is unavailable. Verify app group provisioning."
+                // The family reads a plain sentence; the technical cause goes to the log (Bureau review, 12 Nov).
+                Logger(subsystem: "com.osratech.child", category: "pairing")
+                    .error("Failed to persist identity: shared app group is unavailable. Verify app group provisioning.")
+                errorMessage = L10n.tr("pair_error_save")
                 return
             }
             identity = claimed
@@ -102,6 +111,10 @@ public struct AgentRootView: View {
     @State private var askingRepairPin = false
     @State private var locationGrant: LocationGrant = .noAccess
     @State private var locationAction: LocationPermissionAction = .hidden
+    /// #602: when the rules were last synced, and the Sync now button's state.
+    @State private var syncedAt: Date? = RuleStore.syncedAt()
+    @State private var syncing = false
+    @State private var syncFailed = false
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
     #endif
@@ -115,18 +128,34 @@ public struct AgentRootView: View {
                 PinSetupView { pinConfigured = true }
             } else if let identity, !showRepair {
                 Form {
-                    Section(header: Text("OSRA Child Agent")) {
-                        Label("Paired", systemImage: "checkmark.circle.fill")
+                    Section(header: Text(L10n.tr("pair_section_title"))) {
+                        Label(L10n.tr("status_paired"), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
-                        LabeledContent("Child", value: identity.childId)
-                        LabeledContent("Server", value: identity.apiBaseURL.absoluteString)
-                        if !identity.deviceId.isEmpty {
-                            LabeledContent("Device", value: identity.deviceId)
+                        // #602: the child's name, never a raw id; the device id is not shown at all.
+                        if let name = identity.childName {
+                            LabeledContent(L10n.tr("status_child_name"), value: name)
                         }
+                        LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
+                            Text(SyncStatus.text(state, now: context.date))
+                                .foregroundStyle(stale(state) ? Color.orange : Color.secondary)
+                        }
+                    }
+                    Section {
+                        Button(syncing ? L10n.tr("status_syncing") : L10n.tr("status_sync_now")) {
+                            Task { await syncNow() }
+                        }
+                        .disabled(syncing)
+                        if syncFailed {
+                            Text(L10n.tr("status_sync_failed")).foregroundStyle(.red)
+                        }
+                    } footer: {
+                        Text(L10n.tr("status_sync_note"))
                     }
                     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
-                        LabeledContent("Screen Time", value: screenTime.row.value)
+                        LabeledContent(L10n.tr("screen_time"), value: screenTime.row.value)
                         if screenTime.row.showsButton {
                             Button(ScreenTimeRow.buttonTitle) {
                                 Task {
@@ -140,13 +169,13 @@ public struct AgentRootView: View {
                             Text(error).foregroundStyle(.red)
                         }
                     } header: {
-                        Text("Screen Time")
+                        Text(L10n.tr("screen_time"))
                     } footer: {
                         Text(screenTime.row.footer)
                     }
                     #endif
                     Section {
-                        LabeledContent("Location", value: Self.label(locationGrant))
+                        LabeledContent(L10n.tr("location"), value: Self.label(locationGrant))
                         if let title = locationAction.buttonTitle {
                             Button(title) {
                                 LocationController.shared.requestPermission()
@@ -154,26 +183,26 @@ public struct AgentRootView: View {
                             }
                         }
                     } header: {
-                        Text("Location")
+                        Text(L10n.tr("location"))
                     } footer: {
-                        Text("Your parents see this device on their map when it moves a noticeable distance, and get alerts for the places they set. Choose \"Allow While Using App\", then \"Change to Always Allow\".")
+                        Text(L10n.tr("location_footer"))
                     }
                     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
-                        NavigationLink("App groups") { AppGroupsEntry() }
+                        NavigationLink(L10n.tr("groups")) { AppGroupsEntry() }
                     } footer: {
-                        Text("Parents only: choose apps to block here. Blocked apps show the OSRA screen with \"Ask parent\".")
+                        Text(L10n.tr("groups_status_footer"))
                     }
                     #endif
                     Section {
                         // ADR-0037, as on Android: re-pairing needs the parent PIN.
-                        Button("Re-pair this device") { askingRepairPin = true }
+                        Button(L10n.tr("repair_button")) { askingRepairPin = true }
                     }
                 }
-                .navigationTitle("Status")
+                .navigationTitle(L10n.tr("status_title"))
                 .sheet(isPresented: $askingRepairPin) {
                     NavigationStack {
-                        PinGateView(title: "Re-pair") {
+                        PinGateView(title: L10n.tr("repair_title")) {
                             askingRepairPin = false
                             showRepair = true
                         }
@@ -218,6 +247,7 @@ public struct AgentRootView: View {
             await LocationController.shared.flush()
             // ADR-0034 A6: each app open also sends the capability report.
             await LocationController.shared.reportGrant()
+            syncedAt = RuleStore.syncedAt()
         }
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -229,11 +259,30 @@ public struct AgentRootView: View {
         }
     }
 
+    /// #602 item 4: what an app open does, on demand (a push wake can take minutes in the background).
+    private func syncNow() async {
+        syncing = true
+        syncFailed = false
+        defer { syncing = false }
+        let drained = await CommandDrainer.drainNow()
+        if drained.consentWithdrawn { await LocationController.shared.stopForConsent() }
+        let synced = await RuleSyncer.syncNow()
+        await LocationController.shared.apply(synced)
+        await LocationController.shared.reportGrant()
+        syncFailed = !SyncStatus.succeeded(synced)
+        syncedAt = RuleStore.syncedAt()
+    }
+
+    private func stale(_ state: SyncStatus.State) -> Bool {
+        if case .stale = state { return true }
+        return false
+    }
+
     private static func label(_ grant: LocationGrant) -> String {
         switch grant {
-        case .background: return "Always"
-        case .whileInUse: return "While using the app (needs Always)"
-        case .noAccess: return "Off"
+        case .background: return L10n.tr("location_always")
+        case .whileInUse: return L10n.tr("location_while_in_use")
+        case .noAccess: return L10n.tr("location_off")
         }
     }
 }
@@ -248,7 +297,7 @@ struct AppGroupsEntry: View {
             if unlocked {
                 AppGroupsView()
             } else {
-                PinGateView(title: "App groups") { unlocked = true }
+                PinGateView(title: L10n.tr("groups")) { unlocked = true }
             }
         }
         // Relocks when the app leaves the screen, so a parent cannot leave the groups open by accident.
