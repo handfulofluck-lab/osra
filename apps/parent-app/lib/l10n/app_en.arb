@@ -1338,5 +1338,9 @@
   "grantNotificationListener": "Notification access",
   "grantFullScreenIntent": "Full-screen alerts",
   "grantFamilyControls": "Screen Time (Family Controls)",
-  "grantBackgroundRefresh": "Background app refresh"
+  "grantBackgroundRefresh": "Background app refresh",
+  "setupMonitoringTitle": "Which apps should OSRA watch for you?",
+  "setupMonitoringIntro": "OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.",
+  "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
+  "setupMonitoringContinue": "Continue"
 }

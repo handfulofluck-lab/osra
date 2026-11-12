@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3161,4 +3162,18 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
+
+  @override
+  String get setupMonitoringTitle => 'أي التطبيقات تريد أن يراقبها أسرة؟';
+
+  @override
+  String get setupMonitoringIntro =>
+      'يفحص أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمر أو الاستدراج أو إيذاء النفس، ويبلغك عند وجود شيء. اختر التطبيقات التي تريدها، ويمكنك تغيير ذلك في أي وقت من القواعد.';
+
+  @override
+  String get setupMonitoringConsent =>
+      'يُحفظ مقتطف الرسالة الموسومة 90 يومًا، والتنبيه 12 شهرًا. لا يُقرأ شيء من تطبيق لا تختره.';
+
+  @override
+  String get setupMonitoringContinue => 'متابعة';
 }

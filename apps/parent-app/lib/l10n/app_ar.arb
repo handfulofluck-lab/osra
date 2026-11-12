@@ -919,5 +919,9 @@
   "grantNotificationListener": "الوصول إلى الإشعارات",
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
-  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية"
+  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
+  "setupMonitoringTitle": "أي التطبيقات تريد أن يراقبها أسرة؟",
+  "setupMonitoringIntro": "يفحص أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمر أو الاستدراج أو إيذاء النفس، ويبلغك عند وجود شيء. اختر التطبيقات التي تريدها، ويمكنك تغيير ذلك في أي وقت من القواعد.",
+  "setupMonitoringConsent": "يُحفظ مقتطف الرسالة الموسومة 90 يومًا، والتنبيه 12 شهرًا. لا يُقرأ شيء من تطبيق لا تختره.",
+  "setupMonitoringContinue": "متابعة"
 }
