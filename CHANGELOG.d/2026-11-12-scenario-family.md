@@ -16,6 +16,14 @@
   shapes and three accepted ones, the 0600 token file and its absence from stdout, usage exit 2 on an
   unknown argument, and "delete after create leaves nothing" — skipped with a reason unless
   `SCENARIO_API_BASE` is set, and a **failure** on non-zero counts when it is.
+- **Wired into CI in the same PR.** The 21 unit cases run in `workflow-lint`
+  (`node --test scripts/hardware/scenario-family.test.mjs`), and the step fails unless the run prints both
+  `pass 21` and `fail 0` — a skipped or empty run cannot. The live `create` → `delete` case runs in
+  `api-image.yml`, the job that boots the API against real Postgres and Redis, with
+  `SCENARIO_API_BASE=http://127.0.0.1:3000` (the booted container's port), failing unless 22 cases pass so a
+  lost variable cannot become a skip. `scripts/check-ci-paths.mjs` keeps the helper's two files in that
+  job's `paths:` list; without them it reports `names scripts/hardware/scenario-family.test.mjs but its
+  paths do not cover it`.
 - Not verified in this change: the live case has not been run against a stack (no staging window, no local
   API from the authoring session), and the row-level Postgres count stays `e2e.mjs`'s with `DATABASE_URL` —
   no public route counts rows. On Windows the 0600 mode is advisory (NTFS keeps 0o666) and the script warns
