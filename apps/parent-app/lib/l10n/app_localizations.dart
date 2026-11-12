@@ -5047,6 +5047,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Background app refresh'**
   String get grantBackgroundRefresh;
+
+  /// ADR-0037: heading over the iPhone's app groups on the child screen. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'App groups on this iPhone'**
+  String get appGroupsTitle;
+
+  /// ADR-0037: one line under the heading. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.'**
+  String get appGroupsBody;
+
+  /// ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Apps {apps} · Categories {categories} · Websites {sites}'**
+  String appGroupsCounts(Object apps, Object categories, Object sites);
+
+  /// ADR-0037: label of the switch that blocks one app group. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get appGroupsBlock;
+
+  /// ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the change. Try again.'**
+  String get appGroupsSaveFailed;
+
+  /// No description provided for @setupMonitoringTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Which apps should OSRA watch for you?'**
+  String get setupMonitoringTitle;
+
+  /// No description provided for @setupMonitoringIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.'**
+  String get setupMonitoringIntro;
+
+  /// No description provided for @setupMonitoringConsent.
+  ///
+  /// In en, this message translates to:
+  /// **'A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.'**
+  String get setupMonitoringConsent;
+
+  /// No description provided for @setupMonitoringContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get setupMonitoringContinue;
+
+  /// ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
+  String get appRuleHiddenOnIphone;
 }
 
 class _AppLocalizationsDelegate

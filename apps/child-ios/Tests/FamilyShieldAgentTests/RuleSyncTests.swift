@@ -120,6 +120,23 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertEqual(RuleStore.blockedGroupIds(), [], "unpairing clears it with the other rules")
     }
 
+    // #602: the status screen reads back exactly when the rules were stored, and nothing before the first sync.
+    func testSyncedAtIsWhenTheRulesWereStored() throws {
+        RuleStore.clear()
+        XCTAssertNil(RuleStore.syncedAt(), "never synced")
+        let at = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)), now: at))
+        XCTAssertEqual(RuleStore.syncedAt(), at)
+        RuleStore.clear()
+        XCTAssertNil(RuleStore.syncedAt(), "unpairing forgets it")
+    }
+
+    // #602 item 4: a stored ruleset is a successful manual sync.
+    func testASyncedRulesetIsASuccessfulManualSync() throws {
+        let rules = try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8))
+        XCTAssertTrue(SyncStatus.succeeded(.synced(rules)))
+    }
+
     func testUnpairingClearsTheSyncedRules() throws {
         RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)))
         AgentIdentityStore.clear()

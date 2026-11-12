@@ -271,6 +271,21 @@ describe("device pairing (spec §14.1)", () => {
     await app.close();
   });
 
+  // #602: the child's phone names the child on its status screen. Mutant: drop childName from the 201 body.
+  it("the poll answers with the child's name for the phone's status screen", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    store.set("pair:123456", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));
+    prismaMock.device.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "dev-9", ...data }));
+    prismaMock.child.findUnique.mockResolvedValue({ id: "child-1", familyId: "fam-1", displayName: "Alex" });
+    const { poll } = await pairThrough(app, { code: "123456", platform: "ios", model: "iPhone", osVersion: "18" });
+    expect(poll.statusCode).toBe(201);
+    expect(poll.json().childName).toBe("Alex");
+    const lookups = prismaMock.child.findUnique.mock.calls.map((c: unknown[]) => (c[0] as { where: { id: string } }).where.id);
+    expect(lookups).toContain("child-1");
+    expect(lookups).not.toContain("evil-child");
+    await app.close();
+  });
+
   it("the poll returns the per-device HMAC secret so agents can sign alerts (BUG-001)", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     store.set("pair:111111", JSON.stringify({ childId: "child-1", familyId: "fam-1" }));

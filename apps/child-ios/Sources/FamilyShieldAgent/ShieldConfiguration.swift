@@ -50,9 +50,8 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
     }
 }
 
-/// Handles taps on FamilyShield shield buttons (spec §6.3): "Ask parent" keeps the
-/// shield and notifies the parent; "OK" dismisses the shield and logs a request-access
-/// call to the backend.
+/// Handles taps on FamilyShield shield buttons (spec §6.3): "Request access" keeps the shield and notifies the
+/// parent; "Exit to Home screen" closes the blocked app and is only counted (#602, `ShieldTapPolicy`).
 ///
 /// #561: subclassed by `ShieldActionExtension` in `Extensions/ShieldAction`, the extension's principal class.
 open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
@@ -86,30 +85,30 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         respond(to: action, completionHandler: completionHandler)
     }
 
-    /// Routes the tap: the secondary button dismisses the shield, all others keep it up.
+    /// Routes the tap through `ShieldTapPolicy` (#602): Request access alerts the parent and keeps the shield;
+    /// Exit to Home closes the app, is counted, and sends nothing.
     private func respond(to action: ShieldAction, completionHandler: (ShieldActionResponse) -> Void) {
+        let tap: ShieldTapPolicy.Tap
         switch action {
-        case .primaryButtonPressed:
+        case .primaryButtonPressed: tap = .requestAccess
+        case .secondaryButtonPressed: tap = .exitHome
+        default: tap = .other
+        }
+        let outcome = ShieldTapPolicy.outcome(tap)
+        if outcome.alertsParent {
             reporter.report(
                 category: "app_blocked",
                 title: "Child asked for access",
                 body: "Child pressed 'Ask parent' on a shield screen.",
                 childId: AlertReporter.pairedChildId()
             )
-            completionHandler(.none)
-        case .secondaryButtonPressed:
-            reporter.report(
-                category: "app_blocked",
-                title: "Shield dismissed by child",
-                body: "Child dismissed a shield screen (OK).",
-                childId: AlertReporter.pairedChildId()
-            )
-            // NOTE: .close dismisses the shield and closes the blocked app; a true
-            // "allow once" flow would clear the store shield before responding.
-            completionHandler(.close)
-        default:
-            completionHandler(.none)
         }
+        if outcome.countsDismissal {
+            ShieldTapPolicy.countDismissal(in: UserDefaults(suiteName: AgentIdentityStore.suiteName))
+        }
+        // NOTE: .close dismisses the shield and closes the blocked app; a true
+        // "allow once" flow would clear the store shield before responding.
+        completionHandler(outcome.closesApp ? .close : .none)
     }
 }
 #endif

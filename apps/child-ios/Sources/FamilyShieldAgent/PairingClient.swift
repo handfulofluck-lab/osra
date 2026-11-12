@@ -21,14 +21,19 @@ public struct AgentIdentity: Equatable {
     /// Per-deployment HMAC secret for `X-FamilyShield-Signature` internal calls;
     /// nil when the server did not provision one (alerts then fail closed with a 401).
     public var hmacSecret: String?
+    /// #602: the child's name as the parent typed it, shown on the status screen instead of an id; nil from a
+    /// server before #602 or when the name could not be read.
+    public var childName: String?
 
-    public init(apiBaseURL: URL, deviceToken: String, deviceId: String, childId: String, familyId: String, hmacSecret: String?) {
+    public init(apiBaseURL: URL, deviceToken: String, deviceId: String, childId: String, familyId: String, hmacSecret: String?,
+                childName: String? = nil) {
         self.apiBaseURL = apiBaseURL
         self.deviceToken = deviceToken
         self.deviceId = deviceId
         self.childId = childId
         self.familyId = familyId
         self.hmacSecret = hmacSecret
+        self.childName = childName
     }
 }
 
@@ -216,13 +221,15 @@ public struct PairingClient {
         let rawHmac = obj["hmacSecret"] as? String
         let hmac = (rawHmac?.isEmpty == false) ? rawHmac : nil
 
+        let rawName = (obj["childName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return AgentIdentity(
             apiBaseURL: baseURL,
             deviceToken: token,
             deviceId: deviceId,
             childId: childId,
             familyId: familyId,
-            hmacSecret: hmac
+            hmacSecret: hmac,
+            childName: (rawName?.isEmpty == false) ? rawName : nil
         )
     }
 
@@ -230,25 +237,25 @@ public struct PairingClient {
     public static func message(for error: Error) -> String {
         switch error {
         case PairingError.invalidServerURL:
-            return "Enter a valid server address, e.g. 192.168.1.5:3000"
+            return L10n.tr("pair_error_server")
         case PairingError.invalidCode:
-            return "Enter the 6-digit pairing code."
+            return L10n.tr("pair_error_code")
         case PairingError.httpError(let status) where status == 404:
-            return "Invalid or expired code. Ask your parent for a new one."
+            return L10n.tr("pair_error_invalid")
         case PairingError.httpError(let status):
-            return "The server rejected the request (HTTP \(status))."
+            return L10n.tr("pair_error_http", status)
         case PairingError.unusableResponse:
-            return "Unexpected server response — check the server address."
+            return L10n.tr("pair_error_response")
         case PairingError.alreadyClaimed:
-            return "This code is already being used by another phone. Ask your parent for a new code."
+            return L10n.tr("pair_error_claimed")
         case PairingError.denied:
-            return "Your parent declined this phone. If that was a mistake, ask them for a new code."
+            return L10n.tr("pair_error_denied")
         case PairingError.expired:
-            return "The code expired before your parent allowed this phone. Ask them for a new code."
+            return L10n.tr("pair_error_expired")
         case PairingError.consentRequired:
-            return "Your parent needs to give consent in the OSRA app before this phone can be paired."
+            return L10n.tr("pair_error_consent")
         default:
-            return "Cannot reach the server — check the address and network."
+            return L10n.tr("pair_error_network")
         }
     }
 

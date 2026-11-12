@@ -46,6 +46,19 @@ final class AgentIdentityStoreTests: XCTestCase {
         XCTAssertEqual(AlertReporter.pairedHmacSecret(), "hmac-secret")
     }
 
+    // #602: the child's name from pairing survives a relaunch, and unpairing removes it.
+    func testTheChildsNameIsKeptAndClearedWithTheIdentity() {
+        var named = identity
+        named.childName = "Alex"
+        XCTAssertTrue(AgentIdentityStore.save(named))
+        XCTAssertEqual(AgentIdentityStore.load()?.childName, "Alex")
+        XCTAssertTrue(AgentIdentityStore.save(identity), "a save without a name removes an old one")
+        XCTAssertNil(AgentIdentityStore.load()?.childName)
+        XCTAssertTrue(AgentIdentityStore.save(named))
+        AgentIdentityStore.clear()
+        XCTAssertNil(defaults.string(forKey: AgentIdentityStore.Keys.childName))
+    }
+
     func testSaveWithoutHmacSecretRemovesAnOldOne() {
         XCTAssertTrue(AgentIdentityStore.save(identity))
         var noSecret = identity

@@ -32,6 +32,10 @@ concurrency:
   group: parent-app-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
+# **Do not rename this file.** Play's versionCode comes from this workflow's `run_number`; renaming or
+# recreating the workflow restarts the counter at 1, and Play then refuses every upload until the new count
+# passes the old one again. See the `--build-number` line on the bundle step.
+
 jobs:
   parent-app:
     runs-on: ubuntu-latest
@@ -126,12 +130,23 @@ jobs:
             https://*) echo "built-in server: $OSRA_API_BASE" ;;
             *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
           esac
-          flutter build appbundle --release --dart-define=API_BASE="$OSRA_API_BASE"
+          # Play refuses a versionCode it already has, so the bundle number rises with every run: the
+          # workflow's own run number only ever increases, and each app is published by one workflow.
+          flutter build appbundle --release --build-number="${{ github.run_number }}" --dart-define=API_BASE="$OSRA_API_BASE"
       - name: Release manifest must declare INTERNET
         run: |
           unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
           # The AAB manifest is protobuf; the permission string survives as plain text.
-          grep -q "android.permission.INTERNET" /tmp/manifest.bin && echo "INTERNET present"
+          # Was `grep -q ... && echo`: under `set -e` a failing left-hand side of an `&&` list does not fail
+          # the step, so this check could never go red. The linter caught it while I edited this block.
+          grep -q "android.permission.INTERNET" /tmp/manifest.bin             || { echo "::error::the release manifest does not declare INTERNET"; exit 1; }
+          echo "INTERNET present"
+          # Play 5.2: the bundle Play receives must carry this run's number, or a second upload is refused.
+          # Read from the merged release manifest, which is the tree the AAB was built from.
+          MANIFEST=$(ls build/app/intermediates/merged_manifests/release/*/AndroidManifest.xml | head -1)
+          [ -f "$MANIFEST" ] || { echo "::error::the merged release manifest is missing"; exit 1; }
+          grep -q "android:versionCode=\"${{ github.run_number }}\"" "$MANIFEST"             || { echo "::error::the bundle carries $(grep -o 'android:versionCode=\"[0-9]*\"' "$MANIFEST" | head -1), not ${{ github.run_number }}"; exit 1; }
+          echo "bundle versionCode ${{ github.run_number }}"
       - uses: actions/upload-artifact@v4
         with:
           name: parent-app-release-aab
@@ -264,3 +279,23 @@ jobs:
             done
           done
           echo "en and ar Localizable.strings are in Runner.app with both keys"
+      # #616 / ITMS-90683: Apple's static scan reads the BUILT bundle, and the Google Maps iOS SDK links
+      # CoreLocation whether or not the app asks for a fix — the first TestFlight upload was rejected for a
+      # missing NSLocationWhenInUseUsageDescription. Asserting the key in ios/Runner/Info.plist would pass
+      # while the value never reached Runner.app, so this reads the bundle, and the localized copy in it.
+      - name: The built bundle carries the location purpose string Apple requires (ITMS-90683)
+        run: |
+          APP=build/ios/iphoneos/Runner.app
+          BPLIST="$APP/Info.plist"
+          test -f "$BPLIST" || { echo "missing $BPLIST" >&2; exit 1; }
+          V=$(/usr/libexec/PlistBuddy -c 'Print :NSLocationWhenInUseUsageDescription' "$BPLIST") \
+            || { echo "NSLocationWhenInUseUsageDescription is missing from the built bundle (ITMS-90683)" >&2; exit 1; }
+          echo "purpose string: $V"
+          case "$V" in *[![:space:]]*) ;; *) echo "the purpose string is empty" >&2; exit 1;; esac
+          F="$APP/en.lproj/InfoPlist.strings"
+          test -f "$F" || { echo "missing $F" >&2; ls "$APP" >&2; exit 1; }
+          plutil -lint "$F"
+          L=$(plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$F") \
+            || { echo "the en localized purpose string is missing" >&2; exit 1; }
+          case "$L" in *[![:space:]]*) ;; *) echo "the en localized purpose string is empty" >&2; exit 1;; esac
+          echo "en.lproj/InfoPlist.strings ships in the bundle with the same key"

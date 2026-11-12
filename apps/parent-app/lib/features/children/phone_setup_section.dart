@@ -55,7 +55,10 @@ class PhoneSetupSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final setup = device.setup;
+    // `setup` is never null from a current server: it answers with the projection and puts
+    // `reportedAt: null` inside it when the phone has never reported (issue #601). Reading only the
+    // object made every device look reported; reading only the timestamp is the one honest test.
+    final setup = device.hasCapabilityReport ? device.setup : null;
     if (setup == null) {
       // Every agent older than this report, and every phone before its first upload. "We do not know yet",
       // never "nothing works".

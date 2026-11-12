@@ -233,9 +233,6 @@ class ChildCard extends ConsumerWidget {
         _ => tokens.onSurfaceVariant,
       };
 
-  /// Online when the device checked in within [kDeviceOnlineWindow].
-  static String _effectiveStatus(Device d) => isDeviceOnline(d.lastSeen) ? 'online' : 'offline';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
@@ -252,7 +249,6 @@ class ChildCard extends ConsumerWidget {
     final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
 
     final tokens = context.tokens;
-    final status = device == null ? null : _effectiveStatus(device);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -279,11 +275,14 @@ class ChildCard extends ConsumerWidget {
                 runSpacing: AppSpace.xs,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (device != null && status != null)
+                  if (device != null)
                     Chip(
                       visualDensity: VisualDensity.compact,
-                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, status)),
-                      label: Text(status == 'online' ? l10n.statusOnline : l10n.statusOffline),
+                      avatar: Icon(Icons.circle, size: 10, color: _statusColor(tokens, device.status)),
+                      // #601: the server's word, not a local clock rule. There is no string for
+                      // `locked`/`sos` (nothing in the API writes them today), so a value that is not
+                      // `online` reads as `offline`.
+                      label: Text(device.isOnline ? l10n.statusOnline : l10n.statusOffline),
                     ),
                   if (device != null && device.batteryPct > 0)
                     Chip(
@@ -635,15 +634,3 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
 String formatLastSeen(BuildContext context, DateTime? lastSeen) => lastSeen == null
     ? context.l10n.never
     : DateFormat.yMMMd(context.localeName).add_Hm().format(lastSeen.toLocal());
-
-/// How long after its last check-in a device still shows as online (roadmap 5.8, #353).
-///
-/// An idle phone that the server can wake by push polls every 10 minutes, and each poll refreshes
-/// `lastSeen` once it is 5 minutes old, so a healthy idle phone is at most about 10 minutes behind.
-/// The old 3 minutes turned such a phone grey most of the time. 15 minutes keeps one late poll
-/// green; a phone that really stopped is reported by the silent-device alert (30 minutes).
-const Duration kDeviceOnlineWindow = Duration(minutes: 15);
-
-/// True when [lastSeen] is within [kDeviceOnlineWindow] of [now] (the current time by default).
-bool isDeviceOnline(DateTime? lastSeen, {DateTime? now}) =>
-    lastSeen != null && (now ?? DateTime.now()).difference(lastSeen) < kDeviceOnlineWindow;
