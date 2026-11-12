@@ -14,3 +14,6 @@ table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
 th, td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--rule); }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule); }
 code { overflow-wrap: anywhere; word-break: break-all; }
+.steps-art { display: flex; gap: 12px; margin: 10px 0 18px; }
+.steps-art img { width: 48%; max-width: 240px; height: auto; border-radius: 14px; }
+.howto { width: 100%; height: auto; border-radius: 14px; background: #eef1ff; }

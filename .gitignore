@@ -95,3 +95,4 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 coverage/
+scripts/site/full-install-art/.tmp/

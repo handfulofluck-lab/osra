@@ -1,0 +1,207 @@
+<!doctype html>
+<!--
+  ADR-0039 PR E: the drawings and the short video on osratech.com/android. render.mjs opens this page in
+  Chromium, takes one still per scene (site/android/img/) and records the animated walk-through
+  (site/android/video/). Query: ?lang=en|ar&scene=<id>&still=1, or ?lang=en|ar&play=1 for the video.
+  Fonts are loaded from FONT_DIR by render.mjs; only the rendered PNG/MP4 is published, never this page.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: Nunito; font-weight: 400; src: url("fonts/nunito-latin-400-normal.woff2"); }
+@font-face { font-family: Nunito; font-weight: 800; src: url("fonts/nunito-latin-800-normal.woff2"); }
+@font-face { font-family: NotoAr; font-weight: 400; src: url("fonts/noto-sans-arabic-arabic-400-normal.woff2"); }
+@font-face { font-family: NotoAr; font-weight: 800; src: url("fonts/noto-sans-arabic-arabic-800-normal.woff2"); }
+:root { --ink: #1d1f2b; --muted: #5d6275; --brand: #3949ab; --brand2: #7986cb; --ok: #2e7d32; --warn: #e65100;
+        --bg1: #eef1ff; --bg2: #fff4e6; --screen: #ffffff; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; }
+body { font-family: Nunito, NotoAr, sans-serif; color: var(--ink); overflow: hidden;
+       background: radial-gradient(circle at 20% 15%, var(--bg2) 0 22%, transparent 23%),
+                   radial-gradient(circle at 85% 80%, #e8f5e9 0 18%, transparent 19%), var(--bg1); }
+[dir=rtl] body, [dir=rtl] { font-family: NotoAr, Nunito, sans-serif; }
+.stage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+.scene { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
+.scene.on { display: flex; }
+.caption { font-weight: 800; font-size: 34px; text-align: center; max-width: 900px; line-height: 1.3; padding: 0 30px; }
+.caption .n { display: inline-flex; width: 52px; height: 52px; border-radius: 50%; background: var(--brand); color: #fff;
+              align-items: center; justify-content: center; margin-inline-end: 14px; font-size: 28px; vertical-align: middle; }
+.phones { display: flex; gap: 60px; align-items: center; }
+.phone { position: relative; width: 300px; height: 600px; border-radius: 42px; background: #2b2d3a; padding: 14px;
+         box-shadow: 0 18px 40px rgba(40, 50, 120, .25); }
+.phone::before { content: ""; position: absolute; top: 22px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: #555a6e; z-index: 3; }
+.screen { position: relative; width: 100%; height: 100%; border-radius: 30px; background: var(--screen); overflow: hidden; }
+.tag { position: absolute; top: -40px; left: 0; right: 0; text-align: center; font-weight: 800; color: var(--muted); font-size: 20px; }
+.bar { height: 46px; background: #f1f3f9; display: flex; align-items: center; padding: 0 14px; font-size: 14px; color: var(--muted); margin-top: 26px; }
+.bar .url { flex: 1; background: #fff; border-radius: 16px; padding: 5px 12px; direction: ltr; text-align: left; }
+.body { padding: 22px 18px; display: flex; flex-direction: column; gap: 14px; }
+.logo { width: 76px; height: 76px; border-radius: 22px; background: linear-gradient(135deg, var(--brand), var(--brand2)); align-self: center;
+        display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 26px; }
+.h { font-weight: 800; font-size: 21px; text-align: center; }
+.p { font-size: 15px; color: var(--muted); text-align: center; line-height: 1.45; }
+.btn { border-radius: 24px; padding: 12px 16px; text-align: center; font-weight: 800; font-size: 17px; background: var(--brand); color: #fff; }
+.btn.ghost { background: transparent; color: var(--brand); }
+.btn.line { background: #fff; color: var(--brand); border: 2px solid var(--brand); }
+.sheet { position: absolute; left: 10px; right: 10px; bottom: 14px; background: #fff; border-radius: 22px; padding: 16px;
+         box-shadow: 0 6px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 10px; }
+.dim { position: absolute; inset: 0; background: rgba(20, 22, 40, .45); }
+.dialog { position: absolute; left: 18px; right: 18px; top: 150px; background: #fff; border-radius: 26px; padding: 22px 18px;
+          display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; gap: 10px; justify-content: flex-end; }
+.file { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.file .ic { width: 36px; height: 36px; border-radius: 10px; background: #e8eaf6; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 4px; border-bottom: 1px solid #e3e5ee; font-size: 16px; }
+.toggle { width: 52px; height: 30px; border-radius: 15px; background: #c5c8d6; position: relative; transition: background .3s; flex: none; }
+.toggle i { position: absolute; top: 3px; inset-inline-start: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: inset-inline-start .3s; }
+.toggle.on { background: var(--ok); } .toggle.on i { inset-inline-start: 25px; }
+.shield { font-size: 54px; text-align: center; }
+.qr { width: 170px; height: 170px; align-self: center; border-radius: 14px; padding: 12px; background: #fff; border: 3px solid var(--ink);
+}
+.cam { position: absolute; inset: 0; background: #3b3f52; display: flex; align-items: center; justify-content: center; }
+.cam .frame { width: 190px; height: 190px; border: 4px dashed #fff; border-radius: 18px; display: flex; align-items: center; justify-content: center; }
+.cam .frame .qr { width: 140px; height: 140px; border-width: 2px; padding: 8px; }
+.check { display: flex; align-items: center; gap: 10px; font-size: 16px; padding: 9px 0; border-bottom: 1px solid #eef0f6; }
+.check b { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #c5c8d6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 15px; flex: none; transition: all .3s; }
+.check.ok b { background: var(--ok); border-color: var(--ok); }
+.big { font-size: 90px; text-align: center; }
+.title-card .caption { font-size: 46px; }
+.sub { font-size: 26px; color: var(--muted); text-align: center; max-width: 900px; padding: 0 30px; }
+.finger { position: absolute; font-size: 54px; z-index: 10; pointer-events: none; transform: translate(-20%, -5%);
+          font-family: "Noto Color Emoji", sans-serif; opacity: 0; }
+.ripple { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; border: 4px solid var(--brand); z-index: 9; opacity: 0; }
+.still .finger { opacity: 1; }
+.still .caption { visibility: hidden; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.play .finger { animation: move 1.6s ease-out .4s forwards; }
+.play .ripple { animation: ripple .7s ease-out 1.9s 2; }
+@keyframes move { from { opacity: 0; transform: translate(60px, 120px); } to { opacity: 1; transform: translate(-20%, -5%); } }
+@keyframes ripple { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(4); } }
+.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.05); } }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const lang = q.get("lang") === "ar" ? "ar" : "en";
+const still = q.get("still") === "1";
+document.documentElement.lang = lang;
+document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+const T = {
+  en: {
+    title: "Install OSRA Kids Full", titleSub: "on your child's Android phone, in five steps",
+    c1: "Open osratech.com/android on your child's phone and tap Download",
+    c2: "When the download finishes, tap Open",
+    c3: "If Android asks, allow Chrome to install apps",
+    c4: "Tap Install",
+    c5: "Play Protect may warn you. Tap More details, then Install anyway",
+    c6: "In your parent app, tap Pair a device. Scan the code, then tap Allow",
+    c7: "Follow the setup. OSRA asks for each permission and says why",
+    c8: "Done! OSRA now protects your child and keeps itself up to date",
+    endSub: "Questions? support@osratech.com",
+    dl: "Download OSRA Kids Full", fullName: "OSRA Kids Full", fullText: "The OSRA child app with message, call, SMS and search monitoring.",
+    file: "osra-kids-full.apk", done: "Download complete", open: "Open",
+    unknown: "Install unknown apps", allowSrc: "Allow from this source", chromeSub: "Chrome",
+    installQ: "Do you want to install this app?", cancel: "Cancel", install: "Install",
+    pp: "Google Play Protect", ppText: "This app can monitor this phone.", more: "More details", anyway: "Install anyway", ok: "OK",
+    parent: "Parent's phone", child: "Child's phone", pair: "Pair a device", scan: "Scan the code", ask: "A device is asking to join", allow: "Allow",
+    setup: "Set up OSRA", perms: ["Accessibility", "Usage access", "Location", "Notifications", "Calls and SMS", "Install updates"],
+    paired: "This device is paired", protect: "Protection is on",
+  },
+  ar: {
+    title: "ثبّت نسخة أسرة للأطفال الكاملة", titleSub: "على هاتف طفلك بنظام أندرويد، في خمس خطوات",
+    c1: "افتح osratech.com/android على هاتف طفلك واضغط تحميل",
+    c2: "عند انتهاء التحميل اضغط فتح",
+    c3: "إذا طلب أندرويد ذلك، اسمح لـ Chrome بتثبيت التطبيقات",
+    c4: "اضغط تثبيت",
+    c5: "قد يظهر تحذير Play Protect. اضغط مزيد من التفاصيل ثم التثبيت على أي حال",
+    c6: "في تطبيق الوالدين اضغط إقران جهاز، امسح الرمز، ثم اضغط سماح",
+    c7: "أكمل الإعداد. يطلب أسرة كل إذن ويشرح سببه",
+    c8: "تم! أسرة يحمي طفلك الآن ويحدّث نفسه تلقائيًا",
+    endSub: "لديك سؤال؟ support@osratech.com",
+    dl: "حمّل النسخة الكاملة", fullName: "أسرة للأطفال الكاملة", fullText: "تطبيق أسرة للأطفال مع متابعة الرسائل والمكالمات والبحث.",
+    file: "osra-kids-full.apk", done: "اكتمل التحميل", open: "فتح",
+    unknown: "تثبيت التطبيقات غير المعروفة", allowSrc: "السماح من هذا المصدر", chromeSub: "Chrome",
+    installQ: "هل تريد تثبيت هذا التطبيق؟", cancel: "إلغاء", install: "تثبيت",
+    pp: "Google Play Protect", ppText: "يستطيع هذا التطبيق مراقبة الهاتف.", more: "مزيد من التفاصيل", anyway: "التثبيت على أي حال", ok: "حسنًا",
+    parent: "هاتف الوالد", child: "هاتف الطفل", pair: "إقران جهاز", scan: "امسح الرمز", ask: "جهاز يطلب الانضمام", allow: "سماح",
+    setup: "إعداد أسرة", perms: ["إمكانية الوصول", "الوصول إلى الاستخدام", "الموقع", "الإشعارات", "المكالمات والرسائل", "تثبيت التحديثات"],
+    paired: "تم إقران هذا الجهاز", protect: "الحماية مفعّلة",
+  },
+}[lang];
+const bar = `<div class="bar"><span class="url">osratech.com/android</span></div>`;
+const phone = (inner, tag) => `<div class="phone">${tag ? `<div class="tag">${tag}</div>` : ""}<div class="screen">${inner}</div></div>`;
+const tap = (id) => `<span class="finger" data-target="${id}">👆</span><span class="ripple" data-target="${id}"></span>`;
+const scenes = [
+  { id: "title", cls: "title-card", html: `<div class="big">📱🛡️</div><div class="caption">${T.title}</div><div class="sub">${T.titleSub}</div>` },
+  { id: "s1", n: 1, cap: T.c1, html: phone(`${bar}<div class="body"><div class="logo">OSRA</div><div class="h">${T.fullName}</div><div class="p">${T.fullText}</div><div class="btn pulse" id="t1">${T.dl}</div></div>`) + tap("t1") },
+  { id: "s2", n: 2, cap: T.c2, html: phone(`${bar}<div class="body"><div class="logo">OSRA</div><div class="h">${T.fullName}</div></div><div class="sheet"><div class="file"><span class="ic">⬇️</span><span><b>${T.file}</b><br>${T.done}</span></div><div class="row"><div class="btn" id="t2">${T.open}</div></div></div>`) + tap("t2") },
+  { id: "s3", n: 2, cap: T.c3, html: phone(`<div class="bar" style="background:#fff;font-weight:800;color:var(--ink)">${T.unknown}</div><div class="body"><div class="toggle-row"><span><b>Chrome</b></span></div><div class="toggle-row"><span>${T.allowSrc}</span><span class="toggle" id="t3"><i></i></span></div></div>`) + tap("t3"), toggle: "t3" },
+  { id: "s4", n: 3, cap: T.c4, html: phone(`${bar}<div class="dim"></div><div class="dialog"><div class="logo" style="width:60px;height:60px;font-size:20px">OSRA</div><div class="h">${T.fullName}</div><div class="p">${T.installQ}</div><div class="row"><div class="btn ghost">${T.cancel}</div><div class="btn" id="t4">${T.install}</div></div></div>`) + tap("t4") },
+  { id: "s5", n: 3, cap: T.c5, html: phone(`${bar}<div class="dim"></div><div class="dialog"><div class="shield">🛡️</div><div class="h">${T.pp}</div><div class="p">${T.ppText}</div><div class="btn ghost">${T.more} ▾</div><div class="btn line" id="t5">${T.anyway}</div><div class="btn ghost">${T.ok}</div></div>`) + tap("t5") },
+  { id: "s6", n: 4, cap: T.c6, html: `<div class="phones">${phone(`<div class="body" style="margin-top:30px"><div class="h">${T.pair}</div><div class="qr">${qrSvg()}</div><div class="sheet"><div class="p" style="color:var(--ink)"><b>${T.ask}</b></div><div class="row"><div class="btn ghost">✕</div><div class="btn" id="t6">${T.allow}</div></div></div></div>`, T.parent)}${phone(`<div class="cam"><div class="frame"><div class="qr">${qrSvg()}</div></div></div><div class="sheet"><div class="p" style="color:var(--ink)"><b>${T.scan}</b></div></div>`, T.child)}</div>` + tap("t6") },
+  { id: "s7", n: 5, cap: T.c7, html: phone(`<div class="body" style="margin-top:24px"><div class="h">${T.setup}</div>${T.perms.map((p, i) => `<div class="check" data-i="${i}"><b>✓</b>${p}</div>`).join("")}</div>`), checks: true },
+  { id: "s8", n: "✓", cap: T.c8, html: phone(`<div class="body" style="margin-top:110px"><div class="big">🛡️</div><div class="h">${T.paired}</div><div class="p" style="color:var(--ok);font-weight:800">● ${T.protect}</div></div>`) },
+  { id: "end", cls: "title-card", html: `<div class="big">💙</div><div class="caption">osratech.com/android</div><div class="sub">${T.endSub}</div>` },
+];
+// A drawn QR-like pattern (not a real code): three finder squares and seeded blocks.
+function qrSvg() {
+  const n = 21; let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const finder = (x, y) => x >= 0 && y >= 0 && x < 7 && y < 7 && (x === 0 || y === 0 || x === 6 || y === 6 || (x > 1 && x < 5 && y > 1 && y < 5));
+  const inFinderZone = (x, y) => (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+  let r = "";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    let on;
+    if (inFinderZone(x, y)) on = finder(x, y) || finder(x - (n - 7), y) || finder(x, y - (n - 7));
+    else on = rnd() < 0.48;
+    if (on) r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+  }
+  return `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" fill="#1d1f2b">${r}</svg>`;
+}
+const stage = document.getElementById("stage");
+for (const s of scenes) {
+  const el = document.createElement("div");
+  el.className = "scene " + (s.cls || "");
+  el.id = s.id;
+  el.innerHTML = (s.cap ? `<div class="caption"><span class="n">${s.n}</span>${s.cap}</div>` : "") + `<div class="holder" style="position:relative">${s.html}</div>`;
+  stage.appendChild(el);
+}
+function place(scene) {
+  const holder = scene.querySelector(".holder");
+  const hb = holder.getBoundingClientRect();
+  scene.querySelectorAll(".finger, .ripple").forEach((f) => {
+    const t = holder.querySelector("#" + f.dataset.target);
+    const b = t.getBoundingClientRect();
+    const ripple = f.classList.contains("ripple");
+    const rtl = document.documentElement.dir === "rtl";
+    const cx = b.left - hb.left + b.width / 2, cy = b.top - hb.top + b.height / 2;
+    // The finger rests below the label so the label stays readable; the ripple marks the tap point.
+    f.style.left = (ripple ? cx : cx + (rtl ? -1 : 1) * Math.min(b.width / 2 - 18, 60)) + "px";
+    f.style.top = (ripple ? cy : cy + b.height / 2 - 14) + "px";
+  });
+}
+function show(id, mode) {
+  document.querySelectorAll(".scene").forEach((s) => s.classList.remove("on", "play", "still"));
+  const s = document.getElementById(id);
+  s.classList.add("on", mode);
+  place(s);
+  const def = scenes.find((x) => x.id === id);
+  if (def.toggle) {
+    const t = s.querySelector("#" + def.toggle);
+    if (mode === "still") t.classList.add("on"); else { t.classList.remove("on"); setTimeout(() => t.classList.add("on"), 2000); }
+  }
+  if (def.checks) {
+    const rows = [...s.querySelectorAll(".check")];
+    if (mode === "still") rows.slice(0, 4).forEach((r) => r.classList.add("ok"));
+    else { rows.forEach((r) => r.classList.remove("ok")); rows.forEach((r, i) => setTimeout(() => r.classList.add("ok"), 500 + i * 550)); }
+  }
+}
+window.SCENES = scenes.map((s) => s.id);
+window.show = show;
+if (still) show(q.get("scene") || "s1", "still");
+document.fonts.ready.then(() => { document.body.dataset.ready = "1"; });
+</script>
+</body>
+</html>
