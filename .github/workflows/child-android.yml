@@ -149,7 +149,10 @@ jobs:
             echo "$FLAVOUR release: targetSdk 35"
             # Play 5.2: the number Play receives must be this run's, or a second upload is refused. Asserting
             # it on the built artefact is the only way CI can prove the wiring, rather than trusting Gradle.
-            grep -q "versionCode:'${{ github.run_number }}'" <<<"$BADGING"               || { echo "::error::$APK carries $(grep -o "versionCode:'[0-9]*'" <<<"$BADGING"), not ${{ github.run_number }}"; exit 1; }
+            # `aapt2 dump badging` prints the code on the `package:` line as `versionCode='528'` — with an
+            # equals sign. The colon form belongs to lines like `targetSdkVersion:'35'`, so a colon pattern
+            # here can never match and the job goes red on a correct build (#591 review).
+            grep -q "versionCode='${{ github.run_number }}'" <<<"$BADGING"               || { echo "::error::$APK carries $(grep -o "versionCode='[0-9]*'" <<<"$BADGING"), not ${{ github.run_number }}"; exit 1; }
             echo "$FLAVOUR release: versionCode ${{ github.run_number }}"
           done
           # The release config is the one in src/main (src/debug overrides it for the debug build only).
