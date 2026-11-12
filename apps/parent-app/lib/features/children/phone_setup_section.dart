@@ -72,7 +72,7 @@ class PhoneSetupSection extends StatelessWidget {
     final features = [
       ...featureOrder.where(setup.features.containsKey),
       ...setup.features.keys.where((k) =>
-          !featureOrder.contains(k) && k != DeviceSetup.accountAdminKey),
+          !featureOrder.contains(k)),
     ];
 
     return Padding(
