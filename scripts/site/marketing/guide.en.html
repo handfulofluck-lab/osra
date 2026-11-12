@@ -1,0 +1,125 @@
+<!-- The public OSRA guide, English. Built into site/guide/index.html by build.mjs; each <h2 id> becomes a row in
+     the contents. Steps and button names come from the customer guide (docs/customer/getting-started.html), which
+     was written from the apps; app names follow the store listings. No step for OSRA Kids Full (the Android app
+     from osratech.com) appears here until its release security gate is signed. -->
+<h2 id="apps">The two apps</h2>
+<p>OSRA has two apps that work together:</p>
+<table>
+  <tr><th>App</th><th>Install it on</th></tr>
+  <tr><td><strong>OSRA Parental Control</strong> (the parent app)</td><td>Your own phone</td></tr>
+  <tr><td><strong>OSRA Kids – Parental Control</strong> (the child app)</td><td>Every phone or tablet your child uses</td></tr>
+</table>
+<p>Both are on Google Play for Android 8.0 or later. iPhone and iPad versions, and OSRA Kids for Windows, join in the December beta; this guide adds their steps then.</p>
+
+<h2 id="install">1. Install the apps</h2>
+<ol>
+  <li>On <strong>your</strong> phone, open Google Play, search for <strong>OSRA Parental Control</strong>, and tap <strong>Install</strong>.</li>
+  <li>On <strong>your child's</strong> phone or tablet, open Google Play, search for <strong>OSRA Kids – Parental Control</strong>, and tap <strong>Install</strong>. Do this on every device your child uses.</li>
+</ol>
+<p class="tip">Keep your child's device next to you for the next steps. Setting up one device takes about five minutes.</p>
+
+<h2 id="account">2. Create your family account</h2>
+<ol>
+  <li>Open <strong>OSRA</strong> on your phone and tap <strong>Get started</strong>.</li>
+  <li>Enter your email and a password of <strong>at least 12 characters</strong>. Open <strong>Create account</strong>, enter your name and a family name, and tap <strong>Register</strong>. If you already have an account, tap <strong>Sign in</strong>.</li>
+</ol>
+<p>You are the <strong>family owner</strong>. Only the owner can add children. Turn on two-step verification in the menu to protect your account.</p>
+
+<h2 id="child">3. Add your child</h2>
+<ol>
+  <li>Enter your child's <strong>name</strong> and <strong>birth year</strong>.</li>
+  <li>Choose how you gave <strong>parental consent</strong>. OSRA needs this before it can protect a child.</li>
+  <li>Tap <strong>Add child and continue</strong>.</li>
+</ol>
+<p>Add one profile per child, not per device. A child with a phone and a tablet is still one child in OSRA. To add a brother or sister later, tap <strong>Add child</strong> on the dashboard.</p>
+
+<h2 id="pair">4. Pair your child's first device</h2>
+<p><strong>On your phone</strong> the app shows a <strong>QR code</strong>, the same code as <strong>six digits</strong>, and a countdown. The code works <strong>once</strong> and expires after <strong>10 minutes</strong>. If it runs out, tap <strong>Regenerate</strong>.</p>
+<p><strong>On your child's device:</strong></p>
+<ol>
+  <li>Open <strong>OSRA Kids</strong>.</li>
+  <li>Tap <strong>Scan QR code</strong> and point the camera at the code on your phone.</li>
+  <li>Check that the code shown matches the one on your phone. In <strong>Device name</strong>, type a name you will recognise, such as <em>Sara's phone</em>.</li>
+  <li>Tap <strong>Confirm and pair</strong>. The child's device now says it is waiting for you.</li>
+</ol>
+<p>If the camera cannot scan, type the six digits into <strong>Pairing code</strong> and tap <strong>Pair this device</strong>.</p>
+<p><strong>On your phone</strong> a card appears: <strong>A device is asking to join</strong>. Tap <strong>Allow</strong> only if it names the device in front of you. If you do not recognise it, tap <strong>Deny</strong>: that code stops working.</p>
+
+<h2 id="finish">5. Finish on your child's device</h2>
+<ol>
+  <li><strong>Set the parent PIN.</strong> Choose 4 to 8 digits and enter them twice. The PIN is asked for whenever someone tries to remove OSRA from the device, so keep it to yourself.</li>
+  <li><strong>Turn on the permissions.</strong> The app lists what it needs, says why, and opens each setting for you. Protection is complete when every required item is on:
+    <ul>
+      <li>Accessibility service: blocks apps and applies limits and bedtime</li>
+      <li>Usage access: counts screen time</li>
+      <li>Display over other apps: shows the lock and pause screens</li>
+      <li>Device admin: lets you lock the phone, and stops OSRA being removed without your PIN</li>
+      <li>Web filter (a VPN request): blocks sites and turns on SafeSearch</li>
+      <li>Location, "Allow all the time": locates the phone and sends place alerts</li>
+      <li>Private DNS set to Automatic or Off, so the web filter cannot be bypassed</li>
+    </ul>
+    Also set the battery to <strong>Unrestricted</strong>, so your commands arrive quickly.</li>
+  <li>On your phone, tap <strong>My child has finished pairing</strong>. When the device is found, you are done.</li>
+</ol>
+
+<h2 id="rules">6. Set the rules</h2>
+<p>Open your child from the dashboard to set their rules. Rules belong to the child, so they apply on every device that child uses.</p>
+<ul>
+  <li><strong>Screen time:</strong> a daily limit, a weekend limit, bedtime and school hours.</li>
+  <li><strong>Routines:</strong> allow or block apps at set times, such as games only after homework.</li>
+  <li><strong>Apps:</strong> block an app, or give it its own daily limit. You are alerted when a new app is installed, and your child can ask you for access from the block screen.</li>
+  <li><strong>Web filter:</strong> block categories of sites or single sites, and turn on SafeSearch and YouTube Restricted Mode.</li>
+</ul>
+
+<h2 id="commands">7. Act right now</h2>
+<p>Each of your child's devices has its own buttons: <strong>Ring</strong>, <strong>Lock</strong>, <strong>Unlock</strong>, <strong>Pause</strong>, <strong>Resume</strong> and <strong>Pause net</strong>. You can also give bonus time, or warn your child that the phone will lock in a few minutes.</p>
+<p>Every command shows how far it got:</p>
+<table>
+  <tr><th>You see</th><th>It means</th></tr>
+  <tr><td>Pending — waiting for the device</td><td>Sent; the phone has not picked it up yet, for example because it is offline.</td></tr>
+  <tr><td>Delivered — awaiting device confirmation</td><td>The phone received it and is carrying it out.</td></tr>
+  <tr><td>Confirmed by device</td><td>Done on the phone.</td></tr>
+</table>
+
+<h2 id="location">8. Location and places</h2>
+<p>The family map shows where each child's phone is. Ask for a fresh location at any time. Save places such as home and school, and OSRA alerts you when your child arrives or leaves. Location history is kept for 30 days, then deleted.</p>
+
+<h2 id="alerts">9. Alerts and SOS</h2>
+<ul>
+  <li><strong>Chat safety alerts:</strong> in the chat and social apps you choose, OSRA checks the text shown on your child's screen for warning signs such as self-harm, bullying or grooming. You get an alert, and the flagged excerpt is kept encrypted for you to review. Checks use English phrases today; Arabic detection is in development.</li>
+  <li><strong>SOS:</strong> your child can send you an SOS alert from a quick-settings tile on their phone.</li>
+  <li><strong>Protection:</strong> you are told if protection is switched off or the app is tampered with.</li>
+  <li><strong>Requests:</strong> your child can ask for access to a blocked app, and you answer from your phone.</li>
+</ul>
+
+<h2 id="reports">10. Reports and email summaries</h2>
+<p>See which apps your child used and for how long. Turn on a daily or weekly email summary in the menu if you would like one.</p>
+
+<h2 id="devices">11. More devices for the same child</h2>
+<ol>
+  <li>Install OSRA Kids on the new device.</li>
+  <li>In the parent app, tap your child's name. On <strong>Overview</strong>, under <strong>Devices</strong>, tap <strong>Pair a device</strong>. Each device needs its own new code.</li>
+  <li>On the new device, repeat steps 4 and 5: scan, give it its own name, confirm, tap <strong>Allow</strong> on your phone, set the parent PIN and turn on the permissions.</li>
+</ol>
+<table>
+  <tr><th>Setting</th><th>Applies to</th></tr>
+  <tr><td>Rules: blocked apps, bedtime, school hours, web filter</td><td>Every device of that child. Change them once.</td></tr>
+  <tr><td>Ring, Lock, Unlock, Pause, Resume</td><td>The one device whose button you tap.</td></tr>
+  <tr><td>Daily screen-time limit</td><td>Each device counts its own time for now.</td></tr>
+  <tr><td>Parent PIN</td><td>Set on each device.</td></tr>
+</table>
+
+<h2 id="family">12. A second parent</h2>
+<p>The family owner can invite a second parent or guardian from <strong>Family members</strong>, then <strong>Invite member</strong>. They manage the same children with their own login, and do not need to pair the devices again.</p>
+
+<h2 id="help">13. If something goes wrong</h2>
+<ul>
+  <li><strong>The code expired or "is already being used".</strong> Tap <strong>Regenerate</strong> on your phone and scan the new code.</li>
+  <li><strong>"Your parent declined this phone."</strong> You tapped Deny. Tap <strong>Regenerate</strong> and pair again.</li>
+  <li><strong>"Your parent needs to give consent…"</strong> Open the child's profile, then <strong>Parental consent</strong>, and complete it.</li>
+  <li><strong>A command stays pending.</strong> Check the phone is online, and that its battery is set to Unrestricted.</li>
+  <li><strong>Still stuck?</strong> Email <a href="mailto:support@osratech.com">support@osratech.com</a>.</li>
+</ul>
+
+<h2 id="privacy">14. Privacy and leaving OSRA</h2>
+<p>You can withdraw consent for a child at any time, and monitoring pauses. To remove OSRA from a child's phone, you need your parent PIN. To delete your account and your family's data, see <a href="/delete-account">Delete your account</a>. How we handle data is in our <a href="/privacy">privacy policy</a>.</p>

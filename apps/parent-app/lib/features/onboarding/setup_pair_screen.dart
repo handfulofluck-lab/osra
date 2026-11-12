@@ -92,10 +92,12 @@ class SetupPairScreen extends ConsumerWidget {
           onBack: () => _backToChild(ref, context),
           onContinue: () {
             ref.read(onboardingProvider.notifier).pairingFinished();
-            context.go('/setup/done');
+            // Play decision 14 A: the parent picks the monitored apps before the hand-over.
+            context.go('/setup/monitoring?childId=${Uri.encodeQueryComponent(child.id)}');
           },
           onSkip: () {
             ref.read(onboardingProvider.notifier).pairingSkipped(childId: child.id);
+            // A parent who skips pairing has no phone to monitor yet, so the app choice would write to nothing.
             context.go('/setup/done');
           },
         );

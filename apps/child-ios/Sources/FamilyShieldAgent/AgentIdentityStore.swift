@@ -26,6 +26,7 @@ public enum AgentIdentityStore {
         static let deviceToken = "agent.deviceToken"
         static let deviceId = "agent.deviceId"
         static let familyId = "agent.familyId"
+        static let childName = "agent.childName"
     }
 
     /// Persists the identity and returns true on success, or false if the app group suite is unavailable
@@ -51,6 +52,7 @@ public enum AgentIdentityStore {
         defaults.set(identity.childId, forKey: Keys.childId)
         defaults.set(identity.deviceId, forKey: Keys.deviceId)
         defaults.set(identity.familyId, forKey: Keys.familyId)
+        if let name = identity.childName { defaults.set(name, forKey: Keys.childName) } else { defaults.removeObject(forKey: Keys.childName) }
         // No plaintext copy of a secret survives a save, whatever an older build left behind.
         defaults.removeObject(forKey: Keys.deviceToken)
         defaults.removeObject(forKey: Keys.hmacSecret)
@@ -72,7 +74,8 @@ public enum AgentIdentityStore {
             deviceId: defaults?.string(forKey: Keys.deviceId) ?? "",
             childId: childId,
             familyId: defaults?.string(forKey: Keys.familyId) ?? "",
-            hmacSecret: hmacSecret()
+            hmacSecret: hmacSecret(),
+            childName: defaults?.string(forKey: Keys.childName)
         )
     }
 
@@ -93,7 +96,7 @@ public enum AgentIdentityStore {
         secrets.delete(Keys.deviceToken)
         secrets.delete(Keys.hmacSecret)
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }
-        for key in [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId] {
+        for key in [Keys.apiBaseURL, Keys.childId, Keys.hmacSecret, Keys.deviceToken, Keys.deviceId, Keys.familyId, Keys.childName] {
             defaults.removeObject(forKey: key)
         }
     }
