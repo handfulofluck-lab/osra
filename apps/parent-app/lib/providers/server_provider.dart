@@ -29,7 +29,20 @@ String? normalizeServerUrl(String input) {
   return url;
 }
 
-/// Effective server URL (persisted override, else the API_BASE define default).
+/// osra-security#8 F3, the child's rule from #553: a build with `API_BASE` built in (the store builds) talks to
+/// that server only. The login screen shows it locked, a typed or previously saved URL is ignored, and a wake
+/// uses it too, so nobody can talk a parent into sending their email and password to another host. Builds
+/// without it (local testing) keep the editable field exactly as before.
+String? builtInServerUrl([String builtIn = kDefaultServerUrl]) => normalizeServerUrl(builtIn);
+
+/// Whether the server field is locked to [builtInServerUrl].
+bool isServerLocked([String builtIn = kDefaultServerUrl]) => builtInServerUrl(builtIn) != null;
+
+/// The server to use: the built-in one when there is one, else the saved one, else empty.
+String effectiveServerUrl({String? saved, String builtIn = kDefaultServerUrl}) =>
+    builtInServerUrl(builtIn) ?? normalizeServerUrl(saved ?? '') ?? '';
+
+/// Effective server URL ([effectiveServerUrl]: the built-in server, else the persisted one).
 final serverUrlProvider = StateNotifierProvider<ServerUrlNotifier, String>((ref) {
   final notifier = ServerUrlNotifier(ref.watch(apiClientProvider));
   notifier.load();
@@ -39,8 +52,11 @@ final serverUrlProvider = StateNotifierProvider<ServerUrlNotifier, String>((ref)
 /// Holds the effective server URL and points the shared Dio client at it.
 class ServerUrlNotifier extends StateNotifier<String> {
   final ApiClient _api;
+  final String _builtIn;
 
-  ServerUrlNotifier(this._api) : super(kDefaultServerUrl);
+  ServerUrlNotifier(this._api, {String builtIn = kDefaultServerUrl})
+      : _builtIn = builtIn,
+        super(effectiveServerUrl(builtIn: builtIn));
 
   Future<void>? _loading;
   bool _disposed = false;
@@ -59,8 +75,8 @@ class ServerUrlNotifier extends StateNotifier<String> {
   Future<void> _loadInner() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final saved = normalizeServerUrl(prefs.getString(kServerUrlKey) ?? '');
-      if (!_disposed && saved != null) state = saved;
+      final next = effectiveServerUrl(saved: prefs.getString(kServerUrlKey), builtIn: _builtIn);
+      if (!_disposed && next.isNotEmpty) state = next;
     } catch (_) {
       // prefs unavailable (e.g. tests) — keep the define default
     }
@@ -68,8 +84,10 @@ class ServerUrlNotifier extends StateNotifier<String> {
   }
 
   /// Persists [url] (normalized) and applies it to the shared Dio client.
-  /// Invalid input is ignored, keeping the current URL.
+  /// Invalid input is ignored, keeping the current URL, and so is any input in a locked build.
   Future<void> setServerUrl(String url) async {
+    // F3: a locked build never changes server, whatever is typed.
+    if (isServerLocked(_builtIn)) return;
     final normalized = normalizeServerUrl(url);
     if (normalized == null) return;
     state = normalized;
