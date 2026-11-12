@@ -75,3 +75,32 @@ sentences rather than data. Product names are written as the stores show them.
 
 A page is done when it passes the check and has been looked at in a browser in both themes at 390 px and at
 desktop width, in each language it is published in, with no horizontal scroll.
+
+## 7. Marketing pages (roadmap 3.21)
+
+The home, download and guide pages, in English (`/`, `/download/`, `/guide/`) and Arabic (`/ar/…`), are written by
+`scripts/site/marketing/build.mjs`. Do not edit their HTML by hand: change the words in `copy.en.mjs` /
+`copy.ar.mjs` or `guide.en.html` / `guide.ar.html` and run the script. `--check` (in `workflow-lint.yml`) fails when a
+page differs from its sources.
+
+- **Layout.** A marketing page has `<body class="mk">`: full-width sections (`.band`, `.band.alt` on the card colour,
+  `.promise` on `primary`) instead of one card. The legal pages keep the one-card anatomy of section 2; the script
+  only gives them the same top bar and footer.
+- **Hero.** The phone is the parent app's dashboard drawn in HTML with the tokens, in the app's own words and order
+  (`dashboard_screen.dart`, `app_en.arb` / `app_ar.arb`). It shows Calm in light and Control room in dark. It is
+  `aria-hidden` with a text alternative. Behind it, the Embrace mark at large size, in tints of `primary` and `warn`,
+  with the geometry of `scripts/brand/render.mjs` unchanged. Motion is two slow floating cards, stopped by
+  `prefers-reduced-motion`.
+- **Words.** Every product claim comes from `docs/store/play/store-listing-text.md` or the privacy policy. No
+  competitor is named; the comparison is "Questions to ask any family app" with OSRA's answer to each. No price and
+  no date beyond "closed beta December 2026" and "Mac 2027".
+- **Downloads.** Store buttons are greyed "coming with the beta" until the listings are live, then the official store
+  badges replace them. No installer is linked from GitHub Pages. OSRA Kids Full has a card and no link until its
+  release security gate is signed (its page, video and pictures are in the `/android/` PR).
+- **Social row.** `SOCIAL` in `build.mjs` is empty until OSRA's accounts exist; an empty list renders no row.
+  `--preview-social` fills it with placeholders for review screenshots only.
+- **Arabic goes live only when its Bureau has signed.** `ARABIC_PUBLISHED` in `build.mjs` controls the English pages'
+  link and hreflang to `/ar/`; it is true since the Bureau signed #670 (Karim approved the Arabic 2026-11-12). To
+  hold Arabic back again, set it false and leave `site/ar/` out in `site-pages.yml`, together.
+- **Promise band in dark** is the `raised` colour, not `primary`, so a full-width band is not a wall of light blue.
+- **No script.** The FAQ uses `details`/`summary`; nothing on these pages needs JavaScript.
