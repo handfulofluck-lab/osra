@@ -1,0 +1,1 @@
+- docs(store): the Play listing Arabic for both apps (blocks 1B and 1D) is replaced with the Arabic Language Bureau's rewrite that Karim approved on 12 Nov 2026; the same text is saved as the Arabic draft in Play Console. Arabic titles: «أسرة: رقابة أسرية ذكية» and «أسرة للأطفال».
