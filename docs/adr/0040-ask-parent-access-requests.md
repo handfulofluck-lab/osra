@@ -252,6 +252,66 @@ Parent (`app_en.arb` / `app_ar.arb`):
 | `accessRequestAlreadyAnswered` | {parent} already answered. |
 | `accessRequestNotPickedUp` | Sent. {child}'s phone hasn't picked it up yet. |
 
+### 9a. Approved Arabic (maintainer, 2026-11-12 09:26Z, through the Arabic Language Bureau)
+
+Ship these exactly as written. `request_answered` is **not approved yet** and must not ship before the maintainer
+answers. `accessRequestTimeLeft` never shows 0: under one minute it rounds up to 1, and at the end the card shows
+the grant as ended.
+
+#### Child
+
+| Key | Arabic |
+|---|---|
+| request_waiting | أُرسل طلبك. بانتظار ردّ والدك أو والدتك… |
+| request_waiting_open_app | أُرسل طلبك. افتح تطبيق أسرة للأطفال لمعرفة الردّ. |
+| request_answered | NOT APPROVED YET. Bureau wording with Karim: وصل ردّ والدك أو والدتك. اضغط لمعرفة الردّ. |
+| request_allowed | يمكنك استخدام {app} لمدة {minutes} دقيقة. (plural forms below) |
+| request_allowed_no_name | يمكنك استخدام التطبيق لمدة {minutes} دقيقة. (plural forms below) |
+| request_one_minute_left | بقيت دقيقة واحدة لاستخدام {app}. |
+| request_time_up | انتهى الوقت المسموح به لاستخدام {app}. |
+| request_denied | ردّ والدك أو والدتك: ليس الآن. |
+| request_expired | لم يصل ردّ بعد. يمكنك أن تطلب مرة أخرى. |
+| request_too_many | أرسلت طلبات كثيرة اليوم. تحدّث مع والدك أو والدتك. |
+| request_offline | تعذّر إرسال طلبك الآن. حاول مرة أخرى عندما تتصل بالإنترنت. |
+
+#### Parent
+
+| Key | Arabic |
+|---|---|
+| alertCategoryAccessRequest | طلب سماح |
+| alertTitleAccessRequest | طلب سماح من {child} |
+| accessRequestTargetApp | {app} |
+| accessRequestTargetGroup | تطبيق من مجموعة {group} |
+| accessRequestTargetUnknown | تطبيق |
+| accessRequestBlockedBy | محجوب بسبب {reason} |
+| accessRequestAllow15 | سماح لمدة 15 دقيقة |
+| accessRequestAllow30 | سماح لمدة 30 دقيقة |
+| accessRequestAllow60 | سماح لمدة ساعة |
+| accessRequestAllowCustom | مدة أخرى… |
+| accessRequestDeny | ليس الآن |
+| accessRequestAllowedBy | تم السماح لمدة {minutes} دقيقة بواسطة {parent} (plural forms below) |
+| accessRequestTimeLeft | الوقت المتبقي: {minutes} دقيقة (plural forms below) |
+| accessRequestEndNow | إنهاء الآن |
+| accessRequestDeniedBy | ردّ {parent}: ليس الآن |
+| accessRequestExpired | لم يردّ أحد في الوقت المحدد |
+| accessRequestNeedsRulesPermission | لا يمكن الرد على هذا الطلب إلا لمن يملك صلاحية تعديل القواعد. |
+| accessRequestAlreadyAnswered | تم الرد على هذا الطلب بواسطة {parent}. |
+| accessRequestNotPickedUp | تم الإرسال. لم يستلم هاتف {child} الرد بعد. |
+
+#### Minutes: the plural forms
+
+The noun changes with the number, and the form for 2 changes with its place in the sentence.
+
+| ICU category | After «لمدة» (request_allowed, request_allowed_no_name, accessRequestAllowedBy) | After «الوقت المتبقي:» (accessRequestTimeLeft) |
+|---|---|---|
+| one (1) | لمدة دقيقة واحدة | الوقت المتبقي: دقيقة واحدة |
+| two (2) | لمدة دقيقتين | الوقت المتبقي: دقيقتان |
+| few (3 to 10, 103 to 110…) | لمدة {minutes} دقائق | الوقت المتبقي: {minutes} دقائق |
+| many (11 to 99, 111 to 199…) | لمدة {minutes} دقيقة | الوقت المتبقي: {minutes} دقيقة |
+| other (100, 101, 102, 200…) | لمدة {minutes} دقيقة | الوقت المتبقي: {minutes} دقيقة |
+
+If `accessRequestTimeLeft` can show 0, ask the Bureau for that line; none is approved.
+
 ## Alternatives considered
 
 - **Keep it an alert and add an "unblock" button that edits the rule.** Rejected: it turns a short "yes" into a
