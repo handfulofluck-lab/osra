@@ -236,13 +236,36 @@ screen is next revised.
 («يراقب تطبيق أسرة…», never «تطلب أسرة»). Write «تطبيق» before the name at least the first time in any
 text, and every time the name would otherwise start the sentence or follow a verb. The family account is
 «العائلة», never «الأسرة», so the brand and the common noun cannot be confused. The children's app is
-«أسرة للأطفال». Today 29 app lines still carry `OSRA` in Latin letters; whether they move to «أسرة» is
-question 1 in "Open questions".
+«أسرة للأطفال». The maintainer decided on 2026-11-12 that this holds inside the apps too: the Latin
+`OSRA` stays only in the logo. The 29 app lines that still carry `OSRA` move to «تطبيق أسرة» (backlog on
+issue #604).
 
-**R7. Other companies' names stay as their owners write them**, in Latin letters: Google Play, YouTube,
-Chrome, WhatsApp, Instagram, TikTok, Snapchat, Android, iPhone, Samsung. The maintainer wrote «على
-YouTube» in his review of screen 08. No «ال» on them, and a prefix is joined with a tatweel and a
-space: «لـ Chrome», «على YouTube».
+**R7. Other companies' names are written in Arabic letters where Arabic has one common spelling**
+(maintainer, 2026-11-12, replacing the Bureau's earlier "always Latin"). In our own sentences write the
+spelling in the table below. A name that is not in the table comes to the Bureau before it is used.
+
+| Name | Write | |
+|---|---|---|
+| WhatsApp | «واتساب» | K 12 Nov |
+| YouTube | «يوتيوب» | K 12 Nov |
+| iPhone | «آيفون» | K 12 Nov |
+| TikTok | «تيك توك» | B |
+| Snapchat | «سناب شات» | B |
+| Android | «أندرويد» | B |
+| Chrome | «كروم» | B |
+| Google, Google Play, Instagram, Samsung | Latin letters until the maintainer picks a spelling | open question 1: the "g" sound is written «ج», «غ» or «ق» depending on the country |
+
+An Arabic-letter name takes no «ال» and joins its prefix like any Arabic word: «على يوتيوب», «وواتساب»,
+«لآيفون». A name still in Latin letters joins a one-letter prefix with a tatweel and a space («لـ
+Google»), and «و» attaches directly («وInstagram»).
+
+Three things are not covered by this rule and stay as they are:
+
+- **A label quoted from the phone's screen** (R8). The reader has to find it, so it is written letter
+  for letter as the phone draws it, inside «»: «Google Play للحماية».
+- **A name filled in at run time**: an app's label read from the child's phone, a group's name, a
+  person's name. It is shown as stored, inside FSI/PDI (R11).
+- **Abbreviations that are not company names**: SMS, PIN, QR, an email address, a web address.
 
 **R8. Name a setting the way the phone names it.** When a step tells the reader to tap something that
 Android or iOS draws, quote the phone's own Arabic label inside «». Samsung and stock Android disagree
@@ -272,7 +295,7 @@ a page serves both, give both: «افتح الإعدادات (أو الضبط ف
 **R11. Mixed direction.** A Latin word, a number with a unit, a code or a URL inside an Arabic sentence
 is isolated: FSI/PDI around placeholders in the apps (the `BlockWindowCopy` pattern), `<bdi>` or
 `dir="ltr"` in HTML, and a code such as `1234 5678` is forced left to right. Start a sentence with an
-Arabic word, not a Latin one («تطبيق WhatsApp…», not «WhatsApp…»). Pages carry `lang="ar" dir="rtl"`.
+Arabic word, not a Latin one («متجر Google Play…», not «Google Play…»). Pages carry `lang="ar" dir="rtl"`.
 
 **R12. Tone.** Calm and respectful, never frightening. We are honest that this is monitoring: any
 sentence that says what is collected, and every consent or privacy text, uses «المراقبة». Friendly and
@@ -309,6 +332,12 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-11 | His own sentence for a cloned-apps space: «هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.» It shows the register he wants in long text: full clauses, «هذا التطبيق», «الخاصية», nothing clipped | #570 |
 | 2026-11-11 | OSRA Kids is «أسرة للأطفال» | iPhone home-screen name |
 | 2026-11-12 | No competitor names on the website: «تطبيقات الرقابة الأبوية الرائدة» | #589 |
+| 2026-11-12 | The app is «تطبيق أسرة» in every Arabic sentence, inside the apps too; Latin `OSRA` only in the logo. This replaces «تطبيق OSRA» in the screen 10 and screen 11 rows above | Bureau sheet 1, A1 |
+| 2026-11-12 | Device admin is «مسؤول الجهاز» in both apps, not «مشرف الجهاز» | Bureau sheet 1, A2 |
+| 2026-11-12 | Family owner is «مدير العائلة», not «مالك العائلة» | Bureau sheet 1, A3 |
+| 2026-11-12 | The parent app keeps «محجوب الآن بسبب {reason}». «بواسطة» is for the child's screen (#569) and for a person («بواسطة {parent}») | Bureau sheet 1, A4 |
+| 2026-11-12 | Other companies' names in Arabic letters where common: «واتساب», «يوتيوب», «آيفون» (R7). This replaces «على YouTube» in the screen 08 row above | Bureau sheet 1, A5 |
+| 2026-11-12 | Approved as written on Bureau sheet 1, with A4 and A5 applied: the 11 new lines of #583, #587, #588 and #572; the 28 "Ask parent" lines of #606; the 16 fixes in the backlog on #604 | Bureau sheet 1, B, C, D |
 
 ### Word list
 
@@ -327,7 +356,8 @@ he says otherwise. A new term is added here in the PR that introduces it.
 | The family (account) | «العائلة» | «الأسرة» | K |
 | Parent or guardian | «وليّ الأمر», plural «أولياء الأمور» | «الآباء» alone; «الوصي» outside legal text | K 28 Oct |
 | Your parent (to a child) | «والدك أو والدتك» | «والديك» for one parent; «أبوك» | K 29 Oct |
-| Family owner | «مالك العائلة» | | K 30 Oct; see question 3 |
+| Family owner | «مدير العائلة» | «مالك العائلة» | K 12 Nov |
+| Device admin (the phone setting) | «مسؤول الجهاز» | «مشرف الجهاز» | K 12 Nov |
 | Co-parent | «والد مشارك» | | K 28 Oct |
 | Family member | «فرد من العائلة» | | K |
 | Child | «الطفل», «طفلك» | «الولد», «العيال» | K |
@@ -345,7 +375,8 @@ he says otherwise. A new term is added here in the PR that introduces it.
 | Always allowed | «مسموح دائمًا» | | K 31 Oct |
 | Bonus time | «وقت إضافي» | | K |
 | Block (the parent's rule, a list) | «حظر», «محظور» | | K |
-| Blocked (what the child's screen says) | «محجوب بواسطة …», «حجب والدك أو والدتك هذا التطبيق» | «محجوب بسبب» | K 11 Nov |
+| Blocked (what the child's screen says) | «محجوب بواسطة …», «حجب والدك أو والدتك هذا التطبيق» | «محجوب بسبب» on the child's screen | K 11 Nov |
+| Blocked, with the reason (parent app) | «محجوب الآن بسبب {reason}», «محجوب بسبب وقت النوم» | «بواسطة» before a rule's name in the parent app | K 12 Nov |
 | Allow | «سماح» (button), «السماح بـ …» | | K |
 | Request access | «اطلب السماح» | | K 31 Oct |
 | Web filter | «تصفية المواقع» | «تصفية الويب», «عامل تصفية الويب», «تصفية الإنترنت», «فلاتر» | K 11 Nov |
@@ -398,7 +429,7 @@ is copied from Android's own Arabic resources (`packages/apps/Settings` and `Pac
 | Accessibility | «إمكانية الوصول» | «تسهيل الاستخدام» | check |
 | Usage access | «الوصول إلى بيانات الاستخدام» | «الوصول إلى بيانات الاستخدام» | check |
 | Display over other apps | «العرض فوق التطبيقات الأخرى» | «إظهار فوق التطبيقات الأخرى» | check |
-| Device admin apps | «مسؤول الجهاز» (parent app), «مشرف الجهاز» (child PIN step): question 2 | «تطبيقات مشرف الجهاز» | «تطبيقات مسؤول الجهاز» |
+| Device admin apps | «مسؤول الجهاز» (K 12 Nov; the child PIN step still says «مشرف الجهاز», backlog #604) | «تطبيقات مشرف الجهاز» | «تطبيقات مسؤول الجهاز» |
 | Allow from this source | none yet | «السماح بتثبيت تطبيقات من هذا المصدر» | check |
 | Installer buttons | none yet | «تثبيت», «فتح», «تم», «الإعدادات» | check |
 | Full-screen notifications | «تنبيهات ملء الشاشة» | «عرض الإشعارات بملء الشاشة» | check |
@@ -428,7 +459,8 @@ consistent inside OSRA matters more than copying any one of them.
 
 What they share, and we follow: full sentences with a stated subject («يمكن لأولياء الأمور وضع جداول
 زمنية يومية…»); steps as imperatives that name the app with «تطبيق» before it («افتح تطبيق "الإعدادات"
-على الجهاز.»); «تنزيل» for download; Western digits; product names in Latin letters. Kaspersky's guide
+على الجهاز.»); «تنزيل» for download; Western digits. They also write product names in Latin letters; there the
+maintainer chose differently (R7). Kaspersky's guide
 for parents speaks to the parent as «أنت» and calls the child «طفلك», and it is open with the child
 about what the app is for, which is the tone R12 asks for.
 
@@ -436,15 +468,17 @@ about what the app is for, which is the tone R12 asks for.
 
 The Bureau's recommendation is in use until he answers. The answers are recorded here.
 
-1. **The brand inside the apps' Arabic sentences.** The website, the emails, the store listing and his
-   own push text say «أسرة»; 15 parent-app lines and 14 child-app lines say `OSRA`. Recommended: «تطبيق
-   أسرة» everywhere in Arabic text, and the Latin `OSRA` only in the logo.
-2. **One name for device admin.** Recommended: «مسؤول الجهاز», which is what Samsung phones show and
-   what he approved most recently (#552).
-3. **«مالك العائلة».** It can read as "the one who owns the family". Recommended: «مدير العائلة».
-4. **The parent app's «محجوب الآن بسبب {reason}».** Recommended: follow the child screen and say
-   «محجوب الآن بواسطة {reason}».
-5. **Other companies' names.** Recommended: Latin letters always (R7), as in his «على YouTube».
+1. **How to spell names with a "g" sound** (Google, Google Play, Instagram, Samsung). Egyptian
+   newspapers write «جوجل», most pan-Arab news sites «غوغل», many Saudi writers «قوقل»; Google's own
+   Arabic pages write `Google`. Recommended: keep these few names in Latin letters. Asked 2026-11-12.
+
+Answered on 2026-11-12 (Bureau sheet 1, cards A1 to A5; each is a row in "Karim's corrections"):
+
+- The brand inside the apps' Arabic sentences: «تطبيق أسرة» everywhere, Latin `OSRA` only in the logo.
+- One name for device admin: «مسؤول الجهاز».
+- Family owner: «مدير العائلة».
+- The parent app's blocked line: keeps «بسبب» (the Bureau had recommended «بواسطة»).
+- Other companies' names: Arabic letters where common (the Bureau had recommended Latin always).
 
 ### Known gaps
 
