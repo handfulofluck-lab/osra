@@ -14,7 +14,7 @@ import '../../providers/family_provider.dart';
 import '../rules/rules_behind_banner.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
-import '../dashboard/dashboard_screen.dart' show formatLastSeen, isDeviceOnline;
+import '../dashboard/dashboard_screen.dart' show formatLastSeen;
 import '../pairing/pair_qr_screen.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView;
@@ -259,9 +259,9 @@ class _OverviewTab extends ConsumerWidget {
     );
   }
 
-  /// Online when the device checked in within [kDeviceOnlineWindow].
+  /// The server's judgement (`Device.status`), never a clock rule on this phone (#601).
   static String _statusLabel(BuildContext context, Device d) =>
-      isDeviceOnline(d.lastSeen) ? context.l10n.statusOnline : context.l10n.statusOffline;
+      d.isOnline ? context.l10n.statusOnline : context.l10n.statusOffline;
 }
 
 /// Compact latest-command line on a device card. It reports the durable
