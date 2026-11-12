@@ -106,6 +106,10 @@ public struct AgentRootView: View {
     @State private var askingRepairPin = false
     @State private var locationGrant: LocationGrant = .noAccess
     @State private var locationAction: LocationPermissionAction = .hidden
+    /// #602: when the rules were last synced, and the Sync now button's state.
+    @State private var syncedAt: Date? = RuleStore.syncedAt()
+    @State private var syncing = false
+    @State private var syncFailed = false
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
     #endif
@@ -122,11 +126,27 @@ public struct AgentRootView: View {
                     Section(header: Text(L10n.tr("pair_section_title"))) {
                         Label(L10n.tr("status_paired"), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
-                        LabeledContent(L10n.tr("status_child"), value: identity.childId)
-                        LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
-                        if !identity.deviceId.isEmpty {
-                            LabeledContent(L10n.tr("status_device"), value: identity.deviceId)
+                        // #602: the child's name, never a raw id; the device id is not shown at all.
+                        if let name = identity.childName {
+                            LabeledContent(L10n.tr("status_child_name"), value: name)
                         }
+                        LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
+                            Text(SyncStatus.text(state, now: context.date))
+                                .foregroundStyle(stale(state) ? Color.orange : Color.secondary)
+                        }
+                    }
+                    Section {
+                        Button(syncing ? L10n.tr("status_syncing") : L10n.tr("status_sync_now")) {
+                            Task { await syncNow() }
+                        }
+                        .disabled(syncing)
+                        if syncFailed {
+                            Text(L10n.tr("status_sync_failed")).foregroundStyle(.red)
+                        }
+                    } footer: {
+                        Text(L10n.tr("status_sync_note"))
                     }
                     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
@@ -222,6 +242,7 @@ public struct AgentRootView: View {
             await LocationController.shared.flush()
             // ADR-0034 A6: each app open also sends the capability report.
             await LocationController.shared.reportGrant()
+            syncedAt = RuleStore.syncedAt()
         }
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -231,6 +252,25 @@ public struct AgentRootView: View {
             screenTime.refresh()
             #endif
         }
+    }
+
+    /// #602 item 4: what an app open does, on demand (a push wake can take minutes in the background).
+    private func syncNow() async {
+        syncing = true
+        syncFailed = false
+        defer { syncing = false }
+        let drained = await CommandDrainer.drainNow()
+        if drained.consentWithdrawn { await LocationController.shared.stopForConsent() }
+        let synced = await RuleSyncer.syncNow()
+        await LocationController.shared.apply(synced)
+        await LocationController.shared.reportGrant()
+        syncFailed = !SyncStatus.succeeded(synced)
+        syncedAt = RuleStore.syncedAt()
+    }
+
+    private func stale(_ state: SyncStatus.State) -> Bool {
+        if case .stale = state { return true }
+        return false
     }
 
     private static func label(_ grant: LocationGrant) -> String {

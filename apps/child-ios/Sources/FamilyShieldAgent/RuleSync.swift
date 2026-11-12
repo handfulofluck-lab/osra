@@ -183,6 +183,12 @@ public enum RuleStore {
         return (try? JSONDecoder().decode([RoutineSchedule].self, from: data)) ?? []
     }
 
+    /// #602: when the rules were last fetched and stored; nil before the first sync.
+    public static func syncedAt() -> Date? {
+        guard let defaults, defaults.object(forKey: Keys.syncedAt) != nil else { return nil }
+        return Date(timeIntervalSince1970: defaults.double(forKey: Keys.syncedAt))
+    }
+
     public static func allowedApps() -> [String] { defaults?.stringArray(forKey: Keys.allowedApps) ?? [] }
     public static func blockedApps() -> [String] { defaults?.stringArray(forKey: Keys.blockedApps) ?? [] }
     public static func bedtimeStart() -> String? { defaults?.string(forKey: Keys.bedtimeStart) }
