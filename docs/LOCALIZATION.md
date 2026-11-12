@@ -262,6 +262,7 @@ spelling in the table below. A name that is not in the table comes to the Bureau
 | iPad | «آيباد» | B, from «آيفون» |
 | Windows | «ويندوز» | B |
 | Mac | «ماك» | B |
+| Intel | «إنتل» | B (AMD and ARM are initials and stay Latin) |
 
 The "g" sound in a foreign name is written «ج» (maintainer, 2026-11-12), never «غ» or «ق»: «جوجل», not
 «غوغل» or «قوقل».
@@ -443,6 +444,9 @@ he says otherwise. A new term is added here in the PR that introduces it.
 | Pairing code, QR code | «رمز الإقران», «رمز QR» | «رمز الربط» | K |
 | Scan | «امسح» | | K |
 | Parent PIN | «رمز PIN للوالدين» | | K |
+| Administrator account, Standard account (Windows, macOS) | «حساب مسؤول», «حساب قياسي» | «حساب عادي» | B: the systems' own Arabic; to be read once on a PC and a Mac set to Arabic before the Windows and Mac pages are public. The Windows requirements line also shows (Administrator) and (Standard) |
+| Add a computer (parent app) | «إضافة كمبيوتر», then «ويندوز» or «ماك» | | B: the Windows and Mac pages quote these, so the app uses them when the feature is built |
+| OSRA Kids on a computer | «تطبيق أسرة للأطفال على الكمبيوتر», «… على جهاز ماك» | «تطبيق أسرة» for the app on the child's computer | B |
 | Consent | «الموافقة», «موافقة الوالدين», «سحب الموافقة», «سارية» | | K |
 | Server | «الخادم» | | K |
 | Sign in, sign out | «تسجيل الدخول», «تسجيل الخروج» | | K |
