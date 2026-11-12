@@ -103,7 +103,8 @@ void main() {
 
   testWidgets('the Arabic copy renders, so the step is not English-only on an Arabic phone', (tester) async {
     await pump(tester, locale: const Locale('ar'));
-    expect(find.text('أي التطبيقات تريد أن يراقبها أسرة؟'), findsOneWidget);
+    // Karim's approved copy, 2026-11-12 09:26Z (Arabic Language Bureau, #604).
+    expect(find.text('أي التطبيقات تريد أن يراقبها تطبيق أسرة؟'), findsOneWidget);
     expect(find.text('متابعة'), findsOneWidget);
   });
 
