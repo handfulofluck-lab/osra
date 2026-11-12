@@ -49,10 +49,13 @@ public final class ScreenTimeController {
     /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are
     /// picker tokens, so iOS shows the OSRA shield (and Ask parent) instead of hiding the app, which is what
     /// `blockedApplications` does for the bundle-id rules above.
-    public func applyGroups(_ groups: AppGroupList<FamilyActivitySelection>) {
+    /// [serverBlocked]: the groups the parent blocked from the parent app (ADR-0037 PR B3); the last synced set by
+    /// default, so the groups screen's own commits keep them.
+    public func applyGroups(_ groups: AppGroupList<FamilyActivitySelection>,
+                            serverBlocked: Set<String> = RuleStore.blockedGroupIds()) {
         guard ensureAuthorized(#function) else { return }
         let store = ManagedSettingsStore(named: Self.groupsStoreName)
-        let selections = groups.blockedSelections
+        let selections = groups.blockedSelections(alsoBlocked: serverBlocked)
         let apps = selections.reduce(into: Set<ApplicationToken>()) { $0.formUnion($1.applicationTokens) }
         let categories = selections.reduce(into: Set<ActivityCategoryToken>()) { $0.formUnion($1.categoryTokens) }
         let sites = selections.reduce(into: Set<WebDomainToken>()) { $0.formUnion($1.webDomainTokens) }
@@ -119,7 +122,7 @@ public final class ScreenTimeController {
     /// routine activity.
     public func applyRules(_ rules: RuleSet) throws {
         applyBlockedApps(packageIds: rules.blockedBundleIdentifiers)
-        applyGroups(AppGroupStore<FamilyActivitySelection>().load())
+        applyGroups(AppGroupStore<FamilyActivitySelection>().load(), serverBlocked: Set(rules.blockedGroupIds))
         applyWebFilter(blockedCategories: rules.webFilter.blockedCategories,
                        blockedDomains: rules.webFilter.blockedDomains)
         guard ensureAuthorized(#function) else { throw ApplyError.notAuthorized }

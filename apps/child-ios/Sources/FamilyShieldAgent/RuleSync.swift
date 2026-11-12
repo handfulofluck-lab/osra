@@ -35,6 +35,13 @@ public struct RuleSet: Decodable, Equatable {
         public var dailyLimitMinutes: Int?
     }
 
+    /// ADR-0037 PR B3: a rule on one of this phone's app groups, by the id the phone reported.
+    public struct AppGroupRule: Decodable, Equatable {
+        public var groupId: String
+        /// "block" (limits are PR C).
+        public var action: String
+    }
+
     public struct Routine: Decodable, Equatable {
         public var id: String?
         public var name: String
@@ -51,6 +58,8 @@ public struct RuleSet: Decodable, Equatable {
     public var appRules: [AppRule]
     public var routines: [Routine]
     public var alwaysAllowedApps: [String]
+    /// ADR-0037 PR B3: absent from a server before B3a, read as none.
+    public var appGroupRules: [AppGroupRule]?
     /// #475: the version the server bumps on every rule write. Absent from an older server, read as 1.
     public var rulesVersion: Int?
 
@@ -60,6 +69,12 @@ public struct RuleSet: Decodable, Equatable {
     /// Bundle identifiers the parent blocked outright (`action == "block"`).
     public var blockedBundleIdentifiers: [String] {
         appRules.filter { $0.action == "block" }.map(\.packageId)
+    }
+
+    /// ADR-0037 PR B3: the app groups the parent blocked from the parent app, lowercased (the phone makes the ids
+    /// with `UUID().uuidString`, upper case; the server may hand them back in either case).
+    public var blockedGroupIds: [String] {
+        Array(Set((appGroupRules ?? []).filter { $0.action == "block" }.map { $0.groupId.lowercased() })).sorted()
     }
 
     /// Bundle identifiers the parent explicitly allowed (`action == "allow"`).
@@ -129,6 +144,7 @@ public enum RuleStore {
         static let unscheduled = "rules.unscheduledActivities"
         static let syncedAt = "rules.syncedAt"
         static let appliedRulesVersion = "rules.appliedVersion"
+        static let blockedGroupIds = "rules.blockedGroupIds"
     }
 
     /// One routine, with its days already in Foundation's weekday numbering.
@@ -151,6 +167,7 @@ public enum RuleStore {
         defaults.set(rules.screenTime.bedtimeEnd, forKey: Keys.bedtimeEnd)
         defaults.set(rules.webFilter.blockedDomains, forKey: Keys.blockedDomains)
         defaults.set(rules.webFilter.blockedCategories, forKey: Keys.blockedCategories)
+        defaults.set(rules.blockedGroupIds, forKey: Keys.blockedGroupIds)
         let schedules = rules.routines.map {
             RoutineSchedule(name: $0.name, startTime: $0.startTime, endTime: $0.endTime,
                             swiftWeekdays: $0.days.compactMap(Weekday.swiftWeekday(ruleDay:)),
@@ -171,6 +188,8 @@ public enum RuleStore {
     public static func bedtimeStart() -> String? { defaults?.string(forKey: Keys.bedtimeStart) }
     public static func bedtimeEnd() -> String? { defaults?.string(forKey: Keys.bedtimeEnd) }
     public static func alwaysAllowedApps() -> [String] { defaults?.stringArray(forKey: Keys.alwaysAllowedApps) ?? [] }
+    /// ADR-0037 PR B3: the groups blocked from the parent app, as of the last sync (kept when offline).
+    public static func blockedGroupIds() -> Set<String> { Set(defaults?.stringArray(forKey: Keys.blockedGroupIds) ?? []) }
 
     /// Records the bedtime or routine activities the system refused to monitor, in one place: the parent
     /// would otherwise believe they apply. Empty when everything was registered.
@@ -196,7 +215,7 @@ public enum RuleStore {
         guard let defaults else { return }
         for key in [Keys.blockedApps, Keys.allowedApps, Keys.alwaysAllowedApps, Keys.bedtimeStart, Keys.bedtimeEnd,
                     Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.unscheduled, Keys.syncedAt,
-                    Keys.appliedRulesVersion] {
+                    Keys.appliedRulesVersion, Keys.blockedGroupIds] {
             defaults.removeObject(forKey: key)
         }
     }
