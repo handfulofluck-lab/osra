@@ -140,6 +140,11 @@ jobs:
             BADGING=$("$AAPT" dump badging "$APK")
             grep -q "targetSdkVersion:'35'" <<<"$BADGING" || { echo "::error::$APK does not target 35"; exit 1; }
             echo "$FLAVOUR release: targetSdk 35"
+            # ADR-0039 R1: each flavour must carry its own application id. A Full APK with the Play id would be
+            # refused by the store, and a Play APK with the Full id would install beside it on a child's phone.
+            if [ "$FLAVOUR" = "full" ]; then WANT_PKG="com.osratech.child.full"; else WANT_PKG="com.osratech.child"; fi
+            grep -q "package: name='$WANT_PKG'" <<<"$BADGING"               || { echo "::error::$APK is $(grep -o "package: name='[^']*'" <<<"$BADGING"), not $WANT_PKG"; exit 1; }
+            echo "$FLAVOUR release: package $WANT_PKG"
           done
           # The release config is the one in src/main (src/debug overrides it for the debug build only).
           grep -q 'cleartextTrafficPermitted="false"' app/src/main/res/xml/network_security_config.xml \
