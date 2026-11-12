@@ -344,6 +344,8 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-12 | The parent app keeps «محجوب الآن بسبب {reason}». «بواسطة» is for the child's screen (#569) and for a person («بواسطة {parent}») | Bureau sheet 1, A4 |
 | 2026-11-12 | Other companies' names in Arabic letters where common: «واتساب», «يوتيوب», «آيفون» (R7). This replaces «على YouTube» in the screen 08 row above | Bureau sheet 1, A5 |
 | 2026-11-12 | The "g" sound in a company's name is «ج»: «جوجل», «إنستجرام», «سامسونج» | card, 10:06Z |
+| 2026-11-12 | "Sync" on the child's phone is «تحديث»: «آخر تحديث: {time}», «تحديث الآن», «جارٍ التحديث…» (he chose it over «مزامنة») | card, 12:55Z |
+| 2026-11-12 | Applied line by line and approved: the 45 lines of Bureau sheet 2 (parent app, Android child app, deletion page, emails) and the 76 lines of OSRA Kids on iPhone | cards, 12:54Z and 11:20Z; text on #604 |
 | 2026-11-12 | Approved as written on Bureau sheet 1, with A4 and A5 applied: the 11 new lines of #583, #587, #588 and #572; the 28 "Ask parent" lines of #606; the 16 fixes in the backlog on #604 | Bureau sheet 1, B, C, D |
 
 ### Word list
