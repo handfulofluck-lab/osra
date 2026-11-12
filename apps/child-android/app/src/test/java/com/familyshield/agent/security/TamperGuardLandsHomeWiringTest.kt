@@ -30,8 +30,10 @@ class TamperGuardLandsHomeWiringTest {
 
     @Test
     fun `the guard opens the gate without sending BACK first`() {
+        // osra-security#7: the launch moved into stepIn, which the guard and the cover share.
         val guard = service.substringAfter("private fun guardProtectionScreens(", missingDelimiterValue = "")
-            .substringBefore("\n    private ", missingDelimiterValue = "")
+            .substringBefore("private fun coverSharedProtectionScreens(", missingDelimiterValue = "")
+        assertTrue("the guard steps in", guard.contains("stepIn(screen, pkg, now)"))
         assertTrue("guardProtectionScreens is where it was", guard.contains("TamperGuardTaskActivity::class.java"))
         assertFalse("no BACK before the gate", guard.contains("GLOBAL_ACTION_BACK"))
         assertFalse("and no HOME, which would defer the gate's launch (#460)", guard.contains("GLOBAL_ACTION_HOME"))

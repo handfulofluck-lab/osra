@@ -90,8 +90,9 @@ devices and publishes the family event; from then on parent configuration writes
 ingestion/reads answer 428, while safe-direction actions stay available. Withdrawal itself deletes
 nothing: existing rows stay until the retention job (`RETENTION_DAYS`, default 90 for raw events;
 `LOCATION_RETENTION_DAYS`, default 30 for location pings, never above `RETENTION_DAYS` — ADR-0028
-decision 5; `ROLLUP_RETENTION_DAYS`, default 365 for usage summaries; alerts and device commands are
-kept until erasure) or until `DELETE /v1/family/children/:id` erases the child. A client must not claim
+decision 5; `ROLLUP_RETENTION_DAYS`, default 365 for usage summaries; `ALERT_RETENTION_DAYS`, default 365
+for alerts, which may be lowered but never raised — Play decision 10 B; device commands are kept until
+erasure) or until `DELETE /v1/family/children/:id` erases the child. A client must not claim
 that withdrawal deletes or anonymises data.
 
 **Account deletion (#442).** `DELETE /v1/family` (owner) deletes the whole family: every child through
@@ -229,7 +230,7 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
     empty days; `minutes` is the device-reported total when any device sent one, else the per-app sum)
     and GET /web?childId&days=1..90&limit&blocked=true|false&domain (browsing history from `WebVisit`).
     Nightly job `src/jobs/usageRollup.ts` reconciles yesterday from ActivityEvent and applies
-    retention (`RETENTION_DAYS`, `LOCATION_RETENTION_DAYS`, `ROLLUP_RETENTION_DAYS`).
+    retention (`RETENTION_DAYS`, `LOCATION_RETENTION_DAYS`, `ROLLUP_RETENTION_DAYS`, `ALERT_RETENTION_DAYS`).
 - src/routes/devices.ts — GENERATE THIS:
     POST /register; GET /; GET /:id (+last 24h telemetry summary); POST /:id/command
     (lock, unlock, ring, sos_clear — Redis pub/sub channel `device:${deviceId}:commands`);

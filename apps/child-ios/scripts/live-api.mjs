@@ -126,7 +126,16 @@ async function verify() {
   if (childRes.status !== 200) fail(`GET /v1/family/children/:id answered ${childRes.status}`);
   if (!(rulesVersion >= 2)) fail(`rulesVersion is ${JSON.stringify(rulesVersion)}, expected at least 2 after setup's PUT`);
   if (appliedRulesVersion !== rulesVersion) fail(`appliedRulesVersion is ${JSON.stringify(appliedRulesVersion)}, expected ${rulesVersion}`);
-  console.log("live-api: the parent sees the iOS agent's alert, location and applied rules version");
+  // Case 11 (ADR-0037, 5.5 PR B2): the group the phone reported, as the parent's device list shows it. Same values
+  // as `LiveAPITests.liveGroup`.
+  const groups = device?.setup?.groups;
+  console.log(`app groups as the parent sees them: ${JSON.stringify(groups ?? null)}`);
+  const want = { id: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B", label: "Live group", apps: 3, categories: 1, sites: 2 };
+  if (!Array.isArray(groups) || groups.length !== 1) fail(`setup.groups is ${JSON.stringify(groups)}, expected exactly one group`);
+  for (const [k, v] of Object.entries(want)) {
+    if (String(groups[0][k]).toLowerCase() !== String(v).toLowerCase()) fail(`setup.groups[0].${k} is ${JSON.stringify(groups[0][k])}, expected ${JSON.stringify(v)}`);
+  }
+  console.log("live-api: the parent sees the iOS agent's alert, location, applied rules version and app group");
 }
 
 /**
