@@ -4,6 +4,8 @@
   maintainer's (product scope): on 2026-11-11 at 15:46Z he chose **start now, in parallel** with iOS and
   Android (decision card in the project thread).
 - **Roadmap:** new row **5.9** (design recorded; build not started). Not part of the Phase 5 gate.
+- **Amended by:** ADR-0041 D7 (2026-11-12): the Mac is now launch scope, public with the iPhone. Build
+  rule 4 below no longer holds; everything else does.
 - **Deciders:** Claude (architecture); Karim (timing)
 - **Supersedes:** the "Screen Time path (macOS 13+)" paragraph and next step 4 of
   `apps/agent-macos/README.md`, which assumed `FamilyControls` works on macOS. It does not (below).
