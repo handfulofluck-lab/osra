@@ -150,7 +150,7 @@ object FullUpdatePolicy {
         if (now.isAfter(expiresAt)) {
             return UpdateDecision.Refused(UpdateRefusal.expired)
         }
-        if (manifest.versionCode <= facts.installedVersionCode) {
+        if (manifest.versionCode < facts.installedVersionCode) {
             return UpdateDecision.Refused(UpdateRefusal.not_newer)
         }
         if (manifest.versionCode < facts.highestSeenVersionCode) {
