@@ -101,6 +101,21 @@ public enum AgentIdentityStore {
         }
     }
 
+    /// #634 G1 (osra-security#10): the server lock must hold across an upgrade. A build that carries its server
+    /// (`PairingServerField.builtIn`) installed over an install paired with another server would otherwise keep
+    /// syncing with that one, because the lock only guards the pairing screen. So at launch a pairing with any
+    /// other server is cleared, with its rules, and the phone shows the locked pairing screen; the parent sees the
+    /// device go unpaired. Returns true when it cleared one. A build without a built-in server changes nothing.
+    @discardableResult
+    public static func clearIfNotBuiltInServer(_ builtIn: URL?) -> Bool {
+        guard let builtIn, let stored = UserDefaults(suiteName: suiteName)?.string(forKey: Keys.apiBaseURL) else {
+            return false
+        }
+        if PairingServerField.sameServer(stored, builtIn) { return false }
+        clear()
+        return true
+    }
+
     /// Deletes Keychain secrets that no paired identity owns, and returns true when it found some.
     ///
     /// Keychain items survive deleting the app; the app-group `UserDefaults` do not. So after a reinstall

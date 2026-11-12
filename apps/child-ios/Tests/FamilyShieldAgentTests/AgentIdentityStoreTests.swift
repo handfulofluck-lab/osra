@@ -160,6 +160,57 @@ final class AgentIdentityStoreTests: XCTestCase {
         XCTAssertFalse(AgentIdentityStore.save(identity), "a save the Keychain refuses reports failure")
         AgentIdentityStore.secrets = store
     }
+
+    // MARK: - #634 G1: the server lock holds across an upgrade (osra-security#10)
+
+    func testALockedBuildDropsAPairingWithAnotherServer() {
+        XCTAssertTrue(AgentIdentityStore.save(identity))
+        store.write("pbkdf2$1$AA==$AA==", for: ParentPinStore.account)
+        let builtIn = URL(string: "https://api.staging.example.invalid")!
+        XCTAssertTrue(AgentIdentityStore.clearIfNotBuiltInServer(builtIn))
+        XCTAssertNil(AgentIdentityStore.load(), "the old pairing is gone, so the locked pairing screen shows")
+        XCTAssertNil(store.read(AgentIdentityStore.Keys.deviceToken))
+        XCTAssertNil(store.read(AgentIdentityStore.Keys.hmacSecret))
+        XCTAssertNil(defaults.string(forKey: AgentIdentityStore.Keys.apiBaseURL))
+        XCTAssertTrue(AgentIdentityStore.clearOrphanedSecrets(), "launch runs this next: the old parent PIN goes too")
+        XCTAssertNil(store.read(ParentPinStore.account))
+    }
+
+    func testALockedBuildKeepsAPairingWithItsOwnServer() {
+        XCTAssertTrue(AgentIdentityStore.save(identity))
+        for builtIn in ["https://api.example.invalid", "https://API.example.invalid/", "https://api.example.invalid:443"] {
+            XCTAssertFalse(AgentIdentityStore.clearIfNotBuiltInServer(URL(string: builtIn)!), builtIn)
+            XCTAssertEqual(AgentIdentityStore.load(), identity, builtIn)
+        }
+    }
+
+    func testABuildWithoutABuiltInServerChangesNothing() {
+        XCTAssertTrue(AgentIdentityStore.save(identity))
+        XCTAssertFalse(AgentIdentityStore.clearIfNotBuiltInServer(nil))
+        XCTAssertEqual(AgentIdentityStore.load(), identity)
+        XCTAssertFalse(AgentIdentityStore.clearIfNotBuiltInServer(URL(string: "https://api.staging.example.invalid")!),
+                       "nothing paired, nothing to clear")
+    }
+
+    func testOnlyTheSameServerCountsAsTheSame() {
+        let builtIn = URL(string: "https://api.example.invalid")!
+        XCTAssertTrue(PairingServerField.sameServer("https://api.example.invalid/", builtIn))
+        XCTAssertTrue(PairingServerField.sameServer(" https://Api.Example.invalid ", builtIn))
+        XCTAssertFalse(PairingServerField.sameServer("http://api.example.invalid", builtIn), "http is another server")
+        XCTAssertFalse(PairingServerField.sameServer("https://api.example.invalid:8443", builtIn))
+        XCTAssertFalse(PairingServerField.sameServer("https://api.example.invalid/v2", builtIn))
+        XCTAssertFalse(PairingServerField.sameServer("http://192.0.2.5:3000", builtIn))
+        XCTAssertFalse(PairingServerField.sameServer("not a url", builtIn))
+    }
+
+    func testTheAppRunsTheServerLockBeforeTheOrphanSweep() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("App/OSRAAgentApp.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let lock = try XCTUnwrap(text.range(of: "AgentIdentityStore.clearIfNotBuiltInServer(PairingServerField.builtIn())"))
+        let sweep = try XCTUnwrap(text.range(of: "AgentIdentityStore.clearOrphanedSecrets()"))
+        XCTAssertLessThan(lock.lowerBound, sweep.lowerBound)
+    }
 }
 
 /// The `SecretStore` contract, in memory.
