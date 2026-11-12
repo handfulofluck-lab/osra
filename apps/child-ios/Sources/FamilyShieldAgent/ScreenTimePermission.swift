@@ -25,19 +25,19 @@ public struct ScreenTimeRow: Equatable {
     public let showsButton: Bool
     public let footer: String
 
-    public static let buttonTitle = "Turn on Screen Time"
+    public static var buttonTitle: String { L10n.tr("screen_time_button") }
 
     public static func of(_ status: ScreenTimeStatus) -> ScreenTimeRow {
         switch status {
         case .notDetermined:
-            return ScreenTimeRow(value: "Off", showsButton: true,
-                                 footer: "Your parents' app limits and blocks need Screen Time. Tap \"\(buttonTitle)\" and allow it.")
+            return ScreenTimeRow(value: L10n.tr("screen_time_off"), showsButton: true,
+                                 footer: L10n.tr("screen_time_footer_off"))
         case .approved:
-            return ScreenTimeRow(value: "On", showsButton: false,
-                                 footer: "Your parents' app limits and blocks are applied on this device.")
+            return ScreenTimeRow(value: L10n.tr("screen_time_on"), showsButton: false,
+                                 footer: L10n.tr("screen_time_footer_on"))
         case .denied:
-            return ScreenTimeRow(value: "Not allowed", showsButton: true,
-                                 footer: "Screen Time was not allowed, so your parents' limits are not applied. Tap \"\(buttonTitle)\" again, or ask a parent to open Settings > Screen Time and allow OSRA Kids.")
+            return ScreenTimeRow(value: L10n.tr("screen_time_not_allowed"), showsButton: true,
+                                 footer: L10n.tr("screen_time_footer_denied"))
         }
     }
 }

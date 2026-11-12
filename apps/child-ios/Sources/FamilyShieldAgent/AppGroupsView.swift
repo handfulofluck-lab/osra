@@ -21,25 +21,25 @@ public struct AppGroupsView: View {
     public var body: some View {
         Form {
             if list.groups.isEmpty {
-                Section { Text("No groups yet.").foregroundStyle(.secondary) }
+                Section { Text(L10n.tr("groups_empty")).foregroundStyle(.secondary) }
             }
             ForEach(list.groups, id: \.id) { group in
                 let byParentApp = list.isBlockedByParentApp(id: group.id, serverBlocked: serverBlocked)
                 Section {
                     // ADR-0037 PR B3: a group blocked from the parent app stays blocked here; only the parent app
                     // can lift that block.
-                    Toggle("Blocked", isOn: Binding(
+                    Toggle(L10n.tr("groups_blocked"), isOn: Binding(
                         get: { group.blocked || byParentApp },
                         set: { list.setBlocked($0, id: group.id); commit() }
                     ))
                     .disabled(byParentApp)
-                    LabeledContent("Chosen", value: group.counts.summary)
-                    Button("Change apps") {
+                    LabeledContent(L10n.tr("groups_chosen"), value: group.counts.summary)
+                    Button(L10n.tr("groups_change")) {
                         editingId = group.id
                         editSelection = group.selection
                         pickingEdit = true
                     }
-                    Button("Delete group", role: .destructive) {
+                    Button(L10n.tr("groups_delete"), role: .destructive) {
                         list.remove(id: group.id)
                         commit()
                     }
@@ -47,25 +47,25 @@ public struct AppGroupsView: View {
                     Text(group.label)
                 } footer: {
                     if group.counts.isEmpty {
-                        Text("Nothing is chosen, so this group blocks nothing. Tap \"Change apps\" to choose again.")
+                        Text(L10n.tr("groups_empty_footer"))
                     } else if byParentApp {
-                        Text("Blocked from the parent app.")
+                        Text(L10n.tr("groups_by_parent"))
                     }
                 }
             }
             Section {
-                TextField("Group name, e.g. Games", text: $newLabel)
-                Button("Choose apps") { pickingNew = true }
-                LabeledContent("Chosen", value: newSelection.counts.summary)
-                Button("Add group") { addGroup() }
+                TextField(L10n.tr("groups_name_field"), text: $newLabel)
+                Button(L10n.tr("groups_choose")) { pickingNew = true }
+                LabeledContent(L10n.tr("groups_chosen"), value: newSelection.counts.summary)
+                Button(L10n.tr("groups_add")) { addGroup() }
                 if let error { Text(error).foregroundStyle(.red) }
             } header: {
-                Text("New group")
+                Text(L10n.tr("groups_new"))
             } footer: {
-                Text("Up to \(AppGroupLabel.maxLength) characters. Blocked apps show the OSRA screen with \"Ask parent\".")
+                Text(L10n.tr("groups_new_footer"))
             }
         }
-        .navigationTitle("App groups")
+        .navigationTitle(L10n.tr("groups"))
         .familyActivityPicker(isPresented: $pickingNew, selection: $newSelection)
         .familyActivityPicker(isPresented: $pickingEdit, selection: $editSelection)
         .onChange(of: pickingEdit) { stillPicking in
@@ -78,13 +78,13 @@ public struct AppGroupsView: View {
 
     private func addGroup() {
         guard !newSelection.counts.isEmpty else {
-            error = "Choose at least one app, category or website."
+            error = L10n.tr("groups_error_choose")
             return
         }
         guard list.add(label: newLabel, selection: newSelection, blocked: true) != nil else {
             error = AppGroupLabel.sanitize(newLabel) == nil
-                ? "Give the group a name."
-                : "There can be at most \(AppGroupList<FamilyActivitySelection>.maxGroups) groups."
+                ? L10n.tr("groups_error_name")
+                : L10n.tr("groups_error_max")
             return
         }
         error = nil
