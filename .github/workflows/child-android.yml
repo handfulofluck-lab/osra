@@ -130,6 +130,32 @@ jobs:
           else
             echo "::warning::no upload key configured: this bundle is debug-signed and Play will refuse it"
           fi
+      # ADR-0039 D2: the key is chosen on the FLAVOUR, and a `signingConfig` on the build type silently
+      # overrides it — that is how Full once shipped on the store key while the flavour block looked right
+      # (#659). A key-less assertion cannot catch it: with no keys both flavours resolve to debug. Two
+      # throwaway keys made in the job tell the two policies apart and never leave the runner — each is
+      # valid for a day and readable only by this run. Passwords are six characters or more because
+      # keytool refuses shorter ones, which is the trap in the first version of this step.
+      - name: Each flavour signs with its own key (ADR-0039 D2, throwaway CI keys)
+        run: |
+          # A release build with a keystore refuses to configure without google-services.json (see the
+          # materialise step), so this check runs only where that file exists: on this repository's CI it
+          # does; on a fork it does not, and a red step there would say "Firebase config missing", not
+          # "signing is wrong". The durable guard for the real keys is full-release.yml (PR C).
+          if [ ! -f app/google-services.json ]; then
+            echo "::warning::no google-services.json, so the throwaway-key signing check is skipped; the real-key guard is full-release.yml"
+            exit 0
+          fi
+          T="$RUNNER_TEMP/d2"; mkdir -p "$T"
+          keytool -genkeypair -keystore "$T/up.jks" -storetype PKCS12 -storepass ci-upload -keypass ci-upload -alias up -dname "CN=CI-upload" -keyalg RSA -keysize 2048 -validity 1
+          keytool -genkeypair -keystore "$T/full.jks" -storetype PKCS12 -storepass ci-full-key -keypass ci-full-key -alias full -dname "CN=CI-full" -keyalg RSA -keysize 2048 -validity 1
+          export OSRA_UPLOAD_KEYSTORE="$T/up.jks" OSRA_UPLOAD_KEYSTORE_PASSWORD=ci-upload OSRA_UPLOAD_KEY_ALIAS=up OSRA_UPLOAD_KEY_PASSWORD=ci-upload
+          export OSRA_FULL_KEYSTORE="$T/full.jks" OSRA_FULL_KEYSTORE_PASSWORD=ci-full-key OSRA_FULL_KEY_ALIAS=full OSRA_FULL_KEY_PASSWORD=ci-full-key
+          ./gradlew assemblePlayRelease assembleFullRelease --console=plain
+          AS="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$AS" verify --print-certs app/build/outputs/apk/full/release/app-full-release.apk | grep -q 'CN=CI-full' || { echo "::error::the Full release is not signed with the Full key (ADR-0039 D2)"; exit 1; }
+          "$AS" verify --print-certs app/build/outputs/apk/play/release/app-play-release.apk | grep -q 'CN=CI-upload' || { echo "::error::the Play release is not signed with the upload key (ADR-0039 D2)"; exit 1; }
+          echo "each flavour signed with its own key"
       - name: Merged-manifest gate ran and did not skip (ADR-0021)
         working-directory: .
         run: node scripts/check-merged-manifest-gate.mjs
