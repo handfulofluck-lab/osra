@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3166,7 +3167,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
 
   @override
-  String get appGroupsBody => 'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+  String get appGroupsBody =>
+      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
@@ -3178,4 +3180,8 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appGroupsSaveFailed => 'تعذّر حفظ التغيير. حاول مرة أخرى.';
+
+  @override
+  String get appRuleHiddenOnIphone =>
+      'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 }

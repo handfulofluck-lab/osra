@@ -364,6 +364,10 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Widget _buildApps() {
     final l10n = context.l10n;
+    // ADR-0037 decision 3: on an iPhone a blocked app id is hidden, not shielded; the rows say so.
+    final childHasIphone = ref.watch(familyProvider).valueOrNull?.devices
+            .any((d) => d.childId == widget.childId && d.platform == 'ios') ??
+        false;
     void update(List<AppRule> rules) =>
         setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
@@ -453,6 +457,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           _AppRuleTile(
             key: ValueKey(_draft.appRules[i].packageId),
             rule: _draft.appRules[i],
+            childHasIphone: childHasIphone,
             onChanged: (r) => update([..._draft.appRules]..[i] = r),
             onRemove: () => update([..._draft.appRules]..removeAt(i)),
           ),
@@ -532,7 +537,8 @@ class _AppRuleTile extends StatefulWidget {
   final AppRule rule;
   final ValueChanged<AppRule> onChanged;
   final VoidCallback onRemove;
-  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove});
+  final bool childHasIphone;
+  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove, this.childHasIphone = false});
 
   @override
   State<_AppRuleTile> createState() => _AppRuleTileState();
@@ -574,6 +580,14 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               selected: {r.action},
               onSelectionChanged: (sel) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: sel.first, dailyLimitMinutes: r.dailyLimitMinutes)),
             ),
+            if (r.action == 'block' && widget.childHasIphone) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                l10n.appRuleHiddenOnIphone,
+                key: ValueKey('hiddenOnIphone-${r.packageId}'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
             if (r.action == 'time_limit') ...[
               const SizedBox(height: AppSpace.sm),
               TextField(

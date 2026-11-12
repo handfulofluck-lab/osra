@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3015,7 +3016,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appGroupsTitle => 'App groups on this iPhone';
 
   @override
-  String get appGroupsBody => 'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.';
+  String get appGroupsBody =>
+      'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.';
 
   @override
   String appGroupsCounts(Object apps, Object categories, Object sites) {
@@ -3027,4 +3029,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appGroupsSaveFailed => 'Could not save the change. Try again.';
+
+  @override
+  String get appRuleHiddenOnIphone =>
+      'On the iPhone, this app is hidden instead of showing the OSRA screen.';
 }
