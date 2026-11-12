@@ -93,10 +93,12 @@ describe("groups — the byte caps", () => {
   it("twenty Arabic-named groups fit: groups are not counted inside the report's 4 KB", () => {
     const groups = Array.from({ length: 20 }, (_, i) => group({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, label: "ع".repeat(40) }));
     // A full report (every grant, every feature) plus twenty 40-letter Arabic labels passes 4 KB.
+    // The phone's features only: `child_account_admin` is refused from an iPhone (ADR-0041 D5.5), so it would
+    // measure that refusal instead of the cap.
     const full = report({
       groups,
       grants: Object.fromEntries(GRANT_KEYS.map((k) => [k, "not_applicable"])),
-      features: Object.fromEntries(FEATURE_KEYS.map((k) => [k, "unavailable"])),
+      features: Object.fromEntries(FEATURE_KEYS.filter((k) => k !== "child_account_admin").map((k) => [k, "unavailable"])),
     });
     expect(Buffer.byteLength(JSON.stringify(full))).toBeGreaterThan(4096);
     const parsed = parseCapabilities(full, "ios");

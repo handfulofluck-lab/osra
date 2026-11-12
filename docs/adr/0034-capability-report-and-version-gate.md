@@ -394,3 +394,17 @@ later PR in Ahmed's lane and belongs on the 5.1 checklist. It does not block PR 
 13. A `lock` to an iPhone is recorded `failed` with `not_supported` at once, whatever the age of its last
     report, and the phone is not woken.
 
+## Amendment 2026-11-13 — `child_account_admin` joins the vocabulary, computers only (#663)
+
+ADR-0041 D5.5 warns a parent when the child's own Windows or Mac account is an **administrator**, and it names
+that fact `child_account_admin`. The shared vocabulary therefore grows one feature key, and it is a feature
+rather than a grant because it is a property of the account, not a permission the parent can ask for. It is an
+**enum state, not the boolean D5.5's sentence suggests**: `ready` means the child's own account is a standard
+user, `degraded` means it is an administrator and protection is weak on that computer — the state the parent app
+reads to raise D5.5's warning — and `unavailable`/`not_supported` are for a computer that cannot report the fact,
+while an **absent** key means "not reported", which is every Android and iOS device. A boolean could not tell
+"not reported" from "reported and fine", and the first must never read as the second. The key is **computers
+only**: a phone cannot be an administrator of a Windows or Mac account, so `parseCapabilities` refuses the key
+from any `client.app` other than `agent-desktop` or `agent-macos` — a phone's report carrying it is a bug in that
+agent, and the refusal names the app that sent it. That is also why no phone row of A1's `not_supported` table
+names the key, and why it can never reach the parent's "what to fix" list, which carries grants only.
