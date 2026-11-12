@@ -1039,6 +1039,40 @@ screencap` prefixes a text warning on multi-display phones (strip to the PNG sig
 process started with `Start-Process` inherits the console's redirected log handle and keeps it locked
 after its parent dies.
 
+### A throwaway family for a scenario run (#668, `scripts/hardware/scenario-family.mjs`)
+
+`docs/QA/SCENARIO-SUITE.md` §4 step 3 wants a family in one call, with rules that cannot ambush a run. The
+helper is a Node script with no dependencies, in two commands:
+
+```bash
+node scripts/hardware/scenario-family.mjs create --base-url http://localhost:3000
+# {"familyId":"…","childId":"…","pairingCode":"424242","parentTokenFile":"…/osra-scenario-family-….json"}
+
+node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:3000 --token-file <parentTokenFile>
+```
+
+- `create` signs a parent up (a fresh `scenario-<stamp>@osratech.test`), adds a child with inline consent,
+  then **neutralises the three defaults that would block a phone mid-scenario**: the 180/300-minute daily
+  limit becomes `0`, bedtime 21:00–07:00 becomes an empty window (`bedtimeStart === bedtimeEnd`), and
+  school hours keep no day. It reads the ruleset back and refuses to mint a pairing code if any of the
+  three survived; a create that fails after the sign-up erases the partial family.
+- **The token is a file, never a terminal.** The access token and the password the deletion needs go to
+  `parentTokenFile` at mode 0600, so a screenshot or a scrollback of the run carries neither. On Windows
+  the POSIX bits are advisory (NTFS keeps 0o666) and the script says so on stderr: keep the file under your
+  own user profile and delete it after the run.
+- `delete` re-authenticates, calls `DELETE /v1/family` (the owner's account deletion, the ADR-0013 cascade)
+  and prints a `counts` object with one entry per child-scoped table TR-06 counts — `0` when the parent
+  route for that table refuses after the erasure. Non-zero means residue and the script exits 1. The
+  row-level count itself is still `e2e.mjs`'s, with `DATABASE_URL`: no public route counts rows.
+- **The base URL guard:** only `localhost`, `127.0.0.1` or a `*.staging.osratech.com` host is accepted, and
+  anything else is a named `BaseUrlRefused` with exit 2 *before the first request*. The staging apex
+  (`staging.osratech.com`) is refused too; the staging API is `api.staging.osratech.com`.
+- Exit codes: `0` done · `1` a step failed or residue was found · `2` refused to run (usage, base URL,
+  token file). Tests: `node --test scripts/hardware/scenario-family.test.mjs` — the live "delete after
+  create leaves nothing" case runs only when `SCENARIO_API_BASE` is set, and **fails** on non-zero counts
+  rather than skipping.
+
+
 ## 6. Traps that have cost real time here
 
 | Trap | What happened | Rule |
