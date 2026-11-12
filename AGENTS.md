@@ -188,7 +188,8 @@ never the one who decides it is correct.
 
 **Branch names:** `qa/<topic>-<date>` (Kimi) · `fix/<item-id>-<topic>` or `feat/<topic>` (Antigravity) ·
 `ahmed/<roadmap-item>-<topic>` (Ahmed; if his environment only pushes a branch it names itself, he uses that one
-and names it in the PR, because CI reads the PR title, not the branch).
+and names it in the PR, because CI reads the PR title, not the branch) · `claude/<roadmap-item>-<topic>` (Claude) ·
+`verify/<PR>-<label>` (a verifier's planted-fault or clean-control branch for PR `<PR>`; see §6.0).
 
 **Your branch is deleted when your PR merges — by the repository, with this rule as the backstop** (roadmap 0.5,
 2026-10-23). GitHub's *Automatically delete head branches* setting (`delete_branch_on_merge`) is **on** as of
@@ -202,6 +203,40 @@ rightly kept.
 The rule below is therefore a **backstop**, not the mechanism: it covers a merge done outside GitHub (a local
 `git merge` then push, a script, a fork), and it is how you check that the setting is still doing its job. Deleting an
 **unmerged** branch is a different act and needs the maintainer, not this rule.
+
+### 6.0 Repository hygiene (standing rule, maintainer 2026-11-12: "repo hygiene is key")
+
+The repository is public and shared by four agents; a stale branch, PR or issue costs every reader a scan.
+These rules keep it small. Claude runs a **weekly sweep** (and one after any burst of merges), posts what it
+found and did in the #50 digest, and tells the maintainer.
+
+1. **Branches.** Only `main` and branches with an open PR are expected on `origin`, plus the long-lived
+   branches listed here: `site-pages` (the osratech.com pages, written by the site deploy) and `store/*`
+   (Play/App Store listing images, kept off `main` because they are large binaries). Anything else is stale.
+   - A merged PR's head is deleted by GitHub (`delete_branch_on_merge`, above).
+   - `verify/<PR>-*` branches are deleted by `.github/workflows/branch-hygiene.yml` when PR `<PR>` closes;
+     its *Run workflow* button sweeps every closed PR's leftovers. Name fault branches exactly
+     `verify/<PR>-<label>` or the job cannot match them.
+   - A PR **closed without merging**: its author deletes the head branch the same day, writing `name sha`
+     in the closing comment so it can be restored (`git push origin <sha>:refs/heads/<name>`).
+   - Before deleting any other branch, record `name sha` (in the PR, issue or #50 digest). A branch whose tip
+     is not in `main` and has no closed PR needs its owner's word first.
+2. **Pull requests.** A PR with no push, review or comment for **7 days** gets a question from Claude on the PR
+   (still wanted? what blocks it?). At **14 days** with no answer it is closed with a one-line reason; closing
+   is reversible. A PR superseded by another is closed at once with a link to the one that replaced it.
+3. **Issues.** An open issue with no activity for **21 days** gets a check: still true, done, or superseded.
+   Done or superseded issues are closed with the PR or issue that settled them, never silently. Write a
+   closing keyword only when the PR really finishes the issue (the #136 lesson).
+4. **Files.** One-off scripts, scratch notes, logs, local paths, screenshots and build outputs do not belong
+   on `main`; they go in the PR comment, a `store/*` branch, or outside the repository. Documents go where §5
+   says, and a new top-level document is indexed in `docs/README.md` in the same PR. Historical records
+   (audits, ledgers, reports, frozen logs) are **kept**, not deleted (§8).
+5. **Secrets.** Never commit a key, PIN, password, token, account id or private address. `.gitignore`
+   refuses the known secret file types (`.env`, keystores, `*.p8`/`*.p12`, Firebase and service-account
+   JSON); `scripts/check-no-pins.mjs` and `scripts/check-no-service-account-keys.mjs` run in CI. A leak is
+   rotated first, then removed; deleting the file alone does not undo a public push.
+6. **CI.** A workflow that has not run green in 30 days, or that duplicates another, is raised in the sweep.
+   Workflow changes pass `node scripts/check-workflows.mjs --strict`.
 
 ### 6.1 A PR is a discussion, not an announcement
 

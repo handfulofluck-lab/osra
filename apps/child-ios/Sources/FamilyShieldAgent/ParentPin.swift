@@ -21,11 +21,11 @@ public enum ParentPin {
 
     /// Nil when acceptable, else the refusal Android shows, word for word.
     public static func validationError(_ pin: String) -> String? {
-        if pin.count < minLength { return "PIN must be at least \(minLength) digits." }
-        if pin.count > maxLength { return "PIN must be at most \(maxLength) digits." }
-        if !pin.allSatisfy({ ("0"..."9").contains($0) }) { return "PIN must be digits only." }
-        if Set(pin).count == 1 { return "Choose a PIN that is not all the same digit." }
-        if weakPins.contains(pin) { return "Choose a less predictable PIN." }
+        if pin.count < minLength { return L10n.tr("pin_too_short") }
+        if pin.count > maxLength { return L10n.tr("pin_too_long") }
+        if !pin.allSatisfy({ ("0"..."9").contains($0) }) { return L10n.tr("pin_not_digits") }
+        if Set(pin).count == 1 { return L10n.tr("pin_same_digit") }
+        if weakPins.contains(pin) { return L10n.tr("pin_weak") }
         return nil
     }
 
@@ -160,8 +160,8 @@ public enum PinGateMessage {
     public static func text(for result: ParentPinStore.Check) -> String? {
         switch result {
         case .ok: return nil
-        case .wrong(let left): return "Wrong PIN. \(left) \(left == 1 ? "try" : "tries") left before a pause."
-        case .locked(let seconds): return "Too many wrong PINs. Try again in \(seconds) s."
+        case .wrong(let left): return L10n.tr("pin_wrong", left)
+        case .locked(let seconds): return L10n.tr("pin_locked", seconds)
         }
     }
 }

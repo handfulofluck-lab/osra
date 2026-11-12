@@ -109,10 +109,13 @@ class FakeApiClient extends ApiClient {
 }
 
 /// Canned GET /v1/family/me with two children: Alex's device is online at 55%
-/// battery (lastSeen now); Sam's device is at 0% with a stale lastSeen (2h).
+/// battery (lastSeen now); Sam's device is at 0% with a stale lastSeen (2h by
+/// default) while the server still calls it `online` — the shape of issue #601,
+/// where the app's own 15-minute window disagreed with the API.
 Map<String, dynamic> familyMeTwoChildren({
   String alexName = 'Alex',
   String alexModel = 'Pixel 7a',
+  Duration samLastSeen = const Duration(hours: 2),
 }) {
   final now = DateTime.now().toUtc();
   return {
@@ -148,7 +151,7 @@ Map<String, dynamic> familyMeTwoChildren({
         'osVersion': '13',
         'status': 'online',
         'batteryPct': 0,
-        'lastSeen': now.subtract(const Duration(hours: 2)).toIso8601String(),
+        'lastSeen': now.subtract(samLastSeen).toIso8601String(),
       },
     ],
   };
