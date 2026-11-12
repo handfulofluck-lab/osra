@@ -44,7 +44,8 @@ import java.util.Base64
  * Ed25519 on Android: the platform has no `Ed25519` provider before **API 33**. [JcaEd25519Verifier] is the
  * default, and [verifyAndParse] takes any [ManifestVerifier], so the worker injects its own provider when
  * the platform has one. There is no fallback that trusts an unverified manifest: with no provider the
- * default verifier returns false and the decision is `signature_invalid` — refused, never trusted. On this
+ * default verifier returns false and the decision is `signature_invalid`; when the raw key helper cannot
+ * build a key at all the key map is empty and the decision is `unknown_key_id` — refused either way, never trusted. On this
  * JDK 17 the built-in provider works, which is where these tests run.
  *
  * `sha256` comparison is case-insensitive and an expectation that is not 64 hex characters is refused

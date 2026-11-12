@@ -1135,6 +1135,47 @@ the APK replaceable without the parent's consent — and is cleaned up exactly t
 app's PIN gate. Never add `testOnly` to a release manifest to make a cleanup easier:
 `PlayMergedManifestTest` / `FullMergedManifestTest` assert its absence in both release merges.
 
+### The Full updater's trust core and the Play exclusion (ADR-0039 D5, plan 5.10 PR B)
+
+The updater is the only place in the child app that installs a file, so its decisions are tested where they
+can be reached from a plain JVM — `app/src/main/java/com/familyshield/agent/update/` has **no `android.*`
+imports** and the WorkManager worker is a thin adapter in `src/full/`.
+
+```
+cd apps/child-android
+./gradlew testFullDebugUnitTest --tests "com.familyshield.agent.update.*"
+```
+
+| Row | What it pins | The mutant that must turn it red |
+|---|---|---|
+| `FullUpdatePolicyTest` (24 rows) | signature over the exact bytes, `keyId`, own package, higher `versionCode`, no replay below the highest seen `versionCode`/`releasedAt`, `expiresAt`, URL by component (host/userinfo/port/path/dot-dot), `minSdk`, size, SHA-256, archive signer | flip `JcaEd25519Verifier.verify` to `true`; no-op both replay branches; make `isAllowedUrl` return `true`; delete the package check; delete only the dot-dot rule (it must be *that* row that fails, not the path-prefix row) |
+| `PackageInstallerSingleSourceTest` (1 row) | `PackageInstaller` is named in exactly one Kotlin file, and it is `FullUpdater.kt` | add the literal to any second file under `app/src/{main,full,play}` — it bites on a KDoc mention too |
+
+The store build must never carry the install permission, and this is checked on the **artefact**, not on the
+source (`dump badging` prints no permissions — see the manifest trap in §6):
+
+```
+AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | tail -1)
+"$AAPT" dump permissions app/build/outputs/apk/play/debug/app-play-debug.apk | grep -c REQUEST_INSTALL_PACKAGES  # 0
+"$AAPT" dump permissions app/build/outputs/apk/full/debug/app-full-debug.apk | grep -c REQUEST_INSTALL_PACKAGES  # 1
+```
+
+Proven on 2026-11-12 by adding the permission to `app/src/main/AndroidManifest.xml` and running
+`testPlayDebugUnitTest --tests "com.familyshield.agent.manifest.*"`: two rows failed by name (`declares exactly
+the reviewed permission allow-list`, `declares none of the Play-forbidden permissions`).
+
+Two traps specific to this change:
+
+- **R8 and a reflective Moshi DTO.** `FullUpdateManifest` is parsed by `KotlinJsonAdapterFactory`, which reads
+  property names by reflection. It sits outside `network.dto.**`, so the existing keep rule did not cover it and
+  a minified Full build would have refused its own manifest as `malformed_manifest` — silently, because `parse`
+  returns `null` by design. The `-keep` in `app/proguard-rules.pro` is what prevents that; only a *release*
+  build shows it, which is why `assembleFullRelease` is part of the gate.
+- **The keys are placeholders in the repository.** `FullUpdateKeys` carries
+  `REPLACE_WITH_M1_RAW_BASE64_FROM_THE_MAINTAINER`. Until the maintainer pastes the real raw base64 keys, every
+  check ends `manifest_key_unavailable`. That is the fail-closed direction and it is not a bug to "fix" by
+  putting a key in the repo — the two manifest keys are made offline and are never online.
+
 ### A PR that touches the probe must not narrow it — and that is now machine-checked
 
 `AGENTS.md` §4 forbids weakening a check to make a gate green, but until now the rule was only

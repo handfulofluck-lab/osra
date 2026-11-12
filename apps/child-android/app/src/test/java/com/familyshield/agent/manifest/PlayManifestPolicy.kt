@@ -54,6 +54,8 @@ object PlayManifestPolicy {
         "android.permission.SEND_SMS" to "same Play SMS policy as READ_SMS — Full-only",
         "android.permission.WRITE_CALL_LOG" to "same Play Call-Log policy as READ_CALL_LOG — Full-only",
         "android.permission.PROCESS_OUTGOING_CALLS" to "same Play Call-Log policy as READ_CALL_LOG — Full-only",
+        "android.permission.REQUEST_INSTALL_PACKAGES" to
+            "ADR-0039 D5.5 — self-update is Full-only; Play's Device and Network Abuse policy forbids a store app installing code from outside Play",
     )
 
     /** Intent actions that may only be registered by the Full artefact. */
