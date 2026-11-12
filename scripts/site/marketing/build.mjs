@@ -98,7 +98,7 @@ function footer(c) {
 <div><h4>${esc(f.support)}</h4><ul>${li("mailto:support@osratech.com", f.links.email)}${li("/delete-account", f.links.del, enOnly)}</ul></div>
 <div><h4>${esc(f.legal)}</h4><ul>${li("/privacy", f.links.privacy, enOnly)}${li("/terms", f.links.terms, enOnly)}</ul></div>
 </div>
-<div class="legal"><span>${esc(f.copy)} · osratech.com</span><span>${esc(f.notAffiliated)}</span></div>
+<div class="legal"><span dir="ltr">${esc(f.copy)} · osratech.com</span><span>${esc(f.notAffiliated)}</span></div>
 </footer>
 `;
 }
