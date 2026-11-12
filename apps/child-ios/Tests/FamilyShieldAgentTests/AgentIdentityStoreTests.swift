@@ -188,6 +188,7 @@ final class AgentIdentityStoreTests: XCTestCase {
         XCTAssertTrue(AgentIdentityStore.save(identity))
         XCTAssertFalse(AgentIdentityStore.clearIfNotBuiltInServer(nil))
         XCTAssertEqual(AgentIdentityStore.load(), identity)
+        AgentIdentityStore.clear()
         XCTAssertFalse(AgentIdentityStore.clearIfNotBuiltInServer(URL(string: "https://api.staging.example.invalid")!),
                        "nothing paired, nothing to clear")
     }
