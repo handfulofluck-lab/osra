@@ -204,13 +204,14 @@ the Phase 5 gate is replaced by this:
 |---|---|---|---|
 | Closed beta | Android mid to late December 2026; **Windows joins by 8 January 2027** | Android phones, Windows computers | free `grant` for beta families; Play Billing on the internal and closed tracks with licence testers |
 | Public 1 | February 2027 | Android, **Windows** | Google Play |
-| Public 2 | March 2027 at the earliest (Family Controls approval) | iPhone, **Mac** | Google Play and App Store |
+| Public 2 | set by the iOS lane now that Apple granted Family Controls (Distribution) on 2026-11-12; the Mac aims for the same wave and **no later than March 2027** | iPhone, **Mac** | Google Play and App Store |
 
 What has to move for this:
 
-- **Mac moves from Q2 2027 to March 2027.** Ahmed takes the Mac build (ADR-0036 steps i–vi, plus D4's
-  updater and page) as soon as the iOS kids build is waiting on Apple's Family Controls answer; that
-  wait is when his iOS work runs out anyway. If that approval comes late, iPhone and Mac slip together.
+- **Mac moves from Q2 2027 to March 2027 at the latest.** Ahmed takes the Mac build (ADR-0036 steps i–vi,
+  plus D4's updater and page) as soon as the OSRA Kids build is in TestFlight. Apple granted Family
+  Controls (Distribution) on 2026-11-12, so that wait is gone; the iPhone may now launch before the Mac,
+  and the Mac follows as soon as it passes claims 6, 7 and 9.
 - **Windows (5.4) moves from Antigravity's lane to Kimi and K31.** K31 writes the code and tests in
   GitHub; Kimi reviews and merges; Claude tests on a Windows test machine (not the maintainer's own PC,
   because the agent rewrites DNS and firewall rules).
@@ -299,4 +300,4 @@ only with the first release of each client.
   downloads, so the first public weeks may still show a "not commonly downloaded" note.
 - Risk: a child who is an administrator on the computer can remove the client. We say so to the parent
   at pairing; we do not pretend otherwise.
-- Risk: the Mac date now depends on the same Apple answer as the iPhone date and on Ahmed's time.
+- Risk: the Mac date depends on Ahmed's time after the iPhone kids build ships to TestFlight.
