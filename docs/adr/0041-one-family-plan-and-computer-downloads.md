@@ -200,11 +200,16 @@ What exists today (checked on `main@4d3a291`):
 The maintainer made the computer clients **core capability**. ADR-0036's rule that the Mac stays out of
 the Phase 5 gate is replaced by this:
 
-| Wave | When (estimate, not a promise) | Platforms | Plan sold on |
+| Wave | When (estimate, re-planned 2026-11-12 16:40Z with K31 on the team, not a promise) | Platforms | Plan sold on |
 |---|---|---|---|
-| Closed beta | Android mid to late December 2026; **Windows joins by 8 January 2027** | Android phones, Windows computers | free `grant` for beta families; Play Billing on the internal and closed tracks with licence testers |
-| Public 1 | February 2027 | Android, **Windows** | Google Play |
-| Public 2 | set by the iOS lane now that Apple granted Family Controls (Distribution) on 2026-11-12; the Mac aims for the same wave and **no later than March 2027** | iPhone, **Mac** | Google Play and App Store |
+| Closed beta | mid to late December 2026, **Windows in the same wave** (was 8 January) | Android phones, Windows computers, iPhone through TestFlight | free `grant` for beta families; Play Billing and App Store sandbox with test accounts |
+| Public 1 | February 2027 (late January only if Google's closed-test rule and review allow) | Android, Windows, **iPhone** (was March) | Google Play and App Store |
+| Public 2 | March 2027 | **Mac** | Google Play and App Store |
+
+What extra hands do not speed up: Google's rule that a new personal developer account runs a closed test
+with at least 12 testers for 14 days before production, and its production review; App Store review of a
+parental-control app; Ahmed's security reviews (W2, W4, B3) and his Mac build; one verifier (Claude) and
+one merger (Kimi) for every PR; the SSL.com identity check.
 
 What has to move for this:
 
