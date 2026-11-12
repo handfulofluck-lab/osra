@@ -120,7 +120,7 @@ Map<String, dynamic> familyMeTwoChildren({
     'parent': {
       'id': 'par-1',
       'familyId': 'fam-1',
-      'email': 'qa@familyshield.dev',
+      'email': 'qa@osratech.com',
       'displayName': 'QA Parent',
       'role': 'owner',
       'mfaEnabled': false,

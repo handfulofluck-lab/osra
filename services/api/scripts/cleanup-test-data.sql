@@ -1,6 +1,6 @@
 -- Cleanup of test leftovers created by QA runs (probe, e2e, audits, physical-device pass).
 --
--- KEEPS the seeded demo family (demo@familyshield.dev / child "Alex") that testers use.
+-- KEEPS the seeded demo family (demo@osratech.com / child "Alex") that testers use.
 -- Removes: families owned by QA/e2e/audit test parents, and non-"Alex" children inside the demo
 -- family (test children created by e2e/probe/device passes, with their devices and rows).
 --
@@ -13,7 +13,7 @@
 
 -- Which parents/families are "test" leftovers. Keep this list narrow and explicit.
 \set test_parent_pattern '^(qa-|verify-|verify2-|ios1-)'
-\set demo_email 'demo@familyshield.dev'
+\set demo_email 'demo@osratech.com'
 
 \echo '=== BEFORE ==='
 SELECT (SELECT count(*) FROM "Family") families, (SELECT count(*) FROM "Parent") parents,

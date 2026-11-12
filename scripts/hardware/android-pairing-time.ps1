@@ -427,7 +427,7 @@ W ("apk " + $Apk + " sha256 " + (Get-FileHash -Algorithm SHA256 $Apk).Hash.ToLow
 if ((Sh "dumpsys window") -match "isKeyguardShowing=true") { W "ABORT: keyguard showing"; exit 2 }
 if (-not (Test-Path $Apk)) { W "ABORT: apk missing"; exit 2 }
 
-$login = Api POST "/v1/auth/login" @{ email = "demo@familyshield.dev"; password = "CorrectHorseBatteryStaple!" } $null
+$login = Api POST "/v1/auth/login" @{ email = "demo@osratech.com"; password = "CorrectHorseBatteryStaple!" } $null
 if (-not $login.token) { W "ABORT: login failed"; exit 2 }
 $TOKEN = $login.token
 W "login ok"

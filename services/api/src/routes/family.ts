@@ -355,7 +355,7 @@ export async function familyRoutes(app: FastifyInstance) {
       },
     });
     if (!family) return reply.code(404).send({ error: "family_not_found" });
-    reply.header("Content-Disposition", `attachment; filename="familyshield-export-${family.id}.json"`);
+    reply.header("Content-Disposition", `attachment; filename="osra-export-${family.id}.json"`);
     // Strip internal secrets and push tokens from the export too.
     const exportChildren = family.children.map((c) => ({
       ...c,

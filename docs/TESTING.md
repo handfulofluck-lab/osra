@@ -335,7 +335,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | `apps/child-ios/**` (path-filtered since it was added) | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
 | `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
-| `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5 |
+| `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-12 also `scripts/check-user-visible-brand.mjs` (issue #608): fails any tracked or untracked repo file carrying the pre-OSRA user-visible forms, with exact-path exemptions for the dated QA audit records; rules, fixtures and CLI wiring in `--selftest` |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Since 2026-10-24 the carry-forward decision is `scripts/verified-gate-carry.mjs <signed-sha> <head-sha>`, run from `origin/main` so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It exits 0 when only clean merges of main followed the signature and the PR's own `-U0` patch is unchanged; 1 when that patch moved, or when a merge after the signature was not a clean merge of its parents (a conflict, a resolution, an evil merge, or a merge with other than two parents); 2 when it cannot decide (missing or unknown sha, not an ancestor, a non-merge commit after the signature, git older than 2.38 so a merge cannot be re-run). Context is ignored, so position is not compared — a line moved by a hand-edited merge is refused by the clean-merge rule, and the only remaining limit is a line moved by a clean merge, which is git's own result. `--selftest` runs seven cases on real git repositories. Local: `node scripts/check-verified-gate-signers.mjs --selftest` and `node scripts/verified-gate-carry.mjs --selftest`. Since 2026-10-31 the trigger list also carries **`edited`**: when a stacked PR's base branch is deleted GitHub retargets the PR to `main` and announces it only as `edited` (`changes.base`), so without that event the required check is never created at all and the PR cannot merge while every visible check is green (#501; measured on the scratch PR #503 — see §6) |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
@@ -348,9 +348,23 @@ node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
 node scripts/check-docs-links.mjs --selftest   # the gate's own fixtures (#324)
+node scripts/check-user-visible-brand.mjs          # no old user-visible branding (issue #608)
+node scripts/check-user-visible-brand.mjs --selftest  # 55 cases: each rule fires, and the CLI wires it
 node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
 node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
 ```
+
+**The user-visible brand gate (issue #608).** `scripts/check-user-visible-brand.mjs` fails on any
+tracked or untracked-but-not-ignored repo file carrying the pre-OSRA user-visible surfaces — the old
+export filename, the old support domain/email, the desktop data folder named as a path segment or
+path string, and the Windows test-certificate subject — while allowing the internal identifiers
+(`FamilyShield.Agent.*`, `com.familyshield.agent`, the `X-FamilyShield-Signature` header) and the
+one-time migration's reference to the legacy folder. The dated QA records are exempt by exact path —
+`docs/QA/KCL-2026-10-16/AUDIT-IOS-WINDOWS-MACOS.md`, `docs/QA/audits/AUDIT-IOS-MACOS-2026-10-11.md`
+and `docs/QA/audits/AUDIT-WINDOWS-2026-10-11.md` — because their evidence citations name the values
+as they were on the audit date. It runs in `workflow-lint.yml` on every PR, `--selftest` first so a
+guard that is silent because it is broken cannot pass; the self-test's 55 cases cover positive and
+negative fixtures per rule, the dated-QA allowlist, and the CLI wiring.
 
 **The Redis durability gate (ADR-0032, roadmap 2.7).** The API stores every revocation in Postgres
 and treats Redis as a cache, which is only true if the cache cannot be silently emptied.
@@ -418,7 +432,7 @@ that changed neither app.
 
 ```bash
 node scripts/check-ci-paths.mjs --selftest
-node scripts/check-ci-paths.mjs     # "6 suite workflow(s), … 0 problem(s)"
+node scripts/check-ci-paths.mjs     # "7 suite workflow(s), … 0 problem(s)"
 ```
 
 ### The parent app's iOS build (roadmap 3.9, 2026-10-24)

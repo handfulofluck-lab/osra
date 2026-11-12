@@ -15,11 +15,11 @@ async function main() {
     (await prisma.family.create({ data: { name: "Demo Family", region: "US" } }));
 
   const parent = await prisma.parent.upsert({
-    where: { email: "demo@familyshield.dev" },
+    where: { email: "demo@osratech.com" },
     update: {},
     create: {
       familyId: family.id,
-      email: "demo@familyshield.dev",
+      email: "demo@osratech.com",
       passwordHash,
       displayName: "Demo Parent",
       role: "owner",

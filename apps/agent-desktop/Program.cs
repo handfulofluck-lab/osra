@@ -1,5 +1,20 @@
 using FamilyShield.Agent.Services;
 
+// Issue #608: migrate the legacy %LOCALAPPDATA%\FamilyShield folder to %LOCALAPPDATA%\OSRA
+// before any hosted service opens the database, status file or HTTPS PFX. A failed move must
+// stop startup rather than silently run against an empty OSRA folder and orphan pairing/data.
+try
+{
+    DataFolder.MigrateOnce();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine(
+        $"OSRA: could not migrate the legacy data folder {DataFolder.LegacyPath} to " +
+        $"{DataFolder.DefaultPath}: {ex.Message}");
+    return 3;
+}
+
 // Fail-safe: ensure orphaned proxy settings are cleaned up when the process exits.
 AppDomain.CurrentDomain.ProcessExit += (_, _) => WebFilterProxy.ResetSystemProxyIfSet(8877);
 
