@@ -107,6 +107,19 @@ jobs:
             *) echo "::error::OSRA_API_BASE must start with https://"; exit 1 ;;
           esac
           ./gradlew testPlayDebugUnitTest testFullDebugUnitTest assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease bundlePlayRelease --console=plain
+      # ADR-0039 D5.2: the manifest verifier is Full-only. R8 removing it from the Play build is a fact
+      # about one build; this line is the fact about the dependency graph. The regex matches the plain form
+      # and the `1.8.0 -> 1.24.0` upgrade form, which is how the leak appeared before the src/full move
+      # (security-crypto pulls 1.8.0, and the updater's own implementation raised it for every variant).
+      - name: The Play release classpath never carries the updater's Tink (ADR-0039 D5.2)
+        run: |
+          ./gradlew -q :app:dependencies --configuration playReleaseRuntimeClasspath > play-deps.txt
+          if grep -Eq 'tink-android:[^ ]*1\.24\.0' play-deps.txt; then
+            echo "::error::Tink 1.24.0 reached the Play release classpath (ADR-0039 D5.2)"
+            grep -n 'tink-android' play-deps.txt
+            exit 1
+          fi
+          echo "playReleaseRuntimeClasspath holds no tink-android 1.24.0"
       # ADR-0021's gate asserts the *merged* manifest (where a dependency's permissions arrive), so it
       # only means something if the unit tests above actually ran it. The test skips with a loud message
       # when the artefact is missing — that is what an IDE run needs and what CI must never accept — so
