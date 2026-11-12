@@ -919,5 +919,6 @@
   "grantNotificationListener": "الوصول إلى الإشعارات",
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
-  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية"
+  "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
+  "appRuleHiddenOnIphone": "على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر."
 }

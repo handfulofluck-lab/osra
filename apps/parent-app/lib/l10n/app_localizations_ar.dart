@@ -3161,4 +3161,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
+
+  @override
+  String get appRuleHiddenOnIphone => 'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 }
