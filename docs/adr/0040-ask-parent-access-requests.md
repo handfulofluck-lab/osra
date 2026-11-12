@@ -135,7 +135,7 @@ global bonus: they are different promises.
 | Parent said no | "Your parent said not now." on the block screen and as a notification | Shield line and local notification |
 | No answer in 30 min | "No answer yet. You can ask again." | Same, on the shield |
 | Too many requests | "You've asked a lot today. Talk to your parent." (section 6) | Same |
-| Phone offline | "Can't reach your parent right now. Try again when you're online." Nothing is queued: an old request is not worth sending | Same |
+| Phone offline | "Your request couldn't be sent right now. Try again when you're online." Nothing is queued: an old request is not worth sending | Same |
 
 The parent's name is never shown (a guardian may have answered); the child reads "your parent". On the iPhone the
 app name is drawn by Apple in the shield itself, so our strings never need it.
@@ -198,6 +198,16 @@ for v2.
 New strings, English below. **Every Arabic string goes through the Arabic Language Bureau thread and then to
 Karim before it ships**; nothing in Arabic is invented in a PR.
 
+Rules from the Arabic Language Bureau (12 Nov), binding on the build PRs:
+
+- **Whole sentences only.** A line with a person in it (`{child}`, `{parent}`) is one key with the name as a
+  placeholder, never assembled from parts. The Arabic avoids a verb whose form depends on that person's gender,
+  which the app does not know.
+- **Plurals.** Every key with `{minutes}` is an ICU plural in ARB, `<plurals>` on Android and a `.stringsdict` on
+  the iPhone, with all six Arabic forms. "Allow 1 hour" is its own key, never built from 60 minutes.
+- **Direction.** `{reason}`, `{app}`, `{group}` and the names are wrapped in FSI/PDI isolates, as on the child
+  block screen. "Blocked by {reason}" uses Karim's wording from #569.
+
 Child (Android `strings.xml`, iPhone `Localizable.strings`):
 
 | Key | English |
@@ -211,7 +221,7 @@ Child (Android `strings.xml`, iPhone `Localizable.strings`):
 | `request_denied` | Your parent said not now. |
 | `request_expired` | No answer yet. You can ask again. |
 | `request_too_many` | You've asked a lot today. Talk to your parent. |
-| `request_offline` | Can't reach your parent right now. Try again when you're online. |
+| `request_offline` | Your request couldn't be sent right now. Try again when you're online. |
 
 Parent (`app_en.arb` / `app_ar.arb`):
 
