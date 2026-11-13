@@ -13,7 +13,8 @@ package com.familyshield.agent.services
  *    The agent honours it, clamped to [MIN_POLL_MS]..[MAX_POLL_MS], and polls at least every
  *    [INTERACTIVE_POLL_CAP_MS] while the screen is on, so a lost push still costs a child using the
  *    phone at most a minute. A missing or unreadable header (an older server) means [DEFAULT_POLL_MS],
- *    which is the old behaviour.
+ *    which is the old behaviour. While a lock or a pause is up it is [RESTRICTED_POLL_MS] instead
+ *    (#673): those states are short, and a parent lifting one is waiting in front of the phone.
  *  - **Live activity** (Feature #29) is posted only while the screen is on, plus once on the first
  *    tick after it turns off, so the parent's "now using" line ends on "idle" instead of the last app.
  *  - **Stationary location** is flushed when the oldest buffered ping is [STATIONARY_FLUSH_AGE_MS]
@@ -42,6 +43,25 @@ object IdleCadence {
     /** While the screen is on the poll runs at least this often, whatever the server says. */
     const val INTERACTIVE_POLL_CAP_MS: Long = 60L * 1000L
 
+    /**
+     * Issue #673: the interval while a lock or a pause is up, whatever the server says.
+     *
+     * The Flip4 run of 12 Nov timed `resume_internet` round 1 at 52.4 s: a paused phone shows the
+     * overlay, so the screen is on, so the [INTERACTIVE_POLL_CAP_MS] rule gave a poll every 60 s and the
+     * resume waited for it while the push that should have woken the phone was late. Both restricted
+     * states are short and are exactly when a late push hurts, so they are polled ten times faster.
+     * The idle budget (≤ 3 requests per 10 min, #353) is a statement about an *idle* phone: with no
+     * restriction nothing here applies.
+     *
+     * The cost, stated rather than hidden: a phone left locked for an hour now sends up to 360 polls in
+     * it, against the two an idle phone sends in ten minutes. That is the trade #673 asks for — a
+     * restriction is a state a parent is watching, not an idle phone.
+     *
+     * Deliberately below [MIN_POLL_MS]: that floor exists so a bad `X-Poll-After` header cannot turn
+     * the poll into a busy loop, and this value is ours, not the server's.
+     */
+    const val RESTRICTED_POLL_MS: Long = 10L * 1000L
+
     /** How often the poll loop wakes to check [pollDue]; a tick with nothing due sends nothing. */
     const val POLL_TICK_MS: Long = 15L * 1000L
 
@@ -60,19 +80,36 @@ object IdleCadence {
         return ms.coerceIn(MIN_POLL_MS, MAX_POLL_MS)
     }
 
-    /** The interval that applies right now: the server's, capped while the screen is on. */
-    fun effectivePollMs(serverPollMs: Long, interactive: Boolean): Long =
-        if (interactive) minOf(serverPollMs, INTERACTIVE_POLL_CAP_MS) else serverPollMs
+    /**
+     * The interval that applies right now: [RESTRICTED_POLL_MS] while a lock or a pause is up, else the
+     * server's, capped while the screen is on.
+     *
+     * @param restricted a lock, a pause or a paused internet is active ([com.familyshield.agent.enforcement.LockState.isActive]).
+     *   A restriction wins over both the server and the screen: a parent who just asked for the phone
+     *   to stop is the parent most likely to ask again in seconds.
+     */
+    fun effectivePollMs(serverPollMs: Long, interactive: Boolean, restricted: Boolean = false): Long = when {
+        restricted -> RESTRICTED_POLL_MS
+        interactive -> minOf(serverPollMs, INTERACTIVE_POLL_CAP_MS)
+        else -> serverPollMs
+    }
 
     /**
      * True when a poll is due. [lastPollAtMs] and [nowMs] are on one monotonic clock
      * (`SystemClock.elapsedRealtime()`), so a wall-clock change can neither stall nor flood the poll.
      * [lastPollAtMs] null means this service has not polled yet: poll on the first tick.
      */
-    fun pollDue(lastPollAtMs: Long?, nowMs: Long, serverPollMs: Long, interactive: Boolean): Boolean {
+    fun pollDue(lastPollAtMs: Long?, nowMs: Long, serverPollMs: Long, interactive: Boolean, restricted: Boolean = false): Boolean {
         if (lastPollAtMs == null) return true
-        return nowMs - lastPollAtMs >= effectivePollMs(serverPollMs, interactive)
+        return nowMs - lastPollAtMs >= effectivePollMs(serverPollMs, interactive, restricted)
     }
+
+    /**
+     * How long the loop waits before it next asks [pollDue] (#673). A 10 s rule read by a 15 s tick is a
+     * 15 s poll, so the tick follows the state: while restricted the loop wakes at the interval it is
+     * going to use. An unrestricted phone keeps the 15 s tick and its idle cost.
+     */
+    fun pollTickMs(restricted: Boolean): Long = if (restricted) RESTRICTED_POLL_MS else POLL_TICK_MS
 
     /**
      * True when a `CommandPollWorker` run should fetch. The periodic 60-second job is a backstop for
