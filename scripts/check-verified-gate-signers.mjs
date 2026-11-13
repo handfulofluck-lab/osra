@@ -35,7 +35,8 @@ const FIXTURE = [
   { user: { login: 'ahmedyusseff' }, body: 'Verified-sha: bbbbbbb\n\n— Claude' },
   { user: { login: 'drive-by-account' }, body: 'Verified-sha: ccccccc\n— Antigravity' },
 ];
-const WANT = ['Verified-sha: aaaaaaa  — Claude (architecture + testing)'];
+// The gate emits each body JSON-encoded (`@json`), one per line, for the policy's --parse.
+const WANT = [JSON.stringify(FIXTURE[0].body)];
 
 function structural(text) {
   const problems = [];
@@ -119,20 +120,20 @@ if (process.argv.includes('--selftest')) {
     }
     return source.replace(from, to);
   };
-  const preFix = `.[].body | gsub(`;
+  const preFix = `.[].body | @json`;
   const cases = [
     { name: 'the committed workflow passes', text: source, want: 0 },
-    { name: 'the pre-fix filter (every comment) fails', text: swap(`${FILTER} | gsub(`, preFix), want: 1 },
-    { name: 'an inverted filter fails', text: swap(`${FILTER} | gsub(`, `${FILTER.replace('==', '!=')} | gsub(`), want: 1 },
+    { name: 'the pre-fix filter (every comment) fails', text: swap(`${FILTER} | @json`, preFix), want: 1 },
+    { name: 'an inverted filter fails', text: swap(`${FILTER} | @json`, `${FILTER.replace('==', '!=')} | @json`), want: 1 },
     { name: 'SIGNER_LOGIN set to another account fails', text: swap(`SIGNER_LOGIN: ${AGENT_LOGIN}`, 'SIGNER_LOGIN: ahmedyusseff'), want: 1 },
     { name: 'SIGNER_LOGIN removed fails', text: swap(`SIGNER_LOGIN: ${AGENT_LOGIN}`, ''), want: 1 },
   ];
   if (withJq) {
     // Each layer must catch the pre-fix gate on its own, not only through the other one.
     cases.push(
-      { name: 'behavioural: the committed filter yields only the agent comment', run: () => behavioural([`${FILTER} | gsub("[[:cntrl:]]"; " ")`]), want: 0 },
-      { name: 'behavioural: the pre-fix filter leaks the other accounts', run: () => behavioural(['.[].body | gsub("[[:cntrl:]]"; " ")']), want: 1 },
-      { name: 'behavioural: an inverted filter leaks the other accounts', run: () => behavioural([`${FILTER.replace('==', '!=')} | gsub("[[:cntrl:]]"; " ")`]), want: 1 },
+      { name: 'behavioural: the committed filter yields only the agent comment', run: () => behavioural([`${FILTER} | @json`]), want: 0 },
+      { name: 'behavioural: the pre-fix filter leaks the other accounts', run: () => behavioural(['.[].body | @json']), want: 1 },
+      { name: 'behavioural: an inverted filter leaks the other accounts', run: () => behavioural([`${FILTER.replace('==', '!=')} | @json`]), want: 1 },
     );
   }
   let bad = 0;
