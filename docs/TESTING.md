@@ -15,7 +15,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference, **the merged manifest** of both flavours (ADR-0021) | Agent logic regressions, a Play build that gained the notification permission or any Play-forbidden permission **through a dependency's manifest** |
 | Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
-| iOS | `.github/workflows/ios-ci.yml` (macOS runner) | SwiftPM build + simulator build | Swift compile/behaviour regressions |
+| iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
 `test/demo-seed-cleanup.test.ts` runs against real PostgreSQL in CI, where
@@ -442,6 +442,26 @@ that changed neither app.
 node scripts/check-ci-paths.mjs --selftest
 node scripts/check-ci-paths.mjs     # "7 suite workflow(s), … 0 problem(s)"
 ```
+
+### The shared Swift package on macOS (roadmap 5.9 step i, #653)
+
+The `macos-core` job in `ios-ci.yml` builds and tests `apps/child-ios` natively on `macos-26`, using the
+same workflow triggers, path filters and concurrency group as the iPhone jobs. On a Mac, the equivalent is:
+
+```bash
+cd apps/child-ios
+swift build
+swift test list
+swift test
+```
+
+The discovery step requires the current 214 tests and names one case each from pairing, HMAC signing, rule
+interpretation and both localisation string suites. Wrapping a portable source file in `#if os(iOS)` removes
+its tests and turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The
+expected count changes only when the package deliberately adds or removes tests.
+
+This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
+runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
 
 ### The parent app's iOS build (roadmap 3.9, 2026-10-24)
 
