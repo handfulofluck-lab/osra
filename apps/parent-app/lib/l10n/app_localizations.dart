@@ -2750,6 +2750,12 @@ abstract class AppLocalizations {
   /// **'{count}h ago'**
   String relativeHoursAgo(int count);
 
+  /// No description provided for @relativeAboutHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'about {count}h ago'**
+  String relativeAboutHoursAgo(int count);
+
   /// No description provided for @relativeDaysAgo.
   ///
   /// In en, this message translates to:

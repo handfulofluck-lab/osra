@@ -1649,6 +1649,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String relativeAboutHoursAgo(int count) {
+    return 'about ${count}h ago';
+  }
+
+  @override
   String relativeDaysAgo(int count) {
     return '${count}d ago';
   }

@@ -1792,6 +1792,20 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String relativeAboutHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'قبل نحو $count ساعة',
+      many: 'قبل نحو $count ساعة',
+      few: 'قبل نحو $count ساعات',
+      two: 'قبل نحو ساعتين',
+      one: 'قبل نحو ساعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String relativeDaysAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -3045,11 +3059,11 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: 'الموقع قبل $n دقيقة. اضغط لعرضه على الخريطة',
-      many: 'الموقع قبل $n دقيقة. اضغط لعرضه على الخريطة',
-      few: 'الموقع قبل $n دقائق. اضغط لعرضه على الخريطة',
-      two: 'الموقع قبل دقيقتين. اضغط لعرضه على الخريطة',
-      one: 'الموقع قبل دقيقة. اضغط لعرضه على الخريطة',
+      other: 'سُجّل آخر موقع قبل $n دقيقة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل $n دقيقة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل $n دقائق. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.',
     );
     return '$_temp0';
   }
@@ -3059,18 +3073,18 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: 'الموقع قبل نحو $n ساعة. اضغط لعرضه على الخريطة',
-      many: 'الموقع قبل نحو $n ساعة. اضغط لعرضه على الخريطة',
-      few: 'الموقع قبل نحو $n ساعات. اضغط لعرضه على الخريطة',
-      two: 'الموقع قبل نحو ساعتين. اضغط لعرضه على الخريطة',
-      one: 'الموقع قبل نحو ساعة. اضغط لعرضه على الخريطة',
+      other: 'سُجّل آخر موقع قبل نحو $n ساعة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل نحو $n ساعة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل نحو $n ساعات. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل نحو ساعتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل نحو ساعة. اضغط لعرضه.',
     );
     return '$_temp0';
   }
 
   @override
   String alertLocationAccuracy(int m) {
-    return 'بدقة نحو $m متر';
+    return 'الدقة: نحو $m م';
   }
 
   @override
@@ -3080,7 +3094,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertCoordinatesCopied => 'تم نسخ الإحداثيات';
 
   @override
-  String get alertOpenInMaps => 'فتح في الخرائط';
+  String get alertOpenInMaps => 'فتح في تطبيق الخرائط';
 
   @override
   String get alertShowOnMap => 'عرض على الخريطة';

@@ -820,6 +820,12 @@
       "count": { "type": "int" }
     }
   },
+  "relativeAboutHoursAgo": "about {count}h ago",
+  "@relativeAboutHoursAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "relativeDaysAgo": "{count}d ago",
   "@relativeDaysAgo": {
     "placeholders": {

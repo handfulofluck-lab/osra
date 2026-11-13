@@ -157,10 +157,12 @@ void main() {
       String body(int minutes) =>
           VisibleAlert.from(sos(metadata: fixAgo(minutes)), l10n: ar, isEnglish: false, now: alertAt).body;
 
-      expect(body(1), 'الموقع قبل دقيقة. اضغط لعرضه على الخريطة');
-      expect(body(2), 'الموقع قبل دقيقتين. اضغط لعرضه على الخريطة');
-      expect(body(3), 'الموقع قبل 3 دقائق. اضغط لعرضه على الخريطة');
-      expect(body(11), 'الموقع قبل 11 دقيقة. اضغط لعرضه على الخريطة');
+      expect(body(1), 'سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.');
+      expect(body(2), 'سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.');
+      expect(body(3), 'سُجّل آخر موقع قبل 3 دقائق. اضغط لعرضه.');
+      expect(body(11), 'سُجّل آخر موقع قبل 11 دقيقة. اضغط لعرضه.');
+      // 61 minutes is the hours branch, and it must say «نحو» (about) like the detail beside it.
+      expect(body(61), 'سُجّل آخر موقع قبل نحو ساعتين. اضغط لعرضه.');
       expect(body(3), isNot(contains('25.276')));
     });
   });
