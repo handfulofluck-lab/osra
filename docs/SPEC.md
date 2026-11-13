@@ -3,8 +3,9 @@
 > **Branding convention (2026-09-18):** the product is branded **OSRA (أسرة)**. User-facing
 > strings say OSRA; technical identifiers intentionally keep the `familyshield` namespace
 > (Dart package `familyshield_parent`, Kotlin `com.familyshield.agent`, C# `FamilyShield.Agent`,
-> SwiftPM `FamilyShieldAgent`, the `X-FamilyShield-Signature` header, `familyshield.dev` dev
-> domain, DB name `familyshield`). Do not "fix" identifier names in code — new code must follow
+> SwiftPM `FamilyShieldAgent`, the `X-FamilyShield-Signature` header, DB name `familyshield`).
+> The support domain left that namespace in #608 and is now `osratech.com` (demo email
+> `demo@osratech.com`). Do not "fix" identifier names in code — new code must follow
 > this split (OSRA in UI strings, familyshield in identifiers) and document it here.
 
 This file is the ground-truth spec for the FamilyShield monorepo. Implement exactly what is
@@ -296,7 +297,7 @@ LocationPing, Geofence, Alert, ConsentRecord (exact shapes as originally specifi
   family-scoped resource by request param (child/device/geofence/alert), returns 403 when
   resource.familyId !== req.user.familyId, attaches resource to the request.
 - scripts/seed.ts — GENERATE THIS: idempotent seed — Family "Demo Family" (US); parent
-  demo@familyshield.dev / "CorrectHorseBatteryStaple!"; Child "Alex" born 2013 with valid
+  demo@osratech.com / password resolved by `services/api/scripts/seed-password.ts` (local default; production needs `SEED_DEMO_PASSWORD` from `osra-staging/demo-password`); Child "Alex" born 2013 with valid
   ConsentRecord (sms_plus, US); Device "Pixel 7a" (android, pushToken "demo-token");
   default RuleSet (180 min daily, bedtime 21:00–07:00, blockedCategories [pornography,
   gambling], safeSearchEnforced true); geofences "Home" and "School"; three sample alerts

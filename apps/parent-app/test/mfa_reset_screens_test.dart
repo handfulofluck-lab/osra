@@ -130,7 +130,7 @@ void main() {
         'GET /v1/auth/mfa/reset/pending': pending ?? (_) => {'requests': <dynamic>[]},
         'POST /v1/auth/mfa/enroll': (_) => {
               'secret': 'JBSWY3DPEHPK3PXP',
-              'otpauthUrl': 'otpauth://totp/OSRA:qa%40familyshield.dev?secret=JBSWY3DPEHPK3PXP&issuer=OSRA',
+              'otpauthUrl': 'otpauth://totp/OSRA:qa%40osratech.com?secret=JBSWY3DPEHPK3PXP&issuer=OSRA',
             },
       };
 
@@ -186,7 +186,7 @@ void main() {
   MfaResetProgress mailboxStage() => MfaResetProgress(
         requestId: 'req-1',
         stage: MfaResetStage.awaitingMailbox,
-        email: 'qa@familyshield.dev',
+        email: 'qa@osratech.com',
         mailboxExpiresAt: DateTime.now().add(const Duration(minutes: 30)),
       );
 
@@ -199,14 +199,14 @@ void main() {
       expect(find.textContaining('a code shown on your child\'s phone'), findsOneWidget);
       expect(find.textContaining('72-hour wait'), findsOneWidget);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
       await tester.pumpAndSettle();
 
       final call = api.calls('POST', '/v1/auth/mfa/reset/request').single;
-      expect(call.body['email'], 'qa@familyshield.dev');
+      expect(call.body['email'], 'qa@osratech.com');
       expect(call.body['password'], 'good-password');
       expect(find.byType(MfaResetWaitingScreen), findsOneWidget);
       expect(find.text('Check your email'), findsOneWidget);
@@ -230,7 +230,7 @@ void main() {
       ));
       await pumpScreen(tester, const MfaResetRequestScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'wrong-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
@@ -248,7 +248,7 @@ void main() {
       ));
       await pumpScreen(tester, const MfaResetRequestScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
@@ -264,7 +264,7 @@ void main() {
       ));
       await pumpScreen(tester, const MfaResetRequestScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
@@ -279,7 +279,7 @@ void main() {
       ));
       await pumpScreen(tester, const MfaResetRequestScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
@@ -294,7 +294,7 @@ void main() {
       final api = FakeApiClient(resetRoutes(request: (_) => const FakeNetworkError()));
       await pumpScreen(tester, const MfaResetRequestScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
@@ -365,7 +365,7 @@ void main() {
           progress: MfaResetProgress(
             requestId: 'req-1',
             stage: MfaResetStage.window,
-            email: 'qa@familyshield.dev',
+            email: 'qa@osratech.com',
             windowEndsAt: DateTime.now().add(const Duration(hours: 10)),
           ),
         ),
@@ -388,7 +388,7 @@ void main() {
           progress: MfaResetProgress(
             requestId: 'req-1',
             stage: MfaResetStage.window,
-            email: 'qa@familyshield.dev',
+            email: 'qa@osratech.com',
             windowEndsAt: windowPast,
           ),
         ),
@@ -401,7 +401,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('mfaResetFinish')));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetFinishEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetFinishEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetFinishPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetFinishSubmit')));
       await flush(tester);
@@ -409,7 +409,7 @@ void main() {
 
       final complete = api.calls('POST', '/v1/auth/mfa/reset/complete').single;
       expect(complete.body['requestId'], 'req-1');
-      expect(complete.body['email'], 'qa@familyshield.dev');
+      expect(complete.body['email'], 'qa@osratech.com');
       expect(find.byType(MfaEnrollScreen), findsOneWidget);
       // The purpose-scoped token is used for enrolment, never stored as a session.
       final enroll = api.calls('POST', '/v1/auth/mfa/enroll').single;
@@ -427,7 +427,7 @@ void main() {
           progress: MfaResetProgress(
             requestId: 'req-1',
             stage: MfaResetStage.window,
-            email: 'qa@familyshield.dev',
+            email: 'qa@osratech.com',
             windowEndsAt: windowPast,
           ),
         ),
@@ -448,7 +448,7 @@ void main() {
   });
 
   group('Restart path: the waiting screen re-reads the server (gap 1)', () {
-    void storeRequest({String id = 'req-1', String email = 'qa@familyshield.dev'}) =>
+    void storeRequest({String id = 'req-1', String email = 'qa@osratech.com'}) =>
         FlutterSecureStorage.setMockInitialValues({
           MfaResetStore.requestIdKey: id,
           MfaResetStore.emailKey: email,
@@ -468,7 +468,7 @@ void main() {
 
       expect(find.text('Continue your reset'), findsOneWidget);
       expect(find.byKey(const ValueKey('mfaResetResumeEmail')), findsOneWidget);
-      expect(find.text('qa@familyshield.dev'), findsOneWidget);
+      expect(find.text('qa@osratech.com'), findsOneWidget);
       expect(find.byKey(const ValueKey('mfaResetResumePassword')), findsOneWidget);
       // Nothing is asked twice: no email field, only the password.
       expect(find.byKey(const ValueKey('mfaResetEmail')), findsNothing);
@@ -476,7 +476,7 @@ void main() {
       await submitPassword(tester);
 
       final call = api.calls('POST', '/v1/auth/mfa/reset/status').single;
-      expect(call.body['email'], 'qa@familyshield.dev');
+      expect(call.body['email'], 'qa@osratech.com');
       expect(call.body['password'], 'good-password');
       expect(call.body['requestId'], 'req-1');
 
@@ -488,7 +488,7 @@ void main() {
       // The password is not kept anywhere; the request id and address are.
       final stored = await const FlutterSecureStorage().readAll();
       expect(stored[MfaResetStore.requestIdKey], 'req-1');
-      expect(stored[MfaResetStore.emailKey], 'qa@familyshield.dev');
+      expect(stored[MfaResetStore.emailKey], 'qa@osratech.com');
       expect(stored.values, isNot(contains('good-password')));
     });
 
@@ -747,7 +747,7 @@ void main() {
       final api = FakeApiClient(resetRoutes());
       await pumpScreen(tester, const MfaResetRequestScreen(), api);
 
-      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@familyshield.dev');
+      await tester.enterText(find.byKey(const ValueKey('mfaResetEmail')), 'qa@osratech.com');
       await tester.enterText(find.byKey(const ValueKey('mfaResetPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('mfaResetSubmit')));
       await flush(tester);
@@ -756,7 +756,7 @@ void main() {
       expect(find.byType(MfaResetWaitingScreen), findsOneWidget);
       final stored = await const FlutterSecureStorage().readAll();
       expect(stored[MfaResetStore.requestIdKey], 'req-1');
-      expect(stored[MfaResetStore.emailKey], 'qa@familyshield.dev');
+      expect(stored[MfaResetStore.emailKey], 'qa@osratech.com');
       expect(stored.values, isNot(contains('good-password')));
     });
 
@@ -1150,7 +1150,7 @@ void main() {
     testWidgets('the mailbox grace line renders in Arabic after the link expires', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         MfaResetStore.requestIdKey: 'req-1',
-        MfaResetStore.emailKey: 'qa@familyshield.dev',
+        MfaResetStore.emailKey: 'qa@osratech.com',
       });
       final api = FakeApiClient(resetRoutes(
         status: (_) => statusPayload(
@@ -1231,7 +1231,7 @@ void main() {
     testWidgets('resume prompt', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         MfaResetStore.requestIdKey: 'req-1',
-        MfaResetStore.emailKey: 'qa@familyshield.dev',
+        MfaResetStore.emailKey: 'qa@osratech.com',
       });
       await pumpArabic(tester, const MfaResetWaitingScreen(), FakeApiClient(resetRoutes()));
       expect(find.text('متابعة إعادة التعيين'), findsOneWidget);
@@ -1243,7 +1243,7 @@ void main() {
     testWidgets('resumed witness stage', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         MfaResetStore.requestIdKey: 'req-1',
-        MfaResetStore.emailKey: 'qa@familyshield.dev',
+        MfaResetStore.emailKey: 'qa@osratech.com',
       });
       await pumpArabic(tester, const MfaResetWaitingScreen(), FakeApiClient(resetRoutes()));
       await tester.enterText(find.byKey(const ValueKey('mfaResetResumePassword')), 'good-password');
@@ -1258,7 +1258,7 @@ void main() {
     testWidgets('terminal copy', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         MfaResetStore.requestIdKey: 'req-1',
-        MfaResetStore.emailKey: 'qa@familyshield.dev',
+        MfaResetStore.emailKey: 'qa@osratech.com',
       });
       await pumpArabic(
         tester,
@@ -1299,7 +1299,7 @@ void main() {
     testWidgets('deadline passed', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         MfaResetStore.requestIdKey: 'req-1',
-        MfaResetStore.emailKey: 'qa@familyshield.dev',
+        MfaResetStore.emailKey: 'qa@osratech.com',
       });
       await pumpArabic(
         tester,
@@ -1325,7 +1325,7 @@ void main() {
     testWidgets('co-parent only witness', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         MfaResetStore.requestIdKey: 'req-1',
-        MfaResetStore.emailKey: 'qa@familyshield.dev',
+        MfaResetStore.emailKey: 'qa@osratech.com',
       });
       await pumpArabic(
         tester,

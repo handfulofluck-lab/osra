@@ -16,11 +16,18 @@ namespace FamilyShield.Agent.Tests;
 public sealed class HttpsInterceptionTests
 {
     [Fact]
-    public void DefaultPfxPathLivesUnderLocalAppDataFamilyShield()
+    public void DefaultPfxPathLivesUnderLocalAppDataOsra()
     {
         var expectedDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FamilyShield");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OSRA");
         Assert.Equal(Path.Combine(expectedDir, "rootCert.pfx"), HttpsInterception.PfxPath);
+    }
+
+    [Fact]
+    public void RootCertSubjectIsOsraTestRoot()
+    {
+        // User-visible subject shown in certmgr.msc; the mutant is any other subject string.
+        Assert.Equal("OSRA Test Root", HttpsInterception.RootCertSubject);
     }
 
     [Fact]
@@ -111,6 +118,78 @@ public sealed class HttpsInterceptionTests
     {
         Assert.False(HttpsInterception.ValidateUpstreamCertificate(
             null, SslPolicyErrors.RemoteCertificateNotAvailable, allowInsecure: false));
+    }
+
+    private const string OldRootSubject = "FamilyShield" + " Test Root";
+
+    [Fact]
+    public void ExistingPfxWithLegacySubjectIsLoadedUnchangedAfterFolderMove()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "osra-cert-tests", Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(root, DataFolder.LegacyFolderName);
+        var current = Path.Combine(root, DataFolder.FolderName);
+        var legacyPfx = Path.Combine(legacy, "rootCert.pfx");
+        try
+        {
+            CreateLegacySubjectPfx(legacyPfx);
+            var beforeBytes = File.ReadAllBytes(legacyPfx);
+
+            string beforeThumbprint;
+            using (var before = new X509Certificate2(legacyPfx))
+            {
+                Assert.Equal(OldRootSubject, before.GetNameInfo(X509NameType.SimpleName, false));
+                beforeThumbprint = before.Thumbprint;
+            }
+
+            Assert.True(DataFolder.MigrateOnce(legacy, current));
+            var currentPfx = Path.Combine(current, "rootCert.pfx");
+            Assert.True(File.Exists(currentPfx));
+            // The move itself must preserve the file byte-for-byte.
+            Assert.Equal(beforeBytes, File.ReadAllBytes(currentPfx));
+
+            // The existing PFX must be loaded unchanged — same thumbprint, still the legacy
+            // subject, private key intact — never deleted, replaced or regenerated.
+            using var loaded = HttpsInterception.LoadOrGenerate(currentPfx);
+            Assert.Equal(beforeThumbprint, loaded.Thumbprint);
+            Assert.Equal(OldRootSubject, loaded.GetNameInfo(X509NameType.SimpleName, false));
+            Assert.True(loaded.HasPrivateKey);
+            // Loading must not rewrite the file either.
+            Assert.Equal(beforeBytes, File.ReadAllBytes(currentPfx));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
+    public void FreshlyGeneratedRootUsesOsraTestRoot()
+    {
+        var pfx = Path.Combine(Path.GetTempPath(), "osra-cert-tests", Guid.NewGuid().ToString("N"), "rootCert.pfx");
+        try
+        {
+            using var cert = HttpsInterception.LoadOrGenerate(pfx);
+            Assert.Equal("OSRA Test Root", cert.GetNameInfo(X509NameType.SimpleName, false));
+            Assert.True(cert.HasPrivateKey);
+            Assert.True(File.Exists(pfx));
+        }
+        finally
+        {
+            try { Directory.Delete(Path.GetDirectoryName(pfx)!, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    private static void CreateLegacySubjectPfx(string path)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            $"CN={OldRootSubject}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+        using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(5));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, cert.Export(X509ContentType.Pfx));
     }
 
     private static X509Certificate2 SelfSignedCertificate()

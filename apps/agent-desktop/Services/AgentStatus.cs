@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace FamilyShield.Agent.Services;
 
 /// <summary>
-/// Small status file (%LOCALAPPDATA%\FamilyShield\status.json) the parent-facing UI/tests read:
+/// Small status file (%LOCALAPPDATA%\OSRA\status.json) the parent-facing UI/tests read:
 /// { paused, httpsInspect, proxyRunning, updatedAt }. Best-effort — never throws.
 /// </summary>
 public static class AgentStatus
@@ -19,9 +19,7 @@ public static class AgentStatus
     internal static volatile bool ProxyRunning;
 
     /// <summary>Default status path beside the agent database.</summary>
-    public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "FamilyShield", "status.json");
+    public static string DefaultPath => Path.Combine(DataFolder.DefaultPath, "status.json");
 
     /// <summary>Serializes the current flags to the status file (temp-file + move so readers never see a torn file).</summary>
     public static void Write(bool paused, bool httpsInspect, string? path = null)

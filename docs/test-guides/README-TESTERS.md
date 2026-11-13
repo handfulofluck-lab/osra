@@ -6,7 +6,8 @@
 
 > **Branding note (2026-09-17):** the product was renamed from *FamilyShield* to **OSRA (أسرة — "family")**.
 > Technical identifiers mostly stayed unchanged so already-paired devices keep working: the
-> `X-FamilyShield-Signature` header, `familyshield.dev` emails/URLs, and on-device storage paths.
+> `X-FamilyShield-Signature` header and on-device storage paths. The support email/domain moved
+> off the familyshield namespace in #608 and is now `demo@osratech.com` / `osratech.com`.
 > **The installed Android ids changed on 2026-10-29** (Karim's decision 2B, before anything was
 > uploaded to Play): the child agent is `com.osratech.child` and the parent app `com.osratech.parent`.
 > The Kotlin/Dart package names, and therefore the component names you see after the slash
@@ -38,7 +39,7 @@ This package contains tester-installable builds of the OSRA MVP.
    test network).
 3. **Remote testers (different network):** expose the API with a tunnel instead,
    e.g. `cloudflared tunnel --url http://localhost:3000`, and share the https URL.
-4. Demo login: `demo@familyshield.dev` / `CorrectHorseBatteryStaple!`
+4. Demo login: `demo@osratech.com` / the local seed default (defined in `services/api/scripts/seed-password.ts`)
    (seeded family with child "Alex"). MFA/2FA is **optional and off by default** —
    leave the "Authentication code" field blank.
 5. If apps error while `http://localhost:3000/health` looks fine, check

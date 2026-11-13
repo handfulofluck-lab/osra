@@ -12,15 +12,29 @@ public sealed class PortableStatus
         WriteIndented = true,
     };
 
-    /// <summary>~/Library/Application Support/FamilyShield/status.json (created on first write).</summary>
-    internal static string StatusPath =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "Library", "Application Support", "FamilyShield", "status.json");
+    /// <summary>User profile root used to locate the Application Support folder (~ on macOS).</summary>
+    internal static string UserProfilePath =>
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-    /// <summary>Writes an initial status file then rewrites it every 60 s until cancelled.</summary>
-    public static async Task RunAsync(CancellationToken ct = default)
+    /// <summary>~/Library/Application Support/OSRA/status.json (created on first write; migrated from FamilyShield, issue #608).</summary>
+    internal static string StatusPath =>
+        Path.Combine(DataFolderMigration.CurrentFolder(UserProfilePath), "status.json");
+
+    /// <summary>
+    /// Writes an initial status file then rewrites it every 60 s until cancelled. Returns the process
+    /// exit code: 0 on success, 1 when the one-time data-folder migration failed (a clear message is
+    /// written to stderr in that case).
+    /// </summary>
+    public static async Task<int> RunAsync(CancellationToken ct = default)
     {
+        var outcome = DataFolderMigration.MigrateOnce(UserProfilePath, out var error);
+        if (outcome == MigrationOutcome.Failed)
+        {
+            Console.Error.WriteLine(
+                $"OSRA: could not migrate the legacy '{DataFolderMigration.LegacyFolderName}' data folder to '{DataFolderMigration.CurrentFolder(UserProfilePath)}': {error}");
+            return 1;
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(StatusPath)!);
         using var timer = new PeriodicTimer(Interval);
         do
@@ -28,6 +42,8 @@ public sealed class PortableStatus
             Write("scaffolding");
         }
         while (await timer.WaitForNextTickAsync(ct));
+
+        return 0;
     }
 
     /// <summary>Persists the placeholder status payload; real pause/telemetry fields land with the ported services (MAC-01).</summary>
