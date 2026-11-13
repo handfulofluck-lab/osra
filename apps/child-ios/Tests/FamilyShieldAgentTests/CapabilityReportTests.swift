@@ -125,4 +125,16 @@ final class CapabilityReportTests: XCTestCase {
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: sent.body) as? [String: Any])
         XCTAssertNil(body["capabilities"])
     }
+
+    /// #693: a developer-signed Release build is `dev`, not TestFlight; only App Store signing removes the profile.
+    func testEachKindOfBuildReportsItsFlavour() {
+        typealias C = CapabilityReport.Client
+        XCTAssertEqual(C.flavour(isDebug: true, hasEmbeddedProfile: true, receiptName: "sandboxReceipt"), .dev, "debug")
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: true, receiptName: "sandboxReceipt"), .dev,
+                       "developer-signed Release on a device: has a profile and a sandbox receipt path")
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: true, receiptName: nil), .dev, "ad hoc")
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: "sandboxReceipt"), .testflight)
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: "receipt"), .appstore)
+        XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: nil), .appstore)
+    }
 }
