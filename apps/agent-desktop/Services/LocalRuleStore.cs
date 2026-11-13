@@ -7,9 +7,7 @@ namespace FamilyShield.Agent.Services;
 public sealed class LocalRuleStore : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly string DbPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "FamilyShield", "agent.db");
+    internal static string DefaultDbPath => Path.Combine(DataFolder.DefaultPath, "agent.db");
 
     private readonly string _dbPath;
 
@@ -100,8 +98,8 @@ public sealed class LocalRuleStore : IDisposable
     {
         _log = log;
         // NOTE: dbPath/statusPath overrides exist so tests can isolate the store; production
-        // uses the default %LOCALAPPDATA%\FamilyShield\agent.db and status.json locations.
-        _dbPath = string.IsNullOrWhiteSpace(dbPath) ? DbPath : dbPath;
+        // uses the default %LOCALAPPDATA%\OSRA\agent.db and status.json locations.
+        _dbPath = string.IsNullOrWhiteSpace(dbPath) ? DefaultDbPath : dbPath;
         _statusPath = string.IsNullOrWhiteSpace(statusPath) ? AgentStatus.DefaultPath : statusPath;
         try
         {

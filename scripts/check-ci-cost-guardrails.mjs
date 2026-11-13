@@ -11,7 +11,7 @@
  *      parent-app iOS, this workflow file, and the three API contract files).
  *   3. seven schedules are weekly — exactly one cron per file, so a re-added daily next to the weekly
  *      fails: `ios-ci.yml` Monday 01:23, and the six build suites Monday 02:11.
- *   4. all eight PR-suite workflows keep a real `concurrency.cancel-in-progress: true` key; a
+ *   4. all nine PR-suite workflows keep a real `concurrency.cancel-in-progress: true` key; a
  *      commented-out line does not count.
  *   5. `child-android.yml` pins `gradle/actions/setup-gradle` to a full commit SHA with a version comment after `actions/setup-java@v4`.
  *
@@ -35,7 +35,7 @@ const IOS_REQUIRED_PATHS = [
 ];
 
 const WEEKLY_0211 = ["api.yml", "parent-app.yml", "child-android.yml", "agent-desktop.yml", "ai-engine.yml", "api-image.yml"];
-const CANCEL_TRUE = ["api.yml", "parent-app.yml", "child-android.yml", "agent-desktop.yml", "ai-engine.yml", "api-image.yml", "ci.yml", "ios-ci.yml"];
+const CANCEL_TRUE = ["api.yml", "parent-app.yml", "child-android.yml", "agent-desktop.yml", "ai-engine.yml", "api-image.yml", "ci.yml", "ios-ci.yml", "agent-macos.yml"];
 
 const globToRegex = (glob) =>
   new RegExp("^" + glob.split("**").map((part) => part.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join(".*") + "$");
@@ -196,6 +196,7 @@ function selftest() {
       m.set(`.github/workflows/${f}`, withCancel(suite()));
     }
     m.set(".github/workflows/ci.yml", concurrencyTrue);
+    m.set(".github/workflows/agent-macos.yml", concurrencyTrue);
     m.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca());
     return m;
   };
@@ -227,6 +228,9 @@ function selftest() {
 
   const commentedCancel = good(); commentedCancel.set(".github/workflows/ci.yml", concurrencyCommented);
   expect("a commented-out cancel-in-progress: true fails", check(read(commentedCancel)).some((p) => p.includes("cancel-in-progress is not true")));
+
+  const noMacCancel = good(); noMacCancel.set(".github/workflows/agent-macos.yml", concurrencyFalse);
+  expect("the macOS suite without cancel-in-progress fails", check(read(noMacCancel)).some((p) => p.includes("agent-macos.yml") && p.includes("cancel-in-progress is not true")));
 
   const noGradle = good(); noGradle.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca(false));
   expect("a missing setup-gradle fails", check(read(noGradle)).some((p) => p.includes("setup-gradle is missing")));

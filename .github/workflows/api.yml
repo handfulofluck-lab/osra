@@ -1,6 +1,7 @@
 name: API
 
-# Backend API + shared packages (unit suites run fully mocked). Until 2026-10-24 this was the `api` job of
+# Backend API + shared packages (routes use mocked DB/Redis; the demo seed/cleanup regression uses
+# a dedicated Postgres service). Until 2026-10-24 this was the `api` job of
 # ci.yml and ran on every pull request; now it runs when its inputs change, on main when they change, and
 # weekly on main whatever changed (a new pnpm or runner image breaks main even when no PR touched the API).
 # The `paths:` lists below must stay identical, must name this file, and must cover every file outside
@@ -46,6 +47,17 @@ concurrency:
 jobs:
   api:
     runs-on: ubuntu-latest
+    env:
+      OSRA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/osra_test_ci
+      OSRA_REQUIRE_DATABASE_TESTS: "1"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: osra_test_ci
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres -d osra_test_ci" --health-interval 2s --health-retries 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4   # version comes from package.json "packageManager" — do NOT also pass `with: version:` (the action fails with "Multiple versions of pnpm specified"; this broke the API + AI jobs on main)
@@ -61,5 +73,5 @@ jobs:
         run: pnpm --filter @familyshield/api exec prisma generate
       - name: Type-check API
         run: pnpm --filter @familyshield/api run build
-      - name: API unit tests (vitest, mocked db/redis)
+      - name: API tests (mocked routes + isolated demo database)
         run: pnpm --filter @familyshield/api run test

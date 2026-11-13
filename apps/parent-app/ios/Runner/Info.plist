@@ -31,6 +31,11 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- #598: substituted from the Flutter/Debug|Release.xcconfig value, which CI sets from a secret.
+	     Empty in a local build on purpose: AppDelegate skips provideAPIKey and the map screen says the
+	     map is not available, instead of the SDK aborting in checkServicePreconditions. -->
+	<key>MAPS_API_KEY</key>
+	<string>$(MAPS_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OSRA does not use your location. The family map shows only where your child's phone is.</string>
 	<key>UIApplicationSceneManifest</key>

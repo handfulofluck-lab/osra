@@ -48,7 +48,7 @@ jobs:
 
       - name: CI-cost guardrails - iOS paths, weekly schedules, concurrency and Gradle cache (#613)
         # The cheaper-CI edits are structural contracts: ios-ci pushes main-only with its exact path
-        # list, seven schedules are weekly Monday, the eight PR suites keep cancel-in-progress, and the
+        # list, seven schedules are weekly Monday, the nine PR suites keep cancel-in-progress, and the
         # Android job gains setup-gradle pinned by full commit SHA. The self-test proves each rule fails on a fixture that breaks it.
         run: |
           node scripts/check-ci-cost-guardrails.mjs --selftest
@@ -172,6 +172,17 @@ jobs:
         run: |
           node scripts/check-no-service-account-keys.mjs --selftest
           node scripts/check-no-service-account-keys.mjs
+
+      - name: No old user-visible branding (issue #608)
+        # The product surface renamed to OSRA: the export filename, the support domain/email, the
+        # desktop data folder, and the Windows test-certificate subject. This guard fails on any
+        # tracked occurrence of the old user-visible forms while allowing the internal identifiers
+        # (namespaces, packages, project/assembly names) and the one-time migration's reference to
+        # the legacy folder. The self-test runs first, from throwaway fixtures, so a guard that is
+        # silent because it is broken cannot pass.
+        run: |
+          node scripts/check-user-visible-brand.mjs --selftest
+          node scripts/check-user-visible-brand.mjs
 
       - name: verified-gate reads a verification only from the agent account
         # The repository is public and, from 2026-10-23, has a second member working with his own Claude

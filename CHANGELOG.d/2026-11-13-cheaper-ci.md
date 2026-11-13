@@ -14,7 +14,7 @@
   default Gradle cache without touching the build commands or trusting a mutable tag in a secret-holding job.
 - **Guardrail:** the new dependency-free `scripts/check-ci-cost-guardrails.mjs` (wired into
   `workflow-lint.yml`, self-test + real check) pins the main-only branch filter, the exact iOS paths, the
-  seven weekly schedules, `cancel-in-progress: true` on all eight PR-suite workflows, and the setup-gradle
+  seven weekly schedules, `cancel-in-progress: true` on all nine PR-suite workflows, including #608's macOS suite, and the setup-gradle
   step — so a cheaper edit that silently drops coverage turns red instead of saving money at the cost of a
   gate.
 - Coverage is preserved: the iOS contract files still gate iOS CI, `check-ci-paths.mjs` still checks the
