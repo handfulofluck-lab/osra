@@ -518,6 +518,97 @@ describe("POST /v1/billing/google/verify", () => {
 });
 
 describe("POST /v1/billing/google/rtdn", () => {
+  function voidedNotification(purchaseToken = TOKEN, productType = 1) {
+    const voided: Record<string, unknown> = { purchaseToken, orderId: "GPA.1234-5678", productId: PRODUCT };
+    // `null` means "the field is not there", which is the payload Play sends on older versions. (Not
+    // `undefined`: a default parameter swallows that and the row would silently test a stated type — which
+    // is exactly how this row passed its own mutant the first time.)
+    if (productType !== null) voided.productType = productType;
+    return {
+      packageName: "com.osratech.parent",
+      eventTimeMillis: String(Date.parse("2026-11-12T09:00:00Z")),
+      voidedPurchaseNotification: voided,
+    };
+  }
+
+  it("revokes the plan with refunded when a refund arrives, and a second delivery changes nothing (#692)", async () => {
+    // ADR-0041 D3's single rule: a revocation, a refund and a chargeback all end access when we learn of it.
+    // The store has taken the money back, so there is nothing to re-verify and no Play call to spend.
+    const store = recordingStore();
+    const play = fakePlay();
+    await bindPurchase(store);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const first = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(voidedNotification(), "msg-refund") });
+    expect(first.statusCode).toBe(204);
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+    expect(store.revoke.mock.calls[0][0].state).toBe("refunded");
+    expect(store.revoke.mock.calls[0][0].cause).toBe("voided_purchase");
+    // The ruling on #692 is "effective at the store's time when that is earlier", and these three are what
+    // an audit trail shows a parent; each was a fault that survived without them (Claude's f4, f5, f6).
+    expect(store.revoke.mock.calls[0][0].effectiveAt).toBe("2026-11-12T09:00:00.000Z");
+    expect(store.revoke.mock.calls[0][0].storeRef).toBe(TOKEN);
+    expect(store.revoke.mock.calls[0][0].productId).toBe(PRODUCT);
+    expect(store.grant).not.toHaveBeenCalled();
+    expect(play.verifySubscription).not.toHaveBeenCalled();
+
+    const again = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(voidedNotification(), "msg-refund") });
+    expect(again.statusCode).toBe(204);
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+
+    await app.close();
+  });
+
+  it("answers 204 for a refund of a token we never bound, and spends no Play call", async () => {
+    // A token we never stored has no family to write against, and retrying cannot bind it — the same
+    // reasoning as an unknown purchase on the subscription path.
+    const store = recordingStore();
+    const play = fakePlay();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(voidedNotification("never-seen"), "msg-refund-unknown") });
+
+    expect(res.statusCode).toBe(204);
+    expect(store.revoke).not.toHaveBeenCalled();
+    expect(play.verifySubscription).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("revokes when a voided notification states no productType (#692 review f2)", async () => {
+    // Play omits productType on older payloads. Treating "unstated" as "not a subscription" would keep a
+    // refunded family on the plan with no signal anywhere — the narrower guard Claude's f2 planted.
+    const store = recordingStore();
+    const play = fakePlay();
+    await bindPurchase(store);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/rtdn",
+      ...pushPayload(voidedNotification(TOKEN, null), "msg-refund-unstated"),
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+    expect(store.revoke.mock.calls[0][0].state).toBe("refunded");
+    await app.close();
+  });
+
+  it("does not touch a plan when a one-time product is voided", async () => {
+    // productType 2 is a one-time purchase; refunding it must not revoke the family plan.
+    const store = recordingStore();
+    const play = fakePlay();
+    await bindPurchase(store);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(voidedNotification(TOKEN, 2), "msg-refund-onetime") });
+
+    expect(res.statusCode).toBe(204);
+    expect(store.revoke).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+
   it("takes the state from Play and the notification type as the cause", async () => {
     const store = recordingStore();
     const play = fakePlay();
