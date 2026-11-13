@@ -88,7 +88,10 @@ export async function alertsRoutes(app: FastifyInstance) {
   app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
-    return { alert };
+    // Issue #672 review (Claude's B1b): the ack returns the row, so a guardian holding `alerts` without
+    // `location` would read the place here even though the list withholds it. Same rule, same helper.
+    const perms = await guardianPermissions(req);
+    return { alert: perms !== null && !perms.includes("location") ? withoutAlertLocation(alert) : alert };
   });
 
   /** HMAC-signed endpoint for device/AI-originated alerts (ai-engine, child agents). */

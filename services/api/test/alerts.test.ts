@@ -564,6 +564,40 @@ describe("a guardian without `location` reads alerts without a place (issue #672
     expect(res.statusCode).toBe(200);
     expect(res.json().items[0].metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
   });
+
+  it("acknowledging an alert gives a guardian without `location` no place either (B1b)", async () => {
+    // The ack returns the row, so the same guardian who cannot read the place in the list could read it
+    // here — the list was stripped and this route was not (Claude's B1b, #743).
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "guardian-1", role: "guardian", permissions: ["alerts"], familyId: "fam-1", email: "g@example.com", displayName: "G", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.findUnique.mockResolvedValue({ id: row.id, child: { familyId: "fam-1" } });
+    prismaMock.alert.update.mockResolvedValue({ ...row, acknowledged: true });
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/alerts/${row.id}/ack`,
+      headers: authHeader(app, "fam-1", "guardian-1"),
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.metadata).toEqual({ deviceId: "dev-1" });
+  });
+
+  it("acknowledging an alert keeps the place for a guardian who holds `location`", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "guardian-1", role: "guardian", permissions: ["alerts", "location"], familyId: "fam-1", email: "g@example.com", displayName: "G", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.findUnique.mockResolvedValue({ id: row.id, child: { familyId: "fam-1" } });
+    prismaMock.alert.update.mockResolvedValue({ ...row, acknowledged: true });
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/alerts/${row.id}/ack`,
+      headers: authHeader(app, "fam-1", "guardian-1"),
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().alert.metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
+  });
 });
 
 describe("SOS location on an internal alert (issue #672)", () => {

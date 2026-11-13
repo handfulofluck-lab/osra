@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { markDeviceRevoked } from "./deviceRevocation.js";
@@ -289,7 +290,11 @@ export async function applyRetention(at: Date = new Date(), env: NodeJS.ProcessE
   for (const alert of stale) {
     const stripped = stripAlertLocation((alert as { metadata?: unknown }).metadata);
     if (stripped === null) continue;
-    await prisma.alert.update({ where: { id: (alert as { id: string }).id }, data: { metadata: stripped } });
+    // Prisma types a JSON column as InputJsonValue; the value is the same bag with five keys removed.
+    await prisma.alert.update({
+      where: { id: (alert as { id: string }).id },
+      data: { metadata: stripped as Prisma.InputJsonValue },
+    });
     alertLocations += 1;
   }
   return {

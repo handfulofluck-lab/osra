@@ -219,6 +219,29 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     guardian.ws.close();
   });
 
+  it("sends nothing at all to a guardian with no permissions, even when the alert carries a place (Fable s17)", async () => {
+    // The other half of B1. An alert that CARRIES a place takes the double-gate branch (alerts, then
+    // location), and that branch is the one where a mistake shows up as data rather than as silence: if
+    // the `alerts` check were dropped, a guardian invited to nothing would receive a child's coordinates.
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: [], familyId: "fam-1" });
+    const guardian = await subscribe("guardian-7");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage(
+      "family:*:events",
+      "family:fam-1:events",
+      JSON.stringify({
+        type: "alert",
+        payload: { id: "a-sos", category: "sos", metadata: { deviceId: "dev-1", lat: 25.2769, lng: 51.5211, accuracyM: 12 } },
+      }),
+    );
+    // Give the frame's permission lookups time to settle, then assert the socket saw nothing but `ready`.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(guardian.frames.map((f) => f.type)).toEqual(["ready"]);
+    guardian.ws.close();
+  });
+
   it("sends the place in an alert frame to a guardian holding `location` too", async () => {
     prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["alerts", "location"], familyId: "fam-1" });
     const guardian = await subscribe("guardian-6");
