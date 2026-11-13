@@ -118,7 +118,7 @@ void main() {
       await pumpScreen(tester, const LoginScreen(), api);
 
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'wrong-password');
       await tapSignIn(tester);
       await tester.pumpAndSettle();
@@ -140,7 +140,7 @@ void main() {
       expect(find.byType(LoginScreen), findsOneWidget);
 
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'good-password');
       await tapSignIn(tester);
       await tester.pumpAndSettle();

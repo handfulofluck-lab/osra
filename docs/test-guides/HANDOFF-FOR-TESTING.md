@@ -3,7 +3,7 @@
 ## Live environment (was running on this machine; recreate if sessions were reaped)
 - API: `http://localhost:3000` (healthy) · tunnel example: `https://greeting-accuracy-rainbow-teenage.trycloudflare.com` (changes on every tunnel restart)
 - **Postgres = Windows service `OSRA-Postgres` (auto-start, since 2026-09-19)** — immune to console/session reaping; `net start OSRA-Postgres` if stopped. Installer: `C:\KARIM\install-pg-service.bat` (elevated, one-time).
-- Redis `C:\KARIM\tools\redis\redis-server.exe --port 6379` · demo login `demo@familyshield.dev` / `CorrectHorseBatteryStaple!` (MFA off by default)
+- Redis `C:\KARIM\tools\redis\redis-server.exe --port 6379` · demo login `demo@osratech.com` / the local seed default (defined in `services/api/scripts/seed-password.ts`) (MFA off by default)
 - Suite state (2026-09-19, all green): API **193** · Flutter 93 · Android JVM 151 · Desktop xunit 168 · AI 18/1 skip · **live E2E 50/50**
 - Run E2E with the rotated secrets: `cd services/api && INTERNAL_HMAC_SECRET=<from docs/test-guides/start-backend.example.bat> VAULT_KEY=<from docs/test-guides/start-backend.example.bat> node scripts/e2e.mjs`
 - ⚠️ Secrets were rotated after the code review and live only in the local test bundle's `start-backend.bat` (never committed) — `start-backend.example.bat` here shows the format with placeholders. Devices paired before a rotation must re-pair (fail-closed HMAC by design).
@@ -17,7 +17,7 @@
 ## 2026-09-19 change: no pre-filled server URL (all clients rebuilt)
 - Requirement: the server address must be **blank on first launch** in every client — nothing pre-shown, ever.
 - Parent (Flutter): `kDefaultServerUrl`/`ApiClient._base` default changed from `http://10.0.2.2:3000` to `''`; login screen hides the "Server: …" caption until a URL is saved; WS provider no-ops on empty base. New test pins the blank default.
-- Child (Kotlin): pairing form server field starts empty (hint added) and is **required** — blank server shows an inline error instead of silently falling back to the old `https://api.familyshield.dev` default; `DEFAULT_SERVER` removed. (NetworkModule build-time placeholder stays — internal plumbing, never shown.)
+- Child (Kotlin): pairing form server field starts empty (hint added) and is **required** — blank server shows an inline error instead of silently falling back to the old built-in API default (the familyshield-namespace one, removed in #608); `DEFAULT_SERVER` removed. (NetworkModule build-time placeholder stays — internal plumbing, never shown.)
 - Windows: pairing dialog server box no longer pre-fills `http://localhost:3000` (empty validation already existed).
 - iOS: `PairingView` already defaulted to `""` — no change.
 - Verified on emulator: child pairing form shows empty server field with hint; suites Flutter 94/94 · Android JVM 151/151 · Desktop xunit 168/168; artifacts rebuilt into `dist\` (parent APK needed a full clean rebuild — first build reused a stale AOT snapshot).

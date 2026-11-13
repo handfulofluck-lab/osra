@@ -50,14 +50,14 @@ void main() {
             {
               'id': 'par-1',
               'familyId': 'fam-1',
-              'email': 'qa@familyshield.dev',
+              'email': 'qa@osratech.com',
               'displayName': 'QA Parent',
               'role': 'owner',
             },
             {
               'id': 'par-2',
               'familyId': 'fam-1',
-              'email': 'co@familyshield.dev',
+              'email': 'co@osratech.com',
               'displayName': 'Co Parent',
               'role': 'co-parent',
             },
@@ -100,7 +100,7 @@ void main() {
       // Open the invite dialog.
       await tester.tap(find.text('Invite member'));
       await tester.pumpAndSettle();
-      await tester.enterText(fieldByLabel('Email'), 'guardian@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'guardian@osratech.com');
 
       // Switch the role dropdown from co-parent to guardian.
       await tester.tap(find.byType(DropdownButtonFormField<String>));
@@ -118,7 +118,7 @@ void main() {
 
       final posts = api.calls('POST', '/v1/family/invites');
       expect(posts, hasLength(1));
-      expect(posts.single.body['email'], 'guardian@familyshield.dev');
+      expect(posts.single.body['email'], 'guardian@osratech.com');
       expect(posts.single.body['role'], 'guardian');
       expect(posts.single.body['permissions'], ['rules', 'location', 'alerts']);
 
@@ -133,7 +133,7 @@ void main() {
       await tester.tap(find.text('Done'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
-      expect(find.text('guardian@familyshield.dev'), findsOneWidget);
+      expect(find.text('guardian@osratech.com'), findsOneWidget);
       expect(find.text('No pending invites'), findsNothing);
 
       // Revoke issues the owner DELETE and empties the list.
@@ -141,7 +141,7 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
       expect(api.calls('DELETE', '/v1/family/invites/inv-1'), hasLength(1));
-      expect(find.text('guardian@familyshield.dev'), findsNothing);
+      expect(find.text('guardian@osratech.com'), findsNothing);
       expect(find.text('No pending invites'), findsOneWidget);
     });
   });
@@ -160,7 +160,7 @@ void main() {
 
       // Sign in against the fake server (existing login flow).
       await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-      await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+      await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
       await tester.enterText(fieldByLabel('Password'), 'good-password');
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();

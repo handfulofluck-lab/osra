@@ -376,8 +376,10 @@ Every test — automated or on hardware — ends with the environment as it was 
   (`adb reverse --remove-all`), force-stop anything left, and confirm no package or data directory
   remains (`adb shell pm list packages | grep -i familyshield` → empty). Access is leased (§9); a
   parental `lock`/`pause`/ring left standing is a collision with the next tester, not a handover.
-- **Test database:** delete the rows a run created. Keep the seeded demo family
-  (`demo@familyshield.dev` / child `Alex` / device `Pixel 7a`) and nothing else:
+- **Test database:** delete only the rows a run created: explicit test-owner families, non-`Alex`
+  children in the seeded demo family, and empty `QA Family` orphans. Keep the seeded demo family
+  (`demo@osratech.com` / child `Alex` / device `Pixel 7a`) and all legitimate non-test or reviewer
+  families. The script refuses to apply unless exactly one current demo parent exists:
   `psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql`
   (dry run without `-v apply=1`).
 - **Cache:** check Redis for keys belonging to deleted entities; anything persistent (TTL `-1`) must be

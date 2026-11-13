@@ -204,7 +204,7 @@ void main() {
                 'dailyEmail': true,
                 'weeklyEmail': false,
                 'pushEnabled': true,
-                'emails': ['qa@familyshield.dev'],
+                'emails': ['qa@osratech.com'],
               },
           'PUT /v1/digests/prefs': (_) => {'ok': true},
           // ADR-0020 / #101: the screen loads the family zone and PATCHes a change.
@@ -299,7 +299,7 @@ void main() {
       expect(puts.single.body['dailyEmail'], isTrue);
       expect(puts.single.body['weeklyEmail'], isTrue);
       expect(puts.single.body['pushEnabled'], isTrue);
-      expect(puts.single.body['emails'], ['qa@familyshield.dev']);
+      expect(puts.single.body['emails'], ['qa@osratech.com']);
       expect(find.text('Digest preferences saved'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.
       await tester.pump(const Duration(seconds: 5));
@@ -316,15 +316,15 @@ void main() {
               'dailyEmail': true,
               'weeklyEmail': false,
               'pushEnabled': true,
-              'emails': ['qa@familyshield.dev'],
+              'emails': ['qa@osratech.com'],
               'recipients': [
-                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+                {'email': 'qa@osratech.com', 'status': 'confirmed'},
               ],
             },
         'PUT /v1/digests/prefs': (_) => {
               'ok': true,
               'recipients': [
-                {'email': 'qa@familyshield.dev', 'status': 'confirmed'},
+                {'email': 'qa@osratech.com', 'status': 'confirmed'},
                 {'email': 'grandma@example.com', 'status': 'pending'},
               ],
             },
@@ -336,9 +336,9 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
       expect(find.textContaining('Confirmation sent'), findsNothing);
-      expect(find.byKey(const ValueKey('digestRecipient-qa@familyshield.dev')), findsOneWidget);
+      expect(find.byKey(const ValueKey('digestRecipient-qa@osratech.com')), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'qa@familyshield.dev, grandma@example.com');
+      await tester.enterText(find.byType(TextField), 'qa@osratech.com, grandma@example.com');
       // The recipient rows push Save below the 600 px surface, so scroll it into view first.
       await tester.drag(find.byType(ListView), const Offset(0, -300));
       await tester.pumpAndSettle();
@@ -347,7 +347,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls('PUT', '/v1/digests/prefs').single.body['emails'],
-          ['qa@familyshield.dev', 'grandma@example.com']);
+          ['qa@osratech.com', 'grandma@example.com']);
       expect(find.byKey(const ValueKey('digestRecipient-grandma@example.com')), findsOneWidget);
       expect(find.textContaining('Confirmation sent'), findsOneWidget);
       // Run out the snackbar so no timer is left pending at test end.
