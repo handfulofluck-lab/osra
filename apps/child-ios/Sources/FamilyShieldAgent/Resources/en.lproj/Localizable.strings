@@ -1,7 +1,7 @@
 /* #511: the iPhone block screen, the same wording as the Android agent (values/strings.xml). */
 "block_title_blocked" = "This app is blocked by your parent";
 "block_request_access" = "Request access";
-"block_exit_home" = "Exit to Home screen";
+"block_exit_home" = "Close app";
 /* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "Blocked by %1$@ until %2$@";
 "block_window_bedtime" = "Bedtime";
@@ -56,6 +56,7 @@
 "pin_new_field" = "New PIN (4-8 digits)";
 "pin_repeat_field" = "Repeat the PIN";
 "pin_save" = "Save PIN";
+"pin_set_reason" = "Set a parent PIN so only a parent can change OSRA Kids or pair this phone again.";
 "pin_set_footer" = "Parents only. The PIN protects the app groups and re-pairing on this phone. It stays on this phone and is never sent anywhere.";
 "pin_mismatch" = "The two PINs are different.";
 "pin_save_failed" = "The PIN could not be saved. Try again.";

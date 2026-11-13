@@ -1,7 +1,7 @@
 /* #511: Karim's approved wording (Q10 and Q12), the same as the Android agent's values-ar/strings.xml. */
 "block_title_blocked" = "حجب والدك أو والدتك هذا التطبيق";
 "block_request_access" = "اطلب السماح";
-"block_exit_home" = "الخروج إلى الشاشة الرئيسية";
+"block_exit_home" = "إغلاق التطبيق";
 /* %1$@ is the window (وقت النوم, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "محجوب بواسطة %1$@ حتى %2$@";
 "block_window_bedtime" = "وقت النوم";
@@ -56,6 +56,7 @@
 "pin_new_field" = "رمز PIN جديد (من 4 إلى 8 أرقام)";
 "pin_repeat_field" = "أعد إدخال الرمز";
 "pin_save" = "احفظ الرمز";
+"pin_set_reason" = "عيّن رمز PIN للوالدين حتى لا يستطيع غيرهما تغيير إعدادات تطبيق أسرة للأطفال أو إعادة إقران هذا الهاتف.";
 "pin_set_footer" = "للوالدين فقط. يحمي رمز PIN مجموعات التطبيقات وإعادة الإقران على هذا الهاتف. يبقى الرمز على هذا الهاتف ولا يُرسَل إلى أي مكان.";
 "pin_mismatch" = "الرمزان غير متطابقين.";
 "pin_save_failed" = "تعذّر حفظ الرمز. حاول مرة أخرى.";
