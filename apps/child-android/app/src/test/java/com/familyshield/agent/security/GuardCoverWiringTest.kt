@@ -14,7 +14,8 @@ import org.junit.Test
  * (it has no package) → [window changes reach the cover]; read only `rootInActiveWindow` → [every visible
  * application window is judged]; never call `guardCover.update` or never launch the gate when the cover goes up
  * → [the cover is drawn and the gate opens once]; leave the cover on screen when the service stops →
- * [the cover goes with the service].
+ * [the cover goes with the service]; anchor physical bounds with relative gravity →
+ * [physical window bounds stay anchored to the physical left in RTL].
  */
 class GuardCoverWiringTest {
 
@@ -70,6 +71,15 @@ class GuardCoverWiringTest {
     fun `the cover goes with the service`() {
         val onDestroy = service.substringAfter("override fun onDestroy()", missingDelimiterValue = "").substringBefore("\n    }", missingDelimiterValue = "")
         assertTrue(onDestroy.contains("guardCover.remove()"))
+    }
+
+    @Test
+    fun `physical window bounds stay anchored to the physical left in RTL`() {
+        assertTrue("the overlay is positioned from WindowBounds.left", overlay.contains("x = target.left"))
+        assertTrue(
+            "a physical x coordinate must not use Gravity.START, whose origin flips in RTL (#709)",
+            overlay.contains("gravity = Gravity.TOP or Gravity.LEFT"),
+        )
     }
 
     private fun sourceFile(relative: String): String {
