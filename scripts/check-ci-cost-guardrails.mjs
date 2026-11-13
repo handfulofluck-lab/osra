@@ -234,6 +234,9 @@ function selftest() {
   const unpinnedGradle = good(); unpinnedGradle.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca().replace("ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3", "v4"));
   expect("an unpinned setup-gradle tag fails", check(read(unpinnedGradle)).some((p) => p.includes("40-character commit SHA")));
 
+  const shortGradle = good(); shortGradle.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca().replace("ed408507eac070d1f99cc633dbcf757c94c7933a", "ed40850"));
+  expect("a short setup-gradle SHA fails", check(read(shortGradle)).some((p) => p.includes("40-character commit SHA")));
+
   console.log(`ci-cost-guardrails self-test: ${total - bad}/${total} cases`);
   process.exit(bad ? 1 : 0);
 }
