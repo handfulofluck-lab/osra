@@ -49,13 +49,17 @@ engineering documentation on GitHub once the repository is private. The audit, t
 and the dated critical path are in [`RELEASE-READINESS.md`](RELEASE-READINESS.md). In short (estimates, not
 promises):
 
-| Wave | Clients | Date now | Against the 12 Nov plan |
+Compressed the same afternoon from the team's measured pace and adopted by the maintainer with four working
+changes (second K31 session for the Mac, backup auto-merge, overnight lead-developer session); details in
+`RELEASE-READINESS.md`. P50 date, P85 in brackets:
+
+| Wave | Clients | Date now | Against the morning plan |
 |---|---|---|---|
-| Closed beta A | Android child (Play), Android parent, both iPhone apps (external TestFlight), server | 15–22 Dec 2026 | holds if gates #637, #630, #632, #634, #633 are signed by 12 Dec |
-| Closed beta B | Android child Full (website) / Windows | 12 Jan / 22 Jan 2027 | Windows slips ~5 weeks (W1–W4 not started, no certificate yet, no test machine) |
-| Public 1 | Android child (Play + Full), Android parent, both iPhone apps | 1 Feb 2027 | holds, no slack for a second store rejection |
-| Public 1b | Windows | late Feb 2027 | slips ~4 weeks |
-| Public 2 | Mac | late Mar 2027 at best, Apr 2027 likely | at risk |
+| Closed beta A | Android child (Play), Android parent, server; both iPhone apps (external TestFlight) | 2 Dec 2026 (9 Dec); iPhone 7 Dec (14 Dec) | about 2 weeks earlier |
+| Closed beta B | Android child Full (website) / Windows | 21 Dec 2026 (8 Jan) / 5 Jan 2027 (15 Jan) | 3 and 2.5 weeks earlier |
+| Public 1 | Android child (Play + Full), Android parent, both iPhone apps | 12 Jan 2027 (19 Jan) | about 3 weeks earlier |
+| Public 1b | Windows | 1 Feb 2027 (15 Feb) | 3 to 4 weeks earlier |
+| Public 2 | Mac | mid Feb 2027 (early Mar) | 5 to 7 weeks earlier |
 | Engineering docs | all | drafted by 4 Dec, merged at the private switch | no client date moves |
 
 Every release security gate is at 0 boxes ticked on 2026-11-13, and every scenario-suite row (S0–S5) is ⬜.

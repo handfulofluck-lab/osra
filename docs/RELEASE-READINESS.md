@@ -7,22 +7,47 @@ honest state of each client on `main@a2b2232c` and the plan that follows from it
 
 ## The answer first
 
-**Yes, the full ask moves dates.** What holds and what slips:
+**Re-planned twice on 2026-11-13.** The morning audit moved Windows and Mac later. In the afternoon the
+maintainer asked for the fastest plan the team's measured pace allows, and adopted it with four working
+changes (S1 to S4, below). Dates are now given as **P50** (as likely early as late) and **P85** (beaten 85
+times in 100). The morning dates are kept for comparison.
 
-| Wave | Clients | Was | Now (estimate) | Change |
+| Wave | Clients | Morning plan | **Now P50** | P85 |
 |---|---|---|---|---|
-| Closed beta A | Android child (Play), Android parent, iPhone parent and OSRA Kids iPhone (external TestFlight), server | mid to late Dec 2026 | **15 to 22 Dec 2026** | holds, if the five gates below are signed by 12 Dec |
-| Closed beta B | Windows; Android child Full (website) | Windows with Android in Dec (ROADMAP 5.4), 8 Jan 2027 (gate #635) | **Full: 12 Jan 2027. Windows: 22 Jan 2027** | **Windows slips about 5 weeks** against the Dec plan, 2 weeks against #635 |
-| Public 1 | Android child (Play + Full), Android parent, iPhone parent, OSRA Kids iPhone | 1 Feb 2027 | **1 Feb 2027** | holds, with no slack for a second store rejection |
-| Public 1b | Windows | 1 Feb 2027 | **late Feb 2027** | slips about 4 weeks |
-| Public 2 | Mac | March 2027 | **late March 2027 at best, April 2027 likely** | at risk; holds only if Mac building moves off Ahmed (see "Who does what") |
-| Engineering docs on GitHub | all | not planned | drafts by 4 Dec, owner-checked by 11 Dec, **merged at the private switch (closed beta A)** | does not move a client date: Claude writes them alongside verification |
+| Closed beta A | Android child (Play), Android parent, server | 15 to 22 Dec 2026 | **2 Dec 2026** | 9 Dec |
+| Closed beta A (iPhone) | iPhone parent and OSRA Kids iPhone (external TestFlight) | 15 to 22 Dec 2026 | **7 Dec 2026** | 14 Dec |
+| Closed beta B | Android child Full (website) | 12 Jan 2027 | **21 Dec 2026** | 8 Jan 2027 |
+| Closed beta B | Windows | 22 Jan 2027 | **5 Jan 2027** | 15 Jan |
+| Public 1 | Android child (Play + Full), Android parent, iPhone parent, OSRA Kids iPhone | 1 Feb 2027 | **12 Jan 2027** | 19 Jan |
+| Public 1b | Windows | late Feb 2027 | **1 Feb 2027** | 15 Feb |
+| Public 2 | Mac | late Mar to Apr 2027 | **mid Feb 2027** | early Mar |
+| Engineering docs on GitHub | all | merged at the private switch | merged at the private switch (beta A) | no client date moves |
 
-Why Windows and Mac slip: no Windows build step (W1 to W4, #623 to #626) has started, the code-signing
-certificate is still in SSL.com validation, and there is no Windows test machine (the agent rewrites DNS and
-the firewall, so it cannot be tested on the maintainer's PC). The Mac has its design and two spike rows,
-but build step (i) (#653) has not started, and its builder (Ahmed) is also the only person who can sign
-all eight security gates.
+No security gate is shortened: every client still needs its gate fully ticked and the `Security-signoff:`
+line for the exact build before anyone outside the team gets it.
+
+### How the dates were measured
+
+From every PR (478) and issue (236) in this repository, 11 Oct to 13 Nov 2026:
+
+- In a normal week the team merges 100 to 155 PRs and closes about 45 issues. The median PR merges 1 to 2
+  hours after it opens.
+- The slow part is waiting, not writing: one week in five had almost no merges (2 to 8 Nov, one merge in
+  nine days, because merging and signing had a single owner), and 52% of all hours fell inside gaps of
+  more than 10 hours with no merge.
+- Yardstick for the computer clients: the OSRA Kids iPhone app went from its first PR to TestFlight in
+  about 20 days (80 PRs) with one builder.
+- P85 allows one more lost week before Public 1. Store billing (family plan B2/B3) has no earlier
+  comparable and carries the widest range.
+
+### Working changes adopted with the plan (2026-11-13)
+
+- **S1. This plan and its gate calendar** (below) replace the morning dates.
+- **S2. A second K31 session builds the Mac** (step (i) #653 onward) in parallel with K31's Windows work, instead of after it.
+- **S3. Backup merging.** When a PR has a valid `Verified-sha:` signature at its head, verified-gate is
+  green and the lead developer has been silent for 4 hours, the coordinator turns on GitHub auto-merge for
+  it. The gate itself is unchanged. Ahmed (or K31 for docs and CI) may also sign the coordinator's PRs.
+- **S4. The lead developer's session runs through the night**, so merges no longer stop for about 13 hours.
 
 ## What "ready" means (the release bar, per client)
 
@@ -56,23 +81,31 @@ engineering README for every client except the old Mac scaffold (`apps/agent-mac
 
 ## Dates that hold the plan (critical path)
 
-| By | What | Owner |
+| By (P50) | What | Owner |
 |---|---|---|
-| 22 Nov | Server gate #637 signed on the staging image; production stack plan for Frankfurt reviewed | Ahmed; Claude |
-| 29 Nov | All sev:high bugs on clients 1, 3, 4, 5 merged; the High private item fixed | Kimi, Ahmed |
-| 29 Nov | Windows W1 merged; W2 in review; Windows test machine running | K31; maintainer decision |
-| 4 Dec | Engineering doc drafts complete (in the project folder, not on GitHub) | Claude |
-| 6 Dec | Production stack applied in `eu-central-1` (ADR-0028/0030) | Claude, maintainer approval |
-| 12 Dec | Gates #637, #630, #632, #634, #633 signed; Claude's QA pass on the same builds; S1 to S3 and the iPhone S5 rows PASS | Ahmed, Claude |
-| 15 to 22 Dec | **Closed beta A**: Play closed test (12 testers, 14 days) + external TestFlight; repository goes private; docs PR merged | maintainer (Play/TestFlight), Kimi (merge) |
-| 12 Jan | Full Android gate #631 signed, `/android/` page live with download hosting fixed | Kimi, Ahmed |
-| 22 Jan | Windows gate #635 signed; signed MSI on `/windows/` for closed beta B | K31, Ahmed, maintainer (signing) |
-| 1 Feb | **Public 1** | all |
-| late Feb | Windows public | all |
-| late Mar to Apr | Mac gate #636, notarised build on `/mac/` | K31 (code), Claude (Mac test bed), Ahmed |
+| 18 Nov | Production Terraform plan PR for `eu-central-1` up for review | Claude |
+| 20 Nov | Server gate #637 signed on the staging image; download hosting for installers chosen; code-signing validation done | Ahmed; maintainer |
+| 24 Nov | All sev:high bugs on clients 1, 3, 4, 5 merged; the High private item fixed | Kimi, Ahmed |
+| 26 Nov | Gate #630 (Android child Play) signed | Ahmed |
+| 27 Nov | Production stack applied (maintainer's go after the #637 read); the 12 Play testers named | Claude; maintainer |
+| 1 Dec | Gate #632 (Android parent) signed; repository private (#609) | Ahmed; maintainer |
+| **2 Dec** | **Closed beta A starts on Play** (closed test, 12 testers, 14 days to 16 Dec) | maintainer, Kimi |
+| 3 Dec / 4 Dec | Gates #634 (OSRA Kids iPhone) and #633 (iPhone parent) signed | Ahmed |
+| 7 Dec | External TestFlight for both iPhone apps | maintainer, Claude |
+| 7 Dec | Windows W4 merged (K31); Mac step (i) to (iii) merged (second K31 session) | K31 |
+| 11 Dec | Family plan B1 to B4 merged | K31, Kimi |
+| 18 Dec | iPhone production submissions in (ahead of Apple's holiday slowdown); Play production access requested | maintainer, Claude |
+| 18 Dec | Gate #631 (Full) signed | Ahmed |
+| **21 Dec** | Android child Full on `/android/` | Kimi |
+| 4 Jan | Gate #635 (Windows) signed | Ahmed |
+| **5 Jan** | Windows closed beta B | K31, maintainer (signing) |
+| **12 Jan** | **Public 1** | all |
+| late Jan | Gate #636 (Mac) signed, notarised build | Ahmed, Claude |
+| **1 Feb** | Windows public | all |
+| **mid Feb** | Mac public | all |
 
-The Play 14-day closed test that starts by 22 Dec ends by 5 Jan, which leaves room for Google's production
-review before 1 Feb.
+Gate calendar: Claude pre-fills each gate with its evidence (CI runs, scans, QA box, scenario rows) before
+Ahmed opens it, so a gate is a review of evidence, one every two working days.
 
 ## Who does what
 
@@ -82,12 +115,13 @@ signature and he is the only person who can give it.
 - **Ahmed (security + iOS):** the gates, in order #637 → #630 → #632 → #634 → #633, then #631, #635, #636; the
   High private item; iPhone fixes #677, #691, #696; history gitleaks scan and key rotation before the
   private switch (#609); a security-accuracy read of the security architecture document. **Mac code moves
-  to K31 (Claude runs it on the Mac test bed); Ahmed reviews each Mac PR for security instead of writing it.**
+  to a second K31 session (S2; Claude runs it on the Mac test bed); Ahmed reviews each Mac PR for security
+  instead of writing it. iPhone fixes #677, #691, #696 and #661 move to K31 or Kimi, with Ahmed's review.**
 - **Kimi (lead developer, the only merger):** the Android, parent app and API bugs (#671, #673, #676, #681,
   #680, #643, #598, #599, #545, #539, #538, #562), family plan B2 to B4 (#620 to #622), "Add a computer"
   (#627/#657), the Full build (5.10 PRs A to E, #586, #615), CI trim for the private repo, and every merge.
 - **K31 (code + tests, never merges):** Windows W1 to W4 (#623 to #626) first; family plan B1 (#619, #700);
-  then the Mac build steps (i) to (vi), starting with #653; #638, #642, #608, #614, #667.
+  the Mac build steps (i) to (vi), starting with #653, go to the second K31 session (S2); #638, #642, #608, #614, #667.
 - **Claude (architecture, QA, coordination):** verification of every PR and the after-merge check; the QA box
   on every gate; the scenario suite runs on the Flip4, iPhone and Mac; the production stack plan and apply;
   building, running and notarising K31's Mac steps on the Mac test bed (Claude writes no product code,
