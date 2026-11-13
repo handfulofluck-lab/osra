@@ -29,7 +29,7 @@ security key when it is one.
 
 | Device | Owner of the device | Escape slot | Notes |
 |---|---|---|---|
-| **Flip4** (`R5CW116Y6GF`, the maintainer's personal phone, SIM) | Team collaboration sync (PC Claude), lease `phone-claim.ps1` | **Daily 17:00–18:00 (21:00–22:00 Dubai)**, plus within 24 h of each new child APK | Ring rows play the alarm at full volume, so they run in this slot only. Rows that need a reboot, the power key on the secure lock screen, or the SIM are batched as **HAND-KARIM** for one 15-minute slot the maintainer picks. Never a clock, `dpm` or lock-screen PIN change. |
+| **Flip4** (`R5CW116Y6GF`, test phone with the maintainer's SIM) | Team collaboration sync (PC Claude), lease `phone-claim.ps1` | **Three daily blocks: 05:00–07:00, 12:00–14:00 and 17:00–19:00 (09:00–11:00, 16:00–18:00, 21:00–23:00 Dubai)**, plus any free lease time, plus a full Android run within 4 h of each new child APK | The maintainer, 13 Nov: it is a testing phone, use it as long as the tests need. Loud ring rows only between 05:00 and 18:00 (09:00–22:00 Dubai). Rows that need a reboot, the power key on the secure lock screen, or the SIM are batched as **HAND-KARIM** for a 15-minute slot he picks. Never a clock, `dpm` or lock-screen PIN change. PR device rows and the maintainer's own use come first; the lease (§9) settles any clash. |
 | **Test iPhone 13** | Mac test bed (Mac Claude) | **Nightly 20:00–22:00 (00:00–02:00 Dubai)**, plus each new Kids or parent build | Build uploads and PR device rows take priority (about 15 minutes; the Mac thread says when). Reboot and Airplane Mode rows are HAND-KARIM (he types the passcode). |
 | **MacBook M2** | Mac test bed (Mac Claude) | **22:00–23:00 (02:00–03:00 Dubai)** once a macOS agent build exists | Never change its clock; Recovery and Safe Mode rows only with the maintainer. |
 | **Windows Server 2025 VM** (staging, `osra-windows-test`) | Team collaboration sync (PC Claude) | **Daily 15:00–16:00 (19:00–20:00 Dubai)** once a Windows build exists (W1, #623) | Start the instance for the slot and stop it after (cost rule). Snapshot the clean state first; USB-boot and Safe-Mode rows run on a snapshot. |
@@ -69,6 +69,6 @@ security key when it is one.
 ## 5. Tonight's start (13 Nov 2026)
 
 - iPhone: the Mac test bed started the OSRA Kids escape run on build 8 at 20:37, and runs nightly from now on.
-- Flip4: #734 (Home escape during a ring) and osra-security#17 are open, with Kimi/Ahmed. The Flip4 escape slot
-  starts tomorrow 17:00 with the probe, then re-runs AR01/AR02 on the fixed APK.
+- Flip4: #734 (Home escape during a ring) and osra-security#17 are open, with Kimi/Ahmed. The Flip4 escape blocks
+  start tomorrow 05:00 with the probe, then re-runs AR01/AR02 on the fixed APK.
 - Windows and Mac: the rows are written; runs start when each client has a build.
