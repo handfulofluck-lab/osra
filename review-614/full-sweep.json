@@ -1,0 +1,2869 @@
+{
+  "issue": 614,
+  "source": "main",
+  "notes": "English-only read-only sweep. literal-candidate rows require a human surface check before Bureau wording.",
+  "counts": {
+    "total": 317,
+    "resourceKeys": 2,
+    "literalCandidates": 143,
+    "website": 172,
+    "alreadyTracked": 137
+  },
+  "rows": [
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 49,
+      "english": "OSRA — Pair this device",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_osra_pair_device",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 56,
+      "english": "Server URL:",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_server_url",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 60,
+      "english": "Pairing code:",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_pairing_code",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 64,
+      "english": "Parent PIN:",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_parent_pin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 66,
+      "english": "Repeat PIN:",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_repeat_pin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 69,
+      "english": "Pair",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_pair",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 97,
+      "english": "Enter the server URL and the 6-digit pairing code.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_enter_server_url_6",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 109,
+      "english": "The two PIN entries do not match.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_two_pin_entries_do",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 123,
+      "english": "Pairing rejected — check the code and server URL.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_pairing_rejected_check_code",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingDialog.cs",
+      "line": 140,
+      "english": "Pairing failed: {ex.Message}",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_dialog_pairing_failed_ex_message",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingService.cs",
+      "line": 73,
+      "english": "This code is already being used by another device. Ask your parent for a new code.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_service_code_already_being_used",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingService.cs",
+      "line": 75,
+      "english": "Your parent needs to give consent in the OSRA app before this PC can be paired.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_service_parent_needs_give_consent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingService.cs",
+      "line": 110,
+      "english": "Your parent declined this PC. If that was a mistake, ask them for a new code.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_service_parent_declined_pc_if",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingService.cs",
+      "line": 112,
+      "english": "The code expired before your parent allowed this PC. Ask them for a new code.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_service_code_expired_before_parent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingService.cs",
+      "line": 114,
+      "english": "Your parent needs to give consent in the OSRA app before this PC can be paired.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_service_parent_needs_give_consent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/PairingService.cs",
+      "line": 121,
+      "english": "The code expired before your parent allowed this PC. Ask them for a new code.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_service_code_expired_before_parent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/RuleSyncService.cs",
+      "line": 170,
+      "english": "Web filter was bypassed",
+      "where": "Windows agent UI or parent alert",
+      "suggestedKey": "rule_sync_service_web_filter_bypassed",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/RuleSyncService.cs",
+      "line": 171,
+      "english": "The OSRA proxy was disabled in Windows settings",
+      "where": "Windows agent UI or parent alert",
+      "suggestedKey": "rule_sync_service_osra_proxy_disabled_windows",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/RuleSyncService.cs",
+      "line": 199,
+      "english": "VPN active",
+      "where": "Windows agent UI or parent alert",
+      "suggestedKey": "rule_sync_service_vpn_active",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/RuleSyncService.cs",
+      "line": 200,
+      "english": "A VPN tunnel may be routing traffic around the filter",
+      "where": "Windows agent UI or parent alert",
+      "suggestedKey": "rule_sync_service_vpn_tunnel_may_be",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/SosHotkey.cs",
+      "line": 49,
+      "english": "SOS from {Environment.MachineName}",
+      "where": "SOS flow",
+      "suggestedKey": "sos_hotkey_sos_environment_machinename",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/SosHotkey.cs",
+      "line": 50,
+      "english": "The SOS hotkey (Shift+F11) was pressed",
+      "where": "SOS flow",
+      "suggestedKey": "sos_hotkey_sos_hotkey_shift_f11",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/SosHotkey.cs",
+      "line": 284,
+      "english": "SOS sent to your parent",
+      "where": "SOS flow",
+      "suggestedKey": "sos_hotkey_sos_sent_parent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/SosHotkey.cs",
+      "line": 286,
+      "english": "OK",
+      "where": "SOS flow",
+      "suggestedKey": "sos_hotkey_ok",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/WebFilterProxy.cs",
+      "line": 15,
+      "english": "Blocked by OSRA",
+      "where": "Desktop block page",
+      "suggestedKey": "web_filter_proxy_html_body_h1_blocked",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/WebFilterProxy.cs",
+      "line": 240,
+      "english": "Blocked website: {host}",
+      "where": "Desktop block page",
+      "suggestedKey": "web_filter_proxy_blocked_website_host",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/agent-desktop/Services/WebFilterProxy.cs",
+      "line": 260,
+      "english": "Web filter failed to start",
+      "where": "Desktop block page",
+      "suggestedKey": "web_filter_proxy_web_filter_failed_start",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt",
+      "line": 212,
+      "english": "Parent commands",
+      "where": "Android child app",
+      "suggestedKey": "command_dispatcher_parent_commands",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt",
+      "line": 425,
+      "english": "Parent commands",
+      "where": "Android child app",
+      "suggestedKey": "command_dispatcher_parent_commands",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt",
+      "line": 429,
+      "english": "Screen time ending",
+      "where": "Android child app",
+      "suggestedKey": "command_dispatcher_screen_time_ending",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt",
+      "line": 430,
+      "english": "Screen will lock in $minutes minutes",
+      "where": "Android child app",
+      "suggestedKey": "command_dispatcher_screen_will_lock_minutes",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt",
+      "line": 483,
+      "english": "locate_now refused: $reason — a location foreground service started from the background",
+      "where": "Android child app",
+      "suggestedKey": "command_dispatcher_locate_now_refused_reason",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandPollWorker.kt",
+      "line": 62,
+      "english": "Command checks",
+      "where": "Android child app",
+      "suggestedKey": "command_poll_worker_command_checks",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandPollWorker.kt",
+      "line": 67,
+      "english": "Checking for parent commands",
+      "where": "Android child app",
+      "suggestedKey": "command_poll_worker_checking_parent_commands",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/RingActivity.kt",
+      "line": 35,
+      "english": "🔔 Your parent is ringing this phone",
+      "where": "Android child app",
+      "suggestedKey": "ring_activity_parent_ringing_phone",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/RingActivity.kt",
+      "line": 36,
+      "english": "\\nIt keeps ringing until a parent stops it.",
+      "where": "Android child app",
+      "suggestedKey": "ring_activity_nit_keeps_ringing_until",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/commands/RingActivity.kt",
+      "line": 39,
+      "english": "Stop ringing (parent PIN)",
+      "where": "Android child app",
+      "suggestedKey": "ring_activity_stop_ringing_parent_pin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/BlockActivity.kt",
+      "line": 204,
+      "english": "Access requested",
+      "where": "Lock/bedtime screen",
+      "suggestedKey": "block_activity_access_requested",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/enforcement/BlockActivity.kt",
+      "line": 205,
+      "english": "Child requested access to $pkg",
+      "where": "Lock/bedtime screen",
+      "suggestedKey": "block_activity_child_requested_access_pkg",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/receivers/AccessibilityOffReceiver.kt",
+      "line": 54,
+      "english": "Protection was disabled",
+      "where": "Android child app",
+      "suggestedKey": "accessibility_off_receiver_protection_disabled",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/receivers/AccessibilityOffReceiver.kt",
+      "line": 55,
+      "english": "The OSRA accessibility service was turned off on this device",
+      "where": "Android child app",
+      "suggestedKey": "accessibility_off_receiver_osra_accessibility_service_turned",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/receivers/PackageAddedReceiver.kt",
+      "line": 76,
+      "english": "New app installed",
+      "where": "Android child app",
+      "suggestedKey": "package_added_receiver_new_app_installed",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/receivers/PackageAddedReceiver.kt",
+      "line": 77,
+      "english": "$appName ($packageId) was installed on this device",
+      "where": "Android child app",
+      "suggestedKey": "package_added_receiver_appname_packageid_installed_device",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/receivers/PackageReplacedReceiver.kt",
+      "line": 59,
+      "english": "Agent updated",
+      "where": "Android child app",
+      "suggestedKey": "package_replaced_receiver_agent_updated",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/receivers/PackageReplacedReceiver.kt",
+      "line": 60,
+      "english": "OSRA agent was reinstalled/updated",
+      "where": "Android child app",
+      "suggestedKey": "package_replaced_receiver_osra_agent_reinstalled_updated",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/AdminEnrolmentPolicy.kt",
+      "line": 97,
+      "english": "Protection could not be enabled",
+      "where": "Android child app",
+      "suggestedKey": "admin_enrolment_policy_protection_could_not_be",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/AdminEnrolmentPolicy.kt",
+      "line": 98,
+      "english": "The system sheet closed without activating anything. Samsung's Knox layer still",
+      "where": "Android child app",
+      "suggestedKey": "admin_enrolment_policy_system_sheet_closed_without",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperAlertWorker.kt",
+      "line": 74,
+      "english": "Protection was changed",
+      "where": "Android child app",
+      "suggestedKey": "tamper_alert_worker_protection_changed",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt",
+      "line": 54,
+      "english": "Go back",
+      "where": "Android child app",
+      "suggestedKey": "tamper_guard_activity_go_back",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt",
+      "line": 92,
+      "english": "Re-pairing this device needs your parent's PIN.",
+      "where": "Android child app",
+      "suggestedKey": "tamper_guard_activity_re_pairing_device_needs",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt",
+      "line": 93,
+      "english": "Removing protection needs your parent's PIN.",
+      "where": "Android child app",
+      "suggestedKey": "tamper_guard_activity_removing_protection_needs_parent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt",
+      "line": 94,
+      "english": "Stopping the ring needs your parent's PIN.",
+      "where": "Android child app",
+      "suggestedKey": "tamper_guard_activity_stopping_ring_needs_parent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt",
+      "line": 167,
+      "english": "settings",
+      "where": "Android child app",
+      "suggestedKey": "tamper_guard_activity_settings",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/security/TamperGuardActivity.kt",
+      "line": 169,
+      "english": "remove",
+      "where": "Android child app",
+      "suggestedKey": "tamper_guard_activity_remove",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt",
+      "line": 381,
+      "english": "Location sharing is active",
+      "where": "Android child app",
+      "suggestedKey": "location_service_location_sharing_active",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt",
+      "line": 486,
+      "english": "Lock screen permission removed",
+      "where": "Android child app",
+      "suggestedKey": "location_service_lock_screen_permission_removed",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt",
+      "line": 487,
+      "english": "\\\"Display over other apps\\\" was turned off for OSRA; the lock and pause screens cannot be shown until it is re-enabled",
+      "where": "Android child app",
+      "suggestedKey": "location_service_display_over_other_apps",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt",
+      "line": 552,
+      "english": "VPN active",
+      "where": "Android child app",
+      "suggestedKey": "location_service_vpn_active",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt",
+      "line": 553,
+      "english": "A VPN is routing this device's traffic around the filter",
+      "where": "Android child app",
+      "suggestedKey": "location_service_vpn_routing_device_s",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 66,
+      "english": "\\n⚠️ Location permission is required for live GPS tracking and geofence alerts.",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_n_location_permission_required",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 68,
+      "english": "\\n⚠️ Location: needs \\\"Allow all the time\\\" — without it Locate and geofence alerts",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_n_location_needs_allow",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 70,
+      "english": "\\n⚠️ Location service is not running.",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_n_location_service_not",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 71,
+      "english": "\\n✓ Location tracking: Active",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_n_location_tracking_active",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 76,
+      "english": "Grant location permission",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_grant_location_permission",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 77,
+      "english": "Allow location all the time",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_allow_location_all_time",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/LocationStatusPolicy.kt",
+      "line": 78,
+      "english": "Start location service",
+      "where": "Android child app",
+      "suggestedKey": "location_status_policy_start_location_service",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/OnboardingPolicy.kt",
+      "line": 26,
+      "english": "Locate the device and geofence alerts; background access keeps it working with the app closed.",
+      "where": "Android child app",
+      "suggestedKey": "onboarding_policy_locate_device_geofence_alerts",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/OnboardingPolicy.kt",
+      "line": 30,
+      "english": "Reads notifications from monitored apps for the safety scan (Phase 2.6).",
+      "where": "Android child app",
+      "suggestedKey": "onboarding_policy_reads_notifications_monitored_apps",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/OnboardingPolicy.kt",
+      "line": 112,
+      "english": "This build captures messages from the screen only. The sideloaded Full build adds $what capture.",
+      "where": "Android child app",
+      "suggestedKey": "onboarding_policy_build_captures_messages_screen",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 550,
+      "english": "Without it, protection is alert-only.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_without_protection_alert_only",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 555,
+      "english": "Activate device admin",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_activate_device_admin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 561,
+      "english": "Skip for now (alert-only protection)",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_skip_now_alert_only",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 587,
+      "english": "Try Activate again",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_try_activate_again",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 593,
+      "english": "Continue without protection",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_continue_without_protection",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 628,
+      "english": "Setup complete",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_setup_complete",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 630,
+      "english": "The agent is now monitoring this device.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_agent_now_monitoring_device",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 643,
+      "english": "Grant call & SMS permissions",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_grant_call_sms_permissions",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 651,
+      "english": "Open status",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_open_status",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 669,
+      "english": "Each item below opens the one screen that grants it. Come back here after each one; the list re-checks itself.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_each_item_below_opens",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 672,
+      "english": "Back",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_back",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 691,
+      "english": "Grant: ${g.title}",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_grant_g_title",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 720,
+      "english": "⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_web_filter_not_set",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 726,
+      "english": "Set up web filter",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_set_up_web_filter",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 736,
+      "english": "✓ Web filter: connected (SafeSearch, blocked sites, pause-internet)",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_web_filter_connected_safesearch",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 739,
+      "english": "⚠️ Web filter: not connected",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_web_filter_not_connected",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 743,
+      "english": "Reconnect web filter",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_reconnect_web_filter",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 804,
+      "english": "Child: $childId\\nDevice: $deviceId\\nServer: $server",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_child_childid_ndevice_deviceid",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 810,
+      "english": "\\n⚠️ Protection: alert-only — device admin is not active",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_n_protection_alert_only",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 817,
+      "english": "Activate device admin",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_activate_device_admin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 863,
+      "english": "Open accessibility settings",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_open_accessibility_settings",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 879,
+      "english": "Finish protection (${missing.size} to grant)",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_finish_protection_missing_size",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 879,
+      "english": "Protection checklist",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_protection_checklist",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 886,
+      "english": "Re-pair (parent PIN)",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_re_pair_parent_pin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 899,
+      "english": "Remove protection (parent PIN)",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_remove_protection_parent_pin",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 960,
+      "english": "server returned HTTP ${response.code}",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_server_returned_http_response",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 994,
+      "english": "pairing response has no device id",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_pairing_response_has_no",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt",
+      "line": 1012,
+      "english": "pairing did not finish",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_activity_pairing_did_not_finish",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 61,
+      "english": "Enter the server URL and pairing code below, or allow Camera in Settings and scan again.",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_enter_server_url_pairing",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 90,
+      "english": "Camera preview",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_camera_preview",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 107,
+      "english": "Starting the camera…",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_starting_camera",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 115,
+      "english": "Cancel scanning",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_cancel_scanning",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 116,
+      "english": "Cancel scanning and return to the pairing form",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_cancel_scanning_return_pairing",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 126,
+      "english": "Scan the pairing QR code",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_scan_pairing_qr_code",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 135,
+      "english": "Enter code instead",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_enter_code_instead",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 138,
+      "english": "Enter the server URL and pairing code below.",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_enter_server_url_pairing",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 151,
+      "english": "The camera could not start. Enter the server URL and pairing code below.",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_camera_could_not_start",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 171,
+      "english": "Camera ready. Point the phone at the QR code on the parent's screen.",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_camera_ready_point_phone",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairQrScanActivity.kt",
+      "line": 174,
+      "english": "The camera could not start. Enter the server URL and pairing code below.",
+      "where": "Android child app",
+      "suggestedKey": "pair_qr_scan_activity_camera_could_not_start",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/social/SocialScanQueue.kt",
+      "line": 134,
+      "english": "Child contacted/received from $digits via $app",
+      "where": "Android child app",
+      "suggestedKey": "social_scan_queue_child_contacted_received_digits",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 104,
+      "english": "SOS from ${Build.MODEL}",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_sos_build_model",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 105,
+      "english": "Your child pressed the SOS button",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_child_pressed_sos_button",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 150,
+      "english": "Sending SOS in ${(s.remainingMs + 999) / 1000}…",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_sending_sos_s_remainingms",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 157,
+      "english": "Stay calm — tap Cancel if this was accidental.",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_stay_calm_tap_cancel",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 168,
+      "english": "Alert sent — stay where you are",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_alert_sent_stay_where",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 175,
+      "english": "Your parent has been notified.",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_parent_has_been_notified",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 182,
+      "english": "Need help right now?",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_need_help_right_now",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/sos/SosActivity.kt",
+      "line": 196,
+      "english": "SOS cancelled.",
+      "where": "SOS flow",
+      "suggestedKey": "sos_activity_sos_cancelled",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt",
+      "line": 285,
+      "english": "Content filter",
+      "where": "Android child app",
+      "suggestedKey": "filter_vpn_service_content_filter",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt",
+      "line": 290,
+      "english": "Content filter active",
+      "where": "Android child app",
+      "suggestedKey": "filter_vpn_service_content_filter_active",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-android/app/src/main/res/values/strings.xml",
+      "line": 3,
+      "english": "OSRA",
+      "where": "Android child app",
+      "suggestedKey": "app_name",
+      "kind": "resource-key",
+      "status": "verify brand label"
+    },
+    {
+      "file": "apps/child-android/app/src/main/res/values/strings.xml",
+      "line": 5,
+      "english": "OSRA SOS",
+      "where": "Android child app",
+      "suggestedKey": "sos_tile_label",
+      "kind": "resource-key",
+      "status": "verify brand label"
+    },
+    {
+      "file": "apps/child-ios/Sources/FamilyShieldAgent/DeviceActivityMonitor.swift",
+      "line": 204,
+      "english": "Screen time limit reached",
+      "where": "OSRA Kids on iPhone",
+      "suggestedKey": "device_activity_monitor_screen_time_limit_reached",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-ios/Sources/FamilyShieldAgent/DeviceActivityMonitor.swift",
+      "line": 205,
+      "english": "Screen time threshold reached (event \\(event.rawValue), activity \\(activity.rawValue)).",
+      "where": "OSRA Kids on iPhone",
+      "suggestedKey": "device_activity_monitor_screen_time_threshold_reached",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-ios/Sources/FamilyShieldAgent/PairingView.swift",
+      "line": 98,
+      "english": "Failed to persist identity: shared app group is unavailable. Verify app group provisioning.",
+      "where": "Pairing flow",
+      "suggestedKey": "pairing_view_failed_persist_identity_shared",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-ios/Sources/FamilyShieldAgent/ShieldConfiguration.swift",
+      "line": 111,
+      "english": "Child asked for access",
+      "where": "OSRA Kids on iPhone",
+      "suggestedKey": "shield_configuration_child_asked_access",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/child-ios/Sources/FamilyShieldAgent/ShieldConfiguration.swift",
+      "line": 112,
+      "english": "Child pressed 'Ask parent' on a shield screen.",
+      "where": "OSRA Kids on iPhone",
+      "suggestedKey": "shield_configuration_child_pressed_ask_parent",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_card_section.dart",
+      "line": 32,
+      "english": "How to talk about this",
+      "where": "Parent app",
+      "suggestedKey": "coach_card_section_how_talk_about",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 29,
+      "english": "If your child may be hurting themselves",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_if_child_may_be",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 60,
+      "english": "When an adult may be grooming your child",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_when_adult_may_be",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 90,
+      "english": "If your child is being bullied online",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_if_child_being_bullied",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 120,
+      "english": "Talking about sexual content",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_talking_about_sexual_content",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 124,
+      "english": "less. Frame the issue as safety, not shame: their body, their privacy, and never sharing",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_less_frame_issue_as",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 134,
+      "english": "Agree on a no-questions-asked rule for reporting weird messages.",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_agree_no_questions_asked",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 146,
+      "english": "If your child sees or shares violent content",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_if_child_sees_shares",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 172,
+      "english": "When your child encounters hate speech",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_when_child_encounters_hate",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 199,
+      "english": "A worrying message — how to respond",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_worrying_message_how_respond",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 202,
+      "english": "Start from curiosity, not accusation. Pick a calm moment, mention what you noticed without",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_start_curiosity_not_accusation",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 210,
+      "english": "Describe what you noticed, not verdicts about their friends.",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_describe_what_noticed_not",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 225,
+      "english": "Agreeing on screen-time limits together",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_agreeing_screen_time_limits",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 255,
+      "english": "Staying safe in gaming chats",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_staying_safe_gaming_chats",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 282,
+      "english": "A calm first conversation",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_calm_first_conversation",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/features/coach/coach_content.dart",
+      "line": 285,
+      "english": "Whatever the alert is about, the first conversation sets the tone. Stay calm, be honest",
+      "where": "Parent app",
+      "suggestedKey": "coach_content_whatever_alert_about_first",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/providers/auth_provider.dart",
+      "line": 254,
+      "english": "request failed",
+      "where": "Parent app",
+      "suggestedKey": "auth_provider_request_failed",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/push/local_notifier.dart",
+      "line": 63,
+      "english": "OSRA alerts",
+      "where": "Push notification",
+      "suggestedKey": "local_notifier_osra_alerts",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "apps/parent-app/lib/push/local_notifier.dart",
+      "line": 64,
+      "english": "Lock screen, screen time and safety alerts from your family",
+      "where": "Push notification",
+      "suggestedKey": "local_notifier_lock_screen_screen_time",
+      "kind": "literal-candidate",
+      "status": "new"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 16,
+      "english": "Delete your OSRA account",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_delete_osra_account",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 52,
+      "english": "Delete your OSRA account and data",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_delete_osra_account_data",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 55,
+      "english": "Only the OSRA parent app has accounts. The OSRA child app has no account of its own: a child's data belongs to the family account and is deleted with it.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_only_osra_parent_app",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 59,
+      "english": "In the OSRA app",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_osra_app",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 64,
+      "english": "Open the OSRA app and sign in.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_open_osra_app_sign",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 67,
+      "english": "On the dashboard, tap the menu (⋮, top right), then",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_dashboard_tap_menu_top",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 68,
+      "english": "Delete account",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_delete_account",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 72,
+      "english": "Type your email address, then your password, and your authenticator code if two-step sign-in is on.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_type_email_address_then",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 75,
+      "english": "Confirm. The deletion happens at once and cannot be undone.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_confirm_deletion_happens_once",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 81,
+      "english": "Without the app",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_without_app",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 86,
+      "english": "from the email address you sign in with, and ask us to delete your account. We reply to that address to confirm the request comes from you, then delete the account within 30 days and tell you when it is done.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_email_address_sign_ask",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 90,
+      "english": "What is deleted",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_what_deleted",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 96,
+      "english": "If you created the family",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_if_created_family",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 97,
+      "english": "(the owner): the whole family. That is every child's location history, app use, alerts, message excerpts, rules and places, every linked phone, and every other parent's and guardian's access.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_owner_whole_family_every",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 101,
+      "english": "If you joined someone else's family",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_if_joined_someone_else",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 102,
+      "english": ": only your own account. The family and the children stay.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_only_own_account_family",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 108,
+      "english": "What is kept, and for how long",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_what_kept_how_long",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 113,
+      "english": "The identifiers of signed-out sessions, until those sessions would have expired (at most 8 days), so they cannot be reused.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_identifiers_signed_out_sessions",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 116,
+      "english": "Encrypted database backups, if we keep any: each backup is deleted within 90 days.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_encrypted_database_backups_if",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 119,
+      "english": "Server logs, which hold identifiers but no messages or content, for at most 90 days.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_server_logs_which_hold",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 124,
+      "english": "Everything else is deleted at once. See the",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_everything_else_deleted_once",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 125,
+      "english": "privacy policy",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_privacy_policy",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 126,
+      "english": "for more.",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_more",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 139,
+      "english": "Privacy policy",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_privacy_policy",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 141,
+      "english": "Terms of use",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_terms_use",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/delete-account/index.html",
+      "line": 143,
+      "english": "Delete your account",
+      "where": "Website: delete-account",
+      "suggestedKey": "index_delete_account",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 16,
+      "english": "OSRA privacy policy",
+      "where": "Website: privacy",
+      "suggestedKey": "index_osra_privacy_policy",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 52,
+      "english": "OSRA privacy policy",
+      "where": "Website: privacy",
+      "suggestedKey": "index_osra_privacy_policy",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 55,
+      "english": "Effective 12 November 2026.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_effective_12_november_2026",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 59,
+      "english": "This policy explains what the OSRA apps collect, why, where it is kept, for how long, and how to delete it. It covers the",
+      "where": "Website: privacy",
+      "suggestedKey": "index_policy_explains_what_osra",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 61,
+      "english": "parent app and the",
+      "where": "Website: privacy",
+      "suggestedKey": "index_parent_app",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 62,
+      "english": "OSRA child app",
+      "where": "Website: privacy",
+      "suggestedKey": "index_osra_child_app",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 63,
+      "english": "(OSRA Kids) distributed on Google Play and on Apple's App Store. An OSRA app distributed in any other way has its own notice, shown where you download it. In this policy, \"we\" and \"OSRA\" mean the developer of the OSRA apps, who is responsible for how this data is used; section 13 gives the legal details. You can reach us at",
+      "where": "Website: privacy",
+      "suggestedKey": "index_osra_kids_distributed_google",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 69,
+      "english": "1. Who OSRA is for",
+      "where": "Website: privacy",
+      "suggestedKey": "index_1_who_osra",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 72,
+      "english": "OSRA is for parents and legal guardians who supervise their own children's phones. A parent creates the account in the OSRA app and pairs the child's phone with the OSRA child app. The child app is visible on the child's phone and shows that it is active. OSRA must not be used to monitor another adult or anyone you are not responsible for.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_osra_parents_legal_guardians",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 75,
+      "english": "Accounts are for adults (18 or over). Children do not create accounts; a child's data belongs to the family account the parent created.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_accounts_adults_18_over",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 79,
+      "english": "2. What the OSRA child app collects",
+      "where": "Website: privacy",
+      "suggestedKey": "index_2_what_osra_child",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 82,
+      "english": "On an Android phone",
+      "where": "Website: privacy",
+      "suggestedKey": "index_android_phone",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 85,
+      "english": "The child app sends the following to the family's account, so the parent can see it in the OSRA app:",
+      "where": "Website: privacy",
+      "suggestedKey": "index_child_app_sends_following",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 92,
+      "english": ", including in the background: the phone's position, its accuracy and the time. It is used to show where the child is, to answer the parent's \"locate now\" request, and for alerts when the child arrives at or leaves a place the parent has set.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_including_background_phone_s",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 96,
+      "english": "App use",
+      "where": "Website: privacy",
+      "suggestedKey": "index_app_use",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 97,
+      "english": ": how many minutes each app was used, total screen time, how many times the phone was unlocked, and which app is open while the screen is on. It is used for screen-time limits, schedules and reports.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_how_many_minutes_each",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 101,
+      "english": "Installed apps",
+      "where": "Website: privacy",
+      "suggestedKey": "index_installed_apps",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 102,
+      "english": ": the list of apps on the phone, so the parent can set rules per app and be told when a new app is installed.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_list_apps_phone_so",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 106,
+      "english": "Messages in chat apps the parent chooses",
+      "where": "Website: privacy",
+      "suggestedKey": "index_messages_chat_apps_parent",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 107,
+      "english": ": the text shown on screen in those apps, together with the chat partner's displayed name or number. Email addresses, phone numbers and other long numbers in the text are masked on the phone before anything is sent. Our server checks the text against safety rules (for example for bullying or self-harm). Text that raises no concern is discarded straight away and not stored. When text does raise a concern, a short excerpt (at most 240 characters) is stored encrypted so the parent can see why the alert was raised. The parent chooses which apps are checked during setup, and can switch each one off at any time.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_text_shown_screen_those",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 111,
+      "english": "Unknown contacts",
+      "where": "Website: privacy",
+      "suggestedKey": "index_unknown_contacts",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 112,
+      "english": ": if the parent has set a list of allowed contacts, a number that is not on the list raises an alert that includes that number.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_if_parent_has_set",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 116,
+      "english": "Requests and SOS",
+      "where": "Website: privacy",
+      "suggestedKey": "index_requests_sos",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 117,
+      "english": ": when the child asks for more time or access to a blocked app, or presses SOS, the request or alert is sent to the parent.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_when_child_asks_more",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 121,
+      "english": "Device and app information",
+      "where": "Website: privacy",
+      "suggestedKey": "index_device_app_information",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 122,
+      "english": ": the phone's model and Android version, battery level, which OSRA permissions and protections are switched on, how many other user profiles the phone has (counts only), the version of the OSRA child app, a push-notification token, and alerts when a protection is switched off. It is used to keep the protection working, to tell the parent when something needs fixing, and to detect tampering.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_phone_s_model_android",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 127,
+      "english": "The child app does",
+      "where": "Website: privacy",
+      "suggestedKey": "index_child_app_does",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 129,
+      "english": "read SMS or MMS messages, call logs, email, contacts, photos, videos, files or the calendar. It does not record audio. The camera is used only to scan the pairing QR code, and no image is stored or sent.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_read_sms_mms_messages",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 133,
+      "english": "Web filtering.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_web_filtering",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 134,
+      "english": "To apply the parent's website rules, the child app runs a local filter on the phone (Android shows it as a VPN). Web addresses are checked on the phone and are",
+      "where": "Website: privacy",
+      "suggestedKey": "index_apply_parent_s_website",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 136,
+      "english": "sent to us, and we do not keep a browsing history. Name lookups are forwarded to the network's own DNS resolver; when that resolver cannot be found, they go to the public resolvers of Cloudflare (1.1.1.1) and Google (8.8.8.8), under those companies' own privacy policies.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_sent_us_we_do",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 140,
+      "english": "On an iPhone",
+      "where": "Website: privacy",
+      "suggestedKey": "index_iphone",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 143,
+      "english": "On an iPhone the child app (OSRA Kids) works through Apple's Screen Time framework and collects less. It sends:",
+      "where": "Website: privacy",
+      "suggestedKey": "index_iphone_child_app_osra",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 150,
+      "english": ", including in the background, for the same purposes as on Android.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_including_background_same_purposes",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 154,
+      "english": "Blocks and requests",
+      "where": "Website: privacy",
+      "suggestedKey": "index_blocks_requests",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 155,
+      "english": ": that a group of apps the parent chose was blocked, and the child's request for access to it.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_group_apps_parent_chose",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 159,
+      "english": "Device and app information",
+      "where": "Website: privacy",
+      "suggestedKey": "index_device_app_information",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 160,
+      "english": ": the iPhone's model and iOS version, which OSRA permissions are switched on, the version of the app, and a push-notification token.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_iphone_s_model_ios",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 165,
+      "english": "On an iPhone the child app does",
+      "where": "Website: privacy",
+      "suggestedKey": "index_iphone_child_app_does",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 167,
+      "english": "read chat messages or anything else on the screen, does not filter or see web traffic, and does not report minutes of use per app. Apple does not give OSRA the names of the apps on the iPhone: the parent chooses groups of apps on the iPhone itself, and we receive only the names the parent gives those groups. It also does not read SMS, call logs, email, contacts, photos, files or the calendar, and does not record audio.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_read_chat_messages_anything",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 171,
+      "english": "3. What the OSRA parent app collects",
+      "where": "Website: privacy",
+      "suggestedKey": "index_3_what_osra_parent",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 177,
+      "english": "Account details",
+      "where": "Website: privacy",
+      "suggestedKey": "index_account_details",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 178,
+      "english": ": your name, email address and password. The password is stored only as a one-way hash, never in readable form.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_name_email_address_password",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 182,
+      "english": "Family details",
+      "where": "Website: privacy",
+      "suggestedKey": "index_family_details",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 183,
+      "english": ": the family name, region and time zone; each child's name and birth year; the parental consent record (how and when you confirmed you are the child's parent or guardian); and the email addresses of other parents or guardians you invite.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_family_name_region_time",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 187,
+      "english": "Rules and places",
+      "where": "Website: privacy",
+      "suggestedKey": "index_rules_places",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 188,
+      "english": ": the screen-time rules, schedules, app and website rules you set, and the places you add on the map, such as home or school (their location and name).",
+      "where": "Website: privacy",
+      "suggestedKey": "index_screen_time_rules_schedules",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 192,
+      "english": "Push-notification token",
+      "where": "Website: privacy",
+      "suggestedKey": "index_push_notification_token",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 193,
+      "english": ", if you allow notifications, so we can send you alerts.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_if_allow_notifications_so",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 198,
+      "english": "The parent app does not read your own phone's location, contacts, messages, photos or files. It contains no advertising or analytics code.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_parent_app_does_not",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 202,
+      "english": "4. How we use the data",
+      "where": "Website: privacy",
+      "suggestedKey": "index_4_how_we_use",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 205,
+      "english": "We use the data only to provide OSRA's features to the family: showing the parent the child's location, activity and alerts; enforcing the parent's rules on the child's phone; sending alerts and emails the parent asked for (such as sign-in codes, password resets and summaries); keeping accounts secure; and fixing problems. Alerts are raised automatically by fixed rules; they inform the parent and decide nothing about the child by themselves. We do not sell data, we do not use it for advertising, and we do not share it with anyone for their own purposes.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_we_use_data_only",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 209,
+      "english": "Our legal grounds",
+      "where": "Website: privacy",
+      "suggestedKey": "index_our_legal_grounds",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 210,
+      "english": ", where European or similar law asks for them: for a child's data, the consent the parent or guardian gives for that child (section 8); for the parent's own account, the contract to provide OSRA to you; and for keeping accounts and the service secure, our legitimate interest in doing so.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_where_european_similar_law",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 214,
+      "english": "5. Service providers",
+      "where": "Website: privacy",
+      "suggestedKey": "index_5_service_providers",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 217,
+      "english": "We use these providers to run OSRA. They receive only what their task needs:",
+      "where": "Website: privacy",
+      "suggestedKey": "index_we_use_these_providers",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 223,
+      "english": "Amazon Web Services",
+      "where": "Website: privacy",
+      "suggestedKey": "index_amazon_web_services",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 224,
+      "english": ": hosting of our servers and database, in the European Union.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_hosting_our_servers_database",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 228,
+      "english": "Google Firebase Cloud Messaging",
+      "where": "Website: privacy",
+      "suggestedKey": "index_google_firebase_cloud_messaging",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 229,
+      "english": "and, for iPhones, the",
+      "where": "Website: privacy",
+      "suggestedKey": "index_iphones",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 230,
+      "english": "Apple Push Notification service",
+      "where": "Website: privacy",
+      "suggestedKey": "index_apple_push_notification_service",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 231,
+      "english": ": delivery of push notifications. An alert's title passes through them.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_delivery_push_notifications_alert",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 235,
+      "english": "Google Maps",
+      "where": "Website: privacy",
+      "suggestedKey": "index_google_maps",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 236,
+      "english": ": the map in the parent app. The parent's phone asks Google for the map of the area being shown.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_map_parent_app_parent",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 240,
+      "english": "Email delivery",
+      "where": "Website: privacy",
+      "suggestedKey": "index_email_delivery",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 241,
+      "english": "(Resend, moving to Amazon Simple Email Service): sending account emails.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_resend_moving_amazon_simple",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 247,
+      "english": "6. Where the data is stored",
+      "where": "Website: privacy",
+      "suggestedKey": "index_6_where_data_stored",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 250,
+      "english": "Family data is stored on Amazon Web Services servers in the European Union, for families in every country, including the Middle East. The database is encrypted at rest. All traffic between the apps and our servers uses HTTPS.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_family_data_stored_amazon",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 253,
+      "english": "The push, map and email providers in section 5 may handle the limited data they receive outside the European Union, including in the United States, under their own data-protection terms.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_push_map_email_providers",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 257,
+      "english": "7. How long we keep it",
+      "where": "Website: privacy",
+      "suggestedKey": "index_7_how_long_we",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 265,
+      "english": "Kept for",
+      "where": "Website: privacy",
+      "suggestedKey": "index_kept",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 270,
+      "english": "Location history",
+      "where": "Website: privacy",
+      "suggestedKey": "index_location_history",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 272,
+      "english": "30 days",
+      "where": "Website: privacy",
+      "suggestedKey": "index_30_days",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 277,
+      "english": "Activity events and stored message excerpts",
+      "where": "Website: privacy",
+      "suggestedKey": "index_activity_events_stored_message",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 279,
+      "english": "90 days",
+      "where": "Website: privacy",
+      "suggestedKey": "index_90_days",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 284,
+      "english": "Daily app-use totals",
+      "where": "Website: privacy",
+      "suggestedKey": "index_daily_app_use_totals",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 286,
+      "english": "365 days",
+      "where": "Website: privacy",
+      "suggestedKey": "index_365_days",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 293,
+      "english": "12 months, or until the child or the account is deleted if that comes first",
+      "where": "Website: privacy",
+      "suggestedKey": "index_12_months_until_child",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 298,
+      "english": "Installed-app list and device information",
+      "where": "Website: privacy",
+      "suggestedKey": "index_installed_app_list_device",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 300,
+      "english": "Replaced by each new report; deleted when the phone is unpaired or the child is removed",
+      "where": "Website: privacy",
+      "suggestedKey": "index_replaced_each_new_report",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 305,
+      "english": "Records of a reset of two-step sign-in",
+      "where": "Website: privacy",
+      "suggestedKey": "index_records_reset_two_step",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 307,
+      "english": "12 months after the reset ends",
+      "where": "Website: privacy",
+      "suggestedKey": "index_12_months_after_reset",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 312,
+      "english": "Encrypted database backups, if we keep any",
+      "where": "Website: privacy",
+      "suggestedKey": "index_encrypted_database_backups_if",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 314,
+      "english": "Each backup is deleted within 90 days",
+      "where": "Website: privacy",
+      "suggestedKey": "index_each_backup_deleted_within",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 319,
+      "english": "Server logs (identifiers, no messages or content)",
+      "where": "Website: privacy",
+      "suggestedKey": "index_server_logs_identifiers_no",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 321,
+      "english": "At most 90 days",
+      "where": "Website: privacy",
+      "suggestedKey": "index_most_90_days",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 326,
+      "english": "Everything else in the family account",
+      "where": "Website: privacy",
+      "suggestedKey": "index_everything_else_family_account",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 328,
+      "english": "Until the account is deleted",
+      "where": "Website: privacy",
+      "suggestedKey": "index_until_account_deleted",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 335,
+      "english": "8. Consent and the child's role",
+      "where": "Website: privacy",
+      "suggestedKey": "index_8_consent_child_s",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 338,
+      "english": "A parent cannot add a child without confirming that they are the child's parent or legal guardian and that they consent to OSRA processing the child's data. The parent can withdraw that consent in the app; the child's phone then stops sending data. Data already collected stays until it expires (section 7) or is deleted (section 9).",
+      "where": "Website: privacy",
+      "suggestedKey": "index_parent_cannot_add_child",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 342,
+      "english": "For the child:",
+      "where": "Website: privacy",
+      "suggestedKey": "index_child",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 343,
+      "english": "OSRA helps your parent keep you safe. It shows them where your phone is, how long you use apps, and warns them if something in a chat might hurt you. On an Android phone it can read the chats in the apps your parent chose; on an iPhone it cannot read any chat. It does not read your SMS text messages or call history, does not look through your photos, and does not listen to you. If you are worried about anything, talk to your parent.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_osra_helps_parent_keep",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 347,
+      "english": "9. Your rights and deleting your data",
+      "where": "Website: privacy",
+      "suggestedKey": "index_9_rights_deleting_data",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 350,
+      "english": "You can ask us for a copy of your family's data (in a form you can take to another service), ask us to correct it, ask us to delete it, or ask us to stop or limit a use of it, by writing to",
+      "where": "Website: privacy",
+      "suggestedKey": "index_can_ask_us_copy",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 352,
+      "english": "from the email address you sign in with. We answer within one month. A parent can withdraw consent for a child at any time (section 8); that does not undo what was done before.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_email_address_sign_we",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 355,
+      "english": "You can delete your account yourself in the OSRA app, or follow the steps at",
+      "where": "Website: privacy",
+      "suggestedKey": "index_can_delete_account_yourself",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 357,
+      "english": ". If you created the family, deleting your account deletes the whole family and every child's data. If you joined someone else's family, it deletes only your own account.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_if_created_family_deleting",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 360,
+      "english": "You may also complain to the data protection authority of your country, for example in the European Union or the United Kingdom.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_may_also_complain_data",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 364,
+      "english": "10. Security",
+      "where": "Website: privacy",
+      "suggestedKey": "index_10_security",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 367,
+      "english": "All connections use HTTPS. Each paired phone signs its requests with its own key. Parents can turn on two-step sign-in with an authenticator app. Message excerpts are stored encrypted.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_all_connections_use_https",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 371,
+      "english": "11. Changes",
+      "where": "Website: privacy",
+      "suggestedKey": "index_11_changes",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 378,
+      "english": "12. Terms of use",
+      "where": "Website: privacy",
+      "suggestedKey": "index_12_terms_use",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 382,
+      "english": "terms of use",
+      "where": "Website: privacy",
+      "suggestedKey": "index_terms_use",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 383,
+      "english": ", which set out the limits of our liability.",
+      "where": "Website: privacy",
+      "suggestedKey": "index_which_set_out_limits",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 387,
+      "english": "13. Contact",
+      "where": "Website: privacy",
+      "suggestedKey": "index_13_contact",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 395,
+      "english": "The person legally responsible for OSRA and for this data (the \"controller\" in European law) is [name and address in source]",
+      "where": "Website: privacy",
+      "suggestedKey": "index_person_legally_responsible_osra",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 408,
+      "english": "Privacy policy",
+      "where": "Website: privacy",
+      "suggestedKey": "index_privacy_policy",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 410,
+      "english": "Terms of use",
+      "where": "Website: privacy",
+      "suggestedKey": "index_terms_use",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/privacy/index.html",
+      "line": 412,
+      "english": "Delete your account",
+      "where": "Website: privacy",
+      "suggestedKey": "index_delete_account",
+      "kind": "website",
+      "status": "already on #604 or sheet 2"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 16,
+      "english": "OSRA terms of use",
+      "where": "Website: terms",
+      "suggestedKey": "index_osra_terms_use",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 52,
+      "english": "OSRA terms of use",
+      "where": "Website: terms",
+      "suggestedKey": "index_osra_terms_use",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 55,
+      "english": "Effective 12 November 2026.",
+      "where": "Website: terms",
+      "suggestedKey": "index_effective_12_november_2026",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 59,
+      "english": "These terms are the agreement between you and OSRA (\"we\"); section 12 gives the legal details. By creating an OSRA account, or by installing or using an OSRA app, you accept them. If you do not accept them, do not use OSRA.",
+      "where": "Website: terms",
+      "suggestedKey": "index_these_terms_agreement_between",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 63,
+      "english": "1. Who may use OSRA",
+      "where": "Website: terms",
+      "suggestedKey": "index_1_who_may_use",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 66,
+      "english": "OSRA is for parents and legal guardians aged 18 or over, to supervise their own children's phones. You must not use it to monitor another adult or anyone you are not responsible for. You are responsible for using OSRA lawfully in your country, and for telling your child that OSRA is on their phone.",
+      "where": "Website: terms",
+      "suggestedKey": "index_osra_parents_legal_guardians",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 70,
+      "english": "2. What OSRA is, and what it is not",
+      "where": "Website: terms",
+      "suggestedKey": "index_2_what_osra_what",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 73,
+      "english": "OSRA is a tool that helps a parent. It does not replace a parent's own care and supervision. We do not promise that OSRA will detect every risk, block every app or website, show a location that is exact or current, deliver every alert, or work without interruption. It depends on the phone, its settings and battery, the network, and on Apple's and Google's systems, and a child may switch off or get around parts of it.",
+      "where": "Website: terms",
+      "suggestedKey": "index_osra_tool_helps_parent",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 76,
+      "english": "OSRA is not an emergency service. The SOS button alerts the parent; it does not call the police, an ambulance or anyone else. In an emergency, call your local emergency number.",
+      "where": "Website: terms",
+      "suggestedKey": "index_osra_not_emergency_service",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 80,
+      "english": "3. Your account",
+      "where": "Website: terms",
+      "suggestedKey": "index_3_account",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 83,
+      "english": "Keep your password and your sign-in codes to yourself. You are responsible for what is done through your account, and for the parents and guardians you invite to your family.",
+      "where": "Website: terms",
+      "suggestedKey": "index_keep_password_sign_codes",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 87,
+      "english": "4. Changes to OSRA",
+      "where": "Website: terms",
+      "suggestedKey": "index_4_changes_osra",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 90,
+      "english": "We may add, change or remove features, and we may stop offering OSRA. We may suspend an account that is used against these terms.",
+      "where": "Website: terms",
+      "suggestedKey": "index_we_may_add_change",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 94,
+      "english": "5. Payments and refunds",
+      "where": "Website: terms",
+      "suggestedKey": "index_5_payments_refunds",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 97,
+      "english": "If you pay for anything in OSRA, the payment is handled by the app store you bought it from, under that store's own refund rules. We give no other refund or reimbursement, except where the law requires one.",
+      "where": "Website: terms",
+      "suggestedKey": "index_if_pay_anything_osra",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 101,
+      "english": "6. No warranty",
+      "where": "Website: terms",
+      "suggestedKey": "index_6_no_warranty",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 104,
+      "english": "To the fullest extent the law allows, OSRA is provided \"as is\" and \"as available\", without any warranty or guarantee of any kind, whether stated or implied.",
+      "where": "Website: terms",
+      "suggestedKey": "index_fullest_extent_law_allows",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 108,
+      "english": "7. Our liability, and the claims you give up",
+      "where": "Website: terms",
+      "suggestedKey": "index_7_our_liability_claims",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 111,
+      "english": "To the fullest extent the law allows:",
+      "where": "Website: terms",
+      "suggestedKey": "index_fullest_extent_law_allows",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 116,
+      "english": "We are not liable to you, to your child or to anyone in your family for any loss, damage, cost or harm of any kind that arises from OSRA or from your use of it. This includes something OSRA did not detect, block, show or send; a location or an alert that was wrong or late; a feature that failed or was unavailable; and lost data.",
+      "where": "Website: terms",
+      "suggestedKey": "index_we_not_liable_child",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 119,
+      "english": "You give up any right to claim compensation, damages or reimbursement from us for any such loss,",
+      "where": "Website: terms",
+      "suggestedKey": "index_give_up_any_right",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 120,
+      "english": "unless you prove that we caused the harm on purpose",
+      "where": "Website: terms",
+      "suggestedKey": "index_unless_prove_we_caused",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 126,
+      "english": "The law of some countries does not allow all of these limits. Nothing in these terms takes away a right that the law says cannot be taken away or given up, such as rights under the consumer-protection or data-protection law of your country. Where a limit cannot apply in full, it applies as far as that law allows, and our total liability to you is then limited to the amount you paid us for OSRA in the 12 months before your claim.",
+      "where": "Website: terms",
+      "suggestedKey": "index_law_some_countries_does",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 130,
+      "english": "8. Ending",
+      "where": "Website: terms",
+      "suggestedKey": "index_8_ending",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 133,
+      "english": "You can stop using OSRA and delete your account at any time: see",
+      "where": "Website: terms",
+      "suggestedKey": "index_can_stop_using_osra",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 135,
+      "english": ". Sections 6 and 7 continue to apply after your account is deleted.",
+      "where": "Website: terms",
+      "suggestedKey": "index_sections_6_7_continue",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 139,
+      "english": "9. Your data",
+      "where": "Website: terms",
+      "suggestedKey": "index_9_data",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 142,
+      "english": "How we handle your family's data is set out in the",
+      "where": "Website: terms",
+      "suggestedKey": "index_how_we_handle_family",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 143,
+      "english": "privacy policy",
+      "where": "Website: terms",
+      "suggestedKey": "index_privacy_policy",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 148,
+      "english": "10. Changes to these terms",
+      "where": "Website: terms",
+      "suggestedKey": "index_10_changes_these_terms",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 155,
+      "english": "11. Governing law",
+      "where": "Website: terms",
+      "suggestedKey": "index_11_governing_law",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 158,
+      "english": "These terms are governed by the laws of the United Arab Emirates as they apply in the Emirate of Dubai, and the courts of Dubai decide any dispute about them. If the law of the country you live in gives you, as a consumer, a protection or a court that cannot be set aside by agreement, you keep it.",
+      "where": "Website: terms",
+      "suggestedKey": "index_these_terms_governed_laws",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 162,
+      "english": "12. Contact",
+      "where": "Website: terms",
+      "suggestedKey": "index_12_contact",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 170,
+      "english": "OSRA is developed and offered by [name and address in source]",
+      "where": "Website: terms",
+      "suggestedKey": "index_osra_developed_offered_karim",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 183,
+      "english": "Privacy policy",
+      "where": "Website: terms",
+      "suggestedKey": "index_privacy_policy",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 185,
+      "english": "Terms of use",
+      "where": "Website: terms",
+      "suggestedKey": "index_terms_use",
+      "kind": "website",
+      "status": "new"
+    },
+    {
+      "file": "site/terms/index.html",
+      "line": 187,
+      "english": "Delete your account",
+      "where": "Website: terms",
+      "suggestedKey": "index_delete_account",
+      "kind": "website",
+      "status": "new"
+    }
+  ],
+  "sourceSha": "1ed24f83ce95e6713a3d9d38b273dd1cff9910d2",
+  "generatedAt": "2026-11-13T15:32:26Z"
+}
