@@ -70,6 +70,15 @@ describe("alert location (issue #672)", () => {
     expect(stored.note).toBe("sos");
   });
 
+  it("a negative accuracy is dropped and the pair is kept (Fable s8)", () => {
+    // A negative accuracy is not a measurement. The pair is a real fix, so the SOS keeps it; only the
+    // accuracy clause goes, and the parent app then says the age without a distance.
+    const stored = sanitizeAlertMetadata({ deviceId: "dev-1", lat: "25.2769", lng: "51.5211", accuracyM: "-5" }, now)!;
+    expect(stored.lat).toBe(25.2769);
+    expect(stored.lng).toBe(51.5211);
+    expect(stored).not.toHaveProperty("accuracyM");
+  });
+
   it("dropping the location keeps every other key", () => {
     const stored = sanitizeAlertMetadata(
       { deviceId: "dev-1", battery: 71, lat: 25.2769, lng: "not-a-number" },
