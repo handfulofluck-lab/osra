@@ -265,6 +265,7 @@ public struct AgentRootView: View {
             // ADR-0034 A6: each app open also sends the capability report.
             await LocationController.shared.reportGrant()
             syncedAt = RuleStore.syncedAt()
+            leaveIfUnpaired()
         }
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -288,6 +289,15 @@ public struct AgentRootView: View {
         await LocationController.shared.reportGrant()
         syncFailed = !SyncStatus.succeeded(synced)
         syncedAt = RuleStore.syncedAt()
+        leaveIfUnpaired()
+    }
+
+    /// #690: the parent removed this phone during a drain or sync, so the pairing is gone; show pairing.
+    private func leaveIfUnpaired() {
+        guard identity != nil, AgentIdentityStore.load() == nil else { return }
+        identity = nil
+        syncFailed = false
+        pinConfigured = ParentPinStore.isConfigured
     }
 
     private func stale(_ state: SyncStatus.State) -> Bool {
