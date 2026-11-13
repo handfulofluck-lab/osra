@@ -266,7 +266,6 @@ export async function notifyDeviceWake(deviceId: string, commandId?: string): Pr
     }
     const device = await prisma.device.findUnique({ where: { id: deviceId }, select: { id: true, pushToken: true, platform: true } });
     if (!device?.pushToken) {
-      console.info(`${tag} skipped skip=no_token`);
       return { ...outcome, skipped: "no_token" };
     }
     const provider = deviceWakeProviderFor(device.platform as PushPlatform, providers);
