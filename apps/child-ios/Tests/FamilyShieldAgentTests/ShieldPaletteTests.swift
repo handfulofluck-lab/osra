@@ -9,11 +9,9 @@ final class ShieldPaletteTests: XCTestCase {
         XCTAssertEqual(ShieldPalette.contrast(.init(0x777777), .init(0xFFFFFF)), 4.48, accuracy: 0.02)
     }
 
-    func testThePrimaryButtonIsReadableInBothThemes() {
-        let light = ShieldPalette.contrast(ShieldPalette.onPrimaryLight, ShieldPalette.primaryLight)
-        let dark = ShieldPalette.contrast(ShieldPalette.onPrimaryDark, ShieldPalette.primaryDark)
-        XCTAssertGreaterThanOrEqual(light, ShieldPalette.minimumContrast, "light: \(light)")
-        XCTAssertGreaterThanOrEqual(dark, ShieldPalette.minimumContrast, "dark: \(dark)")
+    func testThePrimaryButtonIsReadable() {
+        let ratio = ShieldPalette.contrast(ShieldPalette.buttonLabel, ShieldPalette.buttonBackground)
+        XCTAssertGreaterThanOrEqual(ratio, ShieldPalette.minimumContrast, "\(ratio)")
     }
 
     /// The palette holds the brand tokens, so the shield looks like OSRA and a token change shows up here.
@@ -28,19 +26,20 @@ final class ShieldPaletteTests: XCTestCase {
             let value = try XCTUnwrap(token[theme] as? String)
             return try XCTUnwrap(UInt32(value.dropFirst(), radix: 16))
         }
-        XCTAssertEqual(ShieldPalette.primaryLight.hex, try hex("primary", "light"))
-        XCTAssertEqual(ShieldPalette.primaryDark.hex, try hex("primary", "dark"))
-        XCTAssertEqual(ShieldPalette.onPrimaryLight.hex, try hex("onPrimary", "light"))
-        XCTAssertEqual(ShieldPalette.onPrimaryDark.hex, try hex("onPrimary", "dark"))
+        XCTAssertEqual(ShieldPalette.buttonBackground.hex, try hex("primary", "light"))
+        XCTAssertEqual(ShieldPalette.buttonLabel.hex, try hex("onPrimary", "light"))
     }
 
-    /// The shield uses the palette for the main button and `.label` for "Close app", never the old system blue/gray.
+    /// The shield uses the fixed palette for the main button and `.label` for "Close app": never the old system
+    /// blue/gray, and never a dynamic (light/dark) colour, which the shield draws wrong on a device (iPhone 13, 13 Nov).
     func testTheShieldUsesThePalette() throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/ShieldConfiguration.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
-        XCTAssertTrue(text.contains("primaryButtonBackgroundColor: Self.dynamic(light: ShieldPalette.primaryLight, dark: ShieldPalette.primaryDark)"))
-        XCTAssertTrue(text.contains("color: Self.dynamic(light: ShieldPalette.onPrimaryLight, dark: ShieldPalette.onPrimaryDark)"))
+        XCTAssertTrue(text.contains("primaryButtonBackgroundColor: Self.color(ShieldPalette.buttonBackground)"))
+        XCTAssertTrue(text.contains("color: Self.color(ShieldPalette.buttonLabel)"))
+        XCTAssertFalse(text.contains("dynamicProvider"))
+        XCTAssertFalse(text.contains("userInterfaceStyle"), "no light/dark switch on this system-drawn screen")
         XCTAssertTrue(text.contains("secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .label)"))
         XCTAssertFalse(text.contains("color: .systemBlue"))
         XCTAssertFalse(text.contains("primaryButtonBackgroundColor: nil"))

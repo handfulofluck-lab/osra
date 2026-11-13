@@ -2,7 +2,11 @@ import Foundation
 
 /// U14 (#650): the shield's colours, from the brand tokens (`docs/design/tokens.json`), with the contrast check that
 /// keeps the main button readable. The primary button was dark blue words on the system's bright blue button; it now
-/// uses the brand `primary` background with `onPrimary` words, in light and dark.
+/// uses the light brand `primary` (`#0B5D57`) with white words **in light and in dark alike**.
+///
+/// Why not the dark tokens: on a real iPhone 13 (13 Nov) the shield honoured a dynamic background colour but drew the
+/// button label white whatever dynamic colour it was given, so `#7DB4FF` with "dark" words came out white on light
+/// blue, 2.13:1. The UI/UX Bureau chose one fixed colour pair for this system-drawn screen. Do not make these dynamic.
 public enum ShieldPalette {
     /// An sRGB colour as 0xRRGGBB.
     public struct RGB: Equatable {
@@ -13,10 +17,10 @@ public enum ShieldPalette {
         public var blue: Double { Double(hex & 0xFF) / 255 }
     }
 
-    public static let primaryLight = RGB(0x0B5D57)
-    public static let primaryDark = RGB(0x7DB4FF)
-    public static let onPrimaryLight = RGB(0xFFFFFF)
-    public static let onPrimaryDark = RGB(0x0E1417)
+    /// The main button's background in both modes: the brand `primary` (light token).
+    public static let buttonBackground = RGB(0x0B5D57)
+    /// The main button's words in both modes: `onPrimary` (light token), white.
+    public static let buttonLabel = RGB(0xFFFFFF)
 
     /// The WCAG 2 minimum for normal text, which a child pressing "Request access" must be able to read.
     public static let minimumContrast = 4.5
