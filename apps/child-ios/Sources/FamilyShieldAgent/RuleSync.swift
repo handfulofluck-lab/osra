@@ -315,7 +315,7 @@ public enum RuleSyncer {
 
     /// The real apply: Screen Time, where the frameworks exist; nil (nothing applied) elsewhere.
     public static var defaultApply: Apply? {
-        #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if os(iOS)
         return { try ScreenTimeController().applyRules($0) }
         #else
         return nil
@@ -348,7 +348,7 @@ public enum RuleSyncer {
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
             RuleStore.clear()
-            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+            #if os(iOS)
             if enforce { ScreenTimeController().clearRules() }
             #endif
             return .consentWithdrawn
