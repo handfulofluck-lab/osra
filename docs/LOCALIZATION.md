@@ -375,6 +375,7 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-12 | The parent app's Arabic store name (App Store and Google Play) is «أسرة: رقابة أسرية ذكية», his own wording. Under its icon and in its title on an Arabic phone the app is «أسرة»; English keeps OSRA | thread message 12:58Z; card 12:56Z |
 | 2026-11-12 | OSRA Kids on Google Play is «أسرة للأطفال» alone, without a description after it (the Bureau had proposed «أسرة للأطفال: رقابة أسرية»). The rewritten Arabic Play text for both apps is approved | cards 13:41Z |
 | 2026-11-12 | Approved as written on Bureau sheet 1, with A4 and A5 applied: the 11 new lines of #583, #587, #588 and #572; the 28 "Ask parent" lines of #606; the 16 fixes in the backlog on #604 | Bureau sheet 1, B, C, D |
+| 2026-11-13 | OSRA Kids on iPhone, Status screen: the collapsed support section is titled «التفاصيل التقنية» (over «التفاصيل الفنية» and «معلومات للدعم») | card 07:12Z; `status_technical_details`, #661 |
 
 ### Word list
 
@@ -457,6 +458,7 @@ he says otherwise. A new term is added here in the PR that introduces it.
 | Install, uninstall | «تثبيت», «إلغاء التثبيت» | | K |
 | Version; edition (Play or Full) | «الإصدار»; «النسخة» | | B |
 | Support | «الدعم» | | B |
+| Technical details | «التفاصيل التقنية» | «التفاصيل الفنية» | K 13 Nov |
 | Privacy policy | «سياسة الخصوصية» | | K |
 | Tap | «اضغط», «اضغط على» | «انقر» | K |
 | Try again | «حاول مرة أخرى» | | K |
