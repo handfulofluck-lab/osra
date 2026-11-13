@@ -36,6 +36,12 @@ function report(overrides: Record<string, unknown> = {}) {
 }
 
 describe("A2 — the schema is strict, enum-keyed and capped", () => {
+  it("accepts child_account_admin for desktop and rejects other grant states", () => {
+    expect(CapabilitiesSchema.safeParse(report({ grants: { child_account_admin: "granted" } })).success).toBe(true);
+    expect(CapabilitiesSchema.safeParse(report({ grants: { child_account_admin: "missing" } })).success).toBe(true);
+    expect(CapabilitiesSchema.safeParse(report({ grants: { child_account_admin: "administrator" } })).success).toBe(false);
+  });
+
   it("accepts the shape the ADR describes", () => {
     expect(CapabilitiesSchema.safeParse(report()).success).toBe(true);
   });
