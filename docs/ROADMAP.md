@@ -41,6 +41,25 @@ Week 0 was 2026-10-16. The backend lane ran first because Phase 2 was pure API w
 could verify without hardware; from 2026-10-17 the Android lane (Phase 1) is the critical path and gets
 the lead's time until its gate passes.
 
+## Seven clients to release — re-plan 2026-11-13
+
+Asked for by the maintainer on 2026-11-13: all seven clients (Android child Play and Full, Android parent,
+iPhone parent, OSRA Kids iPhone, Windows, Mac) ready, security-tested, with no known bugs and full
+engineering documentation on GitHub once the repository is private. The audit, the release bar, the owners
+and the dated critical path are in [`RELEASE-READINESS.md`](RELEASE-READINESS.md). In short (estimates, not
+promises):
+
+| Wave | Clients | Date now | Against the 12 Nov plan |
+|---|---|---|---|
+| Closed beta A | Android child (Play), Android parent, both iPhone apps (external TestFlight), server | 15–22 Dec 2026 | holds if gates #637, #630, #632, #634, #633 are signed by 12 Dec |
+| Closed beta B | Android child Full (website) / Windows | 12 Jan / 22 Jan 2027 | Windows slips ~5 weeks (W1–W4 not started, no certificate yet, no test machine) |
+| Public 1 | Android child (Play + Full), Android parent, both iPhone apps | 1 Feb 2027 | holds, no slack for a second store rejection |
+| Public 1b | Windows | late Feb 2027 | slips ~4 weeks |
+| Public 2 | Mac | late Mar 2027 at best, Apr 2027 likely | at risk |
+| Engineering docs | all | drafted by 4 Dec, merged at the private switch | no client date moves |
+
+Every release security gate is at 0 boxes ticked on 2026-11-13, and every scenario-suite row (S0–S5) is ⬜.
+
 ## Real-device scenario suite (S0–S5) — added 2026-11-12
 
 Asked for by the maintainer on 2026-11-12: family stories that cross **two real devices**, a parent's and
