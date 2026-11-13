@@ -565,15 +565,18 @@ record of the maintainer's corrections, all in `docs/LOCALIZATION.md`. Its inbox
    from, and signs `Arabic-Bureau: reviewed <head sha>`. A PR that adds or changes Arabic is not
    `state:ready-for-verification` without that line at its head, and the verifier returns it if the line
    is missing. The line is not a `Verified-sha:` and never replaces verification (§6.5).
-5. **The maintainer approves the wording.** The Bureau sends the settled lines to him as a numbered
-   sheet. New customer-facing Arabic ships only after his answer. His corrections become rows in "Karim's
-   corrections" in `docs/LOCALIZATION.md` and bind every later text.
+5. **The Bureau decides the wording, and reports it** (maintainer, 2026-11-13: *"The bureau should take
+   the decision after its internal thorough process to decide based on comparison and standards."*).
+   Until 12 November he approved every line himself. Now the Bureau decides after its four checks
+   (`docs/LOCALIZATION.md`, "How a line gets approved") and tells him what it decided. New customer-facing
+   Arabic ships only after the Bureau line. His corrections stay rows in "Karim's corrections" and bind
+   every later text, and anything he says later overrides the Bureau.
 6. **An approved line is pinned.** Nobody changes approved Arabic, even to fix a typo, without going
    through 3 to 5 again. Where the suite allows, a test holds the approved words as a literal.
 7. **Honest limits.** No CI gate reads the Bureau line yet: it is a convention the verifier checks by
    hand. And when Claude is also the author of the Arabic, the Bureau pass is a second reading by the same
-   agent, so the independent check on that text is the maintainer's approval alone. Both are stated on the
-   PR, never hidden.
+   agent, and since 13 November no person reads that text before it ships. Both are stated on the PR,
+   never hidden.
 
 A second language gets its own Bureau the same way: its rules and word list in `docs/LOCALIZATION.md`,
 its inbox issue, and a line here.

@@ -144,8 +144,14 @@ and we can add more languages and bureaus in the future"*, and a minute later: *
 Arabic communication, content...etc"*.
 
 The Bureau is Claude, working in its own lane. It is the single reviewer for every Arabic word a parent,
-a child or a store reviewer will read. The maintainer keeps the final word on wording: the Bureau cleans
-a draft and checks it against this section, then he approves it.
+a child or a store reviewer will read.
+
+**Who decides (maintainer, 2026-11-13).** Until 12 November the maintainer approved every line himself.
+On 13 November he changed that, in his words: *"The bureau should take the decision after its internal
+thorough process to decide based on comparison and standards."* So the Bureau now decides the wording
+and reports to him what it decided. Three things stay as they were: a row in "Karim's corrections" binds
+the Bureau like everyone else; any wording he gives later overrides the Bureau's and becomes such a row;
+and he is told of every decision, so he can still change it.
 
 ### What goes through the Bureau
 
@@ -170,13 +176,32 @@ children's messages in dialect on purpose.
    reviewer).
 3. **Bureau review.** The Bureau answers on the PR line by line: OK, or the wording to use and the rule
    it comes from. When every line is settled it signs `Arabic-Bureau: reviewed <head sha>` on the PR.
-4. **Karim's sheet.** The Bureau writes the settled lines as a numbered sheet (question, answer, one
-   line per number) and sends it to the maintainer. He answers by number: OK, or his own wording.
-5. **Record.** The approved wording goes in with a comment naming the approval (date, PR), and a test
-   pins it where the suite allows (`ChildSystemStringsTest`, `localization_test.dart`). A correction
-   from the maintainer becomes a row in "Karim's corrections" below, in the same PR.
+4. **The Bureau decides** (since 2026-11-13; before that the maintainer answered a numbered sheet or a
+   card). A decision is made only after the four checks below, and the comment that gives it names what
+   it rests on.
+5. **Record and report.** The decided wording goes in with a comment naming the decision (date, PR), and
+   a test pins it where the suite allows (`ChildSystemStringsTest`, `localization_test.dart`). A new
+   term goes in the word list marked **B** with its date. The Bureau tells the maintainer what it decided
+   in plain words. A correction from him becomes a row in "Karim's corrections" below.
 
-Nobody edits an approved Arabic line without going round this loop again.
+Nobody edits a decided or approved Arabic line without going round this loop again.
+
+#### The four checks before the Bureau decides
+
+1. **His corrections and the word list.** A row in "Karim's corrections" or a **K** term is used as it
+   is. One thing has one name on every surface.
+2. **Comparison.** Where the term exists there, the Bureau reads how the phone's own Arabic says it
+   (Android, Samsung, Apple, Windows, from their resources or support pages, R8) and how the leading
+   apps in the field say it ("How the leading apps say it"), and names the source.
+3. **Standards.** The writing rules R1 to R12: grammar, one register, no gendered verb on a filled-in
+   name, digits, direction, length for the place it shows.
+4. **Where it shows.** The line is read in its screen or page (a screenshot or the built page), not only
+   in the file.
+
+**Honest limit.** When the Bureau also wrote the Arabic, checks 1 to 4 are a second reading by the same
+agent, and since 13 November no person reads the line before it ships. That is the maintainer's choice;
+it is stated here and on the PR, not hidden. Names of the apps, store text and headlines are still
+reported to him one by one, because they are the hardest to change later.
 
 ### Why the weak 20% was weak
 
@@ -379,8 +404,8 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 
 ### Word list
 
-**K** = approved by the maintainer (in the line or PR named). **B** = the Bureau's choice, in use until
-he says otherwise. A new term is added here in the PR that introduces it.
+**K** = approved by the maintainer (in the line or PR named). **B** = the Bureau's decision (his rule of
+2026-11-13 makes it final unless he says otherwise). A new term is added here in the PR that introduces it.
 
 #### Names and people
 
