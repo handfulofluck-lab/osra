@@ -67,6 +67,17 @@ screens. On a computer it is the block/lock window.
 | E19 | **Clear OSRA from memory** (Recents "Close all", Samsung "Device care → Clean now", a task-killer app) | Same as E18. |
 | E20 | **Language / font size / display size / dark mode** changed in Settings while gated | Settings is guarded (tamper); if reached, the gate redraws and stays. |
 
+### 1a. Cross-platform rows (Ahmed, #740)
+
+Run once per client (Android, iPhone, Windows, Mac) against the gate screens named in the row.
+
+| ID | The child tries | Must hold | Auto |
+|---|---|---|---|
+| X01 | **Watch the parent type the PIN**: a screen recording, a screenshot or a cast started before the PIN screen, or the Recents/app-switcher thumbnail taken while the PIN is on screen | PIN screens are excluded from capture (Android `FLAG_SECURE`, the iPhone and desktop equivalents); the digits never show in a recording, a cast or a thumbnail. | adb (`screenrecord`), xcui, hand |
+| X02 | **Fake the location**: a mock-location app (Android developer options), or an iPhone in Developer Mode with a location tool on a computer | The parent sees a "location may be faked" flag, or the parent guide lists it as a known limit. A faked ping never looks trustworthy. | adb (mock provider), hand |
+| X03 | **IPv6 and the browser's own encrypted DNS** (Chrome or Firefox "secure DNS") on a network that offers IPv6 | The web filter covers IPv6 and browser DNS, or the gap is written in the guide. | hand |
+| X04 | **Another app drawn over a gate** (a floating window, a screen dimmer) to hide or relabel the gate's buttons | The gate's buttons ignore taps that pass through an overlay (Android `filterTouchesWhenObscured` or equivalent on the PIN and Stop buttons). | adb, instr |
+
 ## 2. Screen matrix: who gets which extra rows
 
 ### 2a. Android child (Play build `com.osratech.child`; Full build adds rows at 2b)
@@ -84,6 +95,7 @@ screens. On a computer it is the block/lock window.
 | AB01 | **Block screen** (blocked app, `BlockActivity`) | E01, E03, E04, E05, E06 | Blocked app never usable: covered within 1 s every time it comes to front. | adb, instr |
 | AB02 | Block | Open the blocked app another way: its widget, a shortcut, a share sheet target, a deep link from the browser, "Open with", Google Assistant "open X", a Samsung Edge panel, a Secure Folder copy, a dual/clone app (Samsung Dual Messenger) | Every path ends in the block screen. Clone/Secure Folder copies are named in the app list and blockable. | adb (am start), hand (Edge, Secure Folder) |
 | AB05 | Block | After a **ring or lock is dismissed**, reopen a still-blocked app from **Recents** (Ahmed's #731 row) | The blocked app is shielded again at once; dismissing one gate never lifts another. | adb |
+| AB06 | Block | **Samsung Game Booster / Game Launcher** set to block notifications or overlays while a game runs (Ahmed, #740) | The block, the ring and the lock still appear during the game. | hand |
 | AB03 | Block | The blocked site/app inside another app: in-app browser, Chrome Custom Tab, WebView in a game, YouTube inside Google search | Web filter covers it (VPN/DNS), or a known gap is written in the guide. | hand |
 | AB04 | Block | Install a second launcher, a different browser, or an APK from the Files app | Install needs the parent (Play: Family Link is out of scope, so: new app → alert + default rule applies). | adb (`pm install` test APK) |
 | AT01 | **Bedtime / daily limit** block | Section 1 + wait across the bedtime start while a blocked app is open | The app is covered at the minute bedtime starts, not at the next app switch. | adb |
@@ -92,6 +104,7 @@ screens. On a computer it is the block/lock window.
 | AP01 | **Pause internet** | Section 1; Wi-Fi off and mobile data on, or the reverse; another VPN app; Private DNS set by hand; a hotspot from a friend's phone | Pause holds on every network. Turning OSRA's VPN off is a tamper event (bypass probe row). | adb, hand |
 | AG01 | **Parent-PIN gate** (`TamperGuardActivity`, every reason: settings, re-pair, remove, ring) | E12, E13, E16, E18 | Wrong/empty/garbage never passes; no crash; 5 tries → lockout + alert. | adb, jvm, instr |
 | AG02 | PIN gate | Brute force: 4-digit PINs tried over hours, restarting the app between tries | The attempt counter survives restarts; back-off grows. | instr |
+| AG03 | PIN gate | An **auto-clicker** or another app's accessibility service types PINs fast (Ahmed, #740) | AG02's counter and back-off hold against machine-speed input, not only a slow human. | instr |
 | AS01 | **Tamper guard** (Settings screens that remove protection) | Reach them by search in Settings, by a shortcut widget, by Samsung "Routines", by "Modes", by `Settings → Apps → OSRA → Force stop / Clear data / Uninstall`, by the long-press app-icon menu "App info" | Every path is covered by the PIN gate before the button can be tapped. | adb (bypass probe rows 1, 2, 4, 5, 10) |
 | AS02 | Tamper guard | Turn off OSRA's accessibility service, overlay permission, battery "unrestricted", notification permission, location | Each one is either guarded or reported to the parent within the stated time (status screen + alert). | adb |
 | AS03 | Tamper guard | **Safe mode** (power-menu long-press "Power off" → Safe mode) — boots with no third-party apps | Parent alerted that the device went silent; on the next normal boot OSRA restarts and reports the gap. Documented as a known OS limit. | hand |
@@ -101,6 +114,8 @@ screens. On a computer it is the block/lock window.
 | AS07 | Tamper guard | **Factory reset** from Settings or recovery | Settings path guarded; recovery reset is a known OS limit, the parent sees "device silent" then "device removed". | hand (never on the Flip4) |
 | AS08 | Tamper guard | **New user / guest mode / Secure Folder / second space** | Switching user is guarded or reported; OSRA is not present in the other profile, so the parent is told. | hand |
 | AS09 | Tamper guard | **SIM swap / remove SIM**, and **eSIM** added | Reported to the parent; enforcement unchanged. | hand (Flip4 SIM: maintainer only) |
+| AS10 | Tamper guard | **Private Space** (Android 15+), and a work profile made by an app such as Shelter or Island (no admin needed) (Ahmed, #740) | Apps inside are blocked, or the parent is told they are invisible to OSRA. AS08 does not cover these. | hand |
+| AS11 | Tamper guard | **Developer options** set against enforcement: "Don't keep activities", animation scale 0, "Force activities to be resizable", background process limit (Ahmed, #740) | Every gate still comes back within its stated time. | adb (`settings put global`, restore after) |
 | AO01 | **Offline** | Airplane mode during a lock, ring, bedtime, block | On-device enforcement keeps working offline; the parent sees "last seen" freeze and a "stopped checking in" alert. Commands queued offline land on reconnect. | adb (`svc wifi/data`), api |
 | AO02 | Offline | Battery saver / Ultra power saving / "Put app to sleep" / Low battery (≤5 %) | Enforcement and the ring survive battery saver; at critical battery the parent is told. | adb (`dumpsys battery set level 5`, then `reset`) |
 | AN01 | **Notifications** | Long-press OSRA's ongoing notification → turn off notifications for OSRA, or snooze it | Turning off the channel does not stop enforcement; it is reported to the parent. | adb |
@@ -130,7 +145,7 @@ screens. On a computer it is the block/lock window.
 ### 2d. OSRA Kids on iPhone (Family Controls `.child`)
 
 The iPhone removal rows already written in [`../QA/IOS-REMOVAL-ATTEMPTS.md`](../QA/IOS-REMOVAL-ATTEMPTS.md)
-(R1–R13, Ahmed) stay the source for removal. This table adds the escape rows for the shield and OSRA Kids' own
+(R1–R18, Ahmed) stay the source for removal. This table adds the escape rows for the shield and OSRA Kids' own
 screens.
 
 | ID | Screen / feature | The child tries | Must hold | Auto |
@@ -141,6 +156,10 @@ screens.
 | KS04 | Shield | Web version of the blocked app in Safari / in-app browser | Covered by the web filter or written as a known gap. | hand |
 | KS05 | Bedtime / limit | Clock change (blocked by Screen Time on a child account), time zone travel — **no iPhone** clock change | Expected-only on the test iPhone. | — |
 | KS06 | Bedtime / limit | Reinstall the app (delete is refused: IOS-REMOVAL R1), offload (R2) | Shield and limits stay. | hand |
+| KS07 | Shield | **A new app installed while a rule is on** (through Ask to Buy, or an App Clip that needs no install) (Ahmed, #740) | Under `.allExcept` it is shielded at once. | xcui, hand |
+| KS08 | Shield | **A blocked app's content shown without opening it**: a notification preview or quick reply, a widget, a Live Activity, Siri reading messages aloud, the Apple Watch app, iPhone Mirroring on a Mac (Ahmed, #740) | Each one is shielded, or written in the guide as a known gap. | hand |
+| KS09 | Bedtime | **The web during bedtime** (#746): Safari, private browsing, in-app browsers (Ahmed, #740) | Every website is shielded during bedtime. KS04 only covers the web version of one blocked app. | xcui, hand |
+| KS10 | Shield | **The phone's language changed** (#732). Not an escape: a parent-trust row (Ahmed, #740) | The shield's words follow the phone's new language. | xcui |
 | KP01 | **Parent PIN views** (`ParentPinViews`) | E12 empty/wrong/long/pasted PIN, E13 fast taps, backgrounding the app mid-entry | No crash, no pass; attempt limit survives a relaunch. | xcui, Swift unit |
 | KR01 | **Ring** on iPhone (#750, maintainer's yes 13 Nov) | Silent switch, Focus/DND, volume at zero; dismiss or swipe the alarm alert; side button; force-quit OSRA Kids; reboot; go offline; empty/wrong/long PIN on the stop screen | Rings through silent and Focus; only the parent PIN, the parent's `stop_ring` or the 5-minute cap stop it; a child dismissal re-arms it and tells the parent; ring state survives a killed app. | xcui, hand |
 | KO01 | Offline | Wi-Fi + data off from the Mac side (never Airplane Mode on the test iPhone) | Shields hold offline; parent sees "stopped checking in". | xcui + server |
@@ -171,6 +190,7 @@ separate disk, a live USB or BIOS access are run on the test VM's snapshot only,
 | WN14 | **PIN dialogs** (`PairingDialog`, `ParentPinPolicy`): empty, wrong ×5, very long, pasted, Esc / Alt+F4 / closing the window | No crash, no pass; the lockout survives a restart; closing the dialog is never "yes". | unit + UI automation |
 | WN15 | **SOS hotkey** (`SosHotkey`) pressed repeatedly, or remapped by another app | One SOS per press within the guard window; reported if the hotkey can't be registered. | unit |
 | WN16 | **Sleep, hibernate, lid close, fast startup** during a lock or bedtime | Restriction in force at wake. | hand |
+| WN17 | **Browser guest profiles and InPrivate/Incognito windows**, a **browser extension that acts as a proxy or VPN**, and **"Run as different user"** (Ahmed, #740; WN10 and WN11 only partly cover these) | Guest/private windows are filtered or disabled by policy; proxy/VPN extensions are blocked or detected and reported; "Run as different user" needs another account's password and a session without OSRA is reported. | script + hand |
 
 ### 2f. macOS (Swift agent, ADR-0036) — the MacBook test bed
 
@@ -191,6 +211,7 @@ The child uses a **standard macOS account**; the parent owns the admin account.
 | MC11 | **Terminal** as a standard user: `launchctl bootout`, `pkill`, editing preferences plists | Refused, or reported. | script |
 | MC12 | **PIN views** (shared Swift package): empty, wrong ×5, long, pasted, closing the window | As KP01. | Swift unit + XCUITest |
 | MC13 | **Sleep, lid close, external display only (clamshell)** during a lock or bedtime | Restriction in force at wake and on the external display. | hand |
+| MC14 | **Safari/Chrome guest and private windows**, a **proxy or VPN browser extension**, and another user's session opened with `su` or "Log in as" (Ahmed, #740; as WN17) | As WN17. | script + hand |
 
 ## 3. Restart and power rows (all platforms)
 

@@ -42,8 +42,10 @@ security key when it is one.
    build, a Windows or Mac installer).
 2. Within 24 hours of the build, every row of that client's sections runs: automated rows in CI and on the device,
    hand rows in the next slot.
-3. The client's release security gate (#630–#637) is not asked for until that client's escape run has no open
-   failure. A failure is a `beta-A blocker` issue (and an osra-security issue when it lets the child through).
+3. The client's release security gate (#630–#637) is not asked for until that client's escape run is **clean**:
+   no open finding at high or above, and every medium is either fixed or written in the parent guide as a known
+   limit (Ahmed's definition, #740). A low or cosmetic row never holds a gate. A failure is a `beta-A blocker`
+   issue (and an osra-security issue when it lets the child through).
 4. The fix PR adds the automated row that fails without it, and the device owner re-runs the hand row on the fixed
    build.
 
