@@ -225,6 +225,24 @@ describe("the window is per platform (#681: an iPhone is suspended by Apple, not
     expect(body).not.toContain("30 minutes");
   });
 
+  it("gives a Mac the Apple window and the warning severity, not Android's", async () => {
+    // The platform set is one helper now; this row is what catches it drifting, because a Mac getting
+    // `critical` would flag a sleeping laptop as a removed device (Claude's surviving fault on #705).
+    const redis = getRedis() as unknown as MockRedis;
+    prismaMock.device.findMany.mockResolvedValue([
+      { id: "mac-1", status: "online", lastSeen: new Date(NOW.getTime() - 7 * 3600_000), childId: "c3", model: "MacBook Pro", platform: "macos", child: { familyId: "f3", displayName: "Sam" } },
+    ]);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-3", ...data }));
+    redis.set.mockResolvedValueOnce("OK");
+
+    const run = await runDeviceSilenceCheck(NOW, { DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv);
+    expect(run.alerted).toEqual(["mac-1"]);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; metadata: { window: string; silentMinutes: number } };
+    expect(data.severity).toBe("warning");
+    expect(data.metadata.window).toBe("apple");
+    expect(data.metadata.silentMinutes).toBe(360);
+  });
+
   it("still alerts on an Android phone at 45 minutes, which is the regression this change must not cause", async () => {
     // The candidate query uses the SHORTEST window so Android is not judged by Apple's six hours. If that
     // were wrong, `pm clear` on Android would go silent for six hours — the bypass this job exists to catch.

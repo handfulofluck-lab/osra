@@ -136,9 +136,17 @@ export const APPLE_SILENT_DEFAULT_MINUTES = 360;
 export const APPLE_SILENT_MIN_SAFE_MINUTES = 120;
 export const APPLE_SILENT_ENV = "DEVICE_SILENT_MINUTES_APPLE";
 
+/**
+ * One place that decides what "Apple" means, because two places drifting is how a Mac gets an Android alert:
+ * the window and the severity must read the same list (Claude's surviving fault on #705).
+ */
+export function isApplePlatform(platform: string | null | undefined): boolean {
+  return platform === "ios" || platform === "macos";
+}
+
 /** Which window applies to a device, from the platform column the writers already set. */
 export function silentMinutesForPlatform(platform: string | null | undefined, androidMinutes: number, env: NodeJS.ProcessEnv = process.env): number {
-  if (platform !== "ios" && platform !== "macos") return androidMinutes;
+  if (!isApplePlatform(platform)) return androidMinutes;
   const raw = env[APPLE_SILENT_ENV];
   const parsed = raw === undefined ? APPLE_SILENT_DEFAULT_MINUTES : Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return Math.max(APPLE_SILENT_DEFAULT_MINUTES, androidMinutes);
@@ -165,7 +173,7 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
   });
   const alerted: string[] = [];
   for (const d of devices) {
-    const isApple = d.platform === "ios" || d.platform === "macos";
+    const isApple = isApplePlatform(d.platform);
     const windowMinutes = silentMinutesForPlatform(d.platform, minutes, env);
     if (!isSilent(d.status, d.lastSeen, now, windowMinutes)) continue;
     // One alert per silence episode: the claim lives until the device is seen again (TTL as a backstop).
