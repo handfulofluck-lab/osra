@@ -157,7 +157,7 @@ class LocationService : Service() {
                 while (isActive) {
                     val now = SystemClock.elapsedRealtime()
                     val restricted = LockState.isActive(this@LocationService)
-                    if (IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive(), restricted)) {
+                    if (IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive(), false)) {
                         lastPollAtMs = now
                         pollCommandsOnce()
                     }
