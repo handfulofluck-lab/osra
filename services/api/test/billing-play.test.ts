@@ -120,7 +120,10 @@ describe("normalising a subscriptionsv2 purchase", () => {
       ["SUBSCRIPTION_STATE_ON_HOLD", "on_hold"],
       ["SUBSCRIPTION_STATE_PAUSED", "on_hold"],
       ["SUBSCRIPTION_STATE_PENDING", "on_hold"],
-      ["SUBSCRIPTION_STATE_CANCELED", "revoked"],
+      // A family who turns off auto-renew: Play reports CANCELED, not ACTIVE, and the paid period still
+      // runs. "Canceled but not expired yet" is Google's own definition — mapping it to `revoked` would cut
+      // them off at the moment they cancelled (#684 review).
+      ["SUBSCRIPTION_STATE_CANCELED", "active"],
       ["SUBSCRIPTION_STATE_EXPIRED", "expired"],
     ];
     for (const [apiState, state] of cases) {
@@ -153,17 +156,21 @@ describe("normalising a subscriptionsv2 purchase", () => {
     expect(() => assertPurchaseBelongsToFamily("acct-fam-1", purchase)).toThrow(PurchaseAlreadyOwned);
   });
 
-  it("reports a cancelled-but-paid purchase as active without renewal", () => {
-    // What Play returns after a user cancels: still entitled to the period's end, no renewal.
+  it("reports a cancelled-but-paid purchase as active without renewal, never as revoked", () => {
+    // What Play actually returns after a user turns off auto-renew: CANCELED, still entitled to the
+    // period's end. `ACTIVE` is defined as at least one line item renewing, so it is not what arrives here
+    // — using it as the fixture was the mistake this row exists to catch (#684 review).
     const purchase = normaliseSubscriptionPurchase(
       subscriptionBody({
-        subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+        subscriptionState: "SUBSCRIPTION_STATE_CANCELED",
         lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: false } }],
       }),
       "t",
     );
     expect(purchase.state).toBe("active");
+    expect(purchase.state).not.toBe("revoked");
     expect(purchase.autoRenews).toBe(false);
+    expect(purchase.expiryTime).toBe("2026-12-13T00:00:00.000Z");
   });
 });
 

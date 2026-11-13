@@ -25,6 +25,7 @@ import {
 import {
   PlayUnavailable,
   PurchaseRejected,
+  normaliseSubscriptionPurchase,
   type PlayClient,
   type VerifiedPurchase,
 } from "../src/lib/billing/google.js";
@@ -521,8 +522,22 @@ describe("POST /v1/billing/google/rtdn", () => {
     const store = recordingStore();
     const play = fakePlay();
     await bindPurchase(store);
-    // Type 3 is "canceled", but the family has paid to the end of the period: Play says active.
-    play.verifySubscription.mockResolvedValue(verified({ state: "active", autoRenews: false }));
+    // Type 3 is "canceled", but the family has paid to the end of the period. The fixture goes through the
+    // normaliser from the body Play actually sends (CANCELED, renewal off, a future expiry), so this row
+    // cannot pass on a hand-written `active` that Play never returns (#684 review).
+    play.verifySubscription.mockResolvedValue(
+      verified(
+        normaliseSubscriptionPurchase(
+          {
+            subscriptionState: "SUBSCRIPTION_STATE_CANCELED",
+            acknowledgementState: "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
+            externalAccountIdentifiers: { obfuscatedExternalAccountId: ACCOUNT_ID },
+            lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: false } }],
+          },
+          TOKEN,
+        ),
+      ),
+    );
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
     const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(3), "msg-canceled") });
@@ -564,9 +579,34 @@ describe("POST /v1/billing/google/rtdn", () => {
   it("goes active without renewal, then expired, over a cancelled-then-expired sequence", async () => {    const store = recordingStore();
     const play = fakePlay();
     await bindPurchase(store);
+    // Same two bodies Play sends, through the normaliser rather than hand-written states.
     play.verifySubscription
-      .mockResolvedValueOnce(verified({ state: "active", autoRenews: false }))
-      .mockResolvedValueOnce(verified({ state: "expired", autoRenews: false }));
+      .mockResolvedValueOnce(
+        verified(
+          normaliseSubscriptionPurchase(
+            {
+              subscriptionState: "SUBSCRIPTION_STATE_CANCELED",
+              acknowledgementState: "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
+              externalAccountIdentifiers: { obfuscatedExternalAccountId: ACCOUNT_ID },
+              lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: false } }],
+            },
+            TOKEN,
+          ),
+        ),
+      )
+      .mockResolvedValueOnce(
+        verified(
+          normaliseSubscriptionPurchase(
+            {
+              subscriptionState: "SUBSCRIPTION_STATE_EXPIRED",
+              acknowledgementState: "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
+              externalAccountIdentifiers: { obfuscatedExternalAccountId: ACCOUNT_ID },
+              lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: false } }],
+            },
+            TOKEN,
+          ),
+        ),
+      );
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
     const cancelled = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(3), "msg-1-cancelled") });

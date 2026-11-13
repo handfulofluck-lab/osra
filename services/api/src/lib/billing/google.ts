@@ -105,7 +105,10 @@ const SUBSCRIPTION_STATES: Readonly<Record<string, EntitlementState>> = {
   SUBSCRIPTION_STATE_ON_HOLD: "on_hold",
   SUBSCRIPTION_STATE_PAUSED: "on_hold",
   SUBSCRIPTION_STATE_PENDING: "on_hold",
-  SUBSCRIPTION_STATE_CANCELED: "revoked",
+  // Canceled means "will not renew", not "gone": Google's reference defines it as "canceled but not
+  // expired yet", and a refund or a revocation comes back as EXPIRED. Mapping it to `revoked` would cut a
+  // paying family off the moment they turn off auto-renew (#684 review). `autoRenews` carries the fact.
+  SUBSCRIPTION_STATE_CANCELED: "active",
   SUBSCRIPTION_STATE_EXPIRED: "expired",
 };
 
@@ -141,8 +144,9 @@ export function normaliseSubscriptionPurchase(raw: unknown, purchaseToken: strin
     return latest === null || Date.parse(value) > Date.parse(latest) ? value : latest;
   }, null);
 
-  // A user who cancels keeps the subscription to the end of the paid period: Play still reports
-  // `ACTIVE`, and `autoRenewEnabled` is what turns false. That is the difference the plan screen shows.
+  // A user who cancels keeps the subscription to the end of the paid period: Play reports `CANCELED` (not
+  // `ACTIVE`), and `autoRenewEnabled` is what turns false. That flag is the difference the plan screen
+  // shows; the state stays `active` and `expiresAt` still ends it.
   const autoRenews = lineItems.some((item) => item?.autoRenewingPlan?.autoRenewEnabled === true);
 
   const obfuscated = body.externalAccountIdentifiers?.obfuscatedExternalAccountId;
