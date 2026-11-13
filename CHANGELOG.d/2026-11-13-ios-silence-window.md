@@ -18,3 +18,10 @@
   the UI/UX Bureau's line (#650), and a separate alert category is a `shared-types` and parent-app change. The
   mechanism ships behind the existing `device_silent` category with its existing severity so an iPhone that
   dies is no longer silent, and the sentence lands when the Bureau signs it.
+- **Severity follows the platform** (review on #705): Android's alert stays **critical** — that is the
+  `pm clear` bypass and must not be ignored — while iOS and macOS get **warning**, because a phone that is off
+  for six hours is not an emergency and a critical alarm there teaches a parent to ignore the one that matters.
+  The metadata now carries `window: "apple" | "android"` so the app and the reports can tell them apart without
+  a schema change.
+- **The Apple window is never shorter than the Android one**: it clamps to `max(parsed, 120, androidMinutes)`,
+  so raising `DEVICE_SILENT_MINUTES` cannot make an iPhone the first phone declared removed.

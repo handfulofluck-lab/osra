@@ -189,6 +189,13 @@ describe("the window is per platform (#681: an iPhone is suspended by Apple, not
     expect(silentMinutesForPlatform("ios", 30, { DEVICE_SILENT_MINUTES_APPLE: "30" } as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_MIN_SAFE_MINUTES);
     expect(silentMinutesForPlatform("ios", 30, { DEVICE_SILENT_MINUTES_APPLE: "480" } as NodeJS.ProcessEnv)).toBe(480);
     expect(silentMinutesForPlatform("ios", 30, { DEVICE_SILENT_MINUTES_APPLE: "not a number" } as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_DEFAULT_MINUTES);
+    // Never shorter than the Android window: raising DEVICE_SILENT_MINUTES to 180 must not make an iPhone
+    // the first phone declared removed (Claude on #705).
+    // With the Apple value unset the default (360) already exceeds any plausible Android window, so the
+    // clamp only bites when someone SETS the Apple value low — which is the case below.
+    expect(silentMinutesForPlatform("ios", 180, {} as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_DEFAULT_MINUTES);
+    expect(silentMinutesForPlatform("ios", 180, { DEVICE_SILENT_MINUTES_APPLE: "120" } as NodeJS.ProcessEnv)).toBe(180);
+    expect(silentMinutesForPlatform("ios", 240, { DEVICE_SILENT_MINUTES_APPLE: "120" } as NodeJS.ProcessEnv)).toBe(240);
   });
 
   it("leaves a five-hour-old iPhone alone, and alerts on the same device at seven hours", async () => {
@@ -210,6 +217,9 @@ describe("the window is per platform (#681: an iPhone is suspended by Apple, not
     redis.set.mockResolvedValueOnce("OK");
     const late = await runDeviceSilenceCheck(NOW, { DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv);
     expect(late).toEqual({ checked: 1, alerted: ["ios-1"] });
+    const iosAlert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; metadata: { window: string } };
+    expect(iosAlert.severity).toBe("warning");
+    expect(iosAlert.metadata.window).toBe("apple");
     const body = String(prismaMock.alert.create.mock.calls[0][0].data.body);
     expect(body).toContain("420 minutes");
     expect(body).not.toContain("30 minutes");
@@ -229,9 +239,12 @@ describe("the window is per platform (#681: an iPhone is suspended by Apple, not
     expect(run.alerted).toEqual(["droid-1"]);
     // The body names the elapsed 45 minutes and the metadata the 30-minute window: two different facts,
     // and the parent's sentence needs the first one.
-    const data = prismaMock.alert.create.mock.calls[0][0].data as { body: string; metadata: { silentMinutes: number } };
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { body: string; severity: string; metadata: { silentMinutes: number; window: string } };
     expect(String(data.body)).toContain("45 minutes");
     expect(data.metadata.silentMinutes).toBe(30);
+    // Android stays critical: the `pm clear` silence is the one that must not be ignored.
+    expect(data.severity).toBe("critical");
+    expect((data.metadata as { window: string }).window).toBe("android");
   });
 });
 

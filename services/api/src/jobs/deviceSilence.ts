@@ -141,8 +141,10 @@ export function silentMinutesForPlatform(platform: string | null | undefined, an
   if (platform !== "ios" && platform !== "macos") return androidMinutes;
   const raw = env[APPLE_SILENT_ENV];
   const parsed = raw === undefined ? APPLE_SILENT_DEFAULT_MINUTES : Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return APPLE_SILENT_DEFAULT_MINUTES;
-  return Math.max(parsed, APPLE_SILENT_MIN_SAFE_MINUTES);
+  if (!Number.isFinite(parsed)) return Math.max(APPLE_SILENT_DEFAULT_MINUTES, androidMinutes);
+  // Never shorter than the Android window: whoever raises DEVICE_SILENT_MINUTES to 180 must not thereby
+  // make an iPhone fire at 120 and be the *first* phone declared removed (Claude on #705).
+  return Math.max(parsed, APPLE_SILENT_MIN_SAFE_MINUTES, androidMinutes);
 }
 
 export interface SilenceRun {
@@ -163,6 +165,7 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
   });
   const alerted: string[] = [];
   for (const d of devices) {
+    const isApple = d.platform === "ios" || d.platform === "macos";
     const windowMinutes = silentMinutesForPlatform(d.platform, minutes, env);
     if (!isSilent(d.status, d.lastSeen, now, windowMinutes)) continue;
     // One alert per silence episode: the claim lives until the device is seen again (TTL as a backstop).
@@ -175,14 +178,22 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
       childId: d.childId,
       familyId: d.child.familyId,
       deviceId: d.id,
-      severity: "critical",
+      // A phone that is off for six hours is not an emergency; a critical alarm there teaches parents to
+      // ignore the one that matters, the Android `pm clear` silence (#705 review).
+      severity: isApple ? "warning" : "critical",
       category: "tamper",
       title: "Device stopped reporting",
       // The sentence names the time the phone has ACTUALLY been quiet, not the window that fired: a parent
       // reading "360 minutes" about a phone unseen for seven hours is being told something untrue in the one
       // number they will act on. The window goes in the metadata, where the test and the audit read it.
       body: `${d.model} has not reported for ${Math.round((now.getTime() - d.lastSeen.getTime()) / 60_000)} minutes. The agent may have been removed, its data wiped, or the phone switched off.`,
-      metadata: { type: "device_silent", lastSeen: d.lastSeen.toISOString(), silentMinutes: windowMinutes },
+      metadata: {
+        type: "device_silent",
+        // The app and the reports can tell the two apart without a schema change (#705 review).
+        window: isApple ? "apple" : "android",
+        lastSeen: d.lastSeen.toISOString(),
+        silentMinutes: windowMinutes,
+      },
       childName: d.child.displayName,
     });
     alerted.push(d.id);
