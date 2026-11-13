@@ -105,7 +105,7 @@ export async function enqueueDeviceCommand(
       // carries collapse key "wake" and the agent drains the queue, not the message.
       const message = toMessage(existing);
       await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
-      wakeDeviceDetached(deviceId, message.id);
+      wakeDeviceDetached(deviceId);
       return message;
     }
   }
@@ -127,7 +127,7 @@ export async function enqueueDeviceCommand(
   // fail a parent's command, and the row above is already durable. One funnel: every command
   // producer (controls, rules, auth, this file) reaches the device through here. The row id travels
   // with it only so the wake log can name the command (#673).
-  wakeDeviceDetached(deviceId, message.id);
+  wakeDeviceDetached(deviceId);
   return message;
 }
 
