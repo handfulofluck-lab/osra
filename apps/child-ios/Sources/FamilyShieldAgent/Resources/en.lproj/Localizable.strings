@@ -31,6 +31,7 @@
 "status_paired" = "Paired";
 "status_child" = "Child";
 "status_server" = "Server";
+"status_technical_details" = "Technical details";
 "status_device" = "Device";
 "screen_time" = "Screen Time";
 "screen_time_on" = "On";
