@@ -91,6 +91,25 @@ describe("alert body keys (#711)", () => {
     expect(data.body).toBe("Pixel 7a has not reported for 45 minutes.");
   });
 
+  it("raises the alert with the English body when the bodyKey is unknown (f4)", async () => {
+    // A key this build does not know must cost the key, not the alert: an unrecognised string is a deploy or
+    // a typo, never a reason to drop a child-safety alert. Claude's fault f4 survived until this row existed.
+    await raiseAlert({
+      childId: "child-1",
+      familyId: "fam-1",
+      severity: "warning",
+      category: "tamper",
+      title: "Flagged",
+      body: "Something happened.",
+      bodyKey: "alertBodyNotARealKey",
+      params: { anything: "x" },
+    } as Parameters<typeof raiseAlert>[0]);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: { bodyKey?: string }; body: string };
+    expect(data.metadata?.bodyKey).toBeUndefined();
+    expect(data.body).toBe("Something happened.");
+  });
+
   it("raises a flagged video that carries no channel, with no bodyKey (#718 review)", async () => {
     // YouTubeWatchSchema defaults `channel` to "", so this is a real payload, not a hostile one. `channel` is
     // no longer a required param for exactly this case.
