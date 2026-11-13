@@ -39,7 +39,8 @@ public static class PairingService
         Action? onWaiting = null,
         CancellationToken ct = default,
         HttpMessageHandler? handler = null,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        IAccountIdentity? account = null)
     {
         var baseUrl = (apiBase ?? string.Empty).Trim().TrimEnd('/');
         var pin = ParentPinPolicy.Normalize(parentPin);
@@ -57,12 +58,17 @@ public static class PairingService
 
         using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
         http.BaseAddress = baseUri;
+        if (DesktopClientIdentity.Header is { } clientHeader)
+            http.DefaultRequestHeaders.TryAddWithoutValidation("X-OSRA-Client", clientHeader);
+        var capabilities = DesktopCapabilities.Create(account ?? new WindowsAccountIdentity(),
+            new RuntimeFacts(HasParentPin: true, TrayConnected: false, ProcessBlocking: true, WebFiltering: true));
         using var res = await http.PostAsJsonAsync("/v1/devices/pair/claim", new
         {
             code = code.Trim(),
             platform = string.IsNullOrWhiteSpace(platform) ? "windows" : platform.Trim(),
             model = Environment.MachineName,
             osVersion = Environment.OSVersion.VersionString,
+            capabilities,
         }, JsonOptions, ct);
 
         switch ((int)res.StatusCode)

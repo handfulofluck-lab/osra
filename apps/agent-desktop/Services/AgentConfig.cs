@@ -136,6 +136,15 @@ public sealed class AgentConfig
         AllowEnvironmentOverrides = AllowEnvironmentOverrides,
     };
 
+    /// <summary>Copies only the paired identity claims, never endpoint, rule or PIN configuration.</summary>
+    public void UpdateIdentityFrom(AgentConfig source)
+    {
+        DeviceJwt = source.DeviceJwt;
+        DeviceId = source.DeviceId;
+        ChildId = source.ChildId;
+        HmacSecret = source.HmacSecret;
+    }
+
     /// <summary>
     /// Writes indented JSON to <paramref name="exeDir"/>/<see cref="FileName"/>; skips the write
     /// when the content is unchanged (avoids rewrite churn). Returns true when the file was written.

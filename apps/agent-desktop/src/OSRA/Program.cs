@@ -1,4 +1,5 @@
 using FamilyShield.Agent.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 #if DEBUG
@@ -18,6 +19,7 @@ catch (Exception ex)
 }
 
 var config = AgentConfig.Load(AppContext.BaseDirectory, allowEnvironmentOverrides);
+var wasPaired = config is not null;
 if (config is null)
 {
     config = PairingDialog.Show();
@@ -34,5 +36,10 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     ContentRootPath = AppContext.BaseDirectory,
 });
 DesktopRuntime.AddTray(builder.Services, config);
+if (!wasPaired)
+{
+    var sink = builder.Services.BuildServiceProvider().GetRequiredService<ITrayCommandSink>();
+    await sink.SendAsync(new TrayMessage(TrayMessageKind.pairing_complete));
+}
 await builder.Build().RunAsync();
 return 0;

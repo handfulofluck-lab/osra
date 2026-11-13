@@ -14,19 +14,19 @@ public sealed class DesktopCapabilitiesTests
     {
         var report = DesktopCapabilities.Create(new TestAccountIdentity(administrator), Facts());
 
-        Assert.Equal(expected, report["grants"].GetProperty("child_account_admin").GetString());
-        Assert.Equal("agent-desktop", report["client"].GetProperty("app").GetString());
-        Assert.Equal("0.1.0", report["client"].GetProperty("version").GetString());
-        Assert.Equal(1, report["client"].GetProperty("build").GetInt32());
-        Assert.Equal("dev", report["client"].GetProperty("flavour").GetString());
-        Assert.Equal("ready", report["features"].GetProperty("lock_screen").GetString());
-        Assert.Equal("ready", report["features"].GetProperty("pause_screen").GetString());
-        Assert.Equal("ready", report["features"].GetProperty("screen_time").GetString());
-        Assert.Equal("ready", report["features"].GetProperty("app_blocking").GetString());
-        Assert.Equal("degraded", report["features"].GetProperty("web_filter").GetString());
-        Assert.Equal("degraded", report["features"].GetProperty("pause_internet").GetString());
-        Assert.Equal(3, report.Count);
-        Assert.Equal(6, report["features"].EnumerateObject().Count());
+        Assert.Equal(expected, report.GetProperty("grants").GetProperty("child_account_admin").GetString());
+        Assert.Equal("agent-desktop", report.GetProperty("client").GetProperty("app").GetString());
+        Assert.Equal("0.1.0", report.GetProperty("client").GetProperty("version").GetString());
+        Assert.Equal(1, report.GetProperty("client").GetProperty("build").GetInt32());
+        Assert.Equal("dev", report.GetProperty("client").GetProperty("flavour").GetString());
+        Assert.Equal("ready", report.GetProperty("features").GetProperty("lock_screen").GetString());
+        Assert.Equal("ready", report.GetProperty("features").GetProperty("pause_screen").GetString());
+        Assert.Equal("ready", report.GetProperty("features").GetProperty("screen_time").GetString());
+        Assert.Equal("ready", report.GetProperty("features").GetProperty("app_blocking").GetString());
+        Assert.Equal("degraded", report.GetProperty("features").GetProperty("web_filter").GetString());
+        Assert.Equal("degraded", report.GetProperty("features").GetProperty("pause_internet").GetString());
+        Assert.Equal(3, report.EnumerateObject().Count());
+        Assert.Equal(6, report.GetProperty("features").EnumerateObject().Count());
         Assert.DoesNotContain("not_supported", JsonSerializer.Serialize(report));
         Assert.DoesNotContain("pin", JsonSerializer.Serialize(report).ToLowerInvariant());
         Assert.DoesNotContain("secret", JsonSerializer.Serialize(report).ToLowerInvariant());
@@ -35,7 +35,7 @@ public sealed class DesktopCapabilitiesTests
     }
 
     [Fact]
-    public void TelemetryOmitsCapabilitiesUntilTheTrayReportsThem()
+    public async Task TelemetryOmitsCapabilitiesUntilTheTrayReportsThem()
     {
         var dir = Path.Combine(Path.GetTempPath(), "osra-capability-tests", Guid.NewGuid().ToString("N"));
         var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance, Path.Combine(dir, "agent.db"), Path.Combine(dir, "status.json"));

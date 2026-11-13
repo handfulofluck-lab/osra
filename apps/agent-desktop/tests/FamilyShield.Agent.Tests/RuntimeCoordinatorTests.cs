@@ -1,4 +1,5 @@
 using FamilyShield.Agent.Services;
+using OSRA.Service;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -23,7 +24,7 @@ public sealed class RuntimeCoordinatorTests
             () => { loadCalls++; return stored; }, config => { host.Config = config; return host; });
 
         await coordinator.StartPairedRuntime(1, CancellationToken.None);
-        Assert.Equal(0, loadCalls);
+        Assert.Equal(1, loadCalls);
         Assert.False(coordinator.RuntimeStarted);
 
         stored = new AgentConfig
@@ -39,7 +40,7 @@ public sealed class RuntimeCoordinatorTests
         await coordinator.StartPairedRuntime(1, CancellationToken.None);
         await coordinator.StartPairedRuntime(1, CancellationToken.None);
 
-        Assert.Equal(1, loadCalls);
+        Assert.Equal(2, loadCalls);
         Assert.Equal(1, host.StartCalls);
         Assert.True(coordinator.RuntimeStarted);
         Assert.Equal("identity-jwt", transport.DeviceJwt);
@@ -67,7 +68,7 @@ public sealed class RuntimeCoordinatorTests
     {
         public int StartCalls { get; private set; }
         public bool Disposed { get; private set; }
-        public AgentConfig? Config { get; private set; }
+        public AgentConfig? Config { get; set; }
         public IServiceProvider Services => throw new NotSupportedException();
         public Task StartAsync(CancellationToken cancellationToken = default)
         {

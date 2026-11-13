@@ -10,6 +10,26 @@ internal static class ServiceHostComposition
         services.AddSingleton<INativeProcessLauncher, NativeProcessLauncher>();
         services.AddSingleton<ITrayLauncher, SessionProcess>();
         services.AddHostedService<TraySupervisor>();
-        if (config is not null) DesktopRuntime.AddService(services, config);
+        if (config is not null)
+        {
+            DesktopRuntime.AddService(services, config);
+            return;
+        }
+
+        var transportConfig = new AgentConfig { ApiBase = AgentConfig.ProductionApiBase };
+        services.AddSingleton(transportConfig);
+        services.AddSingleton<RuntimeCoordinator>();
+        services.AddHostedService<RuntimeCoordinator>();
+        services.AddSingleton(serviceProvider => new TrayServerEvents
+        {
+            PairingComplete = (sessionId, ct) => serviceProvider.GetRequiredService<RuntimeCoordinator>().StartPairedRuntime(sessionId, ct),
+            Capabilities = (report, ct) =>
+            {
+                serviceProvider.GetRequiredService<DesktopCapabilitiesStore>().Update(report);
+                return Task.CompletedTask;
+            },
+        });
+        DesktopRuntime.AddServiceTransport(services, transportConfig,
+            services.BuildServiceProvider().GetRequiredService<TrayServerEvents>());
     }
 }

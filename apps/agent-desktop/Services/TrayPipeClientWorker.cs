@@ -7,14 +7,17 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
     private readonly ITrayClient _client;
     private readonly TrayUserActions _actions;
     private readonly ILogger<TrayPipeClientWorker> _log;
+    private readonly TrayConnectionState _state;
     private readonly Queue<TrayMessage> _pending = new();
     private readonly object _gate = new();
 
-    public TrayPipeClientWorker(ITrayClient client, TrayUserActions actions, ILogger<TrayPipeClientWorker> log)
+    public TrayPipeClientWorker(ITrayClient client, TrayUserActions actions, ILogger<TrayPipeClientWorker> log,
+        TrayConnectionState? state = null)
     {
         _client = client;
         _actions = actions;
         _log = log;
+        _state = state ?? new TrayConnectionState();
     }
 
     public Task SendAsync(TrayMessage message, CancellationToken cancellationToken = default)
@@ -35,17 +38,25 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
             {
                 var session = Process.GetCurrentProcess().SessionId;
                 await using var connection = await _client.ConnectAsync(session, stoppingToken);
-                while (true)
+                _state.IsConnected = true;
+                try
                 {
-                    TrayMessage? pending;
-                    lock (_gate) pending = _pending.Count > 0 ? _pending.Dequeue() : null;
-                    if (pending is null) break;
-                    await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToService, stoppingToken);
+                    while (true)
+                    {
+                        TrayMessage? pending;
+                        lock (_gate) pending = _pending.Count > 0 ? _pending.Dequeue() : null;
+                        if (pending is null) break;
+                        await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToService, stoppingToken);
+                    }
+                    while (true)
+                    {
+                        var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToTray, cancellationToken: stoppingToken);
+                        await _actions.HandleAsync(message, stoppingToken);
+                    }
                 }
-                while (true)
+                finally
                 {
-                    var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToTray, cancellationToken: stoppingToken);
-                    await _actions.HandleAsync(message, stoppingToken);
+                    _state.IsConnected = false;
                 }
             }
             catch (OperationCanceledException)

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text;
 using FamilyShield.Agent.Services;
 using Xunit;
@@ -58,7 +59,7 @@ public sealed class PairingServiceTests
         var claim = JsonDocument.Parse(handler.Bodies[0]);
         Assert.Equal("granted", claim.RootElement.GetProperty("capabilities").GetProperty("grants").GetProperty("child_account_admin").GetString());
         Assert.DoesNotContain(Pin, handler.Bodies[0]);
-        Assert.DoesNotContain(TOKEN, handler.Bodies[0]);
+        Assert.DoesNotContain("jwt-9", handler.Bodies[0]);
     }
 
     [Fact]

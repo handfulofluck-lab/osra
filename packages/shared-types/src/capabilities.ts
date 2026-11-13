@@ -42,6 +42,7 @@ export const GRANT_KEYS = [
   "full_screen_intent",
   "family_controls",
   "background_refresh",
+  "child_account_admin",
 ] as const;
 export type GrantKey = (typeof GRANT_KEYS)[number];
 

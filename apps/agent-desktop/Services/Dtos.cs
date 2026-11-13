@@ -209,6 +209,11 @@ public sealed class TelemetryBatchDto
     /// <summary>Current battery percentage (100 on desktops without a battery); doubles as a heartbeat.</summary>
     [JsonPropertyName("batteryPct")] public int? BatteryPct { get; set; }
 
+    /// <summary>The latest tray-computed capability report, omitted until the tray supplies one.</summary>
+    [JsonPropertyName("capabilities")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? Capabilities { get; set; }
+
     /// <summary>True when there is anything to upload.</summary>
     [JsonIgnore] public bool HasAny => Urls.Count > 0 || AppUsage.Count > 0;
 
