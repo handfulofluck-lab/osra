@@ -25,7 +25,16 @@ export interface DeveloperNotification {
     subscriptionId?: string;
   };
   testNotification?: unknown;
-  voidedPurchaseNotification?: unknown;
+  /**
+   * #692: a refund or a chargeback. `productType` 1 is a subscription and 2 a one-time product; the fields
+   * are optional because Pub/Sub is a wire format, so the handler checks them rather than trusting the shape.
+   */
+  voidedPurchaseNotification?: {
+    purchaseToken?: string;
+    orderId?: string;
+    productId?: string;
+    productType?: number;
+  };
 }
 
 export class MalformedNotification extends Error {
