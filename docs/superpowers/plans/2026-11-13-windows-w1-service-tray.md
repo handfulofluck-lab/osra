@@ -18,7 +18,12 @@
 - W2 DNS/firewall/proxy removal, W3 MSI/service-recovery/signing, W4 updater and #657 presentation remain separate. W1 publishes an unsigned artifact and does not claim production signing, installed-directory ACLs or publisher verification.
 - Do not start a service, pair a real family, lock a session, sound an alert or enable a hotkey on the development PC. Tests substitute every OS boundary.
 - `child_account_admin` is `granted` for the interactive administrator and `missing` for a Standard user. It is computed for the child/tray user, never SYSTEM. `capabilities.client.flavour` uses the existing `dev` enum; the header uses `agent-desktop/<version>+<build> (windows)`.
-- Branch only from current `main`, never force-push or merge. One PR for #623; run all relevant gates before marking it ready and enable auto-merge rather than merging directly.
+- Branch only from current `main`, never force-push or merge. One PR for #623; run all relevant gates before marking it ready and enable auto-merge rather than merging directly. Label it `risk:R3` for pipe ACLs, OS-derived identity and process launch.
+
+**Claude's review notes (17:51Z, #623 comment 6860746931):**
+- The identity file is child-writable in W1. The service reads one immutable identity snapshot, never rules, API base, allowlists or parent PIN from that file. API base comes only from the compiled production constant or an explicit Debug environment override; the file cannot disable proxy enforcement. Tasks 1 and 5 each include a test row. A SYSTEM-only location and ACLs are W3 scope and, like W1b, block any outsider build.
+- `TrayProtocol.MaxFrameBytes` is **65,536** and `TrayProtocol.ReadTimeout` is **15 seconds**. Task 3 tests 65,537 bytes before allocation and the exact timeout.
+- Claude's device row covers Standard/admin `child_account_admin` and a second interactive session failing to open the first session's pipe, using the unsigned CI artifact on the isolated Windows Server 2025 machine.
 
 ## Review Focus
 
