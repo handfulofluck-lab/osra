@@ -120,39 +120,37 @@ jobs:
       # live case skipped (that run says 21 pass, 1 skipped) or failed; `pipefail` carries a failing run's
       # exit through the pipe; `fail 0` is asserted because a 26th case that failed would leave `pass 25`.
       # Claude's ruling on #674: the erasure is proved against the database itself, not only through the
-      # routes, because a route can answer 404 for a row that is still there. Counts only — a count is not
-      # personal data, and a row's contents never leave the runner.
-      - name: Count every family-scoped table before the scenario run (#674)
+      # routes, because a route can answer 404 for a row that is still there.
+      #
+      # The table list is GENERATED from the catalog, not written by hand: a hand list drifts the first time
+      # someone adds a model, and the drift is invisible — the step keeps passing and stops counting the new
+      # table. `\gexec` turns one row per table into one SELECT per table, so a new model is counted the day
+      # it migrates. `_prisma_migrations` is the one exclusion: it is our own bookkeeping, not family data.
+      #
+      # Counts and ids only — neither is personal data, and no row's contents leave the runner.
+      - name: Count every table and record every family id before the scenario run (#674)
         env:
           PGPASSWORD: postgres
         run: |
           cat > /tmp/family-tables.sql <<'SQL'
           \pset tuples_only on
           \pset format unaligned
-          SELECT 'Family', count(*) FROM "Family"
-          UNION ALL SELECT 'Parent', count(*) FROM "Parent"
-          UNION ALL SELECT 'Child', count(*) FROM "Child"
-          UNION ALL SELECT 'Device', count(*) FROM "Device"
-          UNION ALL SELECT 'DeviceApp', count(*) FROM "DeviceApp"
-          UNION ALL SELECT 'DeviceCommand', count(*) FROM "DeviceCommand"
-          UNION ALL SELECT 'RuleSet', count(*) FROM "RuleSet"
-          UNION ALL SELECT 'ActivityEvent', count(*) FROM "ActivityEvent"
-          UNION ALL SELECT 'AppUsageDaily', count(*) FROM "AppUsageDaily"
-          UNION ALL SELECT 'WebVisit', count(*) FROM "WebVisit"
-          UNION ALL SELECT 'SocialEvent', count(*) FROM "SocialEvent"
-          UNION ALL SELECT 'LocationPing', count(*) FROM "LocationPing"
-          UNION ALL SELECT 'Geofence', count(*) FROM "Geofence"
-          UNION ALL SELECT 'Alert', count(*) FROM "Alert"
-          UNION ALL SELECT 'ConsentRecord', count(*) FROM "ConsentRecord"
-          UNION ALL SELECT 'PairingDecision', count(*) FROM "PairingDecision"
-          UNION ALL SELECT 'DigestPrefs', count(*) FROM "DigestPrefs"
-          UNION ALL SELECT 'DigestRecipient', count(*) FROM "DigestRecipient"
-          UNION ALL SELECT 'FamilyInvite', count(*) FROM "FamilyInvite"
-          ORDER BY 1;
+          SELECT format('SELECT %L, count(*) FROM %I.%I', table_name, table_schema, table_name)
+          FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_type = 'BASE TABLE'
+            AND table_name <> '_prisma_migrations'
+          ORDER BY table_name
+          \gexec
           SQL
           psql -h 127.0.0.1 -U postgres -d postgres -f /tmp/family-tables.sql | sort > /tmp/before.txt
+          echo "tables counted: $(wc -l < /tmp/before.txt)"
           echo "before:"; cat /tmp/before.txt
-          test -s /tmp/before.txt || { echo "::error::the count query returned nothing"; exit 1; }
+          test -s /tmp/before.txt || { echo "::error::the generated count query returned nothing"; exit 1; }
+          # The ids, not a time window: the seed family is created minutes before the run and would sit
+          # inside any window, so a clock cannot tell "the run's family" from "the seed's".
+          psql -h 127.0.0.1 -U postgres -d postgres -tAc 'SELECT id FROM "Family" ORDER BY 1' > /tmp/families-before.txt
+          echo "family ids before: $(wc -l < /tmp/families-before.txt)"
 
       - name: A scenario family is created and erased through the API, and leaves no residue (#668)
         env:
@@ -164,22 +162,28 @@ jobs:
           printf '%s\n' "$out" | grep -q 'fail 0$'
 
       # Two assertions, because they catch different mistakes: the per-table counts catch a delete that
-      # skips a table (Claude plants exactly that), and the window query catches a row written by the run
-      # into a table this list does not name — a new table added without updating the list here.
-      - name: The erasure leaves every family-scoped table where it found it (#674)
+      # skips a table (Claude plants exactly that), and the id set catches a family that survived with its
+      # rows intact — which the count can miss when two changes cancel out.
+      - name: The erasure leaves every table where it found it, and no family behind (#674)
         env:
           PGPASSWORD: postgres
         run: |
           psql -h 127.0.0.1 -U postgres -d postgres -f /tmp/family-tables.sql | sort > /tmp/after.txt
           echo "after:"; cat /tmp/after.txt
           if ! diff -u /tmp/before.txt /tmp/after.txt; then
-            echo "::error::the scenario run changed a family-scoped table's row count"
+            echo "::error::the scenario run changed a table's row count"
             exit 1
           fi
-          # Nothing the run created may survive, whatever table it is in: every family created in the last
-          # ten minutes must be gone, or its rows are somewhere this list does not count.
-          left=$(psql -h 127.0.0.1 -U postgres -d postgres -tAc \
-            "SELECT count(*) FROM \"Family\" WHERE \"createdAt\" > now() - interval '10 minutes'")
-          echo "families created during the run and still present: $left"
-          test "$left" = "0" || { echo "::error::$left scenario famil(ies) survived the erasure"; exit 1; }
-          docker rm -f api
+          psql -h 127.0.0.1 -U postgres -d postgres -tAc 'SELECT id FROM "Family" ORDER BY 1' > /tmp/families-after.txt
+          if ! diff -u /tmp/families-before.txt /tmp/families-after.txt; then
+            echo "::error::a family exists after the run that did not exist before it"
+            exit 1
+          fi
+          echo "counts identical and the family set is unchanged"
+
+      # Kept out of the steps above so a failed assertion still tears the container down, rather than leaving
+      # it to the runner's own disposal and making a red run look like a leak.
+      - name: Stop the API container
+        if: always()
+        run: docker rm -f api
+
