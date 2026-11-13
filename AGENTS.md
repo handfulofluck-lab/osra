@@ -401,13 +401,20 @@ must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-aut
 |---|---|---|---|
 | R1 | docs, Markdown, tests only | one member who is not the author | 2 h |
 | R2 | normal features and fixes | one member from another model family than the author, planted faults on changed logic, a device row if it runs on a device | 6 h |
-| R3 | auth, pairing, MFA, billing, refunds, purchases, consent, children's location, migrations, `infra/`, signing and entitlements, secrets, the merge gate itself | two members, neither the author: one from another family, and one security key (**Ahmed or Fable**) | 24 h |
+| R3 | auth, sessions, tokens, pairing, MFA/TOTP, invites, account deletion, device revocation, billing, refunds, purchases, entitlements, consent, children's location, the Prisma schema and migrations, API middleware, `infra/`, signing, secrets, the build/publish/deploy workflows, the merge gate and its lint, this file | two different members, neither the author: one from a model family other than the author's, and one security key (**Ahmed or Fable**). The two may share a family with each other, e.g. Claude + Fable on a Kimi or K31 PR | 24 h |
 
 **Bureaus, enforced by the gate.** A diff a family sees (app `features/`, `theme/`, `l10n/`, string resources,
 SwiftUI views, `site/`, `docs/store/`, `docs/design/`, or label `needs:uiux`) needs `UIUX-Bureau: reviewed <head sha>`.
 A diff with Arabic text (`*_ar.arb`, `values-ar/`, `ar.lproj/`, `site/ar/`, `*.ar.*`, `docs/store/`, `docs/customer/`,
 the API email templates, or label `needs:arabic`) needs `Arabic-Bureau: reviewed <head sha>`. Both carry forward across
-clean merges of `main` like `Verified-sha:`. Order is unchanged: UI/UX Bureau, Arabic Bureau, then code verification.
+clean merges of `main` like `Verified-sha:`. The comment's signature line must name the Bureau (`— Claude (UI/UX
+Bureau)`, `— Claude (Arabic Language Bureau)`). Order is unchanged: UI/UX Bureau, Arabic Bureau, then code verification.
+
+**How a signature is read** (Fable's review of #721). `Verified-sha:`, `UIUX-Bureau: reviewed` and
+`Arabic-Bureau: reviewed` count only at the **start of a line**, never inside a fenced code block, and the signer
+is the **last line that starts with `— <Name>`**. So when you ask someone to post a line, write it inline or in a
+code block, or write `<head sha>` instead of the real sha; never put a real head sha on its own line after one of
+these keywords in a request.
 When a Bureau authors a user-visible PR itself, its line cites the maintainer's written yes.
 
 **Rotation** (1st claims; the backup takes over when the 1st has not claimed within 1 hour):
@@ -443,7 +450,9 @@ When a Bureau authors a user-visible PR itself, its line cites the maintainer's 
    resolution (§5a) and signs the new head; the original signers do not carry.
    Ahmed's agent does not sign or switch on auto-merge (#719): it posts a written verdict
    (`R3 security review: OK / changes needed at <sha>`), and the R3 second-key signature comes from the standing
-   Fable thread or from Ahmed in person (maintainer, 2026-11-13 16:51Z, #617).
+   Fable thread (maintainer, 2026-11-13 16:51Z, #617). The gate reads only the agent account (§6.4), so a
+   `— Ahmed` signature posted from `ahmedyusseff` never counts: **in practice Fable is the working security key**,
+   and Ahmed's verdict is the advisory second opinion the Fable signer reads before signing.
 6. A **revert** is R1 and may be verified by anyone but its author.
 7. **Unchanged:** release security gates #630 to #637 are signed `Security-signoff:` by Ahmed alone and only the
    maintainer overrides them in writing; K31, K31-Mac and Kimi do no AWS, store, secret or account work; Claude runs

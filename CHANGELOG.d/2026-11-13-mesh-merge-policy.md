@@ -10,4 +10,10 @@
 - A user-visible diff now needs `UIUX-Bureau: reviewed <head sha>` and an Arabic-text diff
   `Arabic-Bureau: reviewed <head sha>` before the gate passes (labels `needs:uiux` / `needs:arabic` force them);
   Bureau lines carry forward across clean merges of `main` like `Verified-sha:`.
-- `workflow-lint` runs the policy's 28-case self-test. AGENTS.md §6.6 documents the model.
+- Signatures are parsed by the policy too: a keyword counts only at the start of a line and outside code blocks,
+  the signer is the last line that starts with `— <Name>`, and a Bureau line needs the Bureau in that signer line.
+  A request that quotes a line is no longer read as a signature (checked against 60 real PRs: only the three
+  quoted requests on #662 and #682 stop counting). An empty changed-files list fails closed, and a renamed file
+  counts under its old path too.
+- `workflow-lint` runs the policy's 87-case self-test (33 planted faults, all caught). AGENTS.md §6.6 documents
+  the model.
