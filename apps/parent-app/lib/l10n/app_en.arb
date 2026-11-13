@@ -1289,6 +1289,28 @@
   "alertTitleUnknownContact": "Unknown contact",
   "alertTitleGeneric": "Alert",
     "alertPushBodyGeneric": "Open OSRA to see the details.\nProtecting your family at all times.",
+    "alertSosWhere": "SOS — near {coords}, {age}",
+    "@alertSosWhere": {
+      "description": "#672: the SOS notification's body when the alert carries the phone's fix. Coordinates only — the app has no reverse geocoder.",
+      "placeholders": {
+        "coords": {"type": "String"},
+        "age": {"type": "String"}
+      }
+    },
+    "alertFixAgeMinutes": "{n} min ago",
+    "@alertFixAgeMinutes": {
+      "description": "#672: how old the SOS fix is, under an hour.",
+      "placeholders": {"n": {"type": "int"}}
+    },
+    "alertFixAgeHours": "{n} h ago",
+    "@alertFixAgeHours": {
+      "description": "#672: how old the SOS fix is, an hour or more.",
+      "placeholders": {"n": {"type": "int"}}
+    },
+    "alertShowOnMap": "Show on map",
+    "@alertShowOnMap": {
+      "description": "#672: the SOS alert's action that opens the family map on its fix."
+    },
   "riskSelfHarm": "Self-harm",
   "riskSubstanceUse": "Substance use",
   "riskSubstanceAbuse": "Substance abuse",

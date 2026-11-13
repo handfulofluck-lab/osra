@@ -873,6 +873,28 @@
   "alertTitleUnknownContact": "تواصل من جهة غير معروفة",
   "alertTitleGeneric": "تنبيه",
     "alertPushBodyGeneric": "افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات",
+    "@alertSosWhere": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). SOS notification body when the alert carries the phone's fix; nothing here is a place name, only coordinates and an age.",
+      "placeholders": {
+        "coords": {"type": "String"},
+        "age": {"type": "String"}
+      }
+    },
+    "alertSosWhere": "استغاثة — قرب {coords}، {age}",
+    "@alertFixAgeMinutes": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Age of the SOS fix, under an hour.",
+      "placeholders": {"n": {"type": "int"}}
+    },
+    "alertFixAgeMinutes": "قبل {n} دقيقة",
+    "@alertFixAgeHours": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Age of the SOS fix, an hour or more.",
+      "placeholders": {"n": {"type": "int"}}
+    },
+    "alertFixAgeHours": "قبل {n} ساعة",
+    "@alertShowOnMap": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Opens the family map on the SOS fix."
+    },
+    "alertShowOnMap": "اعرض على الخريطة",
   "riskSelfHarm": "إيذاء النفس",
   "riskSubstanceUse": "تعاطي المواد",
   "riskSubstanceAbuse": "إساءة استخدام المواد",

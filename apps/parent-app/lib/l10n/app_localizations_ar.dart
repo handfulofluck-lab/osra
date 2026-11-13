@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3011,6 +3012,24 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get alertPushBodyGeneric =>
       'افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات';
+
+  @override
+  String alertSosWhere(String coords, String age) {
+    return 'استغاثة — قرب $coords، $age';
+  }
+
+  @override
+  String alertFixAgeMinutes(int n) {
+    return 'قبل $n دقيقة';
+  }
+
+  @override
+  String alertFixAgeHours(int n) {
+    return 'قبل $n ساعة';
+  }
+
+  @override
+  String get alertShowOnMap => 'اعرض على الخريطة';
 
   @override
   String get riskSelfHarm => 'إيذاء النفس';

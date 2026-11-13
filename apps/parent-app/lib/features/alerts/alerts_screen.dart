@@ -14,6 +14,7 @@ import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import '../map/family_map_screen.dart' show FamilyMapScreen, MapFocus;
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
@@ -160,6 +161,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 child: Text(l10n.blockThisApp),
               ),
             ],
+            // #672: an SOS that carried a fix gets one tap to the place, on the same family map the tab
+            // shows — not a second map, and not "open the map and hope the last ping is recent".
+            if (alert.category == 'sos' && alert.location != null)
+              FilledButton.icon(
+                key: const ValueKey('alert-show-on-map'),
+                onPressed: () {
+                  final fix = alert.location!;
+                  Navigator.of(dialogContext).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => FamilyMapScreen(focus: MapFocus.fromFix(fix))),
+                  );
+                },
+                icon: const Icon(Icons.place),
+                label: Text(l10n.alertShowOnMap),
+              ),
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(l10n.close)),
           ],
         );

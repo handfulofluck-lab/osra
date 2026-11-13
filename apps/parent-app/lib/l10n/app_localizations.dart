@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// No description provided for @appName.
@@ -4766,6 +4766,30 @@ abstract class AppLocalizations {
   /// **'Open OSRA to see the details.\nProtecting your family at all times.'**
   String get alertPushBodyGeneric;
 
+  /// #672: the SOS notification's body when the alert carries the phone's fix. Coordinates only — the app has no reverse geocoder.
+  ///
+  /// In en, this message translates to:
+  /// **'SOS — near {coords}, {age}'**
+  String alertSosWhere(String coords, String age);
+
+  /// #672: how old the SOS fix is, under an hour.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} min ago'**
+  String alertFixAgeMinutes(int n);
+
+  /// #672: how old the SOS fix is, an hour or more.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} h ago'**
+  String alertFixAgeHours(int n);
+
+  /// #672: the SOS alert's action that opens the family map on its fix.
+  ///
+  /// In en, this message translates to:
+  /// **'Show on map'**
+  String get alertShowOnMap;
+
   /// No description provided for @riskSelfHarm.
   ///
   /// In en, this message translates to:
@@ -5136,8 +5160,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

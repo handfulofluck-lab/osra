@@ -41,8 +41,37 @@ const String kMapsApiKey = String.fromEnvironment('MAPS_API_KEY');
 bool mapIsAvailable(TargetPlatform platform, {String key = kMapsApiKey}) =>
     platform != TargetPlatform.iOS || key.isNotEmpty;
 
+/// Issue #672: a point the map was opened **for** — an SOS alert's fix. The map is the same screen the
+/// tab shows; a focus only decides where the camera starts and adds one marker, so there is no second map.
+@immutable
+class MapFocus {
+  final LatLng position;
+
+  /// The marker's caption — the alert's own line, so a parent who forgot which tap brought them here can
+  /// still read it.
+  final String label;
+
+  const MapFocus({required this.position, this.label = ''});
+
+  /// From the fix an alert carried. The one conversion the alerts screen needs, so it never imports
+  /// `google_maps_flutter` to open the map.
+  factory MapFocus.fromFix(AlertFix fix, {String label = ''}) =>
+      MapFocus(position: LatLng(fix.lat, fix.lng), label: label);
+}
+
+/// Where a map visit starts, and how close: the alert's fix when the map was opened for one, else the first
+/// child's latest ping, else the world. Pure so the rule is held without a Google Map (#672).
+({LatLng target, double zoom}) initialCameraFor(MapFocus? focus, LatLng? firstPing) {
+  if (focus != null) return (target: focus.position, zoom: 16);
+  if (firstPing != null) return (target: firstPing, zoom: 14);
+  return (target: const LatLng(0, 0), zoom: 2);
+}
+
 class FamilyMapScreen extends ConsumerWidget {
-  const FamilyMapScreen({super.key});
+  const FamilyMapScreen({super.key, this.focus});
+
+  /// Issue #672: set when the map was opened on an alert's fix. Absent for the tab.
+  final MapFocus? focus;
 
   /// Center for a new fence: the first child's latest ping, else 0,0 — a
   /// long-press on the map overrides this with the tapped point.
@@ -79,7 +108,7 @@ class FamilyMapScreen extends ConsumerWidget {
       body: family.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(readErrorText(context.l10n, e, () => context.l10n.familyLoadFailed('$e')))),
-        data: (overview) => _MapBody(overview: overview),
+        data: (overview) => _MapBody(overview: overview, focus: focus),
       ),
     );
   }
@@ -171,7 +200,10 @@ class ChildMapSheet extends ConsumerWidget {
 
 class _MapBody extends ConsumerStatefulWidget {
   final FamilyOverview overview;
-  const _MapBody({required this.overview});
+  const _MapBody({required this.overview, this.focus});
+
+  /// Issue #672: the alert's fix this visit is about, when there is one.
+  final MapFocus? focus;
 
   @override
   ConsumerState<_MapBody> createState() => _MapBodyState();
@@ -188,7 +220,11 @@ class _MapBodyState extends ConsumerState<_MapBody> {
 
   /// Feature #21: fit the camera so every child marker is visible. Runs once,
   /// only when there is more than one child with a ping.
+  ///
+  /// #672: skipped when the map was opened on an alert's fix — the parent asked for that pin, not for the
+  /// whole family, and fitting would zoom out until it disappeared among the others.
   void _maybeFit() {
+    if (widget.focus != null) return;
     if (_fitDone || _points.length < 2) return;
     _fitDone = true;
     unawaited(fitCameraToChildren(_controller, _points));
@@ -230,6 +266,19 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     _points = points;
     _maybeFit();
 
+    // #672: the alert's fix is drawn whatever the children's pings say — the whole point of the visit is a
+    // point in the past, and a child whose last ping is elsewhere must not hide it.
+    final focus = widget.focus;
+    if (focus != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('alert-fix'),
+        position: focus.position,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(title: focus.label),
+      ));
+    }
+    final camera = initialCameraFor(focus, firstPing);
+
     // #406 / Claude's ruling: a refused location or geofence read shows ONE banner over the map, not an error
     // screen and not one per child. The map, its markers and the long-press stay exactly as they are; other
     // errors keep today's silent behaviour.
@@ -262,7 +311,7 @@ class _MapBodyState extends ConsumerState<_MapBody> {
     return Stack(
       children: [
         GoogleMap(
-          initialCameraPosition: CameraPosition(target: firstPing ?? const LatLng(0, 0), zoom: firstPing == null ? 2 : 14),
+          initialCameraPosition: CameraPosition(target: camera.target, zoom: camera.zoom),
           markers: markers,
           circles: circles,
           onMapCreated: (c) {

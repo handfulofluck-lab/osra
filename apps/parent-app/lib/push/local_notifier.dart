@@ -4,6 +4,15 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 
+/// Issue #672: how old the SOS fix is, as the notification says it. A fix under a minute old reads
+/// "1 min ago": rounding up is the safe direction — a parent must never be told a fix is fresher than it is.
+String sosFixAgeText(AppLocalizations l10n, Alert alert, AlertFix fix, DateTime now) {
+  final age = fix.ageAt(now, alertCreatedAt: alert.createdAt) ?? Duration.zero;
+  final minutes = age.inMinutes;
+  if (minutes < 60) return l10n.alertFixAgeMinutes(minutes < 1 ? 1 : minutes);
+  return l10n.alertFixAgeHours(age.inHours);
+}
+
 /// The visible half of an alert: what the parent reads on the lock screen.
 ///
 /// Deliberately generic (#360 decision 3): the notification says an alert
@@ -12,6 +21,11 @@ import '../l10n/l10n.dart';
 /// `Social concern in <app>` — so showing `alert.title` verbatim would leak a
 /// search query or a video title onto a locked screen, in English, to an Arabic
 /// family (#395 review).
+///
+/// **The one exception is an SOS with a fix (#672)**: "near 25.276900, 51.521100, 3 min ago", from the
+/// app's own strings, because a parent who gets an SOS needs "where" in the same notification and the push
+/// payload carries no text by #410. Coordinates only — there is no reverse geocoder — and the age is said
+/// out loud, so an old fix is never presented as a live one. [now] is a parameter so the age is testable.
 @immutable
 class VisibleAlert {
   final String alertId;
@@ -27,12 +41,17 @@ class VisibleAlert {
   /// app's own translated **category** title ([alertTitleFor]), never the
   /// server's text, and the body is one generic sentence: the details are one
   /// tap away in the app, where the content is already behind the parent's PIN.
-  factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish}) =>
-      VisibleAlert(
-        alertId: alert.id,
-        title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
-        body: l10n.alertPushBodyGeneric,
-      );
+  factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish, DateTime? now}) {
+    final fix = alert.category == 'sos' ? alert.location : null;
+    final body = fix == null
+        ? l10n.alertPushBodyGeneric
+        : l10n.alertSosWhere(fix.coordsText, sosFixAgeText(l10n, alert, fix, now ?? DateTime.now()));
+    return VisibleAlert(
+      alertId: alert.id,
+      title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
+      body: body,
+    );
+  }
 }
 
 /// Posts a notification. A seam, so the wake's decisions are testable without a

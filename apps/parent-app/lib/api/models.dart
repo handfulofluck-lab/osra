@@ -16,6 +16,14 @@ int _int(dynamic v, [int fallback = 0]) {
 
 bool _bool(dynamic v, [bool fallback = false]) => v is bool ? v : fallback;
 String? _strOrNull(dynamic v) => v == null ? null : _str(v);
+double? _doubleOrNull(dynamic v) {
+  if (v is num) return v.isFinite ? v.toDouble() : null;
+  if (v is String) {
+    final parsed = double.tryParse(v.trim());
+    return parsed != null && parsed.isFinite ? parsed : null;
+  }
+  return null;
+}
 int? _intOrNull(dynamic v) {
   if (v is int) return v;
   if (v is num) return v.toInt();
@@ -954,6 +962,70 @@ class FamilyInvite {
 
 /// A safety/security alert. `severity` is info/warning/critical;
 /// `category` is one of the shared-types Alert categories.
+/// Issue #672: where an SOS was sent from, read from the alert's metadata.
+///
+/// The child agent writes five flat keys (`SosLocationPolicy` in `apps/child-android`) and
+/// `services/api/src/lib/alertLocation.ts` stores them normalised — numbers, ISO time. This is the one
+/// place the app interprets them, and it is deliberately forgiving: a stored fix that does not describe a
+/// point is `null`, so an alert is never lost to a location it could not read.
+///
+/// No place name: this app has no reverse geocoder (`family_map_screen.dart` calls that a non-goal), so
+/// "near" means the coordinates. The age is what makes that honest.
+@immutable
+class AlertFix {
+  final double lat;
+  final double lng;
+
+  /// Horizontal accuracy in metres, when the phone knew it.
+  final double? accuracyM;
+
+  /// When the platform took the fix, when the alert dated it.
+  final DateTime? takenAt;
+
+  /// How old the fix was when the SOS was sent, when the phone said so.
+  final Duration? age;
+
+  const AlertFix({required this.lat, required this.lng, this.accuracyM, this.takenAt, this.age});
+
+  /// The fix in [metadata], or null when there is no usable one.
+  static AlertFix? fromMetadata(Map<String, dynamic> metadata) {
+    final lat = _doubleOrNull(metadata['lat']);
+    final lng = _doubleOrNull(metadata['lng']);
+    // A half fix is not a fix: one axis cannot place a pin, so it must not place a wrong one.
+    if (lat == null || lng == null) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    final accuracy = _doubleOrNull(metadata['accuracyM']);
+    final ageSeconds = _doubleOrNull(metadata['ageSeconds']);
+    return AlertFix(
+      lat: lat,
+      lng: lng,
+      accuracyM: accuracy != null && accuracy >= 0 ? accuracy : null,
+      takenAt: DateTime.tryParse(_strOrNull(metadata['takenAt']) ?? ''),
+      age: ageSeconds != null && ageSeconds >= 0 ? Duration(seconds: ageSeconds.round()) : null,
+    );
+  }
+
+  /// The coordinates as the parent reads them: six decimals is about 11 cm, enough to find a street corner.
+  String get coordsText => '${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}';
+
+  /// How old the fix is *now*: the platform time when the alert dated it (a cache older than the alert is
+  /// then aged past what the phone thought), else the phone's own figure plus the time since the alert, so
+  /// a notification read ten minutes later does not claim the fix is still fresh.
+  Duration? ageAt(DateTime now, {DateTime? alertCreatedAt}) {
+    final taken = takenAt;
+    if (taken != null) {
+      final byTime = now.difference(taken);
+      return byTime.isNegative ? Duration.zero : byTime;
+    }
+    final sent = age;
+    if (sent == null) return null;
+    final created = alertCreatedAt;
+    final since = created == null ? Duration.zero : now.difference(created);
+    return sent + (since.isNegative ? Duration.zero : since);
+  }
+}
+
+/// One alert as the parent app reads it. [AlertFix] is #672: the SOS's own location, when it has one.
 @immutable
 class Alert {
   final String id;
@@ -992,6 +1064,10 @@ class Alert {
         createdAt: DateTime.tryParse(_str(json['createdAt'])),
         acknowledged: _bool(json['acknowledged']),
       );
+
+  /// Issue #672: the fix an SOS carried, or null. Every other category has none — this reads metadata
+  /// only, so the getter is safe on any alert.
+  AlertFix? get location => AlertFix.fromMetadata(metadata);
 }
 
 /// One page of alerts from `GET /v1/alerts`.

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
+import { sanitizeAlertMetadata } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
@@ -129,7 +130,10 @@ export async function alertsRoutes(app: FastifyInstance) {
       category,
       title,
       body,
-      metadata,
+      // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
+      // The location is normalised here — or dropped, keeping every other key — and never rejects the
+      // alert: an SOS with no usable fix is still an SOS a parent must receive.
+      metadata: sanitizeAlertMetadata(metadata),
       dedupeKey,
       attemptCount,
       childName: child.displayName,

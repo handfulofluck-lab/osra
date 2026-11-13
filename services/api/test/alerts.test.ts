@@ -515,3 +515,91 @@ describe("alerts routes", () => {
     await app.close();
   });
 });
+
+/**
+ * Issue #672: an SOS carried `{deviceId}` and nothing about where the child was, while a 13-minute-old fix
+ * sat on the phone. The agent now attaches the five `SosLocationPolicy` keys; the route normalises them so
+ * the stored row holds a location the parent app can place a pin on, or none at all.
+ *
+ * Both refusal directions are pinned on purpose:
+ * - **a location is not required** — an SOS the phone could not place in the world must still reach the
+ *   parent. This row is the one that must never go green-by-deletion.
+ * - **a bad location does not reject the alert** — it is dropped; only the five keys go.
+ */
+describe("SOS location on an internal alert (issue #672)", () => {
+  const postSos = (app: Awaited<ReturnType<typeof buildApp>>, metadata: Record<string, unknown> | undefined) => {
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "sos",
+      title: "SOS from SM-F721B",
+      body: "Your child pressed the SOS button",
+      ...(metadata === undefined ? {} : { metadata }),
+    });
+    return app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+  };
+
+  beforeEach(() => {
+    resetPrismaMock();
+    process.env.INTERNAL_HMAC_SECRET = SECRET;
+  });
+
+  it("stores the fix an SOS carried, normalised for the parent app", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-sos", category: "sos" });
+
+    const res = await postSos(app, {
+      deviceId: "dev-1",
+      lat: "25.2769",
+      lng: "51.5211",
+      accuracyM: "12.0",
+      takenAt: "2026-11-13T19:11:00Z",
+      ageSeconds: "300",
+    });
+
+    expect(res.statusCode).toBe(201);
+    const stored = prismaMock.alert.create.mock.calls[0][0].data.metadata as Record<string, unknown>;
+    expect(stored).toMatchObject({
+      deviceId: "dev-1",
+      lat: 25.2769,
+      lng: 51.5211,
+      accuracyM: 12,
+      takenAt: "2026-11-13T19:11:00.000Z",
+      ageSeconds: 300,
+    });
+    await app.close();
+  });
+
+  it("accepts an SOS with no location at all", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-sos", category: "sos" });
+
+    const res = await postSos(app, { deviceId: "dev-1" });
+
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.alert.create.mock.calls[0][0].data.metadata).toMatchObject({ deviceId: "dev-1" });
+    await app.close();
+  });
+
+  it("accepts an SOS whose location is broken, and stores no location", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockResolvedValue({ id: "a-sos", category: "sos" });
+
+    const res = await postSos(app, { deviceId: "dev-1", lat: 991, lng: 51.5211 });
+
+    expect(res.statusCode).toBe(201);
+    const stored = prismaMock.alert.create.mock.calls[0][0].data.metadata as Record<string, unknown>;
+    expect(stored).toEqual({ deviceId: "dev-1" });
+    await app.close();
+  });
+});
