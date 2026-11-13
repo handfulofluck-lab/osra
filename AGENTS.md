@@ -403,8 +403,17 @@ must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-aut
 | R2 | normal features and fixes | one member from another model family than the author, planted faults on changed logic, a device row if it runs on a device | 6 h |
 | R3 | auth, sessions, tokens, pairing, MFA/TOTP, invites, account deletion, device revocation, billing, refunds, purchases, entitlements, consent, children's location, the Prisma schema and migrations, API middleware, `infra/`, signing, secrets, the build/publish/deploy workflows, the merge gate and its lint, this file | two different members, neither the author: one from a model family other than the author's, and one security key (**Ahmed or Fable**). The two may share a family with each other, e.g. Claude + Fable on a Kimi or K31 PR | 24 h |
 
-**Bureaus, enforced by the gate.** A diff a family sees (app `features/`, `theme/`, `l10n/`, string resources,
-SwiftUI views, `site/`, `docs/store/`, `docs/design/`, or label `needs:uiux`) needs `UIUX-Bureau: reviewed <head sha>`.
+**Bureaus, enforced by the gate.** The maintainer, 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
+before it goes". The Bureau judges against ADR-0038 (logo, palette, one design language), Material 3, Apple HIG and
+WCAG. So a diff a family sees needs `UIUX-Bureau: reviewed <head sha>`: the whole parent app (`apps/parent-app/lib/`),
+every Android resource and manifest in any source set, Kotlin that draws a screen or holds its words (`*Activity`,
+`*Screen(s)`, `*Overlay`, `*Dialog`, `*View`, `*Theme`, `*Compose`, `*Copy`, `*Tile`), the iOS app shell, extensions,
+resources, `L10n.swift`, `Shield*.swift` and SwiftUI views, the desktop lock overlay, dialogs, alerts, SOS prompt and
+block page, asset catalogs, `.lproj`, storyboards, `.arb`, `.strings(dict)`, `.xcstrings`, `site/`, `scripts/site/`,
+`docs/store/`, `docs/design/`, or label `needs:uiux`. Test files alone never need it. The list errs toward asking; the
+exact patterns are `UIUX_PATHS` in `scripts/verified-gate-policy.mjs`. When a matched file changes nothing anyone sees,
+the Bureau, and only the Bureau, may answer with `UIUX-Bureau: not user-visible <head sha>` instead; that waiver does
+not answer a `needs:uiux` label, which needs a real review.
 A diff with Arabic text (`*_ar.arb`, `values-ar/`, `ar.lproj/`, `site/ar/`, `*.ar.*`, `docs/store/`, `docs/customer/`,
 the API email templates, or label `needs:arabic`) needs `Arabic-Bureau: reviewed <head sha>`. Both carry forward across
 clean merges of `main` like `Verified-sha:`. The comment's signature line must name the Bureau (`— Claude (UI/UX

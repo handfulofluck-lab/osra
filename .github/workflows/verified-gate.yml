@@ -126,13 +126,12 @@ jobs:
 
           # The policy (scripts/verified-gate-policy.mjs) parses the signatures and decides whether they are enough:
           # author from the branch prefix, model families, risk tier from labels and paths, Bureau lines. Taken from
-          # origin/main like the carry script, so a PR cannot loosen the policy that judges it. The one exception is
-          # bootstrap: before the policy reaches main, the PR's own copy is used and the log says so (to be removed
-          # in the first PR after #721 merges).
+          # origin/main like the carry script, so a PR cannot loosen the policy that judges it. No fallback to the
+          # PR's own copy: if main's policy cannot be read, the gate fails closed.
           policy="$RUNNER_TEMP/verified-gate-policy.mjs"
-          if ! git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null; then
-            echo "::warning::origin/main has no scripts/verified-gate-policy.mjs yet (bootstrap): using this PR's copy."
-            cp scripts/verified-gate-policy.mjs "$policy"
+          if ! git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null || [ ! -s "$policy" ]; then
+            echo "::error::Could not read scripts/verified-gate-policy.mjs from origin/main: failing closed."
+            exit 1
           fi
 
           # One JSON-encoded body per line, from SIGNER_LOGIN only. The policy's --parse turns each body into
