@@ -20,7 +20,9 @@ public enum LocationGrant: String, Equatable {
     public static func from(_ status: CLAuthorizationStatus) -> LocationGrant {
         switch status {
         case .authorizedAlways: return .background
+        #if os(iOS)
         case .authorizedWhenInUse: return .whileInUse
+        #endif
         default: return .noAccess
         }
     }
@@ -211,7 +213,9 @@ public enum LocationPermissionAction: Equatable {
     public static func of(_ status: CLAuthorizationStatus, alwaysPromptUsed: Bool) -> LocationPermissionAction {
         switch status {
         case .notDetermined: return .askWhenInUse
+        #if os(iOS)
         case .authorizedWhenInUse: return alwaysPromptUsed ? .openSettings : .askAlways
+        #endif
         case .authorizedAlways: return .hidden
         default: return .openSettings // .denied, .restricted
         }
@@ -267,7 +271,9 @@ public final class LocationController {
             guard let self else { return }
             // When In Use first, then the upgrade to Always, which significant-change monitoring needs.
             // iOS shows that upgrade once; after it, the button opens Settings.
+            #if os(iOS)
             if status == .authorizedWhenInUse && !Self.alwaysPromptUsed { self.askAlways() }
+            #endif
             self.startIfAllowed()
             Task { @MainActor in await self.reportGrant() }
         }

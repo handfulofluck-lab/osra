@@ -466,10 +466,12 @@ swift test list
 swift test
 ```
 
-The discovery step requires the current 214 tests and names one case each from pairing, HMAC signing, rule
-interpretation and both localisation string suites. Wrapping a portable source file in `#if os(iOS)` removes
-its tests and turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The
-expected count changes only when the package deliberately adds or removes tests.
+The discovery step requires 209 macOS tests and names one case each from pairing, HMAC signing, rule
+interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
+`#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
+and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
+turns this step red; leaving an iOS-only framework user unguarded turns `swift build` red. The expected count
+changes only when the package deliberately adds or removes tests.
 
 This is compile and unit-test evidence for the shared core only. No Mac application target or enforcement
 runtime exists in step (i), and the job proves nothing about Screen Time on a phone or a physical Mac.
