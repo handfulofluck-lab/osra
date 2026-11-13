@@ -77,13 +77,49 @@ class TransientScreenTaskTest {
     }
 
     @Test
-    fun `the ring screen is the root of its own task and stays out of recents`() {
-        assertOwnTaskAndUnlisted("com.familyshield.agent.commands.RingActivity")
+    fun `the ring screen keeps the app's own task, so the alarm can be stopped from the handset`() {
+        // Issue #734, found by Karim on the Flip4 during this PR's device row. Handing the ring screen an
+        // affinity of its own made it outlive Home in a hidden task: the phone kept ringing and the only
+        // way to stop it - the parent PIN on that screen - could not be reached. It is the one overlay that
+        // stays in the application's task; the block, lock and SOS screens are the ones that must not stack.
+        val ring = overlay("com.familyshield.agent.commands.RingActivity")
+        assertEquals(
+            "RingActivity must keep reusing its instance",
+            "singleTask",
+            ring.launchMode,
+        )
+        assertNull(
+            "RingActivity must NOT declare a task affinity: alone in its own task it cannot be reached " +
+                "once the child presses Home, and a ringing phone that the handset cannot silence is " +
+                "worse than the stacking bug this PR fixes (#734).",
+            ring.taskAffinity,
+        )
+        assertEquals(
+            "RingActivity stays out of Recents: it is still not a task the child should find there.",
+            "true",
+            ring.excludeFromRecents,
+        )
     }
 
     @Test
     fun `the SOS screen is the root of its own task and stays out of recents`() {
         assertOwnTaskAndUnlisted("com.familyshield.agent.sos.SosActivity")
+    }
+
+    /**
+     * Fable's g10 (#731 review): none of the four overlays may be started by another app. An exported
+     * block or lock screen is something any installed app could raise at the child.
+     */
+    @Test
+    fun `no overlay screen can be started by another app`() {
+        for (name in listOf(
+            "com.familyshield.agent.enforcement.BlockActivity",
+            "com.familyshield.agent.commands.LockActivity",
+            "com.familyshield.agent.commands.RingActivity",
+            "com.familyshield.agent.sos.SosActivity",
+        )) {
+            assertEquals("$name must not be exported", "false", overlay(name).exported)
+        }
     }
 
     /**

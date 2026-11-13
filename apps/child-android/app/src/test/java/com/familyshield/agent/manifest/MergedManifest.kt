@@ -68,6 +68,8 @@ class MergedManifest private constructor(
         val launchMode: String? = null,
         val taskAffinity: String? = null,
         val excludeFromRecents: String? = null,
+        /** Fable's g10 (#731 review): an exported overlay is one any installed app could raise. */
+        val exported: String? = null,
     )
 
     /** Every action any component's `<intent-filter>` declares. */
@@ -110,6 +112,7 @@ class MergedManifest private constructor(
                             launchMode = element.attr("android:launchMode"),
                             taskAffinity = element.attr("android:taskAffinity"),
                             excludeFromRecents = element.attr("android:excludeFromRecents"),
+                            exported = element.attr("android:exported"),
                         )
                     }
                 }

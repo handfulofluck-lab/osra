@@ -215,13 +215,17 @@
             android:supportsPictureInPicture="false"
             android:turnScreenOn="true"/>
         <!-- Plan 1.7: the ring screen — over the lock screen, screen on, PIN to stop.
-             Issue #671: its own task and out of Recents, so stopping the ring uncovers what the child
-             had before it - not the block screen that shared the app's task with it. -->
+             Issue #734: this is the one overlay that keeps the application's task, deliberately. With an
+             affinity of its own (the first draft of #671) the ring screen outlived Home in a hidden task
+             the child could not reach, so a phone left ringing could not be stopped from the handset — the
+             PIN lives on that screen. Karim found it on the Flip4 during #731's own device row. It stays
+             where opening OSRA finds it again until the ring screen has a way back, or a notification that
+             stops the alarm. The block, lock and SOS screens have no such problem, and being alone in their
+             own tasks is what stops them coming back behind each other. -->
         <activity android:name=".commands.RingActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
-            android:taskAffinity=""
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
