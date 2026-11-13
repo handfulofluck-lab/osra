@@ -285,7 +285,7 @@ public struct AgentRootView: View {
     /// Coming back to the front does what an app open does: drain, sync, and leave if the parent removed this
     /// phone (`device_revoked` unpairs it, then `leaveIfUnpaired` shows pairing).
     private func refreshAfterResume() async {
-        guard identity != nil, !syncing, ResumeRefresh.isDue(last: lastRefresh, now: Date()) else { return }
+        guard ResumeRefresh.shouldRefresh(paired: identity != nil, syncing: syncing, last: lastRefresh, now: Date()) else { return }
         lastRefresh = Date()
         await syncNow()
     }

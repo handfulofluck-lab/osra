@@ -8,4 +8,9 @@ public enum ResumeRefresh {
     public static func isDue(last: Date, now: Date) -> Bool {
         now.timeIntervalSince(last) >= minInterval
     }
+
+    /// The whole decision: only a paired phone that is not already syncing, and not right after the last refresh.
+    public static func shouldRefresh(paired: Bool, syncing: Bool, last: Date, now: Date) -> Bool {
+        paired && !syncing && isDue(last: last, now: now)
+    }
 }
