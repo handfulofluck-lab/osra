@@ -130,4 +130,28 @@ final class ShieldTextTests: XCTestCase {
     func testAnUnshippedLanguageFallsBackToEnglish() {
         XCTAssertEqual(ShieldText.make(window: nil, language: "fr").title, "This app is blocked by your parent")
     }
+
+    /// #732: the language is resolved on every call, so a system language change reaches the next shield in the
+    /// same extension process, with no cached `Locale` or `Bundle`.
+    func testTheLanguageIsResolvedAgainOnEveryCall() {
+        var system = ["en-US"]
+        XCTAssertEqual(ShieldText.preferredLanguage(preferences: { system }), "en")
+        system = ["ar-AE", "en-US"]
+        XCTAssertEqual(ShieldText.preferredLanguage(preferences: { system }), "ar", "the same process, after the change")
+        XCTAssertEqual(ShieldText.make(window: nil, language: ShieldText.preferredLanguage(preferences: { system })).title,
+                       ShieldText.make(window: nil, language: "ar").title)
+        system = ["fr-FR"]
+        XCTAssertEqual(ShieldText.preferredLanguage(preferences: { system }), "en", "an unshipped language falls back")
+    }
+
+    func testTheShieldReadsTheLanguageFreshly() throws {
+        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent")
+        let text = try String(contentsOf: folder.appendingPathComponent("ShieldText.swift"), encoding: .utf8)
+        XCTAssertTrue(text.contains("preferences: () -> [String] = freshPreferredLanguages"), "the default re-reads")
+        XCTAssertTrue(text.contains("CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)"))
+        XCTAssertTrue(text.contains("language: String = preferredLanguage()"), "current() resolves per call")
+        XCTAssertFalse(text.contains("static let language"), "no cached language")
+        XCTAssertFalse(text.contains("forPreferences: Locale.preferredLanguages"), "not the cached list")
+    }
 }

@@ -42,7 +42,7 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
     private static func makeConfiguration(_ text: ShieldText) -> ShieldConfiguration {
         #if DEBUG
         // #654 device row: what the extension process is told about languages, to confirm the cause.
-        let preferred = Locale.preferredLanguages.joined(separator: ",")
+        let preferred = ShieldText.freshPreferredLanguages().joined(separator: ",")
         let bundle = Bundle.main.preferredLocalizations.joined(separator: ",")
         let chosen = ShieldText.preferredLanguage()
         logger.debug("shield_language preferred=\(preferred, privacy: .public) bundle=\(bundle, privacy: .public) chosen=\(chosen, privacy: .public)")

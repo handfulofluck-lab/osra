@@ -104,8 +104,21 @@ public struct ShieldText: Equatable {
     }
 
     /// The phone's language among the ones the block screen ships.
-    public static func preferredLanguage() -> String {
-        Bundle.preferredLocalizations(from: ["en", "ar"], forPreferences: Locale.preferredLanguages).first ?? "en"
+    ///
+    /// #732: read afresh on every call. The shield extension is a long-lived process, and `Locale.preferredLanguages`
+    /// there kept the language from before a system language change until a reboot (iPhone 13, 13 Nov), so the
+    /// list comes from `freshPreferredLanguages`, which re-reads the system's preferences first.
+    public static func preferredLanguage(preferences: () -> [String] = freshPreferredLanguages) -> String {
+        Bundle.preferredLocalizations(from: ["en", "ar"], forPreferences: preferences()).first ?? "en"
+    }
+
+    /// The phone's language list as it is now: the global `AppleLanguages` after re-reading the preferences, and
+    /// `Locale.preferredLanguages` only when that cannot be read.
+    public static func freshPreferredLanguages() -> [String] {
+        CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
+        let value = CFPreferencesCopyAppValue("AppleLanguages" as CFString, kCFPreferencesAnyApplication)
+        if let languages = value as? [String], !languages.isEmpty { return languages }
+        return Locale.preferredLanguages
     }
 
     // MARK: - Helpers
