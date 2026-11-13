@@ -8,9 +8,12 @@ name: verified-gate
 #
 # The check passes only when BOTH hold:
 #   1. the PR carries the `state:verified` label, and
-#   2. a PR comment WRITTEN BY THE AGENT ACCOUNT (SIGNER_LOGIN below) and signed by a verifier
-#      ("— Antigravity", "— Claude", or "— Kimi Code" for a PR Kimi did not author) contains a line
-#      `Verified-sha: <sha>` whose sha is a prefix (7+ characters) of the PR's CURRENT head.
+#   2. PR comments WRITTEN BY THE AGENT ACCOUNT (SIGNER_LOGIN below) carry `Verified-sha: <sha>` lines whose sha
+#      is a prefix (7+ characters) of the PR's CURRENT head (or carries forward), signed by enough members for
+#      this PR under the MESH POLICY (maintainer 2026-11-13 15:42Z, AGENTS.md §6.6, scripts/verified-gate-policy.mjs):
+#      never the author; a different model family from the author for R2; for R3 two signers, one cross-family
+#      and one security key (Ahmed or Fable); plus the UI/UX and Arabic Bureau lines when the diff needs them.
+#      Signer names: Claude, Fable, Kimi Code, K31, K31-Mac, Ahmed (and Antigravity, inactive).
 # (2) is what makes rule 4 of §6.5 ("the verified sha is the merged sha") mechanical: any push after
 # verification — a fix, a rebase, a merge of main — changes the head, and the gate goes red again
 # until the new head is verified. No label removal is needed for that, so this job needs no write
@@ -94,6 +97,8 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The author is read from the branch prefix (AGENTS.md §6.6); a value, never interpolated into the script.
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           # The only account whose comments can verify (see WHO MAY SIGN above). Every agent and the
           # maintainer post as it; a comment by any other account is never read as a verification.
           SIGNER_LOGIN: handfulofluck-lab
@@ -104,7 +109,7 @@ jobs:
           labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
           if ! printf '%s\n' "$labels" | grep -qx 'state:verified'; then
             echo "::error::Not verified: PR #$PR has no 'state:verified' label (AGENTS.md §6.5, §10)."
-            echo "Antigravity, Claude or (for a PR Kimi did not author) Kimi Code verifies, posts a signed comment with 'Verified-sha: <head sha>', then adds the label."
+            echo "A member who is not the author, from another model family (AGENTS.md §6.6), posts a signed comment with 'Verified-sha: <head sha>', then adds the label."
             exit 1
           fi
 
@@ -119,57 +124,67 @@ jobs:
           others=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login != env.SIGNER_LOGIN)] | length' | awk '{s += $1} END {print s + 0}')
           echo "Comments by accounts other than $SIGNER_LOGIN (never read as a verification): $others"
 
-          # One line per comment body (newlines flattened), from SIGNER_LOGIN only. Signed by a verifier
-          # AND naming a sha.
-          verified=""
-          signed=""
-          while IFS= read -r body; do
-            [ -n "$body" ] || continue
-            # The signer is the LAST "— <name>" in the body: a comment that merely mentions another
-            # agent's signature (as #196's verification did) must not count as signed by that agent.
-            signer=$(printf '%s' "$body" | awk '{ while (match($0, /— (Antigravity|Claude|Kimi Code)/)) { last = substr($0, RSTART, RLENGTH); $0 = substr($0, RSTART + RLENGTH) } } END { print last }')
-            case "$signer" in
-              "— Antigravity"|"— Claude") ;;
-              "— Kimi Code")
-                if [ "$kimi_commits" -gt 0 ]; then
-                  echo "ignoring a Kimi Code verification: Kimi authored $kimi_commits commit(s) on this PR"
-                  continue
-                fi
-                ;;
-              *) continue ;;
-            esac
-            for sha in $(printf '%s' "$body" | grep -oiE 'Verified-sha:[[:space:]]*`?[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$'); do
-              sha=$(printf '%s' "$sha" | tr 'A-F' 'a-f')
-              signed="$signed $sha"
-              case "$HEAD_SHA" in
-                "$sha"*) verified="$sha" ;;
-              esac
-            done
-          done < <(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SIGNER_LOGIN) | .body | gsub("[[:cntrl:]]"; " ")')
-
-          # Carry-forward (see header): only merges after the signature, every one of them a clean merge of
-          # its parents, and the PR's own patch unchanged. The decision is scripts/verified-gate-carry.mjs,
-          # taken from origin/main rather than from this checkout, so a PR's edit to the script does not
-          # judge its own carry-forward (the workflow file still comes from the PR; see #359), and a branch
-          # folded before this script reached main still gets a real decision (a missing copy fails closed
-          # instead of "Cannot find module"). Any nonzero exit means this
-          # signature is not carried, so the loop moves on to the next one.
-          if [ -z "$verified" ] && [ -n "$signed" ]; then
-            if ! git show origin/main:scripts/verified-gate-carry.mjs > "$RUNNER_TEMP/verified-gate-carry.mjs"; then
-              echo "::error::origin/main has no scripts/verified-gate-carry.mjs, so carry-forward cannot be decided; verify the head instead."
-              exit 1
-            fi
-            for sha in $signed; do
-              if node "$RUNNER_TEMP/verified-gate-carry.mjs" "$sha" "$HEAD_SHA"; then
-                verified="$sha (carried forward)"
-                break
-              fi
-            done
+          # The policy (scripts/verified-gate-policy.mjs) parses the signatures and decides whether they are enough:
+          # author from the branch prefix, model families, risk tier from labels and paths, Bureau lines. Taken from
+          # origin/main like the carry script, so a PR cannot loosen the policy that judges it. The one exception is
+          # bootstrap: before the policy reaches main, the PR's own copy is used and the log says so (to be removed
+          # in the first PR after #721 merges).
+          policy="$RUNNER_TEMP/verified-gate-policy.mjs"
+          if ! git show origin/main:scripts/verified-gate-policy.mjs > "$policy" 2>/dev/null; then
+            echo "::warning::origin/main has no scripts/verified-gate-policy.mjs yet (bootstrap): using this PR's copy."
+            cp scripts/verified-gate-policy.mjs "$policy"
           fi
 
-          if [ -z "$verified" ]; then
-            echo "::error::'state:verified' is set, but no comment by $SIGNER_LOGIN signed by Antigravity, Claude or Kimi Code verifies the current head $HEAD_SHA."
-            echo "A push after verification (fix, rebase, merge of main) needs a fresh verification of the new head (AGENTS.md §6.5 rule 4), unless it only merged main and left the PR's own change identical."
+          # One JSON-encoded body per line, from SIGNER_LOGIN only. The policy's --parse turns each body into
+          # signatures (kind, name, sha): a `Verified-sha:` / `UIUX-Bureau: reviewed` / `Arabic-Bureau: reviewed`
+          # line counts only at the START of a line, outside code blocks and quotes, and the signer is the LAST line
+          # that starts with "— <Name>" (a Bureau line needs the Bureau named there). A request that quotes a line
+          # inline, in a code block or as a quote is therefore not a signature (Fable's review of #721).
+          sigs="$RUNNER_TEMP/sigs.tsv"
+          gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SIGNER_LOGIN) | .body | @json' > "$RUNNER_TEMP/bodies.jsonl"
+          node "$policy" --parse < "$RUNNER_TEMP/bodies.jsonl" > "$sigs"
+
+          # Which signatures are valid for the CURRENT head: the sha is a prefix of the head, or it carries forward
+          # (see header). The carry decision is scripts/verified-gate-carry.mjs, taken from origin/main rather than
+          # from this checkout, so a PR's edit to the script does not judge its own carry-forward (#359); a missing
+          # copy carries nothing (fails closed). Bureau lines carry forward by the same rule as Verified-sha.
+          carry="$RUNNER_TEMP/verified-gate-carry.mjs"
+          git show origin/main:scripts/verified-gate-carry.mjs > "$carry" 2>/dev/null || : > "$carry"
+          valid="$RUNNER_TEMP/valid.tsv"
+          : > "$valid"
+          declare -A carried=()
+          while IFS=$'\t' read -r kind name sha; do
+            [ -n "$sha" ] || continue
+            case "$HEAD_SHA" in
+              "$sha"*) printf '%s\t%s\n' "$kind" "$name" >> "$valid"; continue ;;
+            esac
+            if [ -z "${carried[$sha]+x}" ]; then
+              if [ -s "$carry" ] && node "$carry" "$sha" "$HEAD_SHA" >/dev/null 2>&1; then carried[$sha]=1; else carried[$sha]=0; fi
+            fi
+            if [ "${carried[$sha]}" = 1 ]; then
+              echo "signature $kind $name at $sha carried forward to $HEAD_SHA"
+              printf '%s\t%s\n' "$kind" "$name" >> "$valid"
+            fi
+          done < "$sigs"
+          echo "Signatures valid at the head:"
+          sort -u "$valid" | sed 's/^/  /'
+
+          # Changed files, with the OLD name of a renamed file too, so moving a file out of an R3 path keeps R3.
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
+          printf '%s\n' "$labels" > "$RUNNER_TEMP/labels.txt"
+          jq -n \
+            --arg headRef "$HEAD_REF" \
+            --argjson kimiCommits "$kimi_commits" \
+            --rawfile labels "$RUNNER_TEMP/labels.txt" \
+            --rawfile files "$RUNNER_TEMP/files.txt" \
+            --rawfile valid "$valid" \
+            '{headRef: $headRef, kimiCommits: $kimiCommits,
+              labels: ($labels | split("\n") | map(select(length > 0))),
+              files: ($files | split("\n") | map(select(length > 0))),
+              signatures: ($valid | split("\n") | map(select(length > 0) | split("\t") | {kind: .[0], name: .[1]}))}' \
+            > "$RUNNER_TEMP/policy-input.json"
+          if ! node "$policy" < "$RUNNER_TEMP/policy-input.json"; then
+            echo "::error::'state:verified' is set, but the signatures valid at head $HEAD_SHA do not meet the mesh policy (AGENTS.md §6.6). A push after verification needs a fresh signature unless it only merged main and left the PR's own change identical."
             exit 1
           fi
-          echo "OK — head $HEAD_SHA verified (Verified-sha: $verified)."
+          echo "OK — head $HEAD_SHA verified under the mesh policy."
