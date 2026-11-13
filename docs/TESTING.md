@@ -13,7 +13,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
 | Flutter | `cd apps/parent-app && flutter pub get && flutter analyze && flutter test` (needs `C:\KARIM\tools\flutter\bin` on `PATH` — §2) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568, English/Arabic localization (ARB key parity + every translated screen in Arabic/RTL at 320×568) | UI/contract regressions, a missing Arabic string, an RTL overflow |
 | Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference, **the merged manifest** of both flavours (ADR-0021) | Agent logic regressions, a Play build that gained the notification permission or any Play-forbidden permission **through a dependency's manifest** |
-| Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
+| Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo && dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo` | Configuration isolation, service/tray supervision, per-session pipe, proxy/process/screen-time/tamper logic, pairing and capabilities | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
 | iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
@@ -37,7 +37,7 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 | API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:68`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
 | Flutter | the row's three commands are `parent-app.yml:46-48`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:73-78`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`child-android.yml:65`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:72` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` of **both** release APKs (`apk/<flavour>/release/app-<flavour>-release.apk`) for `targetSdkVersion:'35'` and both network-security configs (`:76-94`); each check fails the job, and so does an APK upload that finds no files (`:103`). Until #361 that step read `apk/release/app-release.apk`, which has not existed since the flavours landed, and its `grep -q … && echo` guards could not fail, so it passed while checking nothing. The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
-| Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`agent-desktop.yml:37`) |
+| Windows | Tests in both Debug and Release, then publishes `src/OSRA.Service` and `src/OSRA` co-located as self-contained win-x64 hosts. `actions/upload-artifact@v4` uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`; a separate step requires `OSRA.Service.exe`, `OSRA.exe` and `OSRA.Agent.dll`. See §4's W1 build guide below |
 | AI engine | `pip install -r requirements-dev.txt` first (`ai-engine.yml:39`) |
 
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
@@ -339,7 +339,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`), and `IdleCadence.kt`, which `poll-cadence.test.ts` reads (#353) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
 | `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales), but on a PR or a push only when it changes `apps/parent-app/ios/**`, `pubspec.yaml`, `pubspec.lock` or this workflow; weekly and by hand always — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, the merged-manifest gate, and both release APKs' `targetSdk` and the cleartext configs, each failing the job (#361); the four APKs are kept 14 days |
-| `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
+| `agent-desktop.yml` | `apps/agent-desktop/**` | Debug and Release `dotnet test`, co-located self-contained win-x64 service/tray publishes and the unsigned `OSRA.Windows-W1-unsigned` artifact, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
 | `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
@@ -453,6 +453,33 @@ node scripts/check-ci-paths.mjs     # "7 suite workflow(s), … 0 problem(s)"
 node scripts/check-ci-cost-guardrails.mjs --selftest
 node scripts/check-ci-cost-guardrails.mjs   # the #613 cheaper-CI structural contracts
 ```
+
+### Windows W1 service and tray (#623)
+
+Run from `apps/agent-desktop` with the .NET 8 SDK installed:
+
+```bash
+dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo
+dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
+dotnet publish src/OSRA.Service -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+dotnet publish src/OSRA -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+```
+
+Both hosts must publish into the **same** directory. `OSRA.Service.exe`, `OSRA.exe` and the shared
+`OSRA.Agent.dll` must be co-located: the service supervises only the tray beside its own executable.
+The `agent-desktop.yml` workflow performs the same two test configurations and publishes, checks those
+three files and uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`. `artifacts/` is
+build output; do not commit it.
+
+The tests substitute operating-system boundaries. Publishing is not installation: do not start the real
+service or tray on a development PC, pair a real family, lock a session, sound an alert or register a
+hotkey as part of this build gate. The unsigned artifact has **not yet been installed or verified on a
+clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
+pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
+
+W1b's salted PIN hashing and W3's installed-directory ACLs, MSI/service recovery and signing are required
+before a build reaches outsiders. W2 DNS/firewall/browser-policy replacement and W4's signed updater are
+separate. This artifact has no MSI or ARM64 build, signing, AWS, store or production action.
 
 ### The shared Swift package on macOS (roadmap 5.9 step i, #653)
 

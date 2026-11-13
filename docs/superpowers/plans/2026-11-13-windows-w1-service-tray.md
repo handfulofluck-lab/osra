@@ -6,7 +6,7 @@
 
 **Architecture:** Convert the existing `FamilyShield.Agent.csproj` into the shared library and add two thin hosts, `OSRA.Service` and `OSRA`. The service owns network/rule state, process enforcement, telemetry and supervision; the tray owns pairing and all interactive UI. A per-interactive-session named pipe has an ACL for SYSTEM and that session's user, server-side verification of the client PID/session/SID, strict typed messages, and no credential fields.
 
-**Tech Stack:** .NET 8, C# 12, existing generic host/WinForms/xunit/HttpClient, `Microsoft.Extensions.Hosting.WindowsServices` 8.0.0 and `System.IO.Pipes.AccessControl` 8.0.0 (the two required new packages, both absent today), existing Node/pnpm API suites and GitHub Actions.
+**Tech Stack:** .NET 8, C# 12, existing generic host/WinForms/xunit/HttpClient, `Microsoft.Extensions.Hosting.WindowsServices` 8.0.0 (the only new package), the .NET shared-framework `System.IO.Pipes.AccessControl` APIs, existing Node/pnpm API suites and GitHub Actions.
 
 **Spec:** `docs/adr/0041-one-family-plan-and-computer-downloads.md` D5–D6; `docs/adr/0034-capability-report-and-version-gate.md` decisions 1, 2 and 4; #623 comment 6854871267, approved with answers in #623 comment 6859234364.
 
@@ -102,7 +102,7 @@ Expected: missing `DesktopClientIdentity`, the new `Load` flag and failed Releas
 
 - [ ] **Step 1: Write failing protocol and ACL tests.** Assert SYSTEM plus the specified SID only, no Everyone/Authenticated Users, local pipe names containing only the validated integer session, same-user/same-session acceptance, and rejection of a wrong SID, wrong session, spoofed hello SID, parent-command direction, malformed JSON, unknown fields, truncated frames and oversized frames.
 - [ ] **Step 2: Run the two new test classes; confirm RED on the missing protocol/security types.**
-- [ ] **Step 3: Implement the pipe with `System.IO.Pipes.AccessControl` 8.0.0.** Do not use `CurrentUserOnly`, which would exclude SYSTEM. Verify the actual client PID/token and session server-side; hello is never proof of identity. Enforce read timeouts/cancellation, one reader and writer per stream, bounded frames and no raw secret-bearing `AgentConfig` serialization. Use an injected native identity accessor in tests.
+- [ ] **Step 3: Implement the pipe with the .NET 8 shared-framework `System.IO.Pipes.AccessControl` APIs (no legacy package; Claude's ruling in #623 comment 6867483961).** Do not use `CurrentUserOnly`, which would exclude SYSTEM. Verify the actual client PID/token and session server-side; hello is never proof of identity. Enforce read timeouts/cancellation, one reader and writer per stream, bounded frames and no raw secret-bearing `AgentConfig` serialization. Use an injected native identity accessor in tests.
 - [ ] **Step 4: Run protocol/security tests plus a loopback same-user integration test.** Expected: all PASS, rejected cases have no side effects, and no real service/UI action occurs.
 - [ ] **Step 5: Commit** `test: prove per-session pipe boundaries (#623)` then `feat: secure the tray pipe (#623)`.
 

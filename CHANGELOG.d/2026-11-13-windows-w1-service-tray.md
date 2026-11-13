@@ -1,0 +1,6 @@
+### Windows — the W1 service and tray foundation (#623)
+- Split the desktop agent into a shared library, a LocalSystem service and a per-user tray. The service owns network/rule state, enforcement and telemetry; pairing and interactive actions stay in the user's session.
+- Added a per-session typed named pipe with SYSTEM/session-user access control and OS-derived client identity checks. Commands and capability reports contain no parent PIN or device credentials.
+- Release builds ignore environment identity, endpoint, secret and PIN overrides; they use `https://api.osratech.com`. Pairing has no server field and reports the interactive user's administrator capability.
+- CI tests Debug and Release and publishes both hosts and their dependencies together as the unsigned win-x64 artifact `OSRA.Windows-W1-unsigned`. Author-run: 296/296 desktop tests in both configurations; no clean Windows-machine verification has happened yet.
+- This is not an external-tester release: W1b PIN hashing and W3 installed-directory ACLs, MSI/service recovery and signing are still required. W2 DNS/firewall/browser-policy work and the W4 updater are not included.

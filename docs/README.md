@@ -42,6 +42,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`../services/ai-engine/eval/README.md`](../services/ai-engine/eval/README.md) | The labelled evaluation set: where the text comes from, the content rule, how to run or add a bank (plan 4.2) |
 | [`test-guides/CI-SECRETS.md`](test-guides/CI-SECRETS.md) | Every secret CI and deployment read from the environment, and what happens when one is missing |
 | [`ROADMAP.md`](ROADMAP.md) | The KCL plan (Phases 0–5, five gates, 20 weeks) item by item with acceptance lines and current status; mirrored on issue #50 |
+| [`superpowers/plans/2026-11-13-windows-w1-service-tray.md`](superpowers/plans/2026-11-13-windows-w1-service-tray.md) | Approved Windows W1 implementation plan (#623): two hosts, session supervision, the typed pipe, configuration, pairing and capability boundaries, tests and unsigned artifact |
 | [`ops/ci-cost-2026-11.md`](ops/ci-cost-2026-11.md) | Measured 31-day GitHub Actions usage and the 2026 USD cost model behind the cheaper-CI workflow changes (#613) |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |

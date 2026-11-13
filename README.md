@@ -45,7 +45,7 @@ familyshield/
 │   ├── parent-app/       # Flutter parent dashboard (Android today; iOS/web-ready codebase)
 │   ├── child-android/    # Kotlin child agent (accessibility enforcement, location, comms log)
 │   ├── child-ios/        # Swift child agent — Screen Time API + pairing flow (needs macOS to build)
-│   ├── agent-desktop/    # C# .NET 8 Windows agent (self-contained single file)
+│   ├── agent-desktop/    # C# .NET 8 Windows shared library, service and tray (unsigned win-x64 CI artifact)
 │   └── agent-macos/      # macOS agent scaffolding (roadmap)
 ├── services/
 │   ├── api/              # Node.js + TypeScript backend (Fastify, Prisma, JWT+HMAC auth)
@@ -96,7 +96,7 @@ cd services/ai-engine && pip install -r requirements.txt && uvicorn app:app --po
 # 5. Apps (see docs/test-guides/ for the full tester walkthrough)
 cd apps/parent-app && flutter run             # parent dashboard
 cd apps/child-android && ./gradlew installDebug
-cd apps/agent-desktop && dotnet run           # Windows agent (pairing window on first run)
+cd apps/agent-desktop && dotnet run --project src/OSRA   # development tray; service installation is W3
 ```
 
 `GET /health` → liveness. `GET /health/deep` → `{ok, db, redis}` readiness
@@ -110,13 +110,13 @@ Two kinds of gate, deliberately separate (see [`docs/adr/0005`](docs/adr/0005-ad
 - **The adversarial probe** tries to break the documented invariants against a live stack. It is the
   **merge gate** — a green unit suite is not evidence that an invariant holds.
 
-| Suite | Scope | Status (2026-10-21) |
+| Suite | Scope | Status (last measured per row) |
 |---|---|---|
-| **Adversarial probe** (`services/api/scripts/qa-probe.mjs`) | family isolation, per-device identity, consent gate, revocation, token hygiene, alert coverage, input bounds, error hygiene | **151 passed · 0 failed · 0 targets · 0 notes** |
-| API vitest | routes, auth, token hygiene, blocklists, content, comms, telemetry | 452/452 (35 files) |
-| Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568, Arabic RTL | 257/257, analyze clean |
-| Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 559/559 per flavour (Play and Full) |
-| Desktop xunit | Windows agent services | 225/225 |
+| **Adversarial probe** (`services/api/scripts/qa-probe.mjs`) | family isolation, per-device identity, consent gate, revocation, token hygiene, alert coverage, input bounds, error hygiene | **151 passed · 0 failed · 0 targets · 0 notes** (2026-10-21) |
+| API vitest | routes, auth, token hygiene, blocklists, content, comms, telemetry | 452/452 (35 files; 2026-10-21) |
+| Flutter `flutter test` (+ `flutter analyze`) | parent app widgets/providers, layout at 320×568, Arabic RTL | 257/257, analyze clean (2026-10-21) |
+| Android JVM tests | rule engine, counters, monitored apps, HMAC logic, comms watermarks | 559/559 per flavour (Play and Full; 2026-10-21) |
+| Desktop xunit | Windows configuration, hosts, per-session pipe, enforcement, pairing and capabilities | 296/296 in Debug and Release (2026-11-14); no clean-machine verification |
 | AI pytest | classifier, API smoke, evaluation harness | 63 passed |
 | Evaluation harness (`eval.banks`, `eval.generate --check`, `eval.run_eval`) | the labelled set and the published per-category scores | 7 banks validate · 1,179 rows · scores in [`services/ai-engine/EVAL.md`](services/ai-engine/EVAL.md) |
 | Live e2e (`services/api/scripts/e2e.mjs`) | pairing → rules → alerts → commands → export | 71/71 |
@@ -129,7 +129,7 @@ INTERNAL_HMAC_SECRET=<...> node scripts/qa-probe.mjs   # the merge gate
 INTERNAL_HMAC_SECRET=<...> VAULT_KEY=<...> node scripts/e2e.mjs
 cd ../parent-app && flutter test && flutter analyze
 cd ../child-android && ANDROID_HOME=... ./gradlew testPlayDebugUnitTest testFullDebugUnitTest
-cd ../agent-desktop && dotnet test tests/FamilyShield.Agent.Tests
+cd ../agent-desktop && dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo && dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
 cd ../../services/ai-engine && pytest tests -q
 node scripts/check-workflows.mjs --strict   # a rejected workflow file means zero jobs run
 ```
@@ -210,11 +210,15 @@ verified where it was written is stated as such. Details:
   set `FS_HTTPS_INSPECT_ALLOW_INSECURE=1` to accept any upstream certificate — it is off by default and
   logs a loud warning; never set it on a family PC.
 - The Windows parent PIN is **per install and has no default**. The parent chooses it in the pairing
-  window (4–8 digits; `0000` is refused) and it is stored beside the device JWT/HMAC secret in
-  `agent.config.json`. A pre-existing install that only set `DESKTOP_PARENT_PIN` adopts that value once;
-  if it was the old literal `0000`, the value is treated as unset. With no PIN configured, lock,
-  bedtime and screen-time **refuse to arm** and say so in the agent log — a PC cannot be locked into a
-  PIN that anyone can guess.
+  window (4–8 digits; `0000` is refused). In W1 it remains plaintext beside the device JWT/HMAC secret
+  in `agent.config.json`, but never crosses the tray pipe or the network; W1b adds salted hashing. Only
+  Debug reads the legacy `DESKTOP_PARENT_PIN`; Release ignores environment identity, endpoint, secret and
+  PIN overrides. With no PIN configured, lock, bedtime and screen-time **refuse to arm** and say so in the
+  agent log — a PC cannot be locked into a PIN that anyone can guess.
+- **Windows W1 is not an external-tester release.** The `OSRA.Windows-W1-unsigned` CI artifact contains
+  co-located self-contained win-x64 service/tray hosts, not an installer. W1b PIN hashing and W3
+  installed-directory ACLs, MSI/service recovery and signing are still required; W2 DNS/firewall policies
+  and W4 updates are separate. No clean Windows-machine verification has happened yet.
 - Release APKs are minified, HTTPS-only and signed with the upload key when `OSRA_UPLOAD_KEYSTORE*` is
   set (debug key otherwise); the **debug** build is what pairs against LAN / `adb reverse` servers.
   Store listing, AABs, privacy policy and permission declarations are
