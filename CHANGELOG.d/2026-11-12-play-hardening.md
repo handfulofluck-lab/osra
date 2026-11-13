@@ -21,6 +21,6 @@
   locked for testers, and an unlocked build stays editable.
 - Tests: `SecureStoreOpeningTest` drives `SecureStoreOpener` with fault injection (no fallback opened, empty store);
   `SecureStoreReopenTest` drives the same `SecureStore` from a fail-closed open to a later healthy open;
-  `SecureStoreWriterTest` drives the verified write/migration rules including a dropped-HMAC partial write;
+  `SecureStoreWriterTest` drives the verified write/migration rules including dropped-HMAC and dropped-token writes, with the HMAC absent and with it persisted;
   `NoopSharedPreferencesTest` exercises the real fail-closed store; `DataClearedClaimWiringTest` pins the claim flag,
   the notice, the save guard and the no-unsigned-alert rule.

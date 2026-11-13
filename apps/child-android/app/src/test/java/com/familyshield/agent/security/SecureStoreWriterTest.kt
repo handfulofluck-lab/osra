@@ -66,6 +66,29 @@ class SecureStoreWriterTest {
     }
 
     @Test
+    fun `a dropped token is refused when there is no HMAC to read back`() {
+        val store = FakeStore()
+        val droppingToken = SecureStoreWriter(
+            unreadable = { false },
+            putString = { _, _ -> Unit },
+            getString = { store.values[it] },
+        )
+        assertFalse(droppingToken.writePairing("device_token", "jwt", "hmac_secret", null))
+    }
+
+    @Test
+    fun `a dropped token is refused even when the HMAC persists`() {
+        val store = FakeStore()
+        val droppingToken = SecureStoreWriter(
+            unreadable = { false },
+            putString = { key, value -> if (key == "hmac_secret" && value != null) store.values[key] = value },
+            getString = { store.values[it] },
+        )
+        assertFalse(droppingToken.writePairing("device_token", "jwt", "hmac_secret", "hmac"))
+        assertEquals("hmac", store.values["hmac_secret"])
+    }
+
+    @Test
     fun `migrating into a healthy store returns the value, so the caller may delete the plaintext copy`() {
         val store = FakeStore()
         assertEquals("legacy-token", store.writer.migrate("device_token", "legacy-token"))
