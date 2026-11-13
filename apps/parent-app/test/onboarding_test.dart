@@ -33,7 +33,7 @@ void main() {
   Map<String, dynamic> parentJson() => {
         'id': 'par-1',
         'familyId': 'fam-1',
-        'email': 'qa@familyshield.dev',
+        'email': 'qa@osratech.com',
         'displayName': 'QA Parent',
         'role': 'owner',
         'mfaEnabled': false,
@@ -159,7 +159,7 @@ void main() {
 
   Future<void> signIn(WidgetTester tester, {String password = 'good-password'}) async {
     await tester.enterText(fieldByLabel('Server'), 'http://testserver');
-    await tester.enterText(fieldByLabel('Email'), 'qa@familyshield.dev');
+    await tester.enterText(fieldByLabel('Email'), 'qa@osratech.com');
     await tester.enterText(fieldByLabel('Password'), password);
     final button = find.widgetWithText(FilledButton, 'Sign in');
     await tester.ensureVisible(button);

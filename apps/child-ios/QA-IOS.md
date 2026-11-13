@@ -236,7 +236,7 @@ The agent now fetches the parent's rules and stores them where the extensions re
 
 A static review once missed that every iOS alert would be refused (400/401), so the agent is now tested
 against **our real API**, on every iOS change, on changes to the three server files it depends on
-(`routes/devices.ts`, `routes/alerts.ts`, `lib/internalAuth.ts`), and nightly. Job `live-api` in
+(`routes/devices.ts`, `routes/alerts.ts`, `lib/internalAuth.ts`), and weekly (Monday 01:23). Job `live-api` in
 `.github/workflows/ios-ci.yml`:
 
 1. Starts Postgres 16, Redis (`noeviction`) and the API from this checkout on the macOS runner (no Docker
