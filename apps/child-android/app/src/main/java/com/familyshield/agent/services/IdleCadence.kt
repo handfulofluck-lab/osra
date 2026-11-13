@@ -89,7 +89,7 @@ object IdleCadence {
      *   to stop is the parent most likely to ask again in seconds.
      */
     fun effectivePollMs(serverPollMs: Long, interactive: Boolean, restricted: Boolean = false): Long = when {
-        restricted -> RESTRICTED_POLL_MS
+        restricted -> minOf(serverPollMs, INTERACTIVE_POLL_CAP_MS)
         interactive -> minOf(serverPollMs, INTERACTIVE_POLL_CAP_MS)
         else -> serverPollMs
     }
