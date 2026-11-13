@@ -34,6 +34,10 @@ settings:
     # can reach the Keychain under the shared access group; the hosted tests depend on it (5.5 PR B). Device
     # builds stay unsigned in CI (CODE_SIGNING_ALLOWED=NO) until the maintainer's account exists (5.1).
     CODE_SIGN_STYLE: Manual
+    # #634 G1: the store build's server (https only), in every target's Info.plist as OSRAAPIBase, so the app and
+    # the extensions refuse any other stored server. Empty for simulator and local builds, which keep the editable
+    # field. The TestFlight/App Store build sets it, e.g. xcodebuild ... OSRA_API_BASE=https://…
+    OSRA_API_BASE: ""
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 
 packages:
@@ -53,9 +57,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.osratech.child
         # #607: the OSRA Kids icon (App/Assets.xcassets, from #595's export). The app only; extensions have none.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # #634 G1: the store build's server (https only); empty for simulator and local builds, which keep the
-        # editable field. The TestFlight/App Store build sets it, e.g. xcodebuild ... OSRA_API_BASE=https://…
-        OSRA_API_BASE: ""
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/OSRAAgent.entitlements
     dependencies:
