@@ -23,8 +23,9 @@ class CoachCard {
   });
 }
 
-/// Crisis-first: every sign is taken seriously, ask directly, professional
-/// help numbers are a placeholder the family fills in locally.
+/// Crisis-first: every sign is taken seriously, ask directly, and the help
+/// numbers come from the family's country (`local_help_numbers.dart`), never
+/// from a placeholder the app prints (#723).
 const _selfHarm = CoachCard(
   title: 'If your child may be hurting themselves',
   titleAr: 'إذا كان طفلك قد يؤذي نفسه',
@@ -33,25 +34,25 @@ const _selfHarm = CoachCard(
       'Stay calm, choose a quiet moment, and ask directly: "Are you thinking about hurting yourself?" '
       'Asking openly does not plant the idea; it shows your child they can talk to you. '
       'Believe them, take their feelings seriously, and involve a mental-health professional as soon as possible. '
-      'Crisis line / emergency number: [add local number].',
+      'In a crisis, {crisis}. If there is immediate danger, {emergency}.',
   bodyAr:
       'خذ كل مؤشر على محمل الجدّ؛ فالإشارات إلى إيذاء النفس نادرًا ما تكون «من أجل لفت الانتباه» فقط. '
       'ابقَ هادئًا، واختر وقتًا هادئًا، واسأل طفلك مباشرة: «هل تفكّر في إيذاء نفسك؟» '
       'فالسؤال الصريح لا يغرس الفكرة، بل يُظهر لطفلك أن بإمكانه الحديث معك. '
       'صدّقه، وخذ مشاعره بجدية، واستعن بمختص في الصحة النفسية في أقرب وقت. '
-      'رقم الطوارئ أو الخط الساخن: [أضف الرقم المحلي].',
+      'في الأزمة، {crisis}. وإذا كان هناك خطر داهم، {emergency}.',
   tips: [
     'Stay calm and pick a quiet, private moment.',
     'Ask directly — open questions invite honesty.',
     'Listen without judging or minimizing their feelings.',
-    'If there is immediate danger, stay with them and call emergency services: [add local number].',
+    'If there is immediate danger, stay with them and {emergency}.',
     'Follow up with a counselor or doctor within days, not weeks.',
   ],
   tipsAr: [
     'ابقَ هادئًا واختر لحظة هادئة وخاصة.',
     'اسأل بشكل مباشر — فالأسئلة المفتوحة تشجّع على الصراحة.',
     'استمع دون إصدار أحكام أو التقليل من مشاعره.',
-    'إذا كان هناك خطر داهم، ابقَ معه واتصل بخدمات الطوارئ: [أضف الرقم المحلي].',
+    'إذا كان هناك خطر داهم، ابقَ معه و{emergency}.',
     'تابع مع مرشد أو طبيب خلال أيام، لا أسابيع.',
   ],
 );
@@ -63,26 +64,25 @@ const _grooming = CoachCard(
       'Online groomers build trust slowly: compliments, gifts, "jokes", then secrets and moving '
       'the chat to private channels. Your child is a victim, not at fault — never blame them for '
       'the contact. Keep the evidence: take screenshots and do not delete the conversation. Report '
-      'and block the account, and if there were threats or sexual requests, contact the police or '
-      'a child-protection hotline: [add local number].',
+      'and block the account; if there were threats or sexual requests, {childProtection} or contact the police.',
   bodyAr:
       'يمارس المستغلون الإلكترونيون الإغواء تدريجيًا: الإطراء ثم الهدايا ثم «الأسرار» ونقل المحادثة '
       'إلى قنوات خاصة. طفلك ضحية وليس المخطئ — لا تُلامه أبدًا على هذا التواصل. احتفظ بالأدلة: التقط '
-      'لقطات شاشة ولا تحذف المحادثة. أبلغ عن الحساب واحظره، وإذا وُجدت تهديدات أو طلبات جنسية فتواصل '
-      'مع الشرطة أو خط حماية الطفل: [أضف الرقم المحلي].',
+      'لقطات شاشة ولا تحذف المحادثة. أبلغ عن الحساب واحظره، وإذا وُجدت تهديدات أو طلبات جنسية، {childProtection} '
+      'أو تواصل مع الشرطة.',
   tips: [
     'Reassure your child: "You are not in trouble — I am glad you told me."',
     'Save screenshots; do not delete chats or block before preserving evidence.',
     'Report the account to the platform and block it.',
     'Watch for secrecy, gifts, and requests to move to private apps.',
-    'Contact police or a child-protection line if requests were sexual or threatening: [add local number].',
+    'If requests were sexual or threatening, {childProtection} or contact the police.',
   ],
   tipsAr: [
     'اطمئن طفلك: «أنت لست في مشكلة — وسعيد أنك أخبرتني».',
     'احفظ لقطات الشاشة؛ لا تحذف المحادثات ولا تحظر قبل حفظ الأدلة.',
     'أبلغ عن الحساب إلى المنصة ثم احظره.',
     'انتبه للأسرارية والهدايا وطلبات الانتقال إلى تطبيقات خاصة.',
-    'تواصل مع الشرطة أو خط حماية الطفل إذا كانت الطلبات جنسية أو تهديدية: [أضف الرقم المحلي].',
+    'إذا كانت الطلبات جنسية أو تهديدية، {childProtection} أو تواصل مع الشرطة.',
   ],
 );
 
@@ -334,7 +334,8 @@ const _concernCards = <String, CoachCard>{
 
 /// Returns the coaching card for [category]; `social_concern` alerts resolve
 /// through [concernTypes] first, and anything unknown gets the generic card.
-CoachCard coachCardFor(String category, [List<String> concernTypes = const []]) {
+CoachCard coachCardFor(String category,
+    [List<String> concernTypes = const []]) {
   final cat = category.trim().toLowerCase();
   if (cat == 'social_concern') {
     for (final t in concernTypes) {
