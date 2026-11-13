@@ -99,4 +99,26 @@ void main() {
     expect(find.byKey(const ValueKey('pickInstalledApp')), findsNothing);
     expect(find.byKey(const ValueKey('iosAppsExplained')), findsOneWidget);
   });
+
+  testWidgets("a child with an iPhone and an Android tablet keeps the picker and both sentences (#643)", (tester) async {
+    // The tablet still reports its apps and can still run Samsung Pay or Google Wallet; the iPhone needs
+    // the group path. Both apply, so all three are on the Apps tab. They sit below the fold of the lazy
+    // list, so each is scrolled into view before it is counted.
+    final api = FakeApiClient(standardRoutes(familyMe: familyMeMixedDevices()));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: localizedTestApp(const RulesEditorScreen(childId: 'child-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apps'));
+    await tester.pumpAndSettle();
+
+    for (final key in ['bedtime-blocks-payments', 'iosAppsExplained', 'pickInstalledApp']) {
+      final finder = find.byKey(ValueKey(key), skipOffstage: false);
+      expect(finder, findsOneWidget, reason: key);
+      await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey(key)), findsOneWidget, reason: '$key on screen');
+    }
+  });
 }
