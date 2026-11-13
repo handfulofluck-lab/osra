@@ -174,11 +174,14 @@ open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
         let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         // The day the interval starts on decides, so an overnight routine is judged by its first day.
         let weekday = Calendar.current.component(.weekday, from: Date())
-        switch ShieldPolicy.current(activity: activity.rawValue, weekday: weekday) {
+        let policy = ShieldPolicy.current(activity: activity.rawValue, weekday: weekday)
+        switch policy {
         case .allExcept(let allowed):
             // Everything but the allowed apps. A bundle id with no token stays shielded: fails closed.
             let exceptions = Set(allowed.compactMap { Application(bundleIdentifier: $0).token })
             store.shield.applicationCategories = .all(except: exceptions)
+            // And every website: the app-category shield leaves the built-in browser open (ShieldPolicy.shieldsAllWeb).
+            if policy.shieldsAllWeb { store.shield.webDomainCategories = .all() }
         case .only(let blocked):
             let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: blocked)
             store.shield.applications = tokens.isEmpty ? nil : tokens

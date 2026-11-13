@@ -265,6 +265,14 @@ public enum ShieldPolicy: Equatable {
         return routine.blockedApps.isEmpty ? .none : .only(routine.blockedApps)
     }
 
+    /// Whether every website is shielded too. "Everything except the allowed apps" has to include the web: the
+    /// app-category shield does not cover the built-in browser, so without this a child reached any site at
+    /// bedtime (child-escape run, iPhone 13, 13 Nov). The allowed apps stay usable; their web pages do not.
+    public var shieldsAllWeb: Bool {
+        if case .allExcept = self { return true }
+        return false
+    }
+
     /// `decide` with the rules stored by the last sync.
     public static func current(activity: String, weekday: Int) -> ShieldPolicy {
         decide(activity: activity, weekday: weekday, alwaysAllowed: RuleStore.alwaysAllowedApps(),
