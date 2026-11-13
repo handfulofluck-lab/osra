@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { BaseUrlRefused, resolveBaseUrl } from "./scenario-family.mjs";
+import { BaseUrlRefused, redact, resolveBaseUrl, writeTokenFile } from "./scenario-family.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "scenario-family.mjs");
 const LIVE_BASE = process.env.SCENARIO_API_BASE;
@@ -96,6 +96,36 @@ for (const [url, reason] of ACCEPTED) {
     assert.equal(resolveBaseUrl(url), url);
   });
 }
+
+test("refuses plain http to a staging host, where the parent's password would cross in clear text", () => {
+  // Ahmed's R1 on #674: the host check alone let http through, and registration, login and deletion each
+  // carry a password or a bearer token. Loopback is the one place cleartext is allowed, and it is tested.
+  assert.throws(() => resolveBaseUrl("http://api.staging.osratech.com"), BaseUrlRefused);
+  assert.throws(() => resolveBaseUrl("http://x.staging.osratech.com"), BaseUrlRefused);
+  assert.equal(resolveBaseUrl("http://localhost:3000"), "http://localhost:3000");
+  assert.equal(resolveBaseUrl("http://127.0.0.1:3000"), "http://127.0.0.1:3000");
+  assert.equal(resolveBaseUrl("https://api.staging.osratech.com"), "https://api.staging.osratech.com");
+});
+
+test("redacts token-shaped keys before a body reaches stderr", () => {
+  // Ahmed's R2: `brief` printed the whole body, so a route that renamed its token field would put it in the
+  // scrollback the file header warns about. Nested, array and sibling keys are covered because a rename can
+  // move the secret anywhere in the shape.
+  const redacted = redact({
+    accessToken: "secret-value",
+    parent: { id: "p1", refreshToken: "another", name: "Sam" },
+    items: [{ apiKey: "k", hmacSecret: "h", safe: "ok" }],
+    status: "ok",
+  });
+  assert.deepEqual(redacted, {
+    accessToken: "[redacted]",
+    parent: { id: "p1", refreshToken: "[redacted]", name: "Sam" },
+    items: [{ apiKey: "[redacted]", hmacSecret: "[redacted]", safe: "ok" }],
+    status: "ok",
+  });
+  assert.ok(!JSON.stringify(redacted).includes("another"));
+  assert.ok(!JSON.stringify(redacted).includes("secret-value"));
+});
 
 test("refuses the staging apex, which the wildcard does not cover", () => {
   // `*.staging.osratech.com` excludes the apex; the staging API is api.staging.osratech.com. Fail closed.
@@ -273,6 +303,20 @@ test("create sends the shapes the real routes take and prints one JSON object", 
   // The pairing code exists only after the neutral read-back.
   const order = stub.calls.map((c) => `${c.method} ${c.url}`);
   assert.ok(order.indexOf("GET /v1/rules/child-1") < order.indexOf("POST /v1/devices/pair"), "the code is minted after the rules were verified");
+});
+
+test("refuses to write over an existing file or follow a planted symlink", () => {
+  // Ahmed's H1: the default path is in the shared temp directory, and a pre-existing file there would have
+  // been followed. Exclusive create turns that into a refusal instead of a silent overwrite.
+  const dir = mkdtempSync(join(tmpdir(), "scenario-h1-"));
+  try {
+    const path = join(dir, "token.json");
+    writeTokenFile(path, { token: "one" });
+    assert.throws(() => writeTokenFile(path, { token: "two" }), /EEXIST/);
+    assert.equal(JSON.parse(readFileSync(path, "utf8")).token, "one");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the token file holds the token, and stdout does not", async (t) => {

@@ -173,6 +173,13 @@ export function resolveBaseUrl(raw, env = process.env) {
     throw new BaseUrlRefused(`credentials in the URL ("${url.username}@…") — an address the script cannot check is not one it talks to`);
   }
   const host = url.hostname.toLowerCase();
+  // Ahmed's R1: plain http is fine to a loopback the operator controls, and is a cleartext password on
+  // anything else — registration, login and deletion all carry one.
+  if (!LOCAL_HOSTS.has(host) && url.protocol !== "https:") {
+    throw new BaseUrlRefused(
+      `"${value}" is ${url.protocol}// to a host that is not localhost: the parent's password and bearer token would cross the network in clear text`,
+    );
+  }
   if (!LOCAL_HOSTS.has(host) && !host.endsWith(STAGING_SUFFIX)) {
     throw new BaseUrlRefused(
       `host "${host}" is not localhost, 127.0.0.1 or a *.staging.osratech.com host (the staging API is api.staging.osratech.com)`,
@@ -198,7 +205,10 @@ export function originOf(raw) {
  * host (Node 24, Windows 11): a file written with `mode: 0o600` stats as `0o666`.
  */
 export function writeTokenFile(path, payload) {
-  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: TOKEN_FILE_MODE });
+  // Ahmed's H1: `wx` refuses a pre-existing file or a planted symlink instead of following it. The
+  // default path is in the shared temp directory, so a 24-bit name is unlikely to collide and `wx`
+  // makes it impossible.
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: TOKEN_FILE_MODE, flag: "wx" });
   try {
     chmodSync(path, TOKEN_FILE_MODE);
   } catch {
@@ -247,7 +257,20 @@ async function api(baseUrl, method, path, { token, body } = {}) {
   return { status: res.status, data };
 }
 
-const brief = (response) => `${response.status} ${JSON.stringify(response.data ?? null)}`;
+// Ahmed's pattern, plus `apiKey`/`api-key`: a body field spelled that way is a credential and is not
+// matched by `token|secret|hmac` alone. `keyId` is deliberately not matched — it is an identifier, not a secret.
+const SECRET_KEY = /token|password|secret|hmac|api[-_]?key/i;
+
+/** Every value under a token-shaped key, anywhere in the body, becomes `[redacted]` (Ahmed's R2). */
+export function redact(value) {
+  if (Array.isArray(value)) return value.map((item) => redact(item));
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, SECRET_KEY.test(key) ? "[redacted]" : redact(item)]),
+  );
+}
+
+const brief = (response) => `${response.status} ${JSON.stringify(redact(response.data ?? null))}`;
 
 /**
  * The ruleset a scenario needs: no limit that expires mid-run, no bedtime window, no school days.

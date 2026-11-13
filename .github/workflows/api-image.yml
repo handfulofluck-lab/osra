@@ -116,15 +116,15 @@ jobs:
       # is set, and this is the Ubuntu job whose stack is a real API on real Postgres and Redis — the
       # container booted above answers on 127.0.0.1:3000 (`--network host`), so the boot step no longer
       # removes it; this step does, and the runner is ephemeral if a grep below fails first.
-      # One run, not two: each invocation signs an account up and erases it. `pass 22` cannot appear if the
+      # One run, not two: each invocation signs an account up and erases it. `pass 25` cannot appear if the
       # live case skipped (that run says 21 pass, 1 skipped) or failed; `pipefail` carries a failing run's
-      # exit through the pipe; `fail 0` is asserted because a 23rd case that failed would leave `pass 22`.
+      # exit through the pipe; `fail 0` is asserted because a 26th case that failed would leave `pass 25`.
       - name: A scenario family is created and erased through the API, and leaves no residue (#668)
         env:
           SCENARIO_API_BASE: http://127.0.0.1:3000
         run: |
           set -o pipefail
           out=$(node --test scripts/hardware/scenario-family.test.mjs 2>&1 | tee /dev/stderr)
-          printf '%s\n' "$out" | grep -q 'pass 22$'
+          printf '%s\n' "$out" | grep -q 'pass 25$'
           printf '%s\n' "$out" | grep -q 'fail 0$'
           docker rm -f api
