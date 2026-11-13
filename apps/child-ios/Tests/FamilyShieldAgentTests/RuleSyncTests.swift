@@ -152,6 +152,25 @@ final class RuleSyncTests: XCTestCase {
 
     // MARK: - What a running interval shields (ShieldPolicy)
 
+    /// Bedtime and an allow-list routine shield every website as well as every app but the allowed ones; a
+    /// routine that only blocks some apps does not touch the web.
+    func testEverythingExceptAllowedIncludesTheWeb() {
+        XCTAssertTrue(ShieldPolicy.allExcept(["com.apple.mobilephone"]).shieldsAllWeb, "bedtime covers the browser")
+        XCTAssertFalse(ShieldPolicy.only(["com.example.game"]).shieldsAllWeb)
+        XCTAssertFalse(ShieldPolicy.none.shieldsAllWeb)
+    }
+
+    func testTheMonitorShieldsTheWebWhenThePolicySaysSo() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/DeviceActivityMonitor.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let allExcept = try XCTUnwrap(text.range(of: "case .allExcept(let allowed):"))
+        let web = try XCTUnwrap(text.range(of: "if policy.shieldsAllWeb { store.shield.webDomainCategories = .all() }"))
+        let only = try XCTUnwrap(text.range(of: "case .only(let blocked):"))
+        XCTAssertTrue(allExcept.lowerBound < web.lowerBound && web.lowerBound < only.lowerBound,
+                      "the web shield is applied in the all-except branch")
+    }
+
     private let homework = RuleStore.RoutineSchedule(name: "Homework", startTime: "16:00", endTime: "18:00",
                                                     swiftWeekdays: [2, 1], blockedApps: ["com.example.game"], allowedApps: [])
     private let lateReading = RuleStore.RoutineSchedule(name: "Late", startTime: "22:00", endTime: "02:00",
