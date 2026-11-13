@@ -197,6 +197,10 @@ Nobody edits a decided or approved Arabic line without going round this loop aga
    name, digits, direction, length for the place it shows.
 4. **Where it shows.** The line is read in its screen or page (a screenshot or the built page), not only
    in the file.
+   A screen that only a real phone can draw (the iPhone block screen, a system prompt) is the one
+   exception: the Bureau signs on checks 1 to 3, says on the PR that the on-device read is owed, and
+   reads the line on the device row before that build reaches anyone outside the team. A wrong fit found
+   there is a follow-up line from the Bureau, never a silent edit.
 
 **Honest limit.** When the Bureau also wrote the Arabic, checks 1 to 4 are a second reading by the same
 agent, and since 13 November no person reads the line before it ships. That is the maintainer's choice;
