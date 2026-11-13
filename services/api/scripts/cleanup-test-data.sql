@@ -1,8 +1,9 @@
 -- Cleanup of test leftovers created by QA runs (probe, e2e, audits, physical-device pass).
 --
--- KEEPS the seeded demo family (demo@familyshield.dev / child "Alex") that testers use.
--- Removes: families owned by QA/e2e/audit test parents, and non-"Alex" children inside the demo
--- family (test children created by e2e/probe/device passes, with their devices and rows).
+-- KEEPS the seeded demo family (demo@osratech.com / child "Alex") and every legitimate non-test
+-- family, including reviewer families. Removes ONLY: families owned by explicit test-parent emails,
+-- non-"Alex" children inside the demo family, and empty families with the QA Family name prefix.
+-- It never deletes a family merely because it is outside the demo family.
 --
 --   DRY RUN (default, prints the plan):   psql -h 127.0.0.1 -U familyshield -d familyshield -f cleanup-test-data.sql
 --   APPLY (deletes, inside one tx):       psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f cleanup-test-data.sql
@@ -13,7 +14,17 @@
 
 -- Which parents/families are "test" leftovers. Keep this list narrow and explicit.
 \set test_parent_pattern '^(qa-|verify-|verify2-|ios1-)'
-\set demo_email 'demo@familyshield.dev'
+\set test_orphan_pattern '^QA Family '
+\set demo_email 'demo@osratech.com'
+
+-- An absent demo anchor must stop APPLY. In particular, an empty subquery under NOT IN would
+-- otherwise select every child. Run the current seed first to migrate an old-seed demo parent.
+SELECT count(*) = 1 AS demo_found FROM "Parent" WHERE email = :'demo_email' \gset
+\if :demo_found
+\else
+  \echo 'ERROR: expected exactly one current demo parent; run the current seed first. Nothing was deleted.'
+  \q
+\endif
 
 \echo '=== BEFORE ==='
 SELECT (SELECT count(*) FROM "Family") families, (SELECT count(*) FROM "Parent") parents,
@@ -31,16 +42,13 @@ WHERE c."familyId" = (SELECT "familyId" FROM "Parent" WHERE email = :'demo_email
   AND c."displayName" <> 'Alex'
 ORDER BY c."displayName";
 
--- Orphan families: no parent AND no child left. These evade every other rule in this script, because
--- del_family is derived from Parent.email — a family whose parent was deleted (erasure, a partial
--- cleanup, an interrupted run) is unreachable and accumulates forever. Found on the shared DB on
--- 2026-10-17: two `QA Family B` rows with 0 parents / 0 children / 0 invites, which made "restored to
--- demo state" read true while the Family table kept growing.
-\echo '=== will remove these orphan families (no parent left, no child left) ==='
+-- Only explicitly QA-named orphan families are removable. Other empty families are preserved for
+-- investigation because their former owner cannot be identified after the parent row is gone.
+\echo '=== will remove these scoped QA orphan families (no parent left, no child left) ==='
 SELECT f.name, f.id, f."createdAt" FROM "Family" f
 WHERE NOT EXISTS (SELECT 1 FROM "Parent" p WHERE p."familyId" = f.id)
   AND NOT EXISTS (SELECT 1 FROM "Child" c WHERE c."familyId" = f.id)
-  AND f.id <> (SELECT "familyId" FROM "Parent" WHERE email = :'demo_email' LIMIT 1)
+  AND f.name ~ :'test_orphan_pattern'
 ORDER BY f."createdAt";
 
 \if :{?apply}
@@ -51,14 +59,14 @@ ORDER BY f."createdAt";
 \if :apply
 \echo '=== APPLYING ==='
 BEGIN;
-CREATE TEMP TABLE del_child ON COMMIT DROP AS
-  SELECT c.id AS id FROM "Child" c
-  WHERE c."familyId" NOT IN (SELECT "familyId" FROM "Parent" WHERE email = :'demo_email')
-     OR (c."familyId" = (SELECT "familyId" FROM "Parent" WHERE email = :'demo_email' LIMIT 1)
-         AND c."displayName" <> 'Alex');
 CREATE TEMP TABLE del_family ON COMMIT DROP AS
   SELECT DISTINCT p."familyId" AS id FROM "Parent" p
   WHERE p.email ~ :'test_parent_pattern' OR p.email = 'e2e-crossfamily@example.com';
+CREATE TEMP TABLE del_child ON COMMIT DROP AS
+  SELECT c.id AS id FROM "Child" c
+  WHERE c."familyId" IN (SELECT id FROM del_family)
+     OR (c."familyId" = (SELECT "familyId" FROM "Parent" WHERE email = :'demo_email' LIMIT 1)
+         AND c."displayName" <> 'Alex');
 -- Orphans are computed AFTER the child deletes below, so "no child" means "none left", not "none ever".
 CREATE TEMP TABLE del_orphan_family (id text);
 
@@ -78,7 +86,7 @@ INSERT INTO del_orphan_family (id)
   SELECT f.id FROM "Family" f
   WHERE NOT EXISTS (SELECT 1 FROM "Parent" p WHERE p."familyId" = f.id)
     AND NOT EXISTS (SELECT 1 FROM "Child" c WHERE c."familyId" = f.id)
-    AND f.id <> (SELECT "familyId" FROM "Parent" WHERE email = :'demo_email' LIMIT 1);
+    AND f.name ~ :'test_orphan_pattern';
 DELETE FROM "FamilyInvite" WHERE "familyId" IN (SELECT id FROM del_orphan_family);
 DELETE FROM "Family"       WHERE id IN (SELECT id FROM del_orphan_family);
 COMMIT;
@@ -92,15 +100,24 @@ SELECT (SELECT count(*) FROM "Family") families, (SELECT count(*) FROM "Parent")
        (SELECT count(*) FROM "Child") children, (SELECT count(*) FROM "Device") devices,
        (SELECT count(*) FROM "LocationPing") pings, (SELECT count(*) FROM "Alert") alerts;
 
--- Explicit assertion, because the counts above can look right while the Family table grows: the TR-08
--- run reported 3 families / 1 child and read as "fine". One family is the seeded demo family; anything
--- else is residue this script failed to reach, and it must be investigated, not ignored.
-\echo '=== assertion: exactly one family (the seeded demo family) ==='
-SELECT CASE WHEN count(*) = 1
-            THEN 'OK: 1 family — demo family only'
-            ELSE 'FAIL: ' || count(*) || ' families remain — run the orphan query above and investigate'
-       END AS families_assertion
-FROM "Family";
+-- Explicit assertions: scoped test residue must be gone; legitimate non-demo families are not residue.
+\echo '=== assertion: no explicit test-owner families remain ==='
+SELECT CASE WHEN count(*) = 0
+            THEN 'OK: no explicit test-owner families remain'
+            ELSE 'FAIL: ' || count(*) || ' explicit test-owner parents remain'
+       END AS test_families_assertion
+FROM "Parent" p
+WHERE p.email ~ :'test_parent_pattern' OR p.email = 'e2e-crossfamily@example.com';
+
+\echo '=== assertion: no scoped QA orphan families remain ==='
+SELECT CASE WHEN count(*) = 0
+            THEN 'OK: no scoped QA orphan families remain'
+            ELSE 'FAIL: ' || count(*) || ' scoped QA orphan families remain'
+       END AS orphan_assertion
+FROM "Family" f
+WHERE f.name ~ :'test_orphan_pattern'
+  AND NOT EXISTS (SELECT 1 FROM "Parent" p WHERE p."familyId" = f.id)
+  AND NOT EXISTS (SELECT 1 FROM "Child" c WHERE c."familyId" = f.id);
 
 \echo '=== demo family must still be intact ==='
 SELECT f.name AS family, c."displayName" AS child

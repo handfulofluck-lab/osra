@@ -8,7 +8,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 | Layer | Command | Covers | Fails when |
 |---|---|---|---|
-| API unit tests | `pnpm --filter @familyshield/api test` | Routes with mocked DB/Redis: auth, rules, devices, alerts, content, contracts | Logic/contract regressions |
+| API unit + demo database tests | `pnpm --filter @familyshield/api test` | Routes with mocked DB/Redis: auth, rules, devices, alerts, content, contracts; real-Postgres demo-seed migration and scoped cleanup | Logic/contract regressions, duplicate demo owners, or deletion of legitimate families |
 | **Adversarial probe** (merge gate) | `node scripts/qa-probe.mjs` | Tries to **break** documented invariants against a live stack | Any invariant is violable |
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
 | Flutter | `cd apps/parent-app && flutter pub get && flutter analyze && flutter test` (needs `C:\KARIM\tools\flutter\bin` on `PATH` — §2) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568, English/Arabic localization (ARB key parity + every translated screen in Arabic/RTL at 320×568) | UI/contract regressions, a missing Arabic string, an RTL overflow |
@@ -18,6 +18,14 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | iOS | `.github/workflows/ios-ci.yml` (macOS runner) | SwiftPM build + simulator build | Swift compile/behaviour regressions |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
+`test/demo-seed-cleanup.test.ts` runs against real PostgreSQL in CI, where
+`OSRA_REQUIRE_DATABASE_TESTS=1` makes a missing database configuration an error. Local runs without
+`OSRA_TEST_DATABASE_URL` report these three integration rows as skipped. To include them, point that
+variable at a dedicated `osra_test_*` database on loopback, with trust-only local authentication and
+`psql` on `PATH` (or set `PSQL_BIN`). The harness rejects remote hosts, other database names and URLs
+with passwords, runs the real migrations, seed and cleanup, and leaves an empty schema. Never point it
+at a shared, staging or production database.
+
 A green unit suite is **not** evidence that an invariant holds — that is what the probe is for. A green
 probe is **not** evidence that a feature works on a phone — that is what hardware verification is for.
 
@@ -26,7 +34,7 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 
 | Suite | The step CI adds |
 |---|---|
-| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml:54-62`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:57`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
+| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:68`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
 | Flutter | the row's three commands are `parent-app.yml:46-48`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:73-78`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`child-android.yml:65`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:72` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` of **both** release APKs (`apk/<flavour>/release/app-<flavour>-release.apk`) for `targetSdkVersion:'35'` and both network-security configs (`:76-94`); each check fails the job, and so does an APK upload that finds no files (`:103`). Until #361 that step read `apk/release/app-release.apk`, which has not existed since the flavours landed, and its `grep -q … && echo` guards could not fail, so it passed while checking nothing. The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
 | Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`agent-desktop.yml:37`) |
@@ -39,7 +47,7 @@ release-assembly step is where a release-only failure lives.
 
 | Need | Where it lives here |
 |---|---|
-| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/api.yml:51`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
+| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/api.yml:64-66`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
 | PostgreSQL | Windows service `OSRA-Postgres` (auto-start) or `C:\KARIM\start-pg.bat` |
 | Redis | `C:\KARIM\tools\redis\redis-server.exe --port 6379` |
 | JDK 17 + Android SDK | `C:\KARIM\tools\jdk-17`, `C:\KARIM\tools\android-sdk` (`ANDROID_HOME` **must** be set, or gradle fails with "SDK location not found") |
@@ -66,7 +74,7 @@ looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §
 ## 3. Running the gates
 
 ```bash
-# from the repo root, once per checkout — CI runs this before its type-check and suite (api.yml:54-62)
+# from the repo root, once per checkout — CI runs this before its type-check and suite (api.yml)
 pnpm --filter @familyshield/api exec prisma generate
 
 cd services/api
@@ -334,11 +342,18 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed at twice the Linux rate) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | `apps/child-ios/**` (path-filtered since it was added) | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
-| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258). Since #668 it also runs the scenario helper's live `create` → `delete` case against the booted API, with `SCENARIO_API_BASE=http://127.0.0.1:3000`, and its `paths:` list names `scripts/hardware/scenario-family.mjs` and `scripts/hardware/scenario-family.test.mjs` |
-| `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-13 also the scenario helper's unit cases (#668): `node --test scripts/hardware/scenario-family.test.mjs`, and the step fails unless the run prints both `pass 21` and `fail 0`, so a skipped or empty run cannot be green by silence |
+| `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
+| `workflow-lint.yml` | every PR | `scripts/check-workflows.mjs --strict` — a YAML file GitHub rejects means **zero jobs run**, so this is checked in its own file — and `scripts/check-docs-links.mjs` in the same job, with the self-tests of the other gates. Among them `scripts/check-verified-gate-signers.mjs` (2026-10-23): it fails if `verified-gate.yml` could read a verification from any account but the agent account, structurally and by running the gate's own jq filter over fixture comments (`--selftest` proves both layers fail on the pre-fix filter; without `jq` it runs the structural layer only, and in CI a missing `jq` is exit 2). Since 2026-10-24 also `scripts/check-ci-paths.mjs` (below) and `scripts/verified-gate-carry.mjs --selftest` (below). Since 2026-11-12 also `scripts/check-site-design.mjs` (roadmap 3.19): `site/style.css` must carry the values of `docs/design/tokens.json` under the same names in both themes, no colour outside those two blocks, nothing loaded from another site, `dir="rtl"` on an Arabic page and no physical side in the sheet; rules and fixtures in `docs/design/WEBSITE.md` §5. Since 2026-11-12 also `scripts/check-user-visible-brand.mjs` (issue #608): fails any tracked or untracked repo file carrying the pre-OSRA user-visible forms, with exact-path exemptions for the dated QA audit records; rules, fixtures and CLI wiring in `--selftest` |
 | `verified-gate.yml` | On every PR to `main`: `state:verified` **and** a `Verified-sha:` line at the head, in a comment written by the agent account `handfulofluck-lab` and signed by a verifier (`AGENTS.md` §6.4, §6.5 rule 6). A comment by any other account is never read: the run log prints how many were left out. Since 2026-10-24 the carry-forward decision is `scripts/verified-gate-carry.mjs <signed-sha> <head-sha>`, run from `origin/main` so a PR's edit to the script does not judge its own carry-forward (the workflow file still comes from the PR; see #359). It exits 0 when only clean merges of main followed the signature and the PR's own `-U0` patch is unchanged; 1 when that patch moved, or when a merge after the signature was not a clean merge of its parents (a conflict, a resolution, an evil merge, or a merge with other than two parents); 2 when it cannot decide (missing or unknown sha, not an ancestor, a non-merge commit after the signature, git older than 2.38 so a merge cannot be re-run). Context is ignored, so position is not compared — a line moved by a hand-edited merge is refused by the clean-merge rule, and the only remaining limit is a line moved by a clean merge, which is git's own result. `--selftest` runs seven cases on real git repositories. Local: `node scripts/check-verified-gate-signers.mjs --selftest` and `node scripts/verified-gate-carry.mjs --selftest`. Since 2026-10-31 the trigger list also carries **`edited`**: when a stacked PR's base branch is deleted GitHub retargets the PR to `main` and announces it only as `edited` (`changes.base`), so without that event the required check is never created at all and the PR cannot merge while every visible check is green (#501; measured on the scratch PR #503 — see §6) |
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
+
+The scenario helper's own gates (#668) sit in those two workflows rather than a third: **`workflow-lint`**
+runs `node --test scripts/hardware/scenario-family.test.mjs` and asserts both `pass 21` and `fail 0`, so a
+skipped or empty run cannot be green by silence, and **`api-image`** runs the live `create` → `delete` case
+against the booted API with `SCENARIO_API_BASE=http://127.0.0.1:3000`, its `paths:` naming both helper files.
+The live case's counter-assertion is the `psql` before/after: every table's row count and the family id set
+must be identical, which is what proves the erasure rather than trusting the routes' 404s.
 
 Local equivalents of the two lint gates (the workflow lint is also installed as a pre-push hook by
 `scripts/install-git-hooks.sh`):
@@ -348,9 +363,23 @@ node scripts/check-workflows.mjs --strict
 node scripts/check-docs-links.mjs          # 0 broken links — the only gate a docs-only PR must pass,
                                            # and the pre-push hook refuses a push that breaks one
 node scripts/check-docs-links.mjs --selftest   # the gate's own fixtures (#324)
+node scripts/check-user-visible-brand.mjs          # no old user-visible branding (issue #608)
+node scripts/check-user-visible-brand.mjs --selftest  # 55 cases: each rule fires, and the CLI wires it
 node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
 node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
 ```
+
+**The user-visible brand gate (issue #608).** `scripts/check-user-visible-brand.mjs` fails on any
+tracked or untracked-but-not-ignored repo file carrying the pre-OSRA user-visible surfaces — the old
+export filename, the old support domain/email, the desktop data folder named as a path segment or
+path string, and the Windows test-certificate subject — while allowing the internal identifiers
+(`FamilyShield.Agent.*`, `com.familyshield.agent`, the `X-FamilyShield-Signature` header) and the
+one-time migration's reference to the legacy folder. The dated QA records are exempt by exact path —
+`docs/QA/KCL-2026-10-16/AUDIT-IOS-WINDOWS-MACOS.md`, `docs/QA/audits/AUDIT-IOS-MACOS-2026-10-11.md`
+and `docs/QA/audits/AUDIT-WINDOWS-2026-10-11.md` — because their evidence citations name the values
+as they were on the audit date. It runs in `workflow-lint.yml` on every PR, `--selftest` first so a
+guard that is silent because it is broken cannot pass; the self-test's 55 cases cover positive and
+negative fixtures per rule, the dated-QA allowlist, and the CLI wiring.
 
 **The Redis durability gate (ADR-0032, roadmap 2.7).** The API stores every revocation in Postgres
 and treats Redis as a cache, which is only true if the cache cannot be silently emptied.
@@ -418,7 +447,7 @@ that changed neither app.
 
 ```bash
 node scripts/check-ci-paths.mjs --selftest
-node scripts/check-ci-paths.mjs     # "6 suite workflow(s), … 0 problem(s)"
+node scripts/check-ci-paths.mjs     # "7 suite workflow(s), … 0 problem(s)"
 ```
 
 ### The parent app's iOS build (roadmap 3.9, 2026-10-24)
@@ -627,10 +656,17 @@ makes. Paste the raw evidence into the issue.
 adb shell dumpsys device_policy | grep -i familyshield    # no output = the admin is gone
 adb uninstall com.osratech.child && adb reverse --remove-all
 psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql
-psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # expect 1 / 1
+psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # 1 / 1 on a dedicated QA database
 node services/api/scripts/cleanup-test-redis.mjs            # dry run: lists orphaned per-device keys
 node services/api/scripts/cleanup-test-redis.mjs --apply    # deletes only keys whose owner row is gone
 ```
+
+The SQL cleanup refuses to apply unless exactly one current demo parent exists; run the current seed
+first when upgrading an old-seed database. It deletes only explicit test-owner families, non-`Alex`
+demo children, and empty `QA Family` orphans. Legitimate non-test families, including the Play
+reviewer's family and other empty families, are preserved. The 1/1 expectation above applies to a
+dedicated QA database that held only the demo family and disposable test rows, not to a database with
+legitimate additional families.
 
 `dpm remove-active-admin` is a **last resort**, not the debug-build procedure. On an AOSP phone it is
 safe; on a **Samsung**, removing an admin that was activated through the system sheet with this command
@@ -1192,15 +1228,25 @@ assertion that was renamed.
 node scripts/check-probe-integrity.mjs                                  # origin/main -> working tree
 node scripts/check-probe-integrity.mjs --base origin/main --head origin/<branch>
 node scripts/check-probe-integrity.mjs --base 68dd367 --head 68dd367 --stats   # call-site counts
-node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (14 cases)
+node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (27 cases)
 ```
 
 It compares the **sets of assertion names per severity** (`check` gating, `target` tracked, `note`
 advisory) and fails on an **unacknowledged removal or demotion** (`check` -> `target`/`note`), while
 reporting additions and promotions (`target` -> `check`) as information. A legitimate rename is
 allowed but must be *written down* in `scripts/probe-gate-acks.json` with a reason — deliberate
-friction, so no assertion vanishes without a sentence saying why. Read that file's entries when you
-review the diff; each one cites who verified it and where.
+friction, so no assertion vanishes without a sentence saying why. Since #660 a rename ack may carry
+`renamedTo`, and the checker requires that replacement to exist in the head at the same or higher
+severity (`check` ≥ `target` ≥ `note`), failing on a missing or demoted replacement; a reason starting
+`Label only` or `Renamed` (also `relabel`/`moved`, case-insensitively) must therefore carry
+`renamedTo`. Since #683 the checker also requires `renamedTo` when a removed assertion gains a
+same-kind assertion in the head, regardless of reason wording — a retirement reason paired with an
+unrelated same-kind addition needs `renamedTo` too, or that addition must land in a separate diff. For
+a live ack (one whose name this diff removed), the `renamedTo` must be newly added — absent from base
+— and unique across all acks (a global invariant, not per-diff), while historical acks whose names the
+diff did not remove keep passing. An older `--head` ref is expected to fail when the current ack file's `renamedTo`
+targets were added after that ref, because the ack file is validated against the head, not the base.
+Read that file's entries when you review the diff; each one cites who verified it and where.
 
 Two honest limits, so nobody over-trusts it: loop-generated assertion names collapse into one entry
 per family, so it detects *a family disappearing*, not *one iteration of it*; and dynamically built
@@ -1212,8 +1258,9 @@ is compared like an inline one (fixed in #310). Before that fix the per-line mat
 the newline, so nine wrapped calls in `qa-probe.mjs` were invisible — on `68dd367` it saw **132 of 141**
 `check(`/`target(` call sites, counted each of the nine as neither added nor removed, and a PR that
 deleted one passed. `--stats` prints the per-kind call-site count, so this coverage is measured rather
-than inferred. `--selftest` (14 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
-interpolated forms, the demotion path, and the deleted-call case; its stated **mutant** is the old
+than inferred. `--selftest` (27 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
+interpolated forms, the demotion path, the deleted-call case, and the #660/#683 rename-ack rules
+(replacement severity/uniqueness/newly-added, and the same-kind-only trigger); its stated **mutant** is the old
 per-line matcher, under which the deleted multi-line call is reported as nothing (CLI exit `0`) and the
 self-test fails. On `68dd367` the fixed tool sees **141/141** call sites.
 

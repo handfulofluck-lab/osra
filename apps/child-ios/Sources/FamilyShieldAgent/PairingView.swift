@@ -92,7 +92,7 @@ public struct PairingView: View {
         do {
             let client = PairingClient()
             let claimed = try await client.claim(baseURL: baseURL, code: code, deviceName: deviceName)
-            guard AgentIdentityStore.save(claimed) else {
+            guard AgentIdentityStore.saveNewPairing(claimed) else {
                 // The family reads a plain sentence; the technical cause goes to the log (Bureau review, 12 Nov).
                 Logger(subsystem: "com.osratech.child", category: "pairing")
                     .error("Failed to persist identity: shared app group is unavailable. Verify app group provisioning.")
@@ -119,6 +119,8 @@ public struct AgentRootView: View {
     /// #602: when the rules were last synced, and the Sync now button's state.
     @State private var syncedAt: Date? = RuleStore.syncedAt()
     @State private var syncing = false
+    /// When the app last drained and synced, so a resume right after a launch does not do it twice.
+    @State private var lastRefresh: Date = .distantPast
     @State private var syncFailed = false
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
@@ -257,6 +259,7 @@ public struct AgentRootView: View {
         // On open: drain the command queue, then fetch the rules (5.5 PR C, D). A failed sync keeps the last
         // stored rules in force. A wake push drains the queue the same way (`OSRAAgentAppDelegate`).
         .task {
+            lastRefresh = Date()
             let drained = await CommandDrainer.drainNow()
             if drained.consentWithdrawn { await LocationController.shared.stopForConsent() }
             let synced = await RuleSyncer.syncNow()
@@ -265,6 +268,7 @@ public struct AgentRootView: View {
             // ADR-0034 A6: each app open also sends the capability report.
             await LocationController.shared.reportGrant()
             syncedAt = RuleStore.syncedAt()
+            leaveIfUnpaired()
         }
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -273,7 +277,17 @@ public struct AgentRootView: View {
             #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
             screenTime.refresh()
             #endif
+            // #690: iOS keeps a backgrounded app alive for hours, so the revocation check runs on resume too.
+            Task { await refreshAfterResume() }
         }
+    }
+
+    /// Coming back to the front does what an app open does: drain, sync, and leave if the parent removed this
+    /// phone (`device_revoked` unpairs it, then `leaveIfUnpaired` shows pairing).
+    private func refreshAfterResume() async {
+        guard ResumeRefresh.shouldRefresh(paired: identity != nil, syncing: syncing, last: lastRefresh, now: Date()) else { return }
+        lastRefresh = Date()
+        await syncNow()
     }
 
     /// #602 item 4: what an app open does, on demand (a push wake can take minutes in the background).
@@ -288,6 +302,15 @@ public struct AgentRootView: View {
         await LocationController.shared.reportGrant()
         syncFailed = !SyncStatus.succeeded(synced)
         syncedAt = RuleStore.syncedAt()
+        leaveIfUnpaired()
+    }
+
+    /// #690: the parent removed this phone during a drain or sync, so the pairing is gone; show pairing.
+    private func leaveIfUnpaired() {
+        guard identity != nil, AgentIdentityStore.load() == nil else { return }
+        identity = nil
+        syncFailed = false
+        pinConfigured = ParentPinStore.isConfigured
     }
 
     private func stale(_ state: SyncStatus.State) -> Bool {
