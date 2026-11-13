@@ -472,6 +472,17 @@ if (argv.includes("--selftest")) {
     `problems=${JSON.stringify(crossSeverityLower.problems)}`,
   );
 
+  const sameKindOnly = compare(
+    assertions('check("A old", ok);'),
+    assertions('check("A new", ok);'),
+    [{ kind: "check", name: "A old", reason: "retired because the old path no longer exists" }],
+  );
+  expect(
+    "a removal with a same-kind addition requires renamedTo through sameKindTrigger alone (non-rename reason)",
+    sameKindOnly.problems.some((p) => p.includes("missing renamedTo")),
+    `problems=${JSON.stringify(sameKindOnly.problems)}`,
+  );
+
   // The scanner cases above would still pass if the CLI never called the scanner. Run the real
   // command the way CI does — git refs, the real PROBE path — in a throwaway repository.
   const dir = mkdtempSync(join(tmpdir(), "probe-integrity-fixture-"));

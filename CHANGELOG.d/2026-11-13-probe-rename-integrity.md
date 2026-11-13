@@ -11,6 +11,7 @@
   same-kind addition needs `renamedTo` too, or that addition must land in a separate diff. For a live
   ack the `renamedTo` must be newly added (absent from base) and unique across all acks (a global
   invariant), while historical acks whose names the diff did not remove keep passing.
-- The gate's `--selftest` grows to 26 cases, adding rename+demote, same-severity, promote, missing
-  replacement, unbound-ack, renamedTo-already-in-base, shared-renamedTo, same-kind-addition and
-  lowercase cross-severity rename coverage.
+- The gate's `--selftest` grows to 27 cases, adding rename+demote, same-severity, promote, missing
+  replacement, unbound-ack, renamedTo-already-in-base, shared-renamedTo, same-kind-addition,
+  lowercase cross-severity rename, and same-kind-only-trigger (a non-rename reason with no
+  `renamedTo`) coverage.

@@ -1148,7 +1148,7 @@ assertion that was renamed.
 node scripts/check-probe-integrity.mjs                                  # origin/main -> working tree
 node scripts/check-probe-integrity.mjs --base origin/main --head origin/<branch>
 node scripts/check-probe-integrity.mjs --base 68dd367 --head 68dd367 --stats   # call-site counts
-node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (26 cases)
+node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (27 cases)
 ```
 
 It compares the **sets of assertion names per severity** (`check` gating, `target` tracked, `note`
@@ -1178,8 +1178,9 @@ is compared like an inline one (fixed in #310). Before that fix the per-line mat
 the newline, so nine wrapped calls in `qa-probe.mjs` were invisible — on `68dd367` it saw **132 of 141**
 `check(`/`target(` call sites, counted each of the nine as neither added nor removed, and a PR that
 deleted one passed. `--stats` prints the per-kind call-site count, so this coverage is measured rather
-than inferred. `--selftest` (26 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
-interpolated forms, the demotion path, and the deleted-call case; its stated **mutant** is the old
+than inferred. `--selftest` (27 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
+interpolated forms, the demotion path, the deleted-call case, and the #660/#683 rename-ack rules
+(replacement severity/uniqueness/newly-added, and the same-kind-only trigger); its stated **mutant** is the old
 per-line matcher, under which the deleted multi-line call is reported as nothing (CLI exit `0`) and the
 self-test fails. On `68dd367` the fixed tool sees **141/141** call sites.
 
