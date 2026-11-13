@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Security.AccessControl;
@@ -21,7 +22,7 @@ public sealed class TrayPipeSecurityTests
         var system = Assert.Single(rules, rule => rule.IdentityReference.Value == "S-1-5-18");
         Assert.Equal(PipeAccessRights.FullControl, system.PipeAccessRights);
         var user = Assert.Single(rules, rule => rule.IdentityReference.Value == userSid);
-        Assert.Equal(PipeAccessRights.ReadWrite, user.PipeAccessRights);
+        Assert.Equal(PipeAccessRights.ReadWrite | PipeAccessRights.Synchronize, user.PipeAccessRights);
         Assert.DoesNotContain(rules, rule => rule.IdentityReference.Value is "S-1-1-0" or "S-1-5-11");
     }
 
@@ -47,14 +48,16 @@ public sealed class TrayPipeSecurityTests
 
         var sample = new TrayMessage(TrayMessageKind.foreground_sample,
             JsonDocument.Parse("{\"processName\":\"demo\"}").RootElement.Clone());
+        var receiving = TrayProtocol.ReadAsync(serverConnection.Stream, TrayDirection.ToService);
         await TrayProtocol.WriteAsync(clientConnection.Stream, sample, TrayDirection.ToService);
-        var received = await TrayProtocol.ReadAsync(serverConnection.Stream, TrayDirection.ToService);
+        var received = await receiving;
         Assert.Equal("demo", received.Payload!.Value.GetProperty("processName").GetString());
 
         var windDown = new TrayMessage(TrayMessageKind.wind_down,
             JsonDocument.Parse("{\"minutes\":15}").RootElement.Clone());
+        var answering = TrayProtocol.ReadAsync(clientConnection.Stream, TrayDirection.ToTray);
         await TrayProtocol.WriteAsync(serverConnection.Stream, windDown, TrayDirection.ToTray);
-        var answer = await TrayProtocol.ReadAsync(clientConnection.Stream, TrayDirection.ToTray);
+        var answer = await answering;
         Assert.Equal(15, answer.Payload!.Value.GetProperty("minutes").GetInt32());
     }
 

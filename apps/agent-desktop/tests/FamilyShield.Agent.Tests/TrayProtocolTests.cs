@@ -88,6 +88,21 @@ public sealed class TrayProtocolTests
     }
 
     [Fact]
+    public async Task CurrentServerRuleFieldsSurviveWithoutWeakeningTheFrame()
+    {
+        const string rules = "{\"screenTime\":{\"dailyLimitMinutes\":45,\"schoolHoursStart\":\"08:00\",\"schoolHoursEnd\":\"15:00\",\"schoolDays\":[1,2,3,4,5]},\"appGroupRules\":[],\"socialMonitoring\":{},\"contactAllowlist\":[]}";
+        await using var stream = new MemoryStream();
+        await TrayProtocol.WriteAsync(stream, new TrayMessage(TrayMessageKind.rules, Payload(rules)), TrayDirection.ToTray);
+        stream.Position = 0;
+        var message = await TrayProtocol.ReadAsync(stream, TrayDirection.ToTray);
+        var screenTime = message.Payload!.Value.GetProperty("screenTime");
+        Assert.Equal(45, screenTime.GetProperty("dailyLimitMinutes").GetInt32());
+        Assert.Equal("08:00", screenTime.GetProperty("schoolHoursStart").GetString());
+        Assert.Equal("15:00", screenTime.GetProperty("schoolHoursEnd").GetString());
+        Assert.Equal(5, screenTime.GetProperty("schoolDays").GetArrayLength());
+    }
+
+    [Fact]
     public async Task ValidWindDownRoundTripsExactly()
     {
         await using var stream = new MemoryStream();
