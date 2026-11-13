@@ -414,6 +414,7 @@ A row here is final unless he says otherwise; if he does, the row moves to "Kari
 | 2026-11-13 | OSRA Kids on iPhone, block screen button `block_exit_home` (English now "Close app", #696) | «إغلاق التطبيق». Android keeps «الخروج إلى الشاشة الرئيسية» (his row of 2026-10-31) | Android `aerr_close_app` (`frameworks/base`, `values-ar`); Apple's Arabic support page ar-sa/109359; the old line was longer than the English that already wrapped |
 | 2026-11-13 | OSRA Kids on iPhone, `pin_set_reason` (#696) | «عيّن رمز PIN للوالدين حتى لا يستطيع غيرهما تغيير إعدادات تطبيق أسرة للأطفال أو إعادة إقران هذا الهاتف.» | «رمز PIN للوالدين» (K), the screen title «تعيين …», `repair_button`, A1 |
 | 2026-11-13 | OSRA Kids on Android, pairing could not be saved (#682) | «تعذّر على تطبيق أسرة للأطفال حفظ الإقران بأمان على هذا الهاتف، لذلك لم يصبح محميًا بعد. أعد تشغيله ثم أقرنه مرة أخرى. إذا تكرّرت المشكلة، راسلنا على support@osratech.com.» | The sister line `wipe_detected_notice` (sheet 2, row 42); Android `global_action_restart` «إعادة التشغيل»; the guide's «راسلنا على …» |
+| 2026-11-13 | Parent app, a bedtime that overlaps school hours, `scheduleOverlapSchool` (#642) | «يتداخل هذا الوقت مع «الساعات المدرسية» ({days}). غيّر أحد الوقتين.» The days are full names joined with «و» («الاثنين والأربعاء والجمعة»), never a range with a dash; seven days read «كل الأيام». The mirror line names «وقت النوم» | The app's labels `schoolHours` and `bedtime` (K); Android's «يتداخل … مع» (`permdesc_systemAlertWindow`); brackets because the word before a day list changes with the count |
 
 ### Word list
 
@@ -499,6 +500,8 @@ A row here is final unless he says otherwise; if he does, the row moves to "Kari
 | Technical details | «التفاصيل التقنية» | «التفاصيل الفنية» | K 13 Nov |
 | Close app (iPhone block screen) | «إغلاق التطبيق» | | B 13 Nov: Android and Apple both say «إغلاق» |
 | Restart (the phone) | «أعد تشغيل …», «إعادة التشغيل» | «ريستارت» | B 13 Nov: Android's own word |
+| Overlaps (two time windows) | «يتداخل … مع» | | B 13 Nov |
+| A list of weekdays | full names joined with «و»: «الاثنين والثلاثاء» | a dash range («الاثنين–الجمعة»), commas | B 13 Nov |
 | Write to us (support address) | «راسلنا على support@osratech.com» | «اكتب إلى» | B 13 Nov: the approved guide page |
 | Privacy policy | «سياسة الخصوصية» | | K |
 | Tap | «اضغط», «اضغط على» | «انقر» | K |
