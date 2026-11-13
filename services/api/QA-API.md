@@ -1,5 +1,7 @@
 # API QA — services/api
 
+<!-- verify/613-api-only: non-contract API path demonstration only; not for merge. -->
+
 QA pass against `docs/SPEC.md` §3, §12, §14. Suite: `pnpm vitest run` (vitest + `vi.mock("../src/db.js")` + `vi.mock("ioredis")`; no live Postgres/Redis needed). Legend: ✓ = covered by an automated test; · = not applicable / no such case; (mw) = covered via the shared `requireParent`/`requireFamily` middleware tests on a sibling route (same code path).
 
 ## Endpoint matrix
