@@ -15,7 +15,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 /// **Arabic Language Bureau:** one whole line per plural case, the coordinates isolated with LRI U+2066 …
 /// PDI U+2069 in code, and hours rounded **up** («about 2 hours» for 119 minutes).
 ///
-/// The isolate is the safety bug this head fixes: in a right-to-left line `25.276900, 51.521100` used to
+/// The isolate is the safety bug this head fixes: in a right-to-left line `25.27690, 51.52110` used to
 /// draw longitude first, so a parent reading it aloud reached another country.
 ///
 /// Mutants, one row each: remove the LRI/PDI wrap in [AlertFix.isolatedCoords] → [the Arabic location line
@@ -60,7 +60,11 @@ void main() {
       expect(fix.lat, 25.2769);
       expect(fix.lng, 51.5211);
       expect(fix.accuracyM, 20.0);
-      expect(fix.coordsText, '25.276900, 51.521100');
+      expect(fix.coordsText, '25.27690, 51.52110');
+      // #743 UI/UX: one number, one place to change it. Six decimals in the sentence and five in the
+      // copy button meant a parent reading the screen aloud while someone pasted the copied text saw two
+      // different numbers for the same fix.
+      expect(fix.coordsText, fix.copyText);
     });
 
     test('Copy coordinates puts five decimals on the clipboard', () {
@@ -70,7 +74,7 @@ void main() {
 
     test('the coordinates are isolated with LRI U+2066 and PDI U+2069, for every language', () {
       final fix = AlertFix.fromMetadata(fixAgo(3))!;
-      expect(fix.isolatedCoords, '\u206625.276900, 51.521100\u2069');
+      expect(fix.isolatedCoords, '\u206625.27690, 51.52110\u2069');
       expect(fix.isolatedCoords.codeUnits.first, 0x2066);
       expect(fix.isolatedCoords.codeUnits.last, 0x2069);
       // The marks are direction, not words: they are added in code, never in the ARB.
@@ -172,7 +176,7 @@ void main() {
       final alert = sos(metadata: fixAgo(3));
       final line = SosFixText.of(alert, alert.location!, alertAt).locationLine(ar, alert.location!.isolatedCoords);
       // The row the Arabic Bureau asked for, codepoint by codepoint.
-      expect(line, contains('\u206625.276900, 51.521100\u2069'));
+      expect(line, contains('\u206625.27690, 51.52110\u2069'));
       expect(line.codeUnitAt(line.indexOf('\u2066')), 0x2066);
       expect(line, contains('آخر موقع'));
     });
@@ -180,7 +184,7 @@ void main() {
     test('the English location line names the place and the age', () {
       final alert = sos(metadata: fixAgo(3));
       final line = SosFixText.of(alert, alert.location!, alertAt).locationLine(en, alert.location!.isolatedCoords);
-      expect(line, 'Last location: \u206625.276900, 51.521100\u2069, 3 min ago');
+      expect(line, 'Last location: \u206625.27690, 51.52110\u2069, 3 min ago');
     });
 
     test('the accuracy clause is said only when the fix carries one', () {

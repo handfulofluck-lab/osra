@@ -17,7 +17,8 @@ import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
-import '../map/family_map_screen.dart' show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../map/family_map_screen.dart'
+    show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../../push/sos_fix_text.dart';
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
@@ -54,7 +55,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       _refused = null;
     });
     try {
-      final res = await ref.read(apiClientProvider).raw.get('/v1/alerts', queryParameters: {'page': _page + 1, 'limit': 20});
+      final res = await ref
+          .read(apiClientProvider)
+          .raw
+          .get('/v1/alerts', queryParameters: {'page': _page + 1, 'limit': 20});
       final pageData = AlertsPage.fromJson(res.data);
       setState(() {
         _page++;
@@ -70,7 +74,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         // `e.message` is null for a rejected response that carried no message — the fake in the tests
         // does exactly that — and a null `_error` renders the EMPTY state, so a 500 looked like "no
         // alerts yet". Name the status instead of trusting the message to exist.
-        _error = refused == null ? (e.message ?? 'HTTP ${e.response?.statusCode ?? e.type.name}') : null;
+        _error = refused == null
+            ? (e.message ?? 'HTTP ${e.response?.statusCode ?? e.type.name}')
+            : null;
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -86,7 +92,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     } on DioException catch (e) {
       setState(() => _items.insert(index, alert));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.acknowledgeFailed('${e.message}'))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(context.l10n.acknowledgeFailed('${e.message}'))));
       }
     }
   }
@@ -103,9 +110,17 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         return AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.circle, size: 12, color: AlertTile.severityColor(alert.severity, dialogContext)),
+              Icon(Icons.circle,
+                  size: 12,
+                  color:
+                      AlertTile.severityColor(alert.severity, dialogContext)),
               const SizedBox(width: AppSpace.sm),
-              Expanded(child: Text(l10n.alertTitleFor(alert.category, alert.title, isEnglish: dialogContext.localeName.startsWith('en'), tamperType: alert.metadata['type']?.toString()), style: Theme.of(dialogContext).textTheme.titleMedium)),
+              Expanded(
+                  child: Text(
+                      l10n.alertTitleFor(alert.category, alert.title,
+                          isEnglish: dialogContext.localeName.startsWith('en'),
+                          tamperType: alert.metadata['type']?.toString()),
+                      style: Theme.of(dialogContext).textTheme.titleMedium)),
             ],
           ),
           content: SingleChildScrollView(
@@ -136,7 +151,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           style: Theme.of(dialogContext).textTheme.bodySmall,
                         ),
                         if (accuracy != null)
-                          Text(accuracy, style: Theme.of(dialogContext).textTheme.bodySmall),
+                          Text(accuracy,
+                              style:
+                                  Theme.of(dialogContext).textTheme.bodySmall),
                       ],
                     );
                   }),
@@ -151,22 +168,28 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   Text(
                     l10n.alertCallBypassNote,
                     key: const ValueKey('alert-call-bypass-note'),
-                    style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(dialogContext).colorScheme.error,
-                        ),
+                    style:
+                        Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(dialogContext).colorScheme.error,
+                            ),
                   ),
                 ],
                 const SizedBox(height: AppSpace.sm),
-                Text('${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
+                Text(
+                    '${l10n.categoryLabel(l10n.alertCategory(alert.category))} · '
                     '${l10n.severityLabel(l10n.severityName(alert.severity))}'),
                 if (alert.createdAt != null)
-                  Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName).add_Hms().format(alert.createdAt!.toLocal()))),
+                  Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
+                      .add_Hms()
+                      .format(alert.createdAt!.toLocal()))),
                 if (alert.metadata.isNotEmpty) ...[
                   const Divider(),
                   for (final entry in alert.metadata.entries)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
-                      child: Text('${entry.key}: ${entry.value}', style: Theme.of(dialogContext).textTheme.bodySmall),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: AppSpace.xxs),
+                      child: Text('${entry.key}: ${entry.value}',
+                          style: Theme.of(dialogContext).textTheme.bodySmall),
                     ),
                 ],
                 const Divider(),
@@ -179,7 +202,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               OutlinedButton(
                 onPressed: () {
                   Navigator.of(dialogContext).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.allowedSnack)));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(l10n.allowedSnack)));
                 },
                 child: Text(l10n.allowAction),
               ),
@@ -188,14 +212,52 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 child: Text(l10n.blockThisApp),
               ),
             ],
-            // #672: an SOS that carried a fix gets one tap to the place, on the same family map the tab
-            // shows — not a second map, and not "open the map and hope the last ping is recent". The pin
-            // says what it is, so a parent who forgot which tap brought them here can still read it.
+            // #672 UI/UX: an SOS that carried a fix gets one tap to the place, on the same family map the
+            // tab shows. One **filled** button, and it is the one that works (#743 UI/UX review): on a build
+            // whose in-app map cannot draw (#598/#707) "Show on map" would lead a parent in an emergency to
+            // a screen that says "Not available", so it is not shown at all and the phone's own maps app
+            // takes the filled slot. The quiet actions follow, then Close — the stacked order at 360 px is
+            // set here on purpose rather than left to whatever the action row produces.
             if (alert.category == 'sos' && alert.location != null) ...[
+              if (mapIsAvailable(Theme.of(dialogContext).platform))
+                FilledButton.icon(
+                  key: const ValueKey('alert-show-on-map'),
+                  onPressed: () {
+                    final fix = alert.location!;
+                    final text = SosFixText.of(alert, fix, DateTime.now());
+                    final title = l10n.alertTitleFor(
+                      alert.category,
+                      alert.title,
+                      isEnglish: dialogContext.localeName.startsWith('en'),
+                    );
+                    Navigator.of(dialogContext).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => FamilyMapScreen(
+                          focus: MapFocus.fromFix(
+                            fix,
+                            label: text.pinCaption(l10n, title),
+                            accuracyM: fix.accuracyM,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.place),
+                  label: Text(l10n.alertShowOnMap),
+                )
+              else
+                FilledButton.icon(
+                  key: const ValueKey('alert-open-in-maps'),
+                  onPressed: () => _openInMaps(alert),
+                  icon: const Icon(Icons.map_outlined),
+                  label: Text(l10n.alertOpenInMaps),
+                ),
               TextButton.icon(
                 key: const ValueKey('alert-copy-coordinates'),
                 onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: alert.location!.copyText));
+                  await Clipboard.setData(
+                      ClipboardData(text: alert.location!.copyText));
                   if (!dialogContext.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(l10n.alertCoordinatesCopied)),
@@ -204,43 +266,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 icon: const Icon(Icons.copy, size: 18),
                 label: Text(l10n.alertCopyCoordinates),
               ),
-              // #672 UI/UX: on a build whose in-app map cannot draw (#598/#707), "Show on map" would be a
-              // dead end in an emergency, so the phone's own maps app is offered there — and only there.
-              if (!mapIsAvailable(Theme.of(dialogContext).platform))
-                TextButton.icon(
-                  key: const ValueKey('alert-open-in-maps'),
-                  onPressed: () => _openInMaps(alert),
-                  icon: const Icon(Icons.map_outlined, size: 18),
-                  label: Text(l10n.alertOpenInMaps),
-                ),
-              FilledButton.icon(
-                key: const ValueKey('alert-show-on-map'),
-                onPressed: () {
-                  final fix = alert.location!;
-                  final text = SosFixText.of(alert, fix, DateTime.now());
-                  final title = l10n.alertTitleFor(
-                    alert.category,
-                    alert.title,
-                    isEnglish: dialogContext.localeName.startsWith('en'),
-                  );
-                  Navigator.of(dialogContext).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FamilyMapScreen(
-                        focus: MapFocus.fromFix(
-                          fix,
-                          label: text.pinCaption(l10n, title),
-                          accuracyM: fix.accuracyM,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.place),
-                label: Text(l10n.alertShowOnMap),
-              ),
             ],
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(l10n.close)),
+            TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(l10n.close)),
           ],
         );
       },
@@ -256,7 +285,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final label = Uri.encodeComponent(fix.copyText);
     final uri = isAndroid
         ? Uri.parse('geo:${fix.lat},${fix.lng}?q=${fix.lat},${fix.lng}($label)')
-        : Uri.parse('https://maps.apple.com/?ll=${fix.lat},${fix.lng}&q=$label');
+        : Uri.parse(
+            'https://maps.apple.com/?ll=${fix.lat},${fix.lng}&q=$label');
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
@@ -273,15 +303,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
   /// Appends `{packageId, appName, action: 'block'}` to the child's appRules
   /// (preserving everything else the ruleset carries, incl. always-allowed).
-  Future<void> _blockRequestedApp(BuildContext dialogContext, Alert alert) async {
+  Future<void> _blockRequestedApp(
+      BuildContext dialogContext, Alert alert) async {
     final l10n = context.l10n;
     final api = ref.read(apiClientProvider).raw;
     try {
       final res = await api.get('/v1/rules/${alert.childId}');
-      final ruleSet = RuleSet.fromJson(Map<String, dynamic>.from(res.data as Map));
+      final ruleSet =
+          RuleSet.fromJson(Map<String, dynamic>.from(res.data as Map));
       final body = ruleSet.toJson();
       final pkg = '${alert.metadata['packageId'] ?? ''}'.trim();
-      if (pkg.isEmpty) throw StateError('install_request alert has no packageId');
+      if (pkg.isEmpty)
+        throw StateError('install_request alert has no packageId');
       (body['appRules'] as List).add({
         'packageId': pkg,
         'appName': '${alert.metadata['appName'] ?? pkg}',
@@ -296,10 +329,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       ref.invalidate(familyProvider);
       if (!dialogContext.mounted) return;
       Navigator.of(dialogContext).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.appBlockedSnack)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.appBlockedSnack)));
     } catch (e) {
       if (dialogContext.mounted) {
-        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text(l10n.blockFailed('$e'))));
+        ScaffoldMessenger.of(dialogContext)
+            .showSnackBar(SnackBar(content: Text(l10n.blockFailed('$e'))));
       }
     }
   }
@@ -311,7 +346,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final groups = <String, List<Alert>>{};
     final order = <String>[];
     for (final a in _items) {
-      final day = a.createdAt == null ? 'Unknown' : DateFormat('yyyy-MM-dd').format(a.createdAt!.toLocal());
+      final day = a.createdAt == null
+          ? 'Unknown'
+          : DateFormat('yyyy-MM-dd').format(a.createdAt!.toLocal());
       if (!groups.containsKey(day)) {
         groups[day] = [];
         order.add(day);
@@ -326,68 +363,81 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(l10n.readPermissionRequired, textAlign: TextAlign.center),
+                child: Text(l10n.readPermissionRequired,
+                    textAlign: TextAlign.center),
               ),
             )
           : _error != null && _items.isEmpty
               ? Center(child: Text(l10n.alertsLoadFailed('$_error')))
               : RefreshIndicator(
-              onRefresh: () async {
-                setState(() {
-                  _items.clear();
-                  _page = 0;
-                  _hasMore = true;
-                });
-                await _loadMore();
-              },
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: AppSpace.xl),
-                children: [
-                  // NOTE: explicit empty state — without it an empty feed was a blank screen.
-                  // 200 is a deliberate vertical centring offset, not a gap on the scale.
-                  if (_items.isEmpty && !_loading)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 200),
-                      child: Center(child: Text(l10n.noAlertsYet)),
-                    ),
-                  for (final day in order)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                  onRefresh: () async {
+                    setState(() {
+                      _items.clear();
+                      _page = 0;
+                      _hasMore = true;
+                    });
+                    await _loadMore();
+                  },
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: AppSpace.xl),
+                    children: [
+                      // NOTE: explicit empty state — without it an empty feed was a blank screen.
+                      // 200 is a deliberate vertical centring offset, not a gap on the scale.
+                      if (_items.isEmpty && !_loading)
                         Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(AppSpace.lg, AppSpace.lg, AppSpace.lg, AppSpace.xs),
-                          child: Text(
-                            _dayLabel(context, day),
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
+                          padding: const EdgeInsets.only(top: 200),
+                          child: Center(child: Text(l10n.noAlertsYet)),
                         ),
-                        for (var i = 0; i < groups[day]!.length; i++)
-                          Builder(builder: (_) {
-                            final alert = groups[day]![i];
-                            final index = _items.indexOf(alert);
-                            return Dismissible(
-                              key: ValueKey(alert.id),
-                              background: Container(
-                                color: context.tokens.ok,
-                                alignment: AlignmentDirectional.centerStart,
-                                padding: const EdgeInsetsDirectional.only(start: AppSpace.xl),
-                                child: Icon(Icons.check, color: context.tokens.onOk),
+                      for (final day in order)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsetsDirectional.fromSTEB(
+                                  AppSpace.lg,
+                                  AppSpace.lg,
+                                  AppSpace.lg,
+                                  AppSpace.xs),
+                              child: Text(
+                                _dayLabel(context, day),
+                                style: Theme.of(context).textTheme.titleSmall,
                               ),
-                              onDismissed: (_) => _ack(alert, index),
-                              child: AlertTile(alert: alert, onTap: () => _showDetail(alert)),
-                            );
-                          }),
-                      ],
-                    ),
-                  if (_loading) const Padding(padding: EdgeInsets.all(AppSpace.lg), child: Center(child: CircularProgressIndicator())),
-                  if (!_loading && _hasMore)
-                    Center(
-                      child: TextButton(onPressed: _loadMore, child: Text(l10n.loadMore)),
-                    ),
-                ],
-              ),
-            ),
+                            ),
+                            for (var i = 0; i < groups[day]!.length; i++)
+                              Builder(builder: (_) {
+                                final alert = groups[day]![i];
+                                final index = _items.indexOf(alert);
+                                return Dismissible(
+                                  key: ValueKey(alert.id),
+                                  background: Container(
+                                    color: context.tokens.ok,
+                                    alignment: AlignmentDirectional.centerStart,
+                                    padding: const EdgeInsetsDirectional.only(
+                                        start: AppSpace.xl),
+                                    child: Icon(Icons.check,
+                                        color: context.tokens.onOk),
+                                  ),
+                                  onDismissed: (_) => _ack(alert, index),
+                                  child: AlertTile(
+                                      alert: alert,
+                                      onTap: () => _showDetail(alert)),
+                                );
+                              }),
+                          ],
+                        ),
+                      if (_loading)
+                        const Padding(
+                            padding: EdgeInsets.all(AppSpace.lg),
+                            child: Center(child: CircularProgressIndicator())),
+                      if (!_loading && _hasMore)
+                        Center(
+                          child: TextButton(
+                              onPressed: _loadMore, child: Text(l10n.loadMore)),
+                        ),
+                    ],
+                  ),
+                ),
     );
   }
 
