@@ -64,8 +64,10 @@ public enum PushTokenRegistrar {
         request.timeoutInterval = 30
         let status: Int
         do {
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // #690: a removed phone stops being paired.
+            DeviceRevocation.handle(status: status, body: data)
         } catch {
             logger.error("push token upload failed: \(error.localizedDescription, privacy: .public)")
             return .failed(0)

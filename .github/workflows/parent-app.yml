@@ -292,10 +292,15 @@ jobs:
             || { echo "NSLocationWhenInUseUsageDescription is missing from the built bundle (ITMS-90683)" >&2; exit 1; }
           echo "purpose string: $V"
           case "$V" in *[![:space:]]*) ;; *) echo "the purpose string is empty" >&2; exit 1;; esac
-          F="$APP/en.lproj/InfoPlist.strings"
-          test -f "$F" || { echo "missing $F" >&2; ls "$APP" >&2; exit 1; }
-          plutil -lint "$F"
-          L=$(plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$F") \
-            || { echo "the en localized purpose string is missing" >&2; exit 1; }
-          case "$L" in *[![:space:]]*) ;; *) echo "the en localized purpose string is empty" >&2; exit 1;; esac
-          echo "en.lproj/InfoPlist.strings ships in the bundle with the same key"
+          # Both locales for the purpose string, and the Arabic display name: a locale whose file is added
+          # but not referenced by the project ships nothing, so this reads the bundle, not the tree.
+          for L in en ar; do
+            F="$APP/$L.lproj/InfoPlist.strings"
+            test -f "$F" || { echo "missing $F" >&2; ls "$APP" >&2; exit 1; }
+            plutil -lint "$F"
+            V=$(plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$F") || { echo "the $L purpose string is missing" >&2; exit 1; }
+            case "$V" in *[![:space:]]*) ;; *) echo "the $L purpose string is empty" >&2; exit 1;; esac
+          done
+          D=$(plutil -extract CFBundleDisplayName raw -o - "$APP/ar.lproj/InfoPlist.strings") || { echo "the Arabic display name is missing" >&2; exit 1; }
+          test -n "$D" || { echo "the Arabic display name is empty" >&2; exit 1; }
+          echo "en and ar ship the purpose string, and ar the display name ($D)"
