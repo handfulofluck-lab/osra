@@ -151,6 +151,24 @@ describe("alert body keys (#711)", () => {
     expect(data.body).toBe("A device has not reported for 45 minutes.");
   });
 
+  it("strips the reserved fields on the empty-param path too (Fable n15)", async () => {
+    // The empty-param branch is its own return statement: removing the strip there kept every row green.
+    await raiseAlert({
+      childId: "child-1",
+      familyId: "fam-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Device stopped reporting",
+      body: "A device has not reported for 45 minutes.",
+      bodyKey: "alertBodyDeviceSilent",
+      params: { model: "", minutes: 45 },
+      metadata: { source: "test", bodyKey: "alertBodySearchFlagged", bodyParams: { engine: "forged" } },
+    } as Parameters<typeof raiseAlert>[0]);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
+    expect(data.metadata).toEqual({ source: "test" });
+  });
+
   it("strips a caller's own bodyKey and bodyParams from metadata, validated or not (Fable n9)", async () => {
     // `bodyKey`/`bodyParams` are reserved. A caller that puts its own in `metadata` would otherwise keep
     // them on the paths where the validated pair is dropped — and the app would render an untrusted key
