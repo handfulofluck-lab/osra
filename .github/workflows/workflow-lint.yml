@@ -46,6 +46,14 @@ jobs:
           node scripts/check-ci-paths.mjs --selftest
           node scripts/check-ci-paths.mjs
 
+      - name: CI-cost guardrails - iOS paths, weekly schedules, concurrency and Gradle cache (#613)
+        # The cheaper-CI edits are structural contracts: ios-ci pushes main-only with its exact path
+        # list, seven schedules are weekly Monday, the nine PR suites keep cancel-in-progress, and the
+        # Android job gains setup-gradle pinned by full commit SHA. The self-test proves each rule fails on a fixture that breaks it.
+        run: |
+          node scripts/check-ci-cost-guardrails.mjs --selftest
+          node scripts/check-ci-cost-guardrails.mjs
+
       - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
         # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
         # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter
@@ -87,6 +95,24 @@ jobs:
         # that the duration arithmetic, the informational verdict and both output files stay intact.
         shell: pwsh
         run: ./scripts/hardware/android-pairing-time.ps1 -Human -SelfTest
+
+      - name: Scenario-family self-tests - the base URL guard, the neutralised defaults, the token file (#668)
+        # The helper signs accounts up and erases them, so these cases are the proof of the two rules that
+        # must hold before any request is sent: the host guard, and a create that refuses a ruleset whose
+        # screen-time defaults survived. The live "delete after create leaves nothing" case is skipped here
+        # (this job has no API) and runs in api-image.yml, the job that boots the API against Postgres.
+        # The run must PRINT its summary: a step that exits 0 in silence is a gate that did not run (the
+        # same trap as the site-design step below, #592). `pass 24` cannot appear on a failed or empty run —
+        # the suite is 22 cases, one of them the gated live case — and `fail 0` is asserted beside it because
+        # a 25th case that failed would still leave `pass 24` on the summary. Both lines are read from a
+        # captured copy, not through the pipe: `grep -q` stops at its match, and the summary is a block, so
+        # it can close the pipe on `tee` before the reporter finishes (SIGPIPE, exit 141, and `pipefail`
+        # fails the step). The staging-prereqs step below captures `out` for the same reason.
+        run: |
+          set -o pipefail
+          out=$(node --test scripts/hardware/scenario-family.test.mjs 2>&1 | tee /dev/stderr)
+          printf '%s\n' "$out" | grep -q 'pass 25$'
+          printf '%s\n' "$out" | grep -q 'fail 0$'
 
       - name: A PR may only change what its title says it changes
         # Added after 2026-10-19: a squash built on a pre-#218 base produced a 24-file diff that would
@@ -195,6 +221,13 @@ jobs:
         # -U0 ids). The patch comparison is kept as a second layer; no fixture isolates it any more, because
         # a clean fold cannot change it.
         run: node scripts/verified-gate-carry.mjs --selftest
+
+      - name: Mesh merge policy never lets an author, or the author's model family, verify alone (AGENTS.md §6.6)
+        # Maintainer 2026-11-13 15:42Z (#617, #719): every PR needs a signer who is not the author and, from R2
+        # up, from another model family; R3 needs a second key (Ahmed or Fable); Bureau lines when the diff
+        # needs them. Each rule has a case that fails without it, including a label trying to lower the tier.
+        run: |
+          node scripts/verified-gate-policy.mjs --selftest | tee /dev/stderr | grep -q '^verified-gate policy self-test: [0-9]* cases pass$'
 
       - name: Check documentation links resolve
         # A documentation set is only navigable if its links work; a moved guide rots the index
