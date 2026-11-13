@@ -135,26 +135,56 @@ function compare(a, b, acks) {
   const problems = [];
   const infos = [];
 
-  // #660: an ack that describes a rename must name its replacement, and the replacement must actually
-  // exist in the head at the same or higher severity. A "rename" whose replacement is missing, or that
-  // only survives demoted, is a narrowing wearing a rename label — exactly what this gate exists to
-  // refuse. This pass runs over the whole ack file (not only names this diff removed), because the ack
-  // file is a claim about the head, and a stale or false claim must not read as a clean gate.
+  // #660/#683: a rename ack must name its replacement, and the replacement must be a genuine, unique
+  // addition. A rename-word reason (label only / renamed / relabel / moved, case-insensitive) requires
+  // renamedTo; so does a removal that gains a same-kind assertion in the head (regardless of wording).
+  // A live ack's renamedTo must be newly added by this diff (absent from base) and unique across all
+  // acks; historical acks whose names this diff did not remove are left alone.
+  const removedByKind = {};
+  const addedByKind = {};
+  for (const kind of KINDS) {
+    removedByKind[kind] = new Set([...a.found[kind].keys()].filter((n) => !b.found[kind].has(n)));
+    addedByKind[kind] = new Set([...b.found[kind].keys()].filter((n) => !a.found[kind].has(n)));
+  }
+  const inBase = (name) => KINDS.some((k) => a.found[k].has(name));
+
+  const owners = new Map();
+  for (const ack of acks) {
+    if (typeof ack.renamedTo !== "string") continue;
+    const list = owners.get(ack.renamedTo) ?? [];
+    list.push(ack);
+    owners.set(ack.renamedTo, list);
+  }
+  for (const [target, list] of owners) {
+    if (list.length > 1) problems.push(`ack renamedTo shared by ${list.length} acks: ${target}`);
+  }
+
   for (const ack of acks) {
     const reason = typeof ack.reason === "string" ? ack.reason : "";
-    if ((reason.startsWith("Label only") || reason.startsWith("Renamed")) && typeof ack.renamedTo !== "string") {
-      problems.push(`ack missing renamedTo: ${ack.kind} ${ack.name}`);
+    const nameRemoved = removedByKind[ack.kind]?.has(ack.name) ?? false;
+
+    if (typeof ack.renamedTo !== "string") {
+      const prefixTrigger = /^(label only|renamed|relabel|moved)\b/i.test(reason);
+      const sameKindTrigger = nameRemoved && (addedByKind[ack.kind]?.size ?? 0) > 0;
+      if (prefixTrigger || sameKindTrigger) {
+        problems.push(`ack missing renamedTo: ${ack.kind} ${ack.name}`);
+      }
       continue;
     }
-    if (typeof ack.renamedTo !== "string") continue;
+
     let foundKind = null;
     for (const k of KINDS) {
       if (b.found[k].has(ack.renamedTo)) { foundKind = k; break; }
     }
     if (foundKind === null) {
       problems.push(`ack renamedTo not in head: ${ack.renamedTo} (from ${ack.kind} ${ack.name})`);
-    } else if (RANK[foundKind] > RANK[ack.kind]) {
+      continue;
+    }
+    if (RANK[foundKind] > RANK[ack.kind]) {
       problems.push(`ack renamedTo demoted: ${ack.renamedTo} is ${foundKind}, ${ack.name} was ${ack.kind}`);
+    }
+    if (nameRemoved && inBase(ack.renamedTo)) {
+      problems.push(`ack renamedTo already in base: ${ack.renamedTo} (from ${ack.kind} ${ack.name})`);
     }
   }
 
@@ -328,7 +358,7 @@ if (argv.includes("--selftest")) {
   );
 
   const acked = compare(assertions("check(\"R1 renamed\", ok);"), assertions(""), [
-    { kind: "check", name: "R1 renamed", reason: "renamed to R2 in the same PR" },
+    { kind: "check", name: "R1 renamed", reason: "retired because the old path no longer exists" },
   ]);
   expect(
     "an acknowledged removal is not an error",
@@ -391,6 +421,55 @@ if (argv.includes("--selftest")) {
     "a Label only/Renamed reason without renamedTo is an error",
     unbound.problems.some((p) => p.includes("missing renamedTo")),
     `problems=${JSON.stringify(unbound.problems)}`,
+  );
+
+  // #683 (Ahmed R1 / Claude H1): a live ack's renamedTo must be a NEW addition (absent from base),
+  // unique across all acks, and a same-kind addition must not escape without naming renamedTo.
+  const alreadyInBase = compare(
+    assertions('check("G25 old", ok);\ncheck("G25 new", ok);'),
+    assertions('check("G25 new", ok);'),
+    [{ kind: "check", name: "G25 old", renamedTo: "G25 new", reason: "Label only; renamed" }],
+  );
+  expect(
+    "a renamedTo that already exists in the base is an error",
+    alreadyInBase.problems.some((p) => p.includes("renamedTo already in base")),
+    `problems=${JSON.stringify(alreadyInBase.problems)}`,
+  );
+
+  const sharedRenamedTo = compare(
+    assertions('check("A old", ok);\ncheck("B old", ok);'),
+    assertions('check("A new", ok);'),
+    [
+      { kind: "check", name: "A old", renamedTo: "A new", reason: "Label only; renamed" },
+      { kind: "check", name: "B old", renamedTo: "A new", reason: "Label only; renamed" },
+    ],
+  );
+  expect(
+    "two acks sharing one renamedTo is an error",
+    sharedRenamedTo.problems.some((p) => p.includes("renamedTo shared")),
+    `problems=${JSON.stringify(sharedRenamedTo.problems)}`,
+  );
+
+  const lowerRenamed = compare(
+    assertions('check("G25 old", ok);'),
+    assertions('check("G25 new", ok);'),
+    [{ kind: "check", name: "G25 old", reason: "renamed to G25 new in this PR" }],
+  );
+  expect(
+    "a removal with a same-kind addition requires renamedTo even without the Label only/Renamed prefix",
+    lowerRenamed.problems.some((p) => p.includes("missing renamedTo")),
+    `problems=${JSON.stringify(lowerRenamed.problems)}`,
+  );
+
+  const crossSeverityLower = compare(
+    assertions('check("A old", ok);'),
+    assertions('target("A new", ok);'),
+    [{ kind: "check", name: "A old", reason: "renamed to A new in this PR" }],
+  );
+  expect(
+    "a lowercase renamed cross-severity removal without renamedTo is an error",
+    crossSeverityLower.problems.some((p) => p.includes("missing renamedTo")),
+    `problems=${JSON.stringify(crossSeverityLower.problems)}`,
   );
 
   // The scanner cases above would still pass if the CLI never called the scanner. Run the real
