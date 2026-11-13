@@ -9,7 +9,7 @@ final class A11yIDTests: XCTestCase {
     /// A control starts a line as `Button(`, `Button {`, `Menu(` and so on. Both call shapes count, so a control
     /// written with a `label:` closure is seen too.
     private static let controlPattern = try! NSRegularExpression(
-        pattern: #"^(Button|TextField|SecureField|NavigationLink|Toggle|Menu|Picker)\s*[({]"#)
+        pattern: #"^(Button|TextField|SecureField|NavigationLink|Toggle|Menu|Picker|DisclosureGroup)\s*[({]"#)
 
     func testTheIdentifiersAreUniqueStableAscii() {
         XCTAssertEqual(Set(A11yID.all).count, A11yID.all.count, "no two controls share an identifier")
@@ -85,7 +85,7 @@ final class A11yIDTests: XCTestCase {
         let names = ["pairServer", "pairCode", "pairName", "pairError", "pairButton",
                      "statusPaired", "statusChildName", "statusServer", "statusLastSynced", "statusSyncNow",
                      "statusSyncFailed", "statusScreenTime", "statusScreenTimeButton", "statusLocation",
-                     "statusLocationButton", "statusGroups", "statusRepair",
+                     "statusLocationButton", "statusGroups", "statusRepair", "statusTechnicalDetails",
                      "pinSetReason", "pinNew", "pinRepeat", "pinSetError", "pinSave", "pinGate", "pinGateMessage", "pinContinue",
                      "groupsNewName", "groupsNewChoose", "groupsNewChosen", "groupsNewAdd", "groupsError"]
         XCTAssertEqual(names.count, A11yID.all.count, "every identifier in A11yID.all is listed here")

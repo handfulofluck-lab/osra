@@ -31,6 +31,7 @@
 "status_paired" = "مقترن";
 "status_child" = "الطفل";
 "status_server" = "الخادم";
+"status_technical_details" = "التفاصيل التقنية";
 "status_device" = "الجهاز";
 "screen_time" = "مدة استخدام الجهاز";
 "screen_time_on" = "مفعّلة";
