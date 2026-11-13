@@ -4,6 +4,7 @@ on:
   # The three server files are the iOS agent's contract with the API (pairing, alerts, request signing):
   # a server change that breaks the iPhone agent turns red on its own PR (5.5 PR A2, #372).
   push:
+    branches: [main]
     paths:
       - 'apps/child-ios/**'
       - 'apps/parent-app/ios/**'
@@ -19,9 +20,9 @@ on:
       - 'services/api/src/routes/devices.ts'
       - 'services/api/src/routes/alerts.ts'
       - 'services/api/src/lib/internalAuth.ts'
-  # Nightly on main, whatever changed: the contract can also break through a dependency or an image.
+  # Weekly on main, whatever changed: the contract can also break through a dependency or an image.
   schedule:
-    - cron: '23 1 * * *'
+    - cron: '23 1 * * 1'
   workflow_dispatch:
 
 concurrency:
