@@ -277,7 +277,7 @@ export async function notifyDeviceWake(deviceId: string, commandId?: string): Pr
 
     const message = buildDeviceWakeMessage();
     const result = await provider.send(device.pushToken, message);
-    const sent = `provider=${provider.platform} priority=${message.priority}`;
+    const sent = `provider=${provider.platform}`;
     if (result.ok) {
       console.info(`${tag} sent ${sent} messageId=${result.messageId ?? "unreported"}`);
       return { ...outcome, delivered: 1 };
