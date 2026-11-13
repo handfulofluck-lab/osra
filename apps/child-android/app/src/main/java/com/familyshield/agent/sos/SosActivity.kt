@@ -29,8 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.familyshield.agent.R
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
@@ -147,39 +149,39 @@ private fun SosScreen(
         when (val s = state) {
             is SosStateMachine.State.Counting -> {
                 Text(
-                    text = "Sending SOS in ${(s.remainingMs + 999) / 1000}…",
+                    text = stringResource(R.string.sos_sending, (s.remainingMs + 999) / 1000),
                     style = MaterialTheme.typography.headlineMedium,
                     color = Color.White,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Stay calm — tap Cancel if this was accidental.",
+                    text = stringResource(R.string.sos_stay_calm),
                     color = Color(0xFFAEB0B8),
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(40.dp))
                 TextButton(onClick = { state = machine.cancel() }) {
-                    Text("Cancel", color = Color.White)
+                    Text(stringResource(R.string.sos_cancel), color = Color.White)
                 }
             }
             SosStateMachine.State.Fired -> {
                 Text(
-                    text = "Alert sent — stay where you are",
+                    text = stringResource(R.string.sos_sent_title),
                     style = MaterialTheme.typography.headlineMedium,
                     color = Color(0xFFEF9A9A),
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Your parent has been notified.",
+                    text = stringResource(R.string.sos_sent_body),
                     color = Color(0xFFAEB0B8),
                     textAlign = TextAlign.Center,
                 )
             }
             else -> {
                 Text(
-                    text = "Need help right now?",
+                    text = stringResource(R.string.sos_need_help),
                     style = MaterialTheme.typography.headlineMedium,
                     color = Color.White,
                     textAlign = TextAlign.Center,
@@ -189,15 +191,15 @@ private fun SosScreen(
                     onClick = { state = machine.start(SystemClock.elapsedRealtime()) },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
                 ) {
-                    Text("SOS", style = MaterialTheme.typography.displaySmall)
+                    Text(stringResource(R.string.sos_button), style = MaterialTheme.typography.displaySmall)
                 }
                 if (s == SosStateMachine.State.Cancelled) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(text = "SOS cancelled.", color = Color(0xFFAEB0B8))
+                    Text(text = stringResource(R.string.sos_cancelled), color = Color(0xFFAEB0B8))
                 }
                 Spacer(modifier = Modifier.height(40.dp))
                 TextButton(onClick = onClose) {
-                    Text("Close", color = Color.White)
+                    Text(stringResource(R.string.sos_close), color = Color.White)
                 }
             }
         }

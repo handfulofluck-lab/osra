@@ -10,6 +10,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.familyshield.agent.R
 import com.familyshield.agent.security.TamperGuardActivity
 
 /**
@@ -32,11 +33,25 @@ class RingActivity : Activity() {
                 val pad = (24 * resources.displayMetrics.density).toInt()
                 setPadding(pad, pad, pad, pad)
                 setBackgroundColor(0xFFB00020.toInt())
-                addView(TextView(context).apply { text = "🔔  Your parent is ringing this phone"; textSize = 24f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER })
-                addView(TextView(context).apply { text = "\nIt keeps ringing until a parent stops it."; textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER })
+                addView(
+                    TextView(context).apply {
+                        text = getString(R.string.ring_title)
+                        textSize = 24f
+                        setTextColor(0xFFFFFFFF.toInt())
+                        gravity = Gravity.CENTER
+                    },
+                )
+                addView(
+                    TextView(context).apply {
+                        text = "\n" + getString(R.string.ring_body)
+                        textSize = 16f
+                        setTextColor(0xFFFFFFFF.toInt())
+                        gravity = Gravity.CENTER
+                    },
+                )
                 addView(
                     Button(context).apply {
-                        text = "Stop ringing (parent PIN)"
+                        text = getString(R.string.ring_stop)
                         setOnClickListener {
                             startActivityForResult(
                                 Intent(this@RingActivity, TamperGuardActivity::class.java).putExtra(TamperGuardActivity.EXTRA_REASON, TamperGuardActivity.REASON_RING),

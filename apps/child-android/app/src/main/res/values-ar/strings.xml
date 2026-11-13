@@ -87,4 +87,158 @@
     <string name="block_request_sent">أُرسل الطلب إلى والدك أو والدتك</string>
     <string name="block_request_access">اطلب السماح</string>
     <string name="block_exit_home">الخروج إلى الشاشة الرئيسية</string>
+
+    <!--
+      #709: the Arabic for the English that used to be typed into the code. Every value below is copied
+      byte for byte from the Arabic Language Bureau's sweep (13 Nov 2026,
+      `docs/localization/2026-11-13-sweep-614-arabic.md` on #605). Nothing here was written or reworded by
+      the developer. Where the sweep gives `(new line)` the line break is real. Where it gives a plural
+      table, every form it listed is here.
+
+      Lines the sweep does not cover keep no entry here on purpose: Android falls back to `values/strings.xml`
+      and the phone shows English. `ChildScreenStringsTest` names them, so a missing line cannot hide.
+    -->
+    <!-- The `· أسرة` tail drops in Arabic: the Arabic title is already Arabic (sweep, 13 Nov). -->
+    <string name="title_brand_suffix">%1$s</string>
+
+    <string name="setup_protect_title">احمِ هذا الجهاز</string>
+    <string name="setup_protect_body">في الشاشة التالية، اضغط «تفعيل» ليصبح تطبيق أسرة للأطفال مسؤول الجهاز. بذلك لا يمكن إلغاء تثبيته دون رمز PIN للوالدين، ويمكن قفل الجهاز عن بُعد من تطبيق الوالدين. وبدونه تقتصر الحماية على التنبيه.</string>
+    <string name="setup_activate_admin">فعّل مسؤول الجهاز</string>
+    <string name="setup_skip">تخطَّ الآن (حماية بالتنبيه فقط)</string>
+    <string name="setup_try_activate_again">حاول التفعيل مرة أخرى</string>
+    <string name="setup_continue_without">تابع دون حماية</string>
+    <string name="setup_complete_title">اكتمل الإعداد</string>
+    <string name="setup_complete_body">بدأ تطبيق أسرة للأطفال مراقبة هذا الجهاز.</string>
+    <string name="setup_call_sms_invite">اختياري: امنح إذنَي سجل المكالمات والرسائل القصيرة لتُسجَّل المكالمات والرسائل من أجل مراجعة الأمان. التسجيل فقط، ولا يصبح تطبيق أسرة للأطفال تطبيق الهاتف الافتراضي أبدًا.</string>
+    <string name="setup_grant_call_sms">امنح إذنَي المكالمات والرسائل</string>
+    <string name="setup_open_status">افتح الحالة</string>
+    <string name="setup_checklist_first_title">أكمل حماية هذا الجهاز</string>
+    <string name="setup_checklist_title">قائمة الحماية</string>
+    <string name="setup_checklist_button">قائمة الحماية</string>
+    <string name="setup_checklist_intro">كل بند أدناه يفتح الشاشة التي يُمنح منها. ارجع إلى هنا بعد كل بند، وستتحدّث القائمة تلقائيًا.</string>
+    <string name="setup_back">رجوع</string>
+    <string name="setup_done">تم</string>
+    <string name="setup_recommended">(موصى به)</string>
+    <string name="setup_grant_button">امنح: %1$s</string>
+    <string name="setup_web_filter_missing">⚠️ تصفية المواقع غير مُعدّة. اسمح بشبكة VPN الخاصة بتطبيق أسرة للأطفال. هي تصفّي عناوين المواقع على هذا الهاتف فقط، ولا يغادر الهاتفَ شيء.</string>
+    <string name="setup_web_filter_setup">أعدّ تصفية المواقع</string>
+    <string name="setup_web_filter_connected">✓ تصفية المواقع: متصلة (البحث الآمن، المواقع المحظورة، إيقاف الإنترنت)</string>
+    <string name="setup_web_filter_disconnected">⚠️ تصفية المواقع: غير متصلة</string>
+    <string name="setup_web_filter_reconnect">أعد توصيل تصفية المواقع</string>
+    <string name="status_paired_title">هذا الجهاز مقترن</string>
+    <string name="status_identity">الطفل: %1$s\nالجهاز: %2$s\nالخادم: %3$s</string>
+    <string name="status_protection_owner">✓ الحماية: مالك الجهاز (النظام يمنع إلغاء التثبيت)</string>
+    <string name="status_protection_admin">✓ الحماية: مسؤول الجهاز (إلغاء التثبيت يتطلب رمز PIN للوالدين)</string>
+    <string name="status_protection_alert_only">⚠️ الحماية: بالتنبيه فقط. مسؤول الجهاز غير مفعّل</string>
+    <string name="status_open_accessibility">افتح إعدادات إمكانية الوصول</string>
+    <string name="status_missing_label">الناقص:</string>
+    <string name="status_repair">أعد الإقران (رمز PIN للوالدين)</string>
+    <string name="status_remove_protection">أزل الحماية (رمز PIN للوالدين)</string>
+
+    <string name="setup_error_server_url_required">عنوان الخادم مطلوب</string>
+    <string name="setup_error_http">ردّ الخادم برمز HTTP %1$d</string>
+    <string name="setup_error_no_device_id">ردّ الخادم لا يتضمّن معرّف الجهاز</string>
+    <string name="setup_error_unfinished">لم يكتمل الإقران</string>
+
+    <plurals name="setup_finish_protection">
+        <item quantity="zero">أكمل الحماية (بقي %1$d إذن)</item>
+        <item quantity="one">أكمل الحماية (بقي إذن واحد)</item>
+        <item quantity="two">أكمل الحماية (بقي إذنان)</item>
+        <item quantity="few">أكمل الحماية (بقيت %1$d أذونات)</item>
+        <item quantity="many">أكمل الحماية (بقي %1$d إذنًا)</item>
+        <item quantity="other">أكمل الحماية (بقي %1$d إذن)</item>
+    </plurals>
+
+    <string name="onboarding_grant_accessibility_title">خدمة إمكانية الوصول</string>
+    <string name="onboarding_grant_accessibility_why">تحظر التطبيقات وتطبّق الحدود وتحمي شاشات إلغاء التثبيت. لا يعمل شيء بدونها.</string>
+    <string name="onboarding_grant_usage_title">الوصول إلى بيانات الاستخدام</string>
+    <string name="onboarding_grant_usage_why">يحسب وقت الشاشة لكل تطبيق، لتكون الحدود اليومية والتقارير صحيحة.</string>
+    <string name="onboarding_grant_overlay_title">العرض فوق التطبيقات الأخرى</string>
+    <string name="onboarding_grant_overlay_why">يعرض شاشات القفل والإيقاف المؤقت ورمز PIN فوق أي تطبيق مفتوح.</string>
+    <string name="onboarding_grant_device_admin_title">مسؤول الجهاز</string>
+    <string name="onboarding_grant_device_admin_why">يمنع إلغاء تثبيت التطبيق دون رمز PIN للوالدين، ويتيح قفل الجهاز من تطبيق الوالدين.</string>
+    <string name="onboarding_grant_web_filter_title">تصفية المواقع (موافقة VPN)</string>
+    <string name="onboarding_grant_web_filter_why">تحظر المواقع والفئات، وتفرض البحث الآمن، وتجعل إيقاف الإنترنت يعمل فعلًا.</string>
+    <string name="onboarding_grant_location_title">الموقع (السماح دائمًا)</string>
+    <string name="onboarding_grant_location_why">لتحديد موقع الجهاز ولتنبيهات الأماكن. الإذن في الخلفية يبقيهما يعملان والتطبيق مغلق.</string>
+    <string name="onboarding_grant_private_dns_title">DNS الخاص غير مضبوط على مزوّد</string>
+    <string name="onboarding_grant_private_dns_why">تحديد مزوّد لـ DNS الخاص يتجاوز تصفية المواقع. اضبطه على «تلقائي» أو «إيقاف».</string>
+    <string name="onboarding_grant_battery_title">البطارية: بدون قيود</string>
+    <string name="onboarding_grant_battery_why">بدونه قد يوقف الهاتف تطبيق أسرة للأطفال في الخلفية، فتتأخر الأوامر.</string>
+    <string name="onboarding_grant_usb_title">إيقاف تصحيح USB</string>
+    <string name="onboarding_grant_usb_why">إذا كان تصحيح USB مفعّلًا، يستطيع أي شخص معه كمبيوتر مسح بيانات تطبيق أسرة للأطفال على هذا الهاتف. أوقفه من «خيارات المطوّرين».</string>
+    <string name="onboarding_grant_notification_title">الوصول إلى الإشعارات</string>
+    <string name="onboarding_grant_notification_why">يقرأ إشعارات التطبيقات المراقَبة من أجل فحص الأمان.</string>
+
+    <string name="onboarding_progress">اكتمل %1$d من %2$d من الأذونات المطلوبة</string>
+    <string name="onboarding_progress_complete">اكتملت الأذونات المطلوبة كلها (%1$d من %2$d). الحماية مكتملة</string>
+    <string name="onboarding_capture_notifications">هذه النسخة تلتقط الرسائل من الشاشة فقط. النسخة الكاملة من أسرة للأطفال تضيف التقاط الإشعارات.</string>
+    <string name="onboarding_capture_call_sms">هذه النسخة تلتقط الرسائل من الشاشة فقط. النسخة الكاملة من أسرة للأطفال تضيف التقاط المكالمات والرسائل القصيرة.</string>
+    <string name="onboarding_capture_both">هذه النسخة تلتقط الرسائل من الشاشة فقط. النسخة الكاملة من أسرة للأطفال تضيف التقاط الإشعارات والمكالمات والرسائل القصيرة.</string>
+
+    <string name="admin_parent_removal_note">أُزيلت الحماية برمز PIN للوالدين. اضغط «فعّل مسؤول الجهاز» لإعادتها.</string>
+    <string name="admin_stale_title">تعذّر تفعيل الحماية</string>
+    <string name="admin_stale_body">أُغلقت شاشة النظام دون تفعيل أي شيء. ما زالت طبقة Knox من سامسونج تعدّ تطبيق أسرة للأطفال مسؤولًا للجهاز، ولذلك يرفض النظام التفعيل.</string>
+    <string name="admin_stale_action">افتح إعدادات مسؤول الجهاز</string>
+
+    <string name="pin_gate_title">محمي بتطبيق أسرة للأطفال</string>
+    <string name="pin_gate_hint">رمز PIN للوالدين</string>
+    <string name="pin_gate_continue">متابعة</string>
+    <string name="pin_gate_back">رجوع</string>
+    <string name="pin_gate_too_many">محاولات كثيرة. اطلب من والدك أو والدتك.</string>
+    <string name="pin_gate_wrong">رمز PIN غير صحيح.</string>
+    <string name="pin_gate_reason_repair">إعادة إقران هذا الجهاز تتطلب رمز PIN للوالدين.</string>
+    <string name="pin_gate_reason_remove">إزالة الحماية تتطلب رمز PIN للوالدين.</string>
+    <string name="pin_gate_reason_ring">إيقاف الرنين يتطلب رمز PIN للوالدين.</string>
+    <string name="pin_gate_reason_settings">تغيير هذا الإعداد يتطلب رمز PIN للوالدين.\nأُرسل تنبيه إلى والدك أو والدتك.</string>
+
+    <string name="ring_title">🔔 هذا الهاتف يرنّ بطلب من والدك أو والدتك</string>
+    <string name="ring_body">سيستمر الرنين إلى أن يوقفه أحد الوالدين.</string>
+    <string name="ring_stop">أوقف الرنين (رمز PIN للوالدين)</string>
+
+    <string name="sos_sending">إرسال الاستغاثة بعد %1$d…</string>
+    <string name="sos_stay_calm">اهدأ. إذا ضغطت بالخطأ فاضغط «إلغاء».</string>
+    <string name="sos_cancel">إلغاء</string>
+    <string name="sos_sent_title">أُرسل التنبيه. ابقَ في مكانك</string>
+    <string name="sos_sent_body">أُرسل تنبيه إلى والدك أو والدتك.</string>
+    <string name="sos_need_help">هل تحتاج إلى مساعدة الآن؟</string>
+    <string name="sos_cancelled">أُلغيت الاستغاثة.</string>
+    <string name="sos_close">إغلاق</string>
+
+    <string name="qr_permission_denied">رُفض إذن الكاميرا، لذلك لا يمكن تشغيل ماسح رمز QR. أدخل عنوان الخادم ورمز الإقران أدناه، أو اسمح بالكاميرا من الإعدادات وامسح مرة أخرى.</string>
+    <string name="qr_preview_description">معاينة الكاميرا</string>
+    <string name="qr_starting">جارٍ تشغيل الكاميرا…</string>
+    <string name="qr_cancel">إلغاء المسح</string>
+    <string name="qr_cancel_description">إلغاء المسح والعودة إلى نموذج الإقران</string>
+    <string name="qr_rationale_title">امسح رمز QR للإقران</string>
+    <string name="qr_rationale_body">يستخدم تطبيق أسرة للأطفال الكاميرا فقط لقراءة رمز QR الظاهر على شاشة والدك أو والدتك. تُعالَج الصورة على هذا الهاتف، ولا تُحفظ ولا تُرفع إلى أي مكان. ويمكنك دائمًا كتابة عنوان الخادم والرمز بدلًا من المسح.</string>
+    <string name="qr_continue">متابعة</string>
+    <string name="qr_enter_code">أدخل الرمز يدويًا</string>
+    <string name="qr_permission_not_granted">لم يُمنح إذن الكاميرا، لذلك لا يمكن تشغيل ماسح رمز QR. أدخل عنوان الخادم ورمز الإقران أدناه.</string>
+    <string name="qr_camera_failed">تعذّر تشغيل الكاميرا. أدخل عنوان الخادم ورمز الإقران أدناه.</string>
+    <string name="qr_camera_ready">الكاميرا جاهزة. وجّه الهاتف نحو رمز QR الظاهر على شاشة والدك أو والدتك.</string>
+
+    <string name="location_status_missing_permission">⚠️ إذن الموقع مطلوب لمتابعة الموقع المباشرة ولتنبيهات الأماكن.</string>
+    <string name="location_status_missing_background">⚠️ الموقع: يحتاج إلى «السماح دائمًا». بدونه لا يعمل تحديد الموقع ولا تنبيهات الأماكن على هذا الهاتف والتطبيق مغلق.</string>
+    <string name="location_status_service_stopped">⚠️ خدمة الموقع متوقفة.</string>
+    <string name="location_status_active">✓ متابعة الموقع: تعمل</string>
+    <string name="location_action_grant">امنح إذن الموقع</string>
+    <string name="location_action_allow_all_time">اسمح بالموقع دائمًا</string>
+    <string name="location_action_start">شغّل خدمة الموقع</string>
+
+    <string name="notification_channel_commands">أوامر الوالدين</string>
+    <string name="notification_wind_down_title">وقت الشاشة يوشك على الانتهاء</string>
+    <plurals name="notification_wind_down_text">
+        <item quantity="zero">ستُقفل الشاشة بعد %1$d دقيقة</item>
+        <item quantity="one">ستُقفل الشاشة بعد دقيقة واحدة</item>
+        <item quantity="two">ستُقفل الشاشة بعد دقيقتين</item>
+        <item quantity="few">ستُقفل الشاشة بعد %1$d دقائق</item>
+        <item quantity="many">ستُقفل الشاشة بعد %1$d دقيقة</item>
+        <item quantity="other">ستُقفل الشاشة بعد %1$d دقيقة</item>
+    </plurals>
+    <string name="notification_channel_command_checks">التحقق من الأوامر</string>
+    <string name="notification_checking_commands">جارٍ التحقق من أوامر الوالدين</string>
+    <string name="notification_location_active">مشاركة الموقع تعمل</string>
+    <string name="notification_channel_content_filter">تصفية المواقع</string>
+    <string name="notification_content_filter_active">تصفية المواقع تعمل</string>
 </resources>

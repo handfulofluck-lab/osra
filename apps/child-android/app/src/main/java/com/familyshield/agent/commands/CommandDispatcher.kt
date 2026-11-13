@@ -209,7 +209,11 @@ class CommandDispatcher @Inject constructor(
         runCatching {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return@runCatching
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_COMMANDS, "Parent commands", NotificationManager.IMPORTANCE_HIGH),
+                NotificationChannel(
+                    CHANNEL_COMMANDS,
+                    context.getString(R.string.notification_channel_commands),
+                    NotificationManager.IMPORTANCE_HIGH,
+                ),
             )
             val open = PendingIntent.getActivity(
                 context,
@@ -422,12 +426,18 @@ class CommandDispatcher @Inject constructor(
         runCatching {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_COMMANDS, "Parent commands", NotificationManager.IMPORTANCE_HIGH),
+                NotificationChannel(
+                    CHANNEL_COMMANDS,
+                    context.getString(R.string.notification_channel_commands),
+                    NotificationManager.IMPORTANCE_HIGH,
+                ),
             )
             val notification = NotificationCompat.Builder(context, CHANNEL_COMMANDS)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Screen time ending")
-                .setContentText("Screen will lock in $minutes minutes")
+                .setContentTitle(context.getString(R.string.notification_wind_down_title))
+                .setContentText(
+                    context.resources.getQuantityString(R.plurals.notification_wind_down_text, minutes, minutes),
+                )
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setAutoCancel(true)

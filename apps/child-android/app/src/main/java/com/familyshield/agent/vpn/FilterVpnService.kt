@@ -282,12 +282,16 @@ class FilterVpnService : VpnService() {
     private fun startForegroundCompat() {
         val nm = getSystemService(NotificationManager::class.java)
         nm?.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Content filter", NotificationManager.IMPORTANCE_MIN).apply { setShowBadge(false) },
+            NotificationChannel(
+                CHANNEL,
+                getString(R.string.notification_channel_content_filter),
+                NotificationManager.IMPORTANCE_MIN,
+            ).apply { setShowBadge(false) },
         )
         val n: Notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Content filter active")
+            .setContentText(getString(R.string.notification_content_filter_active))
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

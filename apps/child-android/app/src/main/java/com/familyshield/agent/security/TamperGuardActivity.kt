@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import com.familyshield.agent.R
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -43,15 +44,15 @@ open class TamperGuardActivity : ComponentActivity() {
         }
 
         val pin = EditText(this).apply {
-            hint = "Parent PIN"
+            hint = getString(R.string.pin_gate_hint)
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             filters = arrayOf(InputFilter.LengthFilter(ParentPin.MAX_LENGTH))
             textSize = 24f
             gravity = Gravity.CENTER
         }
         val error = TextView(this).apply { setTextColor(0xFFB00020.toInt()); textSize = 16f }
-        val unlock = Button(this).apply { text = "Continue" }
-        val back = Button(this).apply { text = "Go back" }
+        val unlock = Button(this).apply { text = getString(R.string.pin_gate_continue) }
+        val back = Button(this).apply { text = getString(R.string.pin_gate_back) }
 
         unlock.setOnClickListener {
             val entered = pin.text.toString()
@@ -63,9 +64,9 @@ open class TamperGuardActivity : ComponentActivity() {
                 attempts += 1
                 pin.text.clear()
                 error.text = if (attempts >= MAX_ATTEMPTS) {
-                    "Too many attempts. Ask your parent."
+                    getString(R.string.pin_gate_too_many)
                 } else {
-                    "Wrong PIN."
+                    getString(R.string.pin_gate_wrong)
                 }
                 if (attempts >= MAX_ATTEMPTS) goHome()
             }
@@ -80,7 +81,7 @@ open class TamperGuardActivity : ComponentActivity() {
                 setPadding(64, 64, 64, 64)
                 addView(
                     TextView(this@TamperGuardActivity).apply {
-                        text = "Protected by OSRA · أسرة"
+                        text = getString(R.string.pin_gate_title)
                         setTextColor(0xFFFFFFFF.toInt())
                         textSize = 26f
                         gravity = Gravity.CENTER
@@ -88,12 +89,14 @@ open class TamperGuardActivity : ComponentActivity() {
                 )
                 addView(
                     TextView(this@TamperGuardActivity).apply {
-                        text = when (reason) {
-                            REASON_REPAIR -> "Re-pairing this device needs your parent's PIN."
-                            REASON_REMOVE -> "Removing protection needs your parent's PIN."
-                            REASON_RING -> "Stopping the ring needs your parent's PIN."
-                            else -> "Changing this setting needs your parent's PIN.\nYour parent has been notified."
-                        }
+                        text = getString(
+                            when (reason) {
+                                REASON_REPAIR -> R.string.pin_gate_reason_repair
+                                REASON_REMOVE -> R.string.pin_gate_reason_remove
+                                REASON_RING -> R.string.pin_gate_reason_ring
+                                else -> R.string.pin_gate_reason_settings
+                            },
+                        )
                         setTextColor(0xFFAEB0B8.toInt())
                         textSize = 16f
                         gravity = Gravity.CENTER

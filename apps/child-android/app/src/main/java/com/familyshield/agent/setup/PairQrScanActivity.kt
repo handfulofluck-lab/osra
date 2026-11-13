@@ -23,6 +23,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.R
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -56,10 +57,7 @@ class PairQrScanActivity : ComponentActivity() {
         if (granted) {
             startCamera()
         } else {
-            finishWithError(
-                "Camera permission was denied, so the QR scanner cannot start. " +
-                    "Enter the server URL and pairing code below, or allow Camera in Settings and scan again.",
-            )
+            finishWithError(getString(R.string.qr_permission_denied))
         }
     }
 
@@ -87,7 +85,7 @@ class PairQrScanActivity : ComponentActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
-            contentDescription = "Camera preview"
+            contentDescription = getString(R.string.qr_preview_description)
         }
         root.addView(previewView)
 
@@ -104,7 +102,7 @@ class PairQrScanActivity : ComponentActivity() {
             )
         }
         status = TextView(this).apply {
-            text = "Starting the camera…"
+            text = getString(R.string.qr_starting)
             setTextColor(Color.WHITE)
             textSize = 16f
             contentDescription = text
@@ -112,8 +110,8 @@ class PairQrScanActivity : ComponentActivity() {
         }
         overlay.addView(status)
         val close = Button(this).apply {
-            text = "Cancel scanning"
-            contentDescription = "Cancel scanning and return to the pairing form"
+            text = getString(R.string.qr_cancel)
+            contentDescription = getString(R.string.qr_cancel_description)
             setOnClickListener { finish() }
         }
         overlay.addView(close)
@@ -123,20 +121,13 @@ class PairQrScanActivity : ComponentActivity() {
 
     private fun showCameraRationale() {
         AlertDialog.Builder(this)
-            .setTitle("Scan the pairing QR code")
-            .setMessage(
-                "OSRA uses the camera only to read the QR code on your parent's screen. " +
-                    "The picture is processed on this phone and is not saved or uploaded. " +
-                    "You can always type the server URL and code instead.",
-            )
-            .setPositiveButton("Continue") { _, _ ->
+            .setTitle(getString(R.string.qr_rationale_title))
+            .setMessage(getString(R.string.qr_rationale_body))
+            .setPositiveButton(getString(R.string.qr_continue)) { _, _ ->
                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
-            .setNegativeButton("Enter code instead") { _, _ ->
-                finishWithError(
-                    "Camera permission was not granted, so the QR scanner cannot start. " +
-                        "Enter the server URL and pairing code below.",
-                )
+            .setNegativeButton(getString(R.string.qr_enter_code)) { _, _ ->
+                finishWithError(getString(R.string.qr_permission_not_granted))
             }
             .setCancelable(false)
             .show()
@@ -148,7 +139,7 @@ class PairQrScanActivity : ComponentActivity() {
             val provider = try {
                 future.get()
             } catch (e: Exception) {
-                finishWithError("The camera could not start. Enter the server URL and pairing code below.")
+                finishWithError(getString(R.string.qr_camera_failed))
                 return@addListener
             }
             cameraProvider = provider
@@ -168,10 +159,10 @@ class PairQrScanActivity : ComponentActivity() {
             try {
                 provider.unbindAll()
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-                status.text = "Camera ready. Point the phone at the QR code on the parent's screen."
+                status.text = getString(R.string.qr_camera_ready)
                 status.contentDescription = status.text
             } catch (e: Exception) {
-                finishWithError("The camera could not start. Enter the server URL and pairing code below.")
+                finishWithError(getString(R.string.qr_camera_failed))
             }
         }, ContextCompat.getMainExecutor(this))
     }
