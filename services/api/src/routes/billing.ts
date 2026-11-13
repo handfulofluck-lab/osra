@@ -322,6 +322,37 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingDeps = {}
     }
 
     try {
+      // #692: a refund arrives as a voided purchase, not a subscription notification. ADR-0041 D3's rule is
+      // one rule — a revocation, a refund and a chargeback all end access when we learn of it — so this
+      // revokes immediately with `refunded`, and it needs no Play call: the store has already told us.
+      const voided = notification.voidedPurchaseNotification;
+      // `productType` 2 is a one-time product: voiding it must not touch a family plan. Only a subscription
+      // (1) or an unstated type — which Play only omits on older payloads — can revoke one.
+      if (voided && voided.productType === 2) {
+        log("billing.rtdn.voided_non_subscription", { messageId, productType: 2 });
+        return reply.code(204).send();
+      }
+      if (voided && (voided.purchaseToken ?? "") !== "") {
+        const familyId = await findFamilyForPurchase("google_play", voided.purchaseToken!);
+        if (!familyId) {
+          log("billing.rtdn.unknown_refund", { messageId });
+          return reply.code(204).send();
+        }
+        await revokeEntitlement({
+          familyId,
+          source: "google_play",
+          state: "refunded",
+          productId: voided.productId ?? "",
+          expiresAt: null,
+          autoRenews: false,
+          storeRef: voided.purchaseToken!,
+          effectiveAt: effectiveAt(notification.eventTimeMillis),
+          cause: "voided_purchase",
+        });
+        log("billing.rtdn.refunded", { messageId, orderId: voided.orderId ?? null });
+        return reply.code(204).send();
+      }
+
       const sub = notification.subscriptionNotification;
       if (!sub?.purchaseToken) {
         log("billing.rtdn.no_subscription", { messageId, packageName: notification.packageName ?? null });
