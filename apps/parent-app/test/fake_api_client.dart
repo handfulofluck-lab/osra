@@ -115,6 +115,8 @@ class FakeApiClient extends ApiClient {
 Map<String, dynamic> familyMeTwoChildren({
   String alexName = 'Alex',
   String alexModel = 'Pixel 7a',
+  // #643: an iOS child never reports an app list, so a screen that offers the Android picker is a dead end.
+  String alexPlatform = 'android',
   Duration samLastSeen = const Duration(hours: 2),
 }) {
   final now = DateTime.now().toUtc();
@@ -136,7 +138,7 @@ Map<String, dynamic> familyMeTwoChildren({
       {
         'id': 'dev-1',
         'childId': 'child-1',
-        'platform': 'android',
+        'platform': alexPlatform,
         'model': alexModel,
         'osVersion': '14',
         'status': 'online',
