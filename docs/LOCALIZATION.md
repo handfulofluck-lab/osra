@@ -510,7 +510,7 @@ A row here is final unless he says otherwise; if he does, the row moves to "Kari
 | A list of weekdays | full names joined with «و»: «الاثنين والثلاثاء» | a dash range («الاثنين–الجمعة»), commas | B 13 Nov |
 | Write to us (support address) | «راسلنا على support@osratech.com» | «اكتب إلى» | B 13 Nov: the approved guide page |
 | Permission (the phone's), to grant one | «إذن», «أذونات»; «امنح» | «صلاحية», which is a family member's permission («الصلاحيات») | B 13 Nov: Android's own word |
-| Online, offline, not connected yet (a device) | «متصل», «غير متصل», «لم يتصل بعد» | «أونلاين», «غير متاح» | K for the first two; B 13 Nov |
+| Online, offline, not connected yet (a device) | «متصل», «غير متصل», «لم يتصل بعد» | «أونلاين», «غير متاح» | the first two are the app's own lines (`statusOnline`, `statusOffline`); B 13 Nov |
 | Last seen | «آخر ظهور» with «قبل …», «أمس الساعة …», «في {date}» | «شوهد», «منذ» before a filled-in duration | B 13 Nov |
 | Protection checklist (child app) | «قائمة الحماية» | | B 13 Nov |
 | Alert-only protection | «حماية بالتنبيه فقط», «الحماية: بالتنبيه فقط» | | B 13 Nov |
