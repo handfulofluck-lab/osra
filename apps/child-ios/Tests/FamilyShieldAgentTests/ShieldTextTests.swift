@@ -150,8 +150,42 @@ final class ShieldTextTests: XCTestCase {
         let text = try String(contentsOf: folder.appendingPathComponent("ShieldText.swift"), encoding: .utf8)
         XCTAssertTrue(text.contains("preferences: () -> [String] = freshPreferredLanguages"), "the default re-reads")
         XCTAssertTrue(text.contains("CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)"))
-        XCTAssertTrue(text.contains("language: String = preferredLanguage()"), "current() resolves per call")
+        XCTAssertTrue(text.contains("language: String = resolvedLanguage()"), "current() resolves per call")
+        XCTAssertTrue(text.contains("fallback: () -> String = { preferredLanguage() }"), "the fresh read is the fallback")
         XCTAssertFalse(text.contains("static let language"), "no cached language")
         XCTAssertFalse(text.contains("forPreferences: Locale.preferredLanguages"), "not the cached list")
+    }
+
+    // MARK: - #732: the app group's language comes first
+
+    func testTheRecordedLanguageWinsOverTheExtensionsOwnRead() {
+        XCTAssertEqual(ShieldText.resolvedLanguage(stored: "ar", fallback: { "en" }), "ar",
+                       "the app ran in Arabic after the switch; the extension still reads English")
+        XCTAssertEqual(ShieldText.resolvedLanguage(stored: "en", fallback: { "ar" }), "en", "and back")
+        XCTAssertEqual(ShieldText.resolvedLanguage(stored: nil, fallback: { "ar" }), "ar", "nothing recorded yet")
+        XCTAssertEqual(ShieldText.resolvedLanguage(stored: "fr", fallback: { "en" }), "en", "an unshipped value is ignored")
+    }
+
+    func testTheAppRecordsTheLanguageItRunsIn() {
+        let name = "ShieldTextTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        SharedLanguage.record(["ar-AE", "en-AE"], defaults: defaults)
+        XCTAssertEqual(SharedLanguage.stored(defaults: defaults), "ar")
+        SharedLanguage.record(["en-US"], defaults: defaults)
+        XCTAssertEqual(SharedLanguage.stored(defaults: defaults), "en")
+        SharedLanguage.record(["fr-FR"], defaults: defaults)
+        XCTAssertEqual(SharedLanguage.stored(defaults: defaults), "en", "an unshipped language records English")
+    }
+
+    func testTheAppRecordsAtLaunchAndOnALocaleChange() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let app = try String(contentsOf: root.appendingPathComponent("App/OSRAAgentApp.swift"), encoding: .utf8)
+        XCTAssertTrue(app.contains("SharedLanguage.record()"), "at launch")
+        XCTAssertTrue(app.contains("NSLocale.currentLocaleDidChangeNotification"), "and when the locale changes")
+        let text = try String(contentsOf: root.appendingPathComponent("Sources/FamilyShieldAgent/ShieldText.swift"),
+                              encoding: .utf8)
+        XCTAssertTrue(text.contains("language: String = resolvedLanguage()"), "the shield reads the recorded language first")
     }
 }

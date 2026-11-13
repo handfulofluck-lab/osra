@@ -43,9 +43,11 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
         #if DEBUG
         // #654 device row: what the extension process is told about languages, to confirm the cause.
         let preferred = ShieldText.freshPreferredLanguages().joined(separator: ",")
+        let standard = (UserDefaults.standard.array(forKey: "AppleLanguages") as? [String] ?? []).joined(separator: ",")
         let bundle = Bundle.main.preferredLocalizations.joined(separator: ",")
-        let chosen = ShieldText.preferredLanguage()
-        logger.debug("shield_language preferred=\(preferred, privacy: .public) bundle=\(bundle, privacy: .public) chosen=\(chosen, privacy: .public)")
+        let stored = SharedLanguage.stored() ?? "none"
+        let chosen = ShieldText.resolvedLanguage()
+        logger.debug("shield_language preferred=\(preferred, privacy: .public) standard=\(standard, privacy: .public) locale=\(Locale.current.identifier, privacy: .public) bundle=\(bundle, privacy: .public) stored=\(stored, privacy: .public) chosen=\(chosen, privacy: .public)")
         #endif
         return ShieldConfiguration(
             backgroundBlurStyle: nil,

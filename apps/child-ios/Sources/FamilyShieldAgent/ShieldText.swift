@@ -95,7 +95,7 @@ public struct ShieldText: Equatable {
     /// the phone's own: DeviceActivity starts and ends each interval on the device's local time, so that is the
     /// clock the shield is actually held by.
     public static func current(bundleIdentifier: String?, now: Date = Date(), timeZone: TimeZone = .current,
-                               language: String = preferredLanguage()) -> ShieldText {
+                               language: String = resolvedLanguage()) -> ShieldText {
         let window = activeWindow(bundleIdentifier: bundleIdentifier, now: now, timeZone: timeZone,
                                   bedtimeStart: RuleStore.bedtimeStart(), bedtimeEnd: RuleStore.bedtimeEnd(),
                                   routines: RuleStore.routineSchedules(), blocked: RuleStore.blockedApps(),
@@ -110,6 +110,17 @@ public struct ShieldText: Equatable {
     /// list comes from `freshPreferredLanguages`, which re-reads the system's preferences first.
     public static func preferredLanguage(preferences: () -> [String] = freshPreferredLanguages) -> String {
         Bundle.preferredLocalizations(from: ["en", "ar"], forPreferences: preferences()).first ?? "en"
+    }
+
+    /// #732, second attempt: the language the shield uses. On a real iPhone the extension's own view of the language
+    /// (`Locale.preferredLanguages`, `AppleLanguages`, its bundle's localization) stayed at the pre-switch language
+    /// until the app was reinstalled, even in a fresh extension process. The main app is restarted by iOS on a
+    /// language change and records the language it runs in to the app group (`SharedLanguage`), so that comes first;
+    /// the extension's own read is the fallback for a phone whose app has not run since pairing.
+    public static func resolvedLanguage(stored: String? = SharedLanguage.stored(),
+                                        fallback: () -> String = { preferredLanguage() }) -> String {
+        if let stored, ["en", "ar"].contains(stored) { return stored }
+        return fallback()
     }
 
     /// The phone's language list as it is now: the global `AppleLanguages` after re-reading the preferences, and
