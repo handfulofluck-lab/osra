@@ -182,8 +182,15 @@ jobs:
               files: ($files | split("\n") | map(select(length > 0))),
               signatures: ($valid | split("\n") | map(select(length > 0) | split("\t") | {kind: .[0], name: .[1]}))}' \
             > "$RUNNER_TEMP/policy-input.json"
-          if ! node "$policy" < "$RUNNER_TEMP/policy-input.json"; then
+          if ! node "$policy" < "$RUNNER_TEMP/policy-input.json" > "$RUNNER_TEMP/policy-out.txt"; then
+            cat "$RUNNER_TEMP/policy-out.txt"
             echo "::error::'state:verified' is set, but the signatures valid at head $HEAD_SHA do not meet the mesh policy (AGENTS.md §6.6). A push after verification needs a fresh signature unless it only merged main and left the PR's own change identical."
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/policy-out.txt"
+          # A policy that exits 0 without printing its decision (e.g. its CLI never ran) is not a pass.
+          if ! grep -q '^OK: counted ' "$RUNNER_TEMP/policy-out.txt"; then
+            echo "::error::The policy printed no decision: failing closed."
             exit 1
           fi
           echo "OK — head $HEAD_SHA verified under the mesh policy."

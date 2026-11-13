@@ -415,7 +415,11 @@ in code (`CommandDispatcher`, `CommandPollWorker`, `UnlinkedNotice`, `CallEnforc
 desktop lock overlay, dialogs, alerts, SOS prompt, block page, `Resources/` and `.xaml`, asset catalogs, `.lproj`,
 storyboards, `.arb`, `.strings(dict)`, `.xcstrings`, the API email templates (`services/api/src/lib/email/`) and push
 alert choice (`services/api/src/lib/push/notify.ts`), `site/`, `scripts/site/`, `docs/store/`, `docs/design/`, or label
-`needs:uiux`. Test files alone never need it. The list errs toward asking; the
+`needs:uiux`. A test file alone does not need it, but only a file in a test folder (`test/`, `tests/`, `Tests/`,
+`__tests__/`, `androidTest/`, `testFixtures/`) or a JS/TS `.test`/`.spec` file, and never one under a shipping root
+(`apps/*/lib/`, Android `src/main|full|play|debug|release/`, iOS `Runner/`, `Sources/`, `App/`, `Extensions/`, the
+desktop and Mac agents outside their test folders, `site/`, `scripts/site/`, `docs/store/`, `docs/design/`): a screen
+named like a test still needs the line. The list errs toward asking; the
 exact patterns are `UIUX_PATHS` in `scripts/verified-gate-policy.mjs`. When a matched file changes nothing anyone sees,
 the Bureau, and only the Bureau, may answer with `UIUX-Bureau: not user-visible <head sha>` instead; that waiver does
 not answer a `needs:uiux` label, which needs a real review.

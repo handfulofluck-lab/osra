@@ -88,13 +88,25 @@ const R1_PATHS = [
   /_test\.(dart|go|py)$/,
   /Tests?\.(kt|swift)$/,
 ];
-// Test files, which never need the UI/UX line on their own (this does not change their risk tier).
+// Test files, which never need the UI/UX line on their own (this does not change their risk tier). Only a test
+// directory or a JS/TS `.test.`/`.spec.` file counts, and never under a shipping root: "any screen" means a screen
+// does not leave the Bureau's view because of its name (Fable's review of #730, B2).
 const TEST_PATHS = [
   /(^|\/)(test|tests|Tests|__tests__|androidTest|testFixtures)\//,
   /\.(test|spec)\.[cm]?[jt]sx?$/,
-  /_test\.(dart|go|py)$/,
-  /Tests?\.(kt|swift|cs)$/,
 ];
+// Code that ships to a family's device or browser, whatever a file there is called.
+const SHIPPING_ROOTS = [
+  /^apps\/[^/]+\/lib\//, // Flutter apps
+  /^apps\/.*\/src\/(main|full|play|debug|release)\//, // Android source sets
+  /^apps\/parent-app\/ios\/Runner\//,
+  /^apps\/child-ios\/(Sources|App|Extensions)\//,
+  /^apps\/agent-(desktop|macos)\/(?!tests\/|Tests\/)/,
+  /^site\//,
+  /^scripts\/site\//,
+  /^docs\/(store|design)\//,
+];
+export const isTestFile = (f) => TEST_PATHS.some((re) => re.test(f)) && !SHIPPING_ROOTS.some((re) => re.test(f));
 // Anything a family sees: UI/UX Bureau. Maintainer 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
 // before it goes" (AGENTS.md §6.6). Path list agreed with the Bureau; it errs toward asking.
 const UIUX_PATHS = [
@@ -189,7 +201,7 @@ export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [],
 
   const uiuxLabel = labels.includes('needs:uiux');
   // A test of a screen is not the screen: test files never trigger the UI/UX line on their own.
-  const notTests = files.filter((f) => !TEST_PATHS.some((re) => re.test(f)));
+  const notTests = files.filter((f) => !isTestFile(f));
   const needUiux = uiuxLabel || any(notTests, UIUX_PATHS);
   const needArabic = labels.includes('needs:arabic') || any(files, ARABIC_PATHS);
   // The Bureau's waiver (`UIUX-Bureau: not user-visible <sha>`) answers a path match only: when someone asked for a
@@ -319,7 +331,30 @@ function selftest() {
     ['a screen plus its test still needs the line', { headRef: 'kimi/x', files: ['apps/agent-desktop/Services/LockOverlay.cs', 'apps/agent-desktop/tests/FamilyShield.Agent.Tests/LockOverlayTests.cs'], signatures: v('Claude') }, false],
     ['server code needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
     ['email templates with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.ts'], signatures: [...v('Claude'), { kind: 'arabic' }, { kind: 'uiux' }] }, true],
+    // Fable's review of #730. B3: the UI/UX waiver never answers the Arabic Bureau.
+    ['Arabic path with a waiver only', { headRef: 'kimi/x', files: ['apps/child-android/app/src/main/res/values-ar/strings.xml'], signatures: [...v('Claude'), { kind: 'uiux-waiver' }] }, false],
+    // B2: a test file under a UI path needs no line (each TEST_PATHS entry pinned by a sample only it excuses)...
+    ['email template test with the Arabic line needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.test.ts'], signatures: [...v('Claude'), { kind: 'arabic' }] }, true],
+    ['iOS test fixture strings need no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-ios/Tests/Fixtures/Localizable.strings'], signatures: v('Claude') }, true],
   ];
+  // ...and a real screen with a test-like name or folder under a shipping root still needs it.
+  const testNamedScreens = [
+    'apps/parent-app/lib/features/settings/connection_test.dart',
+    'apps/parent-app/lib/features/test/home_screen.dart',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/ui/SelfTest.kt',
+    'apps/child-android/app/src/main/res/test/strings.xml',
+    'apps/child-ios/Sources/OSRAKids/Tests/PairingView.swift',
+    'apps/agent-desktop/Services/test/LockOverlay.cs',
+    'apps/parent-app/ios/Runner/test/Info.plist',
+    'site/tests/index.html',
+    'site/app.test.js',
+    'scripts/site/test/build.mjs',
+    'docs/design/test/tokens.json',
+  ];
+  for (const f of testNamedScreens) {
+    cases.push([`test-like name under a shipping root ${f}: no UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: [...v('Claude', 'Fable'), { kind: 'arabic' }] }, false]);
+    cases.push([`test-like name under a shipping root ${f}: with the UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: [...v('Claude', 'Fable'), { kind: 'arabic' }, { kind: 'uiux' }] }, true]);
+  }
   // R3 by path: one cross-family signer alone must NOT pass (it would at R2). One case per R3 entry Fable listed.
   const r3Paths = [
     'services/api/prisma/migrations/20261113_x/migration.sql',
@@ -398,13 +433,42 @@ function selftest() {
     'services/api/src/lib/email/templates.ts',
     'services/api/src/lib/email/index.ts',
     'services/api/src/lib/push/notify.ts',
+    // B1: one sample per entry that no other entry matches.
+    'apps/kids-flutter/lib/theme/colors.dart',
+    'apps/agent-macos/Sources/Base.lproj/Main.plist',
+    'apps/agent-macos/Sources/Main.storyboard',
+    'apps/agent-macos/Sources/Panel.xib',
+    'apps/agent-macos/Sources/Localizable.strings',
+    'apps/agent-macos/Sources/Localizable.stringsdict',
+    'apps/agent-macos/Sources/Catalog.xcstrings',
+    'apps/agent-macos/Sources/Main.arb',
     'site/index.html',
     'scripts/site/build.mjs',
     'docs/design/brand/export/logo.svg',
     'docs/store/play/listing-en.md',
   ];
+  // Each path fails for the UI/UX reason alone: the Arabic line and enough signers for any tier are present, and the
+  // same input with the UI/UX line passes (Fable's review of #730, B1).
+  const enough = [...v('Claude', 'Fable'), { kind: 'arabic' }];
   for (const f of uiPaths) {
-    cases.push([`UI path ${f}: no UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: v('Claude', 'Fable') }, false]);
+    cases.push([`UI path ${f}: no UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: enough }, false]);
+    cases.push([`UI path ${f}: with the UI/UX line`, { headRef: 'kimi/x', files: [f], signatures: [...enough, { kind: 'uiux' }] }, true]);
+  }
+
+  // Each Arabic path entry has a sample only it matches, failing for the Arabic reason alone.
+  const arabicPaths = [
+    'apps/parent-app/lib/l10n/app_ar.arb',
+    'apps/child-android/app/src/main/res/values-ar/strings.xml',
+    'apps/agent-macos/Sources/ar.lproj/Main.plist',
+    'site/ar/index.html',
+    'docs/legal/terms.ar.md',
+    'docs/customer/faq.md',
+    'services/api/src/lib/email/templates.ts',
+  ];
+  const allButArabic = [...v('Claude', 'Fable'), { kind: 'uiux' }];
+  for (const f of arabicPaths) {
+    cases.push([`Arabic path ${f}: no Arabic line`, { headRef: 'kimi/x', files: [f], signatures: allButArabic }, false]);
+    cases.push([`Arabic path ${f}: with the Arabic line`, { headRef: 'kimi/x', files: [f], signatures: [...allButArabic, { kind: 'arabic' }] }, true]);
   }
 
   for (const f of r3Paths) {
