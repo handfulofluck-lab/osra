@@ -5,11 +5,6 @@ using Xunit;
 
 namespace FamilyShield.Agent.Tests;
 
-/// <summary>
-/// Unit tests for the RuleSyncService command-dispatch mapping: pause_internet / resume_internet
-/// (Feature #11), bonus_time (Feature #10) and wind_down (Feature #22, injectable delay seam).
-/// Dispatch is internal (InternalsVisibleTo) so the mapping is testable without a server.
-/// </summary>
 public sealed class RuleSyncDispatchTests : IDisposable
 {
     private readonly string _dbPath;
@@ -17,6 +12,8 @@ public sealed class RuleSyncDispatchTests : IDisposable
     private readonly LocalRuleStore _store;
     private readonly AgentConfig _config = new() { ParentPin = "4821" };
     private readonly RuleSyncService _sync;
+    private readonly TrayUserActions _tray;
+    private readonly FakeSink _sink = new();
 
     public RuleSyncDispatchTests()
     {
@@ -25,14 +22,8 @@ public sealed class RuleSyncDispatchTests : IDisposable
         _statusPath = Path.Combine(dir, "status.json");
         _store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance, _dbPath, _statusPath);
         var api = new ApiClient(new HttpClient(), new AgentConfig());
-        _sync = new RuleSyncService(NullLogger<RuleSyncService>.Instance, _store, api, _config);
-    }
-
-    private RuleSyncService NewSyncWithPin(string? parentPin)
-    {
-        var api = new ApiClient(new HttpClient(), new AgentConfig());
-        return new RuleSyncService(
-            NullLogger<RuleSyncService>.Instance, _store, api, new AgentConfig { ParentPin = parentPin });
+        _sync = new RuleSyncService(NullLogger<RuleSyncService>.Instance, _store, api, _config, _sink);
+        _tray = new TrayUserActions(_config, _store, NullLogger<TrayUserActions>.Instance);
     }
 
     [Fact]
@@ -98,119 +89,126 @@ public sealed class RuleSyncDispatchTests : IDisposable
     }
 
     [Fact]
-    public void WindDownSchedulesTheLockThroughTheInjectedDelay()
+    public void InteractiveCommandsCarryNoPinOrIdentitySecret()
+    {
+        _sync.Dispatch("lock");
+        _sync.Dispatch("pause");
+        _sync.Dispatch("resume");
+        _sync.Dispatch("ring");
+        _sync.Dispatch("wind_down", MinutesPayload(5));
+
+        Assert.Equal(
+            [TrayMessageKind.@lock, TrayMessageKind.pause, TrayMessageKind.resume, TrayMessageKind.ring, TrayMessageKind.wind_down],
+            _sink.Messages.Select(m => m.Kind).ToArray());
+        var json = JsonSerializer.Serialize(_sink.Messages);
+        Assert.DoesNotContain("parentPin", json);
+        Assert.DoesNotContain("4821", json);
+        Assert.DoesNotContain("deviceJwt", json);
+        Assert.DoesNotContain("hmacSecret", json);
+        Assert.Equal(5, _sink.Messages[^1].Payload!.Value.GetProperty("minutes").GetInt32());
+    }
+
+    [Fact]
+    public async Task WindDownSchedulesTheLockThroughTheInjectedDelay()
     {
         var delays = new List<TimeSpan>();
-        // Never-completing delay: the real LockOverlay is out of unit-test scope (same NOTE as
-        // the Android agent); we only assert that the scheduled delay carries the right span.
-        _sync.Delay = (ts, ct) => { delays.Add(ts); return Task.Delay(Timeout.InfiniteTimeSpan, ct); };
-        _sync.Dispatch("wind_down", MinutesPayload(10));
+        _tray.Delay = (ts, ct) => { delays.Add(ts); return Task.Delay(Timeout.InfiniteTimeSpan, ct); };
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down, MinutesPayload(10)));
         Assert.Equal([TimeSpan.FromMinutes(10)], delays);
     }
 
     [Fact]
-    public void SecondWindDownCancelsTheFirst()
+    public async Task SecondWindDownCancelsTheFirst()
     {
         var tokens = new List<CancellationToken>();
-        _sync.Delay = (_, ct) => { tokens.Add(ct); return Task.Delay(Timeout.InfiniteTimeSpan, ct); };
-        _sync.Dispatch("wind_down", MinutesPayload(5));
-        _sync.Dispatch("wind_down", MinutesPayload(15));
+        _tray.Delay = (_, ct) => { tokens.Add(ct); return Task.Delay(Timeout.InfiniteTimeSpan, ct); };
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down, MinutesPayload(5)));
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down, MinutesPayload(15)));
         Assert.Equal(2, tokens.Count);
         Assert.True(tokens[0].IsCancellationRequested);
         Assert.False(tokens[1].IsCancellationRequested);
     }
 
     [Fact]
-    public void UnlockCancelsAPendingWindDown()
+    public async Task UnlockCancelsAPendingWindDown()
     {
         var tokens = new List<CancellationToken>();
-        _sync.Delay = (_, ct) => { tokens.Add(ct); return Task.Delay(Timeout.InfiniteTimeSpan, ct); };
-        _sync.Dispatch("wind_down", MinutesPayload(5));
-        _sync.Dispatch("unlock");
+        _tray.Delay = (_, ct) => { tokens.Add(ct); return Task.Delay(Timeout.InfiniteTimeSpan, ct); };
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down, MinutesPayload(5)));
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.unlock));
         var token = Assert.Single(tokens);
         Assert.True(token.IsCancellationRequested);
     }
 
     [Fact]
-    public void WindDownWithoutMinutesSchedulesNothing()
+    public async Task WindDownWithoutMinutesSchedulesNothing()
     {
         var delayCalls = 0;
-        _sync.Delay = (_, _) => { delayCalls++; return Task.CompletedTask; };
-        _sync.Dispatch("wind_down", null);
-        _sync.Dispatch("wind_down", MinutesPayload(0));
+        _tray.Delay = (_, _) => { delayCalls++; return Task.CompletedTask; };
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down));
+        await _tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down, MinutesPayload(0)));
         Assert.Equal(0, delayCalls);
     }
 
     [Fact]
-    public void LockRefusesToArmWithoutAParentPin()
+    public async Task LockRefusesToArmWithoutAParentPin()
     {
         var shown = new List<string>();
-        var sync = NewSyncWithPin(null);
-        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
-
-        sync.Dispatch("lock");
-
+        var tray = NewTrayWithPin(null);
+        tray.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+        await tray.HandleAsync(new TrayMessage(TrayMessageKind.@lock));
         Assert.Empty(shown);
-        Assert.Equal("lock", sync.LastArmRefusal);
+        Assert.Equal("lock", tray.LastArmRefusal);
     }
 
     [Fact]
-    public void LockUsesExactlyTheConfiguredParentPin()
+    public async Task LockUsesExactlyTheConfiguredParentPin()
     {
         var shown = new List<string>();
-        var sync = NewSyncWithPin("7391");
-        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
-
-        sync.Dispatch("lock");
-
+        var tray = NewTrayWithPin("7391");
+        tray.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+        await tray.HandleAsync(new TrayMessage(TrayMessageKind.@lock));
         Assert.Equal("7391", Assert.Single(shown));
-        Assert.Null(sync.LastArmRefusal);
+        Assert.Null(tray.LastArmRefusal);
     }
 
     [Fact]
-    public void LegacyDefaultPinDoesNotArmTheLock()
+    public async Task LegacyDefaultPinDoesNotArmTheLock()
     {
         var shown = new List<string>();
-        var sync = NewSyncWithPin(ParentPinPolicy.LegacyDefault);
-        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
-
-        sync.Dispatch("lock");
-
+        var tray = NewTrayWithPin(ParentPinPolicy.LegacyDefault);
+        tray.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+        await tray.HandleAsync(new TrayMessage(TrayMessageKind.@lock));
         Assert.Empty(shown);
-        Assert.Equal("lock", sync.LastArmRefusal);
+        Assert.Equal("lock", tray.LastArmRefusal);
     }
 
     [Fact]
-    public void PauseRefusesToArmWithoutAParentPin()
+    public async Task PauseRefusesToArmWithoutAParentPin()
     {
         var shown = new List<string>();
-        var sync = NewSyncWithPin(null);
-        sync.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
-
-        sync.Dispatch("pause");
-
+        var tray = NewTrayWithPin(null);
+        tray.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+        await tray.HandleAsync(new TrayMessage(TrayMessageKind.pause));
         Assert.Empty(shown);
-        Assert.Equal("pause", sync.LastArmRefusal);
+        Assert.Equal("pause", tray.LastArmRefusal);
     }
 
     [Fact]
-    public void WindDownIsNotScheduledWithoutAParentPin()
+    public async Task WindDownIsNotScheduledWithoutAParentPin()
     {
         var delayCalls = 0;
-        var sync = NewSyncWithPin(null);
-        sync.Delay = (_, _) => { delayCalls++; return Task.CompletedTask; };
-
-        sync.Dispatch("wind_down", MinutesPayload(5));
-
+        var tray = NewTrayWithPin(null);
+        tray.Delay = (_, _) => { delayCalls++; return Task.CompletedTask; };
+        await tray.HandleAsync(new TrayMessage(TrayMessageKind.wind_down, MinutesPayload(5)));
         Assert.Equal(0, delayCalls);
-        Assert.Equal("wind_down", sync.LastArmRefusal);
+        Assert.Equal("wind_down", tray.LastArmRefusal);
     }
 
-    private static JsonElement? MinutesPayload(int minutes)
-    {
-        using var doc = JsonDocument.Parse($$"""{"minutes":{{minutes}}}""");
-        return doc.RootElement.Clone();
-    }
+    private TrayUserActions NewTrayWithPin(string? parentPin) =>
+        new(new AgentConfig { ParentPin = parentPin }, _store, NullLogger<TrayUserActions>.Instance);
+
+    private static JsonElement? MinutesPayload(int minutes) => Payload($"{{\"minutes\":{minutes}}}");
 
     private static JsonElement? Payload(string json)
     {
@@ -218,16 +216,19 @@ public sealed class RuleSyncDispatchTests : IDisposable
         return doc.RootElement.Clone();
     }
 
+    private sealed class FakeSink : ITrayCommandSink
+    {
+        public List<TrayMessage> Messages { get; } = [];
+        public Task SendAsync(TrayMessage message, CancellationToken cancellationToken = default)
+        {
+            Messages.Add(message);
+            return Task.CompletedTask;
+        }
+    }
+
     public void Dispose()
     {
         _store.Dispose();
-        try
-        {
-            Directory.Delete(Path.GetDirectoryName(_dbPath)!, recursive: true);
-        }
-        catch (Exception)
-        {
-            // temp cleanup is best-effort
-        }
+        try { Directory.Delete(Path.GetDirectoryName(_dbPath)!, recursive: true); } catch (Exception) { }
     }
 }
