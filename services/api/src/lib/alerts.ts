@@ -54,22 +54,33 @@ const ALERT_BODY_REQUIRED_PARAMS = {
   alertBodyGeofenceExit: ["label", "radiusM"],
   alertBodySearchFlagged: ["engine"],
   alertBodySocialConcern: ["app"],
-  alertBodyYouTubeFlagged: ["channel"],
+  // `channel` is deliberately NOT required: YouTubeWatchSchema defaults it to "", so a flagged video with no
+  // channel is a real case, and the English body already copes with an empty one. A required param here would
+  // mean no alert at all for that video (#718 review).
+  alertBodyYouTubeFlagged: [],
 } as const satisfies Record<AlertBodyKey, readonly string[]>;
 
+/**
+ * Never let the localization fields stop an alert. A key or a param that cannot be trusted costs the
+ * *key*, not the alert: the row is written with the English `body` and the app falls back exactly as an
+ * un-updated app does (#718 review). The one thing that still throws is a programmer error a test catches —
+ * params without a key — because that is a caller mistake, not a runtime condition.
+ */
 function metadataWithAlertBody(input: RaiseAlertInput): Record<string, unknown> | undefined {
   if (input.bodyKey === undefined) {
     if (input.params !== undefined) throw new Error("Alert body params require a bodyKey");
     return input.metadata;
   }
   if (!(ALERT_BODY_KEYS as readonly string[]).includes(input.bodyKey)) {
-    throw new Error(`Unknown alert body key: ${input.bodyKey}`);
+    console.warn(`[alerts] unknown bodyKey "${input.bodyKey}"; raising the alert with the English body only`);
+    return input.metadata;
   }
   const params = input.params ?? {};
   for (const name of ALERT_BODY_REQUIRED_PARAMS[input.bodyKey]) {
     const value = params[name];
     if (value === undefined || value === null || value === "") {
-      throw new Error(`Missing alert body param "${name}" for ${input.bodyKey}`);
+      console.warn(`[alerts] empty body param "${name}" for ${input.bodyKey}; raising the alert with the English body only`);
+      return input.metadata;
     }
   }
   return { ...input.metadata, bodyKey: input.bodyKey, bodyParams: params };

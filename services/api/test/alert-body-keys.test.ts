@@ -72,8 +72,10 @@ describe("alert body keys (#711)", () => {
     });
   });
 
-  it("refuses a missing required parameter instead of writing a literal placeholder", async () => {
-    await expect(raiseAlert({
+  it("raises the alert with the English body when a required parameter is missing (#718 review)", async () => {
+    // A missing param costs the KEY, not the alert. Throwing here dropped a child-safety alert entirely on a
+    // path where the source field can legitimately be empty, which is the regression this row now pins.
+    await raiseAlert({
       childId: "child-1",
       familyId: "fam-1",
       severity: "critical",
@@ -82,7 +84,28 @@ describe("alert body keys (#711)", () => {
       body: "Pixel 7a has not reported for 45 minutes.",
       bodyKey: "alertBodyDeviceSilent",
       params: { model: "Pixel 7a" },
-    } as Parameters<typeof raiseAlert>[0])).rejects.toThrow("minutes");
-    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    });
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: { bodyKey?: string }; body: string };
+    expect(data.metadata?.bodyKey).toBeUndefined();
+    expect(data.body).toBe("Pixel 7a has not reported for 45 minutes.");
+  });
+
+  it("raises a flagged video that carries no channel, with no bodyKey (#718 review)", async () => {
+    // YouTubeWatchSchema defaults `channel` to "", so this is a real payload, not a hostile one. `channel` is
+    // no longer a required param for exactly this case.
+    await raiseAlert({
+      childId: "child-1",
+      familyId: "fam-1",
+      severity: "warning",
+      category: "web_threat",
+      title: "Flagged video",
+      body: "A flagged video was watched.",
+      bodyKey: "alertBodyYouTubeFlagged",
+      params: { channel: "" },
+    });
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: { bodyKey?: string } };
+    expect(data.metadata?.bodyKey).toBe("alertBodyYouTubeFlagged");
   });
 });
