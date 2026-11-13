@@ -2,7 +2,7 @@ name: API
 
 # Backend API + shared packages (unit suites run fully mocked). Until 2026-10-24 this was the `api` job of
 # ci.yml and ran on every pull request; now it runs when its inputs change, on main when they change, and
-# nightly on main whatever changed (a new pnpm or runner image breaks main even when no PR touched the API).
+# weekly on main whatever changed (a new pnpm or runner image breaks main even when no PR touched the API).
 # The `paths:` lists below must stay identical, must name this file, and must cover every file outside
 # `services/api/` that an API test reads: `scripts/check-ci-paths.mjs` checks all three in workflow-lint.
 # WorkScheduler.kt and LocationService.kt are read by `services/api/test/device-silence.test.ts` (#166),
@@ -35,10 +35,10 @@ on:
       - "apps/child-android/app/src/main/java/com/familyshield/agent/services/IdleCadence.kt"
       - ".github/workflows/api.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
-# Cancel superseded runs on the same ref; a nightly run never cancels a push run or the other way round.
+# Cancel superseded runs on the same ref; a weekly run never cancels a push run or the other way round.
 concurrency:
   group: api-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true

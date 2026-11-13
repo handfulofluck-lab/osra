@@ -1,7 +1,7 @@
 name: Parent app
 
 # The Flutter parent app. Until 2026-10-24 this was the `parent-app` job of ci.yml and ran on every pull
-# request; now it runs when the app changes, on main when it changes, and nightly on main whatever changed
+# request; now it runs when the app changes, on main when it changes, and weekly on main whatever changed
 # (pub dependencies move under us, and that must show up on main, not on the next unrelated PR). Flutter
 # itself is pinned in both setup steps below since stable 3.50.0 (2026-11-11); raising the pin is a PR.
 # One file outside `apps/parent-app/` is read: the alert-category parity test (#344) reads the server's
@@ -20,12 +20,12 @@ on:
       - "services/api/src/routes/alerts.ts"
       - ".github/workflows/parent-app.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 # A push to main gets a group of its own, so it is never cancelled and never replaced while it waits.
 # `ios-scope` decides from that push's own `before..HEAD`, so a cancelled push's iOS inputs would not be
-# seen again until the nightly run: on 2026-10-24 the merge of #354 cancelled the run for #362's merge,
+# seen again until the weekly run: on 2026-10-24 the merge of #354 cancelled the run for #362's merge,
 # which had changed this file, and its own diff skipped iOS. A pull request diffs the whole PR against
 # its base on every run, so there a newer run covers the older one and cancelling it is safe.
 concurrency:
@@ -157,7 +157,7 @@ jobs:
   # and most parent-app changes are Dart only, which the Android release build above already compiles. So a
   # pull request or a push builds iOS only when it changes something the iOS build reads and the Android one
   # does not: the `ios/` tree, `pubspec.yaml` or `pubspec.lock` (a plugin brings its own native code), or this
-  # file. The nightly and manual runs always build it, which is how a Dart change or a new Flutter stable that
+  # file. The weekly and manual runs always build it, which is how a Dart change or a new Flutter stable that
   # breaks only iOS reaches `main` within a day. When the diff cannot be read, it builds rather than skips.
   ios-scope:
     name: Does this change reach the iOS build?
@@ -193,7 +193,7 @@ jobs:
             head -20 "$RUNNER_TEMP/ios-inputs.txt"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
-            echo "no iOS input among $(wc -l < "$RUNNER_TEMP/changed.txt") changed file(s); the nightly run still builds iOS"
+            echo "no iOS input among $(wc -l < "$RUNNER_TEMP/changed.txt") changed file(s); the weekly run still builds iOS"
           fi
 
   # Roadmap 3.9: the iOS target exists in the same tree. This job is the *only*

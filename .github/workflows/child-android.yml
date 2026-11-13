@@ -2,7 +2,7 @@ name: Child Android
 
 # The child agent (Android JVM unit tests, no emulator). Until 2026-10-24 this was the `child-android` job of
 # ci.yml and ran on every pull request; now it runs when the agent changes, on main when it changes, and
-# nightly on main whatever changed. `scripts/check-merged-manifest-gate.mjs` runs from the repository root in
+# weekly on main whatever changed. `scripts/check-merged-manifest-gate.mjs` runs from the repository root in
 # this job, so a change to it runs the job too. `scripts/check-ci-paths.mjs` keeps the two lists identical,
 # makes sure they name this file, and fails if a `node scripts/…` step here is not covered by them.
 on:
@@ -18,7 +18,7 @@ on:
       - "scripts/check-merged-manifest-gate.mjs"
       - ".github/workflows/child-android.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -45,6 +45,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
       # Plan 1.8: same upload keystore as the parent app, materialised from the secret when present.
       # The build refuses a signed release without google-services.json (#409), and refuses a half-configured
       # one (any of the four OSRA_UPLOAD_* variables without the rest). So the keystore and its three passwords

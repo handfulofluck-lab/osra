@@ -12,7 +12,7 @@ name: API image
 # is built only from the files listed below (the Dockerfile COPYs nothing else and the build context is the
 # repository root), so a PR that changes none of them builds the same image main already built. It is not a
 # required check either — `verified-gate` is the only one — so a run that did not happen can never be read
-# as a pass. The nightly run on main catches the drift no PR would trigger (base image, runner, pnpm).
+# as a pass. The weekly run on main catches the drift no PR would trigger (base image, runner, pnpm).
 # `scripts/check-ci-paths.mjs` checks that the list names this file and every file the Dockerfile COPYs.
 on:
   pull_request:
@@ -25,7 +25,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/api-image.yml"
   schedule:
-    - cron: "11 2 * * *"
+    - cron: "11 2 * * 1"
   workflow_dispatch:
 
 concurrency:
