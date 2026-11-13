@@ -46,6 +46,14 @@ jobs:
           node scripts/check-ci-paths.mjs --selftest
           node scripts/check-ci-paths.mjs
 
+      - name: CI-cost guardrails - iOS paths, weekly schedules, concurrency and Gradle cache (#613)
+        # The cheaper-CI edits are structural contracts: ios-ci pushes main-only with its exact path
+        # list, seven schedules are weekly Monday, the nine PR suites keep cancel-in-progress, and the
+        # Android job gains setup-gradle pinned by full commit SHA. The self-test proves each rule fails on a fixture that breaks it.
+        run: |
+          node scripts/check-ci-cost-guardrails.mjs --selftest
+          node scripts/check-ci-cost-guardrails.mjs
+
       - name: Parse every workflow as YAML (the one thing the structural linter cannot do)
         # `check-workflows.mjs` matches text; it cannot tell that a comment lost its `#` and became a
         # bare line. That is exactly what happened to verified-gate.yml on 2026-10-19: the linter
