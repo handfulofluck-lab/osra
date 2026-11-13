@@ -137,4 +137,14 @@ final class CapabilityReportTests: XCTestCase {
         XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: "receipt"), .appstore)
         XCTAssertEqual(C.flavour(isDebug: false, hasEmbeddedProfile: false, receiptName: nil), .appstore)
     }
+
+    /// #693: the real build passes its real profile lookup, so the wiring cannot fall back to a constant.
+    func testCurrentReadsTheEmbeddedProfile() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/CapabilityReport.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(text.contains(
+            #"hasEmbeddedProfile: bundle.path(forResource: "embedded", ofType: "mobileprovision") != nil"#))
+        XCTAssertTrue(text.contains("receiptName: bundle.appStoreReceiptURL?.lastPathComponent"))
+    }
 }
