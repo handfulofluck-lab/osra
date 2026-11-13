@@ -11,7 +11,9 @@
  * 2026-11-13 21:15Z (maintainer, #617): Ahmed's agent may sign as the R3 security key from his own account. The
  * gate reads that account (`SECURITY_KEY_LOGIN`) for ONE thing: a `Verified-sha:` line signed "— Ahmed". And since
  * every agent posts from `SIGNER_LOGIN`, a "— Ahmed" signature from `SIGNER_LOGIN` is dropped: only Ahmed's own
- * account signs as Ahmed.
+ * account signs as Ahmed. A comment from that account counts only if it was never edited (created_at ==
+ * updated_at), because an admin account can edit another user's comment without changing its author (Fable's
+ * review of #745).
  *
  * Two layers:
  *   1. Structural: `SIGNER_LOGIN`, `SECURITY_KEY_LOGIN` and `SECURITY_KEY_NAME` are each set once, to the values
@@ -39,7 +41,7 @@ const AGENT_LOGIN = 'handfulofluck-lab';
 const KEY_LOGIN = 'ahmedyusseff';
 const KEY_NAME = 'Ahmed';
 const FILTER = '.[] | select(.user.login == env.SIGNER_LOGIN) | .body';
-const KEY_FILTER = '.[] | select(.user.login == env.SECURITY_KEY_LOGIN) | .body';
+const KEY_FILTER = '.[] | select(.user.login == env.SECURITY_KEY_LOGIN and .created_at == .updated_at) | .body';
 // The awk filter on each parse line (kind<TAB>name<TAB>sha rows).
 const DROP_KEY = `awk -F'\\t' -v key="$SECURITY_KEY_NAME" '$2 != key'`;
 const KEEP_KEY = `awk -F'\\t' -v key="$SECURITY_KEY_NAME" '$1 == "verify" && $2 == key'`;
@@ -47,14 +49,18 @@ const PARSE_AGENT = `node "$policy" --parse < "$RUNNER_TEMP/bodies.jsonl" | ${DR
 const PARSE_KEY = `node "$policy" --parse < "$RUNNER_TEMP/key-bodies.jsonl" | ${KEEP_KEY} >> "$sigs"`;
 
 // Verification-shaped comments; only the agent's "— Claude" and Ahmed's own "— Ahmed" may survive.
+const T0 = '2026-11-13T21:00:00Z';
+const T1 = '2026-11-13T21:05:00Z';
+const c = (login, body, updated = T0) => ({ user: { login }, created_at: T0, updated_at: updated, body });
 const FIXTURE = [
-  { user: { login: AGENT_LOGIN }, body: 'Verified-sha: aaaaaaa\n\n— Claude (architecture + testing)' },
-  { user: { login: AGENT_LOGIN }, body: 'Verified-sha: eeeeeee\n\n— Ahmed' }, // forged from the shared account
-  { user: { login: KEY_LOGIN }, body: 'Verified-sha: bbbbbbb\n\n— Claude' }, // Ahmed's agent is also "Claude"
-  { user: { login: KEY_LOGIN }, body: 'Arabic-Bureau: reviewed fffffff\n\n— Claude (Arabic Language Bureau)' },
-  { user: { login: KEY_LOGIN }, body: 'Verified-sha: ddddddd\n\n— Ahmed (security + iOS)' },
-  { user: { login: 'drive-by-account' }, body: 'Verified-sha: ccccccc\n— Ahmed' },
-  { user: { login: 'drive-by-account' }, body: 'Verified-sha: 1111111\n— Antigravity' },
+  c(AGENT_LOGIN, 'Verified-sha: aaaaaaa\n\n— Claude (architecture + testing)'),
+  c(AGENT_LOGIN, 'Verified-sha: eeeeeee\n\n— Ahmed'), // forged from the shared account
+  c(KEY_LOGIN, 'Verified-sha: bbbbbbb\n\n— Claude'), // Ahmed's agent is also "Claude"
+  c(KEY_LOGIN, 'Arabic-Bureau: reviewed fffffff\n\n— Claude (Arabic Language Bureau)'),
+  c(KEY_LOGIN, 'Verified-sha: ddddddd\n\n— Ahmed (security + iOS)'),
+  c(KEY_LOGIN, 'Verified-sha: 9999999\n\n— Ahmed (security + iOS)', T1), // edited: could be anyone's words
+  c('drive-by-account', 'Verified-sha: ccccccc\n— Ahmed'),
+  c('drive-by-account', 'Verified-sha: 1111111\n— Antigravity'),
 ];
 const WANT = ['verify\tClaude\taaaaaaa', 'verify\tAhmed\tddddddd'];
 
@@ -180,6 +186,7 @@ if (process.argv.includes('--selftest')) {
     ['an inverted agent filter', swap(agentRead, `${FILTER.replace('==', '!=')} | @json`)],
     ['the key account read without its filter', swap(keyRead, '.[].body | @json')],
     ['an inverted key filter', swap(keyRead, `${KEY_FILTER.replace('==', '!=')} | @json`)],
+    ['an edited key comment accepted', swap(keyRead, `${KEY_FILTER.replace(' and .created_at == .updated_at', '')} | @json`)],
     ['a key account signing under any name', swap(KEEP_KEY, `awk -F'\\t' '$1 == "verify"'`)],
     ['a key account posting Bureau lines', swap(KEEP_KEY, `awk -F'\\t' -v key="$SECURITY_KEY_NAME" '$2 == key || $2 == "-"'`)],
     ['"— Ahmed" accepted from the shared account', swap(DROP_KEY, 'cat')],

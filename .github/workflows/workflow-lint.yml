@@ -206,8 +206,8 @@ jobs:
         # The repository is public and, from 2026-10-23, has a second member working with his own Claude
         # agent: a comment from any other account that ends "— Claude" must never verify a PR. From
         # 2026-11-13 (#617) Ahmed's account counts for one thing, a Verified-sha signed "— Ahmed", and a
-        # "— Ahmed" from the agent account never counts. The self-test proves the check fails on eleven
-        # broken gates, structurally and by running the gate's own lines under jq.
+        # "— Ahmed" from the agent account never counts. The self-test proves the check fails on twelve
+        # broken gates (an edited comment from his account among them), structurally and under jq.
         run: |
           node scripts/check-verified-gate-signers.mjs --selftest
           node scripts/check-verified-gate-signers.mjs

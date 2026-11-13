@@ -452,7 +452,10 @@ When a Bureau authors a user-visible PR itself, its line cites the maintainer's 
    the 16:51Z rule that it only posted verdicts). It signs from its own account, `ahmedyusseff`, with
    `Verified-sha: <head>` and the signer line `— Ahmed`, and the gate reads exactly that from that account (§6.4):
    no other signer name and no Bureau line. A `— Ahmed` signature from the agent account never counts, so no
-   other agent can sign as Ahmed. Ahmed's own conditions (#719): never on his own PRs; never the only signer on
+   other agent can sign as Ahmed. **A signature from Ahmed's account must be a new, unedited comment**: an admin
+   account can edit another user's comment without changing its author, so the gate skips any comment of his whose
+   `updated_at` differs from `created_at` (Fable's review of #745), and Ahmed posts a fresh one instead of editing.
+   Ahmed's own conditions (#719): never on his own PRs; never the only signer on
    an Anthropic-family author's PR (the gate already needs a cross-family signer there); a fresh review after a
    re-push that changes the PR's own diff; and he still never merges or switches on auto-merge. Fable stays a
    security key, so either one can be the R3 second key.
