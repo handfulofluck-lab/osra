@@ -8,6 +8,7 @@ import { reportsRoutes } from "../src/routes/reports.js";
 import { rulesRoutes } from "../src/routes/rules.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -119,10 +120,17 @@ describe("social routes", () => {
     const payload = JSON.parse(cipher.data.previewCipher) as Parameters<typeof decryptForFamily>[0];
     expect(decryptForFamily(payload, VAULT_KEY)).toBe(FLAGGED_TEXT);
 
-    // The alert metadata carries app/contact/concernTypes only — no snippet.
+    // The alert metadata carries app/contact/concernTypes and localization values — no snippet.
     const alertData = prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(alertData.data.category).toBe("social_concern");
-    expect(alertData.data.metadata).toEqual({ app: "whatsapp", contact: "bully-1", concernTypes: ["self_harm"] });
+    expect(alertData.data.metadata).toEqual({
+      app: "whatsapp",
+      contact: "bully-1",
+      concernTypes: ["self_harm"],
+      bodyKey: "alertBodySocialConcern",
+      bodyParams: { app: "whatsapp", contact: "bully-1" },
+    });
+    expectKeyedAlertBody(alertData.data, "alertBodySocialConcern", { app: "whatsapp", contact: "bully-1" });
     expect(alertData.data.metadata).not.toHaveProperty("preview");
 
     // The family realtime channel received the alert.

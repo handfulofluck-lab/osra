@@ -5,6 +5,7 @@ import { geofenceTransition, haversineMeters, isInsideFence, pickTransitionPair 
 import { locationRoutes } from "../src/routes/location.js";
 import { getRedis } from "../src/redis.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -122,7 +123,13 @@ describe("geofence transitions on POST /v1/location/ping", () => {
     // Issue #242 review: the alert must name the fence only. A geofence alert is not deleted by the
     // retention job, so coordinates here would outlive the 30-day location window.
     const enterData = prismaMock.alert.create.mock.calls[0][0].data as { metadata: Record<string, unknown> };
-    expect(enterData.metadata).toEqual({ geofenceId: HOME_FENCE.id, label: HOME_FENCE.label });
+    expect(enterData.metadata).toEqual({
+      geofenceId: HOME_FENCE.id,
+      label: HOME_FENCE.label,
+      bodyKey: "alertBodyGeofenceEnter",
+      bodyParams: { label: HOME_FENCE.label, radiusM: HOME_FENCE.radiusM },
+    });
+    expectKeyedAlertBody(enterData, "alertBodyGeofenceEnter", { label: "Home", radiusM: 150 });
     expect(enterData.metadata).not.toHaveProperty("lat");
     expect(enterData.metadata).not.toHaveProperty("lng");
     await app.close();
@@ -150,7 +157,13 @@ describe("geofence transitions on POST /v1/location/ping", () => {
       }),
     );
     const exitData = prismaMock.alert.create.mock.calls[0][0].data as { metadata: Record<string, unknown> };
-    expect(exitData.metadata).toEqual({ geofenceId: HOME_FENCE.id, label: HOME_FENCE.label });
+    expect(exitData.metadata).toEqual({
+      geofenceId: HOME_FENCE.id,
+      label: HOME_FENCE.label,
+      bodyKey: "alertBodyGeofenceExit",
+      bodyParams: { label: HOME_FENCE.label, radiusM: HOME_FENCE.radiusM },
+    });
+    expectKeyedAlertBody(exitData, "alertBodyGeofenceExit", { label: "Home", radiusM: 150 });
     expect(exitData.metadata).not.toHaveProperty("lat");
     expect(exitData.metadata).not.toHaveProperty("lng");
     await app.close();
@@ -258,7 +271,12 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     const data = prismaMock.alert.create.mock.calls[0][0].data as { title: string; body: string; metadata: Record<string, unknown> };
     expect(data.title).toBe("Entered Home");
     expect(data.body).not.toMatch(/no location/i);
-    expect(data.metadata).toEqual({ geofenceId: HOME_FENCE.id, label: HOME_FENCE.label });
+    expect(data.metadata).toEqual({
+      geofenceId: HOME_FENCE.id,
+      label: HOME_FENCE.label,
+      bodyKey: "alertBodyGeofenceEnter",
+      bodyParams: { label: HOME_FENCE.label, radiusM: HOME_FENCE.radiusM },
+    });
     await app.close();
   });
 
@@ -279,6 +297,7 @@ describe("geofence baseline and stale-gap rule (issue #243)", () => {
     expect(data.title).toBe("Entered Home");
     expect(data.body).toContain("14 h");
     expect(data.metadata.gapMinutes).toBe(840);
+    expectKeyedAlertBody(data, "alertBodyGeofenceEnter", { label: "Home", radiusM: 150, gapMinutes: 840 });
     // F1 from #242 stands: the alert names the gap, never the child's position.
     expect(data.metadata).not.toHaveProperty("lat");
     expect(data.metadata).not.toHaveProperty("lng");

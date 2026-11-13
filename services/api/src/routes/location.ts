@@ -153,6 +153,12 @@ async function evaluateGeofences(
       category: "geofence",
       title,
       body: `${title} (geofence "${fence.label}", ${fence.radiusM} m radius).${gapNote}`,
+      bodyKey: entered ? "alertBodyGeofenceEnter" : "alertBodyGeofenceExit",
+      params: {
+        label: fence.label,
+        radiusM: fence.radiusM,
+        ...(transition.gapMinutes === null ? {} : { gapMinutes: transition.gapMinutes }),
+      },
       // Privacy (Claude's #242 review): the alert names the fence, never the child's position. A
       // geofence crossing used to carry lat/lng in metadata, and Alert rows are not touched by the
       // retention job — so exact coordinates would have outlived the 30-day location window this PR

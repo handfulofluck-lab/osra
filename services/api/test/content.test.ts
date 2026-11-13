@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { contentRoutes } from "../src/routes/content.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { expectKeyedAlertBody } from "./alertBody.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -128,6 +129,11 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
         }),
       }),
     );
+    expectKeyedAlertBody(
+      prismaMock.alert.create.mock.calls[0][0].data,
+      "alertBodySearchFlagged",
+      { engine: "youtube" },
+    );
   });
 
   it("analyzes YouTube watch event and flags dangerous title (201)", async () => {
@@ -146,6 +152,11 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     expect(body.flagged).toBe(true);
     expect(body.severity).toBe("critical");
     expect(prismaMock.alert.create).toHaveBeenCalled();
+    expectKeyedAlertBody(
+      prismaMock.alert.create.mock.calls[0][0].data,
+      "alertBodyYouTubeFlagged",
+      { channel: "bad_channel" },
+    );
   });
 
   it("parent endpoint GET /v1/content/searches requires parent role and returns decrypted history", async () => {
