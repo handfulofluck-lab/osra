@@ -96,7 +96,10 @@ void main() {
 
     expect(find.byKey(const ValueKey('bedtime-blocks-payments')), findsNothing);
     // And the picker that cannot list iOS apps is replaced by the sentence that names the path that works.
-    expect(find.byKey(const ValueKey('pickInstalledApp')), findsNothing);
+    // `skipOffstage: false` is the whole point (Fable's m3): the picker sits below the fold of the lazy list,
+    // so a plain finder is `findsNothing` whether the picker exists or not — and this row is the only one
+    // that fails when the fix is removed.
+    expect(find.byKey(const ValueKey('pickInstalledApp'), skipOffstage: false), findsNothing);
     expect(find.byKey(const ValueKey('iosAppsExplained')), findsOneWidget);
   });
 
