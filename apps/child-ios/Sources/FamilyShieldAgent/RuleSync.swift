@@ -113,6 +113,8 @@ public struct RuleSyncClient {
     public enum SyncError: Error, Equatable {
         case httpError(status: Int)
         case unusableResponse
+        /// #690: `401 device_revoked`, the parent removed this phone.
+        case deviceRevoked
     }
 
     public func fetch(for identity: AgentIdentity) async throws -> RuleSet {
@@ -123,6 +125,7 @@ public struct RuleSyncClient {
         request.timeoutInterval = 30
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if DeviceRevocation.isRevoked(status: status, body: data) { throw SyncError.deviceRevoked }
         // 428 means consent was withdrawn: the device must stop enforcing, which the caller does by clearing.
         guard status == 200 else { throw SyncError.httpError(status: status) }
         guard let rules = try? JSONDecoder().decode(RuleSet.self, from: data) else { throw SyncError.unusableResponse }
@@ -349,6 +352,10 @@ public enum RuleSyncer {
             if enforce { ScreenTimeController().clearRules() }
             #endif
             return .consentWithdrawn
+        } catch RuleSyncClient.SyncError.deviceRevoked {
+            // #690: the parent removed this phone. Nothing stays paired or enforced; the app shows pairing.
+            DeviceRevocation.unpair()
+            return .notPaired
         } catch {
             return .failed(String(describing: error))
         }
