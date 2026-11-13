@@ -1,4 +1,4 @@
-#if canImport(SwiftUI)
+#if os(iOS)
 import OSLog
 import SwiftUI
 #if canImport(UIKit)
