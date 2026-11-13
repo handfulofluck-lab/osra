@@ -14,6 +14,7 @@ name: API image
 # required check either — `verified-gate` is the only one — so a run that did not happen can never be read
 # as a pass. The weekly run on main catches the drift no PR would trigger (base image, runner, pnpm).
 # `scripts/check-ci-paths.mjs` checks that the list names this file and every file the Dockerfile COPYs.
+# Since #668 it also covers the scenario helper's live case, which only this Ubuntu job can run: see the last step.
 on:
   pull_request:
     paths:
@@ -23,6 +24,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".dockerignore"
+      - "scripts/hardware/scenario-family.mjs"
+      - "scripts/hardware/scenario-family.test.mjs"
       - ".github/workflows/api-image.yml"
   schedule:
     - cron: "11 2 * * 1"
@@ -55,6 +58,13 @@ jobs:
         ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
+
+      # The scenario step below runs `node --test` and greps its summary line; that line is the 20.x
+      # reporter's (`ℹ pass N`), where 18 prints `# pass N`. Pin the version rather than take whatever the
+      # runner image happens to carry.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - uses: docker/setup-buildx-action@v3
 
@@ -100,4 +110,80 @@ jobs:
             osra-api:ci
           curl -fsS --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:3000/health/deep \
             || { echo "boot failed; container logs:"; docker logs api; exit 1; }
-          docker rm -f api
+
+      # The scenario helper (#668) signs a family up through the public API, erases it, and reads every
+      # child-scoped table back: non-zero residue exits 1. Its live case is skipped unless SCENARIO_API_BASE
+      # is set, and this is the Ubuntu job whose stack is a real API on real Postgres and Redis — the
+      # container booted above answers on 127.0.0.1:3000 (`--network host`), so the boot step no longer
+      # removes it; this step does, and the runner is ephemeral if a grep below fails first.
+      # One run, not two: each invocation signs an account up and erases it. `pass 25` cannot appear if the
+      # live case skipped (that run says 21 pass, 1 skipped) or failed; `pipefail` carries a failing run's
+      # exit through the pipe; `fail 0` is asserted because a 26th case that failed would leave `pass 25`.
+      # Claude's ruling on #674: the erasure is proved against the database itself, not only through the
+      # routes, because a route can answer 404 for a row that is still there.
+      #
+      # The table list is GENERATED from the catalog, not written by hand: a hand list drifts the first time
+      # someone adds a model, and the drift is invisible — the step keeps passing and stops counting the new
+      # table. `\gexec` turns one row per table into one SELECT per table, so a new model is counted the day
+      # it migrates. `_prisma_migrations` is the one exclusion: it is our own bookkeeping, not family data.
+      #
+      # Counts and ids only — neither is personal data, and no row's contents leave the runner.
+      - name: Count every table and record every family id before the scenario run (#674)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          cat > /tmp/family-tables.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT format('SELECT %L, count(*) FROM %I.%I', table_name, table_schema, table_name)
+          FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_type = 'BASE TABLE'
+            AND table_name <> '_prisma_migrations'
+          ORDER BY table_name
+          \gexec
+          SQL
+          psql -h 127.0.0.1 -U postgres -d postgres -f /tmp/family-tables.sql | sort > /tmp/before.txt
+          echo "tables counted: $(wc -l < /tmp/before.txt)"
+          echo "before:"; cat /tmp/before.txt
+          test -s /tmp/before.txt || { echo "::error::the generated count query returned nothing"; exit 1; }
+          # The ids, not a time window: the seed family is created minutes before the run and would sit
+          # inside any window, so a clock cannot tell "the run's family" from "the seed's".
+          psql -h 127.0.0.1 -U postgres -d postgres -tAc 'SELECT id FROM "Family" ORDER BY 1' > /tmp/families-before.txt
+          echo "family ids before: $(wc -l < /tmp/families-before.txt)"
+
+      - name: A scenario family is created and erased through the API, and leaves no residue (#668)
+        env:
+          SCENARIO_API_BASE: http://127.0.0.1:3000
+        run: |
+          set -o pipefail
+          out=$(node --test scripts/hardware/scenario-family.test.mjs 2>&1 | tee /dev/stderr)
+          printf '%s\n' "$out" | grep -q 'pass 26$'
+          printf '%s\n' "$out" | grep -q 'fail 0$'
+
+      # Two assertions, because they catch different mistakes: the per-table counts catch a delete that
+      # skips a table (Claude plants exactly that), and the id set catches a family that survived with its
+      # rows intact — which the count can miss when two changes cancel out.
+      - name: The erasure leaves every table where it found it, and no family behind (#674)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -f /tmp/family-tables.sql | sort > /tmp/after.txt
+          echo "after:"; cat /tmp/after.txt
+          if ! diff -u /tmp/before.txt /tmp/after.txt; then
+            echo "::error::the scenario run changed a table's row count"
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U postgres -d postgres -tAc 'SELECT id FROM "Family" ORDER BY 1' > /tmp/families-after.txt
+          if ! diff -u /tmp/families-before.txt /tmp/families-after.txt; then
+            echo "::error::a family exists after the run that did not exist before it"
+            exit 1
+          fi
+          echo "counts identical and the family set is unchanged"
+
+      # Kept out of the steps above so a failed assertion still tears the container down, rather than leaving
+      # it to the runner's own disposal and making a red run look like a leak.
+      - name: Stop the API container
+        if: always()
+        run: docker rm -f api
+

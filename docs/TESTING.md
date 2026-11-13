@@ -348,6 +348,13 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `terraform.yml` | On a PR touching `infra/terraform/**`: `terraform fmt -check -recursive` plus `init -backend=false` and `validate` in `base/` and `env/` (Terraform 1.13.4, no credentials, no `plan`). `plan` and `apply` stay human steps — see `infra/terraform/README.md` |
 | `main-guard.yml` | Detects a commit on `main` that did not arrive through a pull request |
 
+The scenario helper's own gates (#668) sit in those two workflows rather than a third: **`workflow-lint`**
+runs `node --test scripts/hardware/scenario-family.test.mjs` and asserts both `pass 21` and `fail 0`, so a
+skipped or empty run cannot be green by silence, and **`api-image`** runs the live `create` → `delete` case
+against the booted API with `SCENARIO_API_BASE=http://127.0.0.1:3000`, its `paths:` naming both helper files.
+The live case's counter-assertion is the `psql` before/after: every table's row count and the family id set
+must be identical, which is what proves the erasure rather than trusting the routes' 404s.
+
 Local equivalents of the two lint gates (the workflow lint is also installed as a pre-push hook by
 `scripts/install-git-hooks.sh`):
 
@@ -1071,6 +1078,50 @@ epoch in Windows PowerShell 5.1 (use `[DateTimeOffset]::UtcNow.ToUnixTimeSeconds
 screencap` prefixes a text warning on multi-display phones (strip to the PNG signature), and a child
 process started with `Start-Process` inherits the console's redirected log handle and keeps it locked
 after its parent dies.
+
+### A throwaway family for a scenario run (#668, `scripts/hardware/scenario-family.mjs`)
+
+`docs/QA/SCENARIO-SUITE.md` §4 step 3 wants a family in one call, with rules that cannot ambush a run. The
+helper is a Node script with no dependencies, in two commands:
+
+```bash
+node scripts/hardware/scenario-family.mjs create --base-url http://localhost:3000
+# {"familyId":"…","childId":"…","pairingCode":"424242","parentTokenFile":"…/osra-scenario-family-….json"}
+
+node scripts/hardware/scenario-family.mjs delete --base-url http://localhost:3000 --token-file <parentTokenFile>
+```
+
+- `create` signs a parent up (a fresh `scenario-<stamp>@osratech.test`), adds a child with inline consent,
+  then **neutralises the three defaults that would block a phone mid-scenario**: the 180/300-minute daily
+  limit becomes `0`, bedtime 21:00–07:00 becomes an empty window (`bedtimeStart === bedtimeEnd`), and
+  school hours keep no day. It reads the ruleset back and refuses to mint a pairing code if any of the
+  three survived; a create that fails after the sign-up erases the partial family.
+- **The token is a file, never a terminal.** The access token and the password the deletion needs go to
+  `parentTokenFile` at mode 0600, so a screenshot or a scrollback of the run carries neither. On Windows
+  the POSIX bits are advisory (NTFS keeps 0o666) and the script says so on stderr: keep the file under your
+  own user profile and delete it after the run.
+- `delete` re-authenticates, calls `DELETE /v1/family` (the owner's account deletion, the ADR-0013 cascade)
+  and prints a `counts` object with one entry per child-scoped table TR-06 counts — `0` when the parent
+  route for that table refuses after the erasure. Non-zero means residue and the script exits 1. The
+  row-level count itself is still `e2e.mjs`'s, with `DATABASE_URL`: no public route counts rows.
+- **The base URL guard:** only `localhost`, `127.0.0.1` or a `*.staging.osratech.com` host is accepted, and
+  anything else is a named `BaseUrlRefused` with exit 2 *before the first request*. The staging apex
+  (`staging.osratech.com`) is refused too; the staging API is `api.staging.osratech.com`.
+- Exit codes: `0` done · `1` a step failed or residue was found · `2` refused to run (usage, base URL,
+  token file). Tests: `node --test scripts/hardware/scenario-family.test.mjs` — the live "delete after
+  create leaves nothing" case runs only when `SCENARIO_API_BASE` is set, and **fails** on non-zero counts
+  rather than skipping.
+- **What CI already covers** (wired in the same PR that added the script). The 21 unit cases run in
+  `workflow-lint` on every PR: `node --test scripts/hardware/scenario-family.test.mjs`, and the step fails
+  unless the run prints `pass 21` **and** `fail 0` — a skipped, empty or failing run cannot print both, so
+  the step cannot be green by silence. The live `create` → `delete` case runs in `api-image.yml`, the Ubuntu
+  job whose stack is a real API on real Postgres and Redis: it sets
+  `SCENARIO_API_BASE=http://127.0.0.1:3000`, the port the booted container answers on (`--network host`),
+  and fails unless 22 cases pass — 21 unit + the live one — so a lost variable cannot quietly turn the live
+  case into a skip. No CI job runs `e2e.mjs` or `qa-probe.mjs`; those are run by hand against a live stack
+  (§2). Nothing in CI counts rows with `psql`: `delete`'s counts come from the parent routes, as above, and
+  the row-level count is still `e2e.mjs`'s with `DATABASE_URL`.
+
 
 ## 6. Traps that have cost real time here
 
