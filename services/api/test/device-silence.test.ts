@@ -9,7 +9,10 @@ import {
   resolveSilenceConfig,
   runDeviceSilenceCheck,
   silenceConfigWarning,
+  APPLE_SILENT_DEFAULT_MINUTES,
+  APPLE_SILENT_MIN_SAFE_MINUTES,
   silentAfterMinutes,
+  silentMinutesForPlatform,
   startDeviceSilenceScheduler,
   stopDeviceSilenceScheduler,
 } from "../src/jobs/deviceSilence.js";
@@ -167,6 +170,71 @@ describe("device-silence watch (plan 1.9 finding: a wiped agent cannot alert, th
 // (LocationService.kt:430) and was shorter than one telemetry interval (WorkScheduler.kt:48), so a
 // healthy phone could be flagged between two reports. The window is now validated against the
 // cadence the server mirrors, and the hardware row uses an explicit test-only override.
+describe("the window is per platform (#681: an iPhone is suspended by Apple, not by us)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("gives Android the scheduling window and Apple six hours", () => {
+    // Android reports on a cadence we control, so 30 minutes of silence is news — the `pm clear` case.
+    expect(silentMinutesForPlatform("android", 30, {} as NodeJS.ProcessEnv)).toBe(30);
+    expect(silentMinutesForPlatform(null, 30, {} as NodeJS.ProcessEnv)).toBe(30);
+    // The OS suspends the iPhone between wakes; a healthy phone in a school bag must not read as removed.
+    expect(silentMinutesForPlatform("ios", 30, {} as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_DEFAULT_MINUTES);
+    expect(silentMinutesForPlatform("macos", 30, {} as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_DEFAULT_MINUTES);
+    expect(APPLE_SILENT_DEFAULT_MINUTES).toBe(360);
+  });
+
+  it("raises a too-small Apple window instead of trusting it", () => {
+    // A false "the phone may have been removed" is worse than a late true one, so the same clamp
+    // discipline the Android window has applies here.
+    expect(silentMinutesForPlatform("ios", 30, { DEVICE_SILENT_MINUTES_APPLE: "30" } as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_MIN_SAFE_MINUTES);
+    expect(silentMinutesForPlatform("ios", 30, { DEVICE_SILENT_MINUTES_APPLE: "480" } as NodeJS.ProcessEnv)).toBe(480);
+    expect(silentMinutesForPlatform("ios", 30, { DEVICE_SILENT_MINUTES_APPLE: "not a number" } as NodeJS.ProcessEnv)).toBe(APPLE_SILENT_DEFAULT_MINUTES);
+  });
+
+  it("leaves a five-hour-old iPhone alone, and alerts on the same device at seven hours", async () => {
+    const redis = getRedis() as unknown as MockRedis;
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-1", ...data }));
+
+    // Five hours: inside Apple's window, so no alert and no status change.
+    prismaMock.device.findMany.mockResolvedValue([
+      { id: "ios-1", status: "online", lastSeen: new Date(NOW.getTime() - 5 * 3600_000), childId: "c1", model: "iPhone 13", platform: "ios", child: { familyId: "f1", displayName: "Sam" } },
+    ]);
+    const early = await runDeviceSilenceCheck(NOW, { DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv);
+    expect(early).toEqual({ checked: 1, alerted: [] });
+    expect(prismaMock.device.update).not.toHaveBeenCalled();
+
+    // Seven hours: past it. The alert names the window that actually applied, not the Android one.
+    prismaMock.device.findMany.mockResolvedValue([
+      { id: "ios-1", status: "online", lastSeen: new Date(NOW.getTime() - 7 * 3600_000), childId: "c1", model: "iPhone 13", platform: "ios", child: { familyId: "f1", displayName: "Sam" } },
+    ]);
+    redis.set.mockResolvedValueOnce("OK");
+    const late = await runDeviceSilenceCheck(NOW, { DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv);
+    expect(late).toEqual({ checked: 1, alerted: ["ios-1"] });
+    const body = String(prismaMock.alert.create.mock.calls[0][0].data.body);
+    expect(body).toContain("420 minutes");
+    expect(body).not.toContain("30 minutes");
+  });
+
+  it("still alerts on an Android phone at 45 minutes, which is the regression this change must not cause", async () => {
+    // The candidate query uses the SHORTEST window so Android is not judged by Apple's six hours. If that
+    // were wrong, `pm clear` on Android would go silent for six hours — the bypass this job exists to catch.
+    const redis = getRedis() as unknown as MockRedis;
+    prismaMock.device.findMany.mockResolvedValue([
+      { id: "droid-1", status: "online", lastSeen: new Date(NOW.getTime() - 45 * 60_000), childId: "c2", model: "SM-F721B", platform: "android", child: { familyId: "f2", displayName: "Alex" } },
+    ]);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-2", ...data }));
+    redis.set.mockResolvedValueOnce("OK");
+
+    const run = await runDeviceSilenceCheck(NOW, { DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv);
+    expect(run.alerted).toEqual(["droid-1"]);
+    // The body names the elapsed 45 minutes and the metadata the 30-minute window: two different facts,
+    // and the parent's sentence needs the first one.
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { body: string; metadata: { silentMinutes: number } };
+    expect(String(data.body)).toContain("45 minutes");
+    expect(data.metadata.silentMinutes).toBe(30);
+  });
+});
+
 describe("silence window vs the agent's reporting cadence (issue #166)", () => {
   const read = (relative: string) => readFileSync(new URL(relative, import.meta.url), "utf8");
 

@@ -120,6 +120,31 @@ export function isSilent(status: string, lastSeen: Date, now: Date, minutes: num
   return status === "online" && now.getTime() - lastSeen.getTime() > minutes * 60_000;
 }
 
+/**
+ * #681: the window is per platform, because the reporting cadence is Apple's, not ours.
+ *
+ * On Android the agent reports on a schedule we control, and a 30-minute silence is news — that is the
+ * `pm clear` case this job was built for. On an iPhone the app is suspended by the OS between wakes, so a
+ * healthy phone can be quiet for hours; the same window would raise a *critical* "your child's phone went
+ * silent" alert for a phone that is simply in a school bag. Six hours is the documented default, and it
+ * is deliberately far above any plausible wake interval rather than tuned to one.
+ *
+ * Same clamp discipline as the Android window: below [APPLE_SILENT_MIN_SAFE_MINUTES] the value is raised,
+ * because a false "the phone may have been removed" is worse than a late true one.
+ */
+export const APPLE_SILENT_DEFAULT_MINUTES = 360;
+export const APPLE_SILENT_MIN_SAFE_MINUTES = 120;
+export const APPLE_SILENT_ENV = "DEVICE_SILENT_MINUTES_APPLE";
+
+/** Which window applies to a device, from the platform column the writers already set. */
+export function silentMinutesForPlatform(platform: string | null | undefined, androidMinutes: number, env: NodeJS.ProcessEnv = process.env): number {
+  if (platform !== "ios" && platform !== "macos") return androidMinutes;
+  const raw = env[APPLE_SILENT_ENV];
+  const parsed = raw === undefined ? APPLE_SILENT_DEFAULT_MINUTES : Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return APPLE_SILENT_DEFAULT_MINUTES;
+  return Math.max(parsed, APPLE_SILENT_MIN_SAFE_MINUTES);
+}
+
 export interface SilenceRun {
   checked: number;
   alerted: string[];
@@ -127,14 +152,19 @@ export interface SilenceRun {
 
 export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<SilenceRun> {
   const minutes = silentAfterMinutes(env);
-  const cutoff = new Date(now.getTime() - minutes * 60_000);
+  // The SQL cutoff uses the SHORTEST window in play; each device's own window is then tested below. Doing
+  // it the other way round — one cutoff for everyone — would either miss every Android silence or let an
+  // Apple device be judged by a 30-minute rule.
+  const shortest = Math.min(minutes, silentMinutesForPlatform("ios", minutes, env));
+  const cutoff = new Date(now.getTime() - shortest * 60_000);
   const devices = await prisma.device.findMany({
     where: { status: "online", lastSeen: { lt: cutoff } },
-    select: { id: true, status: true, lastSeen: true, childId: true, model: true, child: { select: { familyId: true, displayName: true } } },
+    select: { id: true, status: true, lastSeen: true, childId: true, model: true, platform: true, child: { select: { familyId: true, displayName: true } } },
   });
   const alerted: string[] = [];
   for (const d of devices) {
-    if (!isSilent(d.status, d.lastSeen, now, minutes)) continue;
+    const windowMinutes = silentMinutesForPlatform(d.platform, minutes, env);
+    if (!isSilent(d.status, d.lastSeen, now, windowMinutes)) continue;
     // One alert per silence episode: the claim lives until the device is seen again (TTL as a backstop).
     const claim = await getRedis()
       .set(`jobs:device-silent:${d.id}:${d.lastSeen.toISOString()}`, now.toISOString(), "EX", 7 * 24 * 3600, "NX")
@@ -148,8 +178,11 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
       severity: "critical",
       category: "tamper",
       title: "Device stopped reporting",
-      body: `${d.model} has not reported for ${minutes} minutes. The agent may have been removed, its data wiped, or the phone switched off.`,
-      metadata: { type: "device_silent", lastSeen: d.lastSeen.toISOString(), silentMinutes: minutes },
+      // The sentence names the time the phone has ACTUALLY been quiet, not the window that fired: a parent
+      // reading "360 minutes" about a phone unseen for seven hours is being told something untrue in the one
+      // number they will act on. The window goes in the metadata, where the test and the audit read it.
+      body: `${d.model} has not reported for ${Math.round((now.getTime() - d.lastSeen.getTime()) / 60_000)} minutes. The agent may have been removed, its data wiped, or the phone switched off.`,
+      metadata: { type: "device_silent", lastSeen: d.lastSeen.toISOString(), silentMinutes: windowMinutes },
       childName: d.child.displayName,
     });
     alerted.push(d.id);
