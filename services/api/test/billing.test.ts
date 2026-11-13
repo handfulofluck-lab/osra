@@ -574,6 +574,51 @@ describe("POST /v1/billing/google/rtdn", () => {
     await app.close();
   });
 
+  it("revokes rather than activates an expired purchase restored after an unknown refund (#700)", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const play = fakePlay({
+      verifySubscription: vi.fn(async () => verified({
+        state: "expired",
+        expiryTime: "2026-11-01T00:00:00.000Z",
+        autoRenews: false,
+        acknowledgementState: "acknowledged",
+      })),
+    });
+    const log = vi.fn();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+
+    const refunded = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/rtdn",
+      ...pushPayload(voidedNotification(), "msg-refund-before-restore"),
+    });
+    expect(refunded.statusCode).toBe(204);
+    expect(log).toHaveBeenCalledWith("billing.rtdn.unknown_refund", { messageId: "msg-refund-before-restore" });
+    expect(store.revoke).not.toHaveBeenCalled();
+    expect(play.verifySubscription).not.toHaveBeenCalled();
+
+    const restored = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/verify",
+      headers: authHeader(app),
+      payload: { purchaseToken: TOKEN, productId: PRODUCT },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toMatchObject({ state: "expired", source: "google_play", productId: PRODUCT });
+    // applyPurchase sends an expired restore through revokeEntitlement, binding it without an active grant.
+    // Mutant: treating EXPIRED as active here calls grant instead and fails both assertions below.
+    expect(store.grant).not.toHaveBeenCalled();
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+    expect(store.revoke.mock.calls[0][0]).toMatchObject({
+      familyId: "fam-1",
+      state: "expired",
+      storeRef: TOKEN,
+      cause: "verify",
+    });
+    await app.close();
+  });
+
   it("revokes when a voided notification states no productType (#692 review f2)", async () => {
     // Play omits productType on older payloads. Treating "unstated" as "not a subscription" would keep a
     // refunded family on the plan with no signal anywhere — the narrower guard Claude's f2 planted.

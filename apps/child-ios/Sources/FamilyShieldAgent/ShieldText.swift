@@ -12,7 +12,7 @@ public struct ShieldText: Equatable {
     public var subtitle: String?
     /// "Request access": keeps the shield up and tells the parent.
     public var primaryButton: String
-    /// "Exit to Home screen": closes the blocked app.
+    /// "Close app" (U10, was "Exit to Home screen"): closes the blocked app.
     public var secondaryButton: String
 
     /// The windows the iPhone enforces: bedtime and the routines (`ScreenTimeController.applyRules`). School

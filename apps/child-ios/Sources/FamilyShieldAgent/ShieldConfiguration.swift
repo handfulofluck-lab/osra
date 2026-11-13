@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(UIKit) && canImport(ManagedSettings) && canImport(ManagedSettingsUI)
+#if os(iOS)
 import UIKit
 import ManagedSettings
 import ManagedSettingsUI
