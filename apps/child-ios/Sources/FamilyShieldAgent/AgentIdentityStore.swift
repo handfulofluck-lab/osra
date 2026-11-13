@@ -59,6 +59,16 @@ public enum AgentIdentityStore {
         return true
     }
 
+    /// #691: a completed pairing starts clean. Rules, the last-sync time and the uploaded push token of an earlier
+    /// pairing belong to that pairing, so they go before the new identity is saved; the Status screen then reads
+    /// "Not synced yet" until the first sync for this child, never a time carried over from another one.
+    @discardableResult
+    public static func saveNewPairing(_ identity: AgentIdentity) -> Bool {
+        RuleStore.clear()
+        PushTokenRegistrar.forget()
+        return save(identity)
+    }
+
     /// Returns the persisted identity, or nil when the device has not been paired.
     public static func load() -> AgentIdentity? {
         migrateLegacySecrets()
