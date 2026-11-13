@@ -27,6 +27,20 @@ double _statusHue(String status) => switch (status) {
 /// and a tap-through bottom sheet with Ring/Lock device commands. Live
 /// updates arrive over [wsProvider]. A '+' app-bar button (or a map long-press)
 /// opens the create-geofence dialog (#23).
+/// #598: on iOS the Google Maps SDK aborts in `checkServicePreconditions` when `GMSServices.provideAPIKey`
+/// was never called, and the parent app has no iOS key plumbing yet — opening the map crashed the app.
+///
+/// The key is compiled in (`--dart-define=MAPS_API_KEY=…`, which CI supplies from a secret and which the iOS
+/// `AppDelegate` reads from the same value via `Info.plist`). When it is absent there is nothing to draw, so
+/// the screen says so instead of constructing a `GoogleMap` and aborting.
+const String kMapsApiKey = String.fromEnvironment('MAPS_API_KEY');
+
+/// True when this build can draw a map on [platform]. Android gets its key from the Gradle manifest, which
+/// the Dart side cannot see, so it is assumed present there; iOS is the platform with the crash, and the
+/// platform whose key has to be compiled in.
+bool mapIsAvailable(TargetPlatform platform, {String key = kMapsApiKey}) =>
+    platform != TargetPlatform.iOS || key.isNotEmpty;
+
 class FamilyMapScreen extends ConsumerWidget {
   const FamilyMapScreen({super.key});
 
@@ -225,6 +239,25 @@ class _MapBodyState extends ConsumerState<_MapBody> {
         ref.watch(geofencesProvider(c.id)),
       ],
     ]);
+
+    if (!mapIsAvailable(Theme.of(context).platform)) {
+      // #598: no key means no map view, not a crash. The copy is an existing approved string rather than a
+      // new English one — the specific sentence ("Map unavailable in this build") needs the Arabic Language
+      // Bureau, and shipping English here would be the raw-key class of bug the localization tests exist for.
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.map_outlined, size: 48),
+              const SizedBox(height: AppSpace.sm),
+              Text(context.l10n.phoneSetupStateUnavailable, textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Stack(
       children: [
