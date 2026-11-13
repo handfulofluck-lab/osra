@@ -190,7 +190,7 @@ if (process.argv.includes('--selftest')) {
   ];
   const cases = [
     { name: 'the committed workflow passes', text: source, want: 0 },
-    ...broken.map(([name, text]) => ({ name: `${name} fails`, text, want: 1 })),
+    ...broken.map(([name, text]) => ({ name: `structural: ${name} fails`, run: () => structural(text), want: 1 })),
   ];
   if (withJq) {
     // Each layer must catch every broken gate on its own, not only through the other one.
