@@ -1,5 +1,7 @@
 # QA — iOS Child Agent (`apps/child-ios`) — static review
 
+<!-- verify/613-ios-path: iOS path demonstration only; not for merge. -->
+
 > Scope note: this is a **static review** (Windows host — no Swift toolchain can be
 > installed here, and Screen Time frameworks only compile on macOS/iOS targets).
 > `swift test` must be run on a Mac before shipping; the XCTest target exercises only
