@@ -22,6 +22,11 @@ public class ApiClient
         _config = config;
         if (!string.IsNullOrEmpty(config.DeviceJwt))
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.DeviceJwt);
+        if (DesktopClientIdentity.Header is { } clientHeader)
+        {
+            _http.DefaultRequestHeaders.Remove("X-OSRA-Client");
+            _http.DefaultRequestHeaders.TryAddWithoutValidation("X-OSRA-Client", clientHeader);
+        }
     }
 
     /// <summary>POSTs a telemetry batch to /v1/devices/{deviceId}/telemetry; true on 2xx.</summary>
@@ -96,7 +101,8 @@ public class ApiClient
             // nonce + HMAC over "ts.nonce.body". Signed with the paired per-device secret (BUG-001);
             // the INTERNAL_HMAC_SECRET env override is a dev-only fallback — the server will reject
             // it without a service caller header, by design.
-            var secret = _config.HmacSecret ?? Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET");
+            var secret = _config.HmacSecret ??
+                (_config.AllowEnvironmentOverrides ? Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET") : null);
             if (!string.IsNullOrEmpty(secret))
             {
                 var (signature, timestamp, nonce) = InternalSigner.Sign(secret, body);

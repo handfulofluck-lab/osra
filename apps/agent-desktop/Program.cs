@@ -19,16 +19,19 @@ catch (Exception ex)
 AppDomain.CurrentDomain.ProcessExit += (_, _) => WebFilterProxy.ResetSystemProxyIfSet(8877);
 
 // The identity must exist before the host starts: every hosted service assumes a paired device.
-// Env overrides (API_BASE/DEVICE_JWT/DEVICE_ID/CHILD_ID) are applied inside AgentConfig.Load.
+// Only the Debug host permits legacy environment overrides.
+#if DEBUG
+const bool allowEnvironmentOverrides = true;
+#else
+const bool allowEnvironmentOverrides = false;
+#endif
 var exeDir = AppContext.BaseDirectory;
-var config = AgentConfig.Load(exeDir);
+var config = AgentConfig.Load(exeDir, allowEnvironmentOverrides);
 if (config is null)
 {
     if (!Environment.UserInteractive)
     {
-        Console.Error.WriteLine(
-            "OSRA agent is not paired. Run this exe interactively once to pair it, or create " +
-            Path.Combine(exeDir, AgentConfig.FileName) + " with apiBase/deviceJwt/deviceId/childId.");
+        Console.Error.WriteLine("OSRA agent is not paired. Run this exe interactively once to pair it.");
         return 2;
     }
 
@@ -49,12 +52,10 @@ if (ParentPinPolicy.Normalize(config.ParentPin) is null)
 {
     Console.Error.WriteLine(
         "OSRA: WARNING — no parent PIN is configured. Lock, bedtime and screen-time will NOT arm " +
-        $"until the parent sets one (parentPin in {AgentConfig.FileName}, or DESKTOP_PARENT_PIN " +
-        "on the next start).");
+        "until the parent sets one on this PC.");
 }
 builder.Services.AddHttpClient<ApiClient>(c =>
-    // NOTE: config.ApiBase already carries the API_BASE env override (see AgentConfig.Load).
-    c.BaseAddress = new Uri(config.ApiBase ?? "http://localhost:3000"));
+    c.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
 builder.Services.AddHostedService<WebFilterProxy>();
 builder.Services.AddHostedService<ProcessMonitor>();
 builder.Services.AddHostedService<ScreenTimeEnforcer>();

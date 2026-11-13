@@ -92,7 +92,8 @@ public sealed class ApiClientHeaderTests : IDisposable
             var clientHeader = request.Headers.TryGetValues("X-OSRA-Client", out var values)
                 ? string.Join("", values)
                 : null;
-            Requests.Add((clientHeader, request.Headers.Contains(InternalSigner.SignatureHeader)));
+            var hasSignature = request.Content?.Headers.Contains(InternalSigner.SignatureHeader) ?? false;
+            Requests.Add((clientHeader, hasSignature));
             var body = request.RequestUri!.AbsolutePath.Contains("/commands") ? "[]" : "{}";
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
