@@ -55,6 +55,19 @@ class MergedManifest private constructor(
         val intentActions: Set<String>,
         /** `<service android:label="…">`; null when the component has none. */
         val label: String? = null,
+        /**
+         * Issue #671: `android:launchMode`, `android:taskAffinity` and `android:excludeFromRecents` as
+         * the artefacts declare them, `null` where the attribute is absent.
+         *
+         * [taskAffinity] is the reason these are read: **absent is not the empty string**. An absent
+         * affinity means the application's own, so the screen joins the app's main task; a declared
+         * empty affinity makes the component the root of a task of its own. A check that cannot tell
+         * the two apart passes for an attribute nobody wrote — the #101 lesson, and the first row below
+         * is the control that keeps this honest.
+         */
+        val launchMode: String? = null,
+        val taskAffinity: String? = null,
+        val excludeFromRecents: String? = null,
     )
 
     /** Every action any component's `<intent-filter>` declares. */
@@ -94,6 +107,9 @@ class MergedManifest private constructor(
                                 .mapNotNull { action -> action.attr("android:name") }
                                 .toSet(),
                             label = element.attr("android:label"),
+                            launchMode = element.attr("android:launchMode"),
+                            taskAffinity = element.attr("android:taskAffinity"),
+                            excludeFromRecents = element.attr("android:excludeFromRecents"),
                         )
                     }
                 }
