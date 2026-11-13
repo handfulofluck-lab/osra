@@ -65,25 +65,43 @@ const ALERT_BODY_REQUIRED_PARAMS = {
  * *key*, not the alert: the row is written with the English `body` and the app falls back exactly as an
  * un-updated app does (#718 review). The one thing that still throws is a programmer error a test catches —
  * params without a key — because that is a caller mistake, not a runtime condition.
+ *
+ * `bodyKey` and `bodyParams` are **reserved**: a caller's `metadata` is stripped of them before the
+ * validated pair is added (Fable's n9, osra-security#16). Without the strip, a caller that passes its own
+ * `metadata.bodyKey` keeps it on every path that drops the validated key — so the app would render an
+ * untrusted key and params as if they had been validated.
  */
+const RESERVED_ALERT_BODY_FIELDS = ["bodyKey", "bodyParams"] as const;
+
+function withoutReservedAlertBodyFields(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (metadata === undefined) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(metadata)) {
+    if (!(RESERVED_ALERT_BODY_FIELDS as readonly string[]).includes(name)) out[name] = value;
+  }
+  return out;
+}
+
 function metadataWithAlertBody(input: RaiseAlertInput): Record<string, unknown> | undefined {
   if (input.bodyKey === undefined) {
     if (input.params !== undefined) throw new Error("Alert body params require a bodyKey");
-    return input.metadata;
+    return withoutReservedAlertBodyFields(input.metadata);
   }
   if (!(ALERT_BODY_KEYS as readonly string[]).includes(input.bodyKey)) {
     console.warn(`[alerts] unknown bodyKey "${input.bodyKey}"; raising the alert with the English body only`);
-    return input.metadata;
+    return withoutReservedAlertBodyFields(input.metadata);
   }
   const params = input.params ?? {};
   for (const name of ALERT_BODY_REQUIRED_PARAMS[input.bodyKey]) {
     const value = params[name];
     if (value === undefined || value === null || value === "") {
       console.warn(`[alerts] empty body param "${name}" for ${input.bodyKey}; raising the alert with the English body only`);
-      return input.metadata;
+      return withoutReservedAlertBodyFields(input.metadata);
     }
   }
-  return { ...input.metadata, bodyKey: input.bodyKey, bodyParams: params };
+  return { ...withoutReservedAlertBodyFields(input.metadata), bodyKey: input.bodyKey, bodyParams: params };
 }
 
 /** A unique-constraint violation from Prisma (`P2002`), without importing the client's error class. */

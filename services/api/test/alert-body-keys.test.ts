@@ -110,8 +110,7 @@ describe("alert body keys (#711)", () => {
     expect(data.body).toBe("Something happened.");
   });
 
-  it("raises a flagged video that carries no channel, with no bodyKey (#718 review)", async () => {
-    // YouTubeWatchSchema defaults `channel` to "", so this is a real payload, not a hostile one. `channel` is
+  it("raises a flagged video that carries no channel, with no bodyKey (#718 review)", async () => {    // YouTubeWatchSchema defaults `channel` to "", so this is a real payload, not a hostile one. `channel` is
     // no longer a required param for exactly this case.
     await raiseAlert({
       childId: "child-1",
@@ -126,5 +125,69 @@ describe("alert body keys (#711)", () => {
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: { bodyKey?: string } };
     expect(data.metadata?.bodyKey).toBe("alertBodyYouTubeFlagged");
+  });
+
+  it("treats an empty required parameter as missing, and raises the English body (Fable n7)", async () => {
+    // `value === ""` is the fail-safe Ahmed's verdict rests on: an empty field is a real payload (a device
+    // with no model string), and it must cost the KEY, not the alert. Fable's n7 removed the "" test and
+    // every row stayed green, so only the *absent* param was pinned.
+    await raiseAlert({
+      childId: "child-1",
+      familyId: "fam-1",
+      severity: "critical",
+      category: "tamper",
+      title: "Device stopped reporting",
+      body: "A device has not reported for 45 minutes.",
+      bodyKey: "alertBodyDeviceSilent",
+      params: { model: "", minutes: 45 },
+    });
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.alert.create.mock.calls[0][0].data as {
+      metadata?: { bodyKey?: string; bodyParams?: unknown };
+      body: string;
+    };
+    expect(data.metadata?.bodyKey).toBeUndefined();
+    expect(data.metadata?.bodyParams).toBeUndefined();
+    expect(data.body).toBe("A device has not reported for 45 minutes.");
+  });
+
+  it("strips a caller's own bodyKey and bodyParams from metadata, validated or not (Fable n9)", async () => {
+    // `bodyKey`/`bodyParams` are reserved. A caller that puts its own in `metadata` would otherwise keep
+    // them on the paths where the validated pair is dropped — and the app would render an untrusted key
+    // as if it had been checked.
+    await raiseAlert({
+      childId: "child-1",
+      familyId: "fam-1",
+      severity: "warning",
+      category: "tamper",
+      title: "Flagged",
+      body: "Something happened.",
+      bodyKey: "alertBodyNotARealKey",
+      params: { anything: "x" },
+      metadata: { source: "test", bodyKey: "alertBodySearchFlagged", bodyParams: { engine: "forged" } },
+    } as Parameters<typeof raiseAlert>[0]);
+    expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
+    const dropped = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
+    expect(dropped.metadata).toEqual({ source: "test" });
+
+    resetPrismaMock();
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "alert-2", ...data }));
+    await raiseAlert({
+      childId: "child-1",
+      familyId: "fam-1",
+      severity: "warning",
+      category: "ai_concern",
+      title: "Search query concern on Google",
+      body: "A concerning search was conducted on Google",
+      bodyKey: "alertBodySearchFlagged",
+      params: { engine: "Google" },
+      metadata: { source: "test", bodyKey: "alertBodyGrooming", bodyParams: { app: "forged" } },
+    } as Parameters<typeof raiseAlert>[0]);
+    const kept = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
+    expect(kept.metadata).toEqual({
+      source: "test",
+      bodyKey: "alertBodySearchFlagged",
+      bodyParams: { engine: "Google" },
+    });
   });
 });

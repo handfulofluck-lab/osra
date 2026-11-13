@@ -136,6 +136,27 @@ describe("Track 1: Content Safety & Search Monitoring routes", () => {
     );
   });
 
+  it("the search alert's params are exactly the engine, so the URL never reaches the rendered sentence (Fable n5)", async () => {
+    // The URL is in the alert's `metadata` for the vault and the history list, and must NOT be in
+    // `bodyParams`: those are what the app substitutes into the sentence it shows a parent and into the
+    // push. `toEqual` cannot tell `{ engine }` from `{ engine, url: undefined }`, so this row sends a URL
+    // that exists and compares with `toStrictEqual`.
+    prismaMock.alert.create.mockResolvedValue({ id: "alert-p", childId: CHILD.id });
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "event-p" });
+
+    const res = await postSearchEvent(app, {
+      childId: CHILD.id,
+      engine: "google",
+      query: "how can I kill myself tonight",
+      url: "https://www.google.com/search?q=how+can+I+kill+myself+tonight",
+    });
+    expect(res.statusCode).toBe(201);
+
+    const data = prismaMock.alert.create.mock.calls[0][0].data as { metadata?: Record<string, unknown> };
+    expect((data.metadata as { bodyParams: unknown }).bodyParams).toStrictEqual({ engine: "google" });
+    expect(JSON.stringify(data.metadata?.bodyParams)).not.toContain("http");
+  });
+
   it("analyzes YouTube watch event and flags dangerous title (201)", async () => {
     prismaMock.alert.create.mockResolvedValue({ id: "alert-yt", childId: CHILD.id });
     prismaMock.socialEvent.create.mockResolvedValue({ id: "event-yt" });
