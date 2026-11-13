@@ -3,9 +3,9 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
-import { sanitizeAlertMetadata } from "../lib/alertLocation.js";
+import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -75,7 +75,13 @@ export async function alertsRoutes(app: FastifyInstance) {
       skip: (query.page - 1) * query.limit,
       take: query.limit,
     });
-    return { items: alerts, meta: { total, page: query.page, limit: query.limit } };
+    // Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts`
+    // without `location`. The alert is theirs to read; the child's coordinates are not, so the five keys
+    // come off every row on this broad read — the same rule that withholds geofences from `GET /v1/family`.
+    // `guardianPermissions` is null for owners, co-parents and device tokens, so their rows are untouched.
+    const perms = await guardianPermissions(req);
+    const items = perms !== null && !perms.includes("location") ? alerts.map(withoutAlertLocation) : alerts;
+    return { items, meta: { total, page: query.page, limit: query.limit } };
   });
 
   /** Acknowledge an alert. */

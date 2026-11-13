@@ -526,6 +526,46 @@ describe("alerts routes", () => {
  *   parent. This row is the one that must never go green-by-deletion.
  * - **a bad location does not reject the alert** — it is dropped; only the five keys go.
  */
+/**
+ * Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts` without
+ * `location`. The alert is theirs; the child's place is not. One row per read — this one is the list, the
+ * next is the realtime frame (test/realtime.test.ts).
+ */
+describe("a guardian without `location` reads alerts without a place (issue #672 B1)", () => {
+  const row = {
+    id: "a-sos",
+    childId: CHILD.id,
+    category: "sos",
+    severity: "critical",
+    metadata: { deviceId: "dev-1", lat: 25.2769, lng: 51.5211, accuracyM: 12, takenAt: "2026-11-13T19:11:00.000Z", ageSeconds: 300 },
+  };
+
+  const listAs = async (permissions: string[]) => {
+    prismaMock.parent.findUnique.mockResolvedValue({ id: "guardian-1", role: "guardian", permissions, familyId: "fam-1", email: "g@example.com", displayName: "G", passwordHash: "x", mfaEnabled: false, mfaSecret: null });
+    prismaMock.alert.count.mockResolvedValue(1);
+    prismaMock.alert.findMany.mockResolvedValue([row]);
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const res = await app.inject({ method: "GET", url: "/v1/alerts", headers: authHeader(app, "fam-1", "guardian-1") });
+    await app.close();
+    return res;
+  };
+
+  it("a guardian holding `alerts` but not `location` receives the alert with no location keys", async () => {
+    const res = await listAs(["alerts"]);
+    expect(res.statusCode).toBe(200);
+    const item = res.json().items[0];
+    expect(item.id).toBe("a-sos");
+    expect(item.metadata).toEqual({ deviceId: "dev-1" });
+    expect(res.json().meta.total).toBe(1);
+  });
+
+  it("a guardian holding both `alerts` and `location` receives the place", async () => {
+    const res = await listAs(["alerts", "location"]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items[0].metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
+  });
+});
+
 describe("SOS location on an internal alert (issue #672)", () => {
   const postSos = (app: Awaited<ReturnType<typeof buildApp>>, metadata: Record<string, unknown> | undefined) => {
     const raw = JSON.stringify({

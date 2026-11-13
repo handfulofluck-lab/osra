@@ -48,9 +48,11 @@ class SosAlertWiringTest {
             sos.contains("LocationService.ACTION_PING_NOW") && sos.contains("ContextCompat.startForegroundService"),
         )
         assertTrue(
-            "and the start is gated on a location grant: startForegroundService without one kills the process " +
-                "(#128/#132), which would lose the SOS screen too",
-            sos.contains("if (!hasLocationPermission()) return"),
+            "and the start is gated on SOS-fresh-fix rules: no location grant kills the process (#128/#132), " +
+                "an unpaired phone has nobody to show the ping to (#672 review, Fable note 1)",
+            sos.contains(
+                "if (!SosFreshFixPolicy.shouldRequest(settings.isPairedSync(), hasLocationPermission())) return",
+            ),
         )
     }
 

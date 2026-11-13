@@ -873,28 +873,47 @@
   "alertTitleUnknownContact": "تواصل من جهة غير معروفة",
   "alertTitleGeneric": "تنبيه",
     "alertPushBodyGeneric": "افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات",
-    "@alertSosWhere": {
-      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). SOS notification body when the alert carries the phone's fix; nothing here is a place name, only coordinates and an age.",
-      "placeholders": {
-        "coords": {"type": "String"},
-        "age": {"type": "String"}
-      }
+    "@alertSosWhereMinutes": {
+      "description": "#672, Arabic Language Bureau: the SOS fix named with its coordinates and its age (whole line per plural case). The coordinates are inserted wrapped in LRI/PDI by the app.",
+      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
     },
-    "alertSosWhere": "استغاثة — قرب {coords}، {age}",
-    "@alertFixAgeMinutes": {
-      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Age of the SOS fix, under an hour.",
+    "alertSosWhereMinutes": "{n, plural, =1{آخر موقع: {coords}، قبل دقيقة} =2{آخر موقع: {coords}، قبل دقيقتين} few{آخر موقع: {coords}، قبل {n} دقائق} many{آخر موقع: {coords}، قبل {n} دقيقة} other{آخر موقع: {coords}، قبل {n} دقيقة}}",
+    "@alertSosWhereHours": {
+      "description": "#672, Arabic Language Bureau: the same line for a fix an hour or more old; hours round up and carry \"about\".",
+      "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
+    },
+    "alertSosWhereHours": "{n, plural, =1{آخر موقع: {coords}، قبل نحو ساعة} =2{آخر موقع: {coords}، قبل نحو ساعتين} few{آخر موقع: {coords}، قبل نحو {n} ساعات} many{آخر موقع: {coords}، قبل نحو {n} ساعة} other{آخر موقع: {coords}، قبل نحو {n} ساعة}}",
+    "@alertSosLocationMinutes": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Notification body: a location exists and is this old; no coordinates on a lock screen. Tap opens the alert.",
       "placeholders": {"n": {"type": "int"}}
     },
-    "alertFixAgeMinutes": "قبل {n} دقيقة",
-    "@alertFixAgeHours": {
-      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Age of the SOS fix, an hour or more.",
+    "alertSosLocationMinutes": "{n, plural, =1{الموقع قبل دقيقة. اضغط لعرضه على الخريطة} =2{الموقع قبل دقيقتين. اضغط لعرضه على الخريطة} few{الموقع قبل {n} دقائق. اضغط لعرضه على الخريطة} many{الموقع قبل {n} دقيقة. اضغط لعرضه على الخريطة} other{الموقع قبل {n} دقيقة. اضغط لعرضه على الخريطة}}",
+    "@alertSosLocationHours": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Notification body for a fix an hour or more old; carries \"about\", hours rounded up.",
       "placeholders": {"n": {"type": "int"}}
     },
-    "alertFixAgeHours": "قبل {n} ساعة",
+    "alertSosLocationHours": "{n, plural, =1{الموقع قبل نحو ساعة. اضغط لعرضه على الخريطة} =2{الموقع قبل نحو ساعتين. اضغط لعرضه على الخريطة} few{الموقع قبل نحو {n} ساعات. اضغط لعرضه على الخريطة} many{الموقع قبل نحو {n} ساعة. اضغط لعرضه على الخريطة} other{الموقع قبل نحو {n} ساعة. اضغط لعرضه على الخريطة}}",
+    "@alertLocationAccuracy": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Detail line: how precise the fix is.",
+      "placeholders": {"m": {"type": "int"}}
+    },
+    "alertLocationAccuracy": "بدقة نحو {m} متر",
+    "@alertCopyCoordinates": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Quiet action under Show on map; content is a verbal noun (R5)."
+    },
+    "alertCopyCoordinates": "نسخ الإحداثيات",
+    "@alertCoordinatesCopied": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Short confirmation after the copy."
+    },
+    "alertCoordinatesCopied": "تم نسخ الإحداثيات",
+    "@alertOpenInMaps": {
+      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Hands the point to the phone maps app when our own map cannot draw."
+    },
+    "alertOpenInMaps": "فتح في الخرائط",
     "@alertShowOnMap": {
-      "description": "PROVISIONAL — pending the Arabic Language Bureau (#672). Opens the family map on the SOS fix."
+      "description": "#672, Arabic Language Bureau: opens the family map on the SOS fix."
     },
-    "alertShowOnMap": "اعرض على الخريطة",
+    "alertShowOnMap": "عرض على الخريطة",
   "riskSelfHarm": "إيذاء النفس",
   "riskSubstanceUse": "تعاطي المواد",
   "riskSubstanceAbuse": "إساءة استخدام المواد",

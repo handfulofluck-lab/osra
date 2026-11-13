@@ -1,5 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:url_launcher/url_launcher.dart' show launchUrl, LaunchMode;
 
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +17,8 @@ import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
-import '../map/family_map_screen.dart' show FamilyMapScreen, MapFocus;
+import '../map/family_map_screen.dart' show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../../push/sos_fix_text.dart';
 
 /// Alerts feed: grouped by day, severity-colored, swipe-to-acknowledge with
 /// optimistic removal, detail dialog per category, and paged "load more".
@@ -114,6 +118,29 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 // family-wide, so it carries no line; the Block path already refetches the family.
                 RulesBehindBanner(childId: alert.childId),
                 if (alert.body.isNotEmpty) Text(alert.body),
+                // #672: where, in words and in the Bureau's sentence, in the alert the parent opened
+                // deliberately — the lock screen carries neither. The coordinates are isolated (LRI/PDI)
+                // so they keep their order in Arabic; the accuracy clause only when the fix has one.
+                if (alert.category == 'sos' && alert.location != null) ...[
+                  const SizedBox(height: AppSpace.sm),
+                  Builder(builder: (_) {
+                    final fix = alert.location!;
+                    final text = SosFixText.of(alert, fix, DateTime.now());
+                    final accuracy = text.accuracyClause(l10n, fix);
+                    return Column(
+                      key: const ValueKey('alert-sos-location'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          text.locationLine(l10n, fix.isolatedCoords),
+                          style: Theme.of(dialogContext).textTheme.bodySmall,
+                        ),
+                        if (accuracy != null)
+                          Text(accuracy, style: Theme.of(dialogContext).textTheme.bodySmall),
+                      ],
+                    );
+                  }),
+                ],
                 // #444: the agent cannot end another app's VoIP call, so this alert must say the call
                 // kept going rather than let the parent assume the block ended it. Only for the call
                 // layout: a split-screen or PiP bypass already reads correctly from the body.
@@ -162,25 +189,79 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               ),
             ],
             // #672: an SOS that carried a fix gets one tap to the place, on the same family map the tab
-            // shows — not a second map, and not "open the map and hope the last ping is recent".
-            if (alert.category == 'sos' && alert.location != null)
+            // shows — not a second map, and not "open the map and hope the last ping is recent". The pin
+            // says what it is, so a parent who forgot which tap brought them here can still read it.
+            if (alert.category == 'sos' && alert.location != null) ...[
+              TextButton.icon(
+                key: const ValueKey('alert-copy-coordinates'),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: alert.location!.copyText));
+                  if (!dialogContext.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l10n.alertCoordinatesCopied)),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 18),
+                label: Text(l10n.alertCopyCoordinates),
+              ),
+              // #672 UI/UX: on a build whose in-app map cannot draw (#598/#707), "Show on map" would be a
+              // dead end in an emergency, so the phone's own maps app is offered there — and only there.
+              if (!mapIsAvailable(Theme.of(dialogContext).platform))
+                TextButton.icon(
+                  key: const ValueKey('alert-open-in-maps'),
+                  onPressed: () => _openInMaps(alert),
+                  icon: const Icon(Icons.map_outlined, size: 18),
+                  label: Text(l10n.alertOpenInMaps),
+                ),
               FilledButton.icon(
                 key: const ValueKey('alert-show-on-map'),
                 onPressed: () {
                   final fix = alert.location!;
+                  final text = SosFixText.of(alert, fix, DateTime.now());
+                  final title = l10n.alertTitleFor(
+                    alert.category,
+                    alert.title,
+                    isEnglish: dialogContext.localeName.startsWith('en'),
+                  );
                   Navigator.of(dialogContext).pop();
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => FamilyMapScreen(focus: MapFocus.fromFix(fix))),
+                    MaterialPageRoute(
+                      builder: (_) => FamilyMapScreen(
+                        focus: MapFocus.fromFix(
+                          fix,
+                          label: text.pinCaption(l10n, title),
+                          accuracyM: fix.accuracyM,
+                        ),
+                      ),
+                    ),
                   );
                 },
                 icon: const Icon(Icons.place),
                 label: Text(l10n.alertShowOnMap),
               ),
+            ],
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(l10n.close)),
           ],
         );
       },
     );
+  }
+
+  /// #672 UI/UX: hand the fix to the phone's own maps app. `geo:` is Android's, `maps.apple.com` is iOS's,
+  /// and both render a place name we cannot — which is the point of the fallback.
+  Future<void> _openInMaps(Alert alert) async {
+    final fix = alert.location;
+    if (fix == null) return;
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final label = Uri.encodeComponent(fix.copyText);
+    final uri = isAndroid
+        ? Uri.parse('geo:${fix.lat},${fix.lng}?q=${fix.lat},${fix.lng}($label)')
+        : Uri.parse('https://maps.apple.com/?ll=${fix.lat},${fix.lng}&q=$label');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // A phone with no maps app: the copy button above is the remaining route, and it is always there.
+    }
   }
 
   /// Metadata `concernTypes` of a social_concern alert, normalized to strings.

@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3014,22 +3013,77 @@ class AppLocalizationsAr extends AppLocalizations {
       'افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات';
 
   @override
-  String alertSosWhere(String coords, String age) {
-    return 'استغاثة — قرب $coords، $age';
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'آخر موقع: $coords، قبل $n دقيقة',
+      many: 'آخر موقع: $coords، قبل $n دقيقة',
+      few: 'آخر موقع: $coords، قبل $n دقائق',
+      two: 'آخر موقع: $coords، قبل دقيقتين',
+      one: 'آخر موقع: $coords، قبل دقيقة',
+    );
+    return '$_temp0';
   }
 
   @override
-  String alertFixAgeMinutes(int n) {
-    return 'قبل $n دقيقة';
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'آخر موقع: $coords، قبل نحو $n ساعة',
+      many: 'آخر موقع: $coords، قبل نحو $n ساعة',
+      few: 'آخر موقع: $coords، قبل نحو $n ساعات',
+      two: 'آخر موقع: $coords، قبل نحو ساعتين',
+      one: 'آخر موقع: $coords، قبل نحو ساعة',
+    );
+    return '$_temp0';
   }
 
   @override
-  String alertFixAgeHours(int n) {
-    return 'قبل $n ساعة';
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'الموقع قبل $n دقيقة. اضغط لعرضه على الخريطة',
+      many: 'الموقع قبل $n دقيقة. اضغط لعرضه على الخريطة',
+      few: 'الموقع قبل $n دقائق. اضغط لعرضه على الخريطة',
+      two: 'الموقع قبل دقيقتين. اضغط لعرضه على الخريطة',
+      one: 'الموقع قبل دقيقة. اضغط لعرضه على الخريطة',
+    );
+    return '$_temp0';
   }
 
   @override
-  String get alertShowOnMap => 'اعرض على الخريطة';
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'الموقع قبل نحو $n ساعة. اضغط لعرضه على الخريطة',
+      many: 'الموقع قبل نحو $n ساعة. اضغط لعرضه على الخريطة',
+      few: 'الموقع قبل نحو $n ساعات. اضغط لعرضه على الخريطة',
+      two: 'الموقع قبل نحو ساعتين. اضغط لعرضه على الخريطة',
+      one: 'الموقع قبل نحو ساعة. اضغط لعرضه على الخريطة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'بدقة نحو $m متر';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'نسخ الإحداثيات';
+
+  @override
+  String get alertCoordinatesCopied => 'تم نسخ الإحداثيات';
+
+  @override
+  String get alertOpenInMaps => 'فتح في الخرائط';
+
+  @override
+  String get alertShowOnMap => 'عرض على الخريطة';
 
   @override
   String get riskSelfHarm => 'إيذاء النفس';

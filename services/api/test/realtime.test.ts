@@ -194,6 +194,48 @@ describe("realtime gateway — `ready` frame contract (TR-05)", () => {
     c.ws.close();
   });
 
+  // Issue #672 review (Fable B1): `alerts` decides whether the frame is sent, `location` whether the
+  // child's place travels in it. Withholding the frame would hide an SOS from the person given the alerts;
+  // sending the place would hand a guardian data their invite never covered.
+  it("sends an alert frame without the location keys to a guardian holding `alerts` but not `location`", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["alerts"], familyId: "fam-1" });
+    const guardian = await subscribe("guardian-5");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage(
+      "family:*:events",
+      "family:fam-1:events",
+      JSON.stringify({
+        type: "alert",
+        payload: { id: "a-sos", category: "sos", metadata: { deviceId: "dev-1", lat: 25.2769, lng: 51.5211, accuracyM: 12, takenAt: "2026-11-13T19:11:00.000Z", ageSeconds: 300 } },
+      }),
+    );
+    await guardian.waitFor(() => guardian.frames.length >= 2);
+
+    expect(guardian.frames.map((f) => f.type)).toEqual(["ready", "alert"]);
+    const payload = guardian.frames[1].payload as Record<string, unknown>;
+    expect(payload.id).toBe("a-sos");
+    expect(payload.metadata).toEqual({ deviceId: "dev-1" });
+    guardian.ws.close();
+  });
+
+  it("sends the place in an alert frame to a guardian holding `location` too", async () => {
+    prismaMock.parent.findUnique.mockResolvedValue({ role: "guardian", permissions: ["alerts", "location"], familyId: "fam-1" });
+    const guardian = await subscribe("guardian-6");
+
+    const pmessage = subscriberPmessageHandler();
+    pmessage(
+      "family:*:events",
+      "family:fam-1:events",
+      JSON.stringify({ type: "alert", payload: { id: "a-sos", metadata: { deviceId: "dev-1", lat: 25.2769, lng: 51.5211 } } }),
+    );
+    await guardian.waitFor(() => guardian.frames.length >= 2);
+
+    const payload = guardian.frames[1].payload as Record<string, unknown>;
+    expect(payload.metadata).toMatchObject({ lat: 25.2769, lng: 51.5211 });
+    guardian.ws.close();
+  });
+
   it("sends an alert frame to a guardian that holds `alerts`, and to a co-parent with no permissions", async () => {
     prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
       where.id === "guardian-2" ? { role: "guardian", permissions: ["alerts"], familyId: "fam-1" } : { role: "co-parent", permissions: [], familyId: "fam-1" },

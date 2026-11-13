@@ -3,15 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/models.dart';
 import '../l10n/l10n.dart';
-
-/// Issue #672: how old the SOS fix is, as the notification says it. A fix under a minute old reads
-/// "1 min ago": rounding up is the safe direction — a parent must never be told a fix is fresher than it is.
-String sosFixAgeText(AppLocalizations l10n, Alert alert, AlertFix fix, DateTime now) {
-  final age = fix.ageAt(now, alertCreatedAt: alert.createdAt) ?? Duration.zero;
-  final minutes = age.inMinutes;
-  if (minutes < 60) return l10n.alertFixAgeMinutes(minutes < 1 ? 1 : minutes);
-  return l10n.alertFixAgeHours(age.inHours);
-}
+import 'sos_fix_text.dart';
 
 /// The visible half of an alert: what the parent reads on the lock screen.
 ///
@@ -22,10 +14,11 @@ String sosFixAgeText(AppLocalizations l10n, Alert alert, AlertFix fix, DateTime 
 /// search query or a video title onto a locked screen, in English, to an Arabic
 /// family (#395 review).
 ///
-/// **The one exception is an SOS with a fix (#672)**: "near 25.276900, 51.521100, 3 min ago", from the
-/// app's own strings, because a parent who gets an SOS needs "where" in the same notification and the push
-/// payload carries no text by #410. Coordinates only — there is no reverse geocoder — and the age is said
-/// out loud, so an old fix is never presented as a live one. [now] is a parameter so the age is testable.
+/// **The one exception is an SOS with a fix (#672)**: "Location from 3 min ago. Tap to see it on the map."
+/// — from the app's own strings, because a parent who gets an SOS needs to know a place exists and the push
+/// payload carries no text by #410. **No coordinates on a lock screen** (#672 UI/UX review): the numbers are
+/// in the alert's detail, one tap away, where the parent opened it deliberately. [now] is a parameter so the
+/// age is testable, and it rounds up — a fix is never presented as fresher than it is.
 @immutable
 class VisibleAlert {
   final String alertId;
@@ -43,9 +36,11 @@ class VisibleAlert {
   /// tap away in the app, where the content is already behind the parent's PIN.
   factory VisibleAlert.from(Alert alert, {required AppLocalizations l10n, required bool isEnglish, DateTime? now}) {
     final fix = alert.category == 'sos' ? alert.location : null;
+    // #672 UI/UX review: the lock screen says a location exists and how old it is — **no coordinates**.
+    // The numbers are in the alert's detail, which the tap opens.
     final body = fix == null
         ? l10n.alertPushBodyGeneric
-        : l10n.alertSosWhere(fix.coordsText, sosFixAgeText(l10n, alert, fix, now ?? DateTime.now()));
+        : SosFixText.of(alert, fix, now ?? DateTime.now()).notificationBody(l10n);
     return VisibleAlert(
       alertId: alert.id,
       title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),

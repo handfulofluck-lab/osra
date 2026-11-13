@@ -165,11 +165,11 @@ class SosActivity : ComponentActivity() {
      *
      * Started from this resumed activity, so the while-in-use grant is enough and `ACCESS_BACKGROUND_LOCATION`
      * is not a precondition (`LocationServiceStartSitesTest`'s foreground list says the same). No
-     * `LocationStartPolicy` gate: this is not a background start, and the service still refuses on its own
-     * when the location permission is missing.
+     * `LocationStartPolicy` gate: this is not a background start. [SosFreshFixPolicy] is the narrower rule
+     * that still applies — an unpaired phone has nobody to show the ping to (#672 review, Fable note 1).
      */
     private fun requestFreshFix() {
-        if (!hasLocationPermission()) return
+        if (!SosFreshFixPolicy.shouldRequest(settings.isPairedSync(), hasLocationPermission())) return
         runCatching {
             ContextCompat.startForegroundService(
                 this,

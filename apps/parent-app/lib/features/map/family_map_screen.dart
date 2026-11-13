@@ -47,16 +47,20 @@ bool mapIsAvailable(TargetPlatform platform, {String key = kMapsApiKey}) =>
 class MapFocus {
   final LatLng position;
 
-  /// The marker's caption — the alert's own line, so a parent who forgot which tap brought them here can
-  /// still read it.
+  /// The marker's caption — "SOS, 3m ago" — so a parent who forgot which tap brought them here can still
+  /// read it, and so the pin says what it is rather than opening an empty bubble (#672 UI/UX review).
   final String label;
 
-  const MapFocus({required this.position, this.label = ''});
+  /// The fix's horizontal accuracy in metres, when the phone reported one: drawn as the accuracy circle
+  /// the child pins already draw. Null means the circle is not drawn — never a guessed radius.
+  final double? accuracyM;
+
+  const MapFocus({required this.position, this.label = '', this.accuracyM});
 
   /// From the fix an alert carried. The one conversion the alerts screen needs, so it never imports
   /// `google_maps_flutter` to open the map.
-  factory MapFocus.fromFix(AlertFix fix, {String label = ''}) =>
-      MapFocus(position: LatLng(fix.lat, fix.lng), label: label);
+  factory MapFocus.fromFix(AlertFix fix, {String label = '', double? accuracyM}) =>
+      MapFocus(position: LatLng(fix.lat, fix.lng), label: label, accuracyM: accuracyM ?? fix.accuracyM);
 }
 
 /// Where a map visit starts, and how close: the alert's fix when the map was opened for one, else the first
@@ -273,9 +277,24 @@ class _MapBodyState extends ConsumerState<_MapBody> {
       markers.add(Marker(
         markerId: const MarkerId('alert-fix'),
         position: focus.position,
+        // The marker helper takes a hue, not a colour, so the `danger` token cannot be applied directly;
+        // hueRed is the same red the token carries (#672 UI/UX review, noted in the PR).
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         infoWindow: InfoWindow(title: focus.label),
       ));
+      // The accuracy circle the child pins already draw: a parent deciding whether the point is a house or
+      // a street needs to know how sure the fix is (#672 UI/UX review).
+      final accuracy = focus.accuracyM;
+      if (accuracy != null && accuracy > 0) {
+        circles.add(Circle(
+          circleId: const CircleId('alert-fix-accuracy'),
+          center: focus.position,
+          radius: accuracy,
+          fillColor: context.tokens.danger.withValues(alpha: 0.12),
+          strokeColor: context.tokens.danger,
+          strokeWidth: 1,
+        ));
+      }
     }
     final camera = initialCameraFor(focus, firstPing);
 

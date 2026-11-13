@@ -1008,6 +1008,17 @@ class AlertFix {
   /// The coordinates as the parent reads them: six decimals is about 11 cm, enough to find a street corner.
   String get coordsText => '${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}';
 
+  /// What "Copy coordinates" puts on the clipboard: **five** decimals, about one metre, because six is
+  /// noise a parent reading the number aloud cannot use (#672 UI/UX review).
+  String get copyText => '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+
+  /// U+2066 (LRI) … U+2069 (PDI) around [coordsText], in **code** and for every language (#672 Arabic
+  /// Language Bureau): in a right-to-left line the two numbers are two separate left-to-right runs, so
+  /// without the isolate they are laid out from the right and the pair draws longitude first — a parent
+  /// who reads the line aloud or types it into a map lands in another country. The marks do not go into
+  /// the ARB: they are direction, not words.
+  String get isolatedCoords => '\u2066$coordsText\u2069';
+
   /// How old the fix is *now*: the platform time when the alert dated it (a cache older than the alert is
   /// then aged past what the phone thought), else the phone's own figure plus the time since the alert, so
   /// a notification read ten minutes later does not claim the fix is still fresh.

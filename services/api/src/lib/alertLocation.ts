@@ -35,16 +35,21 @@ export interface AlertLocation {
 }
 
 /**
- * A numeric field from an unknown JSON value: a finite number, or a string that parses to one. Anything
- * else — a NaN, an empty string, an object, a decimal with a comma — is `undefined`, not `0`.
+ * A numeric field from an unknown JSON value: a finite number, or a **strict decimal** string.
+ *
+ * `Number()` is deliberately not used for strings (Fable's #672 review, note 2): it accepts `"0x10"`,
+ * `"1e1"`, `"Infinity"` and `" 5 "`, so a producer's typo would arrive as a coordinate. A coordinate is
+ * written as an optional sign, digits and an optional fraction — nothing else is a number here.
  */
+const DECIMAL = /^-?\d{1,15}(\.\d{1,15})?$/;
+
 function numeric(value: unknown): number | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (!DECIMAL.test(text)) return undefined;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** A `takenAt` in the past (or within a minute of now): an ISO string or epoch milliseconds. */
@@ -113,4 +118,34 @@ export function sanitizeAlertMetadata(
   if (location.takenAt) canonical.takenAt = location.takenAt.toISOString();
   if (location.ageSeconds !== undefined) canonical.ageSeconds = location.ageSeconds;
   return canonical;
+}
+
+/**
+ * The location keys removed, every other key kept (#672 UI/UX + Fable's B1/B2).
+ *
+ * Three callers, one rule: the alert list and the realtime alert event for a guardian who was given
+ * `alerts` but not `location` (ADR-0014 amendment, decision 3), and the nightly purge once an alert is
+ * older than the location window (ADR-0028 decision 5). In all three the alert survives and only the
+ * place goes — a parent must not lose the record of an SOS because of where it was sent from.
+ *
+ * Returns `null` when there was nothing to remove, so a caller can send the original object untouched.
+ */
+export function stripAlertLocation(metadata: unknown): Record<string, unknown> | null {
+  if (typeof metadata !== "object" || metadata === null) return null;
+  const values = metadata as Record<string, unknown>;
+  if (!ALERT_LOCATION_KEYS.some((key) => key in values)) return null;
+  const out: Record<string, unknown> = { ...values };
+  for (const key of ALERT_LOCATION_KEYS) delete out[key];
+  return out;
+}
+
+/**
+ * The same rule applied to an alert **row or realtime event**: a copy whose `metadata` has no location,
+ * or the value itself when it carries none.
+ */
+export function withoutAlertLocation<T>(alert: T): T {
+  if (typeof alert !== "object" || alert === null) return alert;
+  const row = alert as Record<string, unknown>;
+  const stripped = stripAlertLocation(row.metadata);
+  return stripped === null ? alert : ({ ...row, metadata: stripped } as T);
 }

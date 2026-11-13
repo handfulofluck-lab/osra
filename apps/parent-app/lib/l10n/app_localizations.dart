@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('ar'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// No description provided for @appName.
@@ -4766,23 +4766,53 @@ abstract class AppLocalizations {
   /// **'Open OSRA to see the details.\nProtecting your family at all times.'**
   String get alertPushBodyGeneric;
 
-  /// #672: the SOS notification's body when the alert carries the phone's fix. Coordinates only — the app has no reverse geocoder.
+  /// #672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.
   ///
   /// In en, this message translates to:
-  /// **'SOS — near {coords}, {age}'**
-  String alertSosWhere(String coords, String age);
+  /// **'{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}'**
+  String alertSosWhereMinutes(int n, String coords);
 
-  /// #672: how old the SOS fix is, under an hour.
+  /// #672: the same line for a fix an hour or more old; hours round up and carry "about".
   ///
   /// In en, this message translates to:
-  /// **'{n} min ago'**
-  String alertFixAgeMinutes(int n);
+  /// **'{n, plural, =1{Last location: {coords}, about 1 hour ago} other{Last location: {coords}, about {n} hours ago}}'**
+  String alertSosWhereHours(int n, String coords);
 
-  /// #672: how old the SOS fix is, an hour or more.
+  /// #672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.
   ///
   /// In en, this message translates to:
-  /// **'{n} h ago'**
-  String alertFixAgeHours(int n);
+  /// **'{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}'**
+  String alertSosLocationMinutes(int n);
+
+  /// #672: the notification body for a fix an hour or more old; hours round up.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Location from about 1 hour ago. Tap to see it on the map.} other{Location from about {n} hours ago. Tap to see it on the map.}}'**
+  String alertSosLocationHours(int n);
+
+  /// #672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.
+  ///
+  /// In en, this message translates to:
+  /// **'accurate to about {m} m'**
+  String alertLocationAccuracy(int m);
+
+  /// #672, UI/UX Bureau: quiet action in the SOS alert's detail; copies five decimals, left to right.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy coordinates'**
+  String get alertCopyCoordinates;
+
+  /// #672: short confirmation after Copy coordinates.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinates copied'**
+  String get alertCoordinatesCopied;
+
+  /// #672, UI/UX Bureau: hands the fix to the phone's own maps app, for a build whose in-app map cannot draw.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Maps'**
+  String get alertOpenInMaps;
 
   /// #672: the SOS alert's action that opens the family map on its fix.
   ///
@@ -5160,9 +5190,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }
