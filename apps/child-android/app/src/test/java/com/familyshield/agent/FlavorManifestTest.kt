@@ -27,6 +27,16 @@ class FlavorManifestTest {
     private val fullManifest by lazy { manifest("app/src/full/AndroidManifest.xml") }
 
     @Test
+    fun `the shared application supports RTL layouts`() {
+        val application = Regex("<application\\b[^>]*>", RegexOption.DOT_MATCHES_ALL)
+            .find(mainManifest)?.value ?: throw AssertionError("no <application> declaration")
+        assertTrue(
+            "src/main must opt the application into RTL mirroring for right-to-left phone locales (#709)",
+            application.contains("""android:supportsRtl="true""""),
+        )
+    }
+
+    @Test
     fun `the shared manifest cannot receive a notification`() {
         assertFalse(
             "src/main must not declare the listener permission - the Play artefact would carry it",
