@@ -405,12 +405,17 @@ must use their prefix. A Kimi-authored commit (commit email) makes Kimi a co-aut
 
 **Bureaus, enforced by the gate.** The maintainer, 2026-11-13 18:44Z: "any screen should have the UI/UX Bureau OK
 before it goes". The Bureau judges against ADR-0038 (logo, palette, one design language), Material 3, Apple HIG and
-WCAG. So a diff a family sees needs `UIUX-Bureau: reviewed <head sha>`: the whole parent app (`apps/parent-app/lib/`),
-every Android resource and manifest in any source set, Kotlin that draws a screen or holds its words (`*Activity`,
-`*Screen(s)`, `*Overlay`, `*Dialog`, `*View`, `*Theme`, `*Compose`, `*Copy`, `*Tile`), the iOS app shell, extensions,
-resources, `L10n.swift`, `Shield*.swift` and SwiftUI views, the desktop lock overlay, dialogs, alerts, SOS prompt and
-block page, asset catalogs, `.lproj`, storyboards, `.arb`, `.strings(dict)`, `.xcstrings`, `site/`, `scripts/site/`,
-`docs/store/`, `docs/design/`, or label `needs:uiux`. Test files alone never need it. The list errs toward asking; the
+WCAG, and reviews the whole screen on a device picture, in light and dark, English and Arabic (not a diff or a single
+string). So a diff a family sees needs `UIUX-Bureau: reviewed <head sha>`: the whole parent app (`apps/parent-app/lib/`,
+its Android `MainActivity` and its iOS `Runner/`), every Android resource and manifest in any source set, Kotlin that
+draws a screen or holds its words (`*Activity`, `*Screen(s)`, `*Overlay`, `*Dialog`, `*View`, `*Theme`, `*Compose`,
+`*Composable`, `*Copy`, `*Tile`, anything under a `ui/` package), the Android files that build a notification or cover
+in code (`CommandDispatcher`, `CommandPollWorker`, `UnlinkedNotice`, `CallEnforcer`, `LocationService`,
+`FilterVpnService`), the iOS app shell, extensions, resources, `L10n.swift`, `Shield*.swift` and SwiftUI views, the
+desktop lock overlay, dialogs, alerts, SOS prompt, block page, `Resources/` and `.xaml`, asset catalogs, `.lproj`,
+storyboards, `.arb`, `.strings(dict)`, `.xcstrings`, the API email templates (`services/api/src/lib/email/`) and push
+alert choice (`services/api/src/lib/push/notify.ts`), `site/`, `scripts/site/`, `docs/store/`, `docs/design/`, or label
+`needs:uiux`. Test files alone never need it. The list errs toward asking; the
 exact patterns are `UIUX_PATHS` in `scripts/verified-gate-policy.mjs`. When a matched file changes nothing anyone sees,
 the Bureau, and only the Bureau, may answer with `UIUX-Bureau: not user-visible <head sha>` instead; that waiver does
 not answer a `needs:uiux` label, which needs a real review.

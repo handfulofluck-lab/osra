@@ -105,12 +105,23 @@ const UIUX_PATHS = [
   /\/src\/(?!test\/|androidTest\/)[^/]+\/res\//,
   /\/src\/(?!test\/|androidTest\/)[^/]+\/AndroidManifest\.xml$/,
   // Kotlin that draws a screen or holds its words (block screen copy, quick-settings tile).
-  /^apps\/.*\/src\/(?!test\/|androidTest\/)[^/]+\/(java|kotlin)\/.*(Activity|Screen|Screens|Overlay|Dialog|View|Theme|Compose|Copy|Tile)[^/]*\.kt$/,
+  /^apps\/.*\/src\/(?!test\/|androidTest\/)[^/]+\/(java|kotlin)\/.*(Activity|Screen|Screens|Overlay|Dialog|View|Theme|Compose|Composable|Copy|Tile)[^/]*\.kt$/,
+  // Android UI package (Compose screens land under ui/, #728).
+  /^apps\/.*\/src\/(?!test\/|androidTest\/)[^/]+\/(java|kotlin)\/.*\/ui\//,
+  // Parent app iOS shell: launch screen, icons, display name (Info.plist).
+  /^apps\/parent-app\/ios\/Runner\//,
+  // Android code that builds a notification or a cover in code (UI/UX Bureau, #730 comment 6862247266).
+  /^apps\/child-android\/app\/src\/main\/java\/.*\/(CommandDispatcher|CommandPollWorker|UnlinkedNotice|CallEnforcer|LocationService|FilterVpnService)\.kt$/,
+  // Server words a family reads: email templates, and which push alert (loc keys) a parent sees.
+  /^services\/api\/src\/lib\/email\//,
+  /^services\/api\/src\/lib\/push\/notify\.ts$/,
   /^apps\/child-ios\/(App|Extensions)\//, // app shell, icons, shield screens, extension strings
   /^apps\/child-ios\/Sources\/[^/]+\/(Resources\/|L10n\.swift$|Shield[^/]*\.swift$)/,
   /Views?\.swift$/,
   // Desktop agents: the lock overlay, dialogs, the SOS prompt and the web block page the proxy serves.
   /^apps\/agent-(desktop|macos)\/(?!tests\/).*(Overlay|Dialog|Alert|Window|Form|View|Tray|Notification|Sos|WebFilterProxy)[^/]*\.cs$/,
+  /^apps\/agent-(desktop|macos)\/(?!tests\/)(.*\/)?Resources\//, // strings, icons
+  /\.xaml$/,
   /(^|\/)Assets\.xcassets\//,
   /\.lproj\//,
   /\.(storyboard|xib)$/,
@@ -299,13 +310,15 @@ function selftest() {
     ['needs:uiux label is not answered by a waiver', { headRef: 'kimi/x', labels: ['needs:uiux'], files: ['a/b.ts'], signatures: [...v('Claude'), { kind: 'uiux-waiver' }] }, false],
     ['needs:uiux label with a review', { headRef: 'kimi/x', labels: ['needs:uiux'], files: ['a/b.ts'], signatures: [...v('Claude'), { kind: 'uiux' }] }, true],
     ['non-UI Kotlin service needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/main/java/com/osra/child/sync/SyncWorker.kt'], signatures: v('Claude') }, true],
+    ['push transport (fcm.ts) needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/lib/push/fcm.ts'], signatures: v('Claude') }, true],
+    ['CommandDispatcher test only needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/test/java/com/familyshield/agent/CommandDispatcherAckTest.kt'], signatures: v('Claude') }, true],
     ['non-UI Swift needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-ios/Sources/OSRAKidsCore/Heartbeat.swift'], signatures: v('Claude') }, true],
     ['a test of a screen needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-android/app/src/test/java/com/familyshield/agent/enforcement/LockScreenPolicyTest.kt'], signatures: v('Claude') }, true],
     ['an iOS shield-text test needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/child-ios/Tests/FamilyShieldAgentTests/ShieldTextTests.swift'], signatures: v('Claude') }, true],
     ['a desktop test needs no UI/UX line', { headRef: 'kimi/x', files: ['apps/agent-desktop/tests/FamilyShield.Agent.Tests/SosHotkeyTests.cs'], signatures: v('Claude') }, true],
     ['a screen plus its test still needs the line', { headRef: 'kimi/x', files: ['apps/agent-desktop/Services/LockOverlay.cs', 'apps/agent-desktop/tests/FamilyShield.Agent.Tests/LockOverlayTests.cs'], signatures: v('Claude') }, false],
     ['server code needs no UI/UX line', { headRef: 'kimi/x', files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
-    ['email templates with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.ts'], signatures: [...v('Claude'), { kind: 'arabic' }] }, true],
+    ['email templates with the Arabic line', { headRef: 'kimi/x', files: ['services/api/src/lib/email/templates.ts'], signatures: [...v('Claude'), { kind: 'arabic' }, { kind: 'uiux' }] }, true],
   ];
   // R3 by path: one cross-family signer alone must NOT pass (it would at R2). One case per R3 entry Fable listed.
   const r3Paths = [
@@ -366,6 +379,25 @@ function selftest() {
     'apps/child-android/app/src/full/AndroidManifest.xml',
     'apps/child-ios/Sources/FamilyShieldAgent/ShieldText.swift',
     'apps/parent-app/android/app/src/main/kotlin/dev/familyshield/familyshield_parent/MainActivity.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/ui/pairing/PairingContent.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/setup/PairingComposables.kt',
+    'apps/parent-app/ios/Runner/Info.plist',
+    'apps/parent-app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png',
+    'apps/agent-desktop/Resources/Strings.resx',
+    'apps/agent-desktop/Views/MainWindow.xaml',
+    'apps/agent-macos/Sources/StatusView.swift',
+    'apps/agent-macos/Assets.xcassets/AppIcon.appiconset/Contents.json',
+    'apps/agent-macos/Resources/Localizable.xcstrings',
+    'docs/design/tokens.json',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/commands/CommandPollWorker.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/network/UnlinkedNotice.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/services/CallEnforcer.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/services/LocationService.kt',
+    'apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt',
+    'services/api/src/lib/email/templates.ts',
+    'services/api/src/lib/email/index.ts',
+    'services/api/src/lib/push/notify.ts',
     'site/index.html',
     'scripts/site/build.mjs',
     'docs/design/brand/export/logo.svg',
