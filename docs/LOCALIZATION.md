@@ -419,6 +419,7 @@ A row here is final unless he says otherwise; if he does, the row moves to "Kari
 | 2026-11-13 | OSRA Kids on iPhone, `pin_set_reason` (#696) | «عيّن رمز PIN للوالدين حتى لا يستطيع غيرهما تغيير إعدادات تطبيق أسرة للأطفال أو إعادة إقران هذا الهاتف.» | «رمز PIN للوالدين» (K), the screen title «تعيين …», `repair_button`, A1 |
 | 2026-11-13 | OSRA Kids on Android, pairing could not be saved (#682) | «تعذّر على تطبيق أسرة للأطفال حفظ الإقران بأمان على هذا الهاتف، لذلك لم يصبح محميًا بعد. أعد تشغيله ثم أقرنه مرة أخرى. إذا تكرّرت المشكلة، راسلنا على support@osratech.com.» | The sister line `wipe_detected_notice` (sheet 2, row 42); Android `global_action_restart` «إعادة التشغيل»; the guide's «راسلنا على …» |
 | 2026-11-13 | Parent app, a bedtime that overlaps school hours, `scheduleOverlapSchool` (#642) | «يتداخل هذا الوقت مع «الساعات المدرسية» ({days}). غيّر أحد الوقتين.» The days are full names joined with «و» («الاثنين والأربعاء والجمعة»), never a range with a dash; seven days read «كل الأيام». The mirror line names «وقت النوم» | The app's labels `schoolHours` and `bedtime` (K); Android's «يتداخل … مع» (`permdesc_systemAlertWindow`); brackets because the word before a day list changes with the count |
+| 2026-11-13 | English text in the apps that had no Arabic (#614, the sweep at `1ed24f83`): the Android child app's setup list, status, PIN, ring, SOS and QR screens and notifications; the Windows child app's pairing window, pairing answers, SOS message and block page; four iPhone and parent app lines; the parent-app titles and bodies for alerts written on a child's device; `app_name` and `sos_tile_label` | The whole sheet: [`localization/2026-11-13-sweep-614-arabic.md`](localization/2026-11-13-sweep-614-arabic.md). Copy from it byte for byte. Held, not decided: seven phone-maker menu hints and one Samsung path (R8); the terms page (legal text) | Checks 1 to 3. The ten setup titles are the parent app's approved `grant…` lines; Cancel, Close, Back, OK are Android's own («إلغاء», «إغلاق», «رجوع», «حسنًا» in `frameworks/base` `values-ar`); the Windows pairing answers copy the approved Android `pair_…` lines; the block page follows the child block screen (K 2026-10-31). Check 4 is owed for every screen: none of these lines is in a build yet, so the PR that adds them brings Arabic screenshots |
 
 ### Word list
 
@@ -507,6 +508,12 @@ A row here is final unless he says otherwise; if he does, the row moves to "Kari
 | Overlaps (two time windows) | «يتداخل … مع» | | B 13 Nov |
 | A list of weekdays | full names joined with «و»: «الاثنين والثلاثاء» | a dash range («الاثنين–الجمعة»), commas | B 13 Nov |
 | Write to us (support address) | «راسلنا على support@osratech.com» | «اكتب إلى» | B 13 Nov: the approved guide page |
+| Permission (the phone's), to grant one | «إذن», «أذونات»; «امنح» | «صلاحية», which is a family member's permission («الصلاحيات») | B 13 Nov: Android's own word |
+| Protection checklist (child app) | «قائمة الحماية» | | B 13 Nov |
+| Alert-only protection | «حماية بالتنبيه فقط», «الحماية: بالتنبيه فقط» | | B 13 Nov |
+| Cancel, Close, Back, OK (buttons) | «إلغاء», «إغلاق», «رجوع», «حسنًا» | | B 13 Nov: Android's own (`frameworks/base`) |
+| OSRA Kids under the Android icon; the SOS tile | «أسرة للأطفال»; «الاستغاثة» | Latin `OSRA`, `OSRA SOS` | B 13 Nov, from K 11 and 12 Nov |
+| A sentence with a number or a list in it | one whole line per case, with all the plural forms | joining pieces in code («… و…», "N to grant") | B 13 Nov |
 | Privacy policy | «سياسة الخصوصية» | | K |
 | Tap | «اضغط», «اضغط على» | «انقر» | K |
 | Try again | «حاول مرة أخرى» | | K |
