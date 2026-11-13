@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireParent } from "../middleware/requireFamily.js";
+import { requireOwner, requireParent } from "../middleware/requireFamily.js";
 import {
   findFamilyForPurchase,
   grantEntitlement,
   isRevoking,
   revokeEntitlement,
-  type EntitlementChange,
+  storeAccountIdFor,
 } from "../lib/entitlement.js";
 import {
   PlayUnavailable,
@@ -16,7 +16,6 @@ import {
   assertPurchaseBelongsToFamily,
   createPlayClient,
   createServiceAccountTokenProvider,
-  obfuscatedAccountIdFor,
   type PlayClient,
   type VerifiedPurchase,
 } from "../lib/billing/google.js";
@@ -25,7 +24,7 @@ import {
   createGoogleOidcVerifier,
   createRedisSeenMessages,
   decodeNotification,
-  mapNotificationType,
+  notificationCause,
   type OidcVerifier,
   type SeenMessages,
 } from "../lib/billing/rtdn.js";
@@ -110,8 +109,9 @@ function pushVerifier(opts: BillingDeps): OidcVerifier | null {
  * The Play client from the environment, or `null` when this deployment has no Play credentials.
  *
  * The service-account JSON is fetched **by name** through [BillingDeps.loadSecret]; without a loader
- * this route cannot talk to Play at all, which is a 503 rather than a guess. No key, path or project
- * id appears here or in the tests.
+ * this route cannot talk to Play at all, which is a 503 rather than a guess. No key, path or project id
+ * appears here — how the deployment obtains the service account is Workload Identity Federation's
+ * problem, and deliberately not something an environment variable carries.
  */
 async function buildEnvPlay(opts: BillingDeps, log: Log): Promise<PlayClient | null> {
   const packageName = process.env.PLAY_PACKAGE_NAME?.trim();
@@ -138,10 +138,26 @@ async function resolvePlay(opts: BillingDeps, log: Log): Promise<PlayClient | nu
   return envPlay;
 }
 
-/** The seam's write: `revoked`/`expired` are revocations, `active`/`grace`/`on_hold` are grants. */
-async function applyChange(change: EntitlementChange): Promise<void> {
-  if (isRevoking(change.state)) await revokeEntitlement(change);
-  else await grantEntitlement(change);
+/**
+ * Report a verified purchase through the seam, choosing the half its state belongs to.
+ *
+ * The seam's types make the choice impossible to get wrong: `expired`/`revoked`/`refunded` are the only
+ * states [revokeEntitlement] accepts, and `active`/`grace`/`on_hold` the only ones [grantEntitlement]
+ * does.
+ */
+async function applyPurchase(purchase: VerifiedPurchase, familyId: string, cause: string, at: string): Promise<void> {
+  const base = {
+    familyId,
+    source: "google_play" as const,
+    productId: purchase.productId,
+    expiresAt: purchase.expiryTime,
+    autoRenews: purchase.autoRenews,
+    storeRef: purchase.storeRef,
+    effectiveAt: at,
+    cause,
+  };
+  if (isRevoking(purchase.state)) await revokeEntitlement({ ...base, state: purchase.state });
+  else await grantEntitlement({ ...base, state: purchase.state });
 }
 
 /** One status per typed refusal: 400 forged, 403 another family's, 503 Play's own trouble. */
@@ -161,15 +177,40 @@ function refusal(reply: FastifyReply, log: Log, err: unknown) {
   throw err as Error;
 }
 
-/** The notification's own timestamp, so a delayed push records when Play acted, not when we heard. */
-function eventTime(notification: { eventTimeMillis?: string }): string {
-  const millis = Number(notification.eventTimeMillis);
-  const at = Number.isFinite(millis) && millis > 0 ? new Date(millis) : new Date();
-  return at.toISOString();
+/**
+ * When the change took effect: **the server's clock, unless the store's time is earlier.**
+ *
+ * A delayed push should record when Play acted rather than when we finally heard; a store time ahead of
+ * ours is not trusted (clock skew, or a crafted `eventTimeMillis`), so the server's clock wins there.
+ */
+function effectiveAt(storeTimeMillis: string | undefined, now: number = Date.now()): string {
+  const storeMs = Number(storeTimeMillis);
+  return new Date(Number.isFinite(storeMs) && storeMs > 0 && storeMs < now ? storeMs : now).toISOString();
+}
+
+/**
+ * Acknowledge a purchase Play still shows as unacknowledged, and never fail the push over it.
+ *
+ * This is the retry path: `/verify` can fail to acknowledge (a Play fault at that moment) and no client
+ * is involved afterwards, so the next push — renewal, cancellation, anything — is the only chance to
+ * tell Play we delivered the purchase.
+ */
+async function acknowledgeIfPending(play: PlayClient, purchase: VerifiedPurchase, log: Log): Promise<void> {
+  if (purchase.acknowledgementState !== "pending") return;
+  try {
+    await play.acknowledgeSubscription(purchase.storeRef, purchase.productId);
+    log("billing.rtdn.acknowledged", { productId: purchase.productId });
+  } catch (err) {
+    log("billing.rtdn.acknowledge_failed", { productId: purchase.productId, error: (err as Error).message });
+  }
 }
 
 export async function billingRoutes(app: FastifyInstance, opts: BillingDeps = {}): Promise<void> {
-  app.post("/google/verify", { preHandler: requireParent }, async (req, reply) => {
+  /**
+   * Owner-only (ADR-0014 roles, ADR-0041 D1: "who buys: the family owner"). A co-parent or guardian
+   * gets 403 `owner_role_required` from `requireOwner` before any Play call is made.
+   */
+  app.post("/google/verify", { preHandler: [requireParent, requireOwner] }, async (req, reply) => {
     const log = loggerFor(opts, req);
     const parsed = VerifySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -195,7 +236,8 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingDeps = {}
     let purchase: VerifiedPurchase;
     try {
       purchase = await play.verifySubscription(parsed.data.purchaseToken);
-      assertPurchaseBelongsToFamily(obfuscatedAccountIdFor(parent.familyId), purchase);
+      // The account id is the family's stored value (B1), not something this server derives.
+      assertPurchaseBelongsToFamily(await storeAccountIdFor(parent.familyId), purchase);
     } catch (err) {
       return refusal(reply, log, err);
     }
@@ -213,38 +255,34 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingDeps = {}
       } catch (err) {
         // Play refunds an unacknowledged purchase after three days, so this is worth a log line — but
         // refusing here would take away a plan the family has already paid for over a retryable fault.
+        // The next RTDN push re-verifies and acknowledges it then (see `acknowledgeIfPending`).
         log("billing.verify.acknowledge_failed", { productId: purchase.productId, error: (err as Error).message });
       }
     }
 
-    const change: EntitlementChange = {
-      familyId: parent.familyId,
-      source: "google",
-      state: purchase.state,
-      externalId: purchase.externalId,
-      effectiveAt: new Date().toISOString(),
-      cause: "verify",
-    };
     try {
-      await applyChange(change);
+      await applyPurchase(purchase, parent.familyId, "verify", new Date().toISOString());
     } catch (err) {
       log("billing.verify.entitlement_failed", { familyId: parent.familyId, error: (err as Error).message });
       return reply.code(503).send({ error: "entitlement_unavailable" });
     }
 
     return reply.code(200).send({
-      state: change.state,
-      source: change.source,
+      state: purchase.state,
+      source: "google_play",
       productId: purchase.productId,
-      expiryTime: purchase.expiryTime,
+      expiresAt: purchase.expiryTime,
+      autoRenews: purchase.autoRenews,
     });
   });
 
   /**
    * The Pub/Sub push. No parent session: the OIDC token **is** the authentication, and it is verified
-   * before the body is looked at. 204 on success and on every notification we deliberately do not act
-   * on — Pub/Sub retries anything that is not a 2xx, so an unknown type or a purchase we never saw must
-   * be acknowledged and logged rather than answered with an error that loops forever.
+   * before the body is looked at.
+   *
+   * The state never comes from the notification type. Every push re-fetches `subscriptionsv2` and takes
+   * Play's answer as the truth; the type only names the `cause`. A push whose Play call fails answers
+   * 503 so Pub/Sub retries — the alternative, a 204, would lose a renewal for good.
    */
   app.post("/google/rtdn", async (req, reply) => {
     const log = loggerFor(opts, req);
@@ -277,6 +315,7 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingDeps = {}
     }
 
     const seen = opts.seen ?? redisSeen;
+    // Claimed before any work: a redelivery of a message we already applied changes nothing at all.
     if (!(await seen.claim(messageId))) {
       log("billing.rtdn.duplicate", { messageId });
       return reply.code(204).send();
@@ -289,28 +328,45 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingDeps = {}
         return reply.code(204).send();
       }
 
-      const mapping = mapNotificationType(sub.notificationType);
-      if (mapping.kind === "ignored") {
-        log("billing.rtdn.ignored", { messageId, type: sub.notificationType ?? null, reason: mapping.reason });
-        return reply.code(204).send();
-      }
-
-      const familyId = await findFamilyForPurchase("google", sub.purchaseToken);
+      // Our own record first: a token we never stored has no family to write against, and verifying it
+      // would spend a Play call on a stranger. Nothing can fix that by retrying, so it is acknowledged.
+      const familyId = await findFamilyForPurchase("google_play", sub.purchaseToken);
       if (!familyId) {
-        // A purchase we never verified: nothing to attribute it to, and inventing a family would be
-        // worse than the miss. It is logged so a real gap shows up as a metric, not as silence.
-        log("billing.rtdn.unknown_purchase", { messageId, type: mapping.typeName });
+        log("billing.rtdn.unknown_purchase", { messageId, type: sub.notificationType ?? null });
         return reply.code(204).send();
       }
 
-      await applyChange({
-        familyId,
-        source: "google",
-        state: mapping.state,
-        externalId: sub.purchaseToken,
-        effectiveAt: eventTime(notification),
-        cause: mapping.cause,
-      });
+      const play = await resolvePlay(opts, log);
+      if (!play) {
+        await seen.release(messageId).catch(() => undefined);
+        log("billing.rtdn.play_unavailable", { messageId });
+        return reply.code(503).send({ error: "play_unavailable" });
+      }
+
+      let purchase: VerifiedPurchase;
+      try {
+        purchase = await play.verifySubscription(sub.purchaseToken);
+      } catch (err) {
+        if (err instanceof PlayUnavailable) {
+          // Play's fault: hand the claim back and let Pub/Sub bring the message again.
+          await seen.release(messageId).catch(() => undefined);
+          log("billing.rtdn.play_unavailable", { messageId, reason: err.reason });
+          return reply.code(503).send({ error: "play_unavailable" });
+        }
+        if (err instanceof PurchaseRejected) {
+          // Play does not know this token. Retrying cannot change that, so it is acknowledged and logged.
+          log("billing.rtdn.purchase_rejected", { messageId, reason: err.reason });
+          return reply.code(204).send();
+        }
+        throw err;
+      }
+
+      await acknowledgeIfPending(play, purchase, log);
+
+      const { cause, known } = notificationCause(sub.notificationType);
+      if (!known) log("billing.rtdn.unknown_type", { messageId, type: sub.notificationType ?? null, cause });
+
+      await applyPurchase(purchase, familyId, cause, effectiveAt(notification.eventTimeMillis));
       return reply.code(204).send();
     } catch (err) {
       // The claim is handed back so the store's retry of this same message can still land.

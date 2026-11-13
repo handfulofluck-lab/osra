@@ -7,9 +7,11 @@
  *
  * No credential lives here. [createServiceAccountTokenProvider] takes the service-account JSON as a
  * string the caller obtained from a secrets store by name; this module never reads a file, an env var
- * holding a key, or a repository path. The access token it mints is held in memory only.
+ * holding a key, or a repository path. The access token it mints is held in memory only. Where that key
+ * comes from is a deployment question (Workload Identity Federation, a later issue) — not something
+ * this module or its callers configure with an env var.
  */
-import { createHmac, createSign, timingSafeEqual } from "node:crypto";
+import { createSign, timingSafeEqual } from "node:crypto";
 import type { EntitlementState } from "../entitlement.js";
 
 /** `(url, init) => Response`. The default is global `fetch`; tests inject a fixture table. */
@@ -18,17 +20,18 @@ export type BillingTransport = (url: string, init: RequestInit) => Promise<Respo
 /** What a verified Play purchase means to us, already normalised to our own vocabulary. */
 export interface VerifiedPurchase {
   /**
-   * The opaque per-family id Play echoes back from `externalAccountIdentifiers`. ADR-0041 D2 names this
-   * field for the derivation, but the value is one-way (see [obfuscatedAccountIdFor]): it is the id to
-   * *compare*, not a family id to look up.
+   * The account id Play echoes back from `externalAccountIdentifiers`. It is the family's stored
+   * `store_account_id` (B1, via `storeAccountIdFor`) — the value to *compare*, not one to reverse.
    */
   familyIdFromObfuscatedAccountId: string | null;
   state: EntitlementState;
   /** The store reference: the Play purchase token, which is what a later RTDN carries. */
-  externalId: string;
+  storeRef: string;
   /** Latest `lineItems[].expiryTime`, ISO 8601, or `null` when Play sent none. */
   expiryTime: string | null;
   productId: string;
+  /** Whether any line item is set to renew. A cancelled-but-paid purchase is `active` and `false`. */
+  autoRenews: boolean;
   acknowledgementState: "pending" | "acknowledged" | "unknown";
 }
 
@@ -82,23 +85,10 @@ const DEFAULT_BASE_URL = "https://androidpublisher.googleapis.com";
 const defaultTransport: BillingTransport = (url, init) => fetch(url, init);
 
 /**
- * The `obfuscatedAccountId` an Android purchase carries for this family.
- *
- * ADR-0041 D2 requires an id that is **opaque** — never an email, a name or the raw family id — and
- * stable, because the value the app sends at purchase time must equal the value the server derives
- * when it verifies. So it is a keyed hash: same family and key, same id; without the key the id says
- * nothing about the family. 32 hex characters (128 bits) fits Play's 64-character limit.
- *
- * The key must survive a deploy or every stored purchase stops matching, which is why it is its own
- * setting rather than a literal. `JWT_SECRET` is the fallback so a dev stack works with no new setup;
- * a production deploy sets `BILLING_ACCOUNT_ID_KEY`.
+ * Whether Play's `obfuscatedAccountId` is the family's stored account id (B1's random value, reached
+ * through `storeAccountIdFor` — nothing is derived here). Constant-time, though the id is not a bearer
+ * secret: nothing needs to leak a prefix.
  */
-export function obfuscatedAccountIdFor(familyId: string): string {
-  const key = process.env.BILLING_ACCOUNT_ID_KEY ?? process.env.JWT_SECRET ?? "dev-insecure-billing-account-id";
-  return createHmac("sha256", key).update(`osra:play:family:${familyId}`).digest("hex").slice(0, 32);
-}
-
-/** Constant-time comparison of two derived ids (they are not bearer secrets, but nothing here needs to leak a prefix). */
 export function accountIdMatches(expected: string, actual: string | null): boolean {
   if (!actual) return false;
   const a = Buffer.from(expected, "utf8");
@@ -106,7 +96,8 @@ export function accountIdMatches(expected: string, actual: string | null): boole
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Play's `SubscriptionState` → our five states. An unknown string is a rejected purchase, never a guess. */const SUBSCRIPTION_STATES: Readonly<Record<string, EntitlementState>> = {
+/** Play's `SubscriptionState` → our five states. An unknown string is a rejected purchase, never a guess. */
+const SUBSCRIPTION_STATES: Readonly<Record<string, EntitlementState>> = {
   SUBSCRIPTION_STATE_ACTIVE: "active",
   SUBSCRIPTION_STATE_IN_GRACE_PERIOD: "grace",
   // Account hold and pause both stop access while the family still owns the subscription; D3 treats
@@ -122,7 +113,7 @@ interface SubscriptionPurchaseV2 {
   subscriptionState?: string;
   acknowledgementState?: string;
   externalAccountIdentifiers?: { obfuscatedExternalAccountId?: string | null } | null;
-  lineItems?: Array<{ productId?: string; expiryTime?: string }> | null;
+  lineItems?: Array<{ productId?: string; expiryTime?: string; autoRenewingPlan?: { autoRenewEnabled?: boolean } | null }> | null;
 }
 
 function acknowledgementState(raw: string | undefined): VerifiedPurchase["acknowledgementState"] {
@@ -150,14 +141,19 @@ export function normaliseSubscriptionPurchase(raw: unknown, purchaseToken: strin
     return latest === null || Date.parse(value) > Date.parse(latest) ? value : latest;
   }, null);
 
+  // A user who cancels keeps the subscription to the end of the paid period: Play still reports
+  // `ACTIVE`, and `autoRenewEnabled` is what turns false. That is the difference the plan screen shows.
+  const autoRenews = lineItems.some((item) => item?.autoRenewingPlan?.autoRenewEnabled === true);
+
   const obfuscated = body.externalAccountIdentifiers?.obfuscatedExternalAccountId;
 
   return {
     familyIdFromObfuscatedAccountId: typeof obfuscated === "string" && obfuscated ? obfuscated : null,
     state,
-    externalId: purchaseToken,
+    storeRef: purchaseToken,
     expiryTime,
     productId,
+    autoRenews,
     acknowledgementState: acknowledgementState(body.acknowledgementState),
   };
 }

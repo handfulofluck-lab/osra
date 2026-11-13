@@ -9,7 +9,6 @@ import {
   createPlayClient,
   createServiceAccountTokenProvider,
   normaliseSubscriptionPurchase,
-  obfuscatedAccountIdFor,
 } from "../src/lib/billing/google.js";
 import {
   MalformedNotification,
@@ -32,7 +31,7 @@ function subscriptionBody(overrides: Record<string, unknown> = {}) {
     subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
     acknowledgementState: "ACKNOWLEDGEMENT_STATE_PENDING",
     externalAccountIdentifiers: { obfuscatedExternalAccountId: "abc123" },
-    lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z" }],
+    lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: true } }],
     ...overrides,
   };
 }
@@ -58,9 +57,10 @@ describe("the Play Developer API client", () => {
     expect(purchase).toEqual({
       familyIdFromObfuscatedAccountId: "abc123",
       state: "active",
-      externalId: "tok+1",
+      storeRef: "tok+1",
       expiryTime: "2026-12-13T00:00:00.000Z",
       productId: PRODUCT,
+      autoRenews: true,
       acknowledgementState: "pending",
     });
   });
@@ -140,37 +140,30 @@ describe("normalising a subscriptionsv2 purchase", () => {
       subscriptionBody({
         externalAccountIdentifiers: {},
         lineItems: [
-          { productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z" },
-          { productId: PRODUCT, expiryTime: "2027-01-13T00:00:00.000Z" },
+          { productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: false } },
+          { productId: PRODUCT, expiryTime: "2027-01-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: true } },
         ],
       }),
       "t",
     );
     expect(purchase.expiryTime).toBe("2027-01-13T00:00:00.000Z");
     expect(purchase.familyIdFromObfuscatedAccountId).toBeNull();
-    expect(() => assertPurchaseBelongsToFamily(obfuscatedAccountIdFor("fam-1"), purchase)).toThrow(PurchaseAlreadyOwned);
-  });
-});
-
-describe("the opaque family account id", () => {
-  it("is stable, opaque, and different per family", () => {
-    process.env.BILLING_ACCOUNT_ID_KEY = "unit-test-key";
-    const first = obfuscatedAccountIdFor("fam-11111111-1111-1111-1111-111111111111");
-    const again = obfuscatedAccountIdFor("fam-11111111-1111-1111-1111-111111111111");
-    const other = obfuscatedAccountIdFor("fam-22222222-2222-2222-2222-222222222222");
-
-    expect(first).toBe(again);
-    expect(first).toMatch(/^[0-9a-f]{32}$/);
-    expect(first).not.toBe(other);
-    // Opaque: the id says nothing about the family it was derived from.
-    expect(first).not.toContain("11111111");
+    // One line item still renewing is enough for the purchase to renew.
+    expect(purchase.autoRenews).toBe(true);
+    expect(() => assertPurchaseBelongsToFamily("acct-fam-1", purchase)).toThrow(PurchaseAlreadyOwned);
   });
 
-  it("changes when the key changes, which is why the key outlives a deploy", () => {
-    process.env.BILLING_ACCOUNT_ID_KEY = "key-a";
-    const a = obfuscatedAccountIdFor("fam-1");
-    process.env.BILLING_ACCOUNT_ID_KEY = "key-b";
-    expect(obfuscatedAccountIdFor("fam-1")).not.toBe(a);
+  it("reports a cancelled-but-paid purchase as active without renewal", () => {
+    // What Play returns after a user cancels: still entitled to the period's end, no renewal.
+    const purchase = normaliseSubscriptionPurchase(
+      subscriptionBody({
+        subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+        lineItems: [{ productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z", autoRenewingPlan: { autoRenewEnabled: false } }],
+      }),
+      "t",
+    );
+    expect(purchase.state).toBe("active");
+    expect(purchase.autoRenews).toBe(false);
   });
 });
 

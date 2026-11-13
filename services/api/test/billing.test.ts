@@ -15,12 +15,14 @@ vi.mock("../src/redis.js", async () => {
 import {
   findFamilyForPurchase,
   grantEntitlement,
+  hashStoreRef,
   setEntitlementStore,
-  type EntitlementChange,
+  storeAccountIdFor,
+  type EntitlementGrant,
+  type EntitlementRevocation,
   type EntitlementStore,
 } from "../src/lib/entitlement.js";
 import {
-  obfuscatedAccountIdFor,
   PlayUnavailable,
   PurchaseRejected,
   type PlayClient,
@@ -29,30 +31,33 @@ import {
 import {
   OidcRejected,
   createMemorySeenMessages,
-  mapNotificationType,
+  notificationCause,
   type OidcVerifier,
 } from "../src/lib/billing/rtdn.js";
 import { billingRoutes, type BillingDeps } from "../src/routes/billing.js";
 
 const PRODUCT = "com.osratech.family.monthly";
 const TOKEN = "play-purchase-token-1";
+/** What the recording store hands back for `fam-1`; the fixture purchase echoes it. */
+const ACCOUNT_ID = "acct-fam-1";
 
 /** A store that records what the routes asked for, and binds purchases the way the real one will. */
-function recordingStore(): EntitlementStore & {
-  grant: ReturnType<typeof vi.fn>;
-  revoke: ReturnType<typeof vi.fn>;
-  findFamily: ReturnType<typeof vi.fn>;
-} {
+function recordingStore() {
   const bindings = new Map<string, string>();
-  const remember = (change: EntitlementChange) => bindings.set(`${change.source}:${change.externalId}`, change.familyId);
+  const accountIds = new Map<string, string>();
+  const remember = (change: EntitlementGrant | EntitlementRevocation) =>
+    bindings.set(`${change.source}:${hashStoreRef(change.storeRef)}`, change.familyId);
   return {
-    grant: vi.fn(async (change: EntitlementChange) => remember(change)),
-    revoke: vi.fn(async (change: EntitlementChange) => remember(change)),
-    findFamily: vi.fn(async (source: string, externalId: string) => bindings.get(`${source}:${externalId}`) ?? null),
-  } as unknown as EntitlementStore & {
-    grant: ReturnType<typeof vi.fn>;
-    revoke: ReturnType<typeof vi.fn>;
-    findFamily: ReturnType<typeof vi.fn>;
+    grant: vi.fn(async (change: EntitlementGrant) => remember(change)),
+    revoke: vi.fn(async (change: EntitlementRevocation) => remember(change)),
+    findFamily: vi.fn(async (source: string, storeRef: string) => bindings.get(`${source}:${hashStoreRef(storeRef)}`) ?? null),
+    storeAccountId: vi.fn(async (familyId: string) => {
+      const existing = accountIds.get(familyId);
+      if (existing) return existing;
+      const created = `acct-${familyId}`;
+      accountIds.set(familyId, created);
+      return created;
+    }),
   };
 }
 
@@ -72,11 +77,12 @@ function fakePlay(overrides: Partial<PlayClient> = {}): PlayClient & {
 
 function verified(overrides: Partial<VerifiedPurchase> = {}): VerifiedPurchase {
   return {
-    familyIdFromObfuscatedAccountId: obfuscatedAccountIdFor("fam-1"),
+    familyIdFromObfuscatedAccountId: ACCOUNT_ID,
     state: "active",
-    externalId: TOKEN,
+    storeRef: TOKEN,
     expiryTime: "2026-12-13T00:00:00.000Z",
     productId: PRODUCT,
+    autoRenews: true,
     acknowledgementState: "pending",
     ...overrides,
   };
@@ -97,8 +103,42 @@ function deps(overrides: BillingDeps = {}): BillingDeps {
   };
 }
 
+function pushPayload(notification: unknown, messageId: string, token = "good-push-token") {
+  return {
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    payload: { message: { data: Buffer.from(JSON.stringify(notification)).toString("base64"), messageId } },
+  };
+}
+
+function subscriptionNotification(notificationType: number, purchaseToken = TOKEN, eventTime = "2026-11-12T09:00:00Z") {
+  return {
+    packageName: "com.osratech.parent",
+    eventTimeMillis: String(Date.parse(eventTime)),
+    subscriptionNotification: { version: "1.0", notificationType, purchaseToken, subscriptionId: PRODUCT },
+  };
+}
+
+/** A family that verified this token once — the state every RTDN case starts from. */
+async function bindPurchase(store: ReturnType<typeof recordingStore>, familyId = "fam-1"): Promise<void> {
+  setEntitlementStore(store as unknown as EntitlementStore);
+  await grantEntitlement({
+    familyId,
+    source: "google_play",
+    state: "active",
+    productId: PRODUCT,
+    expiresAt: "2026-12-13T00:00:00.000Z",
+    autoRenews: true,
+    storeRef: TOKEN,
+    effectiveAt: "2026-11-01T00:00:00Z",
+    cause: "verify",
+  });
+  store.grant.mockClear();
+  store.revoke.mockClear();
+  store.findFamily.mockClear();
+}
+
 beforeAll(() => {
-  process.env.BILLING_ACCOUNT_ID_KEY = "test-account-id-key";
+  process.env.JWT_SECRET = "test-only-secret";
 });
 
 beforeEach(() => {
@@ -110,28 +150,47 @@ describe("entitlement seam (the only way billing reaches the plan)", () => {
   it("records a grant and answers the purchase's family", async () => {
     await grantEntitlement({
       familyId: "fam-1",
-      source: "google",
+      source: "google_play",
       state: "active",
-      externalId: TOKEN,
+      productId: PRODUCT,
+      expiresAt: "2026-12-13T00:00:00Z",
+      autoRenews: true,
+      storeRef: TOKEN,
       effectiveAt: "2026-11-13T00:00:00Z",
       cause: "verify",
     });
-    expect(await findFamilyForPurchase("google", TOKEN)).toBe("fam-1");
+    expect(await findFamilyForPurchase("google_play", TOKEN)).toBe("fam-1");
     // The binding is per source: the same reference means nothing on another store.
-    expect(await findFamilyForPurchase("apple", TOKEN)).toBeNull();
+    expect(await findFamilyForPurchase("app_store", TOKEN)).toBeNull();
+  });
+
+  it("stores a hash of the store reference, never the reference", async () => {
+    const hash = hashStoreRef(TOKEN);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(hash).not.toContain(TOKEN);
+    expect(hashStoreRef(TOKEN)).toBe(hash);
   });
 
   it("forgets the old store when a new one is set", async () => {
-    await grantEntitlement({ familyId: "fam-1", source: "google", state: "active", externalId: TOKEN, effectiveAt: "2026-11-13T00:00:00Z", cause: "verify" });
+    await grantEntitlement({ familyId: "fam-1", source: "google_play", state: "active", productId: PRODUCT, expiresAt: "2026-12-13T00:00:00Z", autoRenews: true, storeRef: TOKEN, effectiveAt: "2026-11-13T00:00:00Z", cause: "verify" });
     setEntitlementStore(null);
-    expect(await findFamilyForPurchase("google", TOKEN)).toBeNull();
+    expect(await findFamilyForPurchase("google_play", TOKEN)).toBeNull();
+  });
+
+  it("hands out one opaque account id per family, created on first use", async () => {
+    const first = await storeAccountIdFor("fam-1");
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(await storeAccountIdFor("fam-1")).toBe(first);
+    expect(await storeAccountIdFor("fam-2")).not.toBe(first);
+    // Opaque: nothing in the id says which family it belongs to.
+    expect(first).not.toContain("fam-1");
   });
 });
 
 describe("POST /v1/billing/google/verify", () => {
   it("grants the plan for a verified purchase and returns its state", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const play = fakePlay();
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
@@ -143,13 +202,22 @@ describe("POST /v1/billing/google/verify", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ state: "active", source: "google", productId: PRODUCT, expiryTime: "2026-12-13T00:00:00.000Z" });
+    expect(res.json()).toEqual({
+      state: "active",
+      source: "google_play",
+      productId: PRODUCT,
+      expiresAt: "2026-12-13T00:00:00.000Z",
+      autoRenews: true,
+    });
     expect(store.grant).toHaveBeenCalledTimes(1);
     expect(store.grant.mock.calls[0][0]).toMatchObject({
       familyId: "fam-1",
-      source: "google",
+      source: "google_play",
       state: "active",
-      externalId: TOKEN,
+      productId: PRODUCT,
+      expiresAt: "2026-12-13T00:00:00.000Z",
+      autoRenews: true,
+      storeRef: TOKEN,
       cause: "verify",
     });
     expect(store.revoke).not.toHaveBeenCalled();
@@ -157,12 +225,10 @@ describe("POST /v1/billing/google/verify", () => {
     await app.close();
   });
 
-  it("refuses a purchase bound to another family's obfuscated account id", async () => {
+  it("refuses a purchase bound to another family's account id", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
-    const play = fakePlay({
-      verifySubscription: vi.fn(async () => verified({ familyIdFromObfuscatedAccountId: obfuscatedAccountIdFor("fam-2") })),
-    });
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const play = fakePlay({ verifySubscription: vi.fn(async () => verified({ familyIdFromObfuscatedAccountId: "acct-fam-2" })) });
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
     const res = await app.inject({
@@ -181,9 +247,9 @@ describe("POST /v1/billing/google/verify", () => {
     await app.close();
   });
 
-  it("refuses a purchase that carries no obfuscated account id at all", async () => {
+  it("refuses a purchase that carries no account id at all", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const play = fakePlay({ verifySubscription: vi.fn(async () => verified({ familyIdFromObfuscatedAccountId: null })) });
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
@@ -202,7 +268,7 @@ describe("POST /v1/billing/google/verify", () => {
 
   it("answers 400 for a forged, spent or unreadable token", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const play = fakePlay({
       verifySubscription: vi.fn(async () => {
         throw new PurchaseRejected("verify_status_404");
@@ -225,7 +291,7 @@ describe("POST /v1/billing/google/verify", () => {
 
   it("answers 503 when Play itself is unavailable", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const play = fakePlay({
       verifySubscription: vi.fn(async () => {
         throw new PlayUnavailable("transport:ECONNRESET");
@@ -248,9 +314,8 @@ describe("POST /v1/billing/google/verify", () => {
 
   it("answers 503, not 500, when the deployment has no Play credentials", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
-    const log = vi.fn();
-    const app = await buildApp((a) => billingRoutes(a, deps({ play: null, log })), "/v1/billing");
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play: null })), "/v1/billing");
 
     const res = await app.inject({
       method: "POST",
@@ -267,7 +332,7 @@ describe("POST /v1/billing/google/verify", () => {
 
   it("refuses a body whose productId is not the purchase's", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const app = await buildApp((a) => billingRoutes(a, deps()), "/v1/billing");
 
     const res = await app.inject({
@@ -285,8 +350,8 @@ describe("POST /v1/billing/google/verify", () => {
 
   it("revokes rather than grants when the purchase has already expired", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
-    const play = fakePlay({ verifySubscription: vi.fn(async () => verified({ state: "expired" })) });
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const play = fakePlay({ verifySubscription: vi.fn(async () => verified({ state: "expired", autoRenews: false })) });
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
     const res = await app.inject({
@@ -306,7 +371,7 @@ describe("POST /v1/billing/google/verify", () => {
 
   it("keeps the plan when Play refuses the acknowledgement", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const log = vi.fn();
     const play = fakePlay({
       acknowledgeSubscription: vi.fn(async () => {
@@ -328,7 +393,38 @@ describe("POST /v1/billing/google/verify", () => {
     await app.close();
   });
 
+  it("acknowledges a purchase that a push finds still pending", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const log = vi.fn();
+    const play = fakePlay();
+    // `/verify` cannot reach Play's acknowledge endpoint; the purchase is still pending afterwards.
+    play.acknowledgeSubscription.mockRejectedValueOnce(new PlayUnavailable("acknowledge_status_503"));
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+
+    const verifiedRes = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/verify",
+      headers: authHeader(app),
+      payload: { purchaseToken: TOKEN, productId: PRODUCT },
+    });
+    expect(verifiedRes.statusCode).toBe(200);
+
+    const pushRes = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/rtdn",
+      ...pushPayload(subscriptionNotification(4), "msg-ack-retry"),
+    });
+
+    expect(pushRes.statusCode).toBe(204);
+    expect(play.acknowledgeSubscription).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith("billing.rtdn.acknowledged", expect.objectContaining({ productId: PRODUCT }));
+    await app.close();
+  });
+
   it("does not acknowledge a purchase Play already shows as acknowledged", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
     const play = fakePlay({ verifySubscription: vi.fn(async () => verified({ acknowledgementState: "acknowledged" })) });
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
@@ -365,9 +461,32 @@ describe("POST /v1/billing/google/verify", () => {
     await app.close();
   });
 
+  it("refuses a co-parent: only the family owner buys (ADR-0014, D1)", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
+    prismaMock.parent.findUnique.mockResolvedValue({
+      id: "parent-1", familyId: "fam-1", role: "co-parent", permissions: ["devices"], mfaEnabled: false, mfaSecret: null,
+    });
+    const play = fakePlay();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/verify",
+      headers: authHeader(app),
+      payload: { purchaseToken: TOKEN, productId: PRODUCT },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: "owner_role_required" });
+    expect(play.verifySubscription).not.toHaveBeenCalled();
+    expect(store.grant).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("refuses a stale token whose family claim is not the parent's current family", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const play = fakePlay();
     const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
@@ -397,127 +516,156 @@ describe("POST /v1/billing/google/verify", () => {
   });
 });
 
-function pushPayload(notification: unknown, messageId: string, token = "good-push-token") {
-  return {
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    payload: { message: { data: Buffer.from(JSON.stringify(notification)).toString("base64"), messageId } },
-  };
-}
-
-function subscriptionNotification(notificationType: number, purchaseToken = TOKEN) {
-  return {
-    packageName: "com.osratech.parent",
-    eventTimeMillis: String(Date.parse("2026-11-13T09:00:00Z")),
-    subscriptionNotification: { version: "1.0", notificationType, purchaseToken, subscriptionId: PRODUCT },
-  };
-}
-
-/** A family that verified this token once — the state every RTDN case starts from. */
-async function bindPurchase(store: ReturnType<typeof recordingStore>, familyId = "fam-1"): Promise<void> {
-  setEntitlementStore(store);
-  await grantEntitlement({
-    familyId,
-    source: "google",
-    state: "active",
-    externalId: TOKEN,
-    effectiveAt: "2026-11-01T00:00:00Z",
-    cause: "verify",
-  });
-  store.grant.mockClear();
-  store.revoke.mockClear();
-}
-
 describe("POST /v1/billing/google/rtdn", () => {
-  it("applies a renewal as a grant with the notification's own timestamp", async () => {
+  it("takes the state from Play and the notification type as the cause", async () => {
     const store = recordingStore();
+    const play = fakePlay();
     await bindPurchase(store);
-    const app = await buildApp((a) => billingRoutes(a, deps()), "/v1/billing");
+    // Type 3 is "canceled", but the family has paid to the end of the period: Play says active.
+    play.verifySubscription.mockResolvedValue(verified({ state: "active", autoRenews: false }));
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
-    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(2), "msg-renewed") });
+    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(3), "msg-canceled") });
 
     expect(res.statusCode).toBe(204);
     expect(store.grant).toHaveBeenCalledTimes(1);
     expect(store.grant.mock.calls[0][0]).toMatchObject({
       familyId: "fam-1",
-      source: "google",
       state: "active",
-      externalId: TOKEN,
-      cause: "renewed",
-      effectiveAt: "2026-11-13T09:00:00.000Z",
+      autoRenews: false,
+      cause: "canceled",
+      storeRef: TOKEN,
+      effectiveAt: "2026-11-12T09:00:00.000Z",
     });
     expect(store.revoke).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it("revokes the plan on a cancellation", async () => {
+  it("stamps the server's clock when Play's event time is in the future", async () => {
     const store = recordingStore();
+    const play = fakePlay();
     await bindPurchase(store);
-    const app = await buildApp((a) => billingRoutes(a, deps()), "/v1/billing");
+    const before = Date.now();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
-    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(3), "msg-canceled") });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/rtdn",
+      ...pushPayload(subscriptionNotification(2, TOKEN, "2030-01-01T00:00:00Z"), "msg-future-time"),
+    });
 
     expect(res.statusCode).toBe(204);
+    const stamped = Date.parse(store.grant.mock.calls[0][0].effectiveAt);
+    expect(stamped).toBeGreaterThanOrEqual(before - 1000);
+    expect(stamped).toBeLessThanOrEqual(Date.now() + 1000);
+    await app.close();
+  });
+
+  it("goes active without renewal, then expired, over a cancelled-then-expired sequence", async () => {    const store = recordingStore();
+    const play = fakePlay();
+    await bindPurchase(store);
+    play.verifySubscription
+      .mockResolvedValueOnce(verified({ state: "active", autoRenews: false }))
+      .mockResolvedValueOnce(verified({ state: "expired", autoRenews: false }));
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const cancelled = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(3), "msg-1-cancelled") });
+    const expired = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(13), "msg-2-expired") });
+
+    expect(cancelled.statusCode).toBe(204);
+    expect(expired.statusCode).toBe(204);
+    expect(store.grant.mock.calls[0][0]).toMatchObject({ state: "active", autoRenews: false, cause: "canceled" });
+    expect(store.revoke.mock.calls[0][0]).toMatchObject({ state: "expired", autoRenews: false, cause: "expired" });
+    expect(store.grant).toHaveBeenCalledTimes(1);
     expect(store.revoke).toHaveBeenCalledTimes(1);
-    expect(store.revoke.mock.calls[0][0]).toMatchObject({ state: "revoked", cause: "canceled", familyId: "fam-1" });
-    expect(store.grant).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it("ignores an unknown notification type and says why in the log", async () => {
+  it("leaves the state unchanged when a push is replayed", async () => {
     const store = recordingStore();
+    const play = fakePlay();
     await bindPurchase(store);
-    const log = vi.fn();
-    const app = await buildApp((a) => billingRoutes(a, deps({ log })), "/v1/billing");
-
-    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(99), "msg-unknown") });
-
-    expect(res.statusCode).toBe(204);
-    expect(store.grant).not.toHaveBeenCalled();
-    expect(store.revoke).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith("billing.rtdn.ignored", expect.objectContaining({ messageId: "msg-unknown", reason: "unknown_notification_type:99" }));
-    await app.close();
-  });
-
-  it("ignores a price change, which moves no state, with its own reason", async () => {
-    const store = recordingStore();
-    await bindPurchase(store);
-    const log = vi.fn();
-    const app = await buildApp((a) => billingRoutes(a, deps({ log })), "/v1/billing");
-
-    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(8), "msg-price") });
-
-    expect(res.statusCode).toBe(204);
-    expect(store.grant).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith("billing.rtdn.ignored", expect.objectContaining({ reason: "price_change_has_no_state_change" }));
-    await app.close();
-  });
-
-  it("applies a duplicate messageId once, and logs the duplicate", async () => {
-    const store = recordingStore();
-    await bindPurchase(store);
-    const log = vi.fn();
-    const app = await buildApp((a) => billingRoutes(a, deps({ log })), "/v1/billing");
-    const payload = pushPayload(subscriptionNotification(2), "msg-twice");
+    play.verifySubscription.mockResolvedValue(verified({ state: "expired", autoRenews: false }));
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+    const payload = pushPayload(subscriptionNotification(2), "msg-replayed");
 
     const first = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...payload });
     const second = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...payload });
 
     expect(first.statusCode).toBe(204);
     expect(second.statusCode).toBe(204);
+    // Dedupe is claimed before the re-verify, so the second delivery neither calls Play nor the store.
+    expect(play.verifySubscription).toHaveBeenCalledTimes(1);
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+    expect(store.grant).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("answers 503 when Play cannot be reached, and applies the retry", async () => {
+    const store = recordingStore();
+    const log = vi.fn();
+    const play = fakePlay();
+    await bindPurchase(store);
+    play.verifySubscription
+      .mockRejectedValueOnce(new PlayUnavailable("verify_status_503"))
+      .mockResolvedValueOnce(verified({ state: "active", autoRenews: true }));
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+    const payload = pushPayload(subscriptionNotification(2), "msg-play-down");
+
+    const failed = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...payload });
+    const retried = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...payload });
+
+    expect(failed.statusCode).not.toBe(204);
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    expect(retried.statusCode).toBe(204);
     expect(store.grant).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith("billing.rtdn.duplicate", expect.objectContaining({ messageId: "msg-twice" }));
+    await app.close();
+  });
+
+  it("acknowledges and logs a notification whose type it does not recognise", async () => {
+    const store = recordingStore();
+    const log = vi.fn();
+    const play = fakePlay();
+    await bindPurchase(store);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+
+    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(99), "msg-unknown") });
+
+    expect(res.statusCode).toBe(204);
+    // Play's state is authoritative even when the label is not: the change still lands.
+    expect(store.grant.mock.calls[0][0]).toMatchObject({ state: "active", cause: "unknown_notification_type:99" });
+    expect(log).toHaveBeenCalledWith("billing.rtdn.unknown_type", expect.objectContaining({ messageId: "msg-unknown", type: 99 }));
+    await app.close();
+  });
+
+  it("answers 204 for a purchase it never stored, without calling Play", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const log = vi.fn();
+    const play = fakePlay();
+    await bindPurchase(store);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+
+    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(2, "tok-never-verified"), "msg-stranger") });
+
+    expect(res.statusCode).toBe(204);
+    expect(play.verifySubscription).not.toHaveBeenCalled();
+    expect(store.grant).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("billing.rtdn.unknown_purchase", expect.objectContaining({ messageId: "msg-stranger" }));
     await app.close();
   });
 
   it("refuses an unverified push token and touches nothing", async () => {
     const store = recordingStore();
     await bindPurchase(store);
-    const app = await buildApp((a) => billingRoutes(a, deps()), "/v1/billing");
+    const play = fakePlay();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
 
     const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(3), "msg-forged", "forged-token") });
 
     expect(res.statusCode).toBe(401);
     expect(res.json()).toEqual({ error: "invalid_push_token" });
+    expect(play.verifySubscription).not.toHaveBeenCalled();
     expect(store.revoke).not.toHaveBeenCalled();
     await app.close();
   });
@@ -564,9 +712,10 @@ describe("POST /v1/billing/google/rtdn", () => {
 
   it("acknowledges a test notification without touching the plan", async () => {
     const store = recordingStore();
-    setEntitlementStore(store);
+    setEntitlementStore(store as unknown as EntitlementStore);
     const log = vi.fn();
-    const app = await buildApp((a) => billingRoutes(a, deps({ log })), "/v1/billing");
+    const play = fakePlay();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
 
     const res = await app.inject({
       method: "POST",
@@ -575,22 +724,9 @@ describe("POST /v1/billing/google/rtdn", () => {
     });
 
     expect(res.statusCode).toBe(204);
+    expect(play.verifySubscription).not.toHaveBeenCalled();
     expect(store.grant).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith("billing.rtdn.no_subscription", expect.objectContaining({ messageId: "msg-test" }));
-    await app.close();
-  });
-
-  it("acknowledges a notification for a purchase it has never stored, and logs the miss", async () => {
-    const store = recordingStore();
-    setEntitlementStore(store);
-    const log = vi.fn();
-    const app = await buildApp((a) => billingRoutes(a, deps({ log })), "/v1/billing");
-
-    const res = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(2, "tok-never-verified"), "msg-stranger") });
-
-    expect(res.statusCode).toBe(204);
-    expect(store.grant).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith("billing.rtdn.unknown_purchase", expect.objectContaining({ messageId: "msg-stranger", type: "renewed" }));
     await app.close();
   });
 
@@ -614,25 +750,56 @@ describe("POST /v1/billing/google/rtdn", () => {
     await app.close();
   });
 
-  it("maps every known notification type to a state and a cause", async () => {
-    const expected: Array<[number, string, string]> = [
-      [1, "active", "recovered"],
-      [2, "active", "renewed"],
-      [3, "revoked", "canceled"],
-      [4, "active", "purchased"],
-      [5, "on_hold", "on_hold"],
-      [6, "grace", "in_grace"],
-      [7, "active", "restarted"],
-      [10, "on_hold", "paused"],
-      [12, "revoked", "revoked"],
-      [13, "expired", "expired"],
+  it("names every known notification type, and labels the unknown ones", () => {
+    const known: Array<[number, string]> = [
+      [1, "recovered"],
+      [2, "renewed"],
+      [3, "canceled"],
+      [4, "purchased"],
+      [5, "on_hold"],
+      [6, "in_grace_period"],
+      [7, "restarted"],
+      [8, "price_change"],
+      [10, "paused"],
+      [12, "revoked"],
+      [13, "expired"],
     ];
-    for (const [type, state, cause] of expected) {
-      const mapping = mapNotificationType(type);
-      expect(mapping, `type ${type}`).toEqual({ kind: "change", state, cause, typeName: expect.any(String) });
-    }
-    expect(mapNotificationType(8)).toMatchObject({ kind: "ignored", reason: "price_change_has_no_state_change" });
-    expect(mapNotificationType(undefined)).toMatchObject({ kind: "ignored", reason: "missing_notification_type" });
-    expect(mapNotificationType(999)).toMatchObject({ kind: "ignored", reason: "unknown_notification_type:999" });
+    for (const [type, cause] of known) expect(notificationCause(type), `type ${type}`).toEqual({ cause, known: true });
+    expect(notificationCause(999)).toEqual({ cause: "unknown_notification_type:999", known: false });
+    expect(notificationCause(undefined)).toEqual({ cause: "unknown_notification_type", known: false });
+  });
+});
+
+describe("log hygiene", () => {
+  it("never writes the account id or the store reference to a log line", async () => {
+    const store = recordingStore();
+    setEntitlementStore(store as unknown as EntitlementStore);
+    const log = vi.fn();
+    const play = fakePlay();
+    const app = await buildApp((a) => billingRoutes(a, deps({ play, log })), "/v1/billing");
+
+    const verifiedRes = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/verify",
+      headers: authHeader(app),
+      payload: { purchaseToken: TOKEN, productId: PRODUCT },
+    });
+    // The refusal path logs a reason too, and must not log the id that did not match.
+    const refused = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/verify",
+      headers: authHeader(app),
+      payload: { purchaseToken: TOKEN, productId: "com.osratech.family.yearly" },
+    });
+    const pushed = await app.inject({ method: "POST", url: "/v1/billing/google/rtdn", ...pushPayload(subscriptionNotification(2), "msg-log-hygiene") });
+
+    expect(verifiedRes.statusCode).toBe(200);
+    expect(refused.statusCode).toBe(400);
+    expect(pushed.statusCode).toBe(204);
+    expect(log).toHaveBeenCalled();
+    const written = JSON.stringify(log.mock.calls);
+    expect(written).not.toContain(ACCOUNT_ID);
+    expect(written).not.toContain(TOKEN);
+    await app.close();
   });
 });

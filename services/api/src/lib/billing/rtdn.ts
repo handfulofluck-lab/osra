@@ -11,7 +11,6 @@
  * same [BillingTransport] the API client uses; tests inject a generated key pair and a fixture token.
  */
 import { createPublicKey, verify as verifySignature, type KeyObject } from "node:crypto";
-import type { EntitlementState } from "../entitlement.js";
 import { getRedis, setJsonNx } from "../../redis.js";
 import type { BillingTransport } from "./google.js";
 
@@ -68,37 +67,35 @@ export function decodeNotification(data: string): DeveloperNotification {
 /**
  * Play's `SubscriptionNotification.NotificationType`, in the numbering the Developer API uses.
  *
- * `state: null` means the type is real but moves no entitlement: a price change (8) carries
- * `priceChangeDetails` and nothing about whether the family holds a plan, so inventing a state for it
- * would be a guess. It is acknowledged and logged, like an unknown type, with its own reason.
+ * The type is **a label, not a decision**: every push re-fetches `subscriptionsv2` and takes the state
+ * from there, which is Google's own advice. A type carries no state mapping here on purpose — mapping
+ * type 3 (`canceled`) to "revoked" would cut off a family that has paid to the end of the period, and
+ * an unknown number must not stop an authoritative update from landing.
  */
-const NOTIFICATION_TYPES: Readonly<Record<number, { name: string; state: EntitlementState | null; cause: string }>> = {
-  1: { name: "recovered", state: "active", cause: "recovered" },
-  2: { name: "renewed", state: "active", cause: "renewed" },
-  3: { name: "canceled", state: "revoked", cause: "canceled" },
-  4: { name: "purchased", state: "active", cause: "purchased" },
-  5: { name: "on_hold", state: "on_hold", cause: "on_hold" },
-  6: { name: "in_grace_period", state: "grace", cause: "in_grace" },
-  7: { name: "restarted", state: "active", cause: "restarted" },
-  8: { name: "price_change", state: null, cause: "" },
-  10: { name: "paused", state: "on_hold", cause: "paused" },
-  12: { name: "revoked", state: "revoked", cause: "revoked" },
-  13: { name: "expired", state: "expired", cause: "expired" },
+const NOTIFICATION_CAUSES: Readonly<Record<number, string>> = {
+  1: "recovered",
+  2: "renewed",
+  3: "canceled",
+  4: "purchased",
+  5: "on_hold",
+  6: "in_grace_period",
+  7: "restarted",
+  8: "price_change",
+  10: "paused",
+  12: "revoked",
+  13: "expired",
 };
 
-export type NotificationMapping =
-  | { kind: "change"; state: EntitlementState; cause: string; typeName: string }
-  | { kind: "ignored"; reason: string; typeName: string | null };
-
-/** Map one notification type. An unknown number is ignored with a reason — never a guessed state. */
-export function mapNotificationType(type: number | undefined): NotificationMapping {
+/**
+ * The `cause` a notification records, and whether we recognised the number. A caller logs the unknown
+ * ones (never a silent drop) and still applies Play's state.
+ */
+export function notificationCause(type: number | undefined): { cause: string; known: boolean } {
   if (typeof type !== "number" || !Number.isInteger(type)) {
-    return { kind: "ignored", reason: "missing_notification_type", typeName: null };
+    return { cause: "unknown_notification_type", known: false };
   }
-  const known = NOTIFICATION_TYPES[type];
-  if (!known) return { kind: "ignored", reason: `unknown_notification_type:${type}`, typeName: null };
-  if (known.state === null) return { kind: "ignored", reason: `${known.name}_has_no_state_change`, typeName: known.name };
-  return { kind: "change", state: known.state, cause: known.cause, typeName: known.name };
+  const name = NOTIFICATION_CAUSES[type];
+  return name ? { cause: name, known: true } : { cause: `unknown_notification_type:${type}`, known: false };
 }
 
 /** The `messageId`s already handled. A push is at least once, so this is what stops a double write. */
