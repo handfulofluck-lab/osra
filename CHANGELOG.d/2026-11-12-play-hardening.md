@@ -2,7 +2,11 @@
 - Ahmed's threat-model review supersedes the #563 plaintext fallback. When the child's encrypted store still will not
   open after the existing two retries and the delete-and-reopen, `SecureStore` no longer opens or writes the plaintext
   fallback. It deletes the legacy plaintext file and returns an in-memory `NoopSharedPreferences`, so the phone reads
-  as unpaired and shows the re-pair notice — no secret is ever written in plaintext.
+  as unpaired — no secret is ever written in plaintext.
+- A fresh pairing whose secure write fails now shows a distinct recovery sentence: restart the phone, pair again,
+  and contact support if the problem repeats. The English and the Arabic Bureau's exact approved line are adjacent
+  to `wipe_detected_notice`, which stays on the separate cleared-data path. The two new wiring/resource tests failed
+  before the change and pass after it; English and Arabic/RTL captures are on `store/k31-682-review`.
 - The fail-closed state is exposed as `AgentSettings.secureStoreUnreadable()`. The next pairing claim sets
   `dataCleared` on that flag (or the original `pm clear` signature), whatever the device-admin tier, so the parent's
   Allow records the `agent_data_cleared` tamper alert server-side. No unsigned local alert is enqueued — an unpaired

@@ -492,7 +492,7 @@ class PairingActivity : ComponentActivity() {
                 } else {
                     // osra-security#8 F2 follow-up: the secure store could not persist the pairing, so nothing
                     // was started and nothing is cached as paired. The form already names the state above.
-                    error.text = getString(R.string.wipe_detected_notice)
+                    error.text = getString(R.string.pairing_secure_store_failed)
                     error.visibility = View.VISIBLE
                 }
             }.onFailure { e ->

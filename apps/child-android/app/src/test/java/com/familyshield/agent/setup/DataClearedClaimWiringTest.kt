@@ -18,7 +18,8 @@ import org.junit.Test
  *
  * Mutants: drop `settings.secureStoreUnreadable()` from the detection → [the detection is the wipe signature]; drop
  * `put("dataCleared", true)` from the claim → [the claim flags the wipe]; make `savePairing` update caches before the
- * persistence check, or call `startAgent()` on a failed save → [a failed secure write starts nothing]; add a
+ * persistence check, or call `startAgent()` on a failed save → [a failed secure write starts nothing]; reuse the
+ * cleared-data notice for a fresh secure-save failure → [the failure has its own bilingual recovery sentence]; add a
  * `TamperAlertWorker.enqueue` to [com.familyshield.agent.security.SecureStore] → [the fail-closed store raises no
  * unsigned alert].
  */
@@ -57,7 +58,7 @@ class DataClearedClaimWiringTest {
     @Test
     fun `the re-pair notice is the approved English string, shown from the same detection`() {
         assertTrue(
-            "the form reuses the approved wipe_detected_notice, never a new Arabic line",
+            "the cleared-data form keeps its original notice; a failed fresh save has its own reviewed line",
             pairing.contains("getString(R.string.wipe_detected_notice)"),
         )
         assertTrue(
@@ -77,8 +78,32 @@ class DataClearedClaimWiringTest {
             start > saveIf,
         )
         assertTrue(
-            "a failed save shows the re-pair notice rather than a silent success",
-            onSuccess.contains("getString(R.string.wipe_detected_notice)"),
+            "a failed save has its own recovery notice rather than falsely claiming data was cleared",
+            onSuccess.contains("getString(R.string.pairing_secure_store_failed)"),
+        )
+    }
+
+    @Test
+    fun `the secure-write failure notice has bilingual resources beside the wipe notice`() {
+        listOf("values", "values-ar").forEach { folder ->
+            val resources = sourceFile("app/src/main/res/$folder/strings.xml")
+            val wipe = resources.indexOf("<string name=\"wipe_detected_notice\"")
+            val secureSave = resources.indexOf("<string name=\"pairing_secure_store_failed\"")
+            assertTrue("$folder must keep the original wipe notice", wipe >= 0)
+            assertTrue("$folder must define the distinct secure-save notice", secureSave > wipe)
+            assertFalse(
+                "the Bureau asked for the new entry directly under wipe_detected_notice in $folder",
+                resources.substring(wipe + 1, secureSave).contains("<string name="),
+            )
+        }
+        val english = sourceFile("app/src/main/res/values/strings.xml")
+        assertTrue(
+            "the English is the reviewed recovery sentence",
+            english.contains(
+                "<string name=\"pairing_secure_store_failed\">OSRA could not save the pairing safely on this phone, " +
+                    "so it is not protected yet. Restart the phone and pair it again. If this keeps happening, " +
+                    "write to support@osratech.com.</string>",
+            ),
         )
     }
 
