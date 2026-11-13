@@ -270,7 +270,11 @@ export function redact(value) {
   );
 }
 
-const brief = (response) => `${response.status} ${JSON.stringify(redact(response.data ?? null))}`;
+/**
+ * What a failed step prints instead of the body. Exported so a row can assert the stderr path itself uses
+ * [redact], rather than only that [redact] works in isolation (Claude's f8 on #674).
+ */
+export const brief = (response) => `${response.status} ${JSON.stringify(redact(response.data ?? null))}`;
 
 /**
  * The ruleset a scenario needs: no limit that expires mid-run, no bedtime window, no school days.

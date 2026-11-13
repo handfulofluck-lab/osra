@@ -125,6 +125,6 @@ jobs:
         run: |
           set -o pipefail
           out=$(node --test scripts/hardware/scenario-family.test.mjs 2>&1 | tee /dev/stderr)
-          printf '%s\n' "$out" | grep -q 'pass 25$'
+          printf '%s\n' "$out" | grep -q 'pass 26$'
           printf '%s\n' "$out" | grep -q 'fail 0$'
           docker rm -f api

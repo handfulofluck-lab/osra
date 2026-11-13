@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { BaseUrlRefused, redact, resolveBaseUrl, writeTokenFile } from "./scenario-family.mjs";
+import { BaseUrlRefused, brief, redact, resolveBaseUrl, writeTokenFile } from "./scenario-family.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "scenario-family.mjs");
 const LIVE_BASE = process.env.SCENARIO_API_BASE;
@@ -112,18 +112,26 @@ test("redacts token-shaped keys before a body reaches stderr", () => {
   // scrollback the file header warns about. Nested, array and sibling keys are covered because a rename can
   // move the secret anywhere in the shape.
   const redacted = redact({
+    // The password is the credential this script actually sends (register and login), so it is in the
+    // fixture at the top level and nested — Claude's f4 survived because the row had no `password` at all.
+    password: "top-level-password",
     accessToken: "secret-value",
-    parent: { id: "p1", refreshToken: "another", name: "Sam" },
+    parent: { id: "p1", refreshToken: "another", password: "nested-password", name: "Sam" },
     items: [{ apiKey: "k", hmacSecret: "h", safe: "ok" }],
     status: "ok",
   });
   assert.deepEqual(redacted, {
+    password: "[redacted]",
     accessToken: "[redacted]",
-    parent: { id: "p1", refreshToken: "[redacted]", name: "Sam" },
+    parent: { id: "p1", refreshToken: "[redacted]", password: "[redacted]", name: "Sam" },
     items: [{ apiKey: "[redacted]", hmacSecret: "[redacted]", safe: "ok" }],
     status: "ok",
   });
+  assert.equal(redacted.password, "[redacted]");
+  // The keys stay — a reader needs to see that a password was there — and only the values are replaced.
   assert.ok(!JSON.stringify(redacted).includes("another"));
+  assert.ok(!JSON.stringify(redacted).includes("top-level-password"));
+  assert.ok(!JSON.stringify(redacted).includes("nested-password"));
   assert.ok(!JSON.stringify(redacted).includes("secret-value"));
 });
 
@@ -303,6 +311,16 @@ test("create sends the shapes the real routes take and prints one JSON object", 
   // The pairing code exists only after the neutral read-back.
   const order = stub.calls.map((c) => `${c.method} ${c.url}`);
   assert.ok(order.indexOf("GET /v1/rules/child-1") < order.indexOf("POST /v1/devices/pair"), "the code is minted after the rules were verified");
+});
+
+test("the line a failed step writes to stderr carries no secret", () => {
+  // Claude's f8: the row above proves `redact` works, not that the failure path uses it. `brief` is what
+  // every StepFailed interpolates, so its own output is the thing that must be clean.
+  const line = brief({ status: 200, data: { accessToken: "leaked-token", nested: { password: "leaked-password" } } });
+  assert.ok(line.includes("[redacted]"), line);
+  assert.ok(!line.includes("leaked-token"), line);
+  assert.ok(!line.includes("leaked-password"), line);
+  assert.ok(line.startsWith("200 "), line);
 });
 
 test("refuses to write over an existing file or follow a planted symlink", () => {

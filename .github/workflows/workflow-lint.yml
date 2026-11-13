@@ -103,7 +103,7 @@ jobs:
         run: |
           set -o pipefail
           out=$(node --test scripts/hardware/scenario-family.test.mjs 2>&1 | tee /dev/stderr)
-          printf '%s\n' "$out" | grep -q 'pass 24$'
+          printf '%s\n' "$out" | grep -q 'pass 25$'
           printf '%s\n' "$out" | grep -q 'fail 0$'
 
       - name: A PR may only change what its title says it changes
