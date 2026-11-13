@@ -402,6 +402,19 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | 2026-11-12 | Approved as written on Bureau sheet 1, with A4 and A5 applied: the 11 new lines of #583, #587, #588 and #572; the 28 "Ask parent" lines of #606; the 16 fixes in the backlog on #604 | Bureau sheet 1, B, C, D |
 | 2026-11-13 | OSRA Kids on iPhone, Status screen: the collapsed support section is titled «التفاصيل التقنية» (over «التفاصيل الفنية» and «معلومات للدعم») | card 07:12Z; `status_technical_details`, #661 |
 
+### Bureau decisions (since 2026-11-13)
+
+Wording the Bureau decided itself under the maintainer's rule of 2026-11-13, each with what it rests on.
+A row here is final unless he says otherwise; if he does, the row moves to "Karim's corrections".
+
+| Date | Line | Decision | Rests on |
+|---|---|---|---|
+| 2026-11-13 | Website, Windows and Mac pages (#687) | The `computer` block of `copy.ar.mjs` as signed at e0bef67d; a Standard account is «حساب قياسي» | Pairing is «إقران» (K); «قياسي» and «مسؤول» are the systems' own words, still to be read once on a PC and a Mac in Arabic |
+| 2026-11-13 | Parent app, `restrictedModeNote` | «يتطلب الوضع المقيّد فحص HTTPS على كمبيوتر الطفل (راجع الدليل)» | Word list: «كمبيوتر», not «حاسوب» |
+| 2026-11-13 | OSRA Kids on iPhone, block screen button `block_exit_home` (English now "Close app", #696) | «إغلاق التطبيق». Android keeps «الخروج إلى الشاشة الرئيسية» (his row of 2026-10-31) | Android `aerr_close_app` (`frameworks/base`, `values-ar`); Apple's Arabic support page ar-sa/109359; the old line was longer than the English that already wrapped |
+| 2026-11-13 | OSRA Kids on iPhone, `pin_set_reason` (#696) | «عيّن رمز PIN للوالدين حتى لا يستطيع غيرهما تغيير إعدادات تطبيق أسرة للأطفال أو إعادة إقران هذا الهاتف.» | «رمز PIN للوالدين» (K), the screen title «تعيين …», `repair_button`, A1 |
+| 2026-11-13 | OSRA Kids on Android, pairing could not be saved (#682) | «تعذّر على تطبيق أسرة للأطفال حفظ الإقران بأمان على هذا الهاتف، لذلك لم يصبح محميًا بعد. أعد تشغيله ثم أقرنه مرة أخرى. إذا تكرّرت المشكلة، راسلنا على support@osratech.com.» | The sister line `wipe_detected_notice` (sheet 2, row 42); Android `global_action_restart` «إعادة التشغيل»; the guide's «راسلنا على …» |
+
 ### Word list
 
 **K** = approved by the maintainer (in the line or PR named). **B** = the Bureau's decision (his rule of
@@ -484,6 +497,9 @@ Each row is a correction or a wording the maintainer wrote himself. They overrid
 | Version; edition (Play or Full) | «الإصدار»; «النسخة» | | B |
 | Support | «الدعم» | | B |
 | Technical details | «التفاصيل التقنية» | «التفاصيل الفنية» | K 13 Nov |
+| Close app (iPhone block screen) | «إغلاق التطبيق» | | B 13 Nov: Android and Apple both say «إغلاق» |
+| Restart (the phone) | «أعد تشغيل …», «إعادة التشغيل» | «ريستارت» | B 13 Nov: Android's own word |
+| Write to us (support address) | «راسلنا على support@osratech.com» | «اكتب إلى» | B 13 Nov: the approved guide page |
 | Privacy policy | «سياسة الخصوصية» | | K |
 | Tap | «اضغط», «اضغط على» | «انقر» | K |
 | Try again | «حاول مرة أخرى» | | K |
