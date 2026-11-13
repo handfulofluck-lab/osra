@@ -109,7 +109,7 @@ object IdleCadence {
      * 15 s poll, so the tick follows the state: while restricted the loop wakes at the interval it is
      * going to use. An unrestricted phone keeps the 15 s tick and its idle cost.
      */
-    fun pollTickMs(restricted: Boolean): Long = if (restricted) RESTRICTED_POLL_MS else POLL_TICK_MS
+    fun pollTickMs(restricted: Boolean): Long = POLL_TICK_MS
 
     /**
      * True when a `CommandPollWorker` run should fetch. The periodic 60-second job is a backstop for
