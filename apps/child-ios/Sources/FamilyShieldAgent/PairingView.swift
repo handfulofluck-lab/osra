@@ -92,7 +92,7 @@ public struct PairingView: View {
         do {
             let client = PairingClient()
             let claimed = try await client.claim(baseURL: baseURL, code: code, deviceName: deviceName)
-            guard AgentIdentityStore.save(claimed) else {
+            guard AgentIdentityStore.saveNewPairing(claimed) else {
                 // The family reads a plain sentence; the technical cause goes to the log (Bureau review, 12 Nov).
                 Logger(subsystem: "com.osratech.child", category: "pairing")
                     .error("Failed to persist identity: shared app group is unavailable. Verify app group provisioning.")
