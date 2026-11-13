@@ -25,9 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.R
 import com.familyshield.agent.enforcement.KeyguardPolicy
 import com.familyshield.agent.enforcement.LockScreenPolicy
 import com.familyshield.agent.enforcement.LockState
@@ -208,11 +210,15 @@ class LockActivity : ComponentActivity() {
 
 @Composable
 private fun OverlayScreen(mode: String) {
-    val (title, subtitle) = when (mode) {
-        LockActivity.MODE_PAUSED -> "Device paused by your parent" to "Your parent will resume it shortly. · أسرة"
-        LockActivity.MODE_PAUSED_INTERNET ->
-            "Internet paused by your parent" to "Educational apps still work. · أسرة"
-        else -> "This device is locked by your parent" to "It will unlock when your parent allows it. · أسرة"
+    val title = when (mode) {
+        LockActivity.MODE_PAUSED -> R.string.lock_paused_title
+        LockActivity.MODE_PAUSED_INTERNET -> R.string.lock_paused_internet_title
+        else -> R.string.lock_locked_title
+    }
+    val subtitle = when (mode) {
+        LockActivity.MODE_PAUSED -> R.string.lock_paused_body
+        LockActivity.MODE_PAUSED_INTERNET -> R.string.lock_paused_internet_body
+        else -> R.string.lock_locked_body
     }
     // #489: at targetSdk 35 the screen is drawn edge to edge, so in landscape the title sat under the
     // status bar and the cutout. The root keeps its 32 dp and adds whatever the system bars take.
@@ -222,14 +228,14 @@ private fun OverlayScreen(mode: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = title,
+            text = stringResource(title),
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White,
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = subtitle,
+            text = stringResource(subtitle),
             color = Color(0xFFAEB0B8),
             textAlign = TextAlign.Center,
         )

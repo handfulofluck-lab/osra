@@ -20,6 +20,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.familyshield.agent.R
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
@@ -377,8 +378,8 @@ class LocationService : Service() {
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("OSRA")
-            .setContentText("Location sharing is active")
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.notification_location_active))
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -387,7 +388,11 @@ class LocationService : Service() {
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(CHANNEL_ID, "Location", NotificationManager.IMPORTANCE_HIGH)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(R.string.notification_channel_location),
+            NotificationManager.IMPORTANCE_HIGH,
+        )
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 

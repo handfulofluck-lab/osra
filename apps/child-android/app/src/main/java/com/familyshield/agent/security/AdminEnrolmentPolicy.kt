@@ -1,5 +1,8 @@
 package com.familyshield.agent.security
 
+import androidx.annotation.StringRes
+import com.familyshield.agent.R
+
 /** What the app can say about a device-admin activation attempt (issue #186). */
 enum class EnrolmentOutcome {
     /** The system sheet has not returned yet. */
@@ -83,6 +86,13 @@ object AdminEnrolmentPolicy {
 data class EnrolmentMessage(val title: String, val body: String, val recovery: String, val action: String)
 
 /**
+ * The same message with its translatable parts as resource ids (#709). The Settings route stays a
+ * [String]: it quotes the phone's own menu, which the Arabic Language Bureau holds until it can be read
+ * off an Arabic handset, so that line is English on every phone for now.
+ */
+data class EnrolmentMessageRes(@StringRes val titleRes: Int, @StringRes val bodyRes: Int, val recovery: String, @StringRes val actionRes: Int)
+
+/**
  * The wording for the stale-Knox dead end. It tells the parent what happened, names the Settings
  * route that goes through Knox, and is explicit that the app cannot clear the entry itself.
  */
@@ -92,16 +102,34 @@ object AdminEnrolmentMessages {
     const val PARENT_REMOVAL_NOTE =
         "Protection was removed with the parent PIN. Tap Activate device admin to turn it back on."
 
+    /** The Settings route to Knox's admin list. English until the Bureau can read the menu off a phone. */
+    private const val STALE_KNOX_RECOVERY =
+        "Open Settings → Security and privacy → Device admin apps, deactivate OSRA if it " +
+            "is listed, then return here and tap Activate device admin. If OSRA is not listed there, " +
+            "only a factory reset or system-level access can clear the stale entry."
+
     fun forOutcome(outcome: EnrolmentOutcome): EnrolmentMessage? = when (outcome) {
         EnrolmentOutcome.STALE_KNOX_ADMIN -> EnrolmentMessage(
             title = "Protection could not be enabled",
             body = "The system sheet closed without activating anything. Samsung's Knox layer still " +
                 "lists OSRA as an administrator, so the system refuses Activate with " +
                 "\"Admin is already added\".",
-            recovery = "Open Settings → Security and privacy → Device admin apps, deactivate OSRA if it " +
-                "is listed, then return here and tap Activate device admin. If OSRA is not listed there, " +
-                "only a factory reset or system-level access can clear the stale entry.",
+            recovery = STALE_KNOX_RECOVERY,
             action = "Open device admin settings",
+        )
+        EnrolmentOutcome.NOT_ATTEMPTED,
+        EnrolmentOutcome.PROTECTED,
+        EnrolmentOutcome.NOT_GRANTED,
+        -> null
+    }
+
+    /** The same message as resources, so the screen can render it in the phone's language (#709). */
+    fun resForOutcome(outcome: EnrolmentOutcome): EnrolmentMessageRes? = when (outcome) {
+        EnrolmentOutcome.STALE_KNOX_ADMIN -> EnrolmentMessageRes(
+            titleRes = R.string.admin_stale_title,
+            bodyRes = R.string.admin_stale_body,
+            recovery = STALE_KNOX_RECOVERY,
+            actionRes = R.string.admin_stale_action,
         )
         EnrolmentOutcome.NOT_ATTEMPTED,
         EnrolmentOutcome.PROTECTED,
