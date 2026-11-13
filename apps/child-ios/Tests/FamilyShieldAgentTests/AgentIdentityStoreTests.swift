@@ -237,6 +237,30 @@ final class AgentIdentityStoreTests: XCTestCase {
         let sweep = try XCTUnwrap(text.range(of: "AgentIdentityStore.clearOrphanedSecrets()"))
         XCTAssertLessThan(lock.lowerBound, sweep.lowerBound)
     }
+
+    // MARK: - #691: a new pairing starts clean
+
+    func testANewPairingStartsWithNoLastSyncAndNoOldRules() {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)!
+        defaults.set(Date(timeIntervalSinceNow: -11 * 3600).timeIntervalSince1970, forKey: "rules.syncedAt")
+        defaults.set("21:00", forKey: "rules.bedtimeStart")
+        XCTAssertNotNil(RuleStore.syncedAt(), "an earlier pairing's last sync")
+        let next = AgentIdentity(apiBaseURL: URL(string: "https://api.example.invalid")!, deviceToken: "jwt-2",
+                                 deviceId: "dev-2", childId: "child-2", familyId: "fam-2", hmacSecret: nil,
+                                 childName: "Sara")
+        XCTAssertTrue(AgentIdentityStore.saveNewPairing(next))
+        XCTAssertNil(RuleStore.syncedAt(), "the Status screen reads Not synced yet")
+        XCTAssertNil(RuleStore.bedtimeStart(), "no rules from the earlier pairing")
+        XCTAssertEqual(AgentIdentityStore.load()?.childName, "Sara", "the name the parent gave is shown")
+    }
+
+    func testThePairingScreenSavesThroughTheCleanStart() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/PairingView.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(text.contains("AgentIdentityStore.saveNewPairing(claimed)"))
+        XCTAssertFalse(text.contains("AgentIdentityStore.save(claimed)"))
+    }
 }
 
 /// The `SecretStore` contract, in memory.
