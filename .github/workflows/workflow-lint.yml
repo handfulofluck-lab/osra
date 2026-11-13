@@ -88,6 +88,24 @@ jobs:
         shell: pwsh
         run: ./scripts/hardware/android-pairing-time.ps1 -Human -SelfTest
 
+      - name: Scenario-family self-tests - the base URL guard, the neutralised defaults, the token file (#668)
+        # The helper signs accounts up and erases them, so these cases are the proof of the two rules that
+        # must hold before any request is sent: the host guard, and a create that refuses a ruleset whose
+        # screen-time defaults survived. The live "delete after create leaves nothing" case is skipped here
+        # (this job has no API) and runs in api-image.yml, the job that boots the API against Postgres.
+        # The run must PRINT its summary: a step that exits 0 in silence is a gate that did not run (the
+        # same trap as the site-design step below, #592). `pass 24` cannot appear on a failed or empty run —
+        # the suite is 22 cases, one of them the gated live case — and `fail 0` is asserted beside it because
+        # a 25th case that failed would still leave `pass 24` on the summary. Both lines are read from a
+        # captured copy, not through the pipe: `grep -q` stops at its match, and the summary is a block, so
+        # it can close the pipe on `tee` before the reporter finishes (SIGPIPE, exit 141, and `pipefail`
+        # fails the step). The staging-prereqs step below captures `out` for the same reason.
+        run: |
+          set -o pipefail
+          out=$(node --test scripts/hardware/scenario-family.test.mjs 2>&1 | tee /dev/stderr)
+          printf '%s\n' "$out" | grep -q 'pass 25$'
+          printf '%s\n' "$out" | grep -q 'fail 0$'
+
       - name: A PR may only change what its title says it changes
         # Added after 2026-10-19: a squash built on a pre-#218 base produced a 24-file diff that would
         # have reverted #218 while every test stayed green (the tests proved the old code worked).
