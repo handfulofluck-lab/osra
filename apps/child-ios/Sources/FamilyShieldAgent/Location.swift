@@ -20,9 +20,7 @@ public enum LocationGrant: String, Equatable {
     public static func from(_ status: CLAuthorizationStatus) -> LocationGrant {
         switch status {
         case .authorizedAlways: return .background
-        #if os(iOS)
         case .authorizedWhenInUse: return .whileInUse
-        #endif
         default: return .noAccess
         }
     }
