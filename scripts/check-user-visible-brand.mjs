@@ -50,9 +50,16 @@ const ALLOWED_PATHS = [
  * internal package/namespace/path identifiers pass, while a path segment or a data-folder path
  * fails in any casing and with single or double quotes.
  */
+const LEGACY_DEMO_DECLARATION = /^\s*const LEGACY_DEMO_EMAIL = "demo@familyshield\.dev";\s*$/;
 const RULES = [
   { re: /familyshield-export/i, what: "the old export filename (use osra-export-<familyId>.json)" },
-  { re: /familyshield\.dev/i, what: "the old support domain (use demo@osratech.com)" },
+  {
+    re: /familyshield\.dev/i,
+    what: "the old support domain (use demo@osratech.com)",
+    allow: (p, line) =>
+      (p === "services/api/scripts/seed.ts" || p === "services/api/test/demo-seed-cleanup.test.ts") &&
+      LEGACY_DEMO_DECLARATION.test(line),
+  },
   { re: /["']FamilyShield["']\s*(?:,\s*["']|\)|\+\s*["']?[\\/.])/i, what: 'the old desktop data folder as a path segment (use "OSRA")' },
   { re: /FamilyShield[\\/]/, what: "the old desktop data folder in a path (use OSRA)" },
   { re: /(?:%LOCALAPPDATA%|%APPDATA%|Application Support|Application\\ Support)[\\/]familyshield[\\/]/i, what: "the old desktop data folder in a data path (use OSRA)" },
@@ -91,7 +98,7 @@ function scan(paths, cwd = process.cwd()) {
     if (text.includes("\u0000")) continue; // binary
     text.split(/\r?\n/).forEach((line, index) => {
       for (const rule of RULES) {
-        if (rule.re.test(line)) {
+        if (rule.re.test(line) && !rule.allow?.(p, line)) {
           hits.push({ path: p, line: index + 1, what: rule.what });
           break;
         }
@@ -178,6 +185,28 @@ function runSelfTest() {
   });
   fs.rmSync(dir, { recursive: true, force: true });
 
+  // A one-time seed migration and its fixture may name the legacy address only in a named constant.
+  // Every other use in those files, and the same declaration elsewhere, must still fail.
+  const legacyDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "brand-legacy-demo-"));
+  const legacyCases = [
+    ["services/api/scripts/seed.ts", 'const LEGACY_DEMO_EMAIL = "demo@familyshield.dev";', 0],
+    ["services/api/test/demo-seed-cleanup.test.ts", 'const LEGACY_DEMO_EMAIL = "demo@familyshield.dev";', 0],
+    ["services/api/scripts/seed.ts", 'const displayedEmail = "demo@familyshield.dev";', 1],
+    ["services/api/test/demo-seed-cleanup.test.ts", 'const displayedEmail = "demo@familyshield.dev";', 1],
+    ["services/api/scripts/other.ts", 'const LEGACY_DEMO_EMAIL = "demo@familyshield.dev";', 1],
+  ];
+  for (const [p, body, want] of legacyCases) {
+    const full = pathMod.join(legacyDir, p);
+    fs.mkdirSync(pathMod.dirname(full), { recursive: true });
+    fs.writeFileSync(full, `${body}\n`);
+    const got = scan([p], legacyDir).length ? 1 : 0;
+    if (got !== want) {
+      bad += 1;
+      console.error(`FAIL  legacy-demo migration boundary ${p} ${body}: want ${want}, got ${got}`);
+    }
+  }
+  fs.rmSync(legacyDir, { recursive: true, force: true });
+
   // Dated-QA allowlist (Claude's #608 ruling): the three records below are exempt because they
   // must retain the names as tested at the time; a dated-looking sibling is still a finding.
   const datedDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "brand-dated-"));
@@ -253,7 +282,7 @@ function runSelfTest() {
   }
   fs.rmSync(repo, { recursive: true, force: true });
 
-  const total = cases.length + dated.length + 4;
+  const total = cases.length + dated.length + legacyCases.length + 4;
   console.log(`user-visible-brand self-test: ${total - bad}/${total} cases`);
   process.exit(bad ? 1 : 0);
 }

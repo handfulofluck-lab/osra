@@ -8,7 +8,7 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 | Layer | Command | Covers | Fails when |
 |---|---|---|---|
-| API unit tests | `pnpm --filter @familyshield/api test` | Routes with mocked DB/Redis: auth, rules, devices, alerts, content, contracts | Logic/contract regressions |
+| API unit + demo database tests | `pnpm --filter @familyshield/api test` | Routes with mocked DB/Redis: auth, rules, devices, alerts, content, contracts; real-Postgres demo-seed migration and scoped cleanup | Logic/contract regressions, duplicate demo owners, or deletion of legitimate families |
 | **Adversarial probe** (merge gate) | `node scripts/qa-probe.mjs` | Tries to **break** documented invariants against a live stack | Any invariant is violable |
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
 | Flutter | `cd apps/parent-app && flutter pub get && flutter analyze && flutter test` (needs `C:\KARIM\tools\flutter\bin` on `PATH` — §2) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568, English/Arabic localization (ARB key parity + every translated screen in Arabic/RTL at 320×568) | UI/contract regressions, a missing Arabic string, an RTL overflow |
@@ -18,6 +18,14 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | iOS | `.github/workflows/ios-ci.yml` (macOS runner) | SwiftPM build + simulator build | Swift compile/behaviour regressions |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
+`test/demo-seed-cleanup.test.ts` runs against real PostgreSQL in CI, where
+`OSRA_REQUIRE_DATABASE_TESTS=1` makes a missing database configuration an error. Local runs without
+`OSRA_TEST_DATABASE_URL` report these three integration rows as skipped. To include them, point that
+variable at a dedicated `osra_test_*` database on loopback, with trust-only local authentication and
+`psql` on `PATH` (or set `PSQL_BIN`). The harness rejects remote hosts, other database names and URLs
+with passwords, runs the real migrations, seed and cleanup, and leaves an empty schema. Never point it
+at a shared, staging or production database.
+
 A green unit suite is **not** evidence that an invariant holds — that is what the probe is for. A green
 probe is **not** evidence that a feature works on a phone — that is what hardware verification is for.
 
@@ -26,7 +34,7 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 
 | Suite | The step CI adds |
 |---|---|
-| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml:54-62`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:57`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
+| API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:68`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
 | Flutter | the row's three commands are `parent-app.yml:46-48`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:73-78`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`child-android.yml:65`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:72` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` of **both** release APKs (`apk/<flavour>/release/app-<flavour>-release.apk`) for `targetSdkVersion:'35'` and both network-security configs (`:76-94`); each check fails the job, and so does an APK upload that finds no files (`:103`). Until #361 that step read `apk/release/app-release.apk`, which has not existed since the flavours landed, and its `grep -q … && echo` guards could not fail, so it passed while checking nothing. The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
 | Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`agent-desktop.yml:37`) |
@@ -39,7 +47,7 @@ release-assembly step is where a release-only failure lives.
 
 | Need | Where it lives here |
 |---|---|
-| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/api.yml:51`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
+| Node + pnpm | this host runs **node 24.19.0** on `PATH` with pnpm 9.0.0 (`packageManager`); CI pins node 20 (`.github/workflows/api.yml:64-66`), and `C:\KARIM\tools\node` holds 20.18.1 if you need that exact version |
 | PostgreSQL | Windows service `OSRA-Postgres` (auto-start) or `C:\KARIM\start-pg.bat` |
 | Redis | `C:\KARIM\tools\redis\redis-server.exe --port 6379` |
 | JDK 17 + Android SDK | `C:\KARIM\tools\jdk-17`, `C:\KARIM\tools\android-sdk` (`ANDROID_HOME` **must** be set, or gradle fails with "SDK location not found") |
@@ -66,7 +74,7 @@ looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §
 ## 3. Running the gates
 
 ```bash
-# from the repo root, once per checkout — CI runs this before its type-check and suite (api.yml:54-62)
+# from the repo root, once per checkout — CI runs this before its type-check and suite (api.yml)
 pnpm --filter @familyshield/api exec prisma generate
 
 cd services/api
@@ -641,10 +649,17 @@ makes. Paste the raw evidence into the issue.
 adb shell dumpsys device_policy | grep -i familyshield    # no output = the admin is gone
 adb uninstall com.osratech.child && adb reverse --remove-all
 psql -h 127.0.0.1 -U familyshield -d familyshield -v apply=1 -f services/api/scripts/cleanup-test-data.sql
-psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # expect 1 / 1
+psql -c 'SELECT (SELECT count(*) FROM "Family"), (SELECT count(*) FROM "Child")'   # 1 / 1 on a dedicated QA database
 node services/api/scripts/cleanup-test-redis.mjs            # dry run: lists orphaned per-device keys
 node services/api/scripts/cleanup-test-redis.mjs --apply    # deletes only keys whose owner row is gone
 ```
+
+The SQL cleanup refuses to apply unless exactly one current demo parent exists; run the current seed
+first when upgrading an old-seed database. It deletes only explicit test-owner families, non-`Alex`
+demo children, and empty `QA Family` orphans. Legitimate non-test families, including the Play
+reviewer's family and other empty families, are preserved. The 1/1 expectation above applies to a
+dedicated QA database that held only the demo family and disposable test rows, not to a database with
+legitimate additional families.
 
 `dpm remove-active-admin` is a **last resort**, not the debug-build procedure. On an AOSP phone it is
 safe; on a **Samsung**, removing an admin that was activated through the system sheet with this command

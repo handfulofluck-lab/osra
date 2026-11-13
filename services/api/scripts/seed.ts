@@ -4,6 +4,8 @@ import argon2 from "argon2";
 import { resolveDemoPassword } from "./seed-password.js";
 
 const prisma = new PrismaClient();
+const CURRENT_DEMO_EMAIL = "demo@osratech.com";
+const LEGACY_DEMO_EMAIL = "demo@familyshield.dev";
 
 /** Idempotent seed per spec §3: running twice must not duplicate rows. */
 async function main() {
@@ -14,17 +16,23 @@ async function main() {
     (await prisma.family.findFirst({ where: { name: "Demo Family" } })) ??
     (await prisma.family.create({ data: { name: "Demo Family", region: "US" } }));
 
-  const parent = await prisma.parent.upsert({
-    where: { email: "demo@osratech.com" },
-    update: {},
-    create: {
-      familyId: family.id,
-      email: "demo@osratech.com",
-      passwordHash,
-      displayName: "Demo Parent",
-      role: "owner",
-    },
-  });
+  const legacyParent = await prisma.parent.findUnique({ where: { email: LEGACY_DEMO_EMAIL } });
+  const parent = legacyParent
+    ? await prisma.parent.update({
+        where: { id: legacyParent.id },
+        data: { email: CURRENT_DEMO_EMAIL },
+      })
+    : await prisma.parent.upsert({
+        where: { email: CURRENT_DEMO_EMAIL },
+        update: {},
+        create: {
+          familyId: family.id,
+          email: CURRENT_DEMO_EMAIL,
+          passwordHash,
+          displayName: "Demo Parent",
+          role: "owner",
+        },
+      });
 
   const child =
     (await prisma.child.findFirst({
