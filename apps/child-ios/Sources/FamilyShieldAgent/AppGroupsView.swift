@@ -33,16 +33,20 @@ public struct AppGroupsView: View {
                         set: { list.setBlocked($0, id: group.id); commit() }
                     ))
                     .disabled(byParentApp)
+                    .accessibilityIdentifier(A11yID.group(group.id, .blocked))
                     LabeledContent(L10n.tr("groups_chosen"), value: group.counts.summary)
+                        .accessibilityIdentifier(A11yID.group(group.id, .chosen))
                     Button(L10n.tr("groups_change")) {
                         editingId = group.id
                         editSelection = group.selection
                         pickingEdit = true
                     }
+                    .accessibilityIdentifier(A11yID.group(group.id, .change))
                     Button(L10n.tr("groups_delete"), role: .destructive) {
                         list.remove(id: group.id)
                         commit()
                     }
+                    .accessibilityIdentifier(A11yID.group(group.id, .delete))
                 } header: {
                     Text(group.label)
                 } footer: {
@@ -55,10 +59,14 @@ public struct AppGroupsView: View {
             }
             Section {
                 TextField(L10n.tr("groups_name_field"), text: $newLabel)
+                    .accessibilityIdentifier(A11yID.groupsNewName)
                 Button(L10n.tr("groups_choose")) { pickingNew = true }
+                    .accessibilityIdentifier(A11yID.groupsNewChoose)
                 LabeledContent(L10n.tr("groups_chosen"), value: newSelection.counts.summary)
+                    .accessibilityIdentifier(A11yID.groupsNewChosen)
                 Button(L10n.tr("groups_add")) { addGroup() }
-                if let error { Text(error).foregroundStyle(.red) }
+                    .accessibilityIdentifier(A11yID.groupsNewAdd)
+                if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier(A11yID.groupsError) }
             } header: {
                 Text(L10n.tr("groups_new"))
             } footer: {
