@@ -1136,6 +1136,59 @@ the APK replaceable without the parent's consent — and is cleaned up exactly t
 app's PIN gate. Never add `testOnly` to a release manifest to make a cleanup easier:
 `PlayMergedManifestTest` / `FullMergedManifestTest` assert its absence in both release merges.
 
+### The Full updater's trust core and the Play exclusion (ADR-0039 D5, plan 5.10 PR B)
+
+The updater is the only place in the child app that installs a file, so its decisions are tested where they
+can be reached from a plain JVM. The package lives in `app/src/full/java/com/familyshield/agent/update/`, as
+ADR-0039 D5 says ("Full only (`src/full/`)"): the two decision files (`FullUpdatePolicy.kt`,
+`FullUpdateManifest.kt`) have **no `android.*` imports**, and `FullUpdater.kt` beside them is the Android
+adapter. Only `UpdateCheckScheduler.kt` stays in `src/main/`, because `FamilyShieldApp`, `BootReceiver`,
+`PairingActivity` and `WorkerEntryPoint` live there and need the seam. Tink is a `fullImplementation`, so the
+Play variant compiles none of the updater and a `main` line naming anything else in `update/` fails
+`assemblePlayRelease` at compile time — the build enforces the boundary, not R8. (Play's runtime graph still
+carries `tink-android:1.8.0`, which is `androidx.security:security-crypto`'s own dependency for `SecureStore`;
+it predates this work and is not the updater's verifier, which is 1.24.0 and `full` only.)
+
+```
+cd apps/child-android
+./gradlew testFullDebugUnitTest --tests "com.familyshield.agent.update.*"
+```
+
+The rows are in `app/src/testFull/`, so `testPlayDebugUnitTest` carries none of them by construction: the same
+filter there ends with `No tests found for given includes: [com.familyshield.agent.update.*]`, which is the
+expected answer in the Play variant, not a skip.
+
+| Row | What it pins | The mutant that must turn it red |
+|---|---|---|
+| `FullUpdatePolicyTest` (28 rows) | signature over the exact bytes, `keyId`, own package, higher `versionCode`, no replay below the highest seen `versionCode`/`releasedAt`, `expiresAt`, URL by component (host/userinfo/port/path/dot-dot), `minSdk`, size, SHA-256, archive signer by **signed lineage** (same key, rotated, foreign, multi-signer), confirmation intent must resolve to a system image | flip `TinkEd25519Verifier.verify` to `true` (the verifier that ships — Tink on every API level); no-op both replay branches; make `isAllowedUrl` return `true`; delete the package check; delete only the dot-dot rule (it must be *that* row that fails, not the path-prefix row); use the archive's current signers instead of the lineage (**R1**: the rotated row must fail); accept any lineage without consulting the installed certificates (**R1**: the foreign row must fail); make `confirmationTargetIsSystemInstaller` return `true` (**R2**: its row must fail) |
+| `FullUpdaterSignerSourceTest` (1 row) | `hasOwnSigner` reads `signingCertificateHistory` and hands the shape to `checkArchiveSigners` | replace the lineage read with the current signers (**R1**): the pure rows still pass on their own data, so only this source row catches an adapter that stopped passing the lineage |
+| `PackageInstallerSingleSourceTest` (1 row) | `PackageInstaller` is named in exactly one Kotlin file, and it is `update/FullUpdater.kt` under `src/full` | add the literal to any second file under `app/src/{main,full,play}` — it bites on a KDoc mention too |
+
+The store build must never carry the install permission, and this is checked on the **artefact**, not on the
+source (`dump badging` prints no permissions — see the manifest trap in §6):
+
+```
+AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | tail -1)
+"$AAPT" dump permissions app/build/outputs/apk/play/debug/app-play-debug.apk | grep -c REQUEST_INSTALL_PACKAGES  # 0
+"$AAPT" dump permissions app/build/outputs/apk/full/debug/app-full-debug.apk | grep -c REQUEST_INSTALL_PACKAGES  # 1
+```
+
+Proven on 2026-11-12 by adding the permission to `app/src/main/AndroidManifest.xml` and running
+`testPlayDebugUnitTest --tests "com.familyshield.agent.manifest.*"`: two rows failed by name (`declares exactly
+the reviewed permission allow-list`, `declares none of the Play-forbidden permissions`).
+
+Two traps specific to this change:
+
+- **R8 and a reflective Moshi DTO.** `FullUpdateManifest` is parsed by `KotlinJsonAdapterFactory`, which reads
+  property names by reflection. It sits outside `network.dto.**`, so the existing keep rule did not cover it and
+  a minified Full build would have refused its own manifest as `malformed_manifest` — silently, because `parse`
+  returns `null` by design. The `-keep` in `app/proguard-rules.pro` is what prevents that; only a *release*
+  build shows it, which is why `assembleFullRelease` is part of the gate.
+- **The keys are placeholders in the repository.** `FullUpdateKeys` carries
+  `REPLACE_WITH_M1_RAW_BASE64_FROM_THE_MAINTAINER`. Until the maintainer pastes the real raw base64 keys, every
+  check ends `manifest_key_unavailable`. That is the fail-closed direction and it is not a bug to "fix" by
+  putting a key in the repo — the two manifest keys are made offline and are never online.
+
 ### A PR that touches the probe must not narrow it — and that is now machine-checked
 
 `AGENTS.md` §4 forbids weakening a check to make a gate green, but until now the rule was only

@@ -72,6 +72,9 @@ class PairingActivity : ComponentActivity() {
     /** Issue #229: re-check the call/SMS grants on a permission result and on every resume. */
     @Inject lateinit var commsCapture: CommsCapture
 
+    /** ADR-0039 D5.1: one self-update check after pairing; the Play binding is a no-op. */
+    @Inject lateinit var updateCheckScheduler: com.familyshield.agent.update.UpdateCheckScheduler
+
     /** When the admin sheet was launched, so a self-closing refusal can be told from a parent's Cancel. */
     private var adminSheetLaunchedAtMs = 0L
 
@@ -1093,6 +1096,7 @@ class PairingActivity : ComponentActivity() {
         startLocationServiceIfPermitted()
         WorkScheduler.scheduleAll(this)
         WorkScheduler.syncNow(this)
+        updateCheckScheduler.checkNow()
         CommandPollWorker.requestFetchNow(this)
     }
 

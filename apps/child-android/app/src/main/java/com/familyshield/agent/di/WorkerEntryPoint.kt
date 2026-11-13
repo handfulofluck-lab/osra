@@ -61,4 +61,7 @@ interface WorkerEntryPoint {
 
     /** Issue #465 review: the unlink, so a start after a half-finished one can finish it. */
     fun deviceUnlinker(): com.familyshield.agent.network.DeviceUnlinker
+
+    /** ADR-0039 D5.1: the Full self-updater's schedule; a no-op in the Play flavour. */
+    fun updateCheckScheduler(): com.familyshield.agent.update.UpdateCheckScheduler
 }

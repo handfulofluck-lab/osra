@@ -9,6 +9,11 @@
 -keepclassmembers class * { @com.squareup.moshi.FromJson <methods>; @com.squareup.moshi.ToJson <methods>; }
 -keep @com.squareup.moshi.JsonQualifier interface *
 
+# ADR-0039: the update manifest is the same kind of reflective Moshi DTO, but it lives outside
+# network.dto. Obfuscated, its property names stop matching latest.json's fields and every release build
+# refuses its own manifest as malformed_manifest — silently, because parse() returns null by design.
+-keep class com.familyshield.agent.update.FullUpdateManifest { *; }
+
 # Retrofit: generic signatures on the service interface are what it parses.
 -keepattributes Signature, InnerClasses, EnclosingMethod, Exceptions, *Annotation*
 -keep,allowobfuscation,allowshrinking interface retrofit2.Call
