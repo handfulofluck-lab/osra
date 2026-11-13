@@ -119,7 +119,7 @@ screens. On a computer it is the block/lock window.
 
 | ID | Feature | The child tries | Must hold | Auto |
 |---|---|---|---|---|
-| PA01 | **App lock** | Open the parent app on the parent's unlocked phone and loosen a rule, unblock an app, stop a ring, or pause bedtime | **Gap today:** the parent app has no app lock of its own (no PIN or biometric on open or before rule changes). Product decision for the maintainer: either require biometric/PIN for rule-loosening actions, or document that the phone's own lock is the only guard. | flutter |
+| PA01 | **App lock** (#742) | Open the parent app on the parent's unlocked phone and loosen a rule, unlink a device, pause protection, unblock an app or stop a ring | Each of these asks for the parent's fingerprint, Face ID or device PIN first (maintainer's decision 13 Nov, #742). Cancel, a failed scan, Back, Home and backgrounding the prompt never let the change through; the change is not sent before the check passes. | flutter, hand |
 | PA02 | Session | Stay signed in for weeks; sign out on one phone; change password elsewhere | Refresh rotation; a password change ends other sessions. | api, flutter |
 | PA03 | Destructive actions | Remove the child's device, delete the account, turn off monitoring | Re-auth dialog (password or MFA) every time; never one tap. | flutter |
 | PA04 | MFA | Wrong codes, replayed code, recovery code used twice, MFA reset without the witness | All refused, attempts limited and logged. | api (qa-probe), flutter |
