@@ -97,6 +97,7 @@ jobs:
           if len(tests) != 209:
               print(f"macOS test count changed: expected 209, discovered {len(tests)}", file=sys.stderr)
           if missing or len(tests) != 209:
+              print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
               sys.exit(1)
           print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules and strings present")
           PY
