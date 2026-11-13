@@ -49,7 +49,7 @@ jobs:
       - name: CI-cost guardrails - iOS paths, weekly schedules, concurrency and Gradle cache (#613)
         # The cheaper-CI edits are structural contracts: ios-ci pushes main-only with its exact path
         # list, seven schedules are weekly Monday, the eight PR suites keep cancel-in-progress, and the
-        # Android job gains setup-gradle. The self-test proves each rule fails on a fixture that breaks it.
+        # Android job gains setup-gradle pinned by full commit SHA. The self-test proves each rule fails on a fixture that breaks it.
         run: |
           node scripts/check-ci-cost-guardrails.mjs --selftest
           node scripts/check-ci-cost-guardrails.mjs

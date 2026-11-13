@@ -13,7 +13,7 @@
  *      fails: `ios-ci.yml` Monday 01:23, and the six build suites Monday 02:11.
  *   4. all eight PR-suite workflows keep a real `concurrency.cancel-in-progress: true` key; a
  *      commented-out line does not count.
- *   5. `child-android.yml` adds `gradle/actions/setup-gradle@v4` after `actions/setup-java@v4`.
+ *   5. `child-android.yml` pins `gradle/actions/setup-gradle` to a full commit SHA with a version comment after `actions/setup-java@v4`.
  *
  * Usage: node scripts/check-ci-cost-guardrails.mjs [--selftest]
  * Exit 0 green, 1 a rule failed, 2 a required workflow file is missing.
@@ -96,10 +96,12 @@ function hasCancelInProgress(text) {
   return text.split(/\r?\n/).some((line) => !/^\s*#/.test(line) && /^\s*cancel-in-progress:\s*true\s*(#.*)?$/.test(line));
 }
 
+const GRADLE_PIN = /gradle\/actions\/setup-gradle@[0-9a-f]{40}\s+#\s*v4(?:\.\d+){0,2}\s*$/m;
+
 function setupGradleAfterSetupJava(text) {
   const java = text.indexOf("actions/setup-java@v4");
-  const gradle = text.indexOf("gradle/actions/setup-gradle@v4");
-  return gradle !== -1 && java !== -1 && gradle > java;
+  const gradle = GRADLE_PIN.exec(text);
+  return gradle !== null && java !== -1 && gradle.index > java;
 }
 
 function check(read) {
@@ -131,7 +133,8 @@ function check(read) {
   }
 
   const ca = read(".github/workflows/child-android.yml");
-  if (!/gradle\/actions\/setup-gradle@v4/.test(ca)) problems.push("child-android.yml: gradle/actions/setup-gradle@v4 is missing");
+  if (!/gradle\/actions\/setup-gradle@/.test(ca)) problems.push("child-android.yml: gradle/actions/setup-gradle is missing");
+  else if (!GRADLE_PIN.test(ca)) problems.push("child-android.yml: setup-gradle must use a full 40-character commit SHA with a version comment");
   else if (!setupGradleAfterSetupJava(ca)) problems.push("child-android.yml: setup-gradle must come after setup-java");
 
   return problems;
@@ -182,7 +185,7 @@ function selftest() {
   const concurrencyCommented = "concurrency:\n  group: x\n  # cancel-in-progress: true\n";
   const ca = (setupGradle = true) =>
     "jobs:\n  x:\n    steps:\n      - uses: actions/setup-java@v4\n        with:\n          distribution: temurin\n          java-version: \"17\"" +
-    (setupGradle ? "\n      - uses: gradle/actions/setup-gradle@v4" : "") + "\n";
+    (setupGradle ? "\n      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3" : "") + "\n";
 
   const withCancel = (s) => s + "\n" + concurrencyTrue;
   const good = () => {
@@ -226,7 +229,10 @@ function selftest() {
   expect("a commented-out cancel-in-progress: true fails", check(read(commentedCancel)).some((p) => p.includes("cancel-in-progress is not true")));
 
   const noGradle = good(); noGradle.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca(false));
-  expect("a missing setup-gradle fails", check(read(noGradle)).some((p) => p.includes("setup-gradle@v4 is missing")));
+  expect("a missing setup-gradle fails", check(read(noGradle)).some((p) => p.includes("setup-gradle is missing")));
+
+  const unpinnedGradle = good(); unpinnedGradle.set(".github/workflows/child-android.yml", withCancel(suite()) + "\n" + ca().replace("ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3", "v4"));
+  expect("an unpinned setup-gradle tag fails", check(read(unpinnedGradle)).some((p) => p.includes("40-character commit SHA")));
 
   console.log(`ci-cost-guardrails self-test: ${total - bad}/${total} cases`);
   process.exit(bad ? 1 : 0);

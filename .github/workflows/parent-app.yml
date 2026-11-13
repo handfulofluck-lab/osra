@@ -158,7 +158,7 @@ jobs:
   # pull request or a push builds iOS only when it changes something the iOS build reads and the Android one
   # does not: the `ios/` tree, `pubspec.yaml` or `pubspec.lock` (a plugin brings its own native code), or this
   # file. The weekly and manual runs always build it, which is how a Dart change or a new Flutter stable that
-  # breaks only iOS reaches `main` within a day. When the diff cannot be read, it builds rather than skips.
+  # breaks only iOS reaches `main` within a week. When the diff cannot be read, it builds rather than skips.
   ios-scope:
     name: Does this change reach the iOS build?
     runs-on: ubuntu-latest

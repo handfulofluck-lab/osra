@@ -45,7 +45,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
       # Plan 1.8: same upload keystore as the parent app, materialised from the secret when present.
       # The build refuses a signed release without google-services.json (#409), and refuses a half-configured
       # one (any of the four OSRA_UPLOAD_* variables without the rest). So the keystore and its three passwords

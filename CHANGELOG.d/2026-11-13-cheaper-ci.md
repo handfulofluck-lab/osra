@@ -9,8 +9,9 @@
 - **The six build suites** (`api`, `parent-app`, `child-android`, `agent-desktop`, `ai-engine`,
   `api-image`) moved from daily to weekly Monday 02:11; `workflow_dispatch` stays, so a branch can always
   run by hand.
-- **Android caching:** `child-android.yml` adds `gradle/actions/setup-gradle@v4` right after `setup-java`,
-  reusing the safe default Gradle cache without touching the build commands.
+- **Android caching:** `child-android.yml` adds `gradle/actions/setup-gradle` right after `setup-java`,
+  pinned to the full `v4.4.3` commit SHA `ed408507eac070d1f99cc633dbcf757c94c7933a`, reusing the safe
+  default Gradle cache without touching the build commands or trusting a mutable tag in a secret-holding job.
 - **Guardrail:** the new dependency-free `scripts/check-ci-cost-guardrails.mjs` (wired into
   `workflow-lint.yml`, self-test + real check) pins the main-only branch filter, the exact iOS paths, the
   seven weekly schedules, `cancel-in-progress: true` on all eight PR-suite workflows, and the setup-gradle
