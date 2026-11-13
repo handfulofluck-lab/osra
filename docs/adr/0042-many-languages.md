@@ -29,7 +29,7 @@ This ADR tests that assumption against the repository (`main@9f9ad8a`) and recor
 | Windows agent | No resource files. Every line a child or parent reads (`PairingDialog`, `LockOverlay`, block notices) is an English literal in C# | **No.** It is English-only, **including for Arabic**, the first launch language. |
 | Mac agent | Not built yet (ADR-0036: shares the iPhone Swift core) | Build it on `L10n` from the first line. |
 | Server: email | `templates.ts` carries English and Arabic side by side in code and sends **both** in one message, because the server does not know a parent's language (`Locale = "en" | "ar" | "both"`) | **No.** A third language cannot be added to a two-language-in-one email. |
-| Server: alerts | The alert **title** is translated in the app from the category. The alert **body** is an English sentence written by the server (`"A concerning search was conducted on …"`, `"… sent a flagged message on …"`) and stored | **No.** An Arabic parent reads an English body today. |
+| Server: alerts | The alert **title** is translated in the app from the category. The alert **body** is an English sentence, stored and shown as written. Some are written by the server (`"A concerning search was conducted on …"`, `"… sent a flagged message on …"`); the rest by the **child's device** through `POST /v1/alerts` (`"Child requested access to …"`, `"A VPN is routing this device's traffic around the filter"`, on Android, iPhone and Windows; #722) | **No.** An Arabic parent reads an English body today, in the list and in the push. |
 | Server: push | iPhone alerts use loc-keys from the app bundle; Android is data-only and built in the app | **Yes.** |
 | Database | `Family.region` (a market) and `Family.timezone`. No language anywhere | **No.** |
 | Website | `scripts/site/marketing/build.mjs` + `copy.en.mjs` / `copy.ar.mjs`; privacy, terms and delete-account are single English pages | **Partly.** The builder assumes exactly two languages (`c.other`). |
@@ -122,8 +122,14 @@ reviewer work on. No hosted translation service for now (see Alternatives).
 - `Parent.locale` (BCP-47, nullable), sent by the parent app at login and whenever the picker changes, the
   way ADR-0020 handles the timezone. `null` keeps today's English + Arabic email.
 - Emails move from two-languages-in-code to one template set per language, chosen by `Parent.locale`.
-- An alert carries a **type and parameters** (`search_flagged`, `{engine}`), and the app renders the
-  sentence. The server keeps writing the English `body` so older apps still show something.
+- **Text is written on the device where it is read, in that reader's language.** An alert carries a
+  **type and parameters** (`search_flagged`, `{engine}`; `access_requested`, `{app}`), whoever raises it:
+  the server or a child's device. The parent app renders the sentence, the way it already renders the
+  title. A child's device never writes a sentence for a parent: its language is the child's, a family can
+  have parents in two languages, and device-side text would have to be translated again in every client
+  for every new language (#722, raised by the Arabic Language Bureau). `InternalAlertSchema` gains
+  `bodyKey` and `bodyParams` from one enum in `shared-types`; the English `body` stays as the fallback
+  for older apps and is never translated on the device.
 - The child device reports its language on telemetry (ADR-0034), so a parent screen can say which language
   a child's phone is in.
 
@@ -200,7 +206,7 @@ where the law asks for them; store listing through the renderer; a support answe
 |---|---|---|---|---|
 | 1 | Android child: move the English literals to resources, add the missing Arabic key, `supportsRtl` | Kimi/K31 | 2–3 days | **Before closed beta A.** These are Arabic defects today |
 | 2 | Windows agent: `.resx` resources, Arabic catalog, RTL dialogs | K31 | 1 week | **Before the Windows closed beta (22 Jan).** Same reason |
-| 3 | Alerts carry type + parameters; the app renders the body | Kimi | 3–4 days | Before Public 1 if it fits, else first after |
+| 3 | Alerts carry type + parameters, from the server (#711) and from every child client (#722); the parent app renders the body | Kimi (server, Android, parent app), Ahmed (iPhone), K31 (Windows) | about 1 week | Before Public 1 if it fits, else first after |
 | 4 | `Parent.locale`; emails per language | Kimi | 3–4 days | After Public 1 |
 | 5 | Registry (D1), pickers and tests read it; site builder takes N languages | Kimi/K31 | 1 week | After Public 1 |
 | 6 | `tools/l10n` export/import, glossary JSON, Android-source term pull, CI gates incl. pseudo-language | K31, Claude verifies | 1–1.5 weeks | After Public 1 |
@@ -267,6 +273,7 @@ Arabic work. Urdu, Thai, Hindi and similar scripts add a layout pass on all seve
 
 1. On `main@9f9ad8a`, `apps/agent-desktop` contains no `.resx` file and no Arabic text.
 2. `values-ar/strings.xml` lacks `sos_tile_label`; the child manifest has no `android:supportsRtl`.
-3. `services/api/src/routes/content.ts` and `social.ts` write English alert bodies.
+3. `services/api/src/routes/content.ts` and `social.ts` write English alert bodies, and so do the child
+   clients (`grep -rn 'body = "' apps/child-android/app/src/main`, 9 hits).
 4. `eval/run_eval.py` hard-codes `LANGS = ("en", "ar")`; `eval/README.md` forbids transliterated Arabic.
 5. `pack.json` holds 121 domains across 13 categories.
