@@ -1150,15 +1150,25 @@ assertion that was renamed.
 node scripts/check-probe-integrity.mjs                                  # origin/main -> working tree
 node scripts/check-probe-integrity.mjs --base origin/main --head origin/<branch>
 node scripts/check-probe-integrity.mjs --base 68dd367 --head 68dd367 --stats   # call-site counts
-node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (14 cases)
+node scripts/check-probe-integrity.mjs --selftest                       # the gate's own test (27 cases)
 ```
 
 It compares the **sets of assertion names per severity** (`check` gating, `target` tracked, `note`
 advisory) and fails on an **unacknowledged removal or demotion** (`check` -> `target`/`note`), while
 reporting additions and promotions (`target` -> `check`) as information. A legitimate rename is
 allowed but must be *written down* in `scripts/probe-gate-acks.json` with a reason — deliberate
-friction, so no assertion vanishes without a sentence saying why. Read that file's entries when you
-review the diff; each one cites who verified it and where.
+friction, so no assertion vanishes without a sentence saying why. Since #660 a rename ack may carry
+`renamedTo`, and the checker requires that replacement to exist in the head at the same or higher
+severity (`check` ≥ `target` ≥ `note`), failing on a missing or demoted replacement; a reason starting
+`Label only` or `Renamed` (also `relabel`/`moved`, case-insensitively) must therefore carry
+`renamedTo`. Since #683 the checker also requires `renamedTo` when a removed assertion gains a
+same-kind assertion in the head, regardless of reason wording — a retirement reason paired with an
+unrelated same-kind addition needs `renamedTo` too, or that addition must land in a separate diff. For
+a live ack (one whose name this diff removed), the `renamedTo` must be newly added — absent from base
+— and unique across all acks (a global invariant, not per-diff), while historical acks whose names the
+diff did not remove keep passing. An older `--head` ref is expected to fail when the current ack file's `renamedTo`
+targets were added after that ref, because the ack file is validated against the head, not the base.
+Read that file's entries when you review the diff; each one cites who verified it and where.
 
 Two honest limits, so nobody over-trusts it: loop-generated assertion names collapse into one entry
 per family, so it detects *a family disappearing*, not *one iteration of it*; and dynamically built
@@ -1170,8 +1180,9 @@ is compared like an inline one (fixed in #310). Before that fix the per-line mat
 the newline, so nine wrapped calls in `qa-probe.mjs` were invisible — on `68dd367` it saw **132 of 141**
 `check(`/`target(` call sites, counted each of the nine as neither added nor removed, and a PR that
 deleted one passed. `--stats` prints the per-kind call-site count, so this coverage is measured rather
-than inferred. `--selftest` (14 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
-interpolated forms, the demotion path, and the deleted-call case; its stated **mutant** is the old
+than inferred. `--selftest` (27 cases, also run by `workflow-lint.yml`) pins the inline, wrapped and
+interpolated forms, the demotion path, the deleted-call case, and the #660/#683 rename-ack rules
+(replacement severity/uniqueness/newly-added, and the same-kind-only trigger); its stated **mutant** is the old
 per-line matcher, under which the deleted multi-line call is reported as nothing (CLI exit `0`) and the
 self-test fails. On `68dd367` the fixed tool sees **141/141** call sites.
 

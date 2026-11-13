@@ -20,9 +20,12 @@ public struct PinSetupView: View {
         Form {
             Section {
                 SecureField(L10n.tr("pin_new_field"), text: $pin).keyboardType(.numberPad)
+                    .accessibilityIdentifier(A11yID.pinNew)
                 SecureField(L10n.tr("pin_repeat_field"), text: $confirm).keyboardType(.numberPad)
-                if let error { Text(error).foregroundStyle(.red) }
+                    .accessibilityIdentifier(A11yID.pinRepeat)
+                if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier(A11yID.pinSetError) }
                 Button(L10n.tr("pin_save")) { save() }
+                    .accessibilityIdentifier(A11yID.pinSave)
             } header: {
                 Text(L10n.tr("pin_parent"))
             } footer: {
@@ -63,8 +66,10 @@ public struct PinGateView: View {
         Form {
             Section {
                 SecureField(L10n.tr("pin_parent"), text: $pin).keyboardType(.numberPad)
-                if let message { Text(message).foregroundStyle(.red) }
+                    .accessibilityIdentifier(A11yID.pinGate)
+                if let message { Text(message).foregroundStyle(.red).accessibilityIdentifier(A11yID.pinGateMessage) }
                 Button(L10n.tr("pin_continue")) { check() }
+                    .accessibilityIdentifier(A11yID.pinContinue)
             } footer: {
                 Text(L10n.tr("pin_parents_only"))
             }

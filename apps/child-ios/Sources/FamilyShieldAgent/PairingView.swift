@@ -37,6 +37,7 @@ public struct PairingView: View {
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
                     .disabled(builtInServer != nil)
+                    .accessibilityIdentifier(A11yID.pairServer)
                 TextField(L10n.tr("pair_code_field"), text: $code)
                     .keyboardType(.numberPad)
                     .onChange(of: code) { newValue in
@@ -44,8 +45,10 @@ public struct PairingView: View {
                         let digits = newValue.filter(\.isNumber)
                         code = String(digits.prefix(6))
                     }
+                    .accessibilityIdentifier(A11yID.pairCode)
                 TextField(L10n.tr("pair_name_field"), text: $deviceName)
                     .textInputAutocapitalization(.words)
+                    .accessibilityIdentifier(A11yID.pairName)
             }
 
             if let errorMessage {
@@ -53,6 +56,7 @@ public struct PairingView: View {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                         .font(.footnote)
+                        .accessibilityIdentifier(A11yID.pairError)
                 }
             }
 
@@ -61,6 +65,7 @@ public struct PairingView: View {
                     Task { await pair() }
                 }
                 .disabled(pairing || code.count != 6)
+                .accessibilityIdentifier(A11yID.pairButton)
             } footer: {
                 // Plan 2.7: after the claim, nothing is paired until the parent taps Allow on their phone.
                 Text(pairing
@@ -87,7 +92,7 @@ public struct PairingView: View {
         do {
             let client = PairingClient()
             let claimed = try await client.claim(baseURL: baseURL, code: code, deviceName: deviceName)
-            guard AgentIdentityStore.save(claimed) else {
+            guard AgentIdentityStore.saveNewPairing(claimed) else {
                 // The family reads a plain sentence; the technical cause goes to the log (Bureau review, 12 Nov).
                 Logger(subsystem: "com.osratech.child", category: "pairing")
                     .error("Failed to persist identity: shared app group is unavailable. Verify app group provisioning.")
@@ -131,15 +136,19 @@ public struct AgentRootView: View {
                     Section(header: Text(L10n.tr("pair_section_title"))) {
                         Label(L10n.tr("status_paired"), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
+                            .accessibilityIdentifier(A11yID.statusPaired)
                         // #602: the child's name, never a raw id; the device id is not shown at all.
                         if let name = identity.childName {
                             LabeledContent(L10n.tr("status_child_name"), value: name)
+                                .accessibilityIdentifier(A11yID.statusChildName)
                         }
                         LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
+                            .accessibilityIdentifier(A11yID.statusServer)
                         TimelineView(.periodic(from: .now, by: 60)) { context in
                             let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
                             Text(SyncStatus.text(state, now: context.date))
                                 .foregroundStyle(stale(state) ? Color.orange : Color.secondary)
+                                .accessibilityIdentifier(A11yID.statusLastSynced)
                         }
                     }
                     Section {
@@ -147,8 +156,10 @@ public struct AgentRootView: View {
                             Task { await syncNow() }
                         }
                         .disabled(syncing)
+                        .accessibilityIdentifier(A11yID.statusSyncNow)
                         if syncFailed {
                             Text(L10n.tr("status_sync_failed")).foregroundStyle(.red)
+                                .accessibilityIdentifier(A11yID.statusSyncFailed)
                         }
                     } footer: {
                         Text(L10n.tr("status_sync_note"))
@@ -156,6 +167,7 @@ public struct AgentRootView: View {
                     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
                         LabeledContent(L10n.tr("screen_time"), value: screenTime.row.value)
+                            .accessibilityIdentifier(A11yID.statusScreenTime)
                         if screenTime.row.showsButton {
                             Button(ScreenTimeRow.buttonTitle) {
                                 Task {
@@ -164,6 +176,7 @@ public struct AgentRootView: View {
                                     await LocationController.shared.reportGrant()
                                 }
                             }
+                            .accessibilityIdentifier(A11yID.statusScreenTimeButton)
                         }
                         if let error = screenTime.errorMessage {
                             Text(error).foregroundStyle(.red)
@@ -176,11 +189,13 @@ public struct AgentRootView: View {
                     #endif
                     Section {
                         LabeledContent(L10n.tr("location"), value: Self.label(locationGrant))
+                            .accessibilityIdentifier(A11yID.statusLocation)
                         if let title = locationAction.buttonTitle {
                             Button(title) {
                                 LocationController.shared.requestPermission()
                                 locationAction = LocationController.shared.permissionAction
                             }
+                            .accessibilityIdentifier(A11yID.statusLocationButton)
                         }
                     } header: {
                         Text(L10n.tr("location"))
@@ -190,6 +205,7 @@ public struct AgentRootView: View {
                     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
                     Section {
                         NavigationLink(L10n.tr("groups")) { AppGroupsEntry() }
+                            .accessibilityIdentifier(A11yID.statusGroups)
                     } footer: {
                         Text(L10n.tr("groups_status_footer"))
                     }
@@ -197,6 +213,7 @@ public struct AgentRootView: View {
                     Section {
                         // ADR-0037, as on Android: re-pairing needs the parent PIN.
                         Button(L10n.tr("repair_button")) { askingRepairPin = true }
+                            .accessibilityIdentifier(A11yID.statusRepair)
                     }
                 }
                 .navigationTitle(L10n.tr("status_title"))
@@ -248,6 +265,7 @@ public struct AgentRootView: View {
             // ADR-0034 A6: each app open also sends the capability report.
             await LocationController.shared.reportGrant()
             syncedAt = RuleStore.syncedAt()
+            leaveIfUnpaired()
         }
         // The grant changes in Settings or at the prompt; the controller reports it, the screen shows it.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -271,6 +289,15 @@ public struct AgentRootView: View {
         await LocationController.shared.reportGrant()
         syncFailed = !SyncStatus.succeeded(synced)
         syncedAt = RuleStore.syncedAt()
+        leaveIfUnpaired()
+    }
+
+    /// #690: the parent removed this phone during a drain or sync, so the pairing is gone; show pairing.
+    private func leaveIfUnpaired() {
+        guard identity != nil, AgentIdentityStore.load() == nil else { return }
+        identity = nil
+        syncFailed = false
+        pinConfigured = ParentPinStore.isConfigured
     }
 
     private func stale(_ state: SyncStatus.State) -> Bool {

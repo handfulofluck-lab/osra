@@ -39,4 +39,20 @@ public enum PairingServerField {
     public static func serverToPair(builtIn: URL?, typed: String) -> URL? {
         builtIn ?? PairingClient.normalizeServerURL(typed)
     }
+
+    /// Whether a stored server is the built-in one: same scheme, host (any case), port (443 when https leaves it
+    /// out) and path (trailing slashes ignored). Anything that does not parse is a different server.
+    public static func sameServer(_ stored: String, _ builtIn: URL) -> Bool {
+        guard let url = URL(string: stored.trimmingCharacters(in: .whitespacesAndNewlines)), url.host != nil else {
+            return false
+        }
+        func key(_ u: URL) -> String {
+            let scheme = u.scheme?.lowercased() ?? ""
+            let port = u.port ?? (scheme == "https" ? 443 : scheme == "http" ? 80 : -1)
+            var path = u.path
+            while path.hasSuffix("/") { path.removeLast() }
+            return "\(scheme)://\(u.host?.lowercased() ?? ""):\(port)\(path)"
+        }
+        return key(url) == key(builtIn)
+    }
 }
