@@ -11,14 +11,14 @@ public interface ITrayServer : IAsyncDisposable
 
 public sealed class TrayPipeConnection : IAsyncDisposable
 {
-    internal TrayPipeConnection(PipeStream stream, int sessionId, string userSid)
+    internal TrayPipeConnection(Stream stream, int sessionId, string userSid)
     {
         Stream = stream;
         SessionId = sessionId;
         UserSid = userSid;
     }
 
-    public PipeStream Stream { get; }
+    public Stream Stream { get; }
     public int SessionId { get; }
     public string UserSid { get; }
 

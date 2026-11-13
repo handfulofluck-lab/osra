@@ -21,7 +21,7 @@ public sealed class ForegroundActivityAccumulatorTests : IDisposable
     public void ValidSamplesAccumulateWholeMinutesAndIdleDoesNotCount()
     {
         var start = new DateTime(2026, 11, 13, 12, 0, 0, DateTimeKind.Utc);
-        for (var i = 0; i < 12; i++) _accumulator.AddSample(7, "demo", start.AddSeconds(i * 5));
+        for (var i = 0; i < 13; i++) _accumulator.AddSample(7, "demo", start.AddSeconds(i * 5));
         _accumulator.AddSample(7, "LockApp", start.AddSeconds(80));
         _accumulator.AddSample(7, "LogonUI", start.AddSeconds(100));
 

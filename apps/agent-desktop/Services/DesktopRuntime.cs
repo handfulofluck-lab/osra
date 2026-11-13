@@ -9,11 +9,16 @@ public static class DesktopRuntime
     {
         services.AddSingleton(config);
         services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
+        services.AddSingleton<LocalRuleStore>();
+        services.AddSingleton<ForegroundActivityAccumulator>();
+        services.AddSingleton<TrayServerEvents>();
+        services.AddSingleton<ITrayServerFactory, TrayPipeServerFactory>();
+        services.AddSingleton<ITrayCommandSink, TrayServerWorker>();
+        services.AddHostedService<TrayServerWorker>();
         services.AddHostedService<WebFilterProxy>();
         services.AddHostedService<ProcessMonitor>();
         services.AddHostedService<RuleSyncService>();
         services.AddHostedService<TelemetryUploader>();
-        services.AddSingleton<LocalRuleStore>();
         return services;
     }
 
@@ -22,6 +27,11 @@ public static class DesktopRuntime
         services.AddSingleton(config);
         services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(config.ApiBase ?? AgentConfig.ProductionApiBase));
         services.AddSingleton<LocalRuleStore>();
+        services.AddSingleton<TrayUserActions>();
+        services.AddSingleton<ITrayClient, TrayPipeClient>();
+        services.AddSingleton<ITrayCommandSink, TrayPipeClientWorker>();
+        services.AddHostedService<TrayPipeClientWorker>();
+        services.AddHostedService<ForegroundActivityReporter>();
         services.AddHostedService<ScreenTimeEnforcer>();
         if (!config.AllowEnvironmentOverrides || SosHotkey.IsEnabled)
             services.AddHostedService<SosHotkey>();

@@ -16,12 +16,13 @@ public sealed class ProcessMonitorProtectionTests
         var exe = Path.Combine(dir, "k31-probe.exe");
         File.Copy(Path.Combine(Environment.SystemDirectory, "cmd.exe"), exe);
         var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance, Path.Combine(dir, "agent.db"), Path.Combine(dir, "status.json"));
-        using var child = Process.Start(new ProcessStartInfo(exe, "/c ping -n 60 127.0.0.1")
+        using var child = Process.Start(new ProcessStartInfo(exe, "/k")
         {
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
         })!;
         try
         {
