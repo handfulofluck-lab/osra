@@ -36,7 +36,9 @@ final class ShieldTapPolicyTests: XCTestCase {
         let text = try String(contentsOf: source, encoding: .utf8)
         XCTAssertFalse(text.contains("Shield dismissed by child"), "the dismissal alert is gone")
         XCTAssertTrue(text.contains("ShieldTapPolicy.outcome(tap)"), "the delegate routes through the policy")
-        XCTAssertTrue(text.contains("if outcome.alertsParent {"), "only the policy decides who is alerted")
+        // #744 adds the throttle as a second condition; the policy's outcome still comes first and decides who is alerted.
+        XCTAssertTrue(text.contains("if outcome.alertsParent,\n           ShieldTapPolicy.shouldSendRequest("),
+                      "only the policy decides who is alerted, then the throttle")
     }
 
     // MARK: - #744: Request access is throttled per target
