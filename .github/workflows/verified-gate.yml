@@ -24,6 +24,13 @@ name: verified-gate
 # `ahmedyusseff`, security + testing) joined on 2026-10-23 working with his own Claude Code agent. Before
 # this, a comment from ANY account ending "— Claude" with the head sha satisfied (2), so a signature typed
 # by any commenter, or by another member's agent that is also called Claude, counted as Claude's.
+# SECURITY KEY ACCOUNT (maintainer 2026-11-13 21:15Z, #617): Ahmed's own agent signs as the R3 security key
+# from his own account (SECURITY_KEY_LOGIN below). From that account the gate keeps only `Verified-sha:`
+# signatures whose signer is "— Ahmed"; any other signer name or Bureau line from it is dropped. And because
+# every agent posts from SIGNER_LOGIN, a "— Ahmed" signature from SIGNER_LOGIN is dropped too: only Ahmed's
+# own account can sign as Ahmed. And a comment from SECURITY_KEY_LOGIN counts only if it was never edited
+# (created_at == updated_at): an admin account can edit another user's comment and the author field stays
+# the same, so an edited comment could be anyone's words (Fable's review of #745). Ahmed posts a fresh one.
 # Self-test: scripts/check-verified-gate-signers.mjs (run by workflow-lint).
 # Carry-forward decision: scripts/verified-gate-carry.mjs — run from `origin/main`, so a PR's edit to the
 # script does not judge its own carry-forward. Its `--selftest` (also run by workflow-lint) uses real-git
@@ -102,6 +109,9 @@ jobs:
           # The only account whose comments can verify (see WHO MAY SIGN above). Every agent and the
           # maintainer post as it; a comment by any other account is never read as a verification.
           SIGNER_LOGIN: handfulofluck-lab
+          # Ahmed's own account: read for one thing only, a `Verified-sha:` line signed "— Ahmed" (header).
+          SECURITY_KEY_LOGIN: ahmedyusseff
+          SECURITY_KEY_NAME: Ahmed
         run: |
           set -euo pipefail
           echo "PR #$PR head $HEAD_SHA"
@@ -121,8 +131,8 @@ jobs:
           echo "Kimi-authored non-merge commits on this PR: $kimi_commits"
 
           # Say how many comments were left out, so a run log shows the filter working rather than hiding.
-          others=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login != env.SIGNER_LOGIN)] | length' | awk '{s += $1} END {print s + 0}')
-          echo "Comments by accounts other than $SIGNER_LOGIN (never read as a verification): $others"
+          others=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login != env.SIGNER_LOGIN and .user.login != env.SECURITY_KEY_LOGIN)] | length' | awk '{s += $1} END {print s + 0}')
+          echo "Comments by accounts other than $SIGNER_LOGIN and $SECURITY_KEY_LOGIN (never read as a verification): $others"
 
           # The policy (scripts/verified-gate-policy.mjs) parses the signatures and decides whether they are enough:
           # author from the branch prefix, model families, risk tier from labels and paths, Bureau lines. Taken from
@@ -142,7 +152,16 @@ jobs:
           # inline, in a code block or as a quote is therefore not a signature (Fable's review of #721).
           sigs="$RUNNER_TEMP/sigs.tsv"
           gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SIGNER_LOGIN) | .body | @json' > "$RUNNER_TEMP/bodies.jsonl"
-          node "$policy" --parse < "$RUNNER_TEMP/bodies.jsonl" > "$sigs"
+          # Only Ahmed's own account signs as Ahmed: drop a "— Ahmed" signature written from the shared account.
+          node "$policy" --parse < "$RUNNER_TEMP/bodies.jsonl" | awk -F'\t' -v key="$SECURITY_KEY_NAME" '$2 != key' > "$sigs"
+          # From Ahmed's account, keep only `Verified-sha:` signed "— Ahmed" (maintainer 2026-11-13 21:15Z, #617).
+          # Never-edited comments only: an edit by any account (the shared one can edit his) voids the signature.
+          gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.SECURITY_KEY_LOGIN and .created_at == .updated_at) | .body | @json' > "$RUNNER_TEMP/key-bodies.jsonl"
+          edited=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login == env.SECURITY_KEY_LOGIN and .created_at != .updated_at)] | length' | awk '{s += $1} END {print s + 0}')
+          echo "Comments by $SECURITY_KEY_LOGIN skipped because they were edited (post a fresh comment to sign): $edited"
+          node "$policy" --parse < "$RUNNER_TEMP/key-bodies.jsonl" | awk -F'\t' -v key="$SECURITY_KEY_NAME" '$1 == "verify" && $2 == key' >> "$sigs"
+          echo "Signatures parsed (kind, name, sha), $SECURITY_KEY_LOGIN rows limited to verify by $SECURITY_KEY_NAME:"
+          sed 's/^/  /' "$sigs"
 
           # Which signatures are valid for the CURRENT head: the sha is a prefix of the head, or it carries forward
           # (see header). The carry decision is scripts/verified-gate-carry.mjs, taken from origin/main rather than
