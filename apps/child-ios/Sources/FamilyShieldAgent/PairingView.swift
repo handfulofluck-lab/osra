@@ -120,6 +120,8 @@ public struct AgentRootView: View {
     @State private var syncedAt: Date? = RuleStore.syncedAt()
     @State private var syncing = false
     @State private var syncFailed = false
+    /// #661: the server address is for support, so it sits closed at the bottom of the screen.
+    @State private var showTechnicalDetails = false
     #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
     @StateObject private var screenTime = ScreenTimePermission(authorizer: FamilyControlsAuthorizer())
     #endif
@@ -142,8 +144,6 @@ public struct AgentRootView: View {
                             LabeledContent(L10n.tr("status_child_name"), value: name)
                                 .accessibilityIdentifier(A11yID.statusChildName)
                         }
-                        LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
-                            .accessibilityIdentifier(A11yID.statusServer)
                         TimelineView(.periodic(from: .now, by: 60)) { context in
                             let state = SyncStatus.state(syncedAt: syncedAt, now: context.date)
                             Text(SyncStatus.text(state, now: context.date))
@@ -214,6 +214,13 @@ public struct AgentRootView: View {
                         // ADR-0037, as on Android: re-pairing needs the parent PIN.
                         Button(L10n.tr("repair_button")) { askingRepairPin = true }
                             .accessibilityIdentifier(A11yID.statusRepair)
+                    }
+                    Section {
+                        DisclosureGroup(L10n.tr("status_technical_details"), isExpanded: $showTechnicalDetails) {
+                            LabeledContent(L10n.tr("status_server"), value: identity.apiBaseURL.absoluteString)
+                                .accessibilityIdentifier(A11yID.statusServer)
+                        }
+                        .accessibilityIdentifier(A11yID.statusTechnicalDetails)
                     }
                 }
                 .navigationTitle(L10n.tr("status_title"))
