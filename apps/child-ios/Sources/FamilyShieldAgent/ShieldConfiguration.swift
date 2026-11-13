@@ -53,10 +53,21 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
             icon: nil,
             title: ShieldConfiguration.Label(text: text.title, color: .label),
             subtitle: text.subtitle.map { ShieldConfiguration.Label(text: $0, color: .secondaryLabel) },
-            primaryButtonLabel: ShieldConfiguration.Label(text: text.primaryButton, color: .systemBlue),
-            primaryButtonBackgroundColor: nil,
-            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .systemGray)
+            // U14: the brand primary button with its onPrimary words, readable in light and dark (ShieldPalette).
+            primaryButtonLabel: ShieldConfiguration.Label(
+                text: text.primaryButton,
+                color: Self.dynamic(light: ShieldPalette.onPrimaryLight, dark: ShieldPalette.onPrimaryDark)),
+            primaryButtonBackgroundColor: Self.dynamic(light: ShieldPalette.primaryLight, dark: ShieldPalette.primaryDark),
+            secondaryButtonLabel: ShieldConfiguration.Label(text: text.secondaryButton, color: .label)
         )
+    }
+
+    /// One colour that follows the phone's light or dark setting.
+    private static func dynamic(light: ShieldPalette.RGB, dark: ShieldPalette.RGB) -> UIColor {
+        UIColor { traits in
+            let c = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
+        }
     }
 }
 
