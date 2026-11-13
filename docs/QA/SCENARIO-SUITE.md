@@ -124,7 +124,7 @@ family story.
 | SC-5.2 | iPhone child: block an app, bedtime shield, allow again | C | 5.5 | shield shown, then gone |
 | SC-5.3 | iPhone child in Arabic: shields and status screen | C | 5.5, #654 | no English on the shield |
 | SC-5.4 | iPhone child asks the parent, parent answers | C | #600 | the child hears the answer |
-| SC-5.5 | iPhone child tries to remove protection (Ahmed's list) | C | 5.5 | each attempt refused or alerted |
+| SC-5.5 | iPhone child tries to remove protection ([Ahmed's list](IOS-REMOVAL-ATTEMPTS.md), 18 rows) | C | 5.5 | each attempt refused or alerted |
 | SC-5.6 | Install both apps from the store tracks and pair (hands) | B, C | 5.2, 5.6 | Play internal track and TestFlight builds, no developer tools |
 | SC-5.7 | No plan, then a plan | B | 5.12 | `402 plan_required` shown as a plan screen, lifted after a test purchase |
 | SC-5.8 | Add a Windows computer from the parent app | D | 5.4 | paired with no server field; a blocked site fails for a Standard user |

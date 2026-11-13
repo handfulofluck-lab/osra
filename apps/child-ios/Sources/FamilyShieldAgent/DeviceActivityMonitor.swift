@@ -137,12 +137,10 @@ struct AlertReporter {
         UserDefaults(suiteName: "group.com.osratech.child")?.string(forKey: "agent.deviceId")
     }
 
-    /// Reads the pairing API base URL from the shared app group, if any.
+    /// Reads the pairing API base URL from the shared app group, if any, and only when it is this build's
+    /// built-in server (#634 G1): an extension never posts to a server the app would refuse.
     static func pairedApiBaseURL() -> URL? {
-        guard let raw = UserDefaults(suiteName: "group.com.osratech.child")?
-            .string(forKey: "agent.apiBaseURL"), !raw.isEmpty
-        else { return nil }
-        return URL(string: raw)
+        AgentIdentityStore.storedServer()
     }
 
     /// Reads the pairing HMAC secret from the shared Keychain group (5.5 PR B), if any.
