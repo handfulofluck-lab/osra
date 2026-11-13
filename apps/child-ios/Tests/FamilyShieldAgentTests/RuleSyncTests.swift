@@ -61,6 +61,12 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertNil(parseHHMM("7"))
     }
 
+    #if os(iOS)
+    func testScreenTimeApplyIsPresentOnIOS() {
+        XCTAssertNotNil(RuleSyncer.defaultApply, "iOS must always have its Screen Time apply path")
+    }
+    #endif
+
     // MARK: - Decoding and storing
 
     func testDecodesTheServerShapeAndPicksTheBlockedApps() throws {

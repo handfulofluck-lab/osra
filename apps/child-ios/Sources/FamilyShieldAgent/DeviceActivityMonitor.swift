@@ -149,7 +149,7 @@ struct AlertReporter {
     }
 }
 
-#if canImport(DeviceActivity) && canImport(ManagedSettings)
+#if os(iOS)
 import DeviceActivity
 import ManagedSettings
 
