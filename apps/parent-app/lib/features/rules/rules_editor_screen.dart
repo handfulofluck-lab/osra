@@ -368,6 +368,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final childHasIphone = ref.watch(familyProvider).valueOrNull?.devices
             .any((d) => d.childId == widget.childId && d.platform == 'ios') ??
         false;
+    final childHasAndroid = ref.watch(familyProvider).valueOrNull?.devices
+            .any((d) => d.childId == widget.childId && d.platform == 'android') ??
+        false;
     void update(List<AppRule> rules) =>
         setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
@@ -405,11 +408,14 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         // #172 / ADR-0035: payment surfaces stay blocked at bedtime, and this is where a family that
         // needs one fixes it. The sentence and the shortcut sit together on purpose — the decision is
         // only defensible if the way out of it is one tap away.
-        Text(
-          l10n.bedtimeBlocksPayments,
-          key: const ValueKey('bedtime-blocks-payments'),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        // #643: Samsung Pay and Google Wallet are Android package ids. Hidden only when the child has NO
+        // Android device — a mixed child (an iPhone and a tablet) must keep it for the tablet.
+        if (childHasAndroid || !childHasIphone)
+          Text(
+            l10n.bedtimeBlocksPayments,
+            key: const ValueKey('bedtime-blocks-payments'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         const SizedBox(height: AppSpace.sm),
         OutlinedButton.icon(
           icon: const Icon(Icons.add),
@@ -462,7 +468,16 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             onRemove: () => update([..._draft.appRules]..removeAt(i)),
           ),
         const SizedBox(height: AppSpace.sm),
-        OutlinedButton.icon(
+        // #643: iOS never reports an app list, so the picker is a dead end for an iPhone-only child. A
+        // mixed child keeps it for the Android device, and the sentence explains the iPhone path beside it.
+        if (childHasIphone)
+          Padding(
+            key: const ValueKey('iosAppsExplained'),
+            padding: const EdgeInsets.only(bottom: AppSpace.sm),
+            child: Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        if (childHasAndroid || !childHasIphone)
+          OutlinedButton.icon(
           key: const ValueKey('pickInstalledApp'),
           icon: const Icon(Icons.apps),
           label: Text(l10n.chooseInstalledApp),
