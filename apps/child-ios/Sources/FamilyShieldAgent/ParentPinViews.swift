@@ -18,6 +18,11 @@ public struct PinSetupView: View {
 
     public var body: some View {
         Form {
+            // U11 (#696): the screen cannot be skipped, so it says why first.
+            Section {
+                Text(L10n.tr("pin_set_reason"))
+                    .accessibilityIdentifier(A11yID.pinSetReason)
+            }
             Section {
                 SecureField(L10n.tr("pin_new_field"), text: $pin).keyboardType(.numberPad)
                     .accessibilityIdentifier(A11yID.pinNew)

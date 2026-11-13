@@ -110,11 +110,11 @@ final class ShieldTextTests: XCTestCase {
         let ar = ShieldText.make(window: .bedtime(endsAt: "07:00"), language: "ar")
         XCTAssertEqual(ar.title, "حجب والدك أو والدتك هذا التطبيق")
         XCTAssertEqual(ar.primaryButton, "اطلب السماح")
-        XCTAssertEqual(ar.secondaryButton, "الخروج إلى الشاشة الرئيسية")
+        XCTAssertEqual(ar.secondaryButton, "إغلاق التطبيق", "U10, the Bureau's line of 13 Nov")
         let en = ShieldText.make(window: nil, language: "en")
         XCTAssertEqual(en.title, "This app is blocked by your parent")
         XCTAssertEqual(en.primaryButton, "Request access")
-        XCTAssertEqual(en.secondaryButton, "Exit to Home screen")
+        XCTAssertEqual(en.secondaryButton, "Close app", "U10: fits one line on the smallest iPhone")
     }
 
     func testAnEnglishRoutineNameInTheArabicLineKeepsBothPlaceholdersInOrder() {
