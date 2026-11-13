@@ -519,10 +519,15 @@ describe("POST /v1/billing/google/verify", () => {
 
 describe("POST /v1/billing/google/rtdn", () => {
   function voidedNotification(purchaseToken = TOKEN, productType = 1) {
+    const voided: Record<string, unknown> = { purchaseToken, orderId: "GPA.1234-5678", productId: PRODUCT };
+    // `null` means "the field is not there", which is the payload Play sends on older versions. (Not
+    // `undefined`: a default parameter swallows that and the row would silently test a stated type — which
+    // is exactly how this row passed its own mutant the first time.)
+    if (productType !== null) voided.productType = productType;
     return {
       packageName: "com.osratech.parent",
       eventTimeMillis: String(Date.parse("2026-11-12T09:00:00Z")),
-      voidedPurchaseNotification: { purchaseToken, orderId: "GPA.1234-5678", productId: PRODUCT, productType },
+      voidedPurchaseNotification: voided,
     };
   }
 
@@ -539,6 +544,11 @@ describe("POST /v1/billing/google/rtdn", () => {
     expect(store.revoke).toHaveBeenCalledTimes(1);
     expect(store.revoke.mock.calls[0][0].state).toBe("refunded");
     expect(store.revoke.mock.calls[0][0].cause).toBe("voided_purchase");
+    // The ruling on #692 is "effective at the store's time when that is earlier", and these three are what
+    // an audit trail shows a parent; each was a fault that survived without them (Claude's f4, f5, f6).
+    expect(store.revoke.mock.calls[0][0].effectiveAt).toBe("2026-11-12T09:00:00.000Z");
+    expect(store.revoke.mock.calls[0][0].storeRef).toBe(TOKEN);
+    expect(store.revoke.mock.calls[0][0].productId).toBe(PRODUCT);
     expect(store.grant).not.toHaveBeenCalled();
     expect(play.verifySubscription).not.toHaveBeenCalled();
 
@@ -561,6 +571,26 @@ describe("POST /v1/billing/google/rtdn", () => {
     expect(res.statusCode).toBe(204);
     expect(store.revoke).not.toHaveBeenCalled();
     expect(play.verifySubscription).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("revokes when a voided notification states no productType (#692 review f2)", async () => {
+    // Play omits productType on older payloads. Treating "unstated" as "not a subscription" would keep a
+    // refunded family on the plan with no signal anywhere — the narrower guard Claude's f2 planted.
+    const store = recordingStore();
+    const play = fakePlay();
+    await bindPurchase(store);
+    const app = await buildApp((a) => billingRoutes(a, deps({ play })), "/v1/billing");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/billing/google/rtdn",
+      ...pushPayload(voidedNotification(TOKEN, null), "msg-refund-unstated"),
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(store.revoke).toHaveBeenCalledTimes(1);
+    expect(store.revoke.mock.calls[0][0].state).toBe("refunded");
     await app.close();
   });
 
