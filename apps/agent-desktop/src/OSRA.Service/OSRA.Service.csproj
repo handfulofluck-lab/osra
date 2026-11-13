@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OSRA.Service</AssemblyName>
+    <RootNamespace>OSRA.Service</RootNamespace>
+    <Product>OSRA Service</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\FamilyShield.Agent.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FamilyShield.Agent.Tests" />
+  </ItemGroup>
+</Project>

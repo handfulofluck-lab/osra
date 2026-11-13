@@ -16,6 +16,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\FamilyShield.Agent.csproj" />
+    <ProjectReference Include="..\..\src\OSRA.Service\OSRA.Service.csproj" />
+    <ProjectReference Include="..\..\src\OSRA\OSRA.csproj" />
   </ItemGroup>
 
 </Project>

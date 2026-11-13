@@ -1,6 +1,7 @@
 using FamilyShield.Agent.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using OSRA.Service;
 using Xunit;
 
@@ -22,7 +23,7 @@ public sealed class TraySupervisorTests
 
         var selected = TraySupervisor.DesiredSessions(sessions);
 
-        Assert.Equal([2, 3], selected.Select(s => s.SessionId).ToArray());
+        Assert.Equal(new[] { 2, 3 }, selected.Select(s => s.SessionId).ToArray());
     }
 
     [Fact]
@@ -31,7 +32,8 @@ public sealed class TraySupervisorTests
         var launcher = new FakeLauncher();
         var supervisor = new TraySupervisor(
             new FakeSessions([new InteractiveSession(1, "first", true), new InteractiveSession(2, "second", true)]),
-            launcher);
+            launcher,
+            NullLogger<TraySupervisor>.Instance);
 
         supervisor.Synchronize();
         supervisor.Synchronize();

@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
   <PropertyGroup>
+    <OutputType>Library</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -24,11 +25,15 @@
     <Compile Remove="tests/**/*.cs" />
     <EmbeddedResource Remove="tests/**/*" />
     <None Remove="tests/**/*" />
+    <Compile Remove="src/**/*.cs" />
+    <EmbeddedResource Remove="src/**/*" />
+    <None Remove="src/**/*" />
     <!-- Emergency proxy reset shipped beside the exe (BUG-007). -->
     <None Include="reset-proxy.bat" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <!-- Command dispatch mapping (Feature #11) is tested from the xunit project. -->
     <InternalsVisibleTo Include="FamilyShield.Agent.Tests" />
+    <InternalsVisibleTo Include="OSRA" />
   </ItemGroup>
 </Project>
