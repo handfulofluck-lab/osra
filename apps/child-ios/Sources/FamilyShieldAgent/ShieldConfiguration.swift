@@ -4,6 +4,7 @@ import Foundation
 import UIKit
 import ManagedSettings
 import ManagedSettingsUI
+import os
 
 /// Shield appearance for FamilyShield block screens (spec §6.3): the title, the window line (#511) and the
 /// "Request access" / "Exit to Home screen" buttons, in English or Arabic.
@@ -12,6 +13,8 @@ import ManagedSettingsUI
 /// `Extensions/ShieldConfiguration` as a subclass of this one (iOS could not load an `@objc`-renamed class from the
 /// package on the device: `ExtensionError Code=0`). This class is `open` so that subclass can exist; the behaviour stays here, under test.
 open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
+
+    private static let logger = Logger(subsystem: "com.osratech.child", category: "Shield")
 
     /// Shield configuration shown when an application is blocked.
     public override func configuration(shielding application: Application) -> ShieldConfiguration {
@@ -37,7 +40,14 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
     /// sit in the shared app group, so the extension can name the window holding the app and when it ends; with
     /// no window it shows the title alone.
     private static func makeConfiguration(_ text: ShieldText) -> ShieldConfiguration {
-        ShieldConfiguration(
+        #if DEBUG
+        // #654 device row: what the extension process is told about languages, to confirm the cause.
+        let preferred = Locale.preferredLanguages.joined(separator: ",")
+        let bundle = Bundle.main.preferredLocalizations.joined(separator: ",")
+        let chosen = ShieldText.preferredLanguage()
+        logger.debug("shield_language preferred=\(preferred, privacy: .public) bundle=\(bundle, privacy: .public) chosen=\(chosen, privacy: .public)")
+        #endif
+        return ShieldConfiguration(
             backgroundBlurStyle: nil,
             backgroundColor: nil,
             icon: nil,
