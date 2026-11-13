@@ -5,6 +5,8 @@
  *   site/index.html            site/ar/index.html            home
  *   site/download/index.html   site/ar/download/index.html   downloads
  *   site/guide/index.html      site/ar/guide/index.html      the public guide
+ *   site/windows/index.html    site/ar/windows/index.html    OSRA Kids for Windows (published with its first release)
+ *   site/mac/index.html        site/ar/mac/index.html        OSRA Kids for Mac (published with its first release)
  *
  * and gives the legal pages (privacy, terms, delete-account) the same top bar and footer, leaving their text
  * untouched. Words live in copy.en.mjs / copy.ar.mjs and guide.en.html / guide.ar.html; style in site/style.css
@@ -268,6 +270,40 @@ ${content.trim()}
   return page(c, { key: "guide", path: p(c, "/guide/"), alt: c.lang === "ar" ? "/guide/" : "/ar/guide/", title: g.title, description: g.description, body });
 }
 
+// /windows/ and /mac/ (ADR-0041 D4): what the client does, what it needs, three install steps, pairing.
+// No download link and no payment path; site-pages.yml leaves both pages out until the client's first release.
+function computer(c, key) {
+  const k = c.computer, d = k[key];
+  const list = (items, tag = "ul") => `<${tag}>${items.map((t) => `<li>${esc(t)}</li>`).join("")}</${tag}>`;
+  const body = `<section class="hero"><div class="wrap" style="grid-template-columns: 1fr">
+<div>
+<p class="kicker">${icons[key === "windows" ? "windows" : "laptop"].replace('class="icon"', 'class="icon" style="width:16px;height:16px"')}${esc(d.kicker)}</p>
+<h1>${esc(d.h1)}</h1>
+<p class="lede">${esc(d.lede)}</p>
+<p class="fine">${esc(k.download)}</p>
+</div>
+</div></section>
+<section class="band alt"><div class="wrap grid two">
+<article class="card"><span class="tile">${icons.shield}</span><h3>${esc(k.doesTitle)}</h3>${list(d.does)}</article>
+<article class="card"><span class="tile">${icons[key === "windows" ? "windows" : "laptop"]}</span><h3>${esc(k.needsTitle)}</h3>${list(d.needs)}</article>
+</div></section>
+<section class="band"><div class="wrap">
+<div class="section-head"><h2>${esc(k.installTitle)}</h2></div>
+<ol class="steps">${d.steps.map((t) => `<li><p>${esc(t)}</p></li>`).join("")}</ol>
+</div></section>
+<section class="band alt"><div class="wrap">
+<div class="section-head"><h2>${esc(k.pairTitle)}</h2></div>
+<ol class="steps">${d.pair.map((t) => `<li><p>${esc(t)}</p></li>`).join("")}</ol>
+</div></section>
+<section class="band"><div class="wrap grid two">
+<article class="card"><span class="tile">${icons.family}</span><h3>${esc(k.adminTitle)}</h3><p>${esc(d.admin)}</p></article>
+<article class="card"><span class="tile">${icons.noad}</span><p>${esc(k.free)}</p></article>
+</div></section>
+`;
+  const path = p(c, `/${key}/`);
+  return page(c, { key, path, alt: c.lang === "ar" ? `/${key}/` : `/ar/${key}/`, title: d.title, description: d.description, body });
+}
+
 // The legal pages keep their own text (reviewed and approved as it is); only the top bar and footer change.
 function legal(file, html) {
   const top = `<header class="top">
@@ -287,6 +323,10 @@ const pages = {
   "ar/download/index.html": download(ar),
   "guide/index.html": guide(en, readFileSync(join(HERE, "guide.en.html"), "utf8")),
   "ar/guide/index.html": guide(ar, readFileSync(join(HERE, "guide.ar.html"), "utf8")),
+  "windows/index.html": computer(en, "windows"),
+  "ar/windows/index.html": computer(ar, "windows"),
+  "mac/index.html": computer(en, "mac"),
+  "ar/mac/index.html": computer(ar, "mac"),
 };
 for (const f of ["privacy/index.html", "terms/index.html", "delete-account/index.html"]) pages[f] = legal(f, readFileSync(join(SITE, f), "utf8"));
 

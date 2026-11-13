@@ -8,6 +8,9 @@ name: site-pages
 # What goes out is exactly `site/` on main, after the design gate passes, minus `site/android/`
 # (the Full app's download page), which must not be public before its release security gate is signed,
 # Arabic pages (site/ar/) go out with the English ones; any new Arabic needs the Arabic Language Bureau's line.
+# The computer pages (site/windows/, site/mac/ and their Arabic twins) are held back too: ADR-0041 D4 says
+# no page goes online before the build it links to works. Remove a line below only with that client's first
+# release, after Ahmed's `Security-signoff:` for it.
 on:
   workflow_dispatch:
     inputs:
@@ -46,6 +49,9 @@ jobs:
           cp -R site/. _site/
           rm -rf _site/android
           test ! -e _site/android
+          # ADR-0041 D4: each computer page goes online only with its client's first working release.
+          rm -rf _site/windows _site/ar/windows _site/mac _site/ar/mac
+          test ! -e _site/windows && test ! -e _site/ar/windows && test ! -e _site/mac && test ! -e _site/ar/mac
           # The Arabic marketing pages are signed by the Arabic Language Bureau (#670) and published with the rest.
           test -f _site/ar/index.html
           test -f _site/privacy/index.html
