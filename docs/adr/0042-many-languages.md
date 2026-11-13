@@ -209,8 +209,8 @@ where the law asks for them; store listing through the renderer; a support answe
 | 9 | Mac agent on `L10n` from the start | Ahmed | no extra cost | With the Mac build |
 
 Rows 1–3 are not "many languages" work: they are places where the first launch language, Arabic, still
-shows English. Rows 4–8 are about 5–7 team-weeks, once. Nothing here moves a date in the 13 November
-re-plan unless the maintainer says so (**M1**).
+shows English. Rows 4–8 are about 5–7 team-weeks, once. Rows 1–3 are on the release-readiness list by
+the maintainer's decision (**M1**); rows 4–8 move no date in the 13 November re-plan.
 
 After that, a new language is: catalogs drafted and reviewed (D5), eval set authored and gate passed (D7),
 country pack and app registry checked (D8), legal and store (D9). For a Latin-script language that is about
@@ -219,7 +219,8 @@ Arabic work. Urdu, Thai, Hindi and similar scripts add a layout pass on all seve
 
 ## What Karim decides
 
-- **M1.** Whether rows 1–3 join the release-readiness list now (recommended: yes; they are Arabic defects).
+- **M1. Decided 2026-11-13 12:42Z: yes.** Rows 1–3 join the release-readiness list (decision card, option
+  "Yes, add them to release readiness"). Issues #709 (Android child), #710 (Windows), #711 (alert text).
 - **M2.** A one-time lawyer's read of the blocklist licences (CC BY-SA, GPL) before pack v2 ships, or
   instead a paid commercial category feed (needs quotes; expect a yearly fee).
 - **M3.** Storing the family's country (for the country pack, consent age and legal text), with the privacy
