@@ -436,6 +436,14 @@ When a Bureau authors a user-visible PR itself, its line cites the maintainer's 
    comment on it (this replaces §6.5 rule 3's merge-message line). Kimi stays lead developer and **merge captain**:
    conflicts, rebases, release branches. Team collaboration sync updates auto-merge PRs that fall behind `main`
    (protection stays `strict`), and the signature carries forward when the fold is clean (§6.5 rule 6).
+   **Fold right before signing** (Kimi, #719): the verifier merges current `main` into the branch (a clean merge,
+   GitHub's *Update branch*) immediately before posting `Verified-sha:`, so auto-merge can fire without another fold.
+   **A hand-resolved conflict voids the signatures** (Kimi, #719): when the merge captain or anyone else resolves a
+   conflict inside the PR's own files, a verifier from a model family other than the resolver's re-checks the
+   resolution (§5a) and signs the new head; the original signers do not carry.
+   Ahmed's agent does not sign or switch on auto-merge (#719): it posts a written verdict
+   (`R3 security review: OK / changes needed at <sha>`), and the R3 second-key signature comes from the standing
+   Fable thread or from Ahmed in person (maintainer, 2026-11-13 16:51Z, #617).
 6. A **revert** is R1 and may be verified by anyone but its author.
 7. **Unchanged:** release security gates #630 to #637 are signed `Security-signoff:` by Ahmed alone and only the
    maintainer overrides them in writing; K31, K31-Mac and Kimi do no AWS, store, secret or account work; Claude runs
