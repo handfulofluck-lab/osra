@@ -29,7 +29,7 @@ security key when it is one.
 
 | Device | Owner of the device | Escape slot | Notes |
 |---|---|---|---|
-| **Flip4** (`R5CW116Y6GF`, the maintainer's personal phone, SIM) | Team collaboration sync (PC Claude), lease `phone-claim.ps1` | **Daily 14:00–15:00 (18:00–19:00 Dubai)**, plus within 24 h of each new child APK | Ring rows play the alarm at full volume, so they run in this slot only. Rows that need a reboot, the power key on the secure lock screen, or the SIM are batched as **HAND-KARIM** for one 15-minute slot the maintainer picks. Never a clock, `dpm` or lock-screen PIN change. |
+| **Flip4** (`R5CW116Y6GF`, the maintainer's personal phone, SIM) | Team collaboration sync (PC Claude), lease `phone-claim.ps1` | **Daily 17:00–18:00 (21:00–22:00 Dubai)**, plus within 24 h of each new child APK | Ring rows play the alarm at full volume, so they run in this slot only. Rows that need a reboot, the power key on the secure lock screen, or the SIM are batched as **HAND-KARIM** for one 15-minute slot the maintainer picks. Never a clock, `dpm` or lock-screen PIN change. |
 | **Test iPhone 13** | Mac test bed (Mac Claude) | **Nightly 20:00–22:00 (00:00–02:00 Dubai)**, plus each new Kids or parent build | Build uploads and PR device rows take priority (about 15 minutes; the Mac thread says when). Reboot and Airplane Mode rows are HAND-KARIM (he types the passcode). |
 | **MacBook M2** | Mac test bed (Mac Claude) | **22:00–23:00 (02:00–03:00 Dubai)** once a macOS agent build exists | Never change its clock; Recovery and Safe Mode rows only with the maintainer. |
 | **Windows Server 2025 VM** (staging, `osra-windows-test`) | Team collaboration sync (PC Claude) | **Daily 15:00–16:00 (19:00–20:00 Dubai)** once a Windows build exists (W1, #623) | Start the instance for the slot and stop it after (cost rule). Snapshot the clean state first; USB-boot and Safe-Mode rows run on a snapshot. |
@@ -47,6 +47,16 @@ security key when it is one.
 4. The fix PR adds the automated row that fails without it, and the device owner re-runs the hand row on the fixed
    build.
 
+## 3a. Before every Android run (Team collaboration sync, 13 Nov)
+
+- The debug APK is test-only: install with `adb install -r -t`, then compare the sha256 of the installed `base.apk`
+  (`pm path`) with the build output. A silently failed install means testing the old build.
+- The local scenario API has no FCM: without a temporary location grant the agent polls commands only every 15
+  minutes (LocationService off, Samsung freezes the app in the background). Grant it for the run, restore after.
+- Check `adb logcat -b crash` after every row: a crash looks exactly like a successful escape (osra-security#17).
+  The probe does this itself (`crash-buffer` row).
+- Restore the before-values at the end: accessibility, overlay, usage access, location, stay-awake, alarm volume.
+
 ## 4. Reporting
 
 - Results per run: the device threads write one PASS / FAIL / NOT RUN line per row at the top of their results
@@ -60,5 +70,5 @@ security key when it is one.
 
 - iPhone: the Mac test bed started the OSRA Kids escape run on build 8 at 20:37, and runs nightly from now on.
 - Flip4: #734 (Home escape during a ring) and osra-security#17 are open, with Kimi/Ahmed. The Flip4 escape slot
-  starts tomorrow 14:00 with the probe, then re-runs AR01/AR02 on the fixed APK.
+  starts tomorrow 17:00 with the probe, then re-runs AR01/AR02 on the fixed APK.
 - Windows and Mac: the rows are written; runs start when each client has a build.

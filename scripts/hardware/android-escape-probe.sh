@@ -135,6 +135,7 @@ echo "waiting for the $GATE gate ($GATE_ACT) ..."
 for _ in $(seq 1 60); do gate_on_top && break; sleep 1; done
 if ! gate_on_top; then echo "the $GATE gate is not on top (top=$(top_activity)); start it first" >&2; exit 2; fi
 PID0=$(agent_pid)
+"${A[@]}" logcat -b crash -c >/dev/null 2>&1   # E18: any crash during the run is a finding (osra-security#17 looked like an escape)
 echo "gate up; agent pid $PID0; app uid $UID_APP; alarm $(alarm_volume)"
 [ "$GATE" = ring ] && { alarm_playing && record "pre-ring-sounding" 0 "alarm sounding" || record "pre-ring-sounding" 1 "alarm not sounding before any escape"; }
 
@@ -178,6 +179,11 @@ if [ "$WITH_POWER" = 1 ]; then
   [ "$GATE" = ring ] && { alarm_playing && record "E09-screen-off-ring" 0 "sounding with screen off" || record "E09-screen-off-ring" 1 "ALARM SILENT with screen off"; }
   key KEYCODE_WAKEUP; check_after "E09-power-on"
 fi
+
+# E18: a crash anywhere in the run fails it, even if every row looked fine
+CRASH=$("${A[@]}" logcat -d -b crash 2>/dev/null | tr -d '\r' | grep -E "Process: $PKG" | head -3)
+if [ -n "$CRASH" ]; then record "crash-buffer" 1 "agent crashed during the run: $CRASH (full log in $OUT/crash.txt)"; "${A[@]}" logcat -d -b crash > "$OUT/crash.txt" 2>/dev/null
+else record "crash-buffer" 0 "no crash of $PKG in logcat -b crash"; fi
 
 # ---------------------------------------------------------------------------------------------------- end
 if [ -n "$CLEAR" ]; then echo "clear: $CLEAR"; bash -c "$CLEAR"; fi
