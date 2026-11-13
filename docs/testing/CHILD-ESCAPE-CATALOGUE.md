@@ -142,9 +142,11 @@ screens.
 | KS05 | Bedtime / limit | Clock change (blocked by Screen Time on a child account), time zone travel — **no iPhone** clock change | Expected-only on the test iPhone. | — |
 | KS06 | Bedtime / limit | Reinstall the app (delete is refused: IOS-REMOVAL R1), offload (R2) | Shield and limits stay. | hand |
 | KP01 | **Parent PIN views** (`ParentPinViews`) | E12 empty/wrong/long/pasted PIN, E13 fast taps, backgrounding the app mid-entry | No crash, no pass; attempt limit survives a relaunch. | xcui, Swift unit |
-| KR01 | **Ring / locate** on iPhone | Silent switch on, Focus mode, volume down, swipe the notification away | Behaviour written per platform limit (iOS cannot hold the screen); critical-alert entitlement decides whether the sound gets through. | hand |
+| KR01 | **Ring / locate** on iPhone (no `ring` command on iOS today: 13 Nov run N/A; a product decision whether the iPhone gets one) | Silent switch on, Focus mode, volume down, swipe the notification away | Behaviour written per platform limit (iOS cannot hold the screen); critical-alert entitlement decides whether the sound gets through. | hand |
 | KO01 | Offline | Wi-Fi + data off from the Mac side (never Airplane Mode on the test iPhone) | Shields hold offline; parent sees "stopped checking in". | xcui + server |
 | KX01 | Extensions | Force-quit OSRA Kids from the app switcher; low power mode; Background App Refresh off | Shields stay (extensions run without the app); parent told if reports stop. | xcui, hand |
+| KN01 | Privacy settings | Settings → Privacy & Security → Location Services → OSRA Kids → **Never** (or Location Services off) | The parent is alerted within one check-in (#747); the parent app shows location as off, never a stale map pin. | xcui + server |
+| KN02 | **Re-pair form** | Open re-pair, then try to leave without finishing | A visible Cancel returns to the status screen with the old pairing intact; leaving never unpairs. | xcui |
 
 ### 2e. Windows (`apps/agent-desktop`) — staging Windows Server 2025 test machine, then a clean Windows 11 run
 
