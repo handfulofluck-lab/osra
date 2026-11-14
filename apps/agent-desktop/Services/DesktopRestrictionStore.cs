@@ -34,14 +34,16 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
     private readonly string _path;
     private readonly Action<string, string>? _replace;
     private readonly Func<DirectoryInfo, bool>? _directoryIsTrusted;
+    private readonly Action? _beforeTemporaryCreate;
 
     public FileDesktopRestrictionStore(string? path = null, Action<string, string>? replace = null,
-        Func<DirectoryInfo, bool>? directoryIsTrusted = null)
+        Func<DirectoryInfo, bool>? directoryIsTrusted = null, Action? beforeTemporaryCreate = null)
     {
         _path = path ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OSRA", "restrictions.json");
         _replace = replace;
         _directoryIsTrusted = directoryIsTrusted;
+        _beforeTemporaryCreate = beforeTemporaryCreate;
     }
 
     public IReadOnlyList<SessionRestriction> Load()
@@ -75,6 +77,7 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
         SecureDirectory();
         var temporary = _path + ".tmp";
         File.Delete(temporary);
+        _beforeTemporaryCreate?.Invoke();
         var security = ProtectedFile();
         using (var stream = new FileInfo(temporary).Create(FileMode.CreateNew, FileSystemRights.FullControl,
                    FileShare.Read, bufferSize: 4096, FileOptions.SequentialScan, security))
