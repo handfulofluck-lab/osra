@@ -25,9 +25,10 @@ github_repo_id  = "<repo-id>"
 
 internal_hmac_secret_enabled = true  # fresh value; never reuse one from any file or chat
 bedrock_eval_role_enabled   = false # model measurement stays in staging (ADR-0033)
-log_retention_days          = 30
+log_retention_days          = 90
 secret_recovery_window_days = 7
 
 # Karim chose "Full from day one" (~US$315/month) with an alarm near US$400.
 budget_limit_usd = 400
-alarm_email      = "<alerts-address>"
+alarm_email           = "<alerts-address>"
+alarm_email_secondary = "<second-alerts-address>" # required: a different inbox
