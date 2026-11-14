@@ -39,8 +39,16 @@ resource "terraform_data" "production_guard" {
       error_message = "production: alarms_enabled must be true with an alarm_email."
     }
     precondition {
+      condition     = var.secrets_out_of_band && var.redis_transit_encryption
+      error_message = "production: secrets_out_of_band must be true (RDS-managed master password, osra_api role, Redis AUTH, verifying database TLS; #766 items 1 and 3)."
+    }
+    precondition {
       condition     = var.alarm_email_secondary != "" && var.alarm_email_secondary != var.alarm_email
       error_message = "production: alarm_email_secondary must be set and differ from alarm_email (#766 item 6)."
+    }
+    precondition {
+      condition     = var.app_public_url != "" && var.email_provider != "" && var.email_from != ""
+      error_message = "production: app_public_url, email_provider and email_from must be set (#778's container-definition checker requires them)."
     }
     precondition {
       condition     = var.alb_deletion_protection
