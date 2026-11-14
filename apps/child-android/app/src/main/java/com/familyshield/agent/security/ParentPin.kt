@@ -54,7 +54,21 @@ object ParentPin {
      * Every path out of here is now a boolean: a blank, too-short or too-long input is a wrong PIN, and
      * the KDF itself is wrapped so nothing it can throw reaches a caller.
      */
-    fun verify(pin: String, stored: String?): Boolean {
+    fun verify(pin: String, stored: String?): Boolean = verify(pin, stored, ::pbkdf2)
+
+    /**
+     * The same check with the key-derivation function as a parameter, so a JVM test can see what [verify]
+     * actually does. Claude's fault m1 — the pre-fix `verify`, with neither the length guard nor the
+     * `runCatching` — came back **green** against a suite that only called `verify`: Android's PBKDF2
+     * provider throws on an empty password while the JDK's returns a hash, so the broken version answered
+     * `false` too, for the wrong reason. The two rows in `ParentPinTest` use a throwing KDF and a
+     * recording one, which is the only way to pin the guard and the catch on this side of the device.
+     */
+    internal fun verify(
+        pin: String,
+        stored: String?,
+        kdf: (String, ByteArray, Int) -> ByteArray,
+    ): Boolean {
         if (stored.isNullOrBlank()) return false
         // A PIN outside the accepted length cannot match one that was hashed, and PBKDF2 refuses some
         // of those inputs outright. Reject before the KDF rather than after it throws.
@@ -64,7 +78,7 @@ object ParentPin {
         val iterations = parts[1].toIntOrNull() ?: return false
         val salt = runCatching { unb64(parts[2]) }.getOrNull() ?: return false
         val expected = runCatching { unb64(parts[3]) }.getOrNull() ?: return false
-        val actual = runCatching { pbkdf2(pin, salt, iterations) }.getOrNull() ?: return false
+        val actual = runCatching { kdf(pin, salt, iterations) }.getOrNull() ?: return false
         return constantTimeEquals(expected, actual)
     }
 

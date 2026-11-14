@@ -1,5 +1,9 @@
-### Android child — an empty PIN submit no longer kills the agent (osra-security#17)
-- Tapping **Continue** on the parent-PIN screen with the field empty threw `IllegalArgumentException: password empty` out of PBKDF2, on the main thread. The whole process died, and with it the ring and enforcement: a child silenced a parent's ring with one tap and no PIN (Flip4, 13 Nov 20:28Z), and could repeat it from settings, uninstall, re-pair and ring.
-- `ParentPin.verify` now fails closed on every path: a blank, too-short or too-long input is a wrong PIN, and the KDF itself is wrapped so nothing it throws can reach the UI. `hasAcceptedLength` is the named length policy.
-- **Continue stays disabled** until the field holds a length a PIN can have, so an empty submit never reaches the verifier.
-- The row asserts the length policy directly, because the JVM cannot reproduce the crash: **Android's PBKDF2 provider throws on an empty password while the JDK's computes a hash**, so a test that only calls `verify("")` passes for the wrong reason.
+### Android child — an empty PIN entry is a wrong PIN, not a crash (osra-security#17)
+- An empty PIN entry could raise an exception inside PBKDF2 on Android; the exception crossed into the UI
+  and took the process down, and enforcement stopped with it.
+- `ParentPin.verify` now treats any out-of-range input as a wrong PIN before the key derivation runs, and
+  the derivation itself is wrapped so nothing it throws can reach a caller.
+- Continue stays disabled until the field holds a length a PIN can have.
+- The length policy and the wrapper are pinned through a key-derivation seam: a derivation that throws and
+  one that records its calls, because the JVM's PBKDF2 provider accepts an empty password where Android's
+  throws, so a row that only calls `verify` answers `false` for the wrong reason.
