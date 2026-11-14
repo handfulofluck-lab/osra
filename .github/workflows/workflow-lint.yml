@@ -25,6 +25,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # osra-security#26, #609: no secret in the history or the tree. gitleaks is built from its Go module
+      # at a pinned version (the Go checksum database verifies it), with the repo's own `.gitleaks.toml`
+      # (default rules plus two reviewed fixtures) and `.gitleaksignore` (one reviewed historical line).
+      # The whole history is scanned, not just this PR's commits: about 7 s for the repo today.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: No secret in the git history or the tree (gitleaks)
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          "$(go env GOPATH)/bin/gitleaks" git --config .gitleaks.toml --redact --no-banner --exit-code 1 .
+          "$(go env GOPATH)/bin/gitleaks" dir --config .gitleaks.toml --redact --no-banner --exit-code 1 .
       # Moved here from ci.yml (review N2): this gate reads the PR title, and `workflow-lint` runs on
       # `edited`, so a retitle re-checks it in ~20 s instead of rebuilding the Android app.
       - name: A code change carries a changelog fragment
