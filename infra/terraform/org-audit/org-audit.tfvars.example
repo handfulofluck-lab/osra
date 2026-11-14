@@ -1,0 +1,4 @@
+# Copy to org-audit.tfvars (gitignored). No real IDs in the repository.
+region                = "eu-central-1"
+management_account_id = "<management-account-id>"
+trail_retention_days  = 365

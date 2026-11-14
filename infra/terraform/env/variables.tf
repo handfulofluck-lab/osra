@@ -332,3 +332,9 @@ variable "email_from" {
   type        = string
   default     = ""
 }
+
+variable "audit_logs_enabled" {
+  description = "ALB access logs, VPC flow logs, WAF logs and PostgreSQL log export, each kept exactly 90 days (#766 item 2). Production MUST be true; staging leaves them off."
+  type        = bool
+  default     = false
+}

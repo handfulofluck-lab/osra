@@ -33,6 +33,10 @@ resource "terraform_data" "production_guard" {
       error_message = "production: pin exactly one account in allowed_account_ids and set assume_role_arn."
     }
     precondition {
+      condition     = var.guardduty_enabled
+      error_message = "production: guardduty_enabled must be true (#766 item 2)."
+    }
+    precondition {
       condition     = var.secrets_out_of_band
       error_message = "production: secrets_out_of_band must be true (no secret values in Terraform state, #766 item 1)."
     }

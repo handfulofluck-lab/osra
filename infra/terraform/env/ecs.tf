@@ -136,6 +136,15 @@ resource "aws_lb" "main" {
   enable_deletion_protection = var.alb_deletion_protection
   drop_invalid_header_fields = true
 
+  dynamic "access_logs" {
+    for_each = local.audit_logs_enabled ? [1] : []
+    content {
+      bucket  = aws_s3_bucket.access_logs[0].id
+      prefix  = "alb"
+      enabled = true
+    }
+  }
+
   tags = {
     Name = "${local.name_prefix}-alb"
   }

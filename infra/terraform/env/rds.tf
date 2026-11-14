@@ -96,6 +96,10 @@ resource "aws_db_instance" "main" {
 
   # Staging uses /health/deep and logs. Production turns on Performance Insights at the free 7-day
   # retention so a slow query can be found after the fact.
+  # Production exports the PostgreSQL log to the 90-day group in audit_logs.tf (#766 item 2).
+  enabled_cloudwatch_logs_exports = local.audit_logs_enabled ? ["postgresql"] : []
+  depends_on                      = [aws_cloudwatch_log_group.postgresql]
+
   performance_insights_enabled          = var.db_performance_insights
   performance_insights_retention_period = var.db_performance_insights ? 7 : null
   monitoring_interval                   = 0
