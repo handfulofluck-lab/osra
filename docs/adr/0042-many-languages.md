@@ -199,6 +199,14 @@ A PIN stored before the fix was hashed as typed. Verification therefore tries th
 then the entry as typed, and on a match through the second path re-stores the hash from the normalised
 form. **Read from the code, not yet tried on a phone**: #771 starts with a device check.
 
+**The same rule covers every character a keyboard changes, not only digits.** Typed input is normalised
+before it is parsed: list separators (`,` and the Arabic comma `،` U+060C, `;` and `؛` U+061B, line
+breaks), and invisible direction marks stripped from domains and email addresses. Today the parent app's
+four list fields split on the Latin comma only, so `example.com، example.org` is saved as one item and the
+block silently matches nothing (#794, found by the Language Bureaus). The pseudo-language build cannot
+catch this class; each client needs a test that feeds its input fields the keyboard characters of every
+`beta` or `released` language.
+
 ### D7. The scorer is language-neutral, and each language passes its own gate
 
 - The prompt stops naming languages. Categories and the JSON contract do not change.
