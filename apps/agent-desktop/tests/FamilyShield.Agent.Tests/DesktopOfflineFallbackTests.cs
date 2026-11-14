@@ -165,7 +165,7 @@ public sealed class DesktopOfflineFallbackTests
         var server = new FakeServer(7, "user", new DelayedMemoryStream());
         var slot = new TrayServerWorker.SessionSlot(
             new InteractiveSession(7, "user", true), server,
-            (_, _, _) => Task.CompletedTask, NullLogger<TrayServerWorker>.Instance);
+            (_, _, _) => Task.FromResult<TrayMessage?>(null), NullLogger<TrayServerWorker>.Instance);
 
         var running = slot.RunAsync();
         slot.Enqueue(new TrayMessage(TrayMessageKind.@lock));
@@ -181,7 +181,7 @@ public sealed class DesktopOfflineFallbackTests
         var server = new FakeServer(7, "user", stream);
         var slot = new TrayServerWorker.SessionSlot(
             new InteractiveSession(7, "user", true), server,
-            (_, _, _) => Task.CompletedTask, NullLogger<TrayServerWorker>.Instance);
+            (_, _, _) => Task.FromResult<TrayMessage?>(null), NullLogger<TrayServerWorker>.Instance);
         slot.Enqueue(new TrayMessage(TrayMessageKind.wind_down, Minutes(1)));
         var running = slot.RunAsync();
         await stream.FirstWriteStarted;

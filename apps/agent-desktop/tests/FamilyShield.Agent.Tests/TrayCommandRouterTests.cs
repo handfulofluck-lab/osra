@@ -40,7 +40,7 @@ public sealed class TrayCommandRouterTests
         var server = new FakeServer(stream);
         var slot = new TrayServerWorker.SessionSlot(
             new InteractiveSession(7, "user", true), server,
-            (_, _, _) => Task.CompletedTask, NullLogger<TrayServerWorker>.Instance);
+            (_, _, _) => Task.FromResult<TrayMessage?>(null), NullLogger<TrayServerWorker>.Instance);
         slot.Enqueue(new TrayMessage(TrayMessageKind.@lock));
 
         await slot.RunAsync(CancellationToken.None);
