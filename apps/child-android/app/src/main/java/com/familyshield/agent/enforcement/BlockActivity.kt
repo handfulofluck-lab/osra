@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.dto.AlertDto
@@ -56,6 +57,10 @@ import kotlinx.coroutines.launch
  * "Request access" POSTs an app_blocked alert to /v1/alerts/internal (HMAC-signed).
  * Cannot be dismissed to reveal the blocked app (AND-04): Back and "Exit to Home screen"
  * navigate directly to the home launcher and clear the app debounce.
+ *
+ * Issue #671: it is also the root of a task of its own (`AndroidManifest.xml`), so closing it returns to
+ * what was underneath rather than to another agent screen, and it takes itself down on resume or stop
+ * once the rules no longer block its app ([closeIfNoLongerBlocked]).
  */
 @AndroidEntryPoint
 class BlockActivity : ComponentActivity() {
@@ -63,6 +68,7 @@ class BlockActivity : ComponentActivity() {
     @Inject lateinit var api: ApiService
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var appBlocker: AppBlocker
+    @Inject lateinit var rules: RuleRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -147,6 +153,9 @@ class BlockActivity : ComponentActivity() {
 
     override fun onStop() {
         runCatching { unregisterReceiver(unlinkedReceiver) }
+        // Issue #671: a screen the child left with Home must not lie in wait behind the next agent
+        // screen. If the block has been lifted by now, it goes here rather than when it is uncovered.
+        closeIfNoLongerBlocked()
         super.onStop()
     }
 
@@ -154,6 +163,28 @@ class BlockActivity : ComponentActivity() {
         super.onResume()
         // Issue #488: the unlink happened while this screen was in the background.
         if (!settings.isPairedSync()) finish()
+        // Issue #671: the screen may be coming back from the ring, or from the keyguard. If the rules no
+        // longer block its app, it must come down now — not show a block that was lifted minutes ago.
+        closeIfNoLongerBlocked()
+    }
+
+    /**
+     * Issue #671 (Flip4 scenario run 1, #665): this screen used to stay up until the child chose "Exit to
+     * Home screen", so one left with Home was uncovered by whatever agent screen closed next — the ring
+     * at 19:10Z, or the bouncer after an unlock — while nothing was blocked any more.
+     *
+     * The question is the one that raised the screen: [RuleRepository.verdict] for the package on
+     * screen, so an unknown rule set (paired, nothing cached) and a snapshot that has not caught up both
+     * answer BLOCK and the screen **stays**. [BlockRecheckPolicy] holds that table and the reason each
+     * row is safe; a re-check failing open would unblock an app the parent blocked, which is worse than
+     * the bug this closes.
+     */
+    private fun closeIfNoLongerBlocked() {
+        val pkg = session.request.packageId
+        val decision = rules.verdict(pkg).decision
+        if (BlockRecheckPolicy.decide(pkg, decision) == BlockRecheckPolicy.Action.FINISH) {
+            finish()
+        }
     }
 
     /**
