@@ -60,10 +60,10 @@ public sealed class TrayPipeSecurityTests
     [Fact]
     public async Task SameUserSameSessionLoopbackUsesOsIdentityAndTypedMessages()
     {
+        using var gate = TrayPipeTestGate.Acquire();
         var session = Process.GetCurrentProcess().SessionId;
         var sid = WindowsIdentity.GetCurrent().User!.Value;
-        await using var server = new TrayPipeServer(session, sid, Process.GetCurrentProcess().Id,
-            expectedImagePath: Process.GetCurrentProcess().MainModule!.FileName);
+        await using var server = CreateRealSessionServer(session, sid);
         var accepted = server.AcceptAsync(CancellationToken.None);
         await using var client = new TrayPipeClient(new AcceptingServiceIdentityVerifier());
         await using var clientConnection = await client.ConnectAsync(session, CancellationToken.None);
@@ -82,6 +82,33 @@ public sealed class TrayPipeSecurityTests
         await TrayProtocol.WriteAsync(serverConnection.Stream, windDown, TrayDirection.ToTray);
         var answer = await answering;
         Assert.Equal(15, answer.Payload!.Value.GetProperty("minutes").GetInt32());
+    }
+
+    private static TrayPipeServer CreateRealSessionServer(int session, string sid)
+    {
+        try
+        {
+            return new TrayPipeServer(session, sid, Process.GetCurrentProcess().Id,
+                expectedImagePath: Process.GetCurrentProcess().MainModule!.FileName);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            var owner = "unidentified";
+            try
+            {
+                using var client = new NamedPipeClientStream(
+                    ".", TrayPipeName.ForSession(session), PipeDirection.InOut, PipeOptions.Asynchronous);
+                client.Connect(500);
+                var pid = TrayClientIdentity.ServerProcessId(client);
+                using var process = Process.GetProcessById(pid);
+                owner = $"{process.ProcessName} ({pid})";
+            }
+            catch (Exception)
+            {
+                // The creation exception is the useful evidence even if the owner exits before inspection.
+            }
+            throw new IOException($"The genuine session pipe is already owned by {owner}.", ex);
+        }
     }
 
     private sealed class AcceptingServiceIdentityVerifier : IServiceIdentityVerifier

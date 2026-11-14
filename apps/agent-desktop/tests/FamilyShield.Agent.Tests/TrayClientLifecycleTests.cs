@@ -163,11 +163,12 @@ public sealed class TrayClientLifecycleTests
     {
         private int _index;
         public int Connections { get; private set; }
-        public Task<TrayPipeConnection> ConnectAsync(int sessionId, CancellationToken cancellationToken = default)
+        public async Task<TrayPipeConnection> ConnectAsync(int sessionId, CancellationToken cancellationToken = default)
         {
             var stream = streams[Math.Min(_index++, streams.Length - 1)];
             Connections++;
-            return Task.FromResult(new TrayPipeConnection(stream, sessionId, "user"));
+            await TrayProtocol.WriteAsync(stream, new TrayMessage(TrayMessageKind.hello), TrayDirection.ToService, cancellationToken);
+            return new TrayPipeConnection(stream, sessionId, "user");
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
