@@ -2756,11 +2756,11 @@ abstract class AppLocalizations {
   /// **'Technical details'**
   String get alertTechnicalDetails;
 
-  /// No description provided for @relativeAboutHoursAgo.
+  /// No description provided for @relativeOverHoursAgo.
   ///
   /// In en, this message translates to:
-  /// **'about {count}h ago'**
-  String relativeAboutHoursAgo(int count);
+  /// **'more than {count}h ago'**
+  String relativeOverHoursAgo(int count);
 
   /// No description provided for @relativeDaysAgo.
   ///
@@ -4787,7 +4787,7 @@ abstract class AppLocalizations {
   /// #672: the same line for a fix an hour or more old; hours round up and carry "about".
   ///
   /// In en, this message translates to:
-  /// **'{n, plural, =1{Last location: {coords}, about 1 hour ago} other{Last location: {coords}, about {n} hours ago}}'**
+  /// **'{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}'**
   String alertSosWhereHours(int n, String coords);
 
   /// #672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.
@@ -4799,7 +4799,7 @@ abstract class AppLocalizations {
   /// #672: the notification body for a fix an hour or more old; hours round up.
   ///
   /// In en, this message translates to:
-  /// **'{n, plural, =1{Location from about 1 hour ago. Tap to see it on the map.} other{Location from about {n} hours ago. Tap to see it on the map.}}'**
+  /// **'{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}'**
   String alertSosLocationHours(int n);
 
   /// #672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.

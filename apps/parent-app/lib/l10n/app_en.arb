@@ -821,8 +821,8 @@
     }
   },
   "alertTechnicalDetails": "Technical details",
-  "relativeAboutHoursAgo": "about {count}h ago",
-  "@relativeAboutHoursAgo": {
+  "relativeOverHoursAgo": "more than {count}h ago",
+  "@relativeOverHoursAgo": {
     "placeholders": {
       "count": { "type": "int" }
     }
@@ -1301,7 +1301,7 @@
       "description": "#672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.",
       "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
     },
-    "alertSosWhereHours": "{n, plural, =1{Last location: {coords}, about 1 hour ago} other{Last location: {coords}, about {n} hours ago}}",
+    "alertSosWhereHours": "{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}",
     "@alertSosWhereHours": {
       "description": "#672: the same line for a fix an hour or more old; hours round up and carry \"about\".",
       "placeholders": {"n": {"type": "int"}, "coords": {"type": "String"}}
@@ -1311,7 +1311,7 @@
       "description": "#672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.",
       "placeholders": {"n": {"type": "int"}}
     },
-    "alertSosLocationHours": "{n, plural, =1{Location from about 1 hour ago. Tap to see it on the map.} other{Location from about {n} hours ago. Tap to see it on the map.}}",
+    "alertSosLocationHours": "{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}",
     "@alertSosLocationHours": {
       "description": "#672: the notification body for a fix an hour or more old; hours round up.",
       "placeholders": {"n": {"type": "int"}}

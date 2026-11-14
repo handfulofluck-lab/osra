@@ -1795,15 +1795,15 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertTechnicalDetails => 'التفاصيل التقنية';
 
   @override
-  String relativeAboutHoursAgo(int count) {
+  String relativeOverHoursAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'قبل نحو $count ساعة',
-      many: 'قبل نحو $count ساعة',
-      few: 'قبل نحو $count ساعات',
-      two: 'قبل نحو ساعتين',
-      one: 'قبل نحو ساعة',
+      other: 'قبل أكثر من $count ساعة',
+      many: 'قبل أكثر من $count ساعة',
+      few: 'قبل أكثر من $count ساعات',
+      two: 'قبل أكثر من ساعتين',
+      one: 'قبل أكثر من ساعة',
     );
     return '$_temp0';
   }
@@ -3048,11 +3048,11 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: 'آخر موقع: $coords، قبل نحو $n ساعة',
-      many: 'آخر موقع: $coords، قبل نحو $n ساعة',
-      few: 'آخر موقع: $coords، قبل نحو $n ساعات',
-      two: 'آخر موقع: $coords، قبل نحو ساعتين',
-      one: 'آخر موقع: $coords، قبل نحو ساعة',
+      other: 'آخر موقع: $coords، قبل أكثر من $n ساعة',
+      many: 'آخر موقع: $coords، قبل أكثر من $n ساعة',
+      few: 'آخر موقع: $coords، قبل أكثر من $n ساعات',
+      two: 'آخر موقع: $coords، قبل أكثر من ساعتين',
+      one: 'آخر موقع: $coords، قبل أكثر من ساعة',
     );
     return '$_temp0';
   }
@@ -3076,11 +3076,11 @@ class AppLocalizationsAr extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: 'سُجّل آخر موقع قبل نحو $n ساعة. اضغط لعرضه.',
-      many: 'سُجّل آخر موقع قبل نحو $n ساعة. اضغط لعرضه.',
-      few: 'سُجّل آخر موقع قبل نحو $n ساعات. اضغط لعرضه.',
-      two: 'سُجّل آخر موقع قبل نحو ساعتين. اضغط لعرضه.',
-      one: 'سُجّل آخر موقع قبل نحو ساعة. اضغط لعرضه.',
+      other: 'سُجّل آخر موقع قبل أكثر من $n ساعة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل أكثر من $n ساعة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل أكثر من $n ساعات. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.',
     );
     return '$_temp0';
   }

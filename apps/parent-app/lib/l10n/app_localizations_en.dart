@@ -1652,8 +1652,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertTechnicalDetails => 'Technical details';
 
   @override
-  String relativeAboutHoursAgo(int count) {
-    return 'about ${count}h ago';
+  String relativeOverHoursAgo(int count) {
+    return 'more than ${count}h ago';
   }
 
   @override
@@ -2884,8 +2884,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: 'Last location: $coords, about $n hours ago',
-      one: 'Last location: $coords, about 1 hour ago',
+      other: 'Last location: $coords, more than $n hours ago',
+      one: 'Last location: $coords, more than 1 hour ago',
     );
     return '$_temp0';
   }
@@ -2906,8 +2906,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: 'Location from about $n hours ago. Tap to see it on the map.',
-      one: 'Location from about 1 hour ago. Tap to see it on the map.',
+      other: 'Location from more than $n hours ago. Tap to see it on the map.',
+      one: 'Location from more than 1 hour ago. Tap to see it on the map.',
     );
     return '$_temp0';
   }

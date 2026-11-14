@@ -32,7 +32,11 @@ class SosFixText {
   factory SosFixText.of(Alert alert, AlertFix fix, DateTime now) {
     final age = fix.ageAt(now, alertCreatedAt: alert.createdAt) ?? Duration.zero;
     final minutes = age.inMinutes < 1 ? 1 : age.inMinutes;
-    final hours = ((age.inMinutes + 59) ~/ 60) < 1 ? 1 : (age.inMinutes + 59) ~/ 60;
+    // Hours round DOWN, and the line says «more than» (Arabic Bureau, #743): 3 h 59 reads
+    // "more than 3 hours", which is true for every minute of that hour and never overstates how
+    // fresh the place is.
+    final floored = age.inMinutes ~/ 60;
+    final hours = floored < 1 ? 1 : floored;
     return SosFixText._(ageMinutes: minutes, ageHours: hours, underAnHour: age.inMinutes < 60);
   }
 
@@ -60,7 +64,7 @@ class SosFixText {
   /// fresher than it is), so the pin says "about" too — otherwise the same fix reads «قبل ساعتين» on the
   /// pin and «قبل نحو ساعتين» in the detail beside it (Arabic Bureau, #743 second review).
   String pinCaption(AppLocalizations l10n, String title) {
-    final age = underAnHour ? l10n.relativeMinutesAgo(ageMinutes) : l10n.relativeAboutHoursAgo(ageHours);
+    final age = underAnHour ? l10n.relativeMinutesAgo(ageMinutes) : l10n.relativeOverHoursAgo(ageHours);
     return '$title · $age';
   }
 }

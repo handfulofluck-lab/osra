@@ -121,17 +121,23 @@ void main() {
       expect(visible.body, 'Location from 13 min ago. Tap to see it on the map.');
     });
 
-    test('119 minutes reads as about 2 hours, not 1', () {
-      // Rounding up is the safe direction: a parent must never be told a fix is fresher than it is.
-      final visible = VisibleAlert.from(sos(metadata: fixAgo(119)), l10n: en, isEnglish: true, now: alertAt);
-      expect(visible.body, 'Location from about 2 hours ago. Tap to see it on the map.');
+    test('hours round down and the line says more than: 60, 119, 120, 182, 239', () {
+      // Arabic Bureau #743: the word must be true of the number shown. Rounded down, 3 h 59 reads
+      // "more than 3 hours", true for every minute of that hour and never overstating freshness.
+      String body(int minutes) =>
+          VisibleAlert.from(sos(metadata: fixAgo(minutes)), l10n: en, isEnglish: true, now: alertAt).body;
+
+      expect(body(60), contains('more than 1 hour ago'));
+      expect(body(119), contains('more than 1 hour ago'), reason: '1 h 59 is still "more than 1 hour"');
+      expect(body(120), contains('more than 2 hours ago'));
+      expect(body(182), contains('more than 3 hours ago'));
+      expect(body(239), contains('more than 3 hours ago'), reason: '3 h 59, rounded down');
     });
 
-    test('one hour reads as about 1 hour', () {
-      expect(
-        VisibleAlert.from(sos(metadata: fixAgo(60)), l10n: en, isEnglish: true, now: alertAt).body,
-        'Location from about 1 hour ago. Tap to see it on the map.',
-      );
+    test('59 minutes stays in exact minutes', () {
+      final body = VisibleAlert.from(sos(metadata: fixAgo(59)), l10n: en, isEnglish: true, now: alertAt).body;
+      expect(body, contains('59 min ago'));
+      expect(body, isNot(contains('hour')));
     });
 
     test('a SOS without a fix keeps the generic body, and is still shown', () {
@@ -166,7 +172,7 @@ void main() {
       expect(body(3), 'سُجّل آخر موقع قبل 3 دقائق. اضغط لعرضه.');
       expect(body(11), 'سُجّل آخر موقع قبل 11 دقيقة. اضغط لعرضه.');
       // 61 minutes is the hours branch, and it must say «نحو» (about) like the detail beside it.
-      expect(body(61), 'سُجّل آخر موقع قبل نحو ساعتين. اضغط لعرضه.');
+      expect(body(61), 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.');
       expect(body(3), isNot(contains('25.276')));
     });
   });
