@@ -529,6 +529,10 @@ extension RingControllerTests {
 }
 
 
+private final class RingRequestRecorder {
+    var requests: [URLRequest] = []
+}
+
 @MainActor
 extension RingControllerTests {
     struct TransportFailure: Error {}
@@ -541,7 +545,7 @@ extension RingControllerTests {
     }
 
     private func transportReporter(_ defaults: UserDefaults, status: Int,
-                                   requests: inout [URLRequest]) -> RingAlertReporter {
+                                   requests: RingRequestRecorder) -> RingAlertReporter {
         RingAlertReporter(defaults: defaults,
                           reporter: AlertReporter(apiBaseURL: URL(string: "https://api.example.invalid")!, hmacSecret: "hmac"),
                           sender: { request in
@@ -704,11 +708,11 @@ extension RingControllerTests {
             defaults.removeObject(forKey: RingAlertReporter.pendingKey)
             backend = FakeRingBackend()
             store = InMemoryRingStore()
-            var requests: [URLRequest] = []
-            let controller = controller(reporter: transportReporter(defaults, status: status, requests: &requests))
+            let requests = RingRequestRecorder()
+            let controller = controller(reporter: transportReporter(defaults, status: status, requests: requests))
             await controller.start(id)
             await controller.process(scheduledIDs: [])
-            let recreated = self.controller(reporter: transportReporter(defaults, status: status, requests: &requests))
+            let recreated = self.controller(reporter: transportReporter(defaults, status: status, requests: requests))
             await recreated.resume()
             XCTAssertEqual(requests.count, 1, "HTTP \(status) must not be sent again")
         }

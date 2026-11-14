@@ -110,6 +110,56 @@ final class RingCommandTests: XCTestCase {
         XCTAssertEqual((try ack()["detail"] as? [String: String])?["reason"], "invalid_command")
     }
 
+    func testNumericPayloadOnAnotherCommandDoesNotBlockRing() async throws {
+        pair()
+        let handler = FakeRingCommands()
+        respond(to: [
+            ["id": UUID().uuidString, "type": "pause", "payload": ["minutes": 5]],
+            ["id": id.uuidString.lowercased(), "type": "ring"],
+        ])
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
+        XCTAssertEqual(result.handled, ["ring"])
+        XCTAssertEqual(result.refused, ["pause"])
+        XCTAssertEqual(handler.startedIds, [id.uuidString.lowercased()])
+    }
+
+    func testStopRingWithoutPayloadKeepsLegacyBehavior() async throws {
+        pair()
+        let handler = FakeRingCommands()
+        respond(to: [["id": UUID().uuidString, "type": "stop_ring"]])
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
+        XCTAssertEqual(result.handled, ["stop_ring"])
+        XCTAssertEqual(handler.stoppedIds, [nil])
+    }
+
+    func testNumericStopTargetFailsWithoutStoppingCurrentRing() async throws {
+        pair()
+        let backend = FakeRingBackend()
+        let controller = RingController(backend: backend, store: InMemoryRingStore(),
+                                       history: InMemoryRingHistory(), reporter: RecordingRingReporter())
+        await controller.start(id)
+        respond(to: [[
+            "id": UUID().uuidString,
+            "type": "stop_ring",
+            "payload": ["ringId": 42],
+        ]])
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                                   ring: LiveRingCommands(controller: controller))
+        XCTAssertEqual(result.refused, ["stop_ring"])
+        XCTAssertEqual((try ack()["detail"] as? [String: String])?["reason"], "invalid_command")
+        XCTAssertTrue(backend.stopCalls.isEmpty)
+        XCTAssertEqual(controller.state?.commandId, id)
+    }
+
+    func testRingViewChecksAlarmStateWhenBackgrounded() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/RingView.swift")
+        let view = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertTrue(view.contains("if phase == .background"))
+        XCTAssertTrue(view.contains("await controller.enterBackground()"))
+        XCTAssertTrue(view.contains("await RingNotifier.showReturnNotification()"))
+    }
+
     func testHomeOrBackgroundDoesNotStop() async {
         let backend = FakeRingBackend()
         let controller = RingController(backend: backend, store: InMemoryRingStore(),
