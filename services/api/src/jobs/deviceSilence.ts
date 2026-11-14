@@ -182,6 +182,7 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
       .catch(() => null);
     if (claim !== "OK") continue;
     await prisma.device.update({ where: { id: d.id }, data: { status: "offline" } });
+    const elapsedMinutes = Math.round((now.getTime() - d.lastSeen.getTime()) / 60_000);
     await raiseAlert({
       childId: d.childId,
       familyId: d.child.familyId,
@@ -194,7 +195,9 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
       // The sentence names the time the phone has ACTUALLY been quiet, not the window that fired: a parent
       // reading "360 minutes" about a phone unseen for seven hours is being told something untrue in the one
       // number they will act on. The window goes in the metadata, where the test and the audit read it.
-      body: `${d.model} has not reported for ${Math.round((now.getTime() - d.lastSeen.getTime()) / 60_000)} minutes. The agent may have been removed, its data wiped, or the phone switched off.`,
+      body: `${d.model} has not reported for ${elapsedMinutes} minutes. The agent may have been removed, its data wiped, or the phone switched off.`,
+      bodyKey: "alertBodyDeviceSilent",
+      params: { model: d.model, minutes: elapsedMinutes },
       metadata: {
         type: "device_silent",
         // The app and the reports can tell the two apart without a schema change (#705 review).
