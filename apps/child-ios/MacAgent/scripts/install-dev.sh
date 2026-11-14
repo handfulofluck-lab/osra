@@ -8,7 +8,19 @@
 #   /Library/LaunchDaemons/com.osratech.agent.plist       root:wheel 0644
 # and starts the job. A rebuilt binary is a different program to the System keychain, so an existing pairing
 # is cleared first; pair again afterwards with:  sudo /Library/PrivilegedHelperTools/com.osratech.agent pair
+#
+# Planted fault for #775's "wrong HMAC key" row:   sudo ./scripts/install-dev.sh --plant-wrong-hmac-key
+# That build signs its secret proof with a wrong key, says so in `version` and in the log, and must never pair:
+# `pair` with a real code and the parent's Allow has to end in "error: secret_refused invalid_signature" and
+# `status` in "not_paired". Install again without the flag afterwards.
 set -euo pipefail
+
+PLANT=()
+case "${1:-}" in
+  "") ;;
+  --plant-wrong-hmac-key) PLANT=(-Xswiftc -DOSRA_PLANT_WRONG_HMAC_KEY) ;;
+  *) echo "usage: sudo ./scripts/install-dev.sh [--plant-wrong-hmac-key]" >&2; exit 64 ;;
+esac
 
 if [ "$(id -u)" -ne 0 ]; then echo "run with sudo" >&2; exit 77; fi
 if [ -z "${SUDO_USER:-}" ] || [ "$SUDO_USER" = "root" ]; then echo "run with sudo from an administrator account, not as root" >&2; exit 64; fi
@@ -18,7 +30,8 @@ LABEL="com.osratech.agent"
 BINARY="/Library/PrivilegedHelperTools/$LABEL"
 PLIST="/Library/LaunchDaemons/$LABEL.plist"
 
-sudo -u "$SUDO_USER" swift build -c release --package-path "$HERE"
+# ${PLANT[@]+...}: an empty array is "unbound" to bash 3.2 (macOS's /bin/bash) under `set -u`.
+sudo -u "$SUDO_USER" swift build -c release --package-path "$HERE" ${PLANT[@]+"${PLANT[@]}"}
 BUILT="$(sudo -u "$SUDO_USER" swift build -c release --package-path "$HERE" --show-bin-path)/osra-agent"
 plutil -lint "$HERE/launchd/$LABEL.plist"
 

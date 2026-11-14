@@ -60,6 +60,15 @@ final class SecretProofTests: XCTestCase {
         XCTAssertEqual(outcome, .refused("device_has_no_secret"))
     }
 
+    // The planted fault is for the test bed only. Mutant: a normal build (this one, and CI's) that carries it, or a
+    // plant that leaves the key right and so proves nothing on the device.
+    func testThePlantedWrongKeyIsOffInANormalBuildAndWrongWhenOn() {
+        XCTAssertFalse(SecretProof.plantedWrongKey)
+        XCTAssertEqual(SecretProof.signingSecret("s3cret"), "s3cret")
+        XCTAssertEqual(SecretProof.signingSecret("s3cret", planted: false), "s3cret")
+        XCTAssertNotEqual(SecretProof.signingSecret("s3cret", planted: true), "s3cret")
+    }
+
     // Pairing asks up to three times for a verdict; a refusal is final at once.
     func testPairingRetriesNoVerdictAndStopsOnARefusal() async {
         let identity = AgentIdentity(apiBaseURL: base, deviceToken: "t", deviceId: "d", childId: "c", familyId: "f",

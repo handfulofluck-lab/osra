@@ -21,6 +21,8 @@
 - CI: the existing `macos-core` job also lints the launchd plist and builds and tests the new package; path
   filters, triggers and the concurrency group are unchanged. The shared package's macOS test count goes from
   223 to 225 (two claim-payload tests).
+- The test bed can plant #775's wrong-key fault with `install-dev.sh --plant-wrong-hmac-key`, a compile-time flag
+  no other build sets; that build announces itself and can only fail to pair.
 - **Not verified where it was written:** the code was written on Linux, where Swift for macOS cannot build.
   The first compile and test run is this PR's macOS CI and the test Mac; the real-Mac rows (pair with staging,
   rule change, killed daemon, wrong HMAC key, secret unreadable by a standard user) are listed in

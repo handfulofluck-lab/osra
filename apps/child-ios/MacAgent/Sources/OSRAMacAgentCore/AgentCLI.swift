@@ -91,6 +91,7 @@ public enum AgentCLI {
         }
         if command == .version {
             say(MacCapabilityReport().clientHeader)
+            if SecretProof.plantedWrongKey { say("PLANTED FAULT: wrong_hmac_key (test build, never pairs)") }
             return Exit.ok
         }
         // The System keychain and root's preferences are root's: every other command needs root.
@@ -113,6 +114,7 @@ public enum AgentCLI {
 
     private static func run() async -> Int32 {
         AgentLog.write("event=start client=\(MacCapabilityReport().clientHeader)")
+        if SecretProof.plantedWrongKey { AgentLog.write("planted_fault=wrong_hmac_key") }
         let loop = AgentLoop(.live())
         while true {
             let wait = await loop.tick()

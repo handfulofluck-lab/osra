@@ -103,7 +103,7 @@ log stream --predicate 'subsystem == "com.osratech.agent"' --level info
 |---|---|---|
 | Pair | make a code in the parent app (Add a computer), run `pair`, tap Allow | `waiting_for_parent`, then `paired`; log `state=paired`, `event=rules_synced version=N`, `event=heartbeat status=202`; the Mac is online in the parent app |
 | Rule change | change a rule in the parent app | within about a minute: `event=commands handled=1 refused=0` and `event=rules_synced version=N+1` |
-| Wrong HMAC key | pair, then build with a planted wrong key (or change the stored secret) and restart | `state=secret_refused reason=invalid_signature`; no heartbeat line; `status` prints `secret_refused`; a pairing made with the fault never prints `paired` |
+| Wrong HMAC key | `sudo ./scripts/install-dev.sh --plant-wrong-hmac-key` (`version` then prints `PLANTED FAULT`), make a code, run `pair`, tap Allow | `waiting_for_parent`, then `error: secret_refused invalid_signature`, exit 1; never `paired`; `status` prints `not_paired`; no heartbeat line in the log. Install again without the flag afterwards, and remove the device the server made in the parent app. The daemon's side of this (a stored secret the server refuses) is `AgentLoopTests.testARefusedSecretIsNeverPairedAndNothingIsSentAsTheDevice` |
 | Killed daemon | `sudo kill -9 $(pgrep -f com.osratech.agent)` | launchd starts it again within about 10 s (`event=start`) |
 | Secret unreadable | as a **standard** user: `security find-generic-password -s com.osratech.agent -w /Library/Keychains/System.keychain` | refused (it asks for an administrator, or fails); `ls /var/root/Library/Preferences` is refused for that user too |
 

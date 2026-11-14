@@ -74,11 +74,29 @@ public enum SecretProof {
     static let knownReasons: Set<String> = ["invalid_signature", "device_has_no_secret", "missing_signature",
                                             "missing_nonce", "replay", "legacy_signature_disabled"]
 
+    /// The test bed's planted fault, for #775's device row "a wrong HMAC key must be refused by the server". It is
+    /// compiled in only by `scripts/install-dev.sh --plant-wrong-hmac-key` (`-DOSRA_PLANT_WRONG_HMAC_KEY`); no
+    /// other build, and nothing at run time, can turn it on. A build that carries it says so in `version` and at
+    /// every start, and all it can do is make this Mac's own signature wrong, so pairing fails closed.
+    public static var plantedWrongKey: Bool {
+        #if OSRA_PLANT_WRONG_HMAC_KEY
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// The key the proof signs with: the device's secret, or a wrong one in a planted build.
+    static func signingSecret(_ secret: String, planted: Bool = plantedWrongKey) -> String {
+        planted ? secret + ".planted-wrong-key" : secret
+    }
+
     public static func check(_ identity: AgentIdentity, session: URLSession = .shared) async -> Outcome {
         guard let secret = identity.hmacSecret, !secret.isEmpty, !identity.deviceId.isEmpty else {
             return .refused("device_has_no_secret")
         }
-        let signed = Self.request(baseURL: identity.apiBaseURL, deviceId: identity.deviceId, secret: secret)
+        let signed = Self.request(baseURL: identity.apiBaseURL, deviceId: identity.deviceId,
+                                  secret: signingSecret(secret))
         do {
             let (data, response) = try await session.data(for: signed)
             return outcome(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
