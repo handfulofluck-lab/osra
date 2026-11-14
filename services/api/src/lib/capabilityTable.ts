@@ -16,7 +16,14 @@ import type { CapabilityApp, CapabilityFlavour, FeatureKey } from "@familyshield
  * matters most on iOS, where telemetry has no timer (A6).
  */
 
-/** What a build cannot do, by (app, flavour). A missing pair means "the build can do everything". */
+/**
+ * What a build cannot do, by (app, flavour). A missing pair means "the build can do everything".
+ *
+ * `child_account_admin` is in no row on purpose: no desktop build is named yet, and a phone row for it
+ * would be unreachable, because `parseCapabilities` refuses the key from any app but the two computers.
+ * A desktop that claims `not_supported` for it is therefore shown as `unavailable` — a fault, not a grey
+ * row — so a modified agent cannot silence the administrator warning by claiming its build cannot ask.
+ */
 const NOT_SUPPORTED: Record<CapabilityApp, Partial<Record<CapabilityFlavour, readonly FeatureKey[]>>> = {
   // ADR-0016 §4: the Play artefact declares neither READ_CALL_LOG nor READ_SMS and has no
   // NotificationListenerService, so two features do not exist in it. Advertising them on Play would also
