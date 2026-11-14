@@ -8,7 +8,9 @@ internal static class ServiceHostComposition
     {
         services.AddSingleton<IInteractiveSessionSource, WtsInteractiveSessionSource>();
         services.AddSingleton<INativeProcessLauncher, NativeProcessLauncher>();
-        services.AddSingleton<ITrayLauncher, SessionProcess>();
+        services.AddSingleton<SessionProcess>();
+        services.AddSingleton<ITrayLauncher>(provider => provider.GetRequiredService<SessionProcess>());
+        services.AddSingleton<ITrayProcessDiscovery>(provider => provider.GetRequiredService<SessionProcess>());
         services.AddSingleton<TraySupervisor>();
         services.AddSingleton<ITrayProcessRegistry>(provider => provider.GetRequiredService<TraySupervisor>());
         services.AddHostedService(provider => provider.GetRequiredService<TraySupervisor>());
@@ -23,7 +25,7 @@ internal static class ServiceHostComposition
         if (coordinator is null)
         {
             services.AddSingleton<RuntimeCoordinator>();
-            services.AddHostedService<RuntimeCoordinator>();
+            services.AddHostedService(provider => provider.GetRequiredService<RuntimeCoordinator>());
         }
         else
         {

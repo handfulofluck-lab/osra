@@ -7,14 +7,17 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
     private readonly IInteractiveSessionSource _sessions;
     private readonly ITrayLauncher _launcher;
+    private readonly ITrayProcessDiscovery? _discovery;
     private readonly ILogger<TraySupervisor> _log;
     private readonly Dictionary<int, ITrayProcess> _processes = new();
     private readonly object _gate = new();
 
-    public TraySupervisor(IInteractiveSessionSource sessions, ITrayLauncher launcher, ILogger<TraySupervisor> log)
+    public TraySupervisor(IInteractiveSessionSource sessions, ITrayLauncher launcher, ILogger<TraySupervisor> log,
+        ITrayProcessDiscovery? discovery = null)
     {
         _sessions = sessions;
         _launcher = launcher;
+        _discovery = discovery ?? launcher as ITrayProcessDiscovery;
         _log = log;
     }
 
@@ -31,25 +34,44 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
 
     public void Synchronize()
     {
+        IReadOnlyList<InteractiveSession> sessions;
+        try
+        {
+            sessions = _sessions.List();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Could not enumerate interactive sessions");
+            return;
+        }
         lock (_gate)
         {
-            foreach (var session in DesiredSessions(_sessions.List()))
+            foreach (var session in DesiredSessions(sessions))
             {
-                if (_processes.TryGetValue(session.SessionId, out var running))
-                {
-                    if (!running.HasExited) continue;
-                    running.Dispose();
-                    _processes.Remove(session.SessionId);
-                }
-
                 try
                 {
+                    if (_processes.TryGetValue(session.SessionId, out var running))
+                    {
+                        if (!running.HasExited) continue;
+                        running.Dispose();
+                        _processes.Remove(session.SessionId);
+                    }
+                    if (_discovery?.FindInstalledTray(session) is { } existing)
+                    {
+                        if (!existing.HasExited)
+                        {
+                            _processes[session.SessionId] = existing;
+                            _log.LogInformation("Adopted the installed tray already running in session {SessionId}", session.SessionId);
+                            continue;
+                        }
+                        existing.Dispose();
+                    }
                     _processes[session.SessionId] = _launcher.StartInstalledTray(session);
                     _log.LogInformation("Started the installed tray in session {SessionId}", session.SessionId);
                 }
                 catch (Exception ex)
                 {
-                    _log.LogError(ex, "Could not start the installed tray in session {SessionId}", session.SessionId);
+                    _log.LogError(ex, "Could not supervise the installed tray in session {SessionId}", session.SessionId);
                 }
             }
         }
@@ -60,14 +82,7 @@ internal sealed class TraySupervisor : BackgroundService, ITrayProcessRegistry
         using var timer = new PeriodicTimer(PollInterval);
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
-            {
-                Synchronize();
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Tray supervision pass failed");
-            }
+            Synchronize();
             try
             {
                 await timer.WaitForNextTickAsync(stoppingToken);

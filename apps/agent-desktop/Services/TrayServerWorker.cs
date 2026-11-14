@@ -31,6 +31,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     private readonly DesktopRestrictionState _restrictions;
     private readonly IDesktopSessionFallback _fallback;
     private readonly Func<DateTime> _clock;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private DateTime? _lastSosUtc;
     private readonly Dictionary<int, SessionSlot> _slots = new();
     private readonly object _gate = new();
@@ -39,7 +40,7 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         ILogger<TrayServerWorker> log, ForegroundActivityAccumulator activity, ApiClient api,
         AgentConfig config, TrayServerEvents events, ITrayProcessRegistry? processRegistry = null,
         DesktopRestrictionState? restrictions = null, IDesktopSessionFallback? fallback = null,
-        Func<DateTime>? clock = null)
+        Func<DateTime>? clock = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         _sessions = sessions;
         _factory = factory;
@@ -53,14 +54,16 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         _restrictions.PersistenceFailed += ReportPersistenceFailure;
         _fallback = fallback ?? new WtsSessionFallback();
         _clock = clock ?? (() => DateTime.UtcNow);
+        _delay = delay ?? Task.Delay;
     }
 
     public Task SendAsync(TrayMessage message, CancellationToken cancellationToken = default)
     {
+        var sessions = ListSessions();
         lock (_gate)
         {
             _restrictions.ObserveDevice(message, _clock());
-            foreach (var session in _sessions.List().Where(session => session.SessionId > 0 && session.IsActive))
+            foreach (var session in sessions.Where(session => session.SessionId > 0 && session.IsActive))
                 _restrictions.Observe(session.SessionId, message, _clock());
             foreach (var slot in _slots.Values) slot.Enqueue(message);
         }
@@ -69,40 +72,52 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
 
     public void Synchronize()
     {
-        var active = _sessions.List().Where(s => s.SessionId > 0 && s.IsActive).GroupBy(s => s.SessionId);
+        var active = ListSessions().Where(s => s.SessionId > 0 && s.IsActive).GroupBy(s => s.SessionId);
         foreach (var group in active)
         {
             var session = group.First();
             lock (_gate)
             {
-                if (_processRegistry?.ProcessIdForSession(session.SessionId) is not int expectedPid) continue;
-                IReadOnlyList<TrayMessage>? pending = null;
-                if (_slots.TryGetValue(session.SessionId, out var existing))
-                {
-                    if (!existing.IsCompleted) continue;
-                    pending = existing.PendingMessages();
-                    existing.Dispose();
-                    _slots.Remove(session.SessionId);
-                }
-                ITrayServer server;
                 try
                 {
-                    server = _factory.Create(session.SessionId, session.UserSid, expectedPid);
+                    if (_processRegistry?.ProcessIdForSession(session.SessionId) is not int expectedPid) continue;
+                    IReadOnlyList<TrayMessage>? pending = null;
+                    _slots.TryGetValue(session.SessionId, out var existing);
+                    if (existing is not null)
+                    {
+                        if (!existing.IsCompleted) continue;
+                        pending = existing.PendingMessages();
+                    }
+                    ITrayServer server;
+                    try
+                    {
+                        server = _factory.Create(session.SessionId, session.UserSid, expectedPid);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogError(ex, "Could not create the tray pipe for session {SessionId}", session.SessionId);
+                        if (_restrictions.RecordPipeFailure(session.SessionId))
+                            _ = PostTamperAlert("tray_pipe_create_failed",
+                                "The tray pipe could not be created. OSRA Service will protect a restricted session if it stays unavailable.");
+                        continue;
+                    }
+                    if (existing is not null)
+                    {
+                        existing.Dispose();
+                        _slots.Remove(session.SessionId);
+                    }
+                    var slot = new SessionSlot(session, server, HandleMessage, _log, _restrictions, _clock);
+                    if (pending is not null)
+                    {
+                        foreach (var message in pending) slot.Enqueue(message);
+                    }
+                    _slots.Add(session.SessionId, slot);
+                    _ = slot.RunAsync();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    if (_restrictions.RecordPipeFailure(session.SessionId))
-                        _ = PostTamperAlert("tray_pipe_create_failed",
-                            "The tray pipe could not be created. OSRA Service will protect a restricted session if it stays unavailable.");
-                    throw;
+                    _log.LogError(ex, "Could not supervise tray pipe session {SessionId}", session.SessionId);
                 }
-                var slot = new SessionSlot(session, server, HandleMessage, _log, _restrictions, _clock);
-                if (pending is not null)
-                {
-                    foreach (var message in pending) slot.Enqueue(message);
-                }
-                _slots.Add(session.SessionId, slot);
-                _ = slot.RunAsync();
             }
         }
     }
@@ -114,27 +129,38 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             try
             {
                 Synchronize();
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Could not supervise tray pipe sessions");
+            }
+            try
+            {
+                await EnforceFallback(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Could not enforce the offline fallback");
+            }
+            try
+            {
+                await _delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Could not supervise a tray pipe session");
-            }
-            await EnforceFallback(stoppingToken);
         }
     }
 
     internal async Task EnforceFallback(CancellationToken cancellationToken = default)
     {
-        foreach (var session in _sessions.List().Where(s => s.SessionId > 0 && s.IsActive))
+        foreach (var session in ListSessions().Where(s => s.SessionId > 0 && s.IsActive))
         {
-            if (!_restrictions.NeedsFallback(session.SessionId, _clock())) continue;
             try
             {
+                if (!_restrictions.NeedsFallback(session.SessionId, _clock())) continue;
                 await _fallback.LockWorkstation(session.SessionId);
                 if (_restrictions.MarkFallback(session.SessionId, _clock()))
                 {
@@ -149,16 +175,31 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         }
     }
 
-    private void ReportPersistenceFailure() => _ = PostTamperAlert("restriction_store_write_failed",
-        "Restriction state could not be saved. OSRA Service is keeping the current state in memory and will retry.");
+    private IReadOnlyList<InteractiveSession> ListSessions()
+    {
+        try
+        {
+            return _sessions.List();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Could not enumerate interactive sessions");
+            return [];
+        }
+    }
 
-    private Task PostTamperAlert(string type, string body) => _api.PostAlert(new AlertDto
+    private void ReportPersistenceFailure() => _ = PostTamperAlert("restriction_store_write_failed",
+        "Restriction state could not be saved. OSRA Service is keeping the current state in memory and will retry.",
+        _restrictions.RestoredUnreadable ? "critical" : "high", "OSRA could not save a setting on the computer");
+
+    private Task PostTamperAlert(string type, string body, string severity = "critical",
+        string title = "Protection on the computer was interrupted") => _api.PostAlert(new AlertDto
     {
         DeviceId = _config.DeviceId,
         ChildId = _config.ChildId,
-        Severity = "critical",
+        Severity = severity,
         Category = "tamper",
-        Title = "Windows tray protection was interrupted",
+        Title = title,
         Body = body,
         Metadata = new Dictionary<string, object> { ["type"] = type },
     });

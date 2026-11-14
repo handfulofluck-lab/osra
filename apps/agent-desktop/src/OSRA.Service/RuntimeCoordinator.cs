@@ -13,6 +13,7 @@ internal sealed class RuntimeCoordinator : BackgroundService
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _gate = new();
     private IHost? _runtime;
+    private int _disposed;
 
     public RuntimeCoordinator(AgentConfig transportConfig, LocalRuleStore store, ITrayCommandSink sink,
         DesktopCapabilitiesStore capabilities, Func<AgentConfig?>? load = null, Func<AgentConfig, IHost>? hostFactory = null)
@@ -74,6 +75,7 @@ internal sealed class RuntimeCoordinator : BackgroundService
 
     public override void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _lifetime.Cancel();
         _runtime?.Dispose();
         _lifetime.Dispose();

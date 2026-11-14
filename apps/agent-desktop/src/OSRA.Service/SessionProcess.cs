@@ -1,5 +1,6 @@
 using FamilyShield.Agent.Services;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 
@@ -10,7 +11,7 @@ public interface INativeProcessLauncher
     ITrayProcess Launch(int sessionId, string applicationPath, string commandLine, string desktop, string workingDirectory);
 }
 
-public sealed class SessionProcess : ITrayLauncher
+public sealed class SessionProcess : ITrayLauncher, ITrayProcessDiscovery
 {
     private readonly INativeProcessLauncher _native;
     private readonly string _baseDirectory;
@@ -24,13 +25,51 @@ public sealed class SessionProcess : ITrayLauncher
     public ITrayProcess StartInstalledTray(InteractiveSession session)
     {
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_baseDirectory));
-        var applicationPath = Path.GetFullPath(Path.Combine(root, "OSRA.exe"));
-        if (!string.Equals(Path.GetDirectoryName(applicationPath), root, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("The tray path must be directly beside the service.");
+        var applicationPath = InstalledTrayPath();
         if (!File.Exists(applicationPath)) throw new FileNotFoundException("The co-located OSRA tray is missing.", applicationPath);
         if (applicationPath.Contains('"')) throw new InvalidOperationException("The tray path cannot contain a quote.");
         return _native.Launch(session.SessionId, applicationPath, $"\"{applicationPath}\"", "winsta0\\default", root);
     }
+
+    public ITrayProcess? FindInstalledTray(InteractiveSession session)
+    {
+        var applicationPath = InstalledTrayPath();
+        foreach (var process in Process.GetProcessesByName("OSRA"))
+        {
+            try
+            {
+                if (process.SessionId != session.SessionId || process.HasExited ||
+                    !string.Equals(Path.GetFullPath(process.MainModule?.FileName ?? string.Empty),
+                        applicationPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    process.Dispose();
+                    continue;
+                }
+                return new DiscoveredTrayProcess(process);
+            }
+            catch (SystemException)
+            {
+                process.Dispose();
+            }
+        }
+        return null;
+    }
+
+    private string InstalledTrayPath()
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_baseDirectory));
+        var applicationPath = Path.GetFullPath(Path.Combine(root, "OSRA.exe"));
+        if (!string.Equals(Path.GetDirectoryName(applicationPath), root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The tray path must be directly beside the service.");
+        return applicationPath;
+    }
+}
+
+internal sealed class DiscoveredTrayProcess(Process process) : ITrayProcess
+{
+    public int ProcessId => process.Id;
+    public bool HasExited => process.HasExited;
+    public void Dispose() => process.Dispose();
 }
 
 internal sealed class NativeTrayProcess : ITrayProcess
@@ -98,10 +137,22 @@ internal sealed class WtsInteractiveSessionSource : IInteractiveSessionSource
         _tokenUserSid = tokenUserSid ?? TokenUserSid;
     }
 
-    public IReadOnlyList<InteractiveSession> List() => _listSessions()
-        .Where(session => session.SessionId > 0 && session.IsActive)
-        .Select(session => session with { UserSid = _tokenUserSid(session.SessionId) })
-        .ToArray();
+    public IReadOnlyList<InteractiveSession> List()
+    {
+        var sessions = new List<InteractiveSession>();
+        foreach (var session in _listSessions().Where(session => session.SessionId > 0 && session.IsActive))
+        {
+            try
+            {
+                sessions.Add(session with { UserSid = _tokenUserSid(session.SessionId) });
+            }
+            catch (SystemException)
+            {
+                // A logoff can invalidate this session's token; the next pass will retry it.
+            }
+        }
+        return sessions;
+    }
 
     private static IReadOnlyList<InteractiveSession> ListNativeSessions()
     {

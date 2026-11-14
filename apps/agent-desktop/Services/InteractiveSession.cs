@@ -22,3 +22,8 @@ public interface ITrayLauncher
 {
     ITrayProcess StartInstalledTray(InteractiveSession session);
 }
+
+public interface ITrayProcessDiscovery
+{
+    ITrayProcess? FindInstalledTray(InteractiveSession session);
+}

@@ -45,7 +45,8 @@ public sealed class TrayPipeServer : ITrayServer
         _identity = new TrayClientIdentity(identity);
         _stream = NamedPipeServerStreamAcl.Create(
             TrayPipeName.ForSession(sessionId), PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous, inBufferSize: 0, outBufferSize: 0, TrayPipeSecurity.ForSessionUser(userSid));
+            PipeOptions.Asynchronous | PipeOptions.FirstPipeInstance, inBufferSize: 0, outBufferSize: 0,
+            TrayPipeSecurity.ForSessionUser(userSid));
     }
 
     public async Task<TrayPipeConnection> AcceptAsync(CancellationToken cancellationToken = default)

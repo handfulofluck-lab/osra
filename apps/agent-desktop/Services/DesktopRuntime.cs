@@ -16,7 +16,7 @@ public static class DesktopRuntime
         if (events is not null) services.AddSingleton(events);
         services.AddSingleton<ITrayServerFactory, TrayPipeServerFactory>();
         services.AddSingleton<TrayServerWorker>();
-            services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayServerWorker>());
+        services.AddSingleton<ITrayCommandSink>(provider => provider.GetRequiredService<TrayServerWorker>());
         services.AddHostedService(provider => provider.GetRequiredService<TrayServerWorker>());
         return services;
     }

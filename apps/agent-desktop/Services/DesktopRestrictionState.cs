@@ -11,24 +11,25 @@ public sealed class DesktopRestrictionState
     private readonly object _gate = new();
     private bool _persistenceFailed;
 
+    internal bool RestoredUnreadable { get; }
     internal event Action? PersistenceFailed;
 
-    public DesktopRestrictionState(IRestrictionStore? store = null, ILogger<DesktopRestrictionState>? log = null)
+    public DesktopRestrictionState(IRestrictionStore? store = null, ILogger<DesktopRestrictionState>? log = null,
+        Func<DateTime>? clock = null)
     {
         _store = store;
         _log = log;
         if (_store is null) return;
+        var restoredAt = clock?.Invoke() ?? DateTime.UtcNow;
         foreach (var saved in _store.Load())
         {
+            RestoredUnreadable |= saved.Unreadable;
             _entries[saved.SessionId] = new Entry
             {
                 Locked = saved.Locked,
                 Paused = saved.Paused,
                 WindDownAt = saved.WindDownAt,
-                ObservedAt = saved.ObservedAt,
-                DisconnectedAt = saved.DisconnectedAt,
-                FallbackAt = saved.FallbackAt,
-                TamperAlerted = saved.TamperAlerted,
+                ObservedAt = restoredAt,
                 Unreadable = saved.Unreadable,
             };
         }
@@ -149,7 +150,7 @@ public sealed class DesktopRestrictionState
             entry.Locked = true;
             entry.WindDownAt = null;
             entry.FallbackAt = utcNow;
-            entry.Unreadable = false;
+            foreach (var recovered in _entries.Values) recovered.Unreadable = false;
             if (entry.TamperAlerted)
             {
                 Persist();
@@ -191,11 +192,32 @@ public sealed class DesktopRestrictionState
 
     private bool TryGet(int sessionId, out Entry entry)
     {
-        if (_entries.TryGetValue(sessionId, out entry!)) return true;
-        if (sessionId > 0 && _entries.TryGetValue(0, out entry!)) return true;
-        entry = null!;
-        return false;
+        var hasSession = _entries.TryGetValue(sessionId, out entry!);
+        if (sessionId <= 0 || !_entries.TryGetValue(0, out var device))
+        {
+            if (hasSession) return true;
+            entry = null!;
+            return false;
+        }
+        if (!hasSession)
+        {
+            entry = device;
+            return true;
+        }
+        entry.Locked |= device.Locked;
+        entry.Paused |= device.Paused;
+        entry.WindDownAt = Earlier(entry.WindDownAt, device.WindDownAt);
+        if (entry.Locked) entry.WindDownAt = null;
+        entry.ObservedAt = Earlier(entry.ObservedAt, device.ObservedAt);
+        entry.DisconnectedAt = Earlier(entry.DisconnectedAt, device.DisconnectedAt);
+        entry.FallbackAt = Earlier(entry.FallbackAt, device.FallbackAt);
+        entry.TamperAlerted |= device.TamperAlerted;
+        entry.Unreadable |= device.Unreadable;
+        return true;
     }
+
+    private static DateTime? Earlier(DateTime? first, DateTime? second) =>
+        first is null ? second : second is null ? first : first <= second ? first : second;
 
     private void Persist()
     {
