@@ -36,7 +36,9 @@ public sealed class DirectorySecurityAndRecoveryTests
             directoryIsTrusted: _ => true);
 
         Assert.Empty(store.Load());
-        AssertNoOtherWriters(new DirectoryInfo(directory).GetAccessControl());
+        var security = new DirectoryInfo(directory).GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected);
+        AssertNoOtherWriters(security);
     }
 
     [Fact]
@@ -71,6 +73,18 @@ public sealed class DirectorySecurityAndRecoveryTests
     }
 
     [Fact]
+    public void MissingDirectoryIsCreatedForAnEmptyStore()
+    {
+        var root = NewDirectory();
+        var directory = Path.Combine(root, "new");
+        var store = new FileDesktopRestrictionStore(Path.Combine(directory, "restrictions.json"),
+            directoryIsTrusted: _ => true);
+
+        Assert.Empty(store.Load());
+        AssertNoOtherWriters(new DirectoryInfo(directory).GetAccessControl());
+    }
+
+    [Fact]
     public void MissingFileStartsWithoutARestriction()
     {
         var directory = NewDirectory();
@@ -78,6 +92,28 @@ public sealed class DirectorySecurityAndRecoveryTests
             Path.Combine(directory, "restrictions.json"), directoryIsTrusted: _ => true));
 
         Assert.Empty(state.MessagesFor(7, Start));
+        Assert.False(state.NeedsFallback(7, Start.AddDays(1)));
+    }
+
+    [Fact]
+    public void UnreadableStateNeedsFallbackEvenWhenConnected()
+    {
+        var store = new MemoryDesktopRestrictionStore([
+            new SessionRestriction { SessionId = 0, Locked = true, Unreadable = true, ObservedAt = Start },
+        ]);
+        var state = new DesktopRestrictionState(store);
+        state.MarkConnected(7, Start);
+
+        Assert.True(state.NeedsFallback(7, Start));
+    }
+
+    [Fact]
+    public void ConnectedRestrictedSessionDoesNotNeedFallback()
+    {
+        var state = new DesktopRestrictionState();
+        state.Observe(7, new TrayMessage(TrayMessageKind.@lock), Start);
+        state.MarkConnected(7, Start);
+
         Assert.False(state.NeedsFallback(7, Start.AddDays(1)));
     }
 

@@ -91,6 +91,40 @@ public sealed class DesktopOfflineFallbackTests
     }
 
     [Fact]
+    public async Task LockWithoutAnySessionIsReplayedWhenASessionAppears()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "osra-offline-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
+        try
+        {
+            var sessions = new List<InteractiveSession>();
+            var restrictions = new DesktopRestrictionState();
+            var factory = new FakeServerFactory();
+            var now = new DateTime(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc);
+            var config = new AgentConfig { DeviceId = "device-test", ChildId = "child-test", HmacSecret = "unit-test-secret" };
+            using var worker = new TrayServerWorker(
+                new FakeSessions(sessions), factory, NullLogger<TrayServerWorker>.Instance,
+                new ForegroundActivityAccumulator(store),
+                new ApiClient(new HttpClient(), config), config, new TrayServerEvents(),
+                new FakeProcessRegistry(42), restrictions, new RecordingSessionFallback(), () => now);
+
+            await worker.SendAsync(new TrayMessage(TrayMessageKind.@lock));
+            Assert.True(restrictions.NeedsFallback(7, now.AddSeconds(20)));
+
+            sessions.Add(new InteractiveSession(7, "user", true));
+            worker.Synchronize();
+            await ReadKind(Assert.Single(factory.Servers), TrayMessageKind.@lock);
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
     public async Task FailedRestrictionSaveLogsAndReportsTamperOnce()
     {
         var directory = Path.Combine(Path.GetTempPath(), "osra-offline-tests", Guid.NewGuid().ToString("N"));

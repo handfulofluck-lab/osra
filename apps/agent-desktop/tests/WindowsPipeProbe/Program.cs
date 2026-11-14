@@ -69,7 +69,7 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
             await using var connection = await server.AcceptAsync(stoppingToken);
             await TrayProtocol.WriteAsync(connection.Stream, new TrayMessage(TrayMessageKind.@lock),
                 TrayDirection.ToTray, stoppingToken);
-            ProbeStore(settings.SessionId);
+            ProbeStore(settings.SessionId, settings.UserSid);
             await File.WriteAllTextAsync(_resultPath, "OSRA_SERVICE_STORE_PASS", stoppingToken);
             Console.WriteLine("OSRA_SERVICE_STORE_PASS");
         }
@@ -80,7 +80,7 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         }
     }
 
-    private static void ProbeStore(int sessionId)
+    private static void ProbeStore(int sessionId, string userSid)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "probe-store", "restrictions.json");
         var store = new FileDesktopRestrictionStore(path);
@@ -111,6 +111,7 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
             throw new InvalidDataException("The SYSTEM restriction store did not round-trip.");
         RequireProtectedDirectory(Path.GetDirectoryName(path)!);
         RequireProtectedFile(path);
+        ProbeDirectoryRejections(userSid);
 
         var temporaryPath = Path.Combine(AppContext.BaseDirectory, "probe-temp", "restrictions.json");
         var temporaryStore = new FileDesktopRestrictionStore(temporaryPath, (_, _) => { });
@@ -150,6 +151,55 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         if (afterRestart.MessagesFor(sessionId, now).Count != 0 ||
             afterRestart.NeedsFallback(sessionId, now.AddSeconds(20)))
             throw new InvalidDataException("Unlock left a disconnected session restricted after restart.");
+    }
+
+    private static void ProbeDirectoryRejections(string userSid)
+    {
+        var untrusted = FixtureDirectory("probe-untrusted-owner", userSid);
+        RequireUnreadable(new FileDesktopRestrictionStore(Path.Combine(untrusted, "restrictions.json")).Load(),
+            "An untrusted directory owner was accepted.");
+
+        var otherWriter = FixtureDirectory("probe-other-writer", "S-1-5-18", userSid);
+        RequireUnreadable(new FileDesktopRestrictionStore(Path.Combine(otherWriter, "restrictions.json")).Load(),
+            "Another directory writer was accepted.");
+
+        var target = FixtureDirectory("probe-reparse-target", "S-1-5-18");
+        var reparse = Path.Combine(AppContext.BaseDirectory, "probe-reparse");
+        Directory.CreateSymbolicLink(reparse, target);
+        RequireUnreadable(new FileDesktopRestrictionStore(Path.Combine(reparse, "restrictions.json")).Load(),
+            "A reparse-point directory was accepted.");
+
+        var rewrite = Path.Combine(AppContext.BaseDirectory, "probe-acl-rewrite");
+        Directory.CreateDirectory(rewrite);
+        if (new FileDesktopRestrictionStore(Path.Combine(rewrite, "restrictions.json")).Load().Count != 0)
+            throw new InvalidDataException("The ACL-rewrite fixture did not start empty.");
+        RequireProtectedDirectory(rewrite);
+    }
+
+    private static string FixtureDirectory(string name, string ownerSid, string? otherWriterSid = null)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, name);
+        Directory.CreateDirectory(path);
+        var security = new DirectorySecurity();
+        security.SetOwner(new SecurityIdentifier(ownerSid));
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier("S-1-5-18"), FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier("S-1-5-32-544"), FileSystemRights.FullControl, AccessControlType.Allow));
+        if (otherWriterSid is not null)
+        {
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(otherWriterSid), FileSystemRights.FullControl, AccessControlType.Allow));
+        }
+        new DirectoryInfo(path).SetAccessControl(security);
+        return path;
+    }
+
+    private static void RequireUnreadable(IReadOnlyList<SessionRestriction> loaded, string message)
+    {
+        if (loaded.Count != 1 || !loaded[0].Locked || !loaded[0].Unreadable)
+            throw new InvalidDataException(message);
     }
 
     private static void RequireProtectedDirectory(string path)
