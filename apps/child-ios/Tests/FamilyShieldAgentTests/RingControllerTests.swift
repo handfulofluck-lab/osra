@@ -15,6 +15,7 @@ final class FakeRingBackend: RingBackend {
     var stopCalls: [UUID] = []
     var authorizationCalls = 0
     var scheduleError: Error?
+    var scheduleErrorID: UUID?
     var stopError: Error?
     var scheduledError: Error?
     var scheduleGate: (() async -> Void)?
@@ -31,7 +32,7 @@ final class FakeRingBackend: RingBackend {
     }
 
     func schedule(_ id: UUID) async throws {
-        if let scheduleError { throw scheduleError }
+        if let scheduleError, scheduleErrorID == nil || scheduleErrorID == id { throw scheduleError }
         if let scheduleGate { await scheduleGate() }
         scheduled.append(id)
     }
@@ -205,6 +206,7 @@ final class RingControllerTests: XCTestCase {
 final class RecordingRingReporter: RingAlertReporting {
     var statuses: [Int] = [201]
     var nextOutcome: RingReportOutcome?
+    var reportGate: (() async -> Void)?
     private(set) var calls: [(state: RingEventState, ringId: UUID, count: Int, afterRestart: Bool)] = []
     private var delivered = Set<String>()
     private var pending = [RingPendingEvent]()
@@ -219,6 +221,7 @@ final class RecordingRingReporter: RingAlertReporting {
         let event = RingPendingEvent(state: state, ringId: ringId, dismissalCount: dismissalCount, afterRestart: afterRestart)
         if !pending.contains(event) { pending.append(event) }
         calls.append((state, ringId, dismissalCount, afterRestart))
+        if let reportGate { await reportGate() }
         if let nextOutcome { return nextOutcome }
         let status = statuses.count > 1 ? statuses.removeFirst() : statuses[0]
         guard status == 200 || status == 201 else { return .pending }
@@ -596,10 +599,13 @@ extension RingControllerTests {
         let first = await controller.stop(.parentCommand)
         XCTAssertEqual(first, .stopFailed)
         XCTAssertEqual(reporter.callCount, 0)
-        XCTAssertEqual(store.load()?.stopSource, .parentCommand)
+        XCTAssertNil(store.load()?.stopSource)
+        XCTAssertNil(controller.state?.stopSource)
+        XCTAssertTrue(controller.requiresPin)
         backend.stopError = nil
         let retry = await controller.stop(.parentCommand)
         XCTAssertNil(retry)
+        XCTAssertFalse(controller.requiresPin)
         XCTAssertEqual(backend.stopCalls, [id])
         XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
         XCTAssertNil(controller.state)
@@ -758,9 +764,12 @@ extension RingControllerTests {
         }
     }
 
-    func testPINSetupIsOfferedBeforeTheGate() {
-        XCTAssertEqual(RingPINPresentation.resolve(isConfigured: false), .setup)
+    func testActiveRingRequiresAnExistingPIN() {
+        ParentPinStore.clear()
+        XCTAssertFalse(ParentPinStore.isConfigured)
+        XCTAssertEqual(RingPINPresentation.resolve(isConfigured: false), .gate)
         XCTAssertEqual(RingPINPresentation.resolve(isConfigured: true), .gate)
+        XCTAssertFalse(ParentPin.verify("not-a-pin", stored: nil))
     }
 
     func testAlarmQueryFailureDoesNotCountDismissal() async {

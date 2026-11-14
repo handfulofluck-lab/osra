@@ -55,37 +55,39 @@ final class RingScreenshotsTests: XCTestCase {
         let backend = ScreenshotRingBackend()
         let controller = RingController(backend: backend, store: store, history: history,
                                        reporter: ScreenshotReporter())
-        await controller.start(id)
+        _ = await controller.start(id)
         defer { Task { await controller.stopForUnpair() } }
 
-        for language in ["en", "ar"] {
-            UserDefaults.standard.set([language], forKey: "AppleLanguages")
-            XCTAssertEqual(L10n.tr("ring_title"), language == "en"
-                           ? "Your parent is ringing this phone" : "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
-            for style in [UIUserInterfaceStyle.light, .dark] {
-                for scale in [UIContentSizeCategory.large, .extraExtraExtraLarge] {
-                    let window = UIWindow(frame: UIScreen.main.bounds)
-                    let host = UIHostingController(rootView: RingView(controller: controller))
-                    host.overrideUserInterfaceStyle = style
-                    let container = UIViewController()
-                    container.addChild(host)
-                    container.view.addSubview(host.view)
-                    host.view.frame = container.view.bounds
-                    host.didMove(toParent: container)
-                    container.setOverrideTraitCollection(UITraitCollection(preferredContentSizeCategory: scale), forChild: host)
-                    window.rootViewController = container
-                    window.makeKeyAndVisible()
-                    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-                    let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-                    let image = renderer.image { _ in
-                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-                    }
-                    let name = "ring-\(language)-\(style == .light ? "light" : "dark")\(scale == .large ? "" : "-large-text").png"
-                    let data = try XCTUnwrap(image.pngData())
-                    try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent(name))
-                    XCTAssertGreaterThan(data.count, 1_000, name)
-                    window.isHidden = true
+        let language = ProcessInfo.processInfo.environment["OSRA_RING_SCREENSHOT_LANGUAGE"] ?? "en"
+        UserDefaults.standard.set([language], forKey: "AppleLanguages")
+        XCTAssertEqual(L10n.tr("ring_title"), language == "en"
+                       ? "Your parent is ringing this phone" : "هذا الهاتف يرنّ بطلب من والدك أو والدتك")
+        let windowScene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for scale in [UIContentSizeCategory.large, .extraExtraExtraLarge] {
+                let window = UIWindow(windowScene: windowScene)
+                window.frame = windowScene.screen.bounds
+                let host = UIHostingController(rootView: RingView(controller: controller))
+                host.overrideUserInterfaceStyle = style
+                let container = UIViewController()
+                container.view.frame = window.bounds
+                container.addChild(host)
+                container.view.addSubview(host.view)
+                host.view.frame = container.view.bounds
+                host.didMove(toParent: container)
+                container.setOverrideTraitCollection(UITraitCollection(preferredContentSizeCategory: scale), forChild: host)
+                window.rootViewController = container
+                window.makeKeyAndVisible()
+                try await Task.sleep(nanoseconds: 200_000_000)
+                let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+                let image = renderer.image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                 }
+                let name = "ring-\(language)-\(style == .light ? "light" : "dark")\(scale == .large ? "" : "-large-text").png"
+                let data = try XCTUnwrap(image.pngData())
+                try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent(name))
+                XCTAssertGreaterThan(data.count, 1_000, name)
+                window.isHidden = true
             }
         }
     }
