@@ -155,16 +155,21 @@ final class DeviceRevocationTests: XCTestCase {
     }
 
     @MainActor
-    func testDefaultRevocationRehydratesPersistedRingBeforeClearing() async {
-        await RingController.shared.stopForUnpair()
+    func testRevocationRehydratesPersistedRingBeforeClearing() async {
+        let controller = RingController(backend: FakeRingBackend(), store: UserDefaultsRingStore(),
+                                       history: InMemoryRingHistory(), reporter: RecordingRingReporter())
+        await controller.stopForUnpair()
         let state = RingState(commandId: UUID(), startedAt: Date(), endAt: Date().addingTimeInterval(300),
                               monotonicStart: 0, bootSession: 1)
         UserDefaultsRingStore().save(state)
-        await RingController.shared.resume()
-        XCTAssertNotNil(RingController.shared.state)
+        await controller.resume()
+        XCTAssertNotNil(controller.state)
+        DeviceRevocation.stopRing = {
+            Task { await controller.stopForUnpair() }
+        }
         DeviceRevocation.unpair()
         for _ in 0..<8 { await Task.yield() }
-        XCTAssertNil(RingController.shared.state)
+        XCTAssertNil(controller.state)
         XCTAssertNil(UserDefaultsRingStore().load())
     }
 }

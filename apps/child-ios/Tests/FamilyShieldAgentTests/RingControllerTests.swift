@@ -661,6 +661,22 @@ extension RingControllerTests {
         XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
     }
 
+    func testFailedReportIsStoredBeforeTransport() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: AgentIdentityStore.suiteName))
+        let reporter = RingAlertReporter(defaults: defaults)
+        let event = RingPendingEvent(state: .childDismissed, ringId: id, dismissalCount: 1, afterRestart: false)
+        let data = try JSONEncoder().encode(event)
+        defaults.set([data], forKey: RingAlertReporter.pendingKey)
+        XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 1)
+        XCTAssertEqual(reporter.pendingEvents(), [event])
+        defaults.removeObject(forKey: RingAlertReporter.pendingKey)
+
+        let outcome = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: 1)
+        XCTAssertEqual(outcome, .pending)
+        XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 1)
+        XCTAssertEqual(reporter.pendingEvents(), [event])
+    }
+
     func testOfflineDismissalsDrainEveryPendingEvent() async {
         let defaults = try! XCTUnwrap(UserDefaults(suiteName: AgentIdentityStore.suiteName))
         pairForTransport()

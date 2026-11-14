@@ -473,7 +473,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 289 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 290 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
