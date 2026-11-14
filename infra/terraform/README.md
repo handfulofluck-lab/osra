@@ -165,6 +165,11 @@ printing a URL for a crash-looping deployment.
 Extra arguments (for example `-auto-approve`) are passed to the applies; a `-var-file` path would
 have to be valid in both stacks, so prefer each stack's own `terraform.tfvars`.
 
+### Turning email on (Play decision 11 A)
+
+Apply the always-on `email/` stack once (SES identity, DKIM, the API task role; see `email/README.md`), then
+`TF_VAR_email_enabled=true ./infra/terraform/up.sh`. Without the flag the API keeps its console sender.
+
 ### Turning push on (roadmap 1.5)
 
 The FCM service account is the one credential Terraform creates a container for and never fills. Three steps, in

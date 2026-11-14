@@ -94,3 +94,15 @@ variable "push_enabled" {
   type        = bool
   default     = false
 }
+
+variable "email_enabled" {
+  description = "Send email through SES (Play decision 11 A). Needs the always-on email/ stack applied first: it owns the domain identity and the API task role this attaches. Off, the API uses its console sender and no task role."
+  type        = bool
+  default     = false
+}
+
+variable "email_from" {
+  description = "From header of every email the API sends. Must be an address on the email/ stack's domain (the task role only allows that domain)."
+  type        = string
+  default     = "OSRA <no-reply@osratech.com>"
+}
