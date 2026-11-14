@@ -131,6 +131,17 @@ final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, 
   ];
 });
 
+String? latestAppliedRingId(List<DeviceCommand> commands) =>
+    commands.where((command) => command.type == 'ring' && command.status == 'acked').firstOrNull?.id;
+
+Future<String?> ringStopTarget(WidgetRef ref, String deviceId) async {
+  try {
+    return latestAppliedRingId(await ref.read(deviceCommandHistoryProvider(deviceId).future));
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Geofences for one child (`GET /v1/location/geofences/:childId`).
 final geofencesProvider = FutureProvider.family<List<Geofence>, String>((ref, childId) async {
   final api = ref.watch(apiClientProvider);

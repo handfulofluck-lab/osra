@@ -60,4 +60,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(postedCommand(api), {'command': 'stop_ring'});
   });
+
+  testWidgets('stop targets the latest applied ring rather than a failed newer row', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/commands/history': (_) => {
+        'items': [
+          {'id': 'ring-new-failed', 'deviceId': 'dev-1', 'type': 'ring', 'status': 'failed'},
+          {'id': 'ring-applied', 'deviceId': 'dev-1', 'type': 'ring', 'status': 'acked'},
+        ],
+      },
+    });
+    await pump(tester, const ChildDetailScreen(childId: 'child-1'), api);
+    await tester.tap(find.text('Stop ringing'));
+    await tester.pumpAndSettle();
+    expect(postedCommand(api), {'command': 'stop_ring', 'payload': {'ringId': 'ring-applied'}});
+  });
+
+  testWidgets('a history outage still permits an untargeted stop', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/devices/dev-1/commands/history': (_) => const FakeNetworkError(),
+    });
+    await pump(tester, const ChildMapSheet(child: Child(id: 'child-1', familyId: 'fam-1', displayName: 'Alex', birthYear: 2013), ping: ping, device: device), api);
+    await tester.tap(find.text('Stop ringing'));
+    await tester.pumpAndSettle();
+    expect(postedCommand(api), {'command': 'stop_ring'});
+  });
 }

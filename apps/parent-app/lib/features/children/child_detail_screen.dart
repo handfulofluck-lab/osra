@@ -210,8 +210,7 @@ class _OverviewTab extends ConsumerWidget {
                         ),
                         TextButton.icon(
                           onPressed: () async {
-                            final history = await ref.read(deviceCommandHistoryProvider(d.id).future);
-                            final ringId = history.where((command) => command.type == 'ring').firstOrNull?.id;
+                            final ringId = await ringStopTarget(ref, d.id);
                             if (!context.mounted) return;
                             await _sendCommand(context, ref, d, 'stop_ring', ringId: ringId);
                           },

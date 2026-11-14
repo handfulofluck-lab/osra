@@ -163,8 +163,7 @@ class ChildMapSheet extends ConsumerWidget {
                 icon: const Icon(Icons.stop),
                 label: Text(context.l10n.commandStopRing),
                 onPressed: device == null ? null : () async {
-                  final history = await ref.read(deviceCommandHistoryProvider(device!.id).future);
-                  final ringId = history.where((command) => command.type == 'ring').firstOrNull?.id;
+                  final ringId = await ringStopTarget(ref, device!.id);
                   if (!context.mounted) return;
                   await _sendCommand(context, ref, device!, 'stop_ring', ringId: ringId);
                 },
