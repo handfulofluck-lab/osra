@@ -578,6 +578,16 @@ void main() {
       expect(ar.serverLabel, 'الخادم (السيرفر)');
       expect(ar.totalAverage(300, 43), 'الإجمالي: 300 دقيقة · المتوسط: 43 دقيقة يوميًا');
       expect(ar.digestPrefsPushBody, 'إرسال التنبيهات الحرجة كإشعارات فورية');
+      // #570: Karim's clone-space sentence (2026-11-11), pinned in both locales.
+      expect(
+        ar.phoneSetupOtherSpaceClone,
+        'هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.',
+      );
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        en.phoneSetupOtherSpaceClone,
+        'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.',
+      );
     });
 
     test('the screen-time value reads used-then-limit', () async {
