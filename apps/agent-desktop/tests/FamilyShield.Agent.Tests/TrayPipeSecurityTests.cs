@@ -37,6 +37,27 @@ public sealed class TrayPipeSecurityTests
     }
 
     [Fact]
+    public async Task FirstFrameMustBeHelloAndTheConnectionCloses()
+    {
+        var session = checked(Process.GetCurrentProcess().Id + 13000);
+        var sid = WindowsIdentity.GetCurrent().User!.Value;
+        var pid = Process.GetCurrentProcess().Id;
+        var image = Process.GetCurrentProcess().MainModule!.FileName;
+        await using var server = new TrayPipeServer(session, sid, pid,
+            new FakeIdentitySource(new ClientIdentity(session, sid, pid, image)), image);
+        var accepted = server.AcceptAsync(CancellationToken.None);
+        await using var client = new NamedPipeClientStream(
+            ".", TrayPipeName.ForSession(session), PipeDirection.InOut, PipeOptions.Asynchronous);
+        await client.ConnectAsync(5000, CancellationToken.None);
+        await TrayProtocol.WriteAsync(client, new TrayMessage(TrayMessageKind.sos), TrayDirection.ToService);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => accepted);
+        await server.DisposeAsync();
+        var buffer = new byte[1];
+        Assert.Equal(0, await client.ReadAsync(buffer, 0, buffer.Length, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task SameUserSameSessionLoopbackUsesOsIdentityAndTypedMessages()
     {
         var session = Process.GetCurrentProcess().SessionId;

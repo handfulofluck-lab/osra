@@ -152,16 +152,31 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
         ProbeDirectoryRejections(userSid);
 
         var temporaryPath = Path.Combine(AppContext.BaseDirectory, "probe-temp", "restrictions.json");
-        var temporaryStore = new FileDesktopRestrictionStore(temporaryPath, (_, _) => { });
+        var temporary = temporaryPath + ".tmp";
+        var collide = false;
+        var temporaryStore = new FileDesktopRestrictionStore(temporaryPath, (_, _) => { },
+            beforeTemporaryCreate: () => { if (collide) File.WriteAllText(temporary, "competitor"); });
         if (temporaryStore.Load().Count != 0) throw new InvalidDataException("The temporary fixture was not empty.");
         File.WriteAllText(temporaryPath, "[]");
         temporaryStore.Save([new SessionRestriction { SessionId = sessionId, Locked = true }]);
-        var temporary = temporaryPath + ".tmp";
         RequireProtectedDirectory(Path.GetDirectoryName(temporaryPath)!);
         RequireProtectedFile(temporary);
         temporaryStore.Save([]);
         if (new FileDesktopRestrictionStore(temporary).Load().Count != 0)
             throw new InvalidDataException("A stale temporary file blocked the latest save.");
+        RequireProtectedFile(temporary);
+        collide = true;
+        var refused = false;
+        try
+        {
+            temporaryStore.Save([]);
+        }
+        catch (IOException)
+        {
+            refused = true;
+        }
+        if (!refused || File.ReadAllText(temporary) != "competitor")
+            throw new InvalidDataException("CreateNew did not protect a competing temporary file.");
         RequireProtectedFile(temporary);
 
         var corruptPath = Path.Combine(AppContext.BaseDirectory, "probe-corrupt", "restrictions.json");
