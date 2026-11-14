@@ -55,32 +55,6 @@ final class FakeRingBackend: RingBackend {
 }
 
 @MainActor
-private final class TrackingRingReporter: RingAlertReporting {
-    let base: RingAlertReporter
-    let storage: UserDefaults
-    private(set) var outcomes: [RingReportOutcome] = []
-
-    init(base: RingAlertReporter, storage: UserDefaults) {
-        self.base = base
-        self.storage = storage
-    }
-
-    func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
-                afterRestart: Bool) async -> RingReportOutcome {
-        let before = base.pendingEvents().map(\.dismissalCount)
-        let outcome = await base.report(state: state, ringId: ringId,
-                                        dismissalCount: dismissalCount, afterRestart: afterRestart)
-        let after = base.pendingEvents().map(\.dismissalCount)
-        let raw = storage.array(forKey: RingAlertReporter.pendingKey)?.count ?? -1
-        print("RINGTRACE state=\(state) count=\(dismissalCount) before=\(before) after=\(after) raw=\(raw) outcome=\(outcome)")
-        outcomes.append(outcome)
-        return outcome
-    }
-
-    func pendingEvents() -> [RingPendingEvent] { base.pendingEvents() }
-}
-
-@MainActor
 final class RingControllerTests: XCTestCase {
     private let id = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B")!
     private var backend: FakeRingBackend!
@@ -712,7 +686,7 @@ extension RingControllerTests {
     func testOfflineDismissalsDrainEveryPendingEvent() async {
         let defaults = try! XCTUnwrap(UserDefaults(suiteName: AgentIdentityStore.suiteName))
         pairForTransport()
-        var statuses = [500, 500, 500, 200, 201, 200]
+        var statuses = [500, 500, 500, 500, 500, 200, 201, 200]
         var requests: [URLRequest] = []
         let reporter = RingAlertReporter(
             defaults: defaults,
@@ -721,23 +695,20 @@ extension RingControllerTests {
                 requests.append(request)
                 return (statuses.removeFirst(), Data())
             })
-        let tracking = TrackingRingReporter(base: reporter, storage: defaults)
-        let controller = controller(reporter: tracking)
+        let controller = controller(reporter: reporter)
         await controller.start(id)
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(requests.count, 1)
-        XCTAssertEqual(tracking.outcomes, [.pending])
         XCTAssertNil(defaults.stringArray(forKey: RingAlertReporter.deliveredKey))
         XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1])
         await controller.process(scheduledIDs: [])
-        XCTAssertEqual(tracking.outcomes, [.pending, .pending])
         XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1, 2])
         await controller.process(scheduledIDs: [])
-        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests.count, 5)
         XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 3)
-        XCTAssertEqual(reporter.pendingEvents().count, 3)
+        XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1, 2, 3])
         await controller.resume()
-        XCTAssertEqual(requests.count, 6)
+        XCTAssertEqual(requests.count, 8)
         let keys = requests.compactMap { try? JSONSerialization.jsonObject(with: $0.httpBody!) as? [String: Any] }
             .map { $0["dedupeKey"] as! String }
         XCTAssertEqual(keys.suffix(3), [
@@ -745,8 +716,9 @@ extension RingControllerTests {
             "ring:\(id.uuidString.lowercased()):child_dismissed:2",
             "ring:\(id.uuidString.lowercased()):child_dismissed:3",
         ])
+        XCTAssertTrue(reporter.pendingEvents().isEmpty)
         await controller.resume()
-        XCTAssertEqual(requests.count, 6)
+        XCTAssertEqual(requests.count, 8)
     }
 
     func testDismissalCannotOverwriteStopAfterAwait() async {

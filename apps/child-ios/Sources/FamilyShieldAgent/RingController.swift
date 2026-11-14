@@ -66,7 +66,7 @@ public final class RingController: ObservableObject {
         guard backend.available else { return .unsupportedOS }
         guard await backend.requestAuthorization() else { return .authorizationDenied }
         cancelDeadline()
-        if let previous = state, previous.commandId != id {
+        if let previous = state ?? store.load(), previous.commandId != id {
             do {
                 try await backend.stop(previous.commandId)
             } catch {
