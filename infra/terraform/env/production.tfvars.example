@@ -61,3 +61,15 @@ cors_origin = "https://app.osratech.com"
 
 # Only after put-secret-value has written the production FCM service account (README "Turning push on").
 push_enabled = false
+
+# No secret value in state (#766 items 1, 3): RDS manages the master password, the API connects as osra_api,
+# Redis requires AUTH, and the database URL verifies the server certificate. production-secrets.sh fills them.
+secrets_out_of_band = true
+
+# Item 13: settings the API needs for e-mail links and sending (SES setup is tracked in #766).
+app_public_url = "https://app.osratech.com"
+email_provider = ""
+email_from     = ""
+
+# ALB access logs, VPC flow logs, WAF logs and PostgreSQL logs, each kept exactly 90 days (#766 item 2).
+audit_logs_enabled = true
