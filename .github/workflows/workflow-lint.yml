@@ -264,3 +264,14 @@ jobs:
         run: |
           node scripts/check-redis-durability.mjs --selftest
           node scripts/check-redis-durability.mjs
+
+      - name: A production task definition is a release configuration, and every variable the API reads is classified (gate #637)
+        # scripts/check-production-taskdef.mjs reads what `aws ecs describe-task-definition` prints and fails on a
+        # development, staging or test switch, a secret passed as a plain value, a moving image tag, a missing
+        # required setting or a variable nobody classified. CI has no AWS access, so two things run here: the
+        # self-test (one fixture per rule, each differing from a clean one by one thing and expected to raise
+        # exactly that finding), and `--source`, which fails when the API starts reading a variable the script
+        # has no decision for. Mutant for `--source`: add `process.env.NEW_SWITCH` anywhere under services/api/src.
+        run: |
+          node scripts/check-production-taskdef.mjs --selftest
+          node scripts/check-production-taskdef.mjs --source

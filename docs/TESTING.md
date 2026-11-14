@@ -374,7 +374,26 @@ node scripts/check-user-visible-brand.mjs          # no old user-visible brandin
 node scripts/check-user-visible-brand.mjs --selftest  # 60 cases: each rule fires, and the CLI wires it
 node scripts/check-redis-durability.mjs        # ElastiCache must not be able to lose revocation state
 node scripts/check-redis-durability.mjs --selftest   # 6 cases, one per rule and per way to fake it
+node scripts/check-production-taskdef.mjs --selftest  # 68 checks: a release task definition, one fixture per rule (gate #637)
+node scripts/check-production-taskdef.mjs --source    # every variable the API reads is required, allowed or forbidden in production
 ```
+
+**The production task definition check (gate #637, box 3).** CI runs only `--selftest` and `--source`: they prove
+the rules fire and that every variable the API reads (dotted, destructured, or `env[CONSTANT]`) is classified. The
+evidence for the gate is a third run, on what AWS holds. Claude (server gate) runs it from the maintainer's PC with
+the production profile, once per candidate build, and again after any change to the task definition:
+
+```bash
+aws ecs describe-task-definition --task-definition osra-production-api --region eu-central-1 > taskdef.json
+node scripts/check-production-taskdef.mjs --file taskdef.json --account <production account number>   # add --pre-launch before the store credentials exist
+```
+
+The whole output (it names variables and never prints a value) is posted on #637 as "Row 3 evidence", with the task
+definition revision and the image tag. `taskdef.json` is not committed and not posted. A finding is fixed in
+Terraform, never by editing the file. What the check refuses besides switches and misplaced secrets: a setting held
+as a `secrets` entry (its value cannot be read, so it was not checked), `environmentFiles`, any volume or mount
+point, a task role, an image, secret or execution role in another account, added Linux capabilities, a
+non-essential container, and `TRUST_PROXY` other than `1`.
 
 **The user-visible brand gate (issue #608).** `scripts/check-user-visible-brand.mjs` fails on any
 tracked or untracked-but-not-ignored repo file carrying the pre-OSRA user-visible surfaces — the old
