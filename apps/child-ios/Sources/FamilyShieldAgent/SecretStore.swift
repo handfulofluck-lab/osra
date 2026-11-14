@@ -4,8 +4,8 @@ import Security
 
 /// Where the agent keeps its two secrets: the device JWT and the per-device HMAC secret (5.5 PR B, #372).
 ///
-/// The app and its three extensions run in separate processes, so the secrets must be readable by all
-/// four. The Keychain does that through a shared access group; plain app-group `UserDefaults` did it
+/// The app and its four extensions run in separate processes, so the secrets must be readable by all
+/// five. The Keychain does that through a shared access group; plain app-group `UserDefaults` did it
 /// too, but as a plaintext plist inside the container, included in backups.
 public protocol SecretStore {
     /// The stored value, or nil when there is none (or the store cannot be read).

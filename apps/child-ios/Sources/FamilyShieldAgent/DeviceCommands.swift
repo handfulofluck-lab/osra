@@ -78,14 +78,16 @@ public struct CommandClient {
     }
 
     /// Claims the pending commands (`ack=1`: they come back until acked, as Android's ack-capable poll).
-    public func poll(_ identity: AgentIdentity) async throws -> CommandPoll {
+    /// `timeout` is per request: the app drains keep the 30-second default, and the ring service
+    /// extension's reduced drain passes its short NSE budget (#760).
+    public func poll(_ identity: AgentIdentity, timeout: TimeInterval = 30) async throws -> CommandPoll {
         var components = URLComponents(url: devicesURL(identity).appendingPathComponent("commands"),
                                        resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "ack", value: "1")]
         guard let url = components?.url else { throw CommandError.unusableResponse }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(identity.deviceToken)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if DeviceRevocation.isRevoked(status: status, body: data) { throw CommandError.deviceRevoked }

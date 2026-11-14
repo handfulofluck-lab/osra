@@ -148,6 +148,8 @@ export class ApnsProvider implements PushProvider {
         sound: message.priority === "high" ? "default" : undefined,
         ...(message.threadId ? { "thread-id": message.threadId } : {}),
         "mutable-content": 1,
+        // #750: the device ring is time-sensitive, so it breaks through Focus on a locked phone.
+        ...(message.interruptionLevel ? { "interruption-level": message.interruptionLevel } : {}),
       },
       ...message.data,
     };
@@ -159,15 +161,23 @@ export class ApnsProvider implements PushProvider {
   }
 
   async send(token: string, message: PushMessage): Promise<PushResult> {
-    // A data-only message is the child device's wake (`content-available`, no alert). Apple requires a
-    // background push to say so and to go at priority 5; marked `alert` at 10 with nothing to show, it can
-    // be throttled or dropped (5.5 PR D). It goes to the child agent's topic, never the parent app's.
-    if (message.dataOnly && !this.cfg.deviceBundleId) {
-      return { ok: false, invalidToken: false, reason: "APNS_DEVICE_BUNDLE_ID unset: device wake not sent" };
+    // A data-only message is the child device's wake (`content-available`, no alert); a
+    // `deviceTarget` message is its alert-shaped sibling, the iOS ring (#750). Both go to the child
+    // agent's topic, never the parent app's, and neither is sent without APNS_DEVICE_BUNDLE_ID —
+    // under the parent topic Apple would answer DeviceTokenNotForTopic and the token would be
+    // cleared. Apple also requires a background push to say so and to go at priority 5; marked
+    // `alert` at 10 with nothing to show, it can be throttled or dropped (5.5 PR D).
+    const toDevice = message.dataOnly || message.deviceTarget === true;
+    if (toDevice && !this.cfg.deviceBundleId) {
+      return {
+        ok: false,
+        invalidToken: false,
+        reason: `APNS_DEVICE_BUNDLE_ID unset: device ${message.dataOnly ? "wake" : "ring"} not sent`,
+      };
     }
     const headers = {
       authorization: `bearer ${this.providerToken()}`,
-      "apns-topic": message.dataOnly ? (this.cfg.deviceBundleId as string) : this.cfg.bundleId,
+      "apns-topic": toDevice ? (this.cfg.deviceBundleId as string) : this.cfg.bundleId,
       "apns-push-type": message.dataOnly ? "background" : "alert",
       "apns-priority": message.dataOnly ? "5" : message.priority === "high" ? "10" : "5",
       ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),

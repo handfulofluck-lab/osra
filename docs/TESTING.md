@@ -289,7 +289,7 @@ Six things to know before reading a failure:
 |---|---|
 | `FCM_SERVICE_ACCOUNT_JSON` (JSON or base64) or `FCM_SERVICE_ACCOUNT_FILE` | Enables parent push via FCM HTTP v1 (Android, web, and iOS through Firebase). |
 | `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV` | Enables direct APNs for native iOS tokens. `APNS_BUNDLE_ID` is the parent app (alert pushes). |
-| `APNS_DEVICE_BUNDLE_ID` | The iOS child agent's bundle id, the topic of the silent device wake (5.5 PR D). Unset, wakes to iPhones are not sent: under the parent topic Apple would refuse them with `DeviceTokenNotForTopic` and the token would be cleared as dead. Wakes go as `apns-push-type: background`, priority 5. |
+| `APNS_DEVICE_BUNDLE_ID` | The iOS child agent's bundle id, the topic of the silent device wake and the visible ring alert (5.5 PR D, #750). Unset, neither is sent: under the parent topic Apple would refuse them with `DeviceTokenNotForTopic` and the token would be cleared as dead. Non-ring wakes go as `apns-push-type: background`, priority 5; an iPhone `ring` is the one child alert push (`alert`, priority 10, time-sensitive, mutable content, `osra-ring` collapse, bundled loc-keys only). |
 | `PUSH_MIN_SEVERITY` (`info`\|`warning`\|`critical`, default `info`) | Severity floor; SOS and tamper always push. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Enables real email. Without them emails are logged (dev) or a warning is logged (production); invites then echo `acceptToken` in dev only. |
 | `APP_PUBLIC_URL` | Base URL used in reset/invite/digest links (default `http://localhost:3000`). |
@@ -998,6 +998,14 @@ into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical
 - **KR01:** with the Ring/Silent switch on, a Focus/Do Not Disturb enabled and volume zero, `ring` requests AlarmKit
   authorization and alerts immediately. Check the permission prompt in English and Arabic. An older iOS returns a
   failed command with `unsupported_os` and schedules nothing; the parent sees the localized iOS-update reason.
+- **Locked-phone ring push:** with OSRA Kids suspended, the phone locked and after force-quit, the iPhone `ring`
+  command is the one visible child push: a child-topic `alert`, priority 10, time-sensitive, mutable-content
+  notification carrying only the bundled `ring_notification_*` loc-keys and the `osra-ring` collapse key. Expect the
+  notification service extension to run its reduced `ring` drain, attempt the existing AlarmKit schedule, and never
+  show OSRA text or a command id. Record the actual no-tap behavior and delay on a locked phone, whether the
+  extension-process AlarmKit schedule succeeds, and the full-ring-on-open path. The notification fallback rings for
+  up to 30 seconds; it does not break the hardware Silent switch. A force-quit phone has no Apple-supported guarantee
+  of a newly scheduled long ring, so record exactly what iOS does rather than substituting a custom loop.
 - **The only stops:** the parent PIN, the parent's `stop_ring`, or 300 seconds. A correct PIN reports `pin_stopped`;
   `stop_ring` records `parent_stopped` without another push; the cap reports `timed_out`. Five wrong PINs still lock
   the PIN gate without stopping the alarm. Replaying a stopped `ring` command never schedules another alarm. Both
@@ -1019,9 +1027,9 @@ into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical
   4xx/5xx responses stay pending. An accepted stop reports `afterRestart` and has its own parent line.
 - **Family removal:** unpairing, server revocation and consent withdrawal stop locally and send no ring alert.
 - **Pictures:** capture the ring view with the keyboard down and up, the largest ordinary text size, the system alert,
-  the return notification on the lock screen and the AlarmKit permission prompt, in light and dark, English and
-  Arabic. Capture the parent's dismissal, PIN stop, parent stop, timeout and restart lines too. The parent's
-  unsupported-OS answer is a localized command result, not an alert in the feed.
+  the visible locked-phone ring notification, the return notification on the lock screen and the AlarmKit permission
+  prompt, in light and dark, English and Arabic. Capture the parent's dismissal, PIN stop, parent stop, timeout and
+  restart lines too. The parent's unsupported-OS answer is a localized command result, not an alert in the feed.
 
 If a row fails, record the actual system behavior and do not substitute a custom notification loop. Critical Alerts
 is a named fallback whose entitlement request belongs to Karim. Every run ends with the ring stopped and the device,

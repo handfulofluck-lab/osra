@@ -21,7 +21,7 @@
 - Unpair or consent withdrawal stops locally and emits no ring alert.
 - No `ringing` alert. Alert metadata carries only `state`, `ringId`, and dedupe key. States are `child_dismissed` (warning), `pin_stopped` (info), `parent_stopped` (info, no push), `timed_out` (info).
 - Dedupe keys are `ring:<ringId>:<state>` and `ring:<ringId>:child_dismissed:<count>`. HTTP 200 and 201 both mean delivered.
-- Devices never send `metadata.bodyKey`/`bodyParams`; the server maps `(ring, state)` and strips caller keys. Generic push remains a wake via `PUSH_ALERT_TITLE`/`PUSH_ALERT_BODY`, with no state, id or count in the payload.
+- Devices never send `metadata.bodyKey`/`bodyParams`; the server maps `(ring, state)` and strips caller keys. Parent dismissal pushes remain wakes via `PUSH_ALERT_TITLE`/`PUSH_ALERT_BODY`, with no state, id or count in the payload. After the physical-device ruling of 2026-11-14, the iPhone `ring` device wake is a child-topic time-sensitive alert carrying only the child bundle's `ring_notification_*` loc-keys, answered by a notification service extension that re-arms the ring from the authenticated queue.
 - No Arabic is written by the implementer. English and Arabic go through UI/UX and Arabic Bureaus before verification. No secrets, settings changes, merges or deployments.
 
 ## Review Focus

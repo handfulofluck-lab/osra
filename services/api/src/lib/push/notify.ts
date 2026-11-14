@@ -241,6 +241,43 @@ export function buildDeviceWakeMessage(): PushMessage {
   };
 }
 
+/**
+ * One constant key for the iOS ring alert (#750): every ring of one device replaces the previous
+ * ring on the lock screen. There is deliberately no command id in it — nothing about the command
+ * may reach Apple, and APNs scopes a collapse id to one device token anyway.
+ */
+export const DEVICE_RING_COLLAPSE_KEY = "osra-ring";
+
+/**
+ * The iOS `ring` alert (#750), the one device push that is visible. A physical-device row proved a
+ * priority-5 background push does not wake a locked/suspended/force-quit iPhone, so the ring goes
+ * as a `time-sensitive` alert at high priority. The words come from the child bundle's
+ * localization keys (`ring_notification_title` / `ring_notification_body`), so no OSRA text, no
+ * command id, no child data and no wake marker travel in the payload — the notification extension
+ * on the phone re-arms the ring from the durable command row the enqueue already wrote.
+ */
+export function buildDeviceRingMessage(): PushMessage {
+  return {
+    data: {},
+    locKeys: { titleKey: "ring_notification_title", bodyKey: "ring_notification_body" },
+    priority: "high",
+    threadId: DEVICE_RING_COLLAPSE_KEY,
+    collapseKey: DEVICE_RING_COLLAPSE_KEY,
+    interruptionLevel: "time-sensitive",
+    deviceTarget: true,
+  };
+}
+
+/**
+ * The message one command wakes a device with. Only an iPhone `ring` is the visible alert — every
+ * other command, and every command on Android (including `ring`, whose agent shows its own alarm
+ * UI from the queue row), stays the background wake of #319.
+ */
+function buildDeviceMessageForCommand(platform: string | null | undefined, commandType?: string): PushMessage {
+  if (platform === "ios" && commandType === "ring") return buildDeviceRingMessage();
+  return buildDeviceWakeMessage();
+}
+
 export interface WakeOutcome {
   delivered: number;
   clearedToken: boolean;
@@ -255,7 +292,7 @@ export interface WakeOutcome {
  * is the only place a device token is ever removed — the agent re-registers on its next `onNewToken`
  * or poll tick.
  */
-export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
+export async function notifyDeviceWake(deviceId: string, commandType?: string): Promise<WakeOutcome> {
   const outcome: WakeOutcome = { delivered: 0, clearedToken: false, skipped: null };
   try {
     const providers = getPushProviders();
@@ -271,7 +308,7 @@ export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
     const provider = deviceWakeProviderFor(device.platform as PushPlatform, providers);
     if (!provider) return { ...outcome, skipped: "unsupported_platform" };
 
-    const result = await provider.send(device.pushToken, buildDeviceWakeMessage());
+    const result = await provider.send(device.pushToken, buildDeviceMessageForCommand(device.platform, commandType));
     if (result.ok) return { ...outcome, delivered: 1 };
     if (result.invalidToken) {
       // Compare-and-clear (Claude's #323 review). Clearing by id alone would erase a token that
@@ -296,15 +333,16 @@ export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
 
 /**
  * Test seam: swap the wake sender so a command-path test can assert the fan-out without a provider.
- * Production leaves it as [notifyDeviceWake].
+ * Production leaves it as [notifyDeviceWake]. The command type rides along so a swapped sender can
+ * assert which command woke the device (#750: only an iOS `ring` becomes a visible alert).
  */
-let deviceWakeSender: (deviceId: string) => Promise<WakeOutcome> = notifyDeviceWake;
+let deviceWakeSender: (deviceId: string, commandType?: string) => Promise<WakeOutcome> = notifyDeviceWake;
 
-export function setDeviceWakeSender(fn: ((deviceId: string) => Promise<WakeOutcome>) | null): void {
+export function setDeviceWakeSender(fn: ((deviceId: string, commandType?: string) => Promise<WakeOutcome>) | null): void {
   deviceWakeSender = fn ?? notifyDeviceWake;
 }
 
-export function getDeviceWakeSender(): (deviceId: string) => Promise<WakeOutcome> {
+export function getDeviceWakeSender(): (deviceId: string, commandType?: string) => Promise<WakeOutcome> {
   return deviceWakeSender;
 }
 
@@ -313,9 +351,9 @@ export function getDeviceWakeSender(): (deviceId: string) => Promise<WakeOutcome
  * test can observe it), the promise is detached (so a slow Google round trip never delays a parent's
  * command), and a rejection is swallowed because `notifyDeviceWake` already logs its own failures.
  */
-export function wakeDeviceDetached(deviceId: string): void {
+export function wakeDeviceDetached(deviceId: string, commandType?: string): void {
   try {
-    void deviceWakeSender(deviceId).catch(() => undefined);
+    void deviceWakeSender(deviceId, commandType).catch(() => undefined);
   } catch {
     /* a sender that throws synchronously is not allowed to fail the caller */
   }

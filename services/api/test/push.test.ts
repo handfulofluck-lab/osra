@@ -14,6 +14,7 @@ import { getRedis } from "../src/redis.js";
 import { ApnsProvider, buildProviderToken } from "../src/lib/push/apns.js";
 import {
   buildParentAlertMessage,
+  buildDeviceRingMessage,
   buildDeviceWakeMessage,
   canWakeDevice,
   notifyDeviceWake,
@@ -512,6 +513,169 @@ describe("the child device wake (#319)", () => {
     expect([first.id, second.id]).toEqual(["c-old", "c-old"]);
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
     expect(wakes).toEqual(["dev-1", "dev-1"]);
+  });
+});
+
+describe("the iOS ring alert (#750)", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    setPushProviders(null);
+    setDeviceWakeSender(null);
+  });
+
+  /**
+   * A physical-device row proved a priority-5 background push does not wake a locked/suspended/
+   * force-quit iPhone, so an iOS `ring` is the one device push that is a visible alert. It is built
+   * only from the child bundle's localization keys — nothing else may travel to Apple.
+   * Mutants that fail here: a `w` wake marker or any id in `data`, a literal title/body, priority
+   * "normal", the `osra-wake` collapse key, or a missing time-sensitive interruption level.
+   */
+  it("builds an alert from loc-keys with empty data, the osra-ring collapse, high priority and time-sensitive interruption — and nothing else", () => {
+    const message = buildDeviceRingMessage();
+    expect(message).toEqual({
+      data: {},
+      locKeys: { titleKey: "ring_notification_title", bodyKey: "ring_notification_body" },
+      priority: "high",
+      threadId: "osra-ring",
+      collapseKey: "osra-ring",
+      interruptionLevel: "time-sensitive",
+      deviceTarget: true,
+    });
+    // The exact toEqual above is the assertion that no command id, child id, wake marker or OSRA
+    // text exists; these spell out why for the reader.
+    expect(message.title).toBeUndefined();
+    expect(message.body).toBeUndefined();
+    expect(message.dataOnly).toBeUndefined();
+    expect(message.data).not.toHaveProperty("w");
+  });
+
+  /**
+   * The wire shape Claude ruled for #750. Mutants: parent topic, push-type background, priority 5,
+   * collapse "wake"/"osra-wake", missing interruption-level, missing mutable-content, a literal
+   * alert, or no sound (the extension-failure path must not be silent).
+   */
+  it("sends the ring as an alert push at priority 10 to the child topic: time-sensitive, mutable, loc-key alert, sound default, collapse osra-ring", async () => {
+    const calls: Array<{ path: string; headers: Record<string, string>; body: string }> = [];
+    const transport = async (_host: string, path: string, headers: Record<string, string>, body: string) => {
+      calls.push({ path, headers, body });
+      return { status: 200, body: "" };
+    };
+    const provider = new ApnsProvider(
+      {
+        keyP8: ec.privateKey,
+        keyId: "K",
+        teamId: "T",
+        bundleId: "com.osra.parent",
+        deviceBundleId: "com.osratech.child",
+        host: "https://api.sandbox.push.apple.com",
+      },
+      transport,
+    );
+    expect(await provider.send("child-token", buildDeviceRingMessage())).toEqual({ ok: true });
+    expect(calls[0].path).toBe("/3/device/child-token");
+    expect(calls[0].headers["apns-topic"]).toBe("com.osratech.child");
+    expect(calls[0].headers["apns-push-type"]).toBe("alert");
+    expect(calls[0].headers["apns-priority"]).toBe("10");
+    expect(calls[0].headers["apns-collapse-id"]).toBe("osra-ring");
+    const payload = JSON.parse(calls[0].body);
+    // No literal text and no custom data keys: `aps` is the whole body.
+    expect(payload).toEqual({
+      aps: {
+        alert: { "title-loc-key": "ring_notification_title", "loc-key": "ring_notification_body" },
+        sound: "default",
+        "thread-id": "osra-ring",
+        "mutable-content": 1,
+        "interruption-level": "time-sensitive",
+      },
+    });
+    // The wake path beside it is untouched: still background, priority 5, content-available only.
+    await provider.send("child-token", buildDeviceWakeMessage());
+    expect(calls[1].headers["apns-topic"]).toBe("com.osratech.child");
+    expect(calls[1].headers["apns-push-type"]).toBe("background");
+    expect(calls[1].headers["apns-priority"]).toBe("5");
+    expect(JSON.parse(calls[1].body).aps).toEqual({ "content-available": 1 });
+  });
+
+  it("refuses the ring alert without APNS_DEVICE_BUNDLE_ID, without calling the token dead", async () => {
+    const calls: unknown[] = [];
+    const transport = async () => {
+      calls.push(1);
+      return { status: 400, body: JSON.stringify({ reason: "DeviceTokenNotForTopic" }) };
+    };
+    const provider = new ApnsProvider(
+      { keyP8: ec.privateKey, keyId: "K", teamId: "T", bundleId: "com.osra.parent", host: "https://api.sandbox.push.apple.com" },
+      transport,
+    );
+    // Sent under the parent topic, Apple would answer DeviceTokenNotForTopic and the token would be
+    // cleared — the same reason the wake refuses to send without the child topic.
+    expect(await provider.send("child-token", buildDeviceRingMessage())).toMatchObject({ ok: false, invalidToken: false });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sends the visible ring alert only to an iPhone, and only for a ring command", async () => {
+    const iosSent: Array<{ token: string; message: PushMessage }> = [];
+    const ios: PushProvider = {
+      platform: "ios",
+      canWakeDevices: true,
+      async send(token: string, message: PushMessage): Promise<PushResult> {
+        iosSent.push({ token, message });
+        return { ok: true };
+      },
+    };
+    setPushProviders([ios]);
+    prismaMock.device.findUnique.mockResolvedValue({ id: "ios-1", pushToken: "5a".repeat(32), platform: "ios" });
+    expect(await notifyDeviceWake("ios-1", "ring")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    expect(iosSent).toHaveLength(1);
+    expect(iosSent[0].message).toEqual(buildDeviceRingMessage());
+  });
+
+  /**
+   * Every non-ring command on an iPhone, and every command including `ring` on Android, stays the
+   * exact background wake from #319. Mutant: branch on command type alone (drop the platform half)
+   * and the Android ring here goes out as a visible alert.
+   */
+  it("keeps lock, unlock, stop_ring, rules_updated on an iPhone — and ring on Android — on the exact existing background wake", async () => {
+    const android = new FakeProvider();
+    const iosSent: Array<{ token: string; message: PushMessage }> = [];
+    const ios: PushProvider = {
+      platform: "ios",
+      canWakeDevices: true,
+      async send(token: string, message: PushMessage): Promise<PushResult> {
+        iosSent.push({ token, message });
+        return { ok: true };
+      },
+    };
+    setPushProviders([android, ios]);
+    for (const type of ["lock", "unlock", "stop_ring", "rules_updated"]) {
+      prismaMock.device.findUnique.mockResolvedValue({ id: "ios-1", pushToken: "5a".repeat(32), platform: "ios" });
+      expect(await notifyDeviceWake("ios-1", type)).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+    }
+    prismaMock.device.findUnique.mockResolvedValue({ id: "dev-1", pushToken: "android-token", platform: "android" });
+    expect(await notifyDeviceWake("dev-1", "ring")).toEqual({ delivered: 1, clearedToken: false, skipped: null });
+
+    const all = [...iosSent, ...android.sent];
+    expect(all.map((s) => s.token)).toEqual(["5a".repeat(32), "5a".repeat(32), "5a".repeat(32), "5a".repeat(32), "android-token"]);
+    for (const { message } of all) expect(message).toEqual(buildDeviceWakeMessage());
+  });
+
+  it("enqueueDeviceCommand passes the command type through the wake seam", async () => {
+    const seen: Array<[string, string | undefined]> = [];
+    setDeviceWakeSender(async (id, type) => {
+      seen.push([id, type]);
+      return { delivered: 1, clearedToken: false, skipped: null };
+    });
+    prismaMock.deviceCommand.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "cmd-1", createdAt: new Date(), status: "pending", attempts: 0, ...data,
+    }));
+
+    await enqueueDeviceCommand("dev-1", "ring", {}, { requestedBy: "parent-1" });
+    await enqueueDeviceCommand("dev-1", "lock", {}, { requestedBy: "parent-1" });
+    await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "a" });
+    expect(seen).toEqual([
+      ["dev-1", "ring"],
+      ["dev-1", "lock"],
+      ["dev-1", "rules_updated"],
+    ]);
   });
 });
 
