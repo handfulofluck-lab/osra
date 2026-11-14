@@ -7,9 +7,10 @@
  * then decides whether those signatures are ENOUGH for this PR:
  *
  *   - Author: read from the head branch prefix (kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/
- *     hydrogen/). A branch with
- *     no known prefix is Kimi's (the convention before 13 Nov). Kimi-authored non-merge commits (commit email) add
- *     Kimi as a co-author whatever the prefix.
+ *     hydrogen/). A branch with no known prefix is Kimi's ONLY when it carries a Kimi-authored commit (Kimi's
+ *     convention before 13 Nov) or is one of the five LEGACY_UNPREFIXED branches open on 14 Nov; otherwise the gate fails closed (Fable's note on #788: an `antigravity-fix/` or
+ *     `gemini/` branch must not pass as Kimi's). Kimi-authored non-merge commits (commit email) add Kimi as a
+ *     co-author whatever the prefix.
  *   - Model families: anthropic = Claude, Fable, Ahmed (his tool is Claude Code); deepseek = Kimi Code;
  *     moonshot = K31, K31-Mac; google-carbon = Antigravity (Gemini 4 Carbon); google-hydrogen = Hydrogen (Gemini 4
  *     Hydrogen). The maintainer ruled 2026-11-14 17:58Z that Carbon and Hydrogen are different models, so they may
@@ -66,10 +67,12 @@ const PREFIXES = [
   [/^hydrogen\//, 'Hydrogen'],
 ];
 
+const PREFIX_LIST = 'kimi/ claude/ qa/ verify/ fable/ ahmed/ k31/ k31mac/ antigravity/ hydrogen/';
+
 export function authorFromRef(ref) {
   const r = String(ref).toLowerCase();
   for (const [re, name] of PREFIXES) if (re.test(r)) return name;
-  return 'Kimi Code';
+  return null;
 }
 
 // R3: security, money, children's data and location, infrastructure, signing, and the merge gate itself.
@@ -171,14 +174,31 @@ export function pathTier(files) {
   return 2;
 }
 
+// PRs that were open with an unprefixed branch when this rule landed (14 Nov 2026) and carry no Kimi-email commit.
+// They keep the old reading (Kimi Code) so nothing in flight goes red; remove each name once its PR merges or closes.
+// No new name may be added: a new branch uses its author's prefix.
+export const LEGACY_UNPREFIXED = [
+  'docs/release-readiness-2026-11-13', // #702
+  'feat/663-child-account-admin', // #679
+  'feat/627-add-a-computer', // #657
+  'store/play-arabic-bureau', // #646
+  'feat/39b-full-updater-policy', // #615
+];
+
 export function decide({ headRef = '', kimiCommits = 0, labels = [], files = [], signatures = [] }) {
   const reasons = [];
   if (!files.length) {
     // The files call returned nothing: never fall through to a lower tier (fail closed).
-    return { ok: false, author: authorFromRef(headRef), tier: 'R?', signers: [], counted: [], needUiux: false, needArabic: false,
+    return { ok: false, author: authorFromRef(headRef) ?? 'unknown', tier: 'R?', signers: [], counted: [], needUiux: false, needArabic: false,
       reasons: ['no changed files were read for this PR: failing closed'] };
   }
-  const author = authorFromRef(headRef);
+  const prefixAuthor = authorFromRef(headRef);
+  if (!prefixAuthor && kimiCommits === 0 && !LEGACY_UNPREFIXED.includes(headRef)) {
+    // No known prefix and no Kimi commit: nobody can say who wrote it, so nobody can say who may verify it.
+    return { ok: false, author: 'unknown', tier: 'R?', signers: [], counted: [], needUiux: false, needArabic: false,
+      reasons: [`branch '${headRef}' has no known author prefix (${PREFIX_LIST}) and no Kimi-authored commit: rename the branch with your prefix`] };
+  }
+  const author = prefixAuthor ?? 'Kimi Code';
   const authors = new Set([author]);
   if (kimiCommits > 0) authors.add('Kimi Code');
   const authorFamilies = new Set([...authors].map((a) => FAMILY[a]));
@@ -281,7 +301,7 @@ function selftest() {
   const v = (...names) => names.map((name) => ({ kind: 'verify', name }));
   const cases = [
     // [description, input, expected ok]
-    ['Kimi R2 signed by Claude', { headRef: 'fix/643-x', files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
+    ['Kimi R2 signed by Claude', { headRef: 'fix/643-x', kimiCommits: 1, files: ['services/api/src/routes/foo.ts'], signatures: v('Claude') }, true],
     ['Kimi R2 signed only by Kimi', { headRef: 'kimi/x', files: ['services/api/src/routes/foo.ts'], signatures: v('Kimi Code') }, false],
     ['Claude R2 signed by Claude (self)', { headRef: 'claude/x', files: ['apps/child-android/app/src/main/java/A.kt'], signatures: v('Claude') }, false],
     ['Claude R2 signed by Fable (same family)', { headRef: 'claude/x', files: ['apps/child-android/app/src/main/java/A.kt'], signatures: v('Fable') }, false],
@@ -308,6 +328,17 @@ function selftest() {
     ['Arabic change with UI/UX line only', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }] }, false],
     ['Arabic change with both lines', { headRef: 'kimi/x', files: ['apps/parent-app/lib/l10n/app_ar.arb'], signatures: [...v('Claude'), { kind: 'uiux' }, { kind: 'arabic' }] }, true],
     ['needs:arabic label forces the Arabic line', { headRef: 'kimi/x', labels: ['needs:arabic'], files: ['a/b.ts'], signatures: v('Claude') }, false],
+    // Unknown prefix fails closed unless Kimi's own commit is on it (Fable's notes on #788).
+    ['unknown prefix, no Kimi commit, signed by Antigravity', { headRef: 'gemini/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],
+    ['near-miss prefix antigravity-fix/ is unknown', { headRef: 'antigravity-fix/x', files: ['a/b.ts'], signatures: v('Claude') }, false],
+    ['unknown prefix fails closed even on docs', { headRef: 'docs/x', files: ['docs/x.md'], signatures: v('Claude', 'K31') }, false],
+    ['legacy Kimi branch (feat/) with a Kimi commit, signed by Claude', { headRef: 'feat/x', kimiCommits: 2, files: ['a/b.ts'], signatures: v('Claude') }, true],
+    ['grandfathered open branch, no Kimi commit, signed by Claude', { headRef: 'feat/39b-full-updater-policy', kimiCommits: 0, files: ['a/b.ts'], signatures: v('Claude') }, true],
+    ['grandfathered open branch, no Kimi commit, signed by Kimi', { headRef: 'feat/39b-full-updater-policy', kimiCommits: 0, files: ['a/b.ts'], signatures: v('Kimi Code') }, false],
+    ['near-miss of a grandfathered name fails closed', { headRef: 'feat/39b-full-updater-policy-2', kimiCommits: 0, files: ['a/b.ts'], signatures: v('Claude') }, false],
+    ['legacy Kimi branch (feat/) with a Kimi commit, signed by Kimi', { headRef: 'feat/x', kimiCommits: 2, files: ['a/b.ts'], signatures: v('Kimi Code') }, false],
+    ['k31/ R2 signed by Hydrogen (Hydrogen is not Moonshot)', { headRef: 'k31/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
+    ['k31mac/ R2 signed by Hydrogen', { headRef: 'k31mac/x', files: ['a/b.ts'], signatures: v('Hydrogen') }, true],
     ['unknown signer name ignored', { headRef: 'kimi/x', files: ['a/b.ts'], signatures: v('Mallory') }, false],
     // New members 2026-11-14 (#785, #786): prefixes, two Google families, Antigravity as a security key.
     ['antigravity/ prefix names Antigravity: self-signed', { headRef: 'antigravity/x', files: ['a/b.ts'], signatures: v('Antigravity') }, false],

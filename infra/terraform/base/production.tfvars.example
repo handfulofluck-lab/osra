@@ -23,6 +23,8 @@ github_repo     = "handfulofluck-lab/osra"
 github_owner_id = "<owner-id>"
 github_repo_id  = "<repo-id>"
 
+guardduty_enabled            = true # threat detection; high findings mail the alarm addresses
+secrets_out_of_band          = true # JWT/VAULT values written by production-secrets.sh, never in state
 internal_hmac_secret_enabled = true  # fresh value; never reuse one from any file or chat
 bedrock_eval_role_enabled   = false # model measurement stays in staging (ADR-0033)
 log_retention_days          = 90
