@@ -41,7 +41,7 @@
 - Create: `services/api/test/reauth.test.ts`
 
 **Interfaces:**
-- Consumes: existing `checkReauth`, `verifyTotpFresh`, `requireParent`, `AUTH_RATE_LIMIT`, `ReauthSchema` and test `buildApp`/`prismaMock` helpers.
+- Consumes: existing `checkReauth`, `verifyTotpFresh`, `requireParent`, `AUTH_RATE_LIMIT`, `ReauthSchema` and test `buildApp`/`prismaMock` helpers, plus #771's shared normalization of ASCII, U+0660–U+0669 and U+06F0–U+06F9 before validation.
 - Produces: `verifyTotpDetailed(...) -> Promise<"valid" | "invalid" | "replay">`; `verifyReauthProof(parent, body) -> Promise<"bad_password" | "bad_totp" | "totp_replay" | "mfa_reenroll_required" | null>`; `logParentReauth(log, parentId, success, reason?)` with reason only `bad_password`, `bad_totp`, `totp_replay`, `rate_limited`; `POST /v1/auth/reauth` returning 204 or uniform 401.
 
 - [ ] **Step 1: Write the failing API tests.** Prove valid password (and valid TOTP when enabled) returns 204; wrong password, missing/wrong TOTP, replay, malformed proof and lockout are indistinguishable 401; the same TOTP fails on its second call; recovery codes are not accepted; revoked/expired sessions fail before Argon2 is called. Read the parent row before/after and show only the TOTP step changes, never `lastLoginAt`, session or refresh fields. Capture the structured log and prove fixed reason codes and no password, TOTP, recovery code, IP or device name. Include a failing audit-log call: no success is returned.
@@ -136,7 +136,7 @@
 ### Task 6: Full verification, documentation and independent review
 
 **Files:**
-- Create: `docs/adr/0042-parent-action-reauthentication.md`
+- Create: `docs/adr/0043-parent-action-reauthentication.md`
 - Modify: `docs/TESTING.md`, `docs/ROADMAP.md`, `docs/README.md`, `README.md` and `CHANGELOG.d/`
 - Modify: `docs/superpowers/specs/2026-11-14-parent-action-reauth-design.md` and this plan only if implementation differs from the approved design
 - Modify: `.github/workflows/parent-app.yml` only if a new native test/gate needs it
