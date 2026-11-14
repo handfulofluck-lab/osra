@@ -17,6 +17,7 @@ import '../../theme/app_tokens.dart';
 import '../children/child_detail_screen.dart' show AlertTile;
 import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
+import 'sos_alert_actions.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
 import '../../push/sos_fix_text.dart';
@@ -214,48 +215,35 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             ],
             // #672 UI/UX: an SOS that carried a fix gets one tap to the place, on the same family map the
             // tab shows. One **filled** button, and it is the one that works (#743 UI/UX review): on a build
-            // whose in-app map cannot draw (#598/#707) "Show on map" would lead a parent in an emergency to
-            // a screen that says "Not available", so it is not shown at all and the phone's own maps app
-            // takes the filled slot. The quiet actions follow, then Close — the stacked order at 360 px is
-            // set here on purpose rather than left to whatever the action row produces.
-            if (alert.category == 'sos' && alert.location != null) ...[
-              if (mapIsAvailable(Theme.of(dialogContext).platform))
-                FilledButton.icon(
-                  key: const ValueKey('alert-show-on-map'),
-                  onPressed: () {
-                    final fix = alert.location!;
-                    final text = SosFixText.of(alert, fix, DateTime.now());
-                    final title = l10n.alertTitleFor(
-                      alert.category,
-                      alert.title,
-                      isEnglish: dialogContext.localeName.startsWith('en'),
-                    );
-                    Navigator.of(dialogContext).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => FamilyMapScreen(
-                          focus: MapFocus.fromFix(
-                            fix,
-                            label: text.pinCaption(l10n, title),
-                            accuracyM: fix.accuracyM,
-                          ),
+            // #672/#743 UI/UX: the one filled button is the one that works, and the stacked order is set in
+            // sosAlertActions rather than inherited from the action row. That file carries the why.
+            if (alert.category == 'sos' && alert.location != null)
+              ...sosAlertActions(
+                l10n: l10n,
+                mapAvailable: mapIsAvailable(Theme.of(dialogContext).platform),
+                onShowOnMap: () {
+                  final fix = alert.location!;
+                  final text = SosFixText.of(alert, fix, DateTime.now());
+                  final title = l10n.alertTitleFor(
+                    alert.category,
+                    alert.title,
+                    isEnglish: dialogContext.localeName.startsWith('en'),
+                  );
+                  Navigator.of(dialogContext).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => FamilyMapScreen(
+                        focus: MapFocus.fromFix(
+                          fix,
+                          label: text.pinCaption(l10n, title),
+                          accuracyM: fix.accuracyM,
                         ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.place),
-                  label: Text(l10n.alertShowOnMap),
-                )
-              else
-                FilledButton.icon(
-                  key: const ValueKey('alert-open-in-maps'),
-                  onPressed: () => _openInMaps(alert),
-                  icon: const Icon(Icons.map_outlined),
-                  label: Text(l10n.alertOpenInMaps),
-                ),
-              TextButton.icon(
-                key: const ValueKey('alert-copy-coordinates'),
-                onPressed: () async {
+                    ),
+                  );
+                },
+                onOpenInMaps: () => _openInMaps(alert),
+                onCopy: () async {
                   await Clipboard.setData(
                       ClipboardData(text: alert.location!.copyText));
                   if (!dialogContext.mounted) return;
@@ -263,10 +251,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     SnackBar(content: Text(l10n.alertCoordinatesCopied)),
                   );
                 },
-                icon: const Icon(Icons.copy, size: 18),
-                label: Text(l10n.alertCopyCoordinates),
               ),
-            ],
             TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
                 child: Text(l10n.close)),

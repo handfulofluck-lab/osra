@@ -1,6 +1,6 @@
-import 'dart:ui' show Locale;
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:familyshield_parent/features/alerts/sos_alert_actions.dart';
 import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/features/map/family_map_screen.dart' show MapFocus, initialCameraFor;
@@ -218,6 +218,54 @@ void main() {
     test('without a focus the tab keeps its own rule', () {
       expect(initialCameraFor(null, const LatLng(1, 2)).target, const LatLng(1, 2));
       expect(initialCameraFor(null, null).zoom, 2);
+    });
+  });
+
+
+  group("the SOS detail's actions (#743 UI/UX review)", () {
+    Future<AppLocalizations> loaded() => AppLocalizations.delegate.load(const Locale('en'));
+
+    Future<void> pumpActions(WidgetTester tester, {required bool mapAvailable}) async {
+      final l10n = await loaded();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Wrap(
+            children: sosAlertActions(
+              l10n: l10n,
+              mapAvailable: mapAvailable,
+              onShowOnMap: () {},
+              onOpenInMaps: () {},
+              onCopy: () {},
+            ),
+          ),
+        ),
+      ));
+    }
+
+    testWidgets('with no map key the filled button is Open in Maps, and Show on map is absent', (tester) async {
+      await pumpActions(tester, mapAvailable: false);
+
+      expect(find.byKey(const ValueKey('alert-open-in-maps')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-show-on-map')), findsNothing);
+      final buttons = tester.widgetList<ButtonStyleButton>(
+        find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ).toList();
+      expect(buttons, hasLength(2));
+      expect(buttons.first, isA<FilledButton>(),
+          reason: 'the filled button must be the one that works, not the one that lands on "Not available"');
+      expect(buttons.last, isA<TextButton>(), reason: 'Copy coordinates is the quiet action');
+    });
+
+    testWidgets('with a map key Show on map is the filled button and Open in Maps is absent', (tester) async {
+      await pumpActions(tester, mapAvailable: true);
+
+      expect(find.byKey(const ValueKey('alert-show-on-map')), findsOneWidget);
+      expect(find.byKey(const ValueKey('alert-open-in-maps')), findsNothing);
+      final buttons = tester.widgetList<ButtonStyleButton>(
+        find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ).toList();
+      expect(buttons.first, isA<FilledButton>());
+      expect(buttons.last, isA<TextButton>());
     });
   });
 }
