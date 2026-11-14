@@ -155,8 +155,8 @@ run "production_settings" {
     error_message = "production publishes images over OIDC but has no Bedrock evaluation role"
   }
   assert {
-    condition     = length(aws_secretsmanager_secret_version.internal_hmac_secret) == 1 && length(random_password.internal_hmac) == 1
-    error_message = "production must generate a fresh INTERNAL_HMAC_SECRET in Secrets Manager"
+    condition     = length(aws_secretsmanager_secret.internal_hmac_secret) == 1 && length(aws_secretsmanager_secret_version.internal_hmac_secret) == 0 && length(random_password.internal_hmac) == 0 && output.internal_hmac_secret_fingerprint == ""
+    error_message = "production needs the INTERNAL_HMAC_SECRET container, with its value written out of band, never in state (#781 review B2)"
   }
   assert {
     condition     = aws_budgets_budget.monthly[0].limit_amount == "400" && length(aws_budgets_budget.monthly[0].notification) == 3
@@ -169,6 +169,10 @@ run "production_settings" {
   assert {
     condition     = length(random_password.jwt) == 0 && length(random_id.vault_key) == 0 && length(aws_secretsmanager_secret_version.jwt_secret) == 0 && length(aws_secretsmanager_secret_version.vault_key) == 0
     error_message = "production keeps JWT_SECRET and VAULT_KEY out of state (#766 item 1)"
+  }
+  assert {
+    condition     = length(random_password.jwt) + length(random_id.vault_key) + length(random_password.demo) + length(random_password.internal_hmac) == 0
+    error_message = "a production plan must create no random value in base: every secret is generated out of band (#781 review B2)"
   }
   assert {
     condition     = length(aws_secretsmanager_secret.api_db_password) == 1 && length(aws_secretsmanager_secret.redis_url) == 1 && length(aws_secretsmanager_secret.redis_auth_token) == 1

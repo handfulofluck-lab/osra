@@ -55,6 +55,10 @@ resource "terraform_data" "production_guard" {
       error_message = "production: alarm_email_secondary must be set and differ from alarm_email (#766 item 6)."
     }
     precondition {
+      condition     = var.app_public_url != "" && var.email_provider != "" && var.email_from != ""
+      error_message = "production: app_public_url, email_provider and email_from must be set (#778's container-definition checker requires them)."
+    }
+    precondition {
       condition     = var.alb_deletion_protection
       error_message = "production: alb_deletion_protection must be true."
     }
