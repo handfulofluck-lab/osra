@@ -81,6 +81,39 @@ describe("alerts routes", () => {
     await app.close();
   });
 
+  it("a device-signed alert cannot smuggle its own bodyKey through metadata (Fable n13)", async () => {
+    // This route never passes a bodyKey, so it is the ONE path osra-security#16 is about: without the strip
+    // in the no-key branch, a phone (or an AI engine caller) could store a bodyKey and params this server
+    // never validated, and the parent app would render them as if it had. Fable's n13 puts the old
+    // `return input.metadata` back and every row stayed green until this one existed.
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    prismaMock.alert.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "a-smuggle", ...data }));
+
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "tamper",
+      title: "t",
+      body: "b",
+      metadata: { src: "ai", bodyKey: "alertBodySearchFlagged", bodyParams: { engine: "forged" } },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/alerts/internal",
+      headers: { "content-type": "application/json", ...signV2(SECRET, raw, { caller: "ai-engine" }) },
+      payload: raw,
+    });
+    expect(res.statusCode).toBe(201);
+
+    const stored = (prismaMock.alert.create.mock.calls[0][0] as { data: { metadata: Record<string, unknown> } }).data.metadata;
+    expect(stored).toEqual({ src: "ai" });
+    expect(stored).not.toHaveProperty("bodyKey");
+    expect(stored).not.toHaveProperty("bodyParams");
+    await app.close();
+  });
+
   it("acknowledges an alert", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     prismaMock.alert.findUnique.mockResolvedValue({ id: "a1", child: { familyId: "fam-1" } });
