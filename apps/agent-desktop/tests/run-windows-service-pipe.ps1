@@ -55,8 +55,20 @@ finally {
     if ($created) {
         & sc.exe stop $serviceName | Out-Null
         & sc.exe delete $serviceName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Could not delete the CI-only service.' }
+        $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        while (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+            if ([DateTime]::UtcNow -ge $cleanupDeadline) {
+                throw 'The CI-only service still exists after deletion.'
+            }
+            Start-Sleep -Milliseconds 250
+        }
     }
-    if (Test-Path $probeDir) {
+    if (Test-Path -LiteralPath $probeDir) {
         Remove-Item -Recurse -Force $probeDir
     }
+    if (Test-Path -LiteralPath $probeDir) {
+        throw 'The probe directory still exists after cleanup.'
+    }
+    Write-Output 'OSRA_SERVICE_CLEANUP_PASS'
 }
