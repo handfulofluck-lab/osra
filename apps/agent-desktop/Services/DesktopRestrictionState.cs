@@ -24,11 +24,24 @@ public sealed class DesktopRestrictionState
                 DisconnectedAt = saved.DisconnectedAt,
                 FallbackAt = saved.FallbackAt,
                 TamperAlerted = saved.TamperAlerted,
+                Unreadable = saved.Unreadable,
             };
         }
     }
 
-    public void ObserveDevice(TrayMessage message, DateTime utcNow) => Observe(0, message, utcNow);
+    public void ObserveDevice(TrayMessage message, DateTime utcNow)
+    {
+        if (message.Kind is not (TrayMessageKind.unlock or TrayMessageKind.resume))
+        {
+            Observe(0, message, utcNow);
+            return;
+        }
+        lock (_gate)
+        {
+            _entries.Clear();
+            Persist();
+        }
+    }
 
     public void Observe(int sessionId, TrayMessage message, DateTime utcNow)
     {
@@ -114,7 +127,9 @@ public sealed class DesktopRestrictionState
     {
         lock (_gate)
         {
-            if (!TryGet(sessionId, out var entry) || entry.Connected) return false;
+            if (!TryGet(sessionId, out var entry)) return false;
+            if (entry.Unreadable) return true;
+            if (entry.Connected) return false;
             if (!entry.Locked && !entry.Paused && entry.WindDownAt is null) return false;
             var since = entry.FallbackAt ?? entry.DisconnectedAt ?? entry.ObservedAt;
             return since is not null && utcNow - since >= OfflineGrace;
@@ -129,6 +144,7 @@ public sealed class DesktopRestrictionState
             entry.Locked = true;
             entry.WindDownAt = null;
             entry.FallbackAt = utcNow;
+            entry.Unreadable = false;
             if (entry.TamperAlerted)
             {
                 Persist();
@@ -179,17 +195,24 @@ public sealed class DesktopRestrictionState
     private void Persist()
     {
         if (_store is null) return;
-        _store.Save(_entries.Select(pair => new SessionRestriction
+        try
         {
-            SessionId = pair.Key,
-            Locked = pair.Value.Locked,
-            Paused = pair.Value.Paused,
-            WindDownAt = pair.Value.WindDownAt,
-            ObservedAt = pair.Value.ObservedAt,
-            DisconnectedAt = pair.Value.DisconnectedAt,
-            FallbackAt = pair.Value.FallbackAt,
-            TamperAlerted = pair.Value.TamperAlerted,
-        }).ToArray());
+            _store.Save(_entries.Select(pair => new SessionRestriction
+            {
+                SessionId = pair.Key,
+                Locked = pair.Value.Locked,
+                Paused = pair.Value.Paused,
+                WindDownAt = pair.Value.WindDownAt,
+                ObservedAt = pair.Value.ObservedAt,
+                DisconnectedAt = pair.Value.DisconnectedAt,
+                FallbackAt = pair.Value.FallbackAt,
+                TamperAlerted = pair.Value.TamperAlerted,
+                Unreadable = pair.Value.Unreadable,
+            }).ToArray());
+        }
+        catch (SystemException)
+        {
+        }
     }
 
     private static Entry Clone(Entry source) => new()
@@ -201,6 +224,7 @@ public sealed class DesktopRestrictionState
         DisconnectedAt = source.DisconnectedAt,
         FallbackAt = source.FallbackAt,
         TamperAlerted = source.TamperAlerted,
+        Unreadable = source.Unreadable,
     };
 
     private sealed class Entry
@@ -213,5 +237,6 @@ public sealed class DesktopRestrictionState
         public DateTime? FallbackAt;
         public bool Connected;
         public bool TamperAlerted;
+        public bool Unreadable;
     }
 }
