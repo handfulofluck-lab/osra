@@ -48,6 +48,28 @@ resource "aws_iam_policy" "role_boundary" {
         Resource = "*"
       },
       {
+        # A role under this boundary cannot make an unbounded role, or reach Identity Center or an outside
+        # identity provider, either: the same rules as the deployer user (access.tf).
+        Sid       = "NoUnboundedRoles"
+        Effect    = "Deny"
+        Action    = ["iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy", "iam:PutRolePermissionsBoundary"]
+        Resource  = "*"
+        Condition = { StringNotEquals = { "iam:PermissionsBoundary" = local.boundary_arn } }
+      },
+      {
+        Sid       = "PassRoleOnlyToThisStacksServices"
+        Effect    = "Deny"
+        Action    = "iam:PassRole"
+        Resource  = "*"
+        Condition = { StringNotEquals = { "iam:PassedToService" = ["cloudtrail.amazonaws.com", "events.amazonaws.com", "backup.amazonaws.com", "config.amazonaws.com"] } }
+      },
+      {
+        Sid      = "NoNewWaysIn"
+        Effect   = "Deny"
+        Action   = ["iam:CreateOpenIDConnectProvider", "iam:UpdateOpenIDConnectProviderThumbprint", "iam:AddClientIDToOpenIDConnectProvider", "iam:CreateSAMLProvider", "iam:UpdateSAMLProvider", "sso:*", "identitystore:Create*", "identitystore:Update*"]
+        Resource = "*"
+      },
+      {
         Sid      = "NotTheAuditStores"
         Effect   = "Deny"
         Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion", "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:PutLifecycleConfiguration", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteMetricFilter"]

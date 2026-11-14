@@ -54,7 +54,7 @@ locals {
 
   # New principals created by the deployer user itself: a way around the deny below, so it alarms. Expected
   # during an org-audit apply that adds a role; anything else is an incident.
-  agent_new_principals = "($.userIdentity.arn = \"${local.agent_user_arn}\") && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${var.agent_user_name}\")))"
+  agent_new_principals = "($.userIdentity.arn = \"${local.agent_user_arn}\") && (($.eventName = \"CreateUser\") || ($.eventName = \"CreateRole\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"UpdateAssumeRolePolicy\") || ($.eventName = \"CreateOpenIDConnectProvider\") || ($.eventName = \"CreateSAMLProvider\") || ($.eventName = \"CreateAccountAssignment\") || ($.eventName = \"CreatePermissionSet\") || ($.eventName = \"CreateGroupMembership\") || (($.eventName = \"CreateAccessKey\") && ($.requestParameters.userName != \"${var.agent_user_name}\")))"
 
   agent_key_changes = "(($.eventName = \"CreateAccessKey\") || ($.eventName = \"UpdateAccessKey\") || ($.eventName = \"DeleteAccessKey\")) && ($.requestParameters.userName = \"${var.agent_user_name}\")"
 }
@@ -401,6 +401,20 @@ resource "aws_iam_policy" "agent_no_escalation" {
         Condition = { StringNotEquals = { "iam:PermissionsBoundary" = local.boundary_arn } }
       },
       {
+        # Fable seat 2, E5: a role trusted by an identity provider this user registered.
+        Sid      = "NoOutsideIdentityProviders"
+        Effect   = "Deny"
+        Action   = ["iam:CreateOpenIDConnectProvider", "iam:UpdateOpenIDConnectProviderThumbprint", "iam:AddClientIDToOpenIDConnectProvider", "iam:CreateSAMLProvider", "iam:UpdateSAMLProvider"]
+        Resource = "*"
+      },
+      {
+        # Fable seat 2, E6: Identity Center is Karim's way in; after the first apply only he changes it, with MFA.
+        Sid      = "IdentityCenterStays"
+        Effect   = "Deny"
+        Action   = ["sso:CreateAccountAssignment", "sso:DeleteAccountAssignment", "sso:CreatePermissionSet", "sso:UpdatePermissionSet", "sso:AttachManagedPolicyToPermissionSet", "sso:PutInlinePolicyToPermissionSet", "sso:ProvisionPermissionSet", "identitystore:CreateUser", "identitystore:UpdateUser", "identitystore:CreateGroupMembership"]
+        Resource = "*"
+      },
+      {
         Sid      = "BoundaryStays"
         Effect   = "Deny"
         Action   = "iam:DeleteRolePermissionsBoundary"
@@ -478,6 +492,9 @@ resource "aws_iam_user_policy_attachment" "agent_keep_backups" {
 resource "aws_iam_user_policy_attachment" "agent_no_escalation" {
   user       = var.agent_user_name
   policy_arn = aws_iam_policy.agent_no_escalation.arn
+
+  # Identity Center is set up by this same apply, before this policy takes it away (IdentityCenterStays).
+  depends_on = [aws_ssoadmin_account_assignment.owner, aws_ssoadmin_managed_policy_attachment.admin]
 }
 
 output "access_alarms_topic_arn" {
