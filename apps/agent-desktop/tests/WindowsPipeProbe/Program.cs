@@ -40,6 +40,7 @@ static void PrepareUntrustedOwnerFixture()
     var path = Path.Combine(AppContext.BaseDirectory, "probe-untrusted-owner");
     Directory.CreateDirectory(path);
     var security = new DirectorySecurity();
+    security.SetOwner(WindowsIdentity.GetCurrent().User!);
     security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
     security.AddAccessRule(new FileSystemAccessRule(
         new SecurityIdentifier("S-1-5-18"), FileSystemRights.FullControl, AccessControlType.Allow));
