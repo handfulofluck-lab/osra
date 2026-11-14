@@ -43,6 +43,12 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
 release-assembly step is where a release-only failure lives.
 
+For composite numeric values in Arabic RTL, run `flutter test test/ltr_isolates_test.dart` from
+`apps/parent-app` (#751). It renders the real latest-location, location-history (with and without a
+timestamp), dashboard, map-sheet and call/SMS widgets with an Arabic `Locale` and `TextDirection.rtl`,
+and checks the exact LRI/PDI-delimited values. Removing any one of the six `ltrIsolate` calls must turn
+its corresponding row red. These are widget tests, not a phone run; no device claim or API access is used.
+
 ## 2. Prerequisites (dev machine)
 
 | Need | Where it lives here |

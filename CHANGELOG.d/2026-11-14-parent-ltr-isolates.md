@@ -1,0 +1,3 @@
+### Parent app — preserve numeric order in Arabic (#751)
+- Added a shared `ltrIsolate` helper for composite numeric values. Coordinates on the dashboard, latest location, both location-history forms and the map sheet, plus phone numbers in the call/SMS timeline, retain their latitude-first and international-number order inside Arabic RTL text.
+- Added six Arabic RTL widget cases that assert the exact isolate boundaries and detect removal at each render site. No Arabic wording, layout or other platform changed. No phone or clean-device run is claimed; Bureau review is required before merge.

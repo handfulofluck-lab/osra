@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -428,7 +429,7 @@ class CallsSmsSection extends ConsumerWidget {
                       child: ListTile(
                         dense: true,
                         leading: Icon(e.type == 'call' ? callIconFor(e.direction) : Icons.sms_outlined),
-                        title: Text(e.number ?? l10n.unknownNumber),
+                        title: Text(e.number == null ? l10n.unknownNumber : ltrIsolate(e.number!)),
                         subtitle: e.type == 'sms'
                             ? Text(_truncateSms(e.bodyPreview))
                             // Roadmap 4.5: a brand name, so the same text in both languages and no new
