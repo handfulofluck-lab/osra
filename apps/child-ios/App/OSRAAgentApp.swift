@@ -12,6 +12,8 @@ struct OSRAAgentApp: App {
     @UIApplicationDelegateAdaptor(OSRAAgentAppDelegate.self) private var appDelegate
 
     init() {
+        // #732: the shield follows the language this app runs in; iOS relaunches the app after a language change.
+        SharedLanguage.record()
         // #634 G1: a build locked to its server drops a pairing with any other server (an install over a dev build).
         AgentIdentityStore.clearIfNotBuiltInServer(PairingServerField.builtIn())
         // A reinstall keeps the Keychain but not the app group: drop secrets no identity owns (5.5 PR C). Runs
@@ -33,6 +35,8 @@ final class OSRAAgentAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         application.registerForRemoteNotifications()
+        NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification, object: nil,
+                                               queue: .main) { _ in SharedLanguage.record() }
         LocationController.backgroundTask = { name, work in
             let id = UIApplication.shared.beginBackgroundTask(withName: name)
             await work()
