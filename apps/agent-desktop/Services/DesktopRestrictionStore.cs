@@ -95,6 +95,7 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
     {
         var directory = new DirectoryInfo(Path.GetDirectoryName(_path)!);
         if (!directory.Exists) directory.Create(ProtectedDirectory());
+        directory.Refresh();
         if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
             throw new UnauthorizedAccessException("The restriction directory must not be a reparse point.");
         if (_directoryIsTrusted is not null)
