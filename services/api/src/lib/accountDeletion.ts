@@ -1,10 +1,9 @@
-import argon2 from "argon2";
 import { z } from "zod";
+import { verifyReauthProof } from "./reauthProof.js";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "./deviceToken.js";
-import { verifyTotpFresh } from "./mfaVerify.js";
 import { invalidateSessionsBefore, tombstoneParentSessions } from "./sessions.js";
 import { eraseChildData } from "./usageModel.js";
 
@@ -42,12 +41,9 @@ type ParentForReauth = { id: string; passwordHash: string; mfaEnabled: boolean; 
  * so there is nothing to ask a code from, and the password alone must not be enough here either.
  */
 export async function checkReauth(parent: ParentForReauth, body: z.infer<typeof ReauthSchema>): Promise<"reauth_failed" | "mfa_reenroll_required" | null> {
-  const passwordOk = await argon2.verify(parent.passwordHash, body.password).catch(() => false);
-  if (!passwordOk) return "reauth_failed";
-  if (!parent.mfaEnabled) return null;
-  if (!parent.mfaSecret) return "mfa_reenroll_required";
-  if (!body.mfaCode || !(await verifyTotpFresh(parent.id, parent.mfaSecret, body.mfaCode))) return "reauth_failed";
-  return null;
+  const result = await verifyReauthProof(parent, body);
+  if (result === null) return null;
+  return result === "mfa_reenroll_required" ? result : "reauth_failed";
 }
 
 type FamilyScope = { familyId: string; parentIds: string[] };

@@ -96,7 +96,7 @@ function wireRedisStore() {
   return { store, ttls, sets };
 }
 
-async function makeApp(rateLimited = false) {
+async function makeApp(rateLimited = false, failAudit = false) {
   const logs: Array<Record<string, unknown>> = [];
   const stream = new Writable({
     write(chunk, _encoding, done) {
@@ -110,6 +110,15 @@ async function makeApp(rateLimited = false) {
   apps.push(app);
   await app.register(fastifyJwt, { secret: "test-secret" });
   registerErrorHandler(app);
+  if (failAudit) {
+    app.addHook("onRequest", async (req) => {
+      const originalInfo = req.log.info.bind(req.log);
+      req.log.info = ((obj: Record<string, unknown>, msg?: unknown) => {
+        if (obj.event === "parent_reauth") throw new Error("synthetic audit failure");
+        return originalInfo(obj as never, msg as never);
+      }) as typeof req.log.info;
+    });
+  }
   if (rateLimited) {
     await registerRateLimits(app, new FakeRateLimitRedis() as unknown as Redis);
   }
@@ -249,7 +258,16 @@ describe("POST /v1/auth/reauth", () => {
     const revoked = sessionToken(app);
     await redis.set("revoked:token:jti-current", "1");
     expect((await reauth(app, revoked)).statusCode).toBe(401);
-    expect((await reauth(app, sessionToken(app, "jti-expired", -60))).statusCode).toBe(401);
+    const expired = app.jwt.sign({
+      sub: PARENT.id,
+      familyId: PARENT.familyId,
+      role: "parent",
+      familyRole: "owner",
+      jti: "jti-expired",
+      sv: 7,
+      exp: Math.floor(NOW / 1000) - 60,
+    });
+    expect((await reauth(app, expired)).statusCode).toBe(401);
     expect(argon2.verify).not.toHaveBeenCalled();
   });
 
@@ -269,12 +287,7 @@ describe("POST /v1/auth/reauth", () => {
   });
 
   it("does not return success when the audit call fails", async () => {
-    const { app } = await makeApp();
-    const originalInfo = app.log.info.bind(app.log);
-    app.log.info = ((obj: Record<string, unknown>, msg?: unknown) => {
-      if (obj.event === "parent_reauth") throw new Error("synthetic audit failure");
-      return originalInfo(obj as never, msg as never);
-    }) as typeof app.log.info;
+    const { app } = await makeApp(false, true);
     const res = await reauth(app, sessionToken(app));
     expect(res.statusCode).not.toBe(204);
     expect(prismaMock.parent.update).not.toHaveBeenCalled();
@@ -304,8 +317,8 @@ describe("the atomic per-session failure limit", () => {
     vi.mocked(argon2.verify).mockResolvedValue(false);
     const current = seedRefresh("jti-current", "synthetic-refresh-current");
     const other = seedRefresh("jti-other", "synthetic-refresh-other");
-    await current.redis.set(current.hash, JSON.stringify({ parentId: PARENT.id, expiresAt: NOW + 60_000, jti: "jti-current", sv: 7 }));
-    await other.redis.set(other.hash, JSON.stringify({ parentId: PARENT.id, expiresAt: NOW + 60_000, jti: "jti-other", sv: 7 }));
+    await current.redis.set(`refresh:${current.hash}`, JSON.stringify({ parentId: PARENT.id, expiresAt: NOW + 60_000, jti: "jti-current", sv: 7 }));
+    await other.redis.set(`refresh:${other.hash}`, JSON.stringify({ parentId: PARENT.id, expiresAt: NOW + 60_000, jti: "jti-other", sv: 7 }));
     const index = `refresh:index:${PARENT.id}`;
     await current.redis.sadd(index, current.hash, other.hash);
     const token = sessionToken(app);

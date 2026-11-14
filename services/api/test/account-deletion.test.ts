@@ -13,7 +13,7 @@ import {
   KEPT_ON_PARENT_DELETION,
   PARENT_SCOPED_DELETES,
 } from "../src/lib/accountDeletion.js";
-import { verifyTotpFresh } from "../src/lib/mfaVerify.js";
+import { verifyTotpDetailed } from "../src/lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT } from "../src/lib/rateLimits.js";
 import { invalidateSessionsBefore, isParentSessionLive, sessionVersionKey, signParentToken } from "../src/lib/sessions.js";
 import { CHILD_SCOPED_DELETE_ORDER } from "../src/lib/usageModel.js";
@@ -30,7 +30,7 @@ vi.mock("ioredis", async () => {
 vi.mock("argon2", () => ({
   default: { verify: vi.fn(async () => true), hash: vi.fn(async () => "argon2$stub") },
 }));
-vi.mock("../src/lib/mfaVerify.js", () => ({ verifyTotpFresh: vi.fn(async () => false) }));
+vi.mock("../src/lib/mfaVerify.js", () => ({ verifyTotpDetailed: vi.fn(async () => "invalid" as const) }));
 
 /**
  * #442 PR 1: account deletion, the server half (design: #442 comment 6495864112).
@@ -92,7 +92,7 @@ async function appWith(routes: typeof familyRoutes, prefix: string) {
 beforeEach(() => {
   resetPrismaMock();
   vi.mocked(argon2.verify).mockResolvedValue(true);
-  vi.mocked(verifyTotpFresh).mockResolvedValue(false);
+  vi.mocked(verifyTotpDetailed).mockResolvedValue("invalid");
 });
 
 describe("DELETE /v1/family — the owner deletes the whole family", () => {
@@ -180,10 +180,10 @@ describe("DELETE /v1/family — the owner deletes the whole family", () => {
     expect(unbound.json()).toEqual({ error: "mfa_reenroll_required" });
 
     prismaMock.parent.findUnique.mockResolvedValue(mfaOwner);
-    vi.mocked(verifyTotpFresh).mockResolvedValue(true);
+    vi.mocked(verifyTotpDetailed).mockResolvedValue("valid");
     const ok = await app.inject({ method: "DELETE", url: "/v1/family", headers: tokenFor(app, OWNER, 3), payload: { ...BODY, mfaCode: "123456" } });
     expect(ok.statusCode).toBe(200);
-    expect(verifyTotpFresh).toHaveBeenCalledWith(OWNER.id, "enc:secret", "123456");
+    expect(verifyTotpDetailed).toHaveBeenCalledWith(OWNER.id, "enc:secret", "123456");
   });
 
   it("D5 a parent holding a consent record for a child elsewhere refuses the deletion (409)", async () => {
