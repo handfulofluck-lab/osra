@@ -56,7 +56,9 @@ resource "aws_ecs_task_definition" "api" {
           # the ElastiCache node from elasticache.tf, never localhost.
           { name = "REDIS_URL", value = local.redis_url },
         ],
-        var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [],
+        # Empty cors_origin = the API's permissive default, which it now refuses under NODE_ENV=production
+        # unless told it is deliberate (#765). Production can never get here: its guard requires cors_origin.
+        var.cors_origin != "" ? [{ name = "CORS_ORIGIN", value = var.cors_origin }] : [{ name = "CORS_ALLOW_ANY_ORIGIN", value = "1" }],
         # Roadmap 5.8: count a device's request rate so "idle child phone <= 3 requests per 10 min" can be
         # measured. Staging only — production leaves it unset on purpose (#346 review): the counter keeps a
         # hash per device, and the durable-revocation fix pins this cache to `maxmemory-policy noeviction`, so
@@ -74,9 +76,12 @@ resource "aws_ecs_task_definition" "api" {
           { name = "DATABASE_URL", valueFrom = data.terraform_remote_state.base.outputs.database_url_secret_arn },
           { name = "JWT_SECRET", valueFrom = data.terraform_remote_state.base.outputs.jwt_secret_arn },
           { name = "VAULT_KEY", valueFrom = data.terraform_remote_state.base.outputs.vault_key_secret_arn },
-          # The seed refuses to run in production without it, and the image must not carry a default.
-          { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
         ],
+        # Staging's seed needs it. Production never seeds (up.sh migrates only), so its tasks do not get the
+        # demo password at all (Fable's review of #765).
+        var.environment != "production" ? [
+          { name = "SEED_DEMO_PASSWORD", valueFrom = data.terraform_remote_state.base.outputs.demo_password_secret_arn },
+        ] : [],
         var.push_enabled ? [
           { name = "FCM_SERVICE_ACCOUNT_JSON", valueFrom = data.terraform_remote_state.base.outputs.fcm_service_account_secret_arn },
         ] : [],

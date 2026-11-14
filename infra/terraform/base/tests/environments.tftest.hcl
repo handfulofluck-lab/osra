@@ -123,6 +123,8 @@ run "production_settings" {
     budget_limit_usd             = 400
     internal_hmac_secret_enabled = true
     alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
   }
 
   assert {
@@ -159,4 +161,181 @@ run "zone_creation_needs_a_name" {
   }
 
   expect_failures = [var.create_hosted_zone]
+}
+
+# B1: production without any one protection fails to plan.
+
+run "production_requires_secret_recovery_window_days" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 30
+    secret_recovery_window_days  = 0
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_budget_limit_usd" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 30
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 0
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_bedrock_eval_role_enabled" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = true
+    log_retention_days           = 30
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_internal_hmac_secret_enabled" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 30
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = false
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_region" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "us-east-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 30
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_assume_role_arn" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 30
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = ""
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_log_retention_days" {
+  command = plan
+
+  variables {
+    environment                  = "production"
+    region                       = "eu-central-1"
+    domain_name                  = "api.example.test"
+    hosted_zone_name             = "api.example.test"
+    create_hosted_zone           = true
+    github_repo                  = "owner/repo"
+    github_owner_id              = "1"
+    github_repo_id               = "2"
+    bedrock_eval_role_enabled    = false
+    log_retention_days           = 14
+    secret_recovery_window_days  = 7
+    budget_limit_usd             = 400
+    internal_hmac_secret_enabled = true
+    alarm_email                  = "alerts@example.test"
+    allowed_account_ids          = ["000000000000"]
+    assume_role_arn              = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
 }

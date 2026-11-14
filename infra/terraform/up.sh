@@ -26,6 +26,8 @@ esac
 # 1 cache node, 3 public IPv4 addresses). Derived from README.md's table / 730 h; keep the two in sync.
 HOURLY_COST_USD="${HOURLY_COST_USD:-0.194}"
 
+# Production never falls back to the staging profile (#765, Fable B3): the caller names the profile.
+profile_given="${AWS_PROFILE:-}"
 : "${AWS_PROFILE:=osra-staging}"
 : "${AWS_REGION:=$default_region}"
 export AWS_PROFILE AWS_REGION
@@ -43,6 +45,16 @@ init_stack() {
 }
 
 if [ "$OSRA_ENV" = production ]; then
+  # Production runs in two reviewed steps, each "plan to a file, read it, apply exactly that file" (#765):
+  #   OSRA_ENV=production AWS_PROFILE=<profile> ./up.sh                       -> saves plans, applies nothing
+  #   OSRA_ENV=production AWS_PROFILE=<profile> OSRA_PROD_APPLY=yes ./up.sh   -> applies the saved plans only
+  # OSRA_PROD_PHASE=schema (default) defers the service on a first run, or registers only the new task
+  # definition on an upgrade, and the apply then snapshots the database and migrates. OSRA_PROD_PHASE=service
+  # plans everything else (creating the service, or rolling it onto the new task definition).
+  [ -n "$profile_given" ] || { echo "production: set AWS_PROFILE explicitly; it never defaults to the staging profile." >&2; exit 1; }
+  phase="${OSRA_PROD_PHASE:-schema}"
+  case "$phase" in schema|service) ;; *) echo "OSRA_PROD_PHASE must be schema or service" >&2; exit 1 ;; esac
+
   for stack in base env; do
     # Terraform loads terraform.tfvars by itself, so a staging file in the same directory would quietly
     # fill any value production.tfvars leaves out. Refuse rather than plan against a mixed configuration.
@@ -54,34 +66,89 @@ if [ "$OSRA_ENV" = production ]; then
     [ -f "$HERE/$stack/production.tfvars" ] || { echo "missing $stack/production.tfvars (copy the .example)" >&2; exit 1; }
   done
 
-  echo "==> production base: plan"
-  init_stack base
-  terraform -chdir="$HERE/base" plan -input=false -var-file=production.tfvars -out=production.tfplan
-  echo "==> production env: plan (needs base applied; on a first run it stops here)"
-  init_stack env
-  terraform -chdir="$HERE/env" plan -input=false -var-file=production.tfvars -out=production.tfplan || {
-    echo "    env plan failed. Before base's first apply this is expected: env reads base's state." >&2
-    [ "${OSRA_PROD_APPLY:-}" = yes ] || exit 1
-  }
-
   if [ "${OSRA_PROD_APPLY:-}" != yes ]; then
+    echo "==> production base: plan -> base/production.tfplan"
+    init_stack base
+    rc=0
+    terraform -chdir="$HERE/base" plan -input=false -detailed-exitcode -var-file=production.tfvars -out=production.tfplan || rc=$?
+    case $rc in
+      0) rm -f "$HERE/base/production.tfplan"; echo "    base: no changes" ;;
+      2) echo; echo "base has changes. Review them, apply with OSRA_PROD_APPLY=yes, then plan again for env"
+         echo "(env reads base's outputs, so it is planned only against an applied base)."; exit 0 ;;
+      *) exit "$rc" ;;
+    esac
+
+    echo "==> production env: plan ($phase) -> env/production.tfplan"
+    init_stack env
+    env_state=$(terraform -chdir="$HERE/env" state list 2>/dev/null || true)
+    if [ "$phase" = schema ]; then
+      case "$env_state" in
+        *aws_ecs_service.api*) set -- -target=aws_ecs_task_definition.api ;;
+        *) set -- -var api_service_enabled=false ;;
+      esac
+    else
+      set --
+    fi
+    terraform -chdir="$HERE/env" plan -input=false -var-file=production.tfvars "$@" -out=production.tfplan
+    printf '%s\n' "$phase" >"$HERE/env/production.tfplan.phase"
     echo
-    echo "Plan only. Saved plans: base/production.tfplan, env/production.tfplan (gitignored)."
-    echo "Production applies need Karim's written go and Ahmed's #637 sign-off, then OSRA_PROD_APPLY=yes."
+    echo "Saved env/production.tfplan ($phase). Read it (terraform -chdir=infra/terraform/env show production.tfplan),"
+    echo "then apply exactly it with OSRA_PROD_APPLY=yes. Every production apply needs Karim's written go."
     exit 0
   fi
 
-  echo "==> production base: apply (the plan saved above, nothing else)"
-  terraform -chdir="$HERE/base" apply -input=false production.tfplan
-  echo "==> production env: plan + apply (service deferred until the schema exists on a first run)"
-  service_state=$(terraform -chdir="$HERE/env" state list 2>/dev/null || true)
-  case "$service_state" in
-    *aws_ecs_service.api*) terraform -chdir="$HERE/env" apply -input=false -var-file=production.tfvars -target=aws_ecs_task_definition.api "$@" ;;
-    *) terraform -chdir="$HERE/env" apply -input=false -var-file=production.tfvars -var api_service_enabled=false "$@" ;;
-  esac
+  if [ -f "$HERE/base/production.tfplan" ]; then
+    echo "==> production base: apply the saved plan"
+    init_stack base
+    terraform -chdir="$HERE/base" apply -input=false production.tfplan
+    rm -f "$HERE/base/production.tfplan"
+    echo "Base applied. Plan again (without OSRA_PROD_APPLY) for env."
+    exit 0
+  fi
+  [ -f "$HERE/env/production.tfplan" ] || { echo "no saved plan to apply; run the plan step first." >&2; exit 1; }
+  saved_phase=$(cat "$HERE/env/production.tfplan.phase" 2>/dev/null || echo service)
+
+  echo "==> production env: apply the saved plan ($saved_phase)"
+  init_stack env
+  terraform -chdir="$HERE/env" apply -input=false production.tfplan
+  rm -f "$HERE/env/production.tfplan" "$HERE/env/production.tfplan.phase"
+  if [ "$saved_phase" = service ]; then
+    echo "API URL: $(terraform -chdir="$HERE/env" output -raw api_url)"
+    exit 0
+  fi
+
+  cluster=$(terraform -chdir="$HERE/env" output -raw cluster_name)
+  taskdef=$(terraform -chdir="$HERE/env" output -raw task_definition_arn)
+  subnets=$(terraform -chdir="$HERE/env" output -raw private_subnet_ids)
+  sg=$(terraform -chdir="$HERE/env" output -raw api_security_group_id)
+  log_group=$(terraform -chdir="$HERE/env" output -raw log_group_name)
+  db_id=$(terraform -chdir="$HERE/env" output -raw rds_identifier)
+
+  # The CLI calls below must run as the production role, as Terraform does, never as the profile itself.
+  role=$(terraform -chdir="$HERE/env" output -raw deploy_role_arn)
+  want_account=$(terraform -chdir="$HERE/env" output -raw allowed_account_id)
+  creds=$(aws sts assume-role --role-arn "$role" --role-session-name osra-production-migrate \
+    --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
+  read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<EOC
+$creds
+EOC
+  export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+  unset AWS_PROFILE
+  got_account=$(aws sts get-caller-identity --query Account --output text)
+  if [ "$got_account" != "$want_account" ]; then
+    echo "refusing: CLI credentials are for another account than allowed_account_ids." >&2
+    exit 1
+  fi
+
+  # A manual snapshot before every production migration: point-in-time restore exists, but a named
+  # snapshot is the one-step way back from a migration that went wrong.
+  snap="$db_id-pre-migrate-$(date -u +%Y%m%d%H%M%S)"
+  echo "==> snapshot $snap"
+  aws rds create-db-snapshot --db-instance-identifier "$db_id" --db-snapshot-identifier "$snap" >/dev/null
+  aws rds wait db-snapshot-available --db-snapshot-identifier "$snap"
+
   # Production migrates only: no demo family in the real database.
   migrate_command='["node_modules/.bin/prisma","migrate","deploy"]'
-  env_var_args="-var-file=production.tfvars"
 else
 
 # Issue #337: base state is shared in S3, and most of base is `count`-gated on variables that live in a
@@ -153,15 +220,19 @@ case "$service_state" in
     ;;
 esac
 migrate_command='["sh","scripts/migrate-and-seed.sh"]'
-env_var_args=""
 fi
 
 echo "==> migrate$( [ "$OSRA_ENV" = staging ] && echo ' + seed')"
-cluster=$(terraform -chdir="$HERE/env" output -raw cluster_name)
-taskdef=$(terraform -chdir="$HERE/env" output -raw task_definition_arn)
-subnets=$(terraform -chdir="$HERE/env" output -raw private_subnet_ids)
-sg=$(terraform -chdir="$HERE/env" output -raw api_security_group_id)
-log_group=$(terraform -chdir="$HERE/base" output -raw log_group_name)
+read_env_outputs() {
+  cluster=$(terraform -chdir="$HERE/env" output -raw cluster_name)
+  taskdef=$(terraform -chdir="$HERE/env" output -raw task_definition_arn)
+  subnets=$(terraform -chdir="$HERE/env" output -raw private_subnet_ids)
+  sg=$(terraform -chdir="$HERE/env" output -raw api_security_group_id)
+  log_group=$(terraform -chdir="$HERE/env" output -raw log_group_name)
+}
+# Production read them before switching the CLI to the role's credentials (Terraform's backend cannot
+# chain from those); staging reads them here.
+[ -n "${cluster:-}" ] || read_env_outputs
 
 # Same task definition, one-off command. The image must carry prisma, tsx and scripts/seed.ts
 # (services/api/Dockerfile installs devDependencies and copies the service).
@@ -187,15 +258,17 @@ if [ "$exit_code" != "0" ]; then
   exit 1
 fi
 
+if [ "$OSRA_ENV" = production ]; then
+  echo
+  echo "Migrated. Next: OSRA_PROD_PHASE=service plan, review, then apply it (creates or rolls the service)."
+  exit 0
+fi
+
 echo "==> env (service: created on a fresh session, rolled onto the new image otherwise)"
-# shellcheck disable=SC2086 # env_var_args is empty or one flag without spaces
-terraform -chdir="$HERE/env" apply $env_var_args "$@"
+terraform -chdir="$HERE/env" apply "$@"
 
 echo
 echo "API URL:        $(terraform -chdir="$HERE/env" output -raw api_url)"
-if [ "$OSRA_ENV" = production ]; then
-  exit 0
-fi
 echo "Session start:  $(date -d "@$start_epoch" '+%Y-%m-%d %H:%M:%S %Z')"
 echo "Estimated cost: \$$HOURLY_COST_USD/hour for env (base is ~\$2/month and always on)"
 echo "                ~\$$(awk -v r="$HOURLY_COST_USD" 'BEGIN { printf "%.2f", r * 8 }') per 8-hour session"

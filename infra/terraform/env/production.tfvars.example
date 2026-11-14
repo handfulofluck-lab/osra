@@ -54,8 +54,9 @@ waf_rate_action = "count" # switch to "block" after two weeks of real traffic
 alarms_enabled = true
 alarm_email    = "<alerts-address>"
 
-# Set once the parent web app has an origin.
-cors_origin = ""
+# Required in production (the guard refuses empty or "*"). No browser page uses the API yet; this names the
+# future parent web app's origin, so nothing else can call it with credentials from a browser.
+cors_origin = "https://app.osratech.com"
 
 # Only after put-secret-value has written the production FCM service account (README "Turning push on").
 push_enabled = false

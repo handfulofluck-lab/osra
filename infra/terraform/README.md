@@ -521,15 +521,23 @@ Run from a **separate worktree** that has only `production.tfvars` files: `up.sh
    `terraform -chdir=base output hosted_zone_name_servers`, and add one `NS` record `api.osratech.com` with those four
    values to the `osratech.com` zone in the management account. Until that record exists the certificate cannot
    validate and a full base apply would wait on it.
-4. **Plan:** `OSRA_ENV=production ./infra/terraform/up.sh` plans base and saves `base/production.tfplan`. env's plan
-   needs base's state, so before base's first apply it stops after base; that is expected.
-5. **Apply base alone:** `terraform -chdir=infra/terraform/base apply production.tfplan` (the saved plan, nothing else).
-   This creates the production image repository, secrets, certificate and the OIDC publish role.
-6. **Publish the image** to the production repository over OIDC. `api-publish.yml` targets staging today; giving it a
-   production target (the production publish role and repository) is a follow-up on #714. Name the sha in
-   `env/production.tfvars` as `api_image`.
-7. **Apply env:** `OSRA_ENV=production OSRA_PROD_APPLY=yes ./infra/terraform/up.sh` re-plans base (no changes),
-   creates env without the service, runs `prisma migrate deploy` as a one-off task, then creates the service.
+Every production step is **plan to a file, read it, apply exactly that file** (`up.sh` never applies a plan nobody
+saw), and `AWS_PROFILE` must be named explicitly (it never falls back to the staging profile). With
+`environment = "production"` both stacks refuse to plan unless every protection in the table above is set
+(`*/production_guard.tf`), so a line missing from a hand-copied tfvars fails loudly instead of creating production
+without backups.
+
+4. **Plan base:** `OSRA_ENV=production AWS_PROFILE=<profile> ./infra/terraform/up.sh` saves `base/production.tfplan`
+   and stops when base has changes (env is only planned against an applied base).
+5. **Apply base:** the same command with `OSRA_PROD_APPLY=yes` applies that saved file and nothing else.
+6. **Publish the image** to the production repository over OIDC (`api-publish.yml` targets staging today; a
+   production target is a follow-up on #714) and name its sha in `env/production.tfvars` as `api_image`.
+7. **Schema phase:** plan again (env, `OSRA_PROD_PHASE=schema`, the default): the first time it creates everything but
+   the service; on an upgrade it registers only the new task definition. Apply it with `OSRA_PROD_APPLY=yes`: after
+   the apply, `up.sh` assumes the production role for its CLI calls, checks the account, takes a manual RDS snapshot
+   and runs `prisma migrate deploy` as a one-off task.
+8. **Service phase:** `OSRA_PROD_PHASE=service`, plan, read, apply: creates the service or rolls it onto the new task
+   definition.
 
 ### Production cost (estimate, on-demand list prices in `eu-central-1`, 730 h/month)
 

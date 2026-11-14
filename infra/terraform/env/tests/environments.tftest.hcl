@@ -145,6 +145,9 @@ run "production_settings" {
     waf_enabled              = true
     alarms_enabled           = true
     alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
   }
 
   assert {
@@ -199,6 +202,10 @@ run "production_settings" {
     condition     = !strcontains(aws_ecs_task_definition.api.container_definitions, "IDLE_BUDGET_COUNTING")
     error_message = "production must not carry the staging-only idle-budget counter (#346)"
   }
+  assert {
+    condition     = !strcontains(aws_ecs_task_definition.api.container_definitions, "SEED_DEMO_PASSWORD")
+    error_message = "production tasks must not receive the demo password"
+  }
 }
 
 run "failover_needs_two_nodes" {
@@ -211,4 +218,426 @@ run "failover_needs_two_nodes" {
   }
 
   expect_failures = [var.redis_failover]
+}
+
+# B1: production without any one protection fails to plan.
+
+run "production_requires_db_multi_az" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = false
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_db_backup_retention_days" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 0
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_db_deletion_protection" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = false
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_db_skip_final_snapshot" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = true
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_redis_transit_encryption" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = false
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_nat_gateway_count" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 1
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_waf_enabled" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = false
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_alarms_enabled" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = false
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_alb_deletion_protection" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = false
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_region" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "us-east-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_assume_role_arn" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = ""
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
+
+run "production_requires_cors_origin" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    cors_origin              = ""
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+  }
+
+  expect_failures = [terraform_data.production_guard]
 }

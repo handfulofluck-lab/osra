@@ -12,8 +12,9 @@ resource "aws_ecr_repository" "api" {
     scan_on_push = true
   }
 
-  # A forced delete keeps a deliberate base rebuild from failing on leftover test images.
-  force_delete = true
+  # A forced delete keeps a deliberate staging base rebuild from failing on leftover test images.
+  # Production's images are what is running: never delete them with the repository.
+  force_delete = var.environment != "production"
 
   tags = {
     Name = "${local.name_prefix}/api"
