@@ -477,6 +477,16 @@ hotkey as part of this build gate. The unsigned artifact has **not yet been inst
 clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
 pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 
+The W1 suite is **312 tests in each configuration**. It pins the launched PID and co-located image,
+SYSTEM server-token verification, NETWORK denial and token-derived session SIDs. It also replays the
+current lock/pause/wind-down on reconnect, checks the 20-second fallback and one-alert episode through a
+fake WTS seam, retains post-connect writes, limits SOS to one POST per 60 seconds per device, and requires
+`source: tray` on desktop capability reports. `services/api/test/capabilities.test.ts` covers that exact
+source and rejects others without changing existing non-desktop reports. Removing a PID/image check,
+state replay, fallback, rate limit or source must turn its corresponding test red. Foreground usage is
+self-reported by the tray until W2's service-side sampling; these tests do not prove publisher signing or
+eliminate same-user code injection into a user-mode tray.
+
 W1b's salted PIN hashing and W3's installed-directory ACLs, MSI/service recovery and signing are required
 before a build reaches outsiders. W2 DNS/firewall/browser-policy replacement and W4's signed updater are
 separate. This artifact has no MSI or ARM64 build, signing, AWS, store or production action.

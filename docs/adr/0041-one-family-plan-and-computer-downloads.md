@@ -177,7 +177,9 @@ What exists today (checked on `main@4d3a291`):
     alive.
   - **`OSRA` tray agent** (per user, started for every user at sign-in by the service): lock and bedtime
     overlay, block page, "ask for more time", SOS hotkey, pairing window, Arabic and English.
-  - They talk over a named pipe whose ACL admits only SYSTEM and the signed tray binary's session.
+  - They talk over a named pipe whose ACL admits SYSTEM and the session user and denies NETWORK. W1 additionally requires the actual launched PID and co-located tray image, and the tray verifies that the server token user is SYSTEM before sending `hello`. These checks do not prove the publisher; Authenticode signing is W3.
+- **W1 hardening (expanded after osra-security#22, #754):** session SIDs come from the session token, never an account-name lookup. The service owns locked, paused and wind-down state and replays it on every verified connection. After 20 seconds without a verified tray during a restriction, it disconnects that session through WTS and raises one tamper alert; a failed pipe create is also tamper and follows the same fallback. SOS is limited to one POST per device per 60 seconds. Desktop capabilities carry `source: tray`, not a service attestation.
+- **Known W1 limits:** same-user code injection into the tray is a user-mode limit; the existing plaintext PIN waits for W1b; the child-writable identity file, installed-directory ACLs and signing wait for W3; foreground usage remains self-reported by the tray until service-side sampling in W2.
 - **Web filtering is system-wide, not a user proxy.** The service runs a local DNS resolver with the same
   rules as the Android DNS filter (ADR-0015): block list, categories, SafeSearch and YouTube Restricted
   by DNS answer, pause-internet. It sets every adapter's DNS to that resolver and adds Windows Firewall
