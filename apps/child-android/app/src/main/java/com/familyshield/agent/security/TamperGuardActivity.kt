@@ -56,6 +56,17 @@ open class TamperGuardActivity : ComponentActivity() {
         // osra-security#17: Continue stays disabled until the field holds a length the PIN can have, so
         // an empty submit never reaches the verifier at all. The verifier fails closed on its own now;
         // this is the other half — a button that cannot be pressed with nothing typed.
+        //
+        // Two silences here are deliberate, both decided by the UI/UX Bureau on #761 and both worth
+        // keeping rather than "improving":
+        //  - **no explanatory line** under a disabled button. Every phone's own passcode screen behaves
+        //    this way, a parent reads a greyed Continue beside an empty field correctly, and extra words
+        //    on this particular screen are read mostly by the child.
+        //  - **no printed 4–8 digit rule**. Printing it here tells the person who is not meant to pass
+        //    this gate what shape the secret has; the rule belongs where the PIN is set, and it is there.
+        //
+        // There is also no IME submit path: the field sets `inputType` and a length filter and nothing
+        // else, so the keyboard's Done only hides the keyboard and the button is the only way in.
         fun syncUnlockEnabled() {
             unlock.isEnabled =
                 pin.text.length in ParentPin.MIN_LENGTH..ParentPin.MAX_LENGTH
