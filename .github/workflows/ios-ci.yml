@@ -388,13 +388,18 @@ jobs:
           DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")))')"
           echo "Simulator: $DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
-          TEST_RUNNER_OSRA_RING_SCREENSHOT_DIR="$RUNNER_TEMP/ring-screenshots" \
-            xcodebuild test \
-              -project OSRAAgent.xcodeproj \
-              -scheme OSRAAgent \
-              -destination "id=$DEVICE_ID" \
-              -derivedDataPath .build/ringScreenshotData \
-              -only-testing:OSRAAgentHostedTests/RingScreenshotsTests
+          for LANGUAGE in en ar; do
+            TEST_RUNNER_OSRA_RING_SCREENSHOT_DIR="$RUNNER_TEMP/ring-screenshots" \
+            TEST_RUNNER_OSRA_RING_SCREENSHOT_LANGUAGE="$LANGUAGE" \
+              xcodebuild test \
+                -project OSRAAgent.xcodeproj \
+                -scheme OSRAAgent \
+                -destination "id=$DEVICE_ID" \
+                -derivedDataPath .build/ringScreenshotData \
+                -testLanguage "$LANGUAGE" \
+                -only-testing:OSRAAgentHostedTests/RingScreenshotsTests
+          done
+          test "$(find "$RUNNER_TEMP/ring-screenshots" -name 'ring-*.png' | wc -l)" -eq 8
       - name: Upload the hosted screenshots
         uses: actions/upload-artifact@v4
         with:
