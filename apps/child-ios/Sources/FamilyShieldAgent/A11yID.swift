@@ -35,6 +35,7 @@ public enum A11yID {
     public static let pinGate = "pin.gate"
     public static let pinGateMessage = "pin.gateMessage"
     public static let pinContinue = "pin.continue"
+    public static let ringView = "ring.view"
 
     // App groups
     public static let groupsNewName = "groups.new.name"
@@ -56,7 +57,7 @@ public enum A11yID {
         statusPaired, statusChildName, statusServer, statusLastSynced, statusSyncNow, statusSyncFailed,
         statusScreenTime, statusScreenTimeButton, statusLocation, statusLocationButton, statusGroups, statusRepair,
         statusTechnicalDetails,
-        pinSetReason, pinNew, pinRepeat, pinSetError, pinSave, pinGate, pinGateMessage, pinContinue,
+        pinSetReason, pinNew, pinRepeat, pinSetError, pinSave, pinGate, pinGateMessage, pinContinue, ringView,
         groupsNewName, groupsNewChoose, groupsNewChosen, groupsNewAdd, groupsError,
     ]
 }

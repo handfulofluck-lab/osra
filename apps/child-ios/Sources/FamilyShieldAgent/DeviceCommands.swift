@@ -16,6 +16,8 @@ public enum CommandAction: Equatable {
     case syncRules
     /// A fresh point for the parent's map, uploaded before the ack (5.5 PR E).
     case locateNow
+    case ring
+    case stopRing
     /// Not something this agent can do; acked `failed` with the reason.
     case unsupported
 
@@ -23,6 +25,8 @@ public enum CommandAction: Equatable {
         switch type {
         case "rules_updated", "consent_revoked", "consent_granted": return .syncRules
         case "locate_now": return .locateNow
+        case "ring": return .ring
+        case "stop_ring": return .stopRing
         default: return .unsupported
         }
     }
@@ -106,6 +110,21 @@ public struct LiveLocateNow: LocateNowHandling {
     public func locateNow() async -> LocateAck? { await LocationController.shared.locateNow() }
 }
 
+public protocol RingCommandHandling {
+    func startRing(id: String) async -> RingCommandError?
+    func stopRing() async
+}
+
+public struct LiveRingCommands: RingCommandHandling {
+    public init() {}
+    public func startRing(id: String) async -> RingCommandError? {
+        await RingController.shared.start(commandId: id)
+    }
+    public func stopRing() async {
+        await RingController.shared.stop(.parentCommand)
+    }
+}
+
 public enum CommandDrainer {
     private static let logger = Logger(subsystem: "com.osratech.child", category: "Commands")
 
@@ -124,6 +143,7 @@ public enum CommandDrainer {
     public static func drainNow(client: CommandClient = CommandClient(),
                                 tokenSession: URLSession = .shared,
                                 locator: LocateNowHandling = LiveLocateNow(),
+                                ring: RingCommandHandling = LiveRingCommands(),
                                 sync: () async -> RuleSyncer.Outcome = { await RuleSyncer.syncNow() }) async -> Result {
         var result = Result()
         guard let identity = AgentIdentityStore.load() else { return result }
@@ -185,6 +205,19 @@ public enum CommandDrainer {
                 case nil:
                     break // the point was not stored: no ack, so the server offers the command again in 120 s
                 }
+                result.handled.append(command.type)
+            case .ring:
+                if let error = await ring.startRing(id: command.id) {
+                    try? await client.ack(identity, commandId: command.id, ok: false,
+                                          detail: ["reason": error.rawValue])
+                    result.refused.append(command.type)
+                } else {
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                }
+            case .stopRing:
+                await ring.stopRing()
+                try? await client.ack(identity, commandId: command.id, ok: true)
                 result.handled.append(command.type)
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,

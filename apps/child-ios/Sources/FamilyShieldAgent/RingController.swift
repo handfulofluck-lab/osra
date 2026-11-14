@@ -3,6 +3,7 @@ import Foundation
 
 @MainActor
 public final class RingController: ObservableObject {
+    public static let shared = RingController()
     @Published public private(set) var state: RingState?
     private let backend: RingBackend
     private let store: RingStore
@@ -31,6 +32,10 @@ public final class RingController: ObservableObject {
                 await self.process(scheduledIDs: ids)
             }
         }
+    }
+
+    public func enterBackground() async {
+        await process(scheduledIDs: await backend.scheduledIDs())
     }
 
     public func start(commandId: String) async -> RingCommandError? {
