@@ -49,13 +49,37 @@ class LocationServiceCadenceWiringTest {
     @Test
     fun `the command loop ticks and asks IdleCadence whether a poll is due`() {
         val loop = onStart
-        assertTrue("the loop waits one IdleCadence.POLL_TICK_MS per turn", loop.contains("delay(IdleCadence.POLL_TICK_MS)"))
+        assertTrue("the loop waits one IdleCadence tick per turn", loop.contains("delay(IdleCadence.pollTickMs("))
         assertTrue(
             "the loop polls only when IdleCadence.pollDue says so, with the server's interval and the screen state",
-            loop.contains("IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive())"),
+            loop.contains("IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive(), restricted)"),
         )
         assertTrue("the clock is monotonic, so a clock change cannot stall the poll", loop.contains("SystemClock.elapsedRealtime()"))
         assertFalse("the fixed 60 s poll constant is gone", source.contains("COMMAND_POLL_INTERVAL_MS"))
+    }
+
+    /**
+     * #673: the state that makes the poll 10 s. Mutants, each caught here: delete the `LockState` read
+     * and the loop cannot know a lock is up; pass `false` for `restricted` and a locked phone is back
+     * at the 60 s cap that cost the Flip4 run 52.4 s on a `resume_internet`; keep
+     * `delay(IdleCadence.POLL_TICK_MS)` and the 10 s rule polls at 15 s.
+     */
+    @Test
+    fun `the poll reads the lock state, so a lock or a pause is polled every 10 s`() {
+        val loop = onStart
+        assertTrue(
+            "the loop asks LockState, which is the state lock, pause and pause_internet all set",
+            loop.contains("val restricted = LockState.isActive(this@LocationService)"),
+        )
+        assertTrue(
+            "the state reaches the due rule",
+            loop.contains("IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive(), restricted)"),
+        )
+        assertTrue(
+            "and the tick is taken after the poll, so a lock set by the poll shortens the wait",
+            loop.contains("delay(IdleCadence.pollTickMs(LockState.isActive(this@LocationService)))"),
+        )
+        assertTrue("the import is there", source.contains("import com.familyshield.agent.enforcement.LockState"))
     }
 
     /**

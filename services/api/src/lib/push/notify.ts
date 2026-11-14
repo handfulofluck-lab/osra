@@ -240,15 +240,24 @@ export interface WakeOutcome {
  * Wake one child device. Never throws: the command row is already committed and published when this
  * runs, and a push outage must not fail a parent's command.
  *
+ * [#673] The Flip4 run of 12 Nov timed a `resume_internet` at 52.4 s and the API log held no line for
+ * any wake it had sent, so a push that was never sent could not be told from one FCM delivered late.
+ * Every attempt now writes one info line with the command id, FCM's message id (or the error) and the
+ * priority used; a wake that never left is a line too, because "no line" kept two meanings.
+ *
  * A token the provider reports as dead is cleared from the row (`UNREGISTERED` / 404 / invalid), which
  * is the only place a device token is ever removed — the agent re-registers on its next `onNewToken`
  * or poll tick.
  */
-export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
+export async function notifyDeviceWake(deviceId: string, commandId?: string): Promise<WakeOutcome> {
   const outcome: WakeOutcome = { delivered: 0, clearedToken: false, skipped: null };
+  // The command id and the device are on every line this call can write, so the fields live once.
+  const tag = `[push] device wake command=${commandId ?? "none"} device=${deviceId}`;
   try {
     const providers = getPushProviders();
     if (providers.size === 0) {
+      // Deliberately no per-call line: this is a process-wide configuration fact, and the warning
+      // below already says it once. There is no device-level "did it go out" question to answer.
       if (!warnedUnconfigured) {
         console.warn("[push] no provider configured (set FCM_SERVICE_ACCOUNT_JSON or APNS_*); device wake disabled");
         warnedUnconfigured = true;
@@ -256,12 +265,23 @@ export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
       return { ...outcome, skipped: "no_providers" };
     }
     const device = await prisma.device.findUnique({ where: { id: deviceId }, select: { id: true, pushToken: true, platform: true } });
-    if (!device?.pushToken) return { ...outcome, skipped: "no_token" };
+    if (!device?.pushToken) {
+      console.info(`${tag} skipped skip=no_token`);
+      return { ...outcome, skipped: "no_token" };
+    }
     const provider = deviceWakeProviderFor(device.platform as PushPlatform, providers);
-    if (!provider) return { ...outcome, skipped: "unsupported_platform" };
+    if (!provider) {
+      console.info(`${tag} skipped skip=unsupported_platform`);
+      return { ...outcome, skipped: "unsupported_platform" };
+    }
 
-    const result = await provider.send(device.pushToken, buildDeviceWakeMessage());
-    if (result.ok) return { ...outcome, delivered: 1 };
+    const message = buildDeviceWakeMessage();
+    const result = await provider.send(device.pushToken, message);
+    const sent = `provider=${provider.platform} priority=${message.priority}`;
+    if (result.ok) {
+      console.info(`${tag} sent ${sent} messageId=${result.messageId ?? "unreported"}`);
+      return { ...outcome, delivered: 1 };
+    }
     if (result.invalidToken) {
       // Compare-and-clear (Claude's #323 review). Clearing by id alone would erase a token that
       // rotated while this send was in flight: onNewToken uploads the new one, this stale send comes
@@ -273,27 +293,29 @@ export async function notifyDeviceWake(deviceId: string): Promise<WakeOutcome> {
         where: { id: deviceId, pushToken: device.pushToken },
         data: { pushToken: null },
       });
+      console.info(`${tag} failed ${sent} reason=${result.reason} tokenCleared=${cleared.count > 0}`);
       return { ...outcome, clearedToken: cleared.count > 0 };
     }
-    console.warn(`[push] device wake failed device=${deviceId} reason=${result.reason}`);
+    console.info(`${tag} failed ${sent} reason=${result.reason}`);
     return outcome;
   } catch (err) {
-    console.error("[push] notifyDeviceWake failed", err);
+    console.error(`${tag} threw`, err);
     return outcome;
   }
 }
 
 /**
  * Test seam: swap the wake sender so a command-path test can assert the fan-out without a provider.
- * Production leaves it as [notifyDeviceWake].
+ * Production leaves it as [notifyDeviceWake]. The second argument is the command id (#673): a fake may
+ * ignore it, and the wake log is where it is used.
  */
-let deviceWakeSender: (deviceId: string) => Promise<WakeOutcome> = notifyDeviceWake;
+let deviceWakeSender: (deviceId: string, commandId?: string) => Promise<WakeOutcome> = notifyDeviceWake;
 
-export function setDeviceWakeSender(fn: ((deviceId: string) => Promise<WakeOutcome>) | null): void {
+export function setDeviceWakeSender(fn: ((deviceId: string, commandId?: string) => Promise<WakeOutcome>) | null): void {
   deviceWakeSender = fn ?? notifyDeviceWake;
 }
 
-export function getDeviceWakeSender(): (deviceId: string) => Promise<WakeOutcome> {
+export function getDeviceWakeSender(): (deviceId: string, commandId?: string) => Promise<WakeOutcome> {
   return deviceWakeSender;
 }
 
@@ -301,10 +323,13 @@ export function getDeviceWakeSender(): (deviceId: string) => Promise<WakeOutcome
  * Fire-and-forget wake from a synchronous-ish path. The invocation happens **synchronously** (so a
  * test can observe it), the promise is detached (so a slow Google round trip never delays a parent's
  * command), and a rejection is swallowed because `notifyDeviceWake` already logs its own failures.
+ *
+ * [commandId] is the `DeviceCommand` row this wake is for, carried only so the log line can name it
+ * (#673). It is not part of the push: the payload stays `{ "w": "1" }`.
  */
-export function wakeDeviceDetached(deviceId: string): void {
+export function wakeDeviceDetached(deviceId: string, commandId?: string): void {
   try {
-    void deviceWakeSender(deviceId).catch(() => undefined);
+    void deviceWakeSender(deviceId, commandId).catch(() => undefined);
   } catch {
     /* a sender that throws synchronously is not allowed to fail the caller */
   }

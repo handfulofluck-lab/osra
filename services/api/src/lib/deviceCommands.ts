@@ -105,7 +105,7 @@ export async function enqueueDeviceCommand(
       // carries collapse key "wake" and the agent drains the queue, not the message.
       const message = toMessage(existing);
       await publishJson(`device:${deviceId}:commands`, message).catch(() => undefined);
-      wakeDeviceDetached(deviceId);
+      wakeDeviceDetached(deviceId, message.id);
       return message;
     }
   }
@@ -125,8 +125,9 @@ export async function enqueueDeviceCommand(
   // #319: the same wake over FCM, so a backgrounded phone with no socket does not wait for the
   // 15-minute poll. Detached on purpose — a slow or failed Google round trip must never delay or
   // fail a parent's command, and the row above is already durable. One funnel: every command
-  // producer (controls, rules, auth, this file) reaches the device through here.
-  wakeDeviceDetached(deviceId);
+  // producer (controls, rules, auth, this file) reaches the device through here. The row id travels
+  // with it only so the wake log can name the command (#673).
+  wakeDeviceDetached(deviceId, message.id);
   return message;
 }
 

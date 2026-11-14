@@ -29,6 +29,7 @@ import com.familyshield.agent.push.PushTokenUploadPolicy
 import com.familyshield.agent.commands.LocateFix
 import com.familyshield.agent.data.ConsentPolicy
 import com.familyshield.agent.data.ConsentState
+import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
 import com.familyshield.agent.network.dto.LocationPingBatchDto
@@ -149,15 +150,18 @@ class LocationService : Service() {
             // service runs. #353: the interval is the server's X-Poll-After (600 s when it can wake
             // this phone by push, else 60 s), capped at 60 s while the screen is on; the loop
             // ticks every 15 s so turning the screen on brings the next poll forward.
+            // #673: while a lock or a pause is up the interval is 10 s, and the tick is taken after the
+            // poll so a state the poll itself set (a `lock` it just dispatched) shortens the next wait.
             serviceScope.launch {
                 var lastPollAtMs: Long? = null
                 while (isActive) {
-                    delay(IdleCadence.POLL_TICK_MS)
                     val now = SystemClock.elapsedRealtime()
-                    if (IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive())) {
+                    val restricted = LockState.isActive(this@LocationService)
+                    if (IdleCadence.pollDue(lastPollAtMs, now, serverPollMs, isInteractive(), restricted)) {
                         lastPollAtMs = now
                         pollCommandsOnce()
                     }
+                    delay(IdleCadence.pollTickMs(LockState.isActive(this@LocationService)))
                 }
             }
         }
