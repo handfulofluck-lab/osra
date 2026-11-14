@@ -53,8 +53,6 @@ object ParentPin {
      * with it. Every path out of here is now a boolean: a blank, too-short or too-long input is a wrong
      * PIN, and the key derivation is wrapped so nothing it throws reaches a caller.
      */
-    fun verify(pin: String, stored: String?): Boolean = verify(pin, stored, ::pbkdf2)
-
     /**
      * The same check with the key-derivation function as a parameter, so a JVM test can see what [verify]
      * actually does. Claude's fault m1 — the pre-fix `verify`, with neither the length guard nor the
@@ -66,7 +64,7 @@ object ParentPin {
     internal fun verify(
         pin: String,
         stored: String?,
-        kdf: (String, ByteArray, Int) -> ByteArray,
+        kdf: (String, ByteArray, Int) -> ByteArray = ::pbkdf2,
     ): Boolean {
         if (stored.isNullOrBlank()) return false
         // A PIN outside the accepted length cannot match one that was hashed, and PBKDF2 refuses some

@@ -61,9 +61,9 @@ class ParentPinTest {
      * osra-security#17: an empty submit used to reach PBKDF2, which can throw on Android; the throw
      * took the agent process down and enforcement stopped with it.
      *
-     * Both halves are pinned here: the verifier answers false instead of throwing, and an input outside
-     * the accepted length never reaches the KDF at all. Mutant: drop the length guard -> the empty and
-     * too-short rows throw instead of returning false.
+     * This row is the no-throw contract only. It cannot pin the guard: on the JVM the JDK's PBKDF2 accepts
+     * an empty password, so a broken `verify` returns false here for the wrong reason as well. The guard
+     * and the wrapper are pinned by the two seam rows below, which is why the seam exists.
      */
     @Test
     fun `an empty or out-of-range pin is a wrong pin, never an exception`() {
