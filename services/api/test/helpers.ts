@@ -105,6 +105,7 @@ export class MockRedis {
   srem = vi.fn(async (..._args: unknown[]) => 1);
   smembers = vi.fn(async (_key: string) => [] as string[]);
   incrby = vi.fn(async (_key: string, _increment: number) => 1);
+  incr = vi.fn(async (_key: string) => 1);
   expire = vi.fn(async (_key: string, _seconds: number) => 1);
   /** Hash storage for the idle-request counters (roadmap 5.8) and anything else that counts in a hash. */
   readonly hashes = new Map<string, Record<string, string>>();
@@ -115,15 +116,14 @@ export class MockRedis {
     return Number(hash[field]);
   });
   hgetall = vi.fn(async (key: string) => this.hashes.get(key) ?? {});
-  /**
-   * A MULTI that behaves like the one `recordDeviceRequest` uses: `multi().hincrby(...).expire(...).exec()`
-   * queues both commands and applies them on `exec`, in order, through the same `hincrby`/`expire` mocks. A
-   * fake inside the test would assert the fake; this one means a broken chain (a missing `exec`, a dropped
-   * `expire`) actually fails the test.
-   */
+  /** Queue counter/hash writes and TTLs, applying them only when `exec` runs. */
   multi = vi.fn(() => {
     const queued: Array<() => Promise<unknown>> = [];
     const chain = {
+      incr: (key: string) => {
+        queued.push(() => this.incr(key));
+        return chain;
+      },
       hincrby: (key: string, field: string, increment: number) => {
         queued.push(() => this.hincrby(key, field, increment));
         return chain;
