@@ -2,7 +2,7 @@
 
 **For:** release security gate #637, box 1 ("threat model read against the build").
 **Author:** Claude (Fable, server gate). **Reviewer and owner of the verdict:** Ahmed (security).
-**Read from:** `main@da0b3f0c` (2026-11-14), plus the open pull requests named in the last column where a control
+**Read from:** `main@da0b3f0c` (2026-11-14; §5 updated the same evening), plus the open pull requests named in the last column where a control
 is not on `main` yet.
 **Scope:** `services/api` and what runs it in production: `infra/terraform/{base,env}` in account `osra-production`,
 Frankfurt (`eu-central-1`), per [ADR-0028](../../adr/0028-hosting-regions-and-scaling.md),
@@ -19,7 +19,8 @@ can check it. It describes the design. It does not describe any unfixed weakness
 |---|---|---|---|
 | A1 | A child's location history | Says where a child is and has been | PostgreSQL, 30 days (ADR-0028 decision 5) |
 | A2 | Flagged message excerpts and search text | A child's private words | PostgreSQL, encrypted with `VAULT_KEY` before it is stored (ADR-0006); 90 days |
-| A3 | Activity, app use, alerts, rules | A family's daily life | PostgreSQL; 90 days for events, 365 for daily totals |
+| A3 | Activity, app use, alerts, rules | A family's daily life | PostgreSQL; 90 days for events, 365 for daily totals, 12 months for alerts |
+| A10 | The family's subscription state | A forged entitlement gives the paid product away; a forged cancellation takes it from a paying family | PostgreSQL; the truth is Google Play's (ADR-0041) |
 | A4 | Parent accounts: e-mail, password hash, MFA secret, sessions | Whoever holds one controls a child's device | PostgreSQL (argon2 hashes; MFA secret encrypted), Redis (session caches) |
 | A5 | Per-device secrets | Whoever holds one can speak as that child's device | PostgreSQL ([ADR-0003](../../adr/0003-per-device-hmac-agent-auth.md)) |
 | A6 | The command channel (lock, pause, ring, rules) | A forged command locks a child out or lets one loose | API, Redis, FCM and APNs |
@@ -68,7 +69,7 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | Reading traffic in transit | TLS 1.2 and 1.3 only at the ALB; HTTP answers 301 to HTTPS | `infra/terraform/env/ecs.tf` (`ssl_policy = ELBSecurityPolicy-TLS13-1-2-2021-06`) |
 | Password guessing, code guessing, floods | Per-route rate limits keyed on the caller's address: 20 a minute on sign-in routes, 10 a minute on a pairing claim, 200 a minute overall; the sign-in and pairing limits fail closed when Redis is down | `services/api/src/lib/rateLimits.ts`; `test/rate-limits.test.ts`, `test/pair-claim-rate-limit.test.ts`, `test/mfa-reset-rate-limit.test.ts` |
 | Spoofing the caller's address to dodge those limits | `TRUST_PROXY` is a hop count (1), never `true` | `ecs.tf`; `test/rate-limits.test.ts`; `scripts/check-production-taskdef.mjs` (#778) |
-| Known attack traffic and bad-reputation sources | AWS managed WAF rule groups on the ALB; a per-address rate rule (count mode for the first two weeks) | `infra/terraform/env/waf.tf` |
+| Known attack traffic and bad-reputation sources | AWS managed WAF rule groups on the ALB block from the first day. The WAF's own per-address rate rule only **counts** at launch (`waf_rate_action = "count"`) and is switched to block after two weeks of real traffic, so that families behind one carrier address are not locked out. Until then the limits that enforce are the API's per-route limits in the row above | `infra/terraform/env/waf.tf` (`waf_rate_action`, `waf_rate_limit`). Day 0: managed groups block, rate rule counts. Day 14: a reviewed change sets `block` |
 | A hostile web page calling the API with a parent's session | Production must name its browser origins; a wildcard or an unset list refuses to boot | `src/lib/corsConfig.ts`; `test/cors-config.test.ts` |
 | Reaching the database or cache directly | Both in private subnets; security groups admit only the API tasks; the database is not publicly accessible | `infra/terraform/env/network.tf`, `rds.tf` |
 
@@ -92,6 +93,27 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | A reset or deletion link read from a log | The request log redacts `token=` and `ticket=` values | `src/lib/logRedaction.ts`; `test/account-deletion-web.test.ts` |
 | A JWT on a WebSocket URL | The socket accepts a single-use ticket only ([ADR-0022](../../adr/0022-websocket-ticket-only.md)) | `test/realtime.test.ts` |
 
+### 4.3a Mailed links and invitations (T1, T4, T5)
+
+| Threat | Control | Check |
+|---|---|---|
+| Using an old or already-used link | A password reset token lives 15 minutes, is single use, and a newer request supersedes it. An invitation lives 7 days, is bound to the invited address (403 on a mismatch) and answers 409 once it is no longer pending. A digest confirmation is single use and lives 24 hours | `src/routes/auth.ts` (reset), `src/routes/invites.ts` (`INVITE_TTL_SECONDS`), `src/routes/digests.ts`; `test/invites.test.ts`, `test/digests-abuse.test.ts` |
+| Using our mail to pester a stranger | Invitations and digest recipients are limited per family per day; a digest goes to a non-parent address only after that address confirms; at most five recipients | `test/invites.test.ts`, `test/digests-abuse.test.ts` |
+| A mail scanner that follows links confirming something | A link that changes state opens a page with a button; the change is a POST | `test/digests-abuse.test.ts` ("the confirmation button works from a browser"); `test/account-deletion-web.test.ts` |
+| Learning from the reset form whether an address has an account, or flooding a parent with reset mail | A reset request answers the same for a known and an unknown address, and one link per address per minute is issued, claimed before the account is looked up | `test/auth.test.ts` ("reset/request never reveals whether the email exists", "#167") |
+
+Four mailed links (reset, invitation, MFA reset, digest "open") have no page that serves them yet: #789. That is a
+missing function, not a weakness, and it is listed in §5 because a recovery path that does not work is a risk of its own.
+
+### 4.3b Subscription state (A10; T1, T2, T4)
+
+| Threat | Control | Check |
+|---|---|---|
+| A forged purchase | The API never believes the app: it asks Google Play for the purchase's state with its own service account, and only the family's owner may submit one | `src/routes/billing.ts` (`/google/verify`, `requireOwner`); `test/billing.test.ts`, `test/billing-play.test.ts` |
+| A forged or replayed Play notification | The notification endpoint accepts only a token Google signed for our audience and our named sender; without that configuration it answers 503. The notification's content is never the state: every one makes the API re-read the subscription from Play, so a replay re-reads the same truth | `src/routes/billing.ts` (`/google/rtdn`, `pushVerifier`); `test/billing-play.test.ts` ("refuses a token signed by anyone else", "refuses an expired token") |
+
+Open private item for this area: osra-security#15 (§5).
+
 ### 4.4 The child and the device channel (T3)
 
 | Threat | Control | Check |
@@ -100,6 +122,7 @@ the live probe (`services/api/scripts/qa-probe.mjs`). "#766 n" is an item of the
 | Using a device after the parent removed it | Removal revokes the device; its token answers `401 device_revoked` on every route | `sessionGuard.ts`; `test/durable-revocation.test.ts`; probe |
 | Guessing a pairing code | Six digits, short-lived, 10 claims a minute per address, and the parent approves the claim | `test/pairing.test.ts`, `test/pair-claim-rate-limit.test.ts` |
 | Going quiet: wiping or uninstalling the agent so nothing reports | The server raises an alert when a device stays silent past its reporting window | `src/jobs/deviceSilence.ts`; `test/device-silence.test.ts` |
+| A paired device reporting or asking as a sibling's device | A device's signature binds it to its own device row and child: a request that names another child answers `400 cross_child_content_forbidden`, another device `400 device_mismatch`. The shared `INTERNAL_HMAC_SECRET` is for services inside the stack, never for a device, and its callers are listed | `src/routes/content.ts` (the `auth.device` checks); [authz-matrix.md](authz-matrix.md); `test/internal-signing.test.ts` |
 | Replaying or forging a parent's command | Commands are rows the server writes; the device fetches them over its signed channel (ADR-0012, ADR-0019) | `test/commands.test.ts` |
 
 What the child can do on the device itself belongs to the client gates and the child-escape catalogue (#736, #737).
@@ -144,7 +167,7 @@ What the child can do on the device itself belongs to the client gates and the c
 | Running production with the staging credential, or the reverse | `up.sh` requires a named profile for production and refuses the staging one; the provider pins the account id | #772; `backend/*.hcl` |
 | Production created without its protections | Both stacks refuse to plan production unless every protection is set | `*/production_guard.tf`; `*/tests/environments.tftest.hcl` |
 | Secrets readable from Terraform state | State bucket versioned, encrypted, TLS-only | Customer key, tighter bucket policy, and `JWT_SECRET` and `VAULT_KEY` out of state: #766 1 and 10 |
-| A misused deploy credential | See §5 | osra-security#27; #766 7 |
+| A misused deploy credential | Owner decision of 2026-11-14 (#637 comment 6881338157): Karim signs in with MFA; Claude and Kimi keep one permanent, full-rights machine credential on his PC. That is a written exception to "no long-lived keys", accepted by the owner, with compensating controls: self-rotation, the organisation trail, and an alarm when the credential is used from anywhere but that PC | The controls are #766 batch E (#784); this row is complete only when that is applied and its evidence is on #637. osra-security#27 |
 | An action nobody can reconstruct afterwards | Alarms on the stack's health and a budget alarm | Organisation CloudTrail, GuardDuty and the ALB, VPC, WAF and PostgreSQL logs: #766 2 |
 
 ## 5. Open items for this gate
@@ -153,11 +176,14 @@ Each is tracked where its detail may be written. This page gives the number only
 
 | Item | State on 2026-11-14 | Needed for sign-off |
 |---|---|---|
-| osra-security#27 (who can deploy to production, and how) | Open | Closed, or accepted by Karim in writing on #637 |
+| osra-security#27 (who can deploy to production, and how) | Decided by Karim 2026-11-14; controls being built (#784) | #784 applied and its evidence posted on #637 |
+| #789 (four mailed links open no page) | Open | Ahmed's word on whether it blocks this gate; fixed before real families either way |
 | osra-security#14, #15, #20, #26 | Open; Ahmed to say which belong to this gate | Triage, then closed or accepted |
 | #766 items 1 to 13 | Batches A to D, 15 to 17 Nov | Merged and applied before the service phase |
-| #777, #778 | In review | Merged |
-| #772, #767 | In review | Merged |
+| #777 | Merged 2026-11-14 | Done |
+| #778 | In review | Merged |
+| #772 | Merged 2026-11-14 | Done |
+| #767 | In review | Merged |
 
 ## 6. What the configuration must match in the published privacy policy
 
@@ -167,7 +193,9 @@ Each is tracked where its detail may be written. This page gives the number only
 |---|---|
 | Location history: 30 days | `LOCATION_RETENTION_DAYS` unset (default 30) or at most 30 |
 | Activity events and stored message excerpts: 90 days | `RETENTION_DAYS` unset or at most 90 |
-| Daily app-use totals: 365 days | `ROLLUP_RETENTION_DAYS` |
+| Daily app-use totals: 365 days | `ROLLUP_RETENTION_DAYS` unset (default 365). The code accepts a larger number, so production must leave it unset or at most 365; a rule for this in `check-production-taskdef.mjs` follows #778 |
+| Alerts: 12 months, or until the child or the account is deleted | `ALERT_RETENTION_DAYS` unset (default 365); the code caps it at 365 (`src/lib/usageModel.ts`) |
+| Records of a reset of two-step sign-in: 12 months after the reset ends | The nightly job in `src/jobs/mfaResetExpiry.ts`; `test/mfa-reset-expiry.test.ts`. No setting changes it |
 | Each encrypted database backup is deleted within 90 days | Point-in-time restore is 14 days. A backup copy outside the account (#766 5) must expire within 90 days |
 | Server logs hold identifiers and no messages or content, for at most 90 days | `test/log-hygiene.test.ts`; log retention of **exactly 90 days** satisfies both this ceiling and the security floor asked for in #766 11 |
 | Data is stored in the EU | Every resource in `eu-central-1`; secrets resolve from `eu-central-1` ARNs only |
