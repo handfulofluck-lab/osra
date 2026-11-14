@@ -277,4 +277,4 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - After the directory trust check, a stale temporary file is removed before the protected `CreateNew`. A failed save retains in-memory enforcement and produces one error log and one tamper alert per continuous failure episode, resetting only after a successful save.
 - `unlock` and `resume` clear all session and device restrictions, including a session the fallback disconnected. A later sign-in cannot inherit an unlocked restriction.
 - [x] Write failing tests for insecure directories, ACLs, missing/corrupt state and disconnected-session unlock. Run them RED, implement minimally, then run the complete desktop suite and the real CI probe again.
-- [ ] Update ADR-0041, the testing guide and the PR with the actual real-service result. Keep the artifact unsigned and keep W1b/W2/W3/W4 exclusions explicit.
+- [x] Update ADR-0041, the testing guide and the PR with the actual real-service result. Keep the artifact unsigned and keep W1b/W2/W3/W4 exclusions explicit.
