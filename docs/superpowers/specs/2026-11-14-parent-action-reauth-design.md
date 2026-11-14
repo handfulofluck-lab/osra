@@ -6,6 +6,7 @@
 - **Issue:** #742, beta-A blocker, risk R3; parent app on Android and iPhone.
 - **Product/UI/UX:** #650 comments 6864489687 and 6864555778. The sixteen English and Arabic strings are final there and are copied byte for byte; this document does not create alternate wording.
 - **Security/API:** #742 comment 6879252992 approves `POST /v1/auth/reauth` with the existing `checkReauth` semantics. Password is required, plus current TOTP when MFA is enabled. Recovery codes are not accepted. The endpoint is a separate, independently reviewed commit in the same PR so Ahmed can read it alone.
+- **Ahmed's security ruling:** #742 comment 6879750562. A successful TOTP consumes its time step exactly as login does, so a second use is refused. Android permits only `BIOMETRIC_STRONG` or device credential, never weak Class 2 face unlock. Consent withdrawal always asks; pairing-code generation does not. Grace exists only in memory and never survives kill/relaunch, background, lock or unreadable state.
 - **Execution:** inline by K31 with fail-first tests. No subagent is substituted for the requested K3.1 Pro review. Claude verifies cross-family; Ahmed reviews security and may tighten the MFA decision; Fable or Ahmed supplies the R3 key as applicable.
 
 ## Outcome
@@ -22,13 +23,14 @@ The server-side command and family authorization rules remain in force. This is 
 | Bonus time and wind-down | Prompt unless a live grace exists |
 | Lock, unlock, pause, resume, pause internet and resume internet | Prompt unless a live grace exists; immediate controls do not change visually before success |
 | Remove/unlink a device or child | Always prompt, even during grace |
+| Consent withdrawal | Always prompt, even during grace, because it switches protection off |
 | Account and family-member changes, including invitations/revocation, MFA enrollment/recovery-code regeneration and account/family deletion | Always prompt, even during grace; existing server reauthentication still applies |
-| Open app, read map, alerts, reports, history, pairing/setup or Settings | Never prompt merely to read |
+| Open app, read map, alerts, reports, history, pairing-code generation/setup or Settings | Never prompt merely to read or create a pairing code |
 | Ring, locate and SOS acknowledgement | Never prompt; these are urgent/read-only actions |
 
 The PR guards existing write paths, not a new removal workflow or a second account settings system. Every write listed above must route through the guard before its API call. UI state for immediate actions must remain unchanged after cancellation/failure; editor drafts remain intact for another attempt.
 
-Consent withdrawal, pairing-code generation and non-security preference writes are not silently reclassified. If their inclusion is ambiguous at implementation time, Claude rules before they change. They do not justify bypassing the listed actions.
+Non-security preference writes are not silently reclassified. If their inclusion is ambiguous at implementation time, Claude rules before they change. They do not justify bypassing the listed actions.
 
 ## Architecture
 
@@ -36,7 +38,7 @@ Consent withdrawal, pairing-code generation and non-security preference writes a
 
 A Riverpod `ParentActionGuard` exposes a single result: passed, cancelled/failed, or no device-owner method. An enum selects the approved reason for rules, pause/lock/continue, removal, or account change. No screen calls `local_auth` directly.
 
-The production adapter uses `local_auth`'s system UI with biometrics **and device credential** (`deviceOwnerAuthentication` on iOS, `BiometricPrompt` with device-credential fallback on Android). `local_auth` is not currently a dependency; the issue explicitly approves adding it. The compatible version is resolved by the project's pinned Flutter/Dart toolchain and committed lockfile, not guessed from another project.
+The production adapter uses `local_auth`'s system UI with **strong biometrics and device credential** (`deviceOwnerAuthentication` on iOS, `BiometricPrompt` with `BIOMETRIC_STRONG` or device-credential fallback on Android). Weak Class 2 face unlock is never an acceptable substitute. `local_auth` is not currently a dependency; the issue explicitly approves adding it. The compatible version is resolved by the project's pinned Flutter/Dart toolchain and committed lockfile, not guessed from another project. A test pins these authenticator choices so a later change cannot weaken them.
 
 The adapter passes the localized reason and every customizable title/hint/cancel string supplied by the plugin, so no English plugin default leaks into Arabic. Android uses the approved title only, with no subtitle/description. iOS uses the approved reason text and Arabic `NSFaceIDUsageDescription` in `InfoPlist.strings`. Platform plugin setup is limited to what the plugin documents; no custom PIN pad or biometric artwork is built.
 
@@ -69,11 +71,11 @@ The no-screen-lock path is closed, not bypassed:
 - Reuses `checkReauth` exactly: password plus current TOTP when MFA is enabled; recovery codes are not accepted.
 - Shares login's rate limit and lockout counter. A wrong proof counts as a failed login.
 - Returns one uniform `401` for wrong password, missing/wrong TOTP and lockout, without naming the failed factor.
-- On success returns only **204**, with no session, access token, refresh token, `lastLoginAt` or other account mutation.
+- On success returns only **204**, with no session, access token, refresh token or `lastLoginAt` change. A successful TOTP updates only its last-used step, exactly as login does, so it cannot be replayed within its window.
 - Writes one `parent_reauth` audit result with success/failure and no password, TOTP, recovery code or additional IP data beyond the existing login record. A success is not returned without the audit result.
 - Does not change command authorization, family isolation, consent gates, refresh rotation or existing MFA/recovery behavior.
 
-API tests use only synthetic identities and test-time password hashes. They prove valid proof returns 204; invalid proof and lockout are indistinguishable; revoked/expired sessions are refused before password verification; the parent row is byte-for-byte unchanged; success/failure audit rows contain no proof material; and recovery codes are not accepted.
+API tests use only synthetic identities and test-time password hashes. They prove valid proof returns 204; invalid proof and lockout are indistinguishable; revoked/expired sessions are refused before password verification; `lastLoginAt`, sessions and other account fields are unchanged apart from the explicitly allowed TOTP last-used step; the same TOTP is refused on the second call; success/failure audit rows contain no proof material; and recovery codes are not accepted.
 
 ## Component boundaries
 
@@ -89,7 +91,7 @@ API tests use only synthetic identities and test-time password hashes. They prov
 
 ### Fail-first local gates
 
-- Guard unit tests: first success, grace reuse, fixed expiry, no extension, background/lock/logout invalidation, removal/account always-ask, plugin failure/cancel and no-method result.
+- Guard unit tests: first success, grace reuse, fixed expiry, no extension, background/lock/logout invalidation, kill/relaunch with no persisted grace, removal/account/consent always-ask, strong-authenticator flags, plugin failure/cancel and no-method result.
 - Widget tests: cancelled/failed actions send no request and do not flip immediate controls; drafts survive; ungated read/ring/locate/SOS acknowledgement never prompts; every listed write category is exercised through the guard.
 - No-method tests: both platform settings destinations, wrong password/TOTP, success, no proof stored, Home warning and informational Settings row.
 - API tests: all 204 endpoint invariants, including uniform failure, shared lockout, idempotence and audit redaction.
