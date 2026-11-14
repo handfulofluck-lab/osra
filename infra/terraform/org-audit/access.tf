@@ -111,7 +111,7 @@ resource "aws_kms_key" "access_alarms" {
         # The AWS-managed aws/sns key cannot be used by CloudWatch, so an alarm on such a topic never arrives.
         Sid       = "CloudWatchPublishes"
         Effect    = "Allow"
-        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Principal = { Service = ["cloudwatch.amazonaws.com", "events.amazonaws.com"] }
         Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
         Resource  = "*"
         Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
@@ -130,9 +130,9 @@ resource "aws_sns_topic_policy" "access_alarms" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid       = "CloudWatchAlarms"
+      Sid       = "CloudWatchAlarmsAndGuardDuty"
       Effect    = "Allow"
-      Principal = { Service = "cloudwatch.amazonaws.com" }
+      Principal = { Service = ["cloudwatch.amazonaws.com", "events.amazonaws.com"] }
       Action    = "sns:Publish"
       Resource  = aws_sns_topic.access_alarms.arn
       Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
@@ -237,6 +237,14 @@ locals {
     aws_cloudwatch_metric_alarm.agent_key_changed.arn,
     aws_cloudwatch_metric_alarm.agent_new_principals.arn,
   ]
+  watched_detector_arns = [
+    aws_guardduty_detector.management.arn, "${aws_guardduty_detector.management.arn}/*",
+    aws_guardduty_detector.management_us_east_1.arn, "${aws_guardduty_detector.management_us_east_1.arn}/*",
+  ]
+  watched_rule_arns = [
+    aws_cloudwatch_event_rule.management_guardduty_high.arn,
+    aws_cloudwatch_event_rule.management_guardduty_forward.arn,
+  ]
 }
 
 resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
@@ -254,7 +262,7 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
       {
         Sid      = "TrailBucket"
         Effect   = "Deny"
-        Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion", "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutLifecycleConfiguration", "s3:PutBucketVersioning", "s3:PutEncryptionConfiguration"]
+        Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion", "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutLifecycleConfiguration", "s3:PutBucketVersioning", "s3:PutEncryptionConfiguration", "s3:BypassGovernanceRetention", "s3:PutObjectRetention", "s3:PutObjectLegalHold", "s3:PutBucketObjectLockConfiguration"]
         Resource = [aws_s3_bucket.trail.arn, "${aws_s3_bucket.trail.arn}/*"]
       },
       {
@@ -280,6 +288,24 @@ resource "aws_iam_user_policy" "agent_cannot_disable_watchers" {
         Effect   = "Deny"
         Action   = ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:PutKeyPolicy", "kms:DisableKeyRotation"]
         Resource = [aws_kms_key.trail.arn, aws_kms_key.access_alarms.arn]
+      },
+      {
+        Sid      = "GuardDuty"
+        Effect   = "Deny"
+        Action   = ["guardduty:DeleteDetector", "guardduty:UpdateDetector", "guardduty:CreateFilter", "guardduty:UpdateFilter", "guardduty:DeleteFilter", "guardduty:CreateIPSet", "guardduty:UpdateIPSet", "guardduty:ArchiveFindings", "guardduty:UpdateMalwareScanSettings"]
+        Resource = local.watched_detector_arns
+      },
+      {
+        Sid      = "GuardDutyAlertRules"
+        Effect   = "Deny"
+        Action   = ["events:DeleteRule", "events:DisableRule", "events:PutRule", "events:PutTargets", "events:RemoveTargets"]
+        Resource = local.watched_rule_arns
+      },
+      {
+        Sid      = "GuardDutyForwardRole"
+        Effect   = "Deny"
+        Action   = ["iam:DeleteRole", "iam:DeleteRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy"]
+        Resource = aws_iam_role.guardduty_forward.arn
       },
       {
         Sid      = "TrailRole"

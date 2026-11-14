@@ -26,6 +26,9 @@ resource "aws_kms_key" "alarms" {
         Principal = { Service = ["cloudwatch.amazonaws.com", "events.amazonaws.com"] }
         Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
         Resource  = "*"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        }
       },
     ]
   })

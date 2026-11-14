@@ -1,6 +1,6 @@
 # --- Audit and access logs (production, #766 item 2) ------------------------------------------
-# ALB access logs and VPC flow logs go to one bucket in this account; WAF logs and PostgreSQL logs go to
-# CloudWatch. Every one of them is kept exactly 90 days: at least 90 for an investigation (Ahmed), at most 90
+# VPC flow logs go to a bucket in this account; WAF logs and PostgreSQL logs go to CloudWatch. ALB access logs
+# stay off: they store the full URL, and the WebSocket ticket is in the query string (see env/ecs.tf). Every one of them is kept exactly 90 days: at least 90 for an investigation (Ahmed), at most 90
 # because the privacy policy promises it (site/privacy). Staging creates none of this (cost; nothing real
 # flows there). The account-wide trail and GuardDuty are in org-audit/ and base/guardduty.tf.
 
@@ -8,8 +8,6 @@ locals {
   audit_logs_enabled = var.audit_logs_enabled
   audit_retention    = 90
 }
-
-data "aws_elb_service_account" "main" {}
 
 resource "aws_s3_bucket" "access_logs" {
   count = local.audit_logs_enabled ? 1 : 0
@@ -40,7 +38,7 @@ resource "aws_s3_bucket_ownership_controls" "access_logs" {
   }
 }
 
-# ALB access logs accept only SSE-S3.
+# Flow logs delivered to S3 use SSE-S3 here (no extra key policy for log delivery).
 resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
   count = local.audit_logs_enabled ? 1 : 0
 
@@ -80,14 +78,6 @@ resource "aws_s3_bucket_policy" "access_logs" {
         Action    = "s3:*"
         Resource  = [aws_s3_bucket.access_logs[0].arn, "${aws_s3_bucket.access_logs[0].arn}/*"]
         Condition = { Bool = { "aws:SecureTransport" = "false" } }
-      },
-      {
-        # Regions older than August 2022 (eu-central-1 included) deliver ALB logs from the ELB account.
-        Sid       = "AlbAccessLogs"
-        Effect    = "Allow"
-        Principal = { AWS = data.aws_elb_service_account.main.arn }
-        Action    = "s3:PutObject"
-        Resource  = "${aws_s3_bucket.access_logs[0].arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
       },
       {
         Sid       = "FlowLogsWrite"
@@ -130,7 +120,8 @@ resource "aws_flow_log" "vpc" {
   depends_on = [aws_s3_bucket_policy.access_logs]
 }
 
-# WAF requires the aws-waf-logs- prefix. Credentials and session cookies are redacted before they are stored.
+# WAF requires the aws-waf-logs- prefix. Credentials, session cookies, the query string (the WebSocket ticket
+# rides there) and the device signature header are redacted before they are stored.
 resource "aws_cloudwatch_log_group" "waf" {
   count = local.audit_logs_enabled && var.waf_enabled ? 1 : 0
 
@@ -153,6 +144,14 @@ resource "aws_wafv2_web_acl_logging_configuration" "api" {
     single_header {
       name = "cookie"
     }
+  }
+  redacted_fields {
+    single_header {
+      name = "x-familyshield-signature"
+    }
+  }
+  redacted_fields {
+    query_string {}
   }
 }
 
