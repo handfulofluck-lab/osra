@@ -648,7 +648,8 @@ describe("ring alert intake", () => {
     const started = Date.now() - 100_000;
     const { app, rows, postRing } = await fixture();
     prismaMock.deviceCommand.findUnique.mockResolvedValue({
-      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", createdAt: new Date(started),
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "acked",
+      createdAt: new Date(started), ackedAt: new Date(started),
     });
     try {
       const response = await postRing("timed_out", 0, { afterRestart: true });
@@ -658,11 +659,41 @@ describe("ring alert intake", () => {
     } finally { await app.close(); }
   });
 
+  it("measures the restart cap from the first successful application", async () => {
+    const now = Date.now();
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "acked",
+      createdAt: new Date(now - 600_000), ackedAt: new Date(now - 60_000),
+    });
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 240 });
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it("does not certify a restart timeout without an applied acknowledgement", async () => {
+    const { app, rows, postRing } = await fixture();
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "delivered",
+      createdAt: new Date(Date.now() - 600_000), ackedAt: null,
+    });
+    try {
+      const response = await postRing("timed_out", 0, { afterRestart: true });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ active: true, retryAfterSeconds: 300 });
+      expect(rows).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
   it("accepts a genuine restart timeout with afterRestart and the approved fallback", async () => {
     const started = Date.now() - 600_000;
     const { app, rows, postRing } = await fixture();
     prismaMock.deviceCommand.findUnique.mockResolvedValue({
-      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", createdAt: new Date(started),
+      id: ringId.toLowerCase(), deviceId: "dev-1", type: "ring", status: "acked",
+      createdAt: new Date(started), ackedAt: new Date(started),
     });
     try {
       const response = await postRing("timed_out", 0, { afterRestart: true });

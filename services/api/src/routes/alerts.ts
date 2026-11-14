@@ -140,7 +140,11 @@ export async function alertsRoutes(app: FastifyInstance) {
       }
       acceptedMetadata = { ...metadata, ringId };
       if (metadata?.state === "timed_out" && metadata.afterRestart === true) {
-        const retryAfterSeconds = Math.min(300, Math.ceil((command.createdAt.getTime() + 300_000 - Date.now()) / 1000));
+        // Queue age is not ringing time: the first successful acknowledgement proves the alarm was applied.
+        const appliedAt = command.status === "acked" ? command.ackedAt : null;
+        const retryAfterSeconds = appliedAt
+          ? Math.min(300, Math.ceil((appliedAt.getTime() + 300_000 - Date.now()) / 1000))
+          : 300;
         if (retryAfterSeconds > 0) {
           return reply.code(200).send({ active: true, retryAfterSeconds });
         }
