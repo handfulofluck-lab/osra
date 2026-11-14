@@ -2966,7 +2966,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get phoneSetupOtherSpaceClone =>
-      'This phone has a second space for cloned apps (Dual Messenger).';
+      'This phone has another secure space that may run cloned apps (more than one copy of the same app). OSRA may not be able to monitor it until it is turned off in the phone\'s Settings.';
 
   @override
   String get phoneSetupOtherSpaceWork => 'This phone has a work profile.';
