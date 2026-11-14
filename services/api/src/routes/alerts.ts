@@ -3,8 +3,9 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { raiseAlertOnce, ringAlertFields } from "../lib/alerts.js";
+import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
-import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
+import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -75,14 +76,23 @@ export async function alertsRoutes(app: FastifyInstance) {
       skip: (query.page - 1) * query.limit,
       take: query.limit,
     });
-    return { items: alerts, meta: { total, page: query.page, limit: query.limit } };
+    // Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts`
+    // without `location`. The alert is theirs to read; the child's coordinates are not, so the five keys
+    // come off every row on this broad read — the same rule that withholds geofences from `GET /v1/family`.
+    // `guardianPermissions` is null for owners, co-parents and device tokens, so their rows are untouched.
+    const perms = await guardianPermissions(req);
+    const items = perms !== null && !perms.includes("location") ? alerts.map(withoutAlertLocation) : alerts;
+    return { items, meta: { total, page: query.page, limit: query.limit } };
   });
 
   /** Acknowledge an alert. */
   app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
-    return { alert };
+    // Issue #672 review (Claude's B1b): the ack returns the row, so a guardian holding `alerts` without
+    // `location` would read the place here even though the list withholds it. Same rule, same helper.
+    const perms = await guardianPermissions(req);
+    return { alert: perms !== null && !perms.includes("location") ? withoutAlertLocation(alert) : alert };
   });
 
   /** HMAC-signed endpoint for device/AI-originated alerts (ai-engine, child agents). */
@@ -149,7 +159,10 @@ export async function alertsRoutes(app: FastifyInstance) {
       title,
       body,
       ...ringAlertFields(category, acceptedMetadata, dedupeKey),
-      metadata: acceptedMetadata,
+      // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
+      // The location is normalised here — or dropped, keeping every other key — and never rejects the
+      // alert: an SOS with no usable fix is still an SOS a parent must receive.
+      metadata: sanitizeAlertMetadata(acceptedMetadata),
       dedupeKey,
       attemptCount,
       childName: child.displayName,
