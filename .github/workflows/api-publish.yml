@@ -57,8 +57,8 @@ jobs:
           # Chosen in the shell, not with `a && b || c` in an expression: that form falls back to the
           # staging value when the production variable is empty.
           case "$TARGET" in
-            staging) PREFIX=""; AWS_ECR_REPOSITORY="$STAGING_REPO"; AWS_PUBLISH_ROLE_ARN="$STAGING_ROLE" ;;
-            production) PREFIX="PRODUCTION_"; AWS_ECR_REPOSITORY="$PRODUCTION_REPO"; AWS_PUBLISH_ROLE_ARN="$PRODUCTION_ROLE" ;;
+            staging) PREFIX=""; AWS_ECR_REPOSITORY="${STAGING_REPO:-}"; AWS_PUBLISH_ROLE_ARN="${STAGING_ROLE:-}" ;;
+            production) PREFIX="PRODUCTION_"; AWS_ECR_REPOSITORY="${PRODUCTION_REPO:-}"; AWS_PUBLISH_ROLE_ARN="${PRODUCTION_ROLE:-}" ;;
             *) echo "::error::unknown target '$TARGET'"; exit 1 ;;
           esac
           if [ -z "$AWS_ECR_REPOSITORY" ]; then
