@@ -16,6 +16,13 @@ class ParentPinTest {
         assertTrue(stored.startsWith("pbkdf2$"))
         assertFalse(stored.contains("4729"))
         assertTrue(ParentPin.verify("4729", stored))
+        // The guard itself, because the JVM cannot reproduce the crash: Android's PBKDF2 provider throws
+        // `password empty`, the JDK's silently computes a hash. A row that only calls verify("") passes
+        // for the wrong reason - the hash does not match - so the length policy is asserted directly.
+        assertFalse(ParentPin.hasAcceptedLength(""))
+        assertFalse(ParentPin.hasAcceptedLength("47"))
+        assertFalse(ParentPin.hasAcceptedLength("472912345"))
+        assertTrue(ParentPin.hasAcceptedLength("4729"))
         assertFalse(ParentPin.verify("4728", stored))
         assertFalse(ParentPin.verify("", stored))
     }
@@ -48,5 +55,25 @@ class ParentPinTest {
         assertEquals("Choose a PIN that is not all the same digit.", ParentPin.validationError("7777"))
         assertEquals("Choose a less predictable PIN.", ParentPin.validationError("1234"))
         assertEquals("Choose a less predictable PIN.", ParentPin.validationError("123456"))
+    }
+
+    /**
+     * osra-security#17: an empty submit used to reach PBKDF2, which throws `password empty` — the throw
+     * killed the agent process, and the ring and enforcement died with it. A child silenced a parent's
+     * ring with one tap and no PIN (Flip4, 13 Nov 20:28Z).
+     *
+     * Both halves are pinned here: the verifier answers false instead of throwing, and an input outside
+     * the accepted length never reaches the KDF at all. Mutant: drop the length guard -> the empty and
+     * too-short rows throw instead of returning false.
+     */
+    @Test
+    fun `an empty or out-of-range pin is a wrong pin, never an exception`() {
+        val stored = ParentPin.hash("4729")
+        assertFalse(ParentPin.verify("", stored))
+        assertFalse(ParentPin.verify("", "pbkdf2\$120000\$AAAA\$AAAA"))
+        assertFalse(ParentPin.verify("47", stored))
+        assertFalse(ParentPin.verify("472912345", stored))
+        // and the happy path still works, so the guard has not simply disabled verification
+        assertTrue(ParentPin.verify("4729", stored))
     }
 }

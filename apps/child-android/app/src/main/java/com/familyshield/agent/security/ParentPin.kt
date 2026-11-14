@@ -30,6 +30,14 @@ object ParentPin {
         else -> null
     }
 
+    /**
+     * True when [pin] has a length a stored PIN can have. Named and public because the guard is the part
+     * that can be pinned on the JVM: Android's PBKDF2 provider **throws** on an empty password while the
+     * JDK's computes a hash, so a unit test that only calls [verify] passes for the wrong reason — the
+     * hash simply does not match. osra-security#17 is the device half of that difference.
+     */
+    fun hasAcceptedLength(pin: String): Boolean = pin.length in MIN_LENGTH..MAX_LENGTH
+
     /** Hashes [pin] with a fresh random salt into the storable string. */
     fun hash(pin: String, random: SecureRandom = SecureRandom()): String {
         val salt = ByteArray(SALT_BYTES).also { random.nextBytes(it) }
@@ -37,15 +45,26 @@ object ParentPin {
         return "pbkdf2\$$ITERATIONS\$${b64(salt)}\$${b64(hash)}"
     }
 
-    /** Constant-time check of [pin] against a [stored] hash; false on any malformed input. */
+    /**
+     * Constant-time check of [pin] against a [stored] hash; false on any malformed input.
+     *
+     * osra-security#17: an **empty** PIN used to reach PBKDF2, which throws `IllegalArgumentException:
+     * password empty`. The throw crossed into the UI and killed the whole agent process — taking the
+     * ring and enforcement with it — so a child could silence a parent's ring with one tap and no PIN.
+     * Every path out of here is now a boolean: a blank, too-short or too-long input is a wrong PIN, and
+     * the KDF itself is wrapped so nothing it can throw reaches a caller.
+     */
     fun verify(pin: String, stored: String?): Boolean {
         if (stored.isNullOrBlank()) return false
+        // A PIN outside the accepted length cannot match one that was hashed, and PBKDF2 refuses some
+        // of those inputs outright. Reject before the KDF rather than after it throws.
+        if (!hasAcceptedLength(pin)) return false
         val parts = stored.split("$")
         if (parts.size != 4 || parts[0] != "pbkdf2") return false
         val iterations = parts[1].toIntOrNull() ?: return false
         val salt = runCatching { unb64(parts[2]) }.getOrNull() ?: return false
         val expected = runCatching { unb64(parts[3]) }.getOrNull() ?: return false
-        val actual = pbkdf2(pin, salt, iterations)
+        val actual = runCatching { pbkdf2(pin, salt, iterations) }.getOrNull() ?: return false
         return constantTimeEquals(expected, actual)
     }
 
