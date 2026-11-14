@@ -145,6 +145,7 @@ final class RingRecoveryTests: XCTestCase {
         await controller.start(id)
         var release: (() -> Void)?
         reporter.reportGate = {
+            reporter.reportGate = nil
             await withCheckedContinuation { continuation in
                 release = { continuation.resume() }
             }

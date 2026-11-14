@@ -1001,8 +1001,10 @@ into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical
 - **The only stops:** the parent PIN, the parent's `stop_ring`, or 300 seconds. A correct PIN reports `pin_stopped`;
   `stop_ring` records `parent_stopped` without another push; the cap reports `timed_out`. Five wrong PINs still lock
   the PIN gate without stopping the alarm. Replaying a stopped `ring` command never schedules another alarm. Both
-  parent stop buttons include the latest ring UUID when known; an absent payload keeps its legacy meaning, and a
-  malformed target fails without stopping the current ring.
+  parent stop buttons include the latest applied ring UUID when known, ignoring failed and expired rows; an unavailable
+  history keeps the legacy no-payload meaning. A malformed target fails without stopping the current ring.
+- **No first-run PIN:** with no parent PIN configured, the active ring offers no setup-to-stop path. The parent's
+  `stop_ring` and the cap still work. A PIN configured by the parent before the ring is required for a phone-side stop.
 - **§1 escape rows:** dismissing the system alert, Home/swipe-up, the app switcher, Notification Centre, Control
   Centre, the side button, force-quitting, rebooting and going offline are not stops. `alarmUpdates` re-arms a missing
   active UUID and records each dismissal once. "Open OSRA Kids" returns to the PIN gate; no notification accepts PIN
@@ -1011,8 +1013,9 @@ into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical
   app. If a push or opening the app is needed, record that mechanism and its actual delay rather than infer it here.
 - **Restart and trusted time:** while alive, the monotonic deadline alone ends the ring, in either wall-clock direction.
   After a reboot, wall-clock expiry alone never stops it: keep it pending with a fresh 300-second monotonic timeout and
-  retry. Only a positive server answer can end it. The API compares the original command's timestamp with its own clock
-  and returns `retryAfterSeconds` while it is unexpired; the phone re-arms for that remainder. Network failure and
+  retry. Only a positive server answer can end it. The API compares the first successful application acknowledgement
+  with its own clock and returns `retryAfterSeconds` while it is unexpired; an unacknowledged command stays pending.
+  The phone re-arms for that remainder. Network failure and
   4xx/5xx responses stay pending. An accepted stop reports `afterRestart` and has its own parent line.
 - **Family removal:** unpairing, server revocation and consent withdrawal stop locally and send no ring alert.
 - **Pictures:** capture the ring view with the keyboard down and up, the largest ordinary text size, the system alert,
