@@ -55,6 +55,14 @@ final class RingRecoveryTests: XCTestCase {
         for _ in 0..<8 { await Task.yield() }
     }
 
+    private func waitForGate(_ opened: () -> Bool) async {
+        for _ in 0..<20 {
+            if opened() { return }
+            await Task.yield()
+        }
+        XCTFail("the asynchronous gate was not reached")
+    }
+
     private func pairForTransport() {
         XCTAssertTrue(AgentIdentityStore.save(AgentIdentity(
             apiBaseURL: URL(string: "https://api.example.invalid")!, deviceToken: "device-jwt", deviceId: "dev-1",
@@ -142,7 +150,7 @@ final class RingRecoveryTests: XCTestCase {
             }
         }
         let stopped = Task { await controller.stop(.parentCommand) }
-        await Task.yield()
+        await waitForGate { release != nil }
         await controller.start(replacement)
         release?()
         await stopped.value
@@ -160,7 +168,7 @@ final class RingRecoveryTests: XCTestCase {
         }
         let controller = controller()
         let started = Task { await controller.start(id) }
-        await Task.yield()
+        await waitForGate { release != nil }
         await controller.stopForUnpair()
         release?()
         await started.value
