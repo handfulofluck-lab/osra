@@ -84,7 +84,7 @@ public enum RingCommandError: String, Error, Equatable {
 public enum RingBootSession {
     public static func current() -> TimeInterval? {
         var time = timeval()
-        var size = socklen_t(MemoryLayout<timeval>.size)
+        var size = MemoryLayout<timeval>.size
         guard sysctlbyname("kern.boottime", &time, &size, nil, 0) == 0 else { return nil }
         return TimeInterval(time.tv_sec) + TimeInterval(time.tv_usec) / 1_000_000
     }

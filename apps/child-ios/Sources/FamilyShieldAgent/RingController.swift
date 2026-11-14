@@ -25,7 +25,7 @@ public final class RingController: ObservableObject {
                 monotonic: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                 bootSession: @escaping () -> TimeInterval? = { RingBootSession.current() },
                 sleep: @escaping (TimeInterval) async throws -> Void = { seconds in
-                    try await ContinuousClock.sleep(for: .seconds(seconds))
+                    try await ContinuousClock().sleep(for: .seconds(seconds))
                 }) {
         self.backend = backend ?? AlarmKitRingBackend()
         self.store = store
@@ -186,8 +186,9 @@ public final class RingController: ObservableObject {
     }
 
     private func report(_ event: RingEventState, for current: RingState) async {
+        let afterRestart = restarted || (event == .timedOut && current.bootSession.map { $0 != bootSession() } == true)
         let outcome = await reporter.report(state: event, ringId: current.commandId,
-                                            dismissalCount: current.dismissalCount, afterRestart: restarted)
+                                            dismissalCount: current.dismissalCount, afterRestart: afterRestart)
         if event == .timedOut, case .resume(let seconds) = outcome {
             await applyResume(current, seconds: seconds)
             return
@@ -207,7 +208,12 @@ public final class RingController: ObservableObject {
         case .resume(let seconds):
             await applyResume(current, seconds: seconds)
         case .pending:
-            state = current
+            var pending = current
+            pending.endAt = now().addingTimeInterval(RingPolicy.duration)
+            pending.monotonicStart = monotonic()
+            state = pending
+            restarted = false
+            armDeadline()
         }
     }
 

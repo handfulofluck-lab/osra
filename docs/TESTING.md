@@ -473,7 +473,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 283 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 284 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
@@ -1005,10 +1005,11 @@ into a screenshot or test log. AlarmKit is used on iOS 26 and later; no Critical
   Centre, the side button, force-quitting, rebooting and going offline are not stops. `alarmUpdates` re-arms a missing
   active UUID and records each dismissal once. "Open OSRA Kids" returns to the PIN gate; no notification accepts PIN
   input. `shield.requestTimes` and the other request-throttle state must remain unchanged.
-- **Restart and trusted time:** moving the wall clock forward cannot end a live ring. Online after a reboot, the API
-  compares the original command's timestamp with its own clock, returns `retryAfterSeconds` while the command is
-  unexpired and the phone re-arms for that remainder. Offline expiry uses the stored wall-clock end and later reports
-  `timed_out` with `afterRestart: true`. A genuine five-minute timeout uses that same flag and its own parent line.
+- **Restart and trusted time:** while alive, the monotonic deadline alone ends the ring, in either wall-clock direction.
+  After a reboot, wall-clock expiry alone never stops it: keep it pending with a fresh 300-second monotonic timeout and
+  retry. Only a positive server answer can end it. The API compares the original command's timestamp with its own clock
+  and returns `retryAfterSeconds` while it is unexpired; the phone re-arms for that remainder. Network failure and
+  4xx/5xx responses stay pending. An accepted stop reports `afterRestart` and has its own parent line.
 - **Family removal:** unpairing, server revocation and consent withdrawal stop locally and send no ring alert.
 - **Pictures:** capture the ring view with the keyboard down and up, the largest ordinary text size, the system alert,
   the return notification on the lock screen and the AlarmKit permission prompt, in light and dark, English and

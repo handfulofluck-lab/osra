@@ -31,7 +31,18 @@ final class RingScreenshotsTests: XCTestCase {
         let store = UserDefaultsRingStore(defaults: defaults)
         let history = UserDefaultsRingHistory(defaults: defaults)
         let originalLanguages = UserDefaults.standard.object(forKey: "AppleLanguages")
+        let keychain = KeychainSecretStore()
+        AgentIdentityStore.secrets = keychain
+        let previousPin = keychain.read(ParentPinStore.account)
+        if previousPin == nil {
+            XCTAssertTrue(keychain.write("pbkdf2$1$AA==$AA==", for: ParentPinStore.account))
+        }
         defer {
+            if let previousPin {
+                keychain.write(previousPin, for: ParentPinStore.account)
+            } else {
+                keychain.delete(ParentPinStore.account)
+            }
             if let originalLanguages {
                 UserDefaults.standard.set(originalLanguages, forKey: "AppleLanguages")
             } else {

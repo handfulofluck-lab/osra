@@ -15,7 +15,7 @@
 - Stop only for `pinVerified`, `parentCommand` or `timeout`; the cap is exactly 300 seconds. Child dismissal, Home, side button, force-quit, reboot and offline are not stops.
 - AlarmKit is alert-only, immediate, default sound, no countdown widget. Critical Alerts is not requested in this PR; Karim owns that fallback decision.
 - No ring on iOS below 26: ack `failed` with `unsupported_os` and show the localized update line.
-- While alive, measure timeout monotonically. Across reboot use the stored wall-clock end date; a +10 min wall jump inside a 30 s monotonic ring must not stop it. Timeout requires both clocks when available.
+- While alive, the monotonic deadline alone decides timeout. Across reboot, wall-clock expiry alone never stops a ring: keep it pending with a fresh 300-second monotonic timeout and retry until a positive server answer.
 - `alarmUpdates` re-arms an active missing UUID and records each dismissal once. First dismissal pushes immediately; later pushes within 60 s coalesce. Three dismissals in 10 s produce three alerts and one push.
 - `ring` and `stop_ring` reuse the authenticated command queue. `ring` acks applied only after scheduling; `stop_ring` is idempotent.
 - Unpair or consent withdrawal stops locally and emits no ring alert.
@@ -78,7 +78,7 @@ Expected: FAIL because these types do not exist.
 
 `RingState` is `Codable, Equatable` with `commandId: UUID`, `startedAt: Date`, `endAt: Date`, `monotonicStart: TimeInterval`, `stopSource: RingStopSource?`, `dismissalCount: Int`.
 
-`RingPolicy.duration = 300`. `hasTimedOut` requires `nowWall >= endAt` and, when `restarted == false`, `nowMonotonic - monotonicStart >= duration`. When restarted, only the stored wall-clock end is consulted. Dedupe keys are `ring:<ringId>:<state>` and `ring:<ringId>:child_dismissed:<count>`.
+`RingPolicy.duration = 300`. While alive, `hasTimedOut` uses only the monotonic elapsed duration. After restart, wall-clock expiry triggers a server check, never a local stop: keep the alarm pending with a fresh 300-second monotonic deadline until a positive answer. Dedupe keys are lowercase `ring:<ringId>:<state>` and `ring:<ringId>:child_dismissed:<count>`.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 

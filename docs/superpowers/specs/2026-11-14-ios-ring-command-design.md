@@ -52,14 +52,15 @@ Add `RingPolicy.swift` and `RingState.swift` to the shared package.
 - command UUID;
 - start and end dates;
 - a monotonic start timestamp from `ContinuousClock` (or uptime);
+- the boot-session timestamp, optional for compatibility with the first ring-state version;
 - stop source, if stopped;
 - per-ring dismissal count.
 
-While the app is alive, elapsed time uses the monotonic clock, so a forward wall-clock jump cannot shorten the ring. The stored wall-clock end date is used only across a reboot, and timeout requires both clocks to agree that 300 seconds have elapsed. A wall-clock jump of ten minutes inside a 30-second monotonic ring is still ringing.
+While the app is alive, the monotonic deadline alone decides timeout, so neither a forward nor a backward wall-clock jump changes the cap. `bootSession` identifies the boot so restoration cannot be mistaken for continuous execution. A wall-clock jump of ten minutes inside a 30-second monotonic ring is still ringing.
 
 An active ring resumes on launch. An expired ring stops as `timed_out`. A stopped ring does not resume.
 
-Claude's restart ruling on #750 (2026-11-14 04:04Z): `timed_out` carries `afterRestart: true` rather than adding a fifth state. After a restart, the server reads the original ring command's timestamp. If less than 300 seconds remain, it refuses the timeout without creating an alert and returns `active: true` with `retryAfterSeconds`; the phone re-arms for that remaining time. If the full window elapsed, it records `timed_out` with `afterRestart: true`. Offline expiry uses the stored wall-clock end and reports `afterRestart` when the phone is online again. The parent shows the Bureau-approved whole line "The ring ended after the phone was restarted." in English and its approved Arabic equivalent.
+Claude's restart ruling on #750 and osra-security#23: `timed_out` carries `afterRestart: true` rather than adding a fifth state. A wall-clock expiry after restart never stops the ring by itself. The phone keeps the alarm pending with a fresh 300-second monotonic timeout and retries. Only a positive server answer can end it: if the original command is unexpired, the server returns `active: true` with `retryAfterSeconds`; if it is expired, the server records `timed_out` with `afterRestart: true`. Network failure and 4xx/5xx responses keep the ring pending. The parent shows the Bureau-approved whole line "The ring ended after the phone was restarted." in English and its approved Arabic equivalent.
 
 ### Alarm backend
 
@@ -155,7 +156,7 @@ The parent app renders each state through the #718 `bodyKey` mechanism and local
 
 - Authorization denial and scheduling failure leave no active ring and ack `failed` with a typed reason.
 - A scheduling retry never creates a second ring state or duplicate alert.
-- A 200 or 201 alert response marks the corresponding event delivered. Other statuses leave it pending for a later drain/restart.
+- A 200 or 201 alert response marks the corresponding event delivered. Other statuses leave it pending for a later drain/restart. Every event is recorded in the ordered app-group outbox before transport; resume and command/alarm processing drain all pending events in order and remove them only on delivery, so offline dismissals are not collapsed to the latest count.
 - Dismissal count is per ring, so two dismissals produce two distinct events and two distinct dedupe keys.
 - A child cannot clear `shield.requestTimes` or any other request-throttle state.
 - Existing encoding and stored entries remain valid; no migration or key-format change is introduced.

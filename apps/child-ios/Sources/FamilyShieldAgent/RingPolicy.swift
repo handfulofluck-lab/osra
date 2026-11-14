@@ -30,8 +30,8 @@ public enum RingPolicy {
 
     public static func hasTimedOut(_ state: RingState, nowWall: Date,
                                    nowMonotonic: TimeInterval, restarted: Bool) -> Bool {
-        guard nowWall >= state.endAt else { return false }
-        return restarted || nowMonotonic - state.monotonicStart >= duration
+        if restarted { return nowWall >= state.endAt }
+        return nowMonotonic - state.monotonicStart >= duration
     }
 
     public static func dedupeKey(for state: RingEventState, ringId: UUID, dismissalCount: Int) -> String {

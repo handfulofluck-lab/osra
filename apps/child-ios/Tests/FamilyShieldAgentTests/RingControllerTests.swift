@@ -629,6 +629,8 @@ extension RingControllerTests {
         bootSession = 2
         await controller.resume()
         XCTAssertNil(controller.state?.stopSource)
+        XCTAssertEqual(controller.state?.endAt, wall.addingTimeInterval(300))
+        XCTAssertEqual(controller.state?.monotonicStart, 0)
         XCTAssertEqual(backend.stopCalls, [])
         XCTAssertEqual(backend.scheduled, [id])
         XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])

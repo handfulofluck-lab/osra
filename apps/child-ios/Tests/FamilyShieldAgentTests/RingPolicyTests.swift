@@ -22,13 +22,16 @@ final class RingPolicyTests: XCTestCase {
                                               nowMonotonic: 30, restarted: false))
     }
 
-    func testTimeoutRequiresBothClocks() {
-        XCTAssertTrue(RingPolicy.hasTimedOut(state(), nowWall: Date(timeIntervalSince1970: 300),
+    func testLiveTimeoutUsesMonotonicClock() {
+        XCTAssertTrue(RingPolicy.hasTimedOut(state(), nowWall: Date(timeIntervalSince1970: 299),
                                              nowMonotonic: 300, restarted: false))
-        XCTAssertFalse(RingPolicy.hasTimedOut(state(), nowWall: Date(timeIntervalSince1970: 300),
+        XCTAssertFalse(RingPolicy.hasTimedOut(state(), nowWall: Date(timeIntervalSince1970: 600),
                                               nowMonotonic: 299.9, restarted: false))
-        XCTAssertFalse(RingPolicy.hasTimedOut(state(), nowWall: Date(timeIntervalSince1970: 299),
-                                              nowMonotonic: 300, restarted: false))
+    }
+
+    func testBackwardWallClockAt300TimesOut() {
+        XCTAssertTrue(RingPolicy.hasTimedOut(state(), nowWall: Date(timeIntervalSince1970: 0),
+                                             nowMonotonic: 300, restarted: false))
     }
 
     func testRestartUsesStoredWallClockEnd() {
