@@ -14,6 +14,11 @@ public sealed class DirectorySecurityAndRecoveryTests
     public void UntrustedDirectoryFailsClosedInsteadOfFreeingTheDevice()
     {
         var directory = NewDirectory();
+        var info = new DirectoryInfo(directory);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!,
+            FileSystemRights.FullControl, AccessControlType.Allow));
+        info.SetAccessControl(security);
         var state = new DesktopRestrictionState(new FileDesktopRestrictionStore(Path.Combine(directory, "restrictions.json")));
 
         Assert.True(state.NeedsFallback(7, Start));

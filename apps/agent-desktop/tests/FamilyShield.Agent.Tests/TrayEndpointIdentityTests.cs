@@ -28,7 +28,7 @@ public sealed class TrayEndpointIdentityTests
     [Fact]
     public async Task ClientRefusesANonSystemServerBeforeHello()
     {
-        var session = checked(Process.GetCurrentProcess().SessionId + 10000);
+        var session = checked(Process.GetCurrentProcess().Id + 10000);
         await using var server = new NamedPipeServerStream(
             TrayPipeName.ForSession(session), PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -101,7 +101,7 @@ public sealed class TrayEndpointIdentityTests
     [Fact]
     public async Task ServiceCheckUsesSessionZeroWithoutOpeningTheProcess()
     {
-        var session = checked(Process.GetCurrentProcess().SessionId + 11000);
+        var session = checked(Process.GetCurrentProcess().Id + 11000);
         await using var server = new NamedPipeServerStream(
             TrayPipeName.ForSession(session), PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);

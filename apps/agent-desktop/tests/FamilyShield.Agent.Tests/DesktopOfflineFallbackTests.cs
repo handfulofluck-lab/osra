@@ -91,6 +91,41 @@ public sealed class DesktopOfflineFallbackTests
     }
 
     [Fact]
+    public async Task FailedRestrictionSaveLogsAndReportsTamperOnce()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "osra-offline-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
+            Path.Combine(directory, "rules.db"), Path.Combine(directory, "status.json"));
+        try
+        {
+            var failingStore = new FailingRestrictionStore();
+            var logger = new CountingLogger<DesktopRestrictionState>();
+            var restrictions = new DesktopRestrictionState(failingStore, logger);
+            var alerts = new RecordingAlertHandler();
+            var config = new AgentConfig { DeviceId = "device-test", ChildId = "child-test", HmacSecret = "unit-test-secret" };
+            using var worker = new TrayServerWorker(
+                new FakeSessions([new InteractiveSession(7, "user", true)]), new FakeServerFactory(),
+                NullLogger<TrayServerWorker>.Instance, new ForegroundActivityAccumulator(store),
+                new ApiClient(new HttpClient(alerts) { BaseAddress = new Uri("https://unit.test") }, config), config,
+                new TrayServerEvents(), new FakeProcessRegistry(42), restrictions, new RecordingSessionFallback());
+
+            await worker.SendAsync(new TrayMessage(TrayMessageKind.@lock));
+            await alerts.AlertReceived.WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.Equal(TrayMessageKind.@lock, Assert.Single(restrictions.MessagesFor(7, DateTime.UtcNow)).Kind);
+            await worker.SendAsync(new TrayMessage(TrayMessageKind.pause));
+
+            Assert.Equal(1, alerts.Count);
+            Assert.Equal(1, logger.ErrorCount);
+        }
+        finally
+        {
+            store.Dispose();
+            try { Directory.Delete(directory, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
     public async Task MessageQueuedAfterConnectionIsWritten()
     {
         var server = new FakeServer(7, "user", new DelayedMemoryStream());
@@ -164,10 +199,13 @@ public sealed class DesktopOfflineFallbackTests
 
     private sealed class RecordingAlertHandler : HttpMessageHandler
     {
+        private readonly TaskCompletionSource _alertReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Count { get; private set; }
+        public Task AlertReceived => _alertReceived.Task;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Count++;
+            _alertReceived.TrySetResult();
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created)
             {
                 Content = new StringContent("{}", Encoding.UTF8, "application/json"),
@@ -190,6 +228,25 @@ public sealed class DesktopOfflineFallbackTests
     {
         public ITrayServer Create(int sessionId, string userSid, int expectedPid) =>
             throw new UnauthorizedAccessException("The pipe name is already occupied.");
+    }
+
+    private sealed class FailingRestrictionStore : IRestrictionStore
+    {
+        public IReadOnlyList<SessionRestriction> Load() => [];
+        public void Save(IReadOnlyList<SessionRestriction> restrictions) => throw new IOException("Write failed.");
+    }
+
+    private sealed class CountingLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
+    {
+        public int ErrorCount { get; private set; }
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel,
+            Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == Microsoft.Extensions.Logging.LogLevel.Error) ErrorCount++;
+        }
     }
 
     private sealed class WriteBlockingStream : DelayedMemoryStream

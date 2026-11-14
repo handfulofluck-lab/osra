@@ -102,22 +102,16 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
 
         var temporaryPath = Path.Combine(AppContext.BaseDirectory, "probe-temp", "restrictions.json");
         var temporaryStore = new FileDesktopRestrictionStore(temporaryPath, (_, _) => { });
+        if (temporaryStore.Load().Count != 0) throw new InvalidDataException("The temporary fixture was not empty.");
+        File.WriteAllText(temporaryPath, "[]");
         temporaryStore.Save([new SessionRestriction { SessionId = sessionId, Locked = true }]);
         var temporary = temporaryPath + ".tmp";
         RequireProtectedDirectory(Path.GetDirectoryName(temporaryPath)!);
         RequireProtectedFile(temporary);
-        var before = File.ReadAllText(temporary);
-        var refused = false;
-        try
-        {
-            temporaryStore.Save([]);
-        }
-        catch (IOException)
-        {
-            refused = true;
-        }
-        if (!refused || File.ReadAllText(temporary) != before)
-            throw new InvalidDataException("An existing temporary file was overwritten.");
+        temporaryStore.Save([]);
+        if (new FileDesktopRestrictionStore(temporary).Load().Count != 0)
+            throw new InvalidDataException("A stale temporary file blocked the latest save.");
+        RequireProtectedFile(temporary);
 
         var corruptPath = Path.Combine(AppContext.BaseDirectory, "probe-corrupt", "restrictions.json");
         var corruptStore = new FileDesktopRestrictionStore(corruptPath);
