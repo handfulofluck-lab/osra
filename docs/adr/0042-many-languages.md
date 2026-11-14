@@ -184,14 +184,20 @@ Bureau's choice.
 
 ### D6a. Digits typed by a person are normalised once
 
-Codes and PINs are compared as ASCII digits. One helper per client turns any Unicode decimal digit
-(Arabic-Indic ٠-٩, Extended Arabic-Indic ۰-۹ used in Urdu and Farsi, and others) into 0-9 before
-validation, hashing or sending. Today the rule differs by field: `PairingActivity.kt` and
-`PairQrPayload.kt` match `\d{6}`, which in Kotlin is ASCII-only, the Dart fields use
-`FilteringTextInputFormatter.digitsOnly` (ASCII-only), and `ParentPin.kt` uses `isDigit()`, which accepts
-any Unicode digit. So a pairing code typed on an Arabic keyboard may be refused, and a parent PIN set
-with one digit set may not match when typed with the other. **Read from the code, not yet tried on a
-phone**: it needs a device row in Arabic before it is called a defect.
+Screens show 0-9. What a person types is accepted as 0-9, Arabic-Indic ٠-٩ (U+0660-0669) or Extended
+Arabic-Indic ۰-۹ (U+06F0-06F9, Urdu and Farsi) and turned into 0-9 before any check, hash, comparison or
+request. Nothing else counts as a digit. One helper per platform (Kotlin, Swift, Dart, C#), used by every
+field that takes a code, a PIN or a number. This is the Arabic Language Bureau's decision (#771,
+`docs/LOCALIZATION.md` R9); Urdu follows it.
+
+Today each field has its own rule (table in #771): the Android PIN accepts any Unicode digit and hashes it
+as typed, the iPhone and Windows PINs refuse anything but ASCII, the parent app's code fields refuse or
+ignore Arabic digits. One trap for tests: `\d` in a Kotlin `Regex` matches any Unicode digit on an
+Android device and only 0-9 in a JVM unit test, so the helper must not rely on `\d`.
+
+A PIN stored before the fix was hashed as typed. Verification therefore tries the normalised entry first,
+then the entry as typed, and on a match through the second path re-stores the hash from the normalised
+form. **Read from the code, not yet tried on a phone**: #771 starts with a device check.
 
 ### D7. The scorer is language-neutral, and each language passes its own gate
 
