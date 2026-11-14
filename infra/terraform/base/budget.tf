@@ -22,7 +22,7 @@ resource "aws_budgets_budget" "monthly" {
       notification_type          = notification.value.type
       threshold                  = notification.value.threshold
       threshold_type             = "PERCENTAGE"
-      subscriber_email_addresses = [var.alarm_email]
+      subscriber_email_addresses = compact([var.alarm_email, var.alarm_email_secondary])
     }
   }
 }
