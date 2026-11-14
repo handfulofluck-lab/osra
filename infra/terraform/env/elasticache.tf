@@ -20,7 +20,7 @@ resource "aws_elasticache_subnet_group" "main" {
 resource "aws_elasticache_parameter_group" "cache" {
   name        = "${local.name_prefix}-redis7"
   family      = "redis7"
-  description = "OSRA staging Redis defaults"
+  description = "OSRA ${var.environment} Redis defaults"
 
   parameter {
     name  = "maxmemory-policy"
@@ -32,7 +32,8 @@ resource "aws_elasticache_parameter_group" "cache" {
   }
 }
 
-# One node, no replica. ADR-0028 names ElastiCache Valkey because the API fail-closes parent
+# Staging: one node, no replica. Production (#714): a primary and a replica in the other AZ with
+# automatic failover, and TLS in transit. ADR-0028 names ElastiCache Valkey because the API fail-closes parent
 # sessions when Redis is unreachable; a second node would double the bill for a cache whose bulk is
 # rebuildable — the revocation keys are rebuilt from Postgres, not from another node (ADR-0032).
 # Staging accepts the restart risk.
@@ -51,25 +52,26 @@ resource "aws_elasticache_parameter_group" "cache" {
 # also asks for one staging run there before go-live).
 resource "aws_elasticache_replication_group" "main" {
   replication_group_id = "${local.name_prefix}-redis"
-  description          = "OSRA staging cache for fan-out and revocation flags"
+  description          = "OSRA ${var.environment} cache for fan-out and revocation flags"
   engine               = "redis"
   engine_version       = "7.1"
   node_type            = var.redis_node_type
-  num_cache_clusters   = 1
+  num_cache_clusters   = var.redis_num_nodes
   parameter_group_name = aws_elasticache_parameter_group.cache.name
   subnet_group_name    = aws_elasticache_subnet_group.main.name
   security_group_ids   = [aws_security_group.redis.id]
   port                 = 6379
 
-  # A single node cannot have automatic failover or Multi-AZ.
-  automatic_failover_enabled = false
-  multi_az_enabled           = false
+  # A single node cannot have automatic failover or Multi-AZ (the variable's validation enforces it).
+  automatic_failover_enabled = var.redis_failover
+  multi_az_enabled           = var.redis_failover
 
-  # The API's REDIS_URL is redis://, so TLS must stay off until the client is taught rediss://.
-  transit_encryption_enabled = false
+  # With TLS on, ecs.tf hands the API a rediss:// URL; ioredis turns TLS on for that scheme by itself
+  # (test: services/api/test/redis-url-tls.test.ts). Changing this replaces the group (#714).
+  transit_encryption_enabled = var.redis_transit_encryption
   at_rest_encryption_enabled = true
 
-  apply_immediately          = true
+  apply_immediately          = var.environment != "production"
   auto_minor_version_upgrade = true
 
   # One daily snapshot (ADR-0032). The rest of the keyspace is reconstructible — pub/sub fan-out,
@@ -88,10 +90,13 @@ resource "aws_elasticache_replication_group" "main" {
 
 # The rate limiter keeps its counters here under `rl:` (each expires with its one-minute window), so
 # a flood from many addresses grows the keyspace. Under `noeviction` a full node turns writes into
-# errors, revocation writes included, so warn well before that. No action is attached: the account
-# has no alerting topic yet, so the alarm shows in the console and in `aws cloudwatch describe-alarms`.
+# errors, revocation writes included, so warn well before that. One alarm per node, because either may
+# be the primary after a failover. Staging has no alerting topic, so its alarm shows only in the
+# console; production sends it to the SNS topic in alarms.tf.
 resource "aws_cloudwatch_metric_alarm" "redis_memory" {
-  alarm_name          = "${local.name_prefix}-redis-memory-70"
+  count = var.redis_num_nodes
+
+  alarm_name          = count.index == 0 ? "${local.name_prefix}-redis-memory-70" : "${local.name_prefix}-redis-memory-70-${format("%03d", count.index + 1)}"
   alarm_description   = "Redis memory above 70% (noeviction: a full node refuses writes, revocations included)."
   namespace           = "AWS/ElastiCache"
   metric_name         = "DatabaseMemoryUsagePercentage"
@@ -101,12 +106,19 @@ resource "aws_cloudwatch_metric_alarm" "redis_memory" {
   threshold           = 70
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
 
   dimensions = {
-    CacheClusterId = "${aws_elasticache_replication_group.main.replication_group_id}-001"
+    CacheClusterId = "${aws_elasticache_replication_group.main.replication_group_id}-${format("%03d", count.index + 1)}"
   }
 
   tags = {
-    Name = "${local.name_prefix}-redis-memory-70"
+    Name = count.index == 0 ? "${local.name_prefix}-redis-memory-70" : "${local.name_prefix}-redis-memory-70-${format("%03d", count.index + 1)}"
   }
+}
+
+moved {
+  from = aws_cloudwatch_metric_alarm.redis_memory
+  to   = aws_cloudwatch_metric_alarm.redis_memory[0]
 }

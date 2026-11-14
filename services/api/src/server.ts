@@ -33,6 +33,7 @@ import { registerClientHeader } from "./middleware/clientHeader.js";
 import { AUTH_RATE_LIMIT, registerRateLimits, trustProxyFromEnv } from "./lib/rateLimits.js";
 import { getRedis } from "./redis.js";
 import { LOGGER_SERIALIZERS } from "./lib/logRedaction.js";
+import { assertCorsConfigured } from "./lib/corsConfig.js";
 
 // Review 3.7: fail fast on missing/known-dev secrets instead of booting insecurely.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -71,6 +72,10 @@ const app = Fastify({
 
 // Review API-1: CORS allowlist via env (comma-separated); unset = reflect (dev/test only, NOTE).
 const corsOrigins = process.env.CORS_ORIGIN?.split(",").map((o) => o.trim()).filter(Boolean);
+// #765 (Fable's review, B4): reflecting every origin with credentials is a development setting, so a
+// production boot refuses it unless the deployment says so on purpose. Staging and the CI image check set
+// CORS_ALLOW_ANY_ORIGIN=1; the production Terraform cannot (its guard requires a real CORS_ORIGIN).
+assertCorsConfigured(process.env);
 await app.register(cors, {
   origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
   credentials: true,

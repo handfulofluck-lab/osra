@@ -927,7 +927,7 @@
   "riskViolence": "العنف",
   "riskHateSpeech": "خطاب الكراهية",
   "riskAiConcern": "محتوى مثير للقلق",
-  "phoneSetupOtherSpaceClone": "في هذا الهاتف مساحة ثانية لنسخ التطبيقات (Dual Messenger).",
+  "phoneSetupOtherSpaceClone": "هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.",
   "phoneSetupOtherSpaceWork": "في هذا الهاتف ملف عمل.",
   "phoneSetupOtherSpaceOther": "في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.",
   "phoneSetupTitle": "إعداد الهاتف",
