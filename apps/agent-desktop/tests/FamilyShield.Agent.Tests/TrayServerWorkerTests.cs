@@ -19,7 +19,7 @@ public sealed class TrayServerWorkerTests
             using var worker = new TrayServerWorker(
                 new FakeSessions([new InteractiveSession(7, "user", true)]), factory,
                 NullLogger<TrayServerWorker>.Instance, new ForegroundActivityAccumulator(store),
-                new ApiClient(new HttpClient(), new AgentConfig()), new AgentConfig(), new TrayServerEvents());
+                new ApiClient(new HttpClient(), new AgentConfig()), new AgentConfig(), new TrayServerEvents(), new FakeProcessRegistry(42));
 
             worker.Synchronize();
             var first = Assert.Single(factory.Servers);
@@ -51,7 +51,7 @@ public sealed class TrayServerWorkerTests
             using var worker = new TrayServerWorker(
                 new FakeSessions([new InteractiveSession(7, "user", true)]), factory,
                 NullLogger<TrayServerWorker>.Instance, new ForegroundActivityAccumulator(store),
-                new ApiClient(new HttpClient(), new AgentConfig()), new AgentConfig(), new TrayServerEvents());
+                new ApiClient(new HttpClient(), new AgentConfig()), new AgentConfig(), new TrayServerEvents(), new FakeProcessRegistry(42));
             worker.Synchronize();
             var first = Assert.Single(factory.Servers);
             await worker.SendAsync(new TrayMessage(TrayMessageKind.@lock));
@@ -81,12 +81,19 @@ public sealed class TrayServerWorkerTests
         public IReadOnlyList<InteractiveSession> List() => sessions;
     }
 
+    private sealed class FakeProcessRegistry(int pid) : ITrayProcessRegistry
+    {
+        public int? ProcessIdForSession(int sessionId) => pid;
+    }
+
     private sealed class FakeServerFactory : ITrayServerFactory
     {
         public List<FakeServer> Servers { get; } = [];
+        public List<int> ExpectedPids { get; } = [];
 
-        public ITrayServer Create(int sessionId, string userSid)
+        public ITrayServer Create(int sessionId, string userSid, int expectedPid)
         {
+            ExpectedPids.Add(expectedPid);
             var server = new FakeServer(sessionId, userSid, failConnection: Servers.Count == 0);
             Servers.Add(server);
             return server;

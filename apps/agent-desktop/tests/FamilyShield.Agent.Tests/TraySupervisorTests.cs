@@ -145,6 +145,7 @@ public sealed class TraySupervisorTests
     private sealed class FakeProcess : ITrayProcess
     {
         public bool HasExited { get; set; }
+        public int ProcessId { get; init; } = 42;
         public bool Disposed { get; private set; }
         public void Dispose() => Disposed = true;
     }

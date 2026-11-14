@@ -17,8 +17,9 @@ public sealed class TrayPipeSecurityTests
         var security = TrayPipeSecurity.ForSessionUser(userSid);
         var rules = security.GetAccessRules(true, false, typeof(SecurityIdentifier)).Cast<PipeAccessRule>().ToArray();
 
-        Assert.Equal(2, rules.Length);
-        Assert.All(rules, rule => Assert.Equal(AccessControlType.Allow, rule.AccessControlType));
+        Assert.Equal(3, rules.Length);
+        Assert.All(rules.Where(rule => rule.IdentityReference.Value != "S-1-5-2"),
+            rule => Assert.Equal(AccessControlType.Allow, rule.AccessControlType));
         var system = Assert.Single(rules, rule => rule.IdentityReference.Value == "S-1-5-18");
         Assert.Equal(PipeAccessRights.FullControl, system.PipeAccessRights);
         var user = Assert.Single(rules, rule => rule.IdentityReference.Value == userSid);
@@ -40,9 +41,10 @@ public sealed class TrayPipeSecurityTests
     {
         var session = Process.GetCurrentProcess().SessionId;
         var sid = WindowsIdentity.GetCurrent().User!.Value;
-        await using var server = new TrayPipeServer(session, sid);
+        await using var server = new TrayPipeServer(session, sid, Process.GetCurrentProcess().Id,
+            expectedImagePath: Process.GetCurrentProcess().MainModule!.FileName);
         var accepted = server.AcceptAsync(CancellationToken.None);
-        await using var client = new TrayPipeClient();
+        await using var client = new TrayPipeClient(new AcceptingServiceIdentityVerifier());
         await using var clientConnection = await client.ConnectAsync(session, CancellationToken.None);
         await using var serverConnection = await accepted;
 
@@ -59,6 +61,11 @@ public sealed class TrayPipeSecurityTests
         await TrayProtocol.WriteAsync(serverConnection.Stream, windDown, TrayDirection.ToTray);
         var answer = await answering;
         Assert.Equal(15, answer.Payload!.Value.GetProperty("minutes").GetInt32());
+    }
+
+    private sealed class AcceptingServiceIdentityVerifier : IServiceIdentityVerifier
+    {
+        public bool Verify(int serverPid) => true;
     }
 
     private sealed class FakeIdentitySource(ClientIdentity identity) : IClientIdentitySource
