@@ -11,7 +11,7 @@ private struct RingAlarmMetadata: AlarmMetadata {}
 @available(iOS 26.0, *)
 struct OpenRingIntent: LiveActivityIntent {
     static var title: LocalizedStringResource {
-        LocalizedStringResource(stringLiteral: L10n.tr("ring_dismiss"))
+        LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module)
     }
     static var openAppWhenRun: Bool { true }
 
@@ -43,10 +43,10 @@ public final class AlarmKitRingBackend: RingBackend {
         #if os(iOS)
         guard #available(iOS 26.0, *) else { throw RingCommandError.unsupportedOS }
         let alert = AlarmPresentation.Alert(
-            title: LocalizedStringResource(stringLiteral: L10n.tr("ring_alarm_title")),
-            stopButton: AlarmButton(text: LocalizedStringResource(stringLiteral: L10n.tr("ring_alert_ok")),
+            title: LocalizedStringResource("ring_alarm_title", table: "Localizable", bundle: .module),
+            stopButton: AlarmButton(text: LocalizedStringResource("ring_alert_ok", table: "Localizable", bundle: .module),
                                     textColor: .white, systemImageName: "checkmark"),
-            secondaryButton: AlarmButton(text: LocalizedStringResource(stringLiteral: L10n.tr("ring_dismiss")),
+            secondaryButton: AlarmButton(text: LocalizedStringResource("ring_dismiss", table: "Localizable", bundle: .module),
                                          textColor: .white, systemImageName: "arrow.up.forward.app"),
             secondaryButtonBehavior: .custom)
         let attributes = AlarmAttributes<RingAlarmMetadata>(

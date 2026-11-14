@@ -418,7 +418,8 @@ extension RingControllerTests {
         XCTAssertEqual(controller.state?.endAt, wall.addingTimeInterval(240))
         XCTAssertEqual(controller.state?.monotonicStart, uptime)
         XCTAssertFalse(history.contains(id))
-        XCTAssertEqual(backend.scheduled, [id, id])
+        XCTAssertEqual(backend.scheduled, [id], "the cancelled alarm is re-armed once")
+        XCTAssertEqual(backend.stopCalls, [id])
         XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
     }
 
