@@ -12,10 +12,10 @@ public final class RingController: ObservableObject {
     private var lastScheduledIDs: Set<UUID>?
     private var observationTask: Task<Void, Never>?
 
-    public init(backend: RingBackend = AlarmKitRingBackend(), store: RingStore = UserDefaultsRingStore(),
+    public init(backend: RingBackend? = nil, store: RingStore = UserDefaultsRingStore(),
                 now: @escaping () -> Date = Date.init,
                 monotonic: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
-        self.backend = backend
+        self.backend = backend ?? AlarmKitRingBackend()
         self.store = store
         self.now = now
         self.monotonic = monotonic
