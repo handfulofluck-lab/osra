@@ -112,9 +112,41 @@ class FakeApiClient extends ApiClient {
 /// battery (lastSeen now); Sam's device is at 0% with a stale lastSeen (2h by
 /// default) while the server still calls it `online` — the shape of issue #601,
 /// where the app's own 15-minute window disagreed with the API.
+/// #643 review: a child with an iPhone **and** an Android tablet. The picker and the Android payment
+/// sentence still apply to the tablet, and the iPhone sentence applies to the phone — both, not either.
+/// Written out rather than derived, so the two platforms cannot be a copy-paste accident.
+Map<String, dynamic> familyMeMixedDevices() {
+  final base = familyMeTwoChildren();
+  final now = DateTime.now().toUtc();
+  Map<String, dynamic> device(String id, String platform, String model) => {
+        'id': id,
+        'childId': 'child-1',
+        'platform': platform,
+        'model': model,
+        'osVersion': '14',
+        'status': 'online',
+        'batteryPct': 55,
+        'lastSeen': now.toIso8601String(),
+      };
+  final rest = (base['devices'] as List)
+      .cast<Map<String, dynamic>>()
+      .where((d) => d['childId'] != 'child-1')
+      .toList();
+  return {
+    ...base,
+    'devices': [
+      device('dev-1', 'ios', 'iPhone 13'),
+      device('dev-3', 'android', 'Galaxy Tab'),
+      ...rest,
+    ],
+  };
+}
+
 Map<String, dynamic> familyMeTwoChildren({
   String alexName = 'Alex',
   String alexModel = 'Pixel 7a',
+  // #643: an iOS child never reports an app list, so a screen that offers the Android picker is a dead end.
+  String alexPlatform = 'android',
   Duration samLastSeen = const Duration(hours: 2),
 }) {
   final now = DateTime.now().toUtc();
@@ -136,7 +168,7 @@ Map<String, dynamic> familyMeTwoChildren({
       {
         'id': 'dev-1',
         'childId': 'child-1',
-        'platform': 'android',
+        'platform': alexPlatform,
         'model': alexModel,
         'osVersion': '14',
         'status': 'online',
