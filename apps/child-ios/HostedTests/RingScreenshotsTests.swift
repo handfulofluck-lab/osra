@@ -56,8 +56,13 @@ final class RingScreenshotsTests: XCTestCase {
                     let window = UIWindow(frame: UIScreen.main.bounds)
                     let host = UIHostingController(rootView: RingView(controller: controller))
                     host.overrideUserInterfaceStyle = style
-                    host.overrideTraitCollection = UITraitCollection(preferredContentSizeCategory: scale)
-                    window.rootViewController = host
+                    let container = UIViewController()
+                    container.addChild(host)
+                    container.view.addSubview(host.view)
+                    host.view.frame = container.view.bounds
+                    host.didMove(toParent: container)
+                    container.setOverrideTraitCollection(UITraitCollection(preferredContentSizeCategory: scale), forChild: host)
+                    window.rootViewController = container
                     window.makeKeyAndVisible()
                     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
                     let renderer = UIGraphicsImageRenderer(bounds: window.bounds)

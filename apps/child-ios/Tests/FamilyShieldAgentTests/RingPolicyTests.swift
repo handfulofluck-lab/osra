@@ -55,17 +55,17 @@ final class RingPolicyTests: XCTestCase {
     func testEveryDismissalHasItsOwnDedupeKey() {
         let first = RingPolicy.dedupeKey(for: .childDismissed, ringId: id, dismissalCount: 1)
         let second = RingPolicy.dedupeKey(for: .childDismissed, ringId: id, dismissalCount: 2)
-        XCTAssertEqual(first, "ring:\(id):child_dismissed:1")
-        XCTAssertEqual(second, "ring:\(id):child_dismissed:2")
+        XCTAssertEqual(first, "ring:\(id.uuidString.lowercased()):child_dismissed:1")
+        XCTAssertEqual(second, "ring:\(id.uuidString.lowercased()):child_dismissed:2")
         XCTAssertNotEqual(first, second)
     }
 
     func testEachStopHasOneDedupeKey() {
         XCTAssertEqual(RingPolicy.dedupeKey(for: .pinStopped, ringId: id, dismissalCount: 2),
-                       "ring:\(id):pin_stopped")
+                       "ring:\(id.uuidString.lowercased()):pin_stopped")
         XCTAssertEqual(RingPolicy.dedupeKey(for: .parentStopped, ringId: id, dismissalCount: 0),
-                       "ring:\(id):parent_stopped")
+                       "ring:\(id.uuidString.lowercased()):parent_stopped")
         XCTAssertEqual(RingPolicy.dedupeKey(for: .timedOut, ringId: id, dismissalCount: 0),
-                       "ring:\(id):timed_out")
+                       "ring:\(id.uuidString.lowercased()):timed_out")
     }
 }

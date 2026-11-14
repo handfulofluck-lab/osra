@@ -112,7 +112,7 @@ public struct LiveLocateNow: LocateNowHandling {
 
 public protocol RingCommandHandling {
     func startRing(id: String) async -> RingCommandError?
-    func stopRing() async
+    func stopRing(id: String) async
 }
 
 public struct LiveRingCommands: RingCommandHandling {
@@ -120,8 +120,9 @@ public struct LiveRingCommands: RingCommandHandling {
     public func startRing(id: String) async -> RingCommandError? {
         await RingController.shared.start(commandId: id)
     }
-    public func stopRing() async {
-        await RingController.shared.stop(.parentCommand)
+    public func stopRing(id: String) async {
+        guard let commandId = UUID(uuidString: id) else { return }
+        await RingController.shared.stop(.parentCommand, commandId: commandId)
     }
 }
 
@@ -216,7 +217,7 @@ public enum CommandDrainer {
                     result.handled.append(command.type)
                 }
             case .stopRing:
-                await ring.stopRing()
+                await ring.stopRing(id: command.id)
                 try? await client.ack(identity, commandId: command.id, ok: true)
                 result.handled.append(command.type)
             case .unsupported:

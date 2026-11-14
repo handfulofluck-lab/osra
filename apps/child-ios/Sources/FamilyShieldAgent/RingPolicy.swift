@@ -36,8 +36,8 @@ public enum RingPolicy {
 
     public static func dedupeKey(for state: RingEventState, ringId: UUID, dismissalCount: Int) -> String {
         if state == .childDismissed {
-            return "ring:\(ringId.uuidString):child_dismissed:\(dismissalCount)"
+            return "ring:\(ringId.uuidString.lowercased()):child_dismissed:\(dismissalCount)"
         }
-        return "ring:\(ringId.uuidString):\(state.rawValue)"
+        return "ring:\(ringId.uuidString.lowercased()):\(state.rawValue)"
     }
 }

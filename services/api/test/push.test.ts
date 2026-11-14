@@ -573,10 +573,10 @@ describe("ring dismissal push coalescing", () => {
     setPushProviders(null);
   });
 
-  async function dismissal(seconds: number, count: number, id = ringId) {
+  async function dismissal(seconds: number, count: number, id = ringId, familyId = "fam-1") {
     vi.setSystemTime(start + seconds * 1000);
     return raiseAlertOnce({
-      childId: "child-1", familyId: "fam-1", severity: "warning", category: "ring",
+      childId: "child-1", familyId, severity: "warning", category: "ring",
       title: "Phone ring", body: "The ring alert was dismissed on the phone and has been re-armed.",
       bodyKey: "alertBodyRingChildDismissed", params: { ringId: id, dismissalCount: count },
       metadata: { state: "child_dismissed", ringId: id },
@@ -621,6 +621,20 @@ describe("ring dismissal push coalescing", () => {
     await dismissal(0, 1);
     await dismissal(0, 1, "0E9D8C7B-6A5F-4E3D-8C2D-1A0F9E8D7C6B");
     expect(provider.sent).toHaveLength(2);
+  });
+
+  it("does not coalesce different families or non-dismissal states", async () => {
+    await dismissal(0, 1);
+    await dismissal(0, 1, ringId, "fam-2");
+    await raiseAlertOnce({
+      childId: "child-1", familyId: "fam-1", severity: "info", category: "ring",
+      title: "Phone ring", body: "The ring ended by itself after 5 minutes.",
+      bodyKey: "alertBodyRingTimedOut", params: { ringId },
+      metadata: { state: "timed_out", ringId }, dedupeKey: `ring:${ringId}:timed_out`,
+    });
+    expect(provider.sent).toHaveLength(3);
+    expect(pushTimes).toEqual([0, 0, 0]);
+    expect(reservations.size).toBe(2);
   });
 
   it("releases the reservation after provider failure so a later dismissal can wake", async () => {

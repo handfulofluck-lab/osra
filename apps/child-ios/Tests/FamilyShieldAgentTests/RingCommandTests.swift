@@ -6,6 +6,7 @@ final class FakeRingCommands: RingCommandHandling {
     var error: RingCommandError?
     private(set) var startedIds: [String] = []
     private(set) var stopCalls = 0
+    private(set) var stoppedIds: [String] = []
 
     func startRing(id: String) async -> RingCommandError? {
         if let error { return error }
@@ -13,7 +14,10 @@ final class FakeRingCommands: RingCommandHandling {
         return nil
     }
 
-    func stopRing() async { stopCalls += 1 }
+    func stopRing(id: String) async {
+        stopCalls += 1
+        stoppedIds.append(id)
+    }
 }
 
 @MainActor
@@ -58,10 +62,10 @@ final class RingCommandTests: XCTestCase {
     func testRingAcksOnlyAfterSchedule() async throws {
         pair()
         let handler = FakeRingCommands()
-        respond(to: [["id": id.uuidString, "type": "ring"]])
+        respond(to: [["id": id.uuidString.lowercased(), "type": "ring"]])
         let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
         XCTAssertEqual(result.handled, ["ring"])
-        XCTAssertEqual(handler.startedIds, [id.uuidString])
+        XCTAssertEqual(handler.startedIds, [id.uuidString.lowercased()])
         XCTAssertEqual(try ack()["status"] as? String, "ok")
     }
 
@@ -69,7 +73,7 @@ final class RingCommandTests: XCTestCase {
         pair()
         let handler = FakeRingCommands()
         handler.error = .unsupportedOS
-        respond(to: [["id": id.uuidString, "type": "ring"]])
+        respond(to: [["id": id.uuidString.lowercased(), "type": "ring"]])
         let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
         XCTAssertEqual(result.refused, ["ring"])
         XCTAssertEqual(try ack()["status"] as? String, "failed")
@@ -79,10 +83,11 @@ final class RingCommandTests: XCTestCase {
     func testStopRingIsIdempotent() async throws {
         pair()
         let handler = FakeRingCommands()
-        respond(to: [["id": id.uuidString, "type": "stop_ring"]])
+        respond(to: [["id": id.uuidString.lowercased(), "type": "stop_ring"]])
         let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
         XCTAssertEqual(result.handled, ["stop_ring"])
         XCTAssertEqual(handler.stopCalls, 1)
+        XCTAssertEqual(handler.stoppedIds, [id.uuidString.lowercased()])
         XCTAssertEqual(try ack()["status"] as? String, "ok")
     }
 

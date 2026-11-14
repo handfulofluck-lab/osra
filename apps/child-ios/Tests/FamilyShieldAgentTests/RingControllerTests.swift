@@ -306,10 +306,10 @@ extension RingControllerTests {
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(requests[0].httpBody)) as? [String: Any])
         XCTAssertEqual(body["category"] as? String, "ring")
         XCTAssertEqual(body["severity"] as? String, "warning")
-        XCTAssertEqual(body["dedupeKey"] as? String, "ring:\(id):child_dismissed:2")
+        XCTAssertEqual(body["dedupeKey"] as? String, "ring:\(id.uuidString.lowercased()):child_dismissed:2")
         let metadata = try XCTUnwrap(body["metadata"] as? [String: Any])
         XCTAssertEqual(metadata["state"] as? String, "child_dismissed")
-        XCTAssertEqual(metadata["ringId"] as? String, id.uuidString)
+        XCTAssertEqual(metadata["ringId"] as? String, id.uuidString.lowercased())
         XCTAssertNil(metadata["bodyKey"])
         XCTAssertNil(metadata["bodyParams"])
     }
@@ -467,5 +467,22 @@ extension RingControllerTests {
         XCTAssertEqual(metadata["afterRestart"] as? Bool, true)
         XCTAssertEqual(body["body"] as? String, "The ring ended after the phone was restarted.")
         XCTAssertNil(defaults?.stringArray(forKey: RingAlertReporter.deliveredKey))
+    }
+}
+
+
+@MainActor
+extension RingControllerTests {
+    func testLateStopForEarlierRingLeavesCurrentRing() async {
+        let newer = UUID()
+        let controller = controller()
+        await controller.start(id)
+        await controller.start(newer)
+        await controller.stop(.parentCommand, commandId: id)
+        XCTAssertEqual(controller.state?.commandId, newer)
+        XCTAssertEqual(reporter.callCount, 0)
+        await controller.stop(.parentCommand, commandId: newer)
+        XCTAssertNil(controller.state)
+        XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
     }
 }

@@ -39,7 +39,7 @@ public struct RingAlertReporter: RingAlertReporting {
         let key = RingPolicy.dedupeKey(for: state, ringId: ringId, dismissalCount: dismissalCount)
         let delivered = Set(defaults?.stringArray(forKey: Self.deliveredKey) ?? [])
         guard !delivered.contains(key) else { return .delivered }
-        var metadata: [String: Any] = ["state": state.rawValue, "ringId": ringId.uuidString]
+        var metadata: [String: Any] = ["state": state.rawValue, "ringId": ringId.uuidString.lowercased()]
         if afterRestart { metadata["afterRestart"] = true }
         guard let request = reporter.makeRequest(
             category: "ring", severity: state == .childDismissed ? "warning" : "info",

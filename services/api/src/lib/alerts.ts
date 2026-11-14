@@ -224,15 +224,18 @@ export function ringAlertFields(category: string, metadata: Record<string, unkno
                                 dedupeKey: string | undefined): { bodyKey?: AlertBodyKey; params?: AlertBodyParams } {
   if (category !== "ring") return {};
   const state = typeof metadata?.state === "string" ? metadata.state : "";
-  const ringId = typeof metadata?.ringId === "string" ? metadata.ringId : "";
+  const ringId = typeof metadata?.ringId === "string" ? metadata.ringId.toLowerCase() : "";
   const bodyKey = RING_BODY_KEYS[state];
   if (!bodyKey || !ringId) return {};
   const params: AlertBodyParams = { ringId };
+  const canonicalDedupe = dedupeKey?.toLowerCase();
   if (state === "child_dismissed") {
     const prefix = `ring:${ringId}:child_dismissed:`;
-    const rawCount = dedupeKey?.startsWith(prefix) ? dedupeKey.slice(prefix.length) : "";
-    if (!/^[1-9][0-9]*$/.test(rawCount)) return {};
+    const rawCount = canonicalDedupe?.startsWith(prefix) ? canonicalDedupe.slice(prefix.length) : "";
+    if (!/^[1-9][0-9]{0,3}$/.test(rawCount)) return {};
     params.dismissalCount = Number(rawCount);
+  } else if (canonicalDedupe !== `ring:${ringId}:${state}`) {
+    return {};
   }
   if (state === "timed_out" && metadata?.afterRestart === true) params.afterRestart = true;
   return { bodyKey, params };

@@ -18,8 +18,8 @@ export async function reserveRingDismissalPush(
 ): Promise<{ coalesced: boolean; reservation?: Reservation }> {
   const metadata = ringMetadataObject(alert.metadata);
   if (alert.category !== "ring" || metadata.state !== "child_dismissed") return { coalesced: false };
-  const ringId = metadata.ringId;
-  if (typeof ringId !== "string" || !ringId) return { coalesced: false };
+  const ringId = typeof metadata.ringId === "string" ? metadata.ringId.toLowerCase() : "";
+  if (!ringId) return { coalesced: false };
   const environment = process.env.NODE_ENV ?? "development";
   const key = `push:${environment}:ring-dismissal:${familyId}:${ringId}`;
   const token = randomUUID();
