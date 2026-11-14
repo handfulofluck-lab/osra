@@ -4,6 +4,7 @@ import { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
 import { prisma } from "../db.js";
 import { isBearerSession, isParentSessionLive } from "../lib/sessions.js";
+import { withoutAlertLocation } from "../lib/alertLocation.js";
 
 // The gateway needs a DEDICATED subscriber connection (psubscribe switches a connection
 // into subscriber mode); publishing reuses the shared lazy publisher via getRedis().
@@ -321,6 +322,11 @@ export function registerRealtime(app: FastifyInstance) {
     // `type` is already parsed above for the log line; an unknown type is never withheld, so a new event
     // is open by default rather than silently dropped.
     const needed = EVENT_PERMISSION[type];
+    // Issue #672 review (Fable B1): an `alert` frame needs `alerts` to read and `location` to keep the
+    // child's place in it. A guardian with `alerts` and not `location` receives the same event with the
+    // five keys removed — withholding the whole frame would hide an SOS from the person given the alerts.
+    // Built once per frame, and only when the payload actually carries a location.
+    const withoutLocation = type === "alert" ? strippedAlertFrame(message) : null;
     let checked = 0;
     for (const ws of set) {
       if (ws.readyState !== 1) continue;
@@ -333,8 +339,16 @@ export function registerRealtime(app: FastifyInstance) {
       }
       if (needed && !reader?.open) {
         checked += 1;
-        void mayRead(ws, reader, needed).then((ok) => {
-          if (ok && ws.readyState === 1) ws.send(message);
+        // An `alert` frame is gated twice: `alerts` decides whether the frame is sent at all, `location`
+        // whether the place travels with it (#672 Fable B1). The second check runs only for an alert that
+        // has a place to remove, so every other frame and every placeless alert costs one lookup.
+        const frame = withoutLocation
+          ? mayRead(ws, reader, needed).then((ok) =>
+              ok ? mayRead(ws, reader, "location").then((may) => (may ? message : withoutLocation)) : null,
+            )
+          : mayRead(ws, reader, needed).then((ok) => (ok ? message : null));
+        void frame.then((text) => {
+          if (text && ws.readyState === 1) ws.send(text);
         });
         continue;
       }
@@ -345,6 +359,22 @@ export function registerRealtime(app: FastifyInstance) {
     // in the first and not the second, which is the gap that makes a miss look like a delivery.
     gatewayLog?.info({ familyId, type, listening: true, written, checked, sockets: set.size }, "realtime fan-out");
   });
+}
+
+/**
+ * Issue #672 (Fable B1): the same alert frame with the location keys removed, or `null` when the payload
+ * carries no location — then the original message is sent to every reader and no second lookup runs.
+ */
+function strippedAlertFrame(message: string): string | null {
+  try {
+    const parsed = JSON.parse(message) as { payload?: { metadata?: unknown } };
+    if (!parsed?.payload) return null;
+    const stripped = withoutAlertLocation(parsed.payload);
+    if (stripped === parsed.payload) return null;
+    return JSON.stringify({ ...parsed, payload: stripped });
+  } catch {
+    return null;
+  }
 }
 
 export async function publishFamilyEvent(familyId: string, event: unknown) {
