@@ -1,3 +1,4 @@
+import 'dart:ui' as ui show TextDirection;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -183,18 +184,42 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   Text(l10n.timeLabel(DateFormat.yMMMd(dialogContext.localeName)
                       .add_Hms()
                       .format(alert.createdAt!.toLocal()))),
-                if (alert.metadata.isNotEmpty) ...[
-                  const Divider(),
-                  for (final entry in alert.metadata.entries)
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: AppSpace.xxs),
-                      child: Text('${entry.key}: ${entry.value}',
-                          style: Theme.of(dialogContext).textTheme.bodySmall),
-                    ),
-                ],
                 const Divider(),
                 CoachCardSection(card: coachCard),
+                // #743 UI/UX: no raw `key: value` row is shown to a parent by default, on any alert. On an
+                // SOS this PR would have put `lat: 25.2769`, a machine timestamp and the device id directly
+                // under the sentence, in English developer words on an Arabic screen and with the
+                // coordinates a second time at a different precision, in the middle of an emergency. The
+                // rows stay available, closed by default and last in the content, for the case that needs
+                // them (a support call). Values are drawn left to right in code, both languages, because a
+                // value can be an Arabic app name and would otherwise reorder its own parts.
+                if (alert.metadata.isNotEmpty) ...[
+                  const Divider(),
+                  ExpansionTile(
+                    key: const ValueKey('alert-technical-details'),
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: EdgeInsets.zero,
+                    title: Text(
+                      l10n.alertTechnicalDetails,
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Theme.of(dialogContext).hintColor),
+                    ),
+                    children: [
+                      for (final entry in alert.metadata.entries)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppSpace.xxs),
+                          child: Text(
+                            '${entry.key}: ${entry.value}',
+                            textDirection: ui.TextDirection.ltr,
+                            style: Theme.of(dialogContext).textTheme.bodySmall,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

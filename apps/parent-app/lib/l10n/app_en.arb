@@ -820,6 +820,7 @@
       "count": { "type": "int" }
     }
   },
+  "alertTechnicalDetails": "Technical details",
   "relativeAboutHoursAgo": "about {count}h ago",
   "@relativeAboutHoursAgo": {
     "placeholders": {

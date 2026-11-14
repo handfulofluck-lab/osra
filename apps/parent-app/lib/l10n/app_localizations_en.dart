@@ -1649,6 +1649,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get alertTechnicalDetails => 'Technical details';
+
+  @override
   String relativeAboutHoursAgo(int count) {
     return 'about ${count}h ago';
   }

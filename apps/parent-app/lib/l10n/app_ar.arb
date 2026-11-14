@@ -888,6 +888,7 @@
       "description": "Arabic Language Bureau, #743. Notification body: a location exists and is this old; no coordinates on a lock screen. Tap opens the alert.",
       "placeholders": {"n": {"type": "int"}}
     },
+  "alertTechnicalDetails": "التفاصيل التقنية",
     "alertSosLocationMinutes": "{n, plural, =1{سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.} =2{سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.} few{سُجّل آخر موقع قبل {n} دقائق. اضغط لعرضه.} many{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.} other{سُجّل آخر موقع قبل {n} دقيقة. اضغط لعرضه.}}",
     "@alertSosLocationHours": {
       "description": "Arabic Language Bureau, #743. Notification body for a fix an hour or more old; carries \"about\", hours rounded up.",

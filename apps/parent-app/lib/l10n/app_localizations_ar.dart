@@ -1792,6 +1792,9 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get alertTechnicalDetails => 'التفاصيل التقنية';
+
+  @override
   String relativeAboutHoursAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
