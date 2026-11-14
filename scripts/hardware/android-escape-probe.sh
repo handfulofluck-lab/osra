@@ -81,7 +81,7 @@ now_ms() { date +%s%3N; }
 top_activity() { sh_ dumpsys activity activities | grep -m1 -E 'topResumedActivity=|mResumedActivity:' | sed -E 's/.* ([^ ]+\/[^ ]+) .*/\1/'; }
 gate_on_top() { top_activity | grep -q "${GATE_ACT##*.}"; }
 agent_pid() { sh_ pidof "$PKG" | awk '{print $1}'; }
-app_uid() { sh_ dumpsys package "$PKG" | grep -m1 -oE 'userId=[0-9]+' | cut -d= -f2; }
+app_uid() { sh_ dumpsys package "$PKG" | grep -m1 -oE '(userId|appId)=[0-9]+' | cut -d= -f2; } # Samsung One UI prints appId=
 UID_APP="$(app_uid)"
 if [ -z "$UID_APP" ]; then echo "$PKG is not installed on this device" >&2; exit 2; fi
 # An alarm-usage player owned by the agent in state "started" (dumpsys audio, playback configurations).
@@ -120,10 +120,10 @@ check_after() { # row label
 }
 
 key() { sh_ input keyevent "$1" >/dev/null; }
-tap_text() { # tap the first node whose text contains $1 (uiautomator); returns 1 if absent
+tap_text() { # tap the first node whose text contains $1, any case (Material buttons render upper case); 1 if absent
   sh_ uiautomator dump /sdcard/osra-escape.xml >/dev/null
   local xml; xml=$(sh_ cat /sdcard/osra-escape.xml)
-  local b; b=$(printf '%s' "$xml" | grep -oE "text=\"[^\"]*$1[^\"]*\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" | head -1 | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]')
+  local b; b=$(printf '%s' "$xml" | grep -ioE "text=\"[^\"]*$1[^\"]*\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" | head -1 | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]')
   [ -z "$b" ] && return 1
   local x1 y1 x2 y2; read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '   ')"
   sh_ input tap $(( (x1+x2)/2 )) $(( (y1+y2)/2 )) >/dev/null
