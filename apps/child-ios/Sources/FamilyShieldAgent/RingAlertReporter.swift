@@ -6,42 +6,77 @@ public enum RingReportOutcome: Equatable {
     case resume(after: Int)
 }
 
+public struct RingPendingEvent: Codable, Equatable {
+    public let state: RingEventState
+    public let ringId: UUID
+    public let dismissalCount: Int
+    public let afterRestart: Bool
+
+    public init(state: RingEventState, ringId: UUID, dismissalCount: Int, afterRestart: Bool) {
+        self.state = state
+        self.ringId = ringId
+        self.dismissalCount = dismissalCount
+        self.afterRestart = afterRestart
+    }
+
+    var dedupeKey: String {
+        RingPolicy.dedupeKey(for: state, ringId: ringId, dismissalCount: dismissalCount)
+    }
+}
+
 @MainActor
 public protocol RingAlertReporting {
     func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
                 afterRestart: Bool) async -> RingReportOutcome
+    func pendingEvents() -> [RingPendingEvent]
 }
 
 public extension RingAlertReporting {
     func report(state: RingEventState, ringId: UUID, dismissalCount: Int) async -> RingReportOutcome {
         await report(state: state, ringId: ringId, dismissalCount: dismissalCount, afterRestart: false)
     }
+    func pendingEvents() -> [RingPendingEvent] { [] }
 }
 
 @MainActor
 public struct RingAlertReporter: RingAlertReporting {
     typealias Sender = (URLRequest) async throws -> (status: Int, body: Data)
     public static let deliveredKey = "ring.deliveredDedupeKeys"
+    public static let pendingKey = "ring.pendingEvents"
     private let defaults: UserDefaults?
-    private let reporter: AlertReporter
+    private let suppliedReporter: AlertReporter?
     private let sender: Sender
+    private var currentReporter: AlertReporter {
+        suppliedReporter ?? AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret())
+    }
 
     init(defaults: UserDefaults? = UserDefaults(suiteName: AgentIdentityStore.suiteName),
          reporter: AlertReporter? = nil,
          sender: @escaping Sender = { try await AlertReporter.send($0) }) {
         self.defaults = defaults
-        self.reporter = reporter ?? AlertReporter(hmacSecret: AlertReporter.pairedHmacSecret())
+        self.suppliedReporter = reporter
         self.sender = sender
+    }
+
+    public func pendingEvents() -> [RingPendingEvent] {
+        (defaults?.array(forKey: Self.pendingKey) as? [Data] ?? []).compactMap {
+            try? JSONDecoder().decode(RingPendingEvent.self, from: $0)
+        }
     }
 
     public func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
                        afterRestart: Bool = false) async -> RingReportOutcome {
-        let key = RingPolicy.dedupeKey(for: state, ringId: ringId, dismissalCount: dismissalCount)
+        let event = RingPendingEvent(state: state, ringId: ringId, dismissalCount: dismissalCount, afterRestart: afterRestart)
+        let key = event.dedupeKey
         let delivered = Set(defaults?.stringArray(forKey: Self.deliveredKey) ?? [])
-        guard !delivered.contains(key) else { return .delivered }
+        if delivered.contains(key) {
+            removePending(key)
+            return .delivered
+        }
+        recordPending(event)
         var metadata: [String: Any] = ["state": state.rawValue, "ringId": ringId.uuidString.lowercased()]
         if afterRestart { metadata["afterRestart"] = true }
-        guard let request = reporter.makeRequest(
+        guard let request = currentReporter.makeRequest(
             category: "ring", severity: state == .childDismissed ? "warning" : "info",
             title: "Phone ring", body: Self.fallback(state, dismissalCount: dismissalCount, afterRestart: afterRestart),
             childId: AlertReporter.pairedChildId(), metadata: metadata, dedupeKey: key) else { return .pending }
@@ -55,6 +90,7 @@ public struct RingAlertReporter: RingAlertReporting {
                 else { return .pending }
                 return .resume(after: seconds)
             }
+            removePending(key)
             defaults?.set(delivered.union([key]).sorted(), forKey: Self.deliveredKey)
             return .delivered
         } catch {
@@ -63,7 +99,21 @@ public struct RingAlertReporter: RingAlertReporting {
     }
 
     public static func clear() {
-        UserDefaults(suiteName: AgentIdentityStore.suiteName)?.removeObject(forKey: deliveredKey)
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        defaults?.removeObject(forKey: deliveredKey)
+        defaults?.removeObject(forKey: pendingKey)
+    }
+
+    private func recordPending(_ event: RingPendingEvent) {
+        var events = pendingEvents()
+        guard !events.contains(event) else { return }
+        events.append(event)
+        defaults?.set(events.map { try? JSONEncoder().encode($0) }, forKey: Self.pendingKey)
+    }
+
+    private func removePending(_ key: String) {
+        let remaining = pendingEvents().filter { $0.dedupeKey != key }
+        defaults?.set(remaining.map { try? JSONEncoder().encode($0) }, forKey: Self.pendingKey)
     }
 
     private static func fallback(_ state: RingEventState, dismissalCount: Int, afterRestart: Bool) -> String {

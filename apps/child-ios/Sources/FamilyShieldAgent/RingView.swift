@@ -3,6 +3,7 @@ import SwiftUI
 
 public struct RingView: View {
     @ObservedObject var controller: RingController
+    @State private var pinConfigured = ParentPinStore.isConfigured
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
@@ -31,10 +32,14 @@ public struct RingView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    PinGateView(title: L10n.tr("ring_pin_title")) {
-                        Task {
-                            await controller.stop(.pinVerified)
-                            RingNotifier.cancel()
+                    if RingPINPresentation.resolve(isConfigured: pinConfigured) == .setup {
+                        PinSetupView { pinConfigured = true }
+                    } else {
+                        PinGateView(title: L10n.tr("ring_pin_title")) {
+                            Task {
+                                await controller.stop(.pinVerified)
+                                RingNotifier.cancel()
+                            }
                         }
                     }
                     .frame(minHeight: 240)

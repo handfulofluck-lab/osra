@@ -7,6 +7,13 @@ import os
 public struct DeviceCommand: Decodable, Equatable {
     public var id: String
     public var type: String
+    public var payload: [String: String]?
+
+    public init(id: String, type: String, payload: [String: String]? = nil) {
+        self.id = id
+        self.type = type
+        self.payload = payload
+    }
 }
 
 /// What the iOS agent does with a command. iOS enforces through Screen Time, so it handles what changes the
@@ -112,17 +119,24 @@ public struct LiveLocateNow: LocateNowHandling {
 
 public protocol RingCommandHandling {
     func startRing(id: String) async -> RingCommandError?
-    func stopRing(id: String) async
+    func stopRing(targetId: String?) async -> RingCommandError?
 }
 
 public struct LiveRingCommands: RingCommandHandling {
-    public init() {}
-    public func startRing(id: String) async -> RingCommandError? {
-        await RingController.shared.start(commandId: id)
+    private let controller: RingController?
+
+    public init(controller: RingController? = nil) {
+        self.controller = controller
     }
-    public func stopRing(id: String) async {
-        guard let commandId = UUID(uuidString: id) else { return }
-        await RingController.shared.stop(.parentCommand, commandId: commandId)
+
+    public func startRing(id: String) async -> RingCommandError? {
+        await (controller ?? RingController.shared).start(commandId: id)
+    }
+
+    public func stopRing(targetId: String?) async -> RingCommandError? {
+        let target = targetId.map { UUID(uuidString: $0) }
+        if targetId != nil && target == nil { return .invalidCommand }
+        return await (controller ?? RingController.shared).stop(.parentCommand, commandId: target ?? nil)
     }
 }
 
@@ -217,9 +231,14 @@ public enum CommandDrainer {
                     result.handled.append(command.type)
                 }
             case .stopRing:
-                await ring.stopRing(id: command.id)
-                try? await client.ack(identity, commandId: command.id, ok: true)
-                result.handled.append(command.type)
+                if let error = await ring.stopRing(targetId: command.payload?["ringId"]) {
+                    try? await client.ack(identity, commandId: command.id, ok: false,
+                                          detail: ["reason": error.rawValue])
+                    result.refused.append(command.type)
+                } else {
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                }
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,
                                       detail: ["reason": "not_supported", "type": command.type])

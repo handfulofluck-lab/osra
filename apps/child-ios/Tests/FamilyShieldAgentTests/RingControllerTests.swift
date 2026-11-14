@@ -64,6 +64,7 @@ final class RingControllerTests: XCTestCase {
     private var wall = Date(timeIntervalSince1970: 1_000)
     private var uptime = 10.0
     private var bootSession: TimeInterval = 1
+    private var clockDriving = false
 
     override func setUp() {
         super.setUp()
@@ -72,6 +73,7 @@ final class RingControllerTests: XCTestCase {
         history = InMemoryRingHistory()
         reporter = RecordingRingReporter()
         bootSession = 1
+        clockDriving = false
         AgentIdentityStore.secrets = InMemorySecretStore()
         AgentIdentityStore.clear()
     }
@@ -92,7 +94,17 @@ final class RingControllerTests: XCTestCase {
                             sleep: ((TimeInterval) async throws -> Void)? = nil) -> RingController {
         RingController(backend: backend, store: store, history: history, reporter: reporter ?? self.reporter,
                        now: { self.wall }, monotonic: { self.uptime },
-                       bootSession: { self.bootSession }, sleep: sleep ?? { self.uptime += $0 })
+                       bootSession: { self.bootSession },
+                       sleep: sleep ?? { seconds in
+                           if self.clockDriving {
+                               self.uptime += seconds
+                           } else {
+                               while !self.clockDriving {
+                                   try Task.checkCancellation()
+                                   await Task.yield()
+                               }
+                           }
+                       })
     }
 
     private func flushTasks() async {
@@ -385,9 +397,9 @@ extension RingControllerTests {
     func testPINLockoutDoesNotStopTheRing() async {
         let controller = controller()
         await controller.start(id)
-        var lockout = PinLockout()
-        for _ in 1...5 { lockout.recordFailure(now: wall) }
-        XCTAssertTrue(lockout.isLocked(now: wall))
+        XCTAssertTrue(ParentPinStore.set("9753"))
+        for _ in 1...4 { _ = ParentPinStore.check("x") }
+        XCTAssertEqual(ParentPinStore.check("x"), .locked(seconds: 30))
         XCTAssertNotNil(controller.state)
         XCTAssertNil(controller.state?.stopSource)
     }
@@ -439,13 +451,14 @@ extension RingControllerTests {
         await controller.start(id)
         wall = wall.addingTimeInterval(600)
         uptime = 0
+        bootSession = 2
         await controller.resume()
         XCTAssertEqual(controller.state?.stopSource, nil)
         XCTAssertEqual(controller.state?.endAt, wall.addingTimeInterval(240))
-        XCTAssertEqual(controller.state?.monotonicStart, uptime)
+        XCTAssertEqual(controller.state?.monotonicStart, uptime - 60)
         XCTAssertFalse(history.contains(id))
         XCTAssertEqual(backend.scheduled, [id], "the cancelled alarm is re-armed once")
-        XCTAssertEqual(backend.stopCalls, [id])
+        XCTAssertTrue(backend.stopCalls.isEmpty)
         XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
     }
 
@@ -454,6 +467,7 @@ extension RingControllerTests {
         await controller.start(id)
         wall = wall.addingTimeInterval(600)
         uptime = 0
+        bootSession = 2
         await controller.resume()
         XCTAssertNil(controller.state)
         XCTAssertNil(store.load())
@@ -467,6 +481,7 @@ extension RingControllerTests {
         await controller.start(id)
         wall = wall.addingTimeInterval(300)
         uptime = 0
+        bootSession = 2
         await controller.resume()
         XCTAssertNil(controller.state)
         XCTAssertEqual(reporter.calls.map(\.state), [.timedOut])
@@ -539,6 +554,7 @@ extension RingControllerTests {
         let controller = controller()
         await controller.start(id)
         uptime = 10
+        clockDriving = true
         await flushTasks()
         XCTAssertEqual(backend.stopCalls, [id])
         XCTAssertEqual(reporter.calls.map(\.state), [.timedOut])
@@ -547,6 +563,7 @@ extension RingControllerTests {
 
     func testDeadlineDoesNotStopAt299Point9() async {
         let controller = controller(sleep: { self.uptime += min($0, 299.9) })
+        clockDriving = true
         await controller.start(id)
         uptime = 10
         await flushTasks()
@@ -708,6 +725,17 @@ extension RingControllerTests {
         XCTAssertEqual(controller.state?.dismissalCount, 0)
         XCTAssertEqual(backend.scheduled, [id])
         XCTAssertEqual(reporter.callCount, 0)
+    }
+
+    func testActiveRingReplayKeepsOriginalDeadline() async {
+        let controller = controller()
+        await controller.start(id)
+        let originalEnd = store.load()?.endAt
+        wall = wall.addingTimeInterval(60)
+        let error = await controller.start(id)
+        XCTAssertNil(error)
+        XCTAssertEqual(store.load()?.endAt, originalEnd)
+        XCTAssertEqual(backend.scheduled, [id])
     }
 
     func testLiveStopWithoutTargetCancelsCurrentRing() async {

@@ -22,7 +22,6 @@ public enum DeviceRevocation {
     }
 
     public static var stopRing: () -> Void = {
-        UserDefaultsRingStore().save(nil)
         Task { await RingController.shared.stopForUnpair() }
     }
 

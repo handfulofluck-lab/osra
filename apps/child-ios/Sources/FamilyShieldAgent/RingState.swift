@@ -7,15 +7,18 @@ public struct RingState: Codable, Equatable {
     public var monotonicStart: TimeInterval
     public var stopSource: RingStopSource?
     public var dismissalCount: Int
+    public var bootSession: TimeInterval?
 
     public init(commandId: UUID, startedAt: Date, endAt: Date, monotonicStart: TimeInterval,
-                stopSource: RingStopSource? = nil, dismissalCount: Int = 0) {
+                stopSource: RingStopSource? = nil, dismissalCount: Int = 0,
+                bootSession: TimeInterval? = nil) {
         self.commandId = commandId
         self.startedAt = startedAt
         self.endAt = endAt
         self.monotonicStart = monotonicStart
         self.stopSource = stopSource
         self.dismissalCount = dismissalCount
+        self.bootSession = bootSession
     }
 }
 
@@ -30,4 +33,13 @@ public enum RingEventState: String, Codable {
     case pinStopped = "pin_stopped"
     case parentStopped = "parent_stopped"
     case timedOut = "timed_out"
+}
+
+public enum RingPINPresentation {
+    case setup
+    case gate
+
+    public static func resolve(isConfigured: Bool) -> RingPINPresentation {
+        isConfigured ? .gate : .setup
+    }
 }

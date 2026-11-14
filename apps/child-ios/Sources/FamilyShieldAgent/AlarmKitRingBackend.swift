@@ -69,13 +69,15 @@ public final class AlarmKitRingBackend: RingBackend {
         #endif
     }
 
-    public func scheduledIDs() async -> Set<UUID> {
+    public func scheduledIDs() async throws -> Set<UUID> {
         #if os(iOS)
         if #available(iOS 26.0, *) {
-            return Set((try? AlarmManager.shared.alarms.map(\.id)) ?? [])
+            return try Set(AlarmManager.shared.alarms.map(\.id))
         }
-        #endif
         return []
+        #else
+        return []
+        #endif
     }
 
     public func updates() async -> AsyncStream<Set<UUID>> {

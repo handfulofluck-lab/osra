@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 @MainActor
@@ -6,7 +7,7 @@ public protocol RingBackend {
     func requestAuthorization() async -> Bool
     func schedule(_ id: UUID) async throws
     func stop(_ id: UUID) async throws
-    func scheduledIDs() async -> Set<UUID>
+    func scheduledIDs() async throws -> Set<UUID>
     func updates() async -> AsyncStream<Set<UUID>>
 }
 
@@ -77,4 +78,14 @@ public enum RingCommandError: String, Error, Equatable {
     case unsupportedOS = "unsupported_os"
     case authorizationDenied = "alarm_permission_denied"
     case scheduleFailed = "schedule_failed"
+    case stopFailed = "stop_failed"
+}
+
+public enum RingBootSession {
+    public static func current() -> TimeInterval? {
+        var time = timeval()
+        var size = socklen_t(MemoryLayout<timeval>.size)
+        guard sysctlbyname("kern.boottime", &time, &size, nil, 0) == 0 else { return nil }
+        return TimeInterval(time.tv_sec) + TimeInterval(time.tv_usec) / 1_000_000
+    }
 }

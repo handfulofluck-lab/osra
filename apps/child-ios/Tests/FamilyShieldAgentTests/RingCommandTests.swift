@@ -84,7 +84,11 @@ final class RingCommandTests: XCTestCase {
     func testStopRingIsIdempotent() async throws {
         pair()
         let handler = FakeRingCommands()
-        respond(to: [["id": UUID().uuidString, "type": "stop_ring", "payload": ["ringId": id.uuidString.lowercased()]])
+        respond(to: [[
+            "id": UUID().uuidString,
+            "type": "stop_ring",
+            "payload": ["ringId": id.uuidString.lowercased()],
+        ]])
         let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
         XCTAssertEqual(result.handled, ["stop_ring"])
         XCTAssertEqual(handler.stopCalls, 1)
@@ -96,7 +100,11 @@ final class RingCommandTests: XCTestCase {
         pair()
         let handler = FakeRingCommands()
         handler.error = .invalidCommand
-        respond(to: [["id": UUID().uuidString, "type": "stop_ring", "payload": ["ringId": "not-a-uuid"]])
+        respond(to: [[
+            "id": UUID().uuidString,
+            "type": "stop_ring",
+            "payload": ["ringId": "not-a-uuid"],
+        ]])
         let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session), ring: handler)
         XCTAssertEqual(result.refused, ["stop_ring"])
         XCTAssertEqual((try ack()["detail"] as? [String: String])?["reason"], "invalid_command")

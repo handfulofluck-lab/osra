@@ -20,6 +20,7 @@ final class DeviceRevocationTests: XCTestCase {
     override func setUp() {
         super.setUp()
         platformClearShields = DeviceRevocation.clearShields
+        platformStopRing = DeviceRevocation.stopRing
         AgentIdentityStore.secrets = store
         AgentIdentityStore.clear()
         LocationBuffer.clear()
@@ -28,7 +29,10 @@ final class DeviceRevocationTests: XCTestCase {
         DeviceRevocation.clearShields = { [weak self] in self?.shieldsCleared += 1 }
     }
 
+    private var platformStopRing: (() -> Void)?
+
     override func tearDown() {
+        DeviceRevocation.stopRing = platformStopRing
         DeviceRevocation.clearShields = platformClearShields
         AgentIdentityStore.clear()
         LocationBuffer.clear()
@@ -148,5 +152,19 @@ final class DeviceRevocationTests: XCTestCase {
             XCTAssertTrue(text.contains("DeviceRevocation."), "\(file) sends the device token but never handles device_revoked")
         }
         XCTAssertGreaterThanOrEqual(callers.count, 4, "rules, commands, location and push: \(callers)")
+    }
+
+    @MainActor
+    func testDefaultRevocationRehydratesPersistedRingBeforeClearing() async {
+        await RingController.shared.stopForUnpair()
+        let state = RingState(commandId: UUID(), startedAt: Date(), endAt: Date().addingTimeInterval(300),
+                              monotonicStart: 0, bootSession: 1)
+        UserDefaultsRingStore().save(state)
+        await RingController.shared.resume()
+        XCTAssertNotNil(RingController.shared.state)
+        DeviceRevocation.unpair()
+        for _ in 0..<8 { await Task.yield() }
+        XCTAssertNil(RingController.shared.state)
+        XCTAssertNil(UserDefaultsRingStore().load())
     }
 }
