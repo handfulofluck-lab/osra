@@ -84,8 +84,20 @@ sealed class ProbeServer(ProbeSettings settings) : BackgroundService
     {
         var path = Path.Combine(AppContext.BaseDirectory, "probe-store", "restrictions.json");
         var store = new FileDesktopRestrictionStore(path);
-        if (store.Load().Count != 0) throw new InvalidDataException("A missing restriction file was not empty.");
+        var initial = store.Load();
         RequireProtectedDirectory(Path.GetDirectoryName(path)!);
+        if (initial.Count != 0)
+        {
+            try
+            {
+                store.Save([]);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException("The missing-file load failed; the direct save exposed the cause.", ex);
+            }
+            throw new InvalidDataException("A missing restriction file was not empty, but the directory and direct save passed.");
+        }
         store.Save([new SessionRestriction { SessionId = sessionId, Locked = true, ObservedAt = DateTime.UtcNow }]);
         store.Save([new SessionRestriction
         {
