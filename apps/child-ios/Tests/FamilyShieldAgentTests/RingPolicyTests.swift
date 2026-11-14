@@ -6,7 +6,7 @@ final class RingPolicyTests: XCTestCase {
     private let id = UUID(uuidString: "6F1C2B8E-3D4A-4E5F-9A0B-1C2D3E4F5A6B")!
 
     private func state(endAt: Date = Date(timeIntervalSince1970: 300), monotonicStart: TimeInterval = 0) -> RingState {
-        RingState(commandId: id, startedAt: .timeIntervalSince1970(0), endAt: endAt,
+        RingState(commandId: id, startedAt: Date(timeIntervalSince1970: 0), endAt: endAt,
                   monotonicStart: monotonicStart, stopSource: nil, dismissalCount: 0)
     }
 
