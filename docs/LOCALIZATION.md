@@ -97,6 +97,15 @@ plurals alike.
 - `Row`, `Wrap`, `TabBar` and `AppBar` actions mirror automatically. Prefer `Wrap` over a
   fixed `Row` where translated labels are longer, and make tab bars scrollable when four or
   more labels must fit 320 px.
+
+### Typed list separators (#794)
+
+- Allowed/blocked domains, routine blocked/allowed apps and digest recipients accept Latin `,` and `;`,
+  Arabic U+060C and U+061B, and line breaks. The shared `splitLocalizedList` helper trims items and drops
+  empty ones; a parent is not asked to change keyboard to enter several items.
+- LRM/RLM/ALM (U+200E/U+200F/U+061C) are stripped only from domain input before its existing validation.
+  Email addresses and app package IDs retain those marks; in particular, the API still refuses an email
+  containing RLM. This changes parsing only, not any English or Arabic wording.
 - Directional icons (`Icons.chevron_left/right`, `arrow_*`) mirror from their
   `matchTextDirection` flag; check any icon that does not.
 - `apps/parent-app/android/app/src/main/AndroidManifest.xml` sets `android:supportsRtl="true"`
