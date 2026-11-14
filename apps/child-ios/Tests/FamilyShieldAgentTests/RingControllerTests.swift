@@ -675,6 +675,12 @@ extension RingControllerTests {
         XCTAssertEqual(outcome, .pending)
         XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 1)
         XCTAssertEqual(reporter.pendingEvents(), [event])
+        for count in 2...3 {
+            let next = await reporter.report(state: .childDismissed, ringId: id, dismissalCount: count)
+            XCTAssertEqual(next, .pending)
+        }
+        XCTAssertEqual(defaults.array(forKey: RingAlertReporter.pendingKey)?.count, 3)
+        XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1, 2, 3])
     }
 
     func testOfflineDismissalsDrainEveryPendingEvent() async {
@@ -692,6 +698,8 @@ extension RingControllerTests {
         let controller = controller(reporter: reporter)
         await controller.start(id)
         await controller.process(scheduledIDs: [])
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(reporter.pendingEvents().map(\.dismissalCount), [1])
         await controller.process(scheduledIDs: [])
         await controller.process(scheduledIDs: [])
         XCTAssertEqual(requests.count, 3)
