@@ -329,3 +329,9 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - [ ] Run both desktop configurations, API, shared-types build, parent suite, strict workflow lint, CI paths, no-PIN/service-account/docs-link guards, whitespace checks and the real CI-only SYSTEM probe. Confirm all three markers and cleanup on the exact new head; refresh the unsigned artifact.
 - [ ] Review the whole branch without substituting K3/DeepSeek for the requested K3.1 Pro reviewer. Fold current main without rebase and repeat affected checks.
 - [ ] Update the PR body and notify Claude immediately when each milestone completes. Restore readiness and auto-merge only after implementation, author gates and required Bureau review; obtain cross-family verification, Fable's R3 key and Ahmed's security/dependency disposition. Never merge directly.
+
+### Task 20: Close the established-connection test gaps (Fable L3/L7)
+
+- [x] Prove an ordinary foreground sample queued after `hello` reaches the service through the real client worker; planting `_pending.Peek()` to null turns it red and restoration turns it green.
+- [x] Complete `hello` + SOS, then EOF before `sos_result`. The next connection sends `hello` and the same SOS again. Removing only the disconnect-time requeue turns this row red; restoration turns it green. The fake stream completes the write before EOF so the test exercises that specific requeue rather than a write-failure race.
+- [x] Run the focused rows and both complete configurations, 356/356 each. No production code changed; this is test and documentation evidence only.

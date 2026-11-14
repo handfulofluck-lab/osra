@@ -484,14 +484,15 @@ hotkey as part of this build gate. The unsigned artifact has **not yet been inst
 clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
 pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 
-The W1 suite is **354 tests in each configuration**. It pins the launched PID and co-located image,
+The W1 suite is **356 tests in each configuration**. It pins the launched PID and co-located image,
 session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
 session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
 than relying on an outer timeout. A non-SYSTEM server is refused before `hello` with a direct five-second
 assertion, not a 90-second outer hang. Real `AcceptAsync` rows reject an impostor and then accept the genuine
 client, inspect the ACL on the pipe actually created, and drive the real server/client workers through a
 post-`hello` lock, 20 quiet seconds and a post-connect ring. `TrayPipeClient.ConnectAsync` owns exactly one
-`hello`; the worker does not duplicate it. Both real-session pipe tests share the cross-process
+`hello`; the worker does not duplicate it. Ordinary post-connect messages must arrive, and an SOS
+written before EOF but not acknowledged must be sent again on the next connection. Both real-session pipe tests share the cross-process
 `Global\OSRA-TraySessionPipeTests` semaphore so concurrent lanes cannot own the same genuine pipe name.
 
 The suite also merges device restrictions over stale session records, starts a fresh disconnected grace
