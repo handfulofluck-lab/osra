@@ -40,6 +40,6 @@ public enum RingPINPresentation {
     case gate
 
     public static func resolve(isConfigured: Bool) -> RingPINPresentation {
-        isConfigured ? .gate : .setup
+        .gate
     }
 }

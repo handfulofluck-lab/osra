@@ -254,7 +254,7 @@ public struct AgentRootView: View {
             }
         }
         .fullScreenCover(isPresented: Binding(
-            get: { ring.state != nil && ring.state?.stopSource == nil }, set: { _ in })) {
+            get: { ring.requiresPin }, set: { _ in })) {
             RingView(controller: ring, onPinConfigured: { pinConfigured = true })
         }
         .onAppear {

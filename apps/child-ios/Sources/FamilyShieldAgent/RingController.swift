@@ -5,6 +5,10 @@ import Foundation
 public final class RingController: ObservableObject {
     public static let shared = RingController()
     @Published public private(set) var state: RingState?
+    public var requiresPin: Bool {
+        guard let state else { return false }
+        return !history.contains(state.commandId)
+    }
     private let backend: RingBackend
     private let store: RingStore
     private let history: RingHistory
