@@ -393,7 +393,7 @@ jobs:
           for LANGUAGE in en ar; do
             xcrun simctl spawn "$DEVICE_ID" defaults write "Apple Global Domain" AppleLanguages -array "$LANGUAGE"
             INSTALLED="$(xcrun simctl listapps "$DEVICE_ID")"
-            if python3 -c 'import json,sys; sys.exit("com.osratech.child" not in json.load(sys.stdin))' <<<"$INSTALLED"; then
+            if python3 -c 'import plistlib,sys; sys.exit("com.osratech.child" not in plistlib.load(sys.stdin.buffer))' <<<"$INSTALLED"; then
               xcrun simctl terminate "$DEVICE_ID" com.osratech.child
             fi
             TEST_RUNNER_OSRA_RING_SCREENSHOT_DIR="$RUNNER_TEMP/ring-screenshots" \
