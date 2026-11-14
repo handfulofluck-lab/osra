@@ -58,6 +58,7 @@ public sealed class PairingServiceTests
         Assert.All(handler.ClientHeaders, header => Assert.Equal("agent-desktop/0.1.0+1 (windows)", header));
         var claim = JsonDocument.Parse(handler.Bodies[0]);
         Assert.Equal("granted", claim.RootElement.GetProperty("capabilities").GetProperty("grants").GetProperty("child_account_admin").GetString());
+        Assert.Equal("degraded", claim.RootElement.GetProperty("capabilities").GetProperty("features").GetProperty("lock_screen").GetString());
         Assert.DoesNotContain(Pin, handler.Bodies[0]);
         Assert.DoesNotContain("jwt-9", handler.Bodies[0]);
     }

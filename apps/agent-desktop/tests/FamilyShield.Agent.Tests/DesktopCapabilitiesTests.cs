@@ -36,6 +36,21 @@ public sealed class DesktopCapabilitiesTests
     }
 
     [Fact]
+    public void ConfiguredButNotConnectedIsDegradedRatherThanUnavailable()
+    {
+        var report = DesktopCapabilities.Create(new TestAccountIdentity(false),
+            new RuntimeFacts(HasParentPin: true, TrayConnected: false, ProcessBlocking: true, WebFiltering: true));
+
+        Assert.Equal("degraded", report.GetProperty("features").GetProperty("lock_screen").GetString());
+        Assert.Equal("degraded", report.GetProperty("features").GetProperty("pause_screen").GetString());
+        Assert.Equal("degraded", report.GetProperty("features").GetProperty("screen_time").GetString());
+
+        var unconfigured = DesktopCapabilities.Create(new TestAccountIdentity(false),
+            new RuntimeFacts(HasParentPin: false, TrayConnected: true, ProcessBlocking: true, WebFiltering: true));
+        Assert.Equal("unavailable", unconfigured.GetProperty("features").GetProperty("lock_screen").GetString());
+    }
+
+    [Fact]
     public async Task TelemetryOmitsCapabilitiesUntilTheTrayReportsThem()
     {
         var dir = Path.Combine(Path.GetTempPath(), "osra-capability-tests", Guid.NewGuid().ToString("N"));

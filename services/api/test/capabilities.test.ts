@@ -99,6 +99,21 @@ describe("decision 3 + A4 — what the parent's setup screen is shown", () => {
     expect(setup.features.lock_screen).toBe("ready");
   });
 
+  it("the desktop account state is not a generic missing permission", () => {
+    const desktop = { app: "agent-desktop", version: "0.1.0", build: 1, flavour: "dev" };
+    const standard = setupFor({
+      capabilities: report({ client: desktop, grants: { child_account_admin: "missing" } }),
+      capabilitiesReportedAt: new Date(NOW),
+    }, NOW);
+    const administrator = setupFor({
+      capabilities: report({ client: desktop, grants: { child_account_admin: "granted" } }),
+      capabilitiesReportedAt: new Date(NOW),
+    }, NOW);
+
+    expect(standard.missing).toEqual([]);
+    expect(administrator.missing).not.toContain("child_account_admin");
+  });
+
   it("a report older than 20 minutes is stale, and still shown", () => {
     const setup = setupFor({ capabilities: report(), capabilitiesReportedAt: new Date(NOW - CAPABILITIES_MAX_AGE_MS - 1) }, NOW);
     expect(setup.stale).toBe(true);

@@ -128,15 +128,16 @@ void main() {
     expect(find.text('• خدمة إمكانية الوصول'), findsOneWidget);
   });
 
-  testWidgets('all thirteen grant keys get a human label, and the list matches the shared vocabulary', (tester) async {
-    // #552 review, point 1: three keys (full_screen_intent, family_controls, background_refresh) reached the
-    // screen as raw wire names. Looping the whole vocabulary is what makes a *future* grant fail here instead.
+  testWidgets('thirteen generic grants have labels and desktop account state stays out of the fix list', (tester) async {
+    // #552 review, point 1: every generic grant needs a human label. The desktop-only administrator state is
+    // an ADR-0041 D5 pairing warning, not a permission the safe Standard-account setup should be told to fix.
     final source = _readShared('packages/shared-types/src/capabilities.ts');
     final block = RegExp(r'export const GRANT_KEYS = \[([^\]]*)\]', dotAll: true).firstMatch(source)!.group(1)!;
     final shared = RegExp("\"([a-z_]+)\"").allMatches(block).map((m) => m.group(1)!).toList();
-    expect(shared.length, 13, reason: 'the vocabulary grew or shrank; update the widget and this row together');
-    expect(PhoneSetupSection.grantKeys, shared,
-        reason: 'the widget must carry the same order and the same keys as the server');
+    expect(shared.length, 14, reason: 'the vocabulary grew or shrank; update the widget and this row together');
+    final generic = shared.where((key) => key != 'child_account_admin').toList();
+    expect(PhoneSetupSection.grantKeys, generic,
+        reason: 'the widget must carry every generic grant, and no desktop-only account state');
 
     await pump(tester, device(missing: PhoneSetupSection.grantKeys));
     for (final key in PhoneSetupSection.grantKeys) {
