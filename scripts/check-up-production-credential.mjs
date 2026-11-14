@@ -31,6 +31,10 @@ const SCRIPT = join(ROOT, 'infra', 'terraform', 'up.sh');
 const UNSET_MSG = 'production: set AWS_PROFILE explicitly';
 const STAGING_MSG = 'production: AWS_PROFILE is the staging profile';
 const GUARD_MARKER = 'osra#768: the profile must not only be given';
+// What the script prints when it runs past the guard into the real work. Its presence means nothing was
+// refused, so every refusal row asserts it is absent: a guard that only warns would still exit non-zero a
+// few lines later, and Fable's fault q2 showed the rows could not tell that apart from a refusal.
+const PASSED_THE_GUARD = 'missing base/production.tfvars';
 
 /** A scratch directory holding no-op `terraform` and `aws`, so the script reaches its production block. */
 function stubBin() {
@@ -49,7 +53,8 @@ function run(scriptPath, bin, { env = {} } = {}) {
   delete childEnv.OSRA_ENV;
   Object.assign(childEnv, env);
   const out = spawnSync('bash', [scriptPath], { env: childEnv, encoding: 'utf8' });
-  return { status: out.status, stderr: `${out.stdout ?? ''}${out.stderr ?? ''}` };
+  // `status === null` means bash could not be started at all, which is neither a refusal nor a pass.
+  return { status: out.status, spawned: out.error === undefined && out.status !== null, stderr: `${out.stdout ?? ''}${out.stderr ?? ''}` };
 }
 
 function check(name, condition, detail) {
@@ -66,20 +71,26 @@ function suite(scriptPath) {
   try {
     // 1. #765's own rule still holds: production with no profile is refused, and by its message.
     const unset = run(scriptPath, bin, { env: { OSRA_ENV: 'production' } });
-    ok = check('production with AWS_PROFILE unset is refused', unset.status === 1 && unset.stderr.includes(UNSET_MSG), `status ${unset.status}`) && ok;
+    ok = check('production with AWS_PROFILE unset is refused',
+      unset.spawned && unset.status === 1 && unset.stderr.includes(UNSET_MSG) && !unset.stderr.includes(PASSED_THE_GUARD),
+      `status ${unset.status}`) && ok;
 
     // 2. The case this PR adds: a profile that was given, and is the staging one.
     const staging = run(scriptPath, bin, { env: { OSRA_ENV: 'production', AWS_PROFILE: 'osra-staging' } });
-    ok = check('production naming the staging profile is refused', staging.status === 1 && staging.stderr.includes(STAGING_MSG), `status ${staging.status}`) && ok;
+    ok = check('production naming the staging profile is refused',
+      staging.spawned && staging.status === 1 && staging.stderr.includes(STAGING_MSG) && !staging.stderr.includes(PASSED_THE_GUARD),
+      `status ${staging.status}`) && ok;
 
     // 3. A named production profile is not refused by either guard; it fails later on the missing tfvars,
     //    which is a different failure and must not be mistaken for a refusal.
     const named = run(scriptPath, bin, { env: { OSRA_ENV: 'production', AWS_PROFILE: 'osra-production' } });
-    ok = check('another profile is not refused by the guard', !named.stderr.includes(UNSET_MSG) && !named.stderr.includes(STAGING_MSG), `status ${named.status}`) && ok;
+    ok = check('another profile is not refused by the guard',
+      named.spawned && !named.stderr.includes(UNSET_MSG) && !named.stderr.includes(STAGING_MSG), `status ${named.status}`) && ok;
 
     // 4. Staging is untouched, even with the staging profile — that is the profile it is supposed to use.
     const onStaging = run(scriptPath, bin, { env: { AWS_PROFILE: 'osra-staging' } });
-    ok = check('a staging run is not refused by the guard', !onStaging.stderr.includes(UNSET_MSG) && !onStaging.stderr.includes(STAGING_MSG), `status ${onStaging.status}`) && ok;
+    ok = check('a staging run is not refused by the guard',
+      onStaging.spawned && !onStaging.stderr.includes(UNSET_MSG) && !onStaging.stderr.includes(STAGING_MSG), `status ${onStaging.status}`) && ok;
   } finally {
     rmSync(bin, { recursive: true, force: true });
   }
@@ -102,7 +113,19 @@ function selftest() {
   writeFileSync(mutated, withoutGuard);
   const bin = stubBin();
   try {
+    // Positive control first (Fable's review of #772): with bash missing, "not refused" is also true, so the
+    // self-test used to pass for the wrong reason. The unmutated script must be refused, with a numeric
+    // status and the message, before the mutated one proves anything.
+    const control = run(SCRIPT, bin, { env: { OSRA_ENV: 'production', AWS_PROFILE: 'osra-staging' } });
+    if (!control.spawned || control.status !== 1 || !control.stderr.includes(STAGING_MSG)) {
+      console.error(`FAIL selftest: the unmutated script was not refused as expected (status ${control.status}, spawned ${control.spawned}) — cannot decide`);
+      return null; // refused to run, not a verdict
+    }
     const staging = run(mutated, bin, { env: { OSRA_ENV: 'production', AWS_PROFILE: 'osra-staging' } });
+    if (!staging.spawned) {
+      console.error(`FAIL selftest: the mutated run could not be started (status ${staging.status}) — cannot decide`);
+      return null;
+    }
     const caught = !(staging.status === 1 && staging.stderr.includes(STAGING_MSG));
     if (!caught) {
       console.error('FAIL selftest: with the guard removed, naming the staging profile was still refused — the check cannot fail');
@@ -116,7 +139,11 @@ function selftest() {
   }
 }
 
-if (process.argv.includes('--selftest')) process.exit(selftest() ? 0 : 1);
+if (process.argv.includes('--selftest')) {
+  const verdict = selftest();
+  // null: could not decide (no bash, or the control run failed) — exit 2, the code the header reserves.
+  process.exit(verdict === true ? 0 : verdict === false ? 1 : 2);
+}
 
 if (!readFileSync(SCRIPT, 'utf8')) {
   console.error('up.sh is empty or unreadable');
