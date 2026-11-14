@@ -12,14 +12,7 @@ import '../../providers/family_provider.dart';
 import 'rules_behind_banner.dart';
 import '../../theme/app_tokens.dart';
 
-const _kCategories = [
-  'pornography',
-  'gambling',
-  'violence',
-  'drugs',
-  'social_media',
-  'chat'
-]; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
+const _kCategories = ['pornography', 'gambling', 'violence', 'drugs', 'social_media', 'chat']; // legacy extras; the recommended 13 live in kRecommendedCategories (models.dart)
 
 /// Parses "HH:mm" into a [TimeOfDay]; falls back to [fallback].
 TimeOfDay parseTime(String value, TimeOfDay fallback) {
@@ -31,8 +24,7 @@ TimeOfDay parseTime(String value, TimeOfDay fallback) {
   return TimeOfDay(hour: h.clamp(0, 23), minute: m.clamp(0, 59));
 }
 
-String formatTime(TimeOfDay t) =>
-    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+String formatTime(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
 /// Rules editor for one child (spec §7.9): Screen time / Web filter /
 /// Apps / Routines. Save PUTs the full RuleSet to /v1/rules/:childId.
@@ -54,8 +46,7 @@ const double kLimitSliderMax = 600;
 /// `[min, max]`, which took the whole editor down for a child with 1440 stored, so the thumb is clamped.
 /// Only the thumb: the title and label keep showing the stored value, and the draft keeps it until the
 /// parent moves the slider, so saving another rule never rewrites the limit.
-double limitSliderPosition(int minutes) =>
-    minutes.toDouble().clamp(kLimitSliderMin, kLimitSliderMax);
+double limitSliderPosition(int minutes) => minutes.toDouble().clamp(kLimitSliderMin, kLimitSliderMax);
 
 class RulesEditorScreen extends ConsumerStatefulWidget {
   final String childId;
@@ -96,10 +87,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     });
     try {
       // NOTE: the server PATCH-merges, so we always send the full object.
-      await ref
-          .read(apiClientProvider)
-          .raw
-          .put('/v1/rules/${widget.childId}', data: _draft.toJson());
+      await ref.read(apiClientProvider).raw.put('/v1/rules/${widget.childId}', data: _draft.toJson());
       ref.invalidate(rulesProvider(widget.childId));
       // Issue #475: the PUT bumped `rulesVersion` on the server, and the banner compares that number with
       // what the phone applied. Without this the family snapshot still carries the pre-save version, so
@@ -107,8 +95,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       // exactly the "I changed it, why is Meet still blocked?" moment it exists for.
       ref.invalidate(familyProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
       }
     } on DioException catch (e) {
       // Issue #437: a rule write can be refused for consent (`428`), and that sentence names no
@@ -117,38 +104,28 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       setState(() => _error = readErrorText(
             l10n,
             e,
-            () => data is Map
-                ? '${data['error'] ?? data['message'] ?? e.message}'
-                : (e.message ?? ''),
+            () => data is Map ? '${data['error'] ?? data['message'] ?? e.message}' : (e.message ?? ''),
           ));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<TimeOfDay?> _pickTime(TimeOfDay initial) =>
-      showTimePicker(context: context, initialTime: initial);
+  Future<TimeOfDay?> _pickTime(TimeOfDay initial) => showTimePicker(context: context, initialTime: initial);
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final rules = ref.watch(rulesProvider(widget.childId));
-    ref.listen(rulesProvider(widget.childId),
-        (_, next) => next.whenData(_applyLoaded));
+    ref.listen(rulesProvider(widget.childId), (_, next) => next.whenData(_applyLoaded));
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.editRules),
         actions: [
           if (_saving)
-            const Padding(
-                padding: EdgeInsets.all(AppSpace.lg),
-                child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2)))
+            const Padding(padding: EdgeInsets.all(AppSpace.lg), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
           else
-            FilledButton(
-                onPressed: _loaded ? _save : null, child: Text(l10n.save)),
+            FilledButton(onPressed: _loaded ? _save : null, child: Text(l10n.save)),
           const SizedBox(width: AppSpace.sm),
         ],
       ),
@@ -170,11 +147,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         children: [
           MaterialBanner(
             content: Text(_error!),
-            actions: [
-              TextButton(
-                  onPressed: () => setState(() => _error = null),
-                  child: Text(l10n.dismiss))
-            ],
+            actions: [TextButton(onPressed: () => setState(() => _error = null), child: Text(l10n.dismiss))],
           ),
           const Expanded(child: SizedBox()),
         ],
@@ -208,12 +181,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           ),
           Expanded(
             child: TabBarView(
-              children: [
-                _buildScreenTime(),
-                _buildWebFilter(),
-                _buildApps(),
-                _buildRoutines()
-              ],
+              children: [_buildScreenTime(), _buildWebFilter(), _buildApps(), _buildRoutines()],
             ),
           ),
         ],
@@ -227,27 +195,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final st = _draft.screenTime;
     void update(ScreenTimeRule Function(ScreenTimeRule) f) =>
-        setState(() => _draft = RuleSet(
-            id: _draft.id,
-            childId: _draft.childId,
-            screenTime: f(st),
-            webFilter: _draft.webFilter,
-            appRules: _draft.appRules,
-            routines: _draft.routines,
-            socialMonitoring: _draft.socialMonitoring,
-            contactAllowlist: _draft.contactAllowlist,
-            alwaysAllowedApps: _draft.alwaysAllowedApps,
-            appGroupRules: _draft.appGroupRules,
-            updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: f(st), webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
-    Widget timeTile(
-            String label, String value, ValueChanged<TimeOfDay> onPicked) =>
-        ListTile(
+    Widget timeTile(String label, String value, ValueChanged<TimeOfDay> onPicked) => ListTile(
           title: Text(label),
           trailing: TextButton(
             onPressed: () async {
-              final t = await _pickTime(
-                  parseTime(value, const TimeOfDay(hour: 12, minute: 0)));
+              final t = await _pickTime(parseTime(value, const TimeOfDay(hour: 12, minute: 0)));
               if (t != null) onPicked(t);
             },
             child: Text(value),
@@ -257,87 +211,19 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     return ListView(
       padding: const EdgeInsets.all(AppSpace.lg),
       children: [
-        Text(l10n.dailyLimit(st.dailyLimitMinutes),
-            style: Theme.of(context).textTheme.titleMedium),
-        Slider(
-            value: limitSliderPosition(st.dailyLimitMinutes),
-            min: kLimitSliderMin,
-            max: kLimitSliderMax,
-            divisions: 39,
-            label: l10n.minutesShort(st.dailyLimitMinutes),
-            onChanged: (v) => update((s) => ScreenTimeRule(
-                dailyLimitMinutes: v.round(),
-                weekendLimitMinutes: s.weekendLimitMinutes,
-                bedtimeStart: s.bedtimeStart,
-                bedtimeEnd: s.bedtimeEnd,
-                schoolStart: s.schoolStart,
-                schoolEnd: s.schoolEnd,
-                schoolDays: s.schoolDays))),
+        Text(l10n.dailyLimit(st.dailyLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
+        Slider(value: limitSliderPosition(st.dailyLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.dailyLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: v.round(), weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
-        Text(l10n.weekendLimit(st.weekendLimitMinutes),
-            style: Theme.of(context).textTheme.titleMedium),
-        Slider(
-            value: limitSliderPosition(st.weekendLimitMinutes),
-            min: kLimitSliderMin,
-            max: kLimitSliderMax,
-            divisions: 39,
-            label: l10n.minutesShort(st.weekendLimitMinutes),
-            onChanged: (v) => update((s) => ScreenTimeRule(
-                dailyLimitMinutes: s.dailyLimitMinutes,
-                weekendLimitMinutes: v.round(),
-                bedtimeStart: s.bedtimeStart,
-                bedtimeEnd: s.bedtimeEnd,
-                schoolStart: s.schoolStart,
-                schoolEnd: s.schoolEnd,
-                schoolDays: s.schoolDays))),
+        Text(l10n.weekendLimit(st.weekendLimitMinutes), style: Theme.of(context).textTheme.titleMedium),
+        Slider(value: limitSliderPosition(st.weekendLimitMinutes), min: kLimitSliderMin, max: kLimitSliderMax, divisions: 39, label: l10n.minutesShort(st.weekendLimitMinutes), onChanged: (v) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: v.round(), bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
         Text(l10n.bedtime, style: Theme.of(context).textTheme.titleMedium),
-        timeTile(
-            l10n.starts,
-            st.bedtimeStart,
-            (t) => update((s) => ScreenTimeRule(
-                dailyLimitMinutes: s.dailyLimitMinutes,
-                weekendLimitMinutes: s.weekendLimitMinutes,
-                bedtimeStart: formatTime(t),
-                bedtimeEnd: s.bedtimeEnd,
-                schoolStart: s.schoolStart,
-                schoolEnd: s.schoolEnd,
-                schoolDays: s.schoolDays))),
-        timeTile(
-            l10n.ends,
-            st.bedtimeEnd,
-            (t) => update((s) => ScreenTimeRule(
-                dailyLimitMinutes: s.dailyLimitMinutes,
-                weekendLimitMinutes: s.weekendLimitMinutes,
-                bedtimeStart: s.bedtimeStart,
-                bedtimeEnd: formatTime(t),
-                schoolStart: s.schoolStart,
-                schoolEnd: s.schoolEnd,
-                schoolDays: s.schoolDays))),
+        timeTile(l10n.starts, st.bedtimeStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: formatTime(t), bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        timeTile(l10n.ends, st.bedtimeEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: formatTime(t), schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
         const Divider(height: AppSpace.xxl),
         Text(l10n.schoolHours, style: Theme.of(context).textTheme.titleMedium),
-        timeTile(
-            l10n.starts,
-            st.schoolStart,
-            (t) => update((s) => ScreenTimeRule(
-                dailyLimitMinutes: s.dailyLimitMinutes,
-                weekendLimitMinutes: s.weekendLimitMinutes,
-                bedtimeStart: s.bedtimeStart,
-                bedtimeEnd: s.bedtimeEnd,
-                schoolStart: formatTime(t),
-                schoolEnd: s.schoolEnd,
-                schoolDays: s.schoolDays))),
-        timeTile(
-            l10n.ends,
-            st.schoolEnd,
-            (t) => update((s) => ScreenTimeRule(
-                dailyLimitMinutes: s.dailyLimitMinutes,
-                weekendLimitMinutes: s.weekendLimitMinutes,
-                bedtimeStart: s.bedtimeStart,
-                bedtimeEnd: s.bedtimeEnd,
-                schoolStart: s.schoolStart,
-                schoolEnd: formatTime(t),
-                schoolDays: s.schoolDays))),
+        timeTile(l10n.starts, st.schoolStart, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: formatTime(t), schoolEnd: s.schoolEnd, schoolDays: s.schoolDays))),
+        timeTile(l10n.ends, st.schoolEnd, (t) => update((s) => ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: formatTime(t), schoolDays: s.schoolDays))),
         const SizedBox(height: AppSpace.sm),
         Wrap(
           spacing: AppSpace.sm,
@@ -349,14 +235,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                 onSelected: (sel) => update((s) {
                   final days = {...s.schoolDays};
                   sel ? days.add(i) : days.remove(i);
-                  return ScreenTimeRule(
-                      dailyLimitMinutes: s.dailyLimitMinutes,
-                      weekendLimitMinutes: s.weekendLimitMinutes,
-                      bedtimeStart: s.bedtimeStart,
-                      bedtimeEnd: s.bedtimeEnd,
-                      schoolStart: s.schoolStart,
-                      schoolEnd: s.schoolEnd,
-                      schoolDays: days.toList()..sort());
+                  return ScreenTimeRule(dailyLimitMinutes: s.dailyLimitMinutes, weekendLimitMinutes: s.weekendLimitMinutes, bedtimeStart: s.bedtimeStart, bedtimeEnd: s.bedtimeEnd, schoolStart: s.schoolStart, schoolEnd: s.schoolEnd, schoolDays: days.toList()..sort());
                 }),
               ),
           ],
@@ -369,11 +248,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   /// Recommended-protection switch state: ON only when every recommended
   /// category is blocked; any partial selection renders OFF (tristate-off).
-  bool get _recommendedOn =>
-      kRecommendedCategories.every(_draft.webFilter.blockedCategories.contains);
+  bool get _recommendedOn => kRecommendedCategories.every(_draft.webFilter.blockedCategories.contains);
 
-  Future<void> _toggleRecommended(bool enable,
-      void Function(WebFilterRule Function(WebFilterRule)) apply) async {
+  Future<void> _toggleRecommended(bool enable, void Function(WebFilterRule Function(WebFilterRule)) apply) async {
     final l10n = context.l10n;
     if (enable) {
       apply((w) {
@@ -388,20 +265,15 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         title: Text(l10n.recommendedProtection),
         content: Text(l10n.disablingRecommended),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text(l10n.cancel)),
-          FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text(l10n.continueLabel)),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(l10n.cancel)),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(l10n.continueLabel)),
         ],
       ),
     );
     if (confirmed == true) {
       if (!mounted) return;
       apply((w) {
-        final cats = {...w.blockedCategories}
-          ..removeAll(kRecommendedCategories);
+        final cats = {...w.blockedCategories}..removeAll(kRecommendedCategories);
         return w.copyWith(blockedCategories: cats.toList());
       });
     }
@@ -411,31 +283,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
     final l10n = context.l10n;
     final wf = _draft.webFilter;
     void update(WebFilterRule Function(WebFilterRule) f) =>
-        setState(() => _draft = RuleSet(
-            id: _draft.id,
-            childId: _draft.childId,
-            screenTime: _draft.screenTime,
-            webFilter: f(wf),
-            appRules: _draft.appRules,
-            routines: _draft.routines,
-            socialMonitoring: _draft.socialMonitoring,
-            contactAllowlist: _draft.contactAllowlist,
-            alwaysAllowedApps: _draft.alwaysAllowedApps,
-            appGroupRules: _draft.appGroupRules,
-            updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: f(wf), appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
-    List<String> splitDomains(String text) => text
-        .split(',')
-        .map((d) => d.trim())
-        .where((d) => d.isNotEmpty)
-        .toList();
+    List<String> splitDomains(String text) =>
+        text.split(',').map((d) => d.trim()).where((d) => d.isNotEmpty).toList();
 
     // Recommended categories first, then any legacy extras still editable.
-    final categories = [
-      ...kRecommendedCategories,
-      for (final c in _kCategories)
-        if (!kRecommendedCategories.contains(c)) c
-    ];
+    final categories = [...kRecommendedCategories, for (final c in _kCategories) if (!kRecommendedCategories.contains(c)) c];
 
     return ListView(
       key: const ValueKey('webFilterList'),
@@ -448,8 +302,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           onChanged: (v) => _toggleRecommended(v, update),
         ),
         const Divider(height: AppSpace.xl),
-        Text(l10n.blockedCategories,
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.blockedCategories, style: Theme.of(context).textTheme.titleMedium),
         for (final c in categories)
           CheckboxListTile(
             key: ValueKey('category-$c'),
@@ -465,20 +318,14 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         const SizedBox(height: AppSpace.sm),
         TextField(
           controller: _allowedDomains,
-          decoration: InputDecoration(
-              labelText: l10n.allowedDomainsLabel,
-              border: const OutlineInputBorder()),
-          onChanged: (v) =>
-              update((w) => w.copyWith(allowedDomains: splitDomains(v))),
+          decoration: InputDecoration(labelText: l10n.allowedDomainsLabel, border: const OutlineInputBorder()),
+          onChanged: (v) => update((w) => w.copyWith(allowedDomains: splitDomains(v))),
         ),
         const SizedBox(height: AppSpace.md),
         TextField(
           controller: _blockedDomains,
-          decoration: InputDecoration(
-              labelText: l10n.blockedDomainsLabel,
-              border: const OutlineInputBorder()),
-          onChanged: (v) =>
-              update((w) => w.copyWith(blockedDomains: splitDomains(v))),
+          decoration: InputDecoration(labelText: l10n.blockedDomainsLabel, border: const OutlineInputBorder()),
+          onChanged: (v) => update((w) => w.copyWith(blockedDomains: splitDomains(v))),
         ),
         SwitchListTile(
           title: Text(l10n.enforceSafeSearch),
@@ -487,13 +334,11 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
         ),
         const SizedBox(height: AppSpace.sm),
         Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpace.lg, vertical: AppSpace.sm),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.sm),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(l10n.youtubeRestrictedMode,
-                  style: Theme.of(context).textTheme.titleSmall),
+              Text(l10n.youtubeRestrictedMode, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: AppSpace.xs),
               Text(
                 l10n.youtubeRestrictedDesc,
@@ -507,8 +352,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
                   ButtonSegment(value: 'off', label: Text(l10n.off)),
                 ],
                 selected: {wf.youtubeRestrictedMode},
-                onSelectionChanged: (sel) =>
-                    update((w) => w.copyWith(youtubeRestrictedMode: sel.first)),
+                onSelectionChanged: (sel) => update((w) => w.copyWith(youtubeRestrictedMode: sel.first)),
               ),
             ],
           ),
@@ -522,41 +366,17 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   Widget _buildApps() {
     final l10n = context.l10n;
     // ADR-0037 decision 3: on an iPhone a blocked app id is hidden, not shielded; the rows say so.
-    final childHasIphone = ref
-            .watch(familyProvider)
-            .valueOrNull
-            ?.devices
+    final childHasIphone = ref.watch(familyProvider).valueOrNull?.devices
             .any((d) => d.childId == widget.childId && d.platform == 'ios') ??
         false;
-    final childHasAndroid = ref.watch(familyProvider).valueOrNull?.devices.any(
-            (d) => d.childId == widget.childId && d.platform == 'android') ??
+    final childHasAndroid = ref.watch(familyProvider).valueOrNull?.devices
+            .any((d) => d.childId == widget.childId && d.platform == 'android') ??
         false;
-    void update(List<AppRule> rules) => setState(() => _draft = RuleSet(
-        id: _draft.id,
-        childId: _draft.childId,
-        screenTime: _draft.screenTime,
-        webFilter: _draft.webFilter,
-        appRules: rules,
-        routines: _draft.routines,
-        socialMonitoring: _draft.socialMonitoring,
-        contactAllowlist: _draft.contactAllowlist,
-        alwaysAllowedApps: _draft.alwaysAllowedApps,
-        appGroupRules: _draft.appGroupRules,
-        updatedAt: _draft.updatedAt));
+    void update(List<AppRule> rules) =>
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: rules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     void updateAlwaysAllowed(List<String> apps) =>
-        setState(() => _draft = RuleSet(
-            id: _draft.id,
-            childId: _draft.childId,
-            screenTime: _draft.screenTime,
-            webFilter: _draft.webFilter,
-            appRules: _draft.appRules,
-            routines: _draft.routines,
-            socialMonitoring: _draft.socialMonitoring,
-            contactAllowlist: _draft.contactAllowlist,
-            alwaysAllowedApps: apps,
-            appGroupRules: _draft.appGroupRules,
-            updatedAt: _draft.updatedAt));
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: _draft.routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: apps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     return ListView(
       key: const ValueKey('appsRulesList'),
@@ -564,8 +384,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
       children: [
         // Feature #9: apps that stay open during bedtime, school time,
         // pause and routines.
-        Text(l10n.alwaysAllowed,
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.alwaysAllowed, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpace.xs),
         Text(
           l10n.alwaysAllowedDesc,
@@ -582,8 +401,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
               for (final pkg in _draft.alwaysAllowedApps)
                 InputChip(
                   label: Text(pkg),
-                  onDeleted: () => updateAlwaysAllowed(
-                      [..._draft.alwaysAllowedApps]..remove(pkg)),
+                  onDeleted: () => updateAlwaysAllowed([..._draft.alwaysAllowedApps]..remove(pkg)),
                 ),
             ],
           ),
@@ -604,9 +422,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           icon: const Icon(Icons.add),
           label: Text(l10n.addApp),
           onPressed: () async {
-            final pkg = await showDialog<String>(
-                context: context,
-                builder: (_) => const _AddAlwaysAllowedDialog());
+            final pkg = await showDialog<String>(context: context, builder: (_) => const _AddAlwaysAllowedDialog());
             if (pkg != null && !_draft.alwaysAllowedApps.contains(pkg)) {
               updateAlwaysAllowed([..._draft.alwaysAllowedApps, pkg]);
             }
@@ -625,8 +441,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             // silently fall back to the first suggestion on every phone (#486 review).
             var installed = const InstalledAppsReport();
             try {
-              installed =
-                  await ref.read(installedAppsProvider(widget.childId).future);
+              installed = await ref.read(installedAppsProvider(widget.childId).future);
             } catch (_) {
               // A phone that has not reported, or an offline read: the first suggestion is the fallback.
             }
@@ -637,8 +452,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             );
             final pkg = await showDialog<String>(
               context: context,
-              builder: (_) =>
-                  _AddAlwaysAllowedDialog(initialPackageId: prefill),
+              builder: (_) => _AddAlwaysAllowedDialog(initialPackageId: prefill),
             );
             if (pkg != null && !_draft.alwaysAllowedApps.contains(pkg)) {
               updateAlwaysAllowed([..._draft.alwaysAllowedApps, pkg]);
@@ -661,30 +475,26 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           Padding(
             key: const ValueKey('iosAppsExplained'),
             padding: const EdgeInsets.only(bottom: AppSpace.sm),
-            child: Text(l10n.appGroupsBody,
-                style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(l10n.appGroupsBody, style: Theme.of(context).textTheme.bodyMedium),
           ),
         if (childHasAndroid || !childHasIphone)
           OutlinedButton.icon(
-            key: const ValueKey('pickInstalledApp'),
-            icon: const Icon(Icons.apps),
-            label: Text(l10n.chooseInstalledApp),
-            onPressed: () async {
-              final rule = await showDialog<AppRule>(
-                context: context,
-                builder: (_) => _InstalledAppsPicker(
-                  childId: widget.childId,
-                  existingPackageIds: {
-                    for (final r in _draft.appRules) r.packageId
-                  },
-                ),
-              );
-              if (rule != null &&
-                  !_draft.appRules.any((r) => r.packageId == rule.packageId)) {
-                update([..._draft.appRules, rule]);
-              }
-            },
-          ),
+          key: const ValueKey('pickInstalledApp'),
+          icon: const Icon(Icons.apps),
+          label: Text(l10n.chooseInstalledApp),
+          onPressed: () async {
+            final rule = await showDialog<AppRule>(
+              context: context,
+              builder: (_) => _InstalledAppsPicker(
+                childId: widget.childId,
+                existingPackageIds: {for (final r in _draft.appRules) r.packageId},
+              ),
+            );
+            if (rule != null && !_draft.appRules.any((r) => r.packageId == rule.packageId)) {
+              update([..._draft.appRules, rule]);
+            }
+          },
+        ),
         const SizedBox(height: AppSpace.xs),
         OutlinedButton.icon(
           icon: const Icon(Icons.add),
@@ -692,8 +502,7 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           onPressed: () async {
             // Kept for an app the child has not reported yet: the typed path is
             // still the only way to rule on a package the agent has not seen.
-            final rule = await showDialog<AppRule>(
-                context: context, builder: (_) => const _AddAppRuleDialog());
+            final rule = await showDialog<AppRule>(context: context, builder: (_) => const _AddAppRuleDialog());
             if (rule != null) update([..._draft.appRules, rule]);
           },
         ),
@@ -705,29 +514,16 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Widget _buildRoutines() {
     final l10n = context.l10n;
-    void update(List<Routine> routines) => setState(() => _draft = RuleSet(
-        id: _draft.id,
-        childId: _draft.childId,
-        screenTime: _draft.screenTime,
-        webFilter: _draft.webFilter,
-        appRules: _draft.appRules,
-        routines: routines,
-        socialMonitoring: _draft.socialMonitoring,
-        contactAllowlist: _draft.contactAllowlist,
-        alwaysAllowedApps: _draft.alwaysAllowedApps,
-        appGroupRules: _draft.appGroupRules,
-        updatedAt: _draft.updatedAt));
+    void update(List<Routine> routines) =>
+        setState(() => _draft = RuleSet(id: _draft.id, childId: _draft.childId, screenTime: _draft.screenTime, webFilter: _draft.webFilter, appRules: _draft.appRules, routines: routines, socialMonitoring: _draft.socialMonitoring, contactAllowlist: _draft.contactAllowlist, alwaysAllowedApps: _draft.alwaysAllowedApps, appGroupRules: _draft.appGroupRules, updatedAt: _draft.updatedAt));
 
     Future<void> edit([Routine? existing]) async {
-      final result = await showDialog<Routine>(
-          context: context, builder: (_) => _RoutineDialog(existing: existing));
+      final result = await showDialog<Routine>(context: context, builder: (_) => _RoutineDialog(existing: existing));
       if (result == null) return;
       if (existing == null) {
         update([..._draft.routines, result]);
       } else {
-        update([
-          for (final r in _draft.routines) r.id == existing.id ? result : r
-        ]);
+        update([for (final r in _draft.routines) r.id == existing.id ? result : r]);
       }
     }
 
@@ -739,19 +535,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
             child: ListTile(
               leading: const Icon(Icons.schedule),
               title: Text(r.name),
-              subtitle: Text(
-                  '${r.startTime}–${r.endTime} · ${r.days.map(l10n.weekdayShort).join(' ')}'),
-              trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => update([..._draft.routines]..remove(r))),
+              subtitle: Text('${r.startTime}–${r.endTime} · ${r.days.map(l10n.weekdayShort).join(' ')}'),
+              trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => update([..._draft.routines]..remove(r))),
               onTap: () => edit(r),
             ),
           ),
         const SizedBox(height: AppSpace.sm),
-        OutlinedButton.icon(
-            icon: const Icon(Icons.add),
-            label: Text(l10n.addRoutine),
-            onPressed: () => edit()),
+        OutlinedButton.icon(icon: const Icon(Icons.add), label: Text(l10n.addRoutine), onPressed: () => edit()),
       ],
     );
   }
@@ -764,20 +554,14 @@ class _AppRuleTile extends StatefulWidget {
   final ValueChanged<AppRule> onChanged;
   final VoidCallback onRemove;
   final bool childHasIphone;
-  const _AppRuleTile(
-      {super.key,
-      required this.rule,
-      required this.onChanged,
-      required this.onRemove,
-      this.childHasIphone = false});
+  const _AppRuleTile({super.key, required this.rule, required this.onChanged, required this.onRemove, this.childHasIphone = false});
 
   @override
   State<_AppRuleTile> createState() => _AppRuleTileState();
 }
 
 class _AppRuleTileState extends State<_AppRuleTile> {
-  late final TextEditingController _minutes = TextEditingController(
-      text: widget.rule.dailyLimitMinutes?.toString() ?? '');
+  late final TextEditingController _minutes = TextEditingController(text: widget.rule.dailyLimitMinutes?.toString() ?? '');
 
   @override
   void dispose() {
@@ -797,13 +581,8 @@ class _AppRuleTileState extends State<_AppRuleTile> {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(r.appName,
-                      style: Theme.of(context).textTheme.titleSmall),
-                ),
-                IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: widget.onRemove),
+                Expanded(child: Text(r.appName, style: Theme.of(context).textTheme.titleSmall),),
+                IconButton(icon: const Icon(Icons.delete_outline), onPressed: widget.onRemove),
               ],
             ),
             Text(r.packageId, style: Theme.of(context).textTheme.bodySmall),
@@ -812,15 +591,10 @@ class _AppRuleTileState extends State<_AppRuleTile> {
               segments: [
                 ButtonSegment(value: 'allow', label: Text(l10n.appActionAllow)),
                 ButtonSegment(value: 'block', label: Text(l10n.appActionBlock)),
-                ButtonSegment(
-                    value: 'time_limit', label: Text(l10n.appActionTimeLimit)),
+                ButtonSegment(value: 'time_limit', label: Text(l10n.appActionTimeLimit)),
               ],
               selected: {r.action},
-              onSelectionChanged: (sel) => widget.onChanged(AppRule(
-                  packageId: r.packageId,
-                  appName: r.appName,
-                  action: sel.first,
-                  dailyLimitMinutes: r.dailyLimitMinutes)),
+              onSelectionChanged: (sel) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: sel.first, dailyLimitMinutes: r.dailyLimitMinutes)),
             ),
             if (r.action == 'block' && widget.childHasIphone) ...[
               const SizedBox(height: AppSpace.xs),
@@ -836,15 +610,8 @@ class _AppRuleTileState extends State<_AppRuleTile> {
                 controller: _minutes,
                 keyboardType: TextInputType.number,
                 inputFormatters: [DigitInputFormatter()],
-                decoration: InputDecoration(
-                    labelText: l10n.limitPerDayLabel,
-                    border: const OutlineInputBorder(),
-                    isDense: true),
-                onChanged: (v) => widget.onChanged(AppRule(
-                    packageId: r.packageId,
-                    appName: r.appName,
-                    action: r.action,
-                    dailyLimitMinutes: int.tryParse(v))),
+                decoration: InputDecoration(labelText: l10n.limitPerDayLabel, border: const OutlineInputBorder(), isDense: true),
+                onChanged: (v) => widget.onChanged(AppRule(packageId: r.packageId, appName: r.appName, action: r.action, dailyLimitMinutes: int.tryParse(v))),
               ),
             ],
           ],
@@ -881,32 +648,17 @@ class _AddAppRuleDialogState extends State<_AddAppRuleDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextField(
-              controller: _appName,
-              decoration: InputDecoration(
-                  labelText: l10n.appNameLabel,
-                  border: const OutlineInputBorder())),
+          TextField(controller: _appName, decoration: InputDecoration(labelText: l10n.appNameLabel, border: const OutlineInputBorder())),
           const SizedBox(height: AppSpace.md),
-          TextField(
-              controller: _packageId,
-              decoration: InputDecoration(
-                  labelText: l10n.packageIdLabel,
-                  border: const OutlineInputBorder())),
+          TextField(controller: _packageId, decoration: InputDecoration(labelText: l10n.packageIdLabel, border: const OutlineInputBorder())),
         ],
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.cancel)),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.cancel)),
         FilledButton(
           onPressed: () {
             if (_packageId.text.trim().isEmpty) return;
-            Navigator.of(context).pop(AppRule(
-                packageId: _packageId.text.trim(),
-                appName: _appName.text.trim().isEmpty
-                    ? _packageId.text.trim()
-                    : _appName.text.trim(),
-                action: 'allow'));
+            Navigator.of(context).pop(AppRule(packageId: _packageId.text.trim(), appName: _appName.text.trim().isEmpty ? _packageId.text.trim() : _appName.text.trim(), action: 'allow'));
           },
           child: Text(l10n.add),
         ),
@@ -926,12 +678,10 @@ class _InstalledAppsPicker extends ConsumerStatefulWidget {
   final String childId;
   final Set<String> existingPackageIds;
 
-  const _InstalledAppsPicker(
-      {required this.childId, required this.existingPackageIds});
+  const _InstalledAppsPicker({required this.childId, required this.existingPackageIds});
 
   @override
-  ConsumerState<_InstalledAppsPicker> createState() =>
-      _InstalledAppsPickerState();
+  ConsumerState<_InstalledAppsPicker> createState() => _InstalledAppsPickerState();
 }
 
 class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
@@ -962,9 +712,7 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
             children: [
               Row(
                 children: [
-                  Expanded(
-                      child: Text(l10n.installedAppsTitle,
-                          style: Theme.of(context).textTheme.titleMedium)),
+                  Expanded(child: Text(l10n.installedAppsTitle, style: Theme.of(context).textTheme.titleMedium)),
                   IconButton(
                     key: const ValueKey('installedAppsClose'),
                     icon: const Icon(Icons.close),
@@ -994,23 +742,18 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
               const SizedBox(height: AppSpace.xs),
               Flexible(
                 child: report.when(
-                  loading: () => const Center(
-                      child: Padding(
-                          padding: EdgeInsets.all(AppSpace.xl),
-                          child: CircularProgressIndicator())),
+                  loading: () => const Center(child: Padding(padding: EdgeInsets.all(AppSpace.xl), child: CircularProgressIndicator())),
                   error: (e, _) => Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(l10n.installedAppsLoadFailed('$e'),
-                            textAlign: TextAlign.center),
+                        Text(l10n.installedAppsLoadFailed('$e'), textAlign: TextAlign.center),
                         TextButton(
                           onPressed: () {
                             // The apps provider awaits familyProvider; invalidate both or the
                             // retry re-awaits the same cached family error.
                             ref.invalidate(familyProvider);
-                            ref.invalidate(
-                                installedAppsProvider(widget.childId));
+                            ref.invalidate(installedAppsProvider(widget.childId));
                           },
                           child: Text(l10n.retry),
                         ),
@@ -1034,11 +777,9 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
         key: const ValueKey('installedAppsEmpty'),
         shrinkWrap: true,
         children: [
-          Text(l10n.installedAppsEmpty,
-              style: Theme.of(context).textTheme.titleSmall),
+          Text(l10n.installedAppsEmpty, style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.xs),
-          Text(l10n.installedAppsEmptyHint,
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(l10n.installedAppsEmptyHint, style: Theme.of(context).textTheme.bodySmall),
         ],
       );
     }
@@ -1046,9 +787,7 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
     final filtered = [
       for (final app in report.apps)
         if ((_showSystem || !app.isSystem) &&
-            (query.isEmpty ||
-                app.label.toLowerCase().contains(query) ||
-                app.packageId.toLowerCase().contains(query)))
+            (query.isEmpty || app.label.toLowerCase().contains(query) || app.packageId.toLowerCase().contains(query)))
           app,
     ];
     if (filtered.isEmpty) {
@@ -1066,8 +805,7 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
         if (index == filtered.length) {
           return Padding(
             padding: const EdgeInsets.all(AppSpace.sm),
-            child: Text(l10n.installedAppsTruncated(report.apps.length),
-                style: Theme.of(context).textTheme.bodySmall),
+            child: Text(l10n.installedAppsTruncated(report.apps.length), style: Theme.of(context).textTheme.bodySmall),
           );
         }
         final app = filtered[index];
@@ -1079,23 +817,18 @@ class _InstalledAppsPickerState extends ConsumerState<_InstalledAppsPicker> {
         return ListTile(
           key: ValueKey('installedApp-${app.packageId}'),
           enabled: !ruled && !essential,
-          leading:
-              Icon(app.isSystem ? Icons.settings_applications : Icons.apps),
+          leading: Icon(app.isSystem ? Icons.settings_applications : Icons.apps),
           title: Text(app.label),
           subtitle: Text(essential ? l10n.essentialAppRow : app.packageId),
           trailing: essential
-              ? Icon(Icons.verified_user_outlined,
-                  semanticLabel: l10n.essentialAppRow)
+              ? Icon(Icons.verified_user_outlined, semanticLabel: l10n.essentialAppRow)
               : ruled
                   ? Icon(Icons.check_circle, semanticLabel: l10n.alreadyRuled)
                   : const Icon(Icons.add),
           onTap: ruled
               ? null
               : () => Navigator.of(context).pop(
-                    AppRule(
-                        packageId: app.packageId,
-                        appName: app.label,
-                        action: 'allow'),
+                    AppRule(packageId: app.packageId, appName: app.label, action: 'allow'),
                   ),
         );
       },
@@ -1112,8 +845,7 @@ class _AddAlwaysAllowedDialog extends StatefulWidget {
   const _AddAlwaysAllowedDialog({this.initialPackageId});
 
   @override
-  State<_AddAlwaysAllowedDialog> createState() =>
-      _AddAlwaysAllowedDialogState();
+  State<_AddAlwaysAllowedDialog> createState() => _AddAlwaysAllowedDialogState();
 }
 
 class _AddAlwaysAllowedDialogState extends State<_AddAlwaysAllowedDialog> {
@@ -1139,13 +871,10 @@ class _AddAlwaysAllowedDialogState extends State<_AddAlwaysAllowedDialog> {
       title: Text(l10n.addAlwaysAllowedTitle),
       content: TextField(
         controller: _packageId,
-        decoration: InputDecoration(
-            labelText: l10n.packageIdLabel, border: const OutlineInputBorder()),
+        decoration: InputDecoration(labelText: l10n.packageIdLabel, border: const OutlineInputBorder()),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.cancel)),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.cancel)),
         FilledButton(
           onPressed: () {
             final pkg = _packageId.text.trim();
@@ -1169,16 +898,11 @@ class _RoutineDialog extends StatefulWidget {
 }
 
 class _RoutineDialogState extends State<_RoutineDialog> {
-  late final TextEditingController _name =
-      TextEditingController(text: widget.existing?.name ?? '');
-  late final TextEditingController _blocked = TextEditingController(
-      text: widget.existing?.blockedApps.join(', ') ?? '');
-  late final TextEditingController _allowed = TextEditingController(
-      text: widget.existing?.allowedApps.join(', ') ?? '');
-  late TimeOfDay _start = parseTime(widget.existing?.startTime ?? '17:00',
-      const TimeOfDay(hour: 17, minute: 0));
-  late TimeOfDay _end = parseTime(widget.existing?.endTime ?? '19:00',
-      const TimeOfDay(hour: 19, minute: 0));
+  late final TextEditingController _name = TextEditingController(text: widget.existing?.name ?? '');
+  late final TextEditingController _blocked = TextEditingController(text: widget.existing?.blockedApps.join(', ') ?? '');
+  late final TextEditingController _allowed = TextEditingController(text: widget.existing?.allowedApps.join(', ') ?? '');
+  late TimeOfDay _start = parseTime(widget.existing?.startTime ?? '17:00', const TimeOfDay(hour: 17, minute: 0));
+  late TimeOfDay _end = parseTime(widget.existing?.endTime ?? '19:00', const TimeOfDay(hour: 19, minute: 0));
   late Set<int> _days = {...?widget.existing?.days};
 
   @override
@@ -1190,13 +914,11 @@ class _RoutineDialogState extends State<_RoutineDialog> {
   }
 
   Future<void> _pick(bool isStart) async {
-    final t = await showTimePicker(
-        context: context, initialTime: isStart ? _start : _end);
+    final t = await showTimePicker(context: context, initialTime: isStart ? _start : _end);
     if (t != null) setState(() => isStart ? _start = t : _end = t);
   }
 
-  List<String> _split(String text) =>
-      text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  List<String> _split(String text) => text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -1207,23 +929,13 @@ class _RoutineDialogState extends State<_RoutineDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-                controller: _name,
-                decoration: InputDecoration(
-                    labelText: l10n.nameLabel,
-                    border: const OutlineInputBorder())),
+            TextField(controller: _name, decoration: InputDecoration(labelText: l10n.nameLabel, border: const OutlineInputBorder())),
             const SizedBox(height: AppSpace.md),
             Row(
               children: [
-                Expanded(
-                    child: OutlinedButton(
-                        onPressed: () => _pick(true),
-                        child: Text(l10n.startTimeButton(formatTime(_start))))),
+                Expanded(child: OutlinedButton(onPressed: () => _pick(true), child: Text(l10n.startTimeButton(formatTime(_start))))),
                 const SizedBox(width: AppSpace.sm),
-                Expanded(
-                    child: OutlinedButton(
-                        onPressed: () => _pick(false),
-                        child: Text(l10n.endTimeButton(formatTime(_end))))),
+                Expanded(child: OutlinedButton(onPressed: () => _pick(false), child: Text(l10n.endTimeButton(formatTime(_end))))),
               ],
             ),
             const SizedBox(height: AppSpace.md),
@@ -1234,36 +946,24 @@ class _RoutineDialogState extends State<_RoutineDialog> {
                   FilterChip(
                     label: Text(l10n.weekdayShort(i)),
                     selected: _days.contains(i),
-                    onSelected: (sel) =>
-                        setState(() => sel ? _days.add(i) : _days.remove(i)),
+                    onSelected: (sel) => setState(() => sel ? _days.add(i) : _days.remove(i)),
                   ),
               ],
             ),
             const SizedBox(height: AppSpace.md),
-            TextField(
-                controller: _blocked,
-                decoration: InputDecoration(
-                    labelText: l10n.blockedAppsLabel,
-                    border: const OutlineInputBorder())),
+            TextField(controller: _blocked, decoration: InputDecoration(labelText: l10n.blockedAppsLabel, border: const OutlineInputBorder())),
             const SizedBox(height: AppSpace.md),
-            TextField(
-                controller: _allowed,
-                decoration: InputDecoration(
-                    labelText: l10n.allowedAppsLabel,
-                    border: const OutlineInputBorder())),
+            TextField(controller: _allowed, decoration: InputDecoration(labelText: l10n.allowedAppsLabel, border: const OutlineInputBorder())),
           ],
         ),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.cancel)),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.cancel)),
         FilledButton(
           onPressed: () {
             if (_name.text.trim().isEmpty) return;
             Navigator.of(context).pop(Routine(
-              id: widget.existing?.id ??
-                  DateTime.now().microsecondsSinceEpoch.toString(),
+              id: widget.existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
               name: _name.text.trim(),
               startTime: formatTime(_start),
               endTime: formatTime(_end),

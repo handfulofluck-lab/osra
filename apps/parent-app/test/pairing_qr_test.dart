@@ -89,13 +89,11 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets('an approved localized code is normalized for display and QR',
-      (tester) async {
+  testWidgets('an approved localized code is normalized for display and QR', (tester) async {
     final api = pairingApi(codes: const ['٤٨٢٩١٦']);
     await pumpScreen(tester, api);
     expect(find.text('482916'), findsOneWidget);
-    final qr =
-        tester.widget<PairingQr>(find.byKey(const ValueKey('pairingQr')));
+    final qr = tester.widget<PairingQr>(find.byKey(const ValueKey('pairingQr')));
     expect(PairQrPayload.decode(qr.data).code, '482916');
     await unmount(tester);
   });
@@ -238,8 +236,7 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('a pending claim names the phone; Allow approves it',
-        (tester) async {
+    testWidgets('a pending claim names the phone; Allow approves it', (tester) async {
       final api = claimApi(() => pending);
       await pumpScreen(tester, api);
       await nextRead(tester);
@@ -251,21 +248,18 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('pairClaimAllow')));
       await flushFakeHttp(tester);
 
-      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'),
-          hasLength(1));
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'), hasLength(1));
       expect(api.calls('POST', '/v1/devices/pair/claims/c-1/deny'), isEmpty);
       expect(find.byKey(const ValueKey('pairClaimAllowed')), findsOneWidget);
       await unmount(tester);
     });
 
-    testWidgets(
-        '#81: a claim from a phone whose OSRA data was cleared says so; a plain one does not',
+    testWidgets('#81: a claim from a phone whose OSRA data was cleared says so; a plain one does not',
         (tester) async {
       final api = claimApi(() => {...pending, 'dataCleared': true});
       await pumpScreen(tester, api);
       await nextRead(tester);
-      expect(
-          find.byKey(const ValueKey('pairClaimDataCleared')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairClaimDataCleared')), findsOneWidget);
       await unmount(tester);
 
       final plain = claimApi(() => pending);
@@ -284,24 +278,17 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('pairClaimDeny')));
       await flushFakeHttp(tester);
 
-      expect(
-          api.calls('POST', '/v1/devices/pair/claims/c-1/deny'), hasLength(1));
+      expect(api.calls('POST', '/v1/devices/pair/claims/c-1/deny'), hasLength(1));
       expect(api.calls('POST', '/v1/devices/pair/claims/c-1/approve'), isEmpty);
       expect(find.byKey(const ValueKey('pairClaimDenied')), findsOneWidget);
       // The burned code's QR, digits, countdown and copy action are gone (#433 review (a)).
-      for (final key in [
-        'pairingQr',
-        'pairingCode',
-        'pairingCountdown',
-        'pairingCopy'
-      ]) {
+      for (final key in ['pairingQr', 'pairingCode', 'pairingCountdown', 'pairingCopy']) {
         expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
       }
       final reads = api.calls('GET', '/v1/devices/pair/482916/claim').length;
       await nextRead(tester);
       await nextRead(tester);
-      expect(
-          api.calls('GET', '/v1/devices/pair/482916/claim'), hasLength(reads));
+      expect(api.calls('GET', '/v1/devices/pair/482916/claim'), hasLength(reads));
 
       // A stranger's claim costs one tap: a new code from the card itself.
       await tester.tap(find.byKey(const ValueKey('pairClaimNewCode')));
@@ -312,8 +299,7 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('a failed decision says so and keeps Allow and Deny',
-        (tester) async {
+    testWidgets('a failed decision says so and keeps Allow and Deny', (tester) async {
       final api = claimApi(() => pending,
           approve: const FakeHttpError(409, {'error': 'claim_not_pending'}));
       await pumpScreen(tester, api);
@@ -327,10 +313,8 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('once the phone has its token the card says it is paired',
-        (tester) async {
-      final api =
-          claimApi(() => {...pending, 'status': 'paired', 'deviceId': 'dev-1'});
+    testWidgets('once the phone has its token the card says it is paired', (tester) async {
+      final api = claimApi(() => {...pending, 'status': 'paired', 'deviceId': 'dev-1'});
       await pumpScreen(tester, api);
       await nextRead(tester);
 
@@ -342,8 +326,7 @@ void main() {
     // Claude's review, point 2 (§7, #429): the Arabic the parent reads is pinned as literals, not looked
     // up through the same ARB key, so a wrong or missing translation turns this red. Karim reviews the
     // wording; if he changes a line, this row changes with the ARB.
-    testWidgets('in Arabic the pending and denied cards read as written (RTL)',
-        (tester) async {
+    testWidgets('in Arabic the pending and denied cards read as written (RTL)', (tester) async {
       final api = claimApi(() => {...pending, 'deviceName': 'هاتف سام'});
       await tester.pumpWidget(ProviderScope(
         overrides: [apiClientProvider.overrideWithValue(api)],
@@ -358,24 +341,20 @@ void main() {
 
       expect(find.text('جهاز يطلب الانضمام'), findsOneWidget);
       expect(
-          find.text(
-              'يطلب هاتف سام الإقران. اسمح به فقط إذا كان هو الهاتف الذي أمامك.'),
+          find.text('يطلب هاتف سام الإقران. اسمح به فقط إذا كان هو الهاتف الذي أمامك.'),
           findsOneWidget);
       expect(find.text('رفض'), findsOneWidget);
       expect(find.text('سماح'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('pairClaimDeny')));
       await flushFakeHttp(tester);
-      expect(find.text('تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.'),
-          findsOneWidget);
+      expect(find.text('تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.'), findsOneWidget);
       await unmount(tester);
     });
 
     test('the phone is named by its device name, or its model without one', () {
-      expect(pairClaimDeviceLabel({'deviceName': ' Sam ', 'model': 'Pixel'}),
-          'Sam');
-      expect(
-          pairClaimDeviceLabel({'deviceName': '', 'model': 'Pixel'}), 'Pixel');
+      expect(pairClaimDeviceLabel({'deviceName': ' Sam ', 'model': 'Pixel'}), 'Sam');
+      expect(pairClaimDeviceLabel({'deviceName': '', 'model': 'Pixel'}), 'Pixel');
       expect(pairClaimDeviceLabel({'model': 'Pixel'}), 'Pixel');
     });
   });

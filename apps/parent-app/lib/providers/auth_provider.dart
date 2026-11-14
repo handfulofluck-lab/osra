@@ -95,8 +95,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _push = push,
         super(const AuthState(restoring: true));
 
-  PushRegistration get _pushRegistration => _push ??=
-      PushRegistration(api: PushApi(_api), source: defaultPushSource());
+  PushRegistration get _pushRegistration =>
+      _push ??= PushRegistration(api: PushApi(_api), source: defaultPushSource());
 
   bool _disposed = false;
 
@@ -121,22 +121,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// POSTs /v1/auth/login then bootstraps the family session. When [code] is
   /// non-empty (MFA) it is included in the request body as `code`.
-  Future<void> login(String email, String password, [String? code]) =>
-      _authenticate(() {
+  Future<void> login(String email, String password, [String? code]) => _authenticate(() {
         final body = <String, dynamic>{'email': email, 'password': password};
         final trimmed = code?.trim();
-        if (trimmed != null && trimmed.isNotEmpty)
-          body['code'] = normalizeDigits(trimmed) ?? trimmed;
+        if (trimmed != null && trimmed.isNotEmpty) body['code'] = normalizeDigits(trimmed) ?? trimmed;
         return _api.raw.post('/v1/auth/login', data: body);
       });
 
   /// POSTs /v1/auth/register (creates family + owner parent) then bootstraps.
-  Future<void> register(
-          {required String email,
-          required String password,
-          required String displayName,
-          required String familyName,
-          required String region}) =>
+  Future<void> register({required String email, required String password, required String displayName, required String familyName, required String region}) =>
       _authenticate(() => _api.raw.post('/v1/auth/register', data: {
             'email': email,
             'password': password,
@@ -151,8 +144,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _setState(state.copyWith(loading: true, error: null, restoring: false));
     try {
       final res = await call();
-      final data =
-          res.data is Map ? res.data as Map : const <String, dynamic>{};
+      final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
       final token = data['token'] as String?;
       if (token == null) {
         throw const FormatException('auth response missing token');
@@ -189,12 +181,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     try {
       final res = await _api.raw.get('/v1/family/me');
-      final overview =
-          FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
-      _setState(AuthState(
-          isAuthenticated: true,
-          parent: overview.parent,
-          family: overview.family));
+      final overview = FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
+      _setState(AuthState(isAuthenticated: true, parent: overview.parent, family: overview.family));
       // Fire-and-forget, deliberately: a push token is never a precondition for
       // being signed in, and `register()` returns an outcome instead of throwing
       // on every path. With no push SDK in the build it reports `unavailable`
@@ -252,15 +240,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
               'you still have the setup screen open; otherwise contact support.';
         }
         final lower = err.toLowerCase();
-        if (e.response?.statusCode == 401 &&
-            (lower.contains('mfa') || lower == 'invalid_code')) {
+        if (e.response?.statusCode == 401 && (lower.contains('mfa') || lower == 'invalid_code')) {
           return 'Invalid authentication code';
         }
         return err;
       }
       if (err is Map && err['fieldErrors'] is Map) {
-        final fields =
-            (err['fieldErrors'] as Map).keys.map((k) => '$k').toList()..sort();
+        final fields = (err['fieldErrors'] as Map).keys.map((k) => '$k').toList()..sort();
         return '$kValidationFailedPrefix${fields.join(',')}';
       }
       final msg = data['message'];

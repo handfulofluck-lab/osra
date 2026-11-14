@@ -25,8 +25,7 @@ class MfaResetWitnessScreen extends ConsumerStatefulWidget {
   final String requestId;
 
   @override
-  ConsumerState<MfaResetWitnessScreen> createState() =>
-      _MfaResetWitnessScreenState();
+  ConsumerState<MfaResetWitnessScreen> createState() => _MfaResetWitnessScreenState();
 }
 
 class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
@@ -36,8 +35,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
 
   /// A refusal that ends the request: retrying cannot succeed, so the button is
   /// disabled rather than left as a trap.
-  bool get _terminal =>
-      _failure != null &&
+  bool get _terminal => _failure != null &&
       const {
         MfaResetFailureKind.tooManyAttempts,
         MfaResetFailureKind.requestNotOpen,
@@ -56,8 +54,8 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
   Future<void> _submit() async {
     final code = normalizeDigits(_code.text.trim());
     if (code == null || !RegExp(r'^\d{8}$').hasMatch(code)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.mfaResetWitnessEnterCode)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(context.l10n.mfaResetWitnessEnterCode)));
       return;
     }
     setState(() {
@@ -103,8 +101,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
               ],
               decoration: InputDecoration(
                 labelText: l10n.mfaResetWitnessLabel,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.sm)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
               ),
               onSubmitted: (_) {
                 if (!_submitting && !_terminal) _submit();
@@ -119,8 +116,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
                   attemptsRemaining: _failure!.attemptsRemaining,
                 ),
                 key: const ValueKey('mfaResetWitnessError'),
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: context.tokens.danger),
+                style: theme.textTheme.bodyMedium?.copyWith(color: context.tokens.danger),
               ),
             ],
             const SizedBox(height: AppSpace.lg),
@@ -128,10 +124,7 @@ class _MfaResetWitnessScreenState extends ConsumerState<MfaResetWitnessScreen> {
               key: const ValueKey('mfaResetWitnessSubmit'),
               onPressed: _submitting || _terminal ? null : _submit,
               icon: _submitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.pin_outlined),
               label: Text(l10n.mfaResetWitnessSubmit),
             ),

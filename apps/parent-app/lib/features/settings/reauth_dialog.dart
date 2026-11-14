@@ -47,8 +47,7 @@ class _ReauthDialogState extends State<ReauthDialog> {
   }
 
   void _submit() {
-    final proof =
-        ReauthProof(password: _password.text, code: _code.text.trim());
+    final proof = ReauthProof(password: _password.text, code: _code.text.trim());
     if (proof.isEmpty) {
       setState(() => _error = context.l10n.mfaReauthRequired);
       return;
@@ -77,8 +76,7 @@ class _ReauthDialogState extends State<ReauthDialog> {
                 labelText: l10n.passwordLabel,
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
-                  icon:
-                      Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                  icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
                   onPressed: () => setState(() => _obscured = !_obscured),
                 ),
               ),

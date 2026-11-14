@@ -46,8 +46,8 @@ void main() {
     'KMNP-QRST-VWXY-Z123',
   ];
 
-  RecoveryCodeBatch batch() => RecoveryCodeBatch(
-      codes: recoveryCodes, issuedAt: DateTime.utc(2026, 10, 19, 10));
+  RecoveryCodeBatch batch() =>
+      RecoveryCodeBatch(codes: recoveryCodes, issuedAt: DateTime.utc(2026, 10, 19, 10));
 
   Map<String, dynamic> codesJson() => {
         'recoveryCodes': recoveryCodes,
@@ -67,8 +67,7 @@ void main() {
         'POST /v1/auth/mfa/verify':
             verify ?? (_) => {'ok': true, 'mfaEnabled': true, ...codesJson()},
         'POST /v1/auth/mfa/recovery-codes': regenerate ?? (_) => codesJson(),
-        'POST /v1/auth/mfa/recover':
-            recover ?? (_) => {'recoveryToken': 'recovery-token'},
+        'POST /v1/auth/mfa/recover': recover ?? (_) => {'recoveryToken': 'recovery-token'},
         'POST /v1/auth/logout': (_) => {'ok': true},
       };
 
@@ -117,17 +116,14 @@ void main() {
     expect(
       exceptions,
       isEmpty,
-      reason: exceptions
-          .map((e) => e is FlutterError ? e.toStringDeep() : '$e')
-          .join('\n'),
+      reason: exceptions.map((e) => e is FlutterError ? e.toStringDeep() : '$e').join('\n'),
     );
   }
 
   group('MFA settings', () {
     testWidgets('shows the off state and the setup action', (tester) async {
       final api = FakeApiClient(mfaRoutes());
-      await pumpScreen(
-          tester, const MfaSettingsScreen(mfaEnabledOverride: false), api);
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: false), api);
 
       expect(find.text('Two-step verification'), findsOneWidget);
       expect(find.text('Off'), findsOneWidget);
@@ -135,19 +131,16 @@ void main() {
       expect(find.text('Generate new recovery codes'), findsOneWidget);
     });
 
-    testWidgets('shows the on state and the replacement action',
-        (tester) async {
+    testWidgets('shows the on state and the replacement action', (tester) async {
       final api = FakeApiClient(mfaRoutes());
-      await pumpScreen(
-          tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
 
       expect(find.text('On'), findsOneWidget);
       expect(find.text('Replace authenticator'), findsOneWidget);
       expect(find.textContaining('replaces the old ones'), findsOneWidget);
     });
 
-    testWidgets('the dashboard settings menu offers the MFA screen',
-        (tester) async {
+    testWidgets('the dashboard settings menu offers the MFA screen', (tester) async {
       final api = FakeApiClient(mfaRoutes());
       await pumpScreen(tester, const DashboardScreen(), api);
       await tester.pumpAndSettle();
@@ -157,15 +150,11 @@ void main() {
       expect(find.text('Two-step verification'), findsOneWidget);
     });
 
-    testWidgets(
-        'the login screen explains the sign-out after MFA was turned on',
-        (tester) async {
+    testWidgets('the login screen explains the sign-out after MFA was turned on', (tester) async {
       final api = FakeApiClient(mfaRoutes());
-      final container = ProviderContainer(
-          overrides: [apiClientProvider.overrideWithValue(api)]);
+      final container = ProviderContainer(overrides: [apiClientProvider.overrideWithValue(api)]);
       addTearDown(container.dispose);
-      container.read(loginNoticeProvider.notifier).state =
-          kLoginNoticeMfaSessionEnded;
+      container.read(loginNoticeProvider.notifier).state = kLoginNoticeMfaSessionEnded;
 
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
@@ -174,24 +163,19 @@ void main() {
       await flush(tester);
 
       expect(find.byKey(const ValueKey('loginMfaNotice')), findsOneWidget);
-      expect(find.textContaining('Sign in again with your new authenticator'),
-          findsOneWidget);
+      expect(find.textContaining('Sign in again with your new authenticator'), findsOneWidget);
     });
 
-    testWidgets(
-        'regeneration asks for the password and shows the new batch once',
-        (tester) async {
+    testWidgets('regeneration asks for the password and shows the new batch once', (tester) async {
       final api = FakeApiClient(mfaRoutes());
-      await pumpScreen(
-          tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
 
       await tester.tap(find.byKey(const ValueKey('mfaRegenerateButton')));
       await tester.pumpAndSettle();
       expect(find.text('Confirm it is you'), findsOneWidget);
       expect(api.calls('POST', '/v1/auth/mfa/recovery-codes'), isEmpty);
 
-      await tester.enterText(
-          find.byKey(const ValueKey('reauthPassword')), 'good-password');
+      await tester.enterText(find.byKey(const ValueKey('reauthPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('reauthConfirm')));
       await flush(tester);
       await tester.pumpAndSettle();
@@ -203,12 +187,9 @@ void main() {
       expect(find.byKey(const ValueKey('recoveryCode9')), findsOneWidget);
     });
 
-    testWidgets(
-        'the re-auth dialog refuses an empty proof without calling the API',
-        (tester) async {
+    testWidgets('the re-auth dialog refuses an empty proof without calling the API', (tester) async {
       final api = FakeApiClient(mfaRoutes());
-      await pumpScreen(
-          tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
 
       await tester.tap(find.byKey(const ValueKey('mfaRegenerateButton')));
       await tester.pumpAndSettle();
@@ -216,31 +197,25 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const ValueKey('reauthError')), findsOneWidget);
-      expect(find.text('Enter your password or a current authenticator code.'),
-          findsNWidgets(2));
+      expect(find.text('Enter your password or a current authenticator code.'), findsNWidgets(2));
       expect(api.calls('POST', '/v1/auth/mfa/recovery-codes'), isEmpty);
     });
 
-    testWidgets('a rejected re-auth is reported honestly and no batch appears',
-        (tester) async {
+    testWidgets('a rejected re-auth is reported honestly and no batch appears', (tester) async {
       final api = FakeApiClient(mfaRoutes(
-        regenerate: (_) =>
-            const FakeHttpError(401, {'error': 'reauth_required'}),
+        regenerate: (_) => const FakeHttpError(401, {'error': 'reauth_required'}),
       ));
-      await pumpScreen(
-          tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
 
       await tester.tap(find.byKey(const ValueKey('mfaRegenerateButton')));
       await tester.pumpAndSettle();
-      await tester.enterText(
-          find.byKey(const ValueKey('reauthPassword')), 'wrong-password');
+      await tester.enterText(find.byKey(const ValueKey('reauthPassword')), 'wrong-password');
       await tester.tap(find.byKey(const ValueKey('reauthConfirm')));
       await flush(tester);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('mfaSettingsError')), findsOneWidget);
-      expect(
-          find.text('That password or code was not accepted.'), findsOneWidget);
+      expect(find.text('That password or code was not accepted.'), findsOneWidget);
       expect(find.byType(RecoveryCodesScreen), findsNothing);
     });
 
@@ -248,84 +223,68 @@ void main() {
       final api = FakeApiClient(mfaRoutes(
         regenerate: (_) => const FakeHttpError(429, {'error': 'rate_limited'}),
       ));
-      await pumpScreen(
-          tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
+      await pumpScreen(tester, const MfaSettingsScreen(mfaEnabledOverride: true), api);
 
       await tester.tap(find.byKey(const ValueKey('mfaRegenerateButton')));
       await tester.pumpAndSettle();
-      await tester.enterText(
-          find.byKey(const ValueKey('reauthPassword')), 'good-password');
+      await tester.enterText(find.byKey(const ValueKey('reauthPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('reauthConfirm')));
       await flush(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text('Too many attempts. Wait a minute and try again.'),
-          findsOneWidget);
+      expect(find.text('Too many attempts. Wait a minute and try again.'), findsOneWidget);
     });
   });
 
   group('MFA enrolment', () {
-    testWidgets(
-        'shows the secret and QR, then the ten codes after verification',
-        (tester) async {
+    testWidgets('shows the secret and QR, then the ten codes after verification', (tester) async {
       final api = FakeApiClient(mfaRoutes());
       await pumpScreen(tester, const MfaEnrollScreen(), api);
 
       expect(find.byKey(const ValueKey('mfaEnrollQr')), findsOneWidget);
       expect(find.text(secret), findsOneWidget);
-      final qr =
-          tester.widget<MfaQr>(find.byKey(const ValueKey('mfaEnrollQr')));
+      final qr = tester.widget<MfaQr>(find.byKey(const ValueKey('mfaEnrollQr')));
       expect(qr.data, otpauthUrl);
 
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaEnrollCode')), '123456');
+      await tester.enterText(find.byKey(const ValueKey('mfaEnrollCode')), '123456');
       await tester.tap(find.byKey(const ValueKey('mfaVerifyButton')));
       await flush(tester);
       await tester.pumpAndSettle();
 
       expect(find.byType(RecoveryCodesScreen), findsOneWidget);
       expect(find.byKey(const ValueKey('recoveryCode9')), findsOneWidget);
-      expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'],
-          '123456');
+      expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'], '123456');
     });
 
-    testWidgets('approved digit keyboards verify with the ASCII code',
-        (tester) async {
+    testWidgets('approved digit keyboards verify with the ASCII code', (tester) async {
       final api = FakeApiClient(mfaRoutes());
       await pumpScreen(tester, const MfaEnrollScreen(), api);
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaEnrollCode')), '١٢٣٤٥٦');
+      await tester.enterText(find.byKey(const ValueKey('mfaEnrollCode')), '١٢٣٤٥٦');
       await tester.tap(find.byKey(const ValueKey('mfaVerifyButton')));
       await flush(tester);
       await tester.pumpAndSettle();
-      expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'],
-          '123456');
+      expect(api.calls('POST', '/v1/auth/mfa/verify').single.body['code'], '123456');
     });
 
-    testWidgets('an invalid code keeps the parent on the setup screen',
-        (tester) async {
+    testWidgets('an invalid code keeps the parent on the setup screen', (tester) async {
       final api = FakeApiClient(mfaRoutes(
         verify: (_) => const FakeHttpError(401, {'error': 'invalid_code'}),
       ));
       await pumpScreen(tester, const MfaEnrollScreen(), api);
 
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaEnrollCode')), '123456');
+      await tester.enterText(find.byKey(const ValueKey('mfaEnrollCode')), '123456');
       await tester.tap(find.byKey(const ValueKey('mfaVerifyButton')));
       await flush(tester);
       await tester.pumpAndSettle();
 
       expect(find.byType(RecoveryCodesScreen), findsNothing);
       expect(
-        find.text(
-            'That code was not accepted. Check the clock on your phone and try the next code.'),
+        find.text('That code was not accepted. Check the clock on your phone and try the next code.'),
         findsOneWidget,
       );
     });
 
-    testWidgets(
-        'a replacement secret asks for proof and retries with the password',
-        (tester) async {
+    testWidgets('a replacement secret asks for proof and retries with the password', (tester) async {
       final api = FakeApiClient(mfaRoutes(
         enroll: (req) => req.body['password'] == 'good-password'
             ? {'secret': secret, 'otpauthUrl': otpauthUrl}
@@ -335,8 +294,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Confirm it is you'), findsOneWidget);
-      await tester.enterText(
-          find.byKey(const ValueKey('reauthPassword')), 'good-password');
+      await tester.enterText(find.byKey(const ValueKey('reauthPassword')), 'good-password');
       await tester.tap(find.byKey(const ValueKey('reauthConfirm')));
       await flush(tester);
       await tester.pumpAndSettle();
@@ -348,9 +306,7 @@ void main() {
       expect(find.byKey(const ValueKey('mfaEnrollQr')), findsOneWidget);
     });
 
-    testWidgets(
-        'cancelling the proof prompt leaves an honest message, not a loop',
-        (tester) async {
+    testWidgets('cancelling the proof prompt leaves an honest message, not a loop', (tester) async {
       final api = FakeApiClient(mfaRoutes(
         enroll: (_) => const FakeHttpError(401, {'error': 'reauth_required'}),
       ));
@@ -361,19 +317,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('mfaEnrollError')), findsOneWidget);
-      expect(find.text('Enter your password or a current authenticator code.'),
-          findsOneWidget);
+      expect(find.text('Enter your password or a current authenticator code.'), findsOneWidget);
       expect(api.calls('POST', '/v1/auth/mfa/enroll'), hasLength(1));
     });
   });
 
   group('Show-once recovery codes', () {
-    testWidgets(
-        'lists ten codes, requires the saved confirmation, and copies all',
-        (tester) async {
+    testWidgets('lists ten codes, requires the saved confirmation, and copies all', (tester) async {
       final clipboard = <MethodCall>[];
-      tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
         clipboard.add(call);
         return null;
       });
@@ -393,27 +345,20 @@ void main() {
       expect(find.byKey(const ValueKey('recoveryCode0')), findsOneWidget);
       expect(find.byKey(const ValueKey('recoveryCode9')), findsOneWidget);
       expect(
-        tester
-            .widget<FilledButton>(
-                find.byKey(const ValueKey('recoveryCodesConfirm')))
-            .onPressed,
+        tester.widget<FilledButton>(find.byKey(const ValueKey('recoveryCodesConfirm'))).onPressed,
         isNull,
       );
 
       await tester.tap(find.byKey(const ValueKey('recoveryCodesCopy')));
       await tester.pump();
-      final copy =
-          clipboard.where((c) => c.method == 'Clipboard.setData').single;
+      final copy = clipboard.where((c) => c.method == 'Clipboard.setData').single;
       expect((copy.arguments as Map)['text'], recoveryCodes.join('\n'));
       expect(find.text('Recovery codes copied'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('recoveryCodesSavedCheck')));
       await tester.pump();
       expect(
-        tester
-            .widget<FilledButton>(
-                find.byKey(const ValueKey('recoveryCodesConfirm')))
-            .onPressed,
+        tester.widget<FilledButton>(find.byKey(const ValueKey('recoveryCodesConfirm'))).onPressed,
         isNotNull,
       );
 
@@ -423,8 +368,7 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
-    testWidgets('back warns that the codes cannot be shown again',
-        (tester) async {
+    testWidgets('back warns that the codes cannot be shown again', (tester) async {
       var exited = false;
       final api = FakeApiClient(mfaRoutes());
       await tester.pumpWidget(ProviderScope(
@@ -433,8 +377,7 @@ void main() {
           builder: (context) => Scaffold(
             body: Center(
               child: TextButton(
-                onPressed: () =>
-                    Navigator.of(context).push<void>(MaterialPageRoute(
+                onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
                   builder: (_) => RecoveryCodesScreen(
                     batch: batch(),
                     onExit: () => exited = true,
@@ -468,8 +411,7 @@ void main() {
   });
 
   group('Recovery path', () {
-    testWidgets('the login screen offers "Lost your authenticator?"',
-        (tester) async {
+    testWidgets('the login screen offers "Lost your authenticator?"', (tester) async {
       final api = FakeApiClient(mfaRoutes());
       await pumpScreen(tester, const LoginScreen(), api);
 
@@ -480,9 +422,7 @@ void main() {
       expect(find.text('Recover your account'), findsOneWidget);
     });
 
-    testWidgets(
-        'email + password + code opens enrolment with the purpose-scoped token only',
-        (tester) async {
+    testWidgets('email + password + code opens enrolment with the purpose-scoped token only', (tester) async {
       String? enrollAuth;
       final api = FakeApiClient(mfaRoutes(
         enroll: (req) {
@@ -492,12 +432,9 @@ void main() {
       ));
       await pumpScreen(tester, const MfaRecoveryScreen(), api);
 
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaRecoveryEmail')), 'qa@osratech.com');
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaRecoveryPassword')), 'good-password');
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaRecoveryCode')), recoveryCodes.first);
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryEmail')), 'qa@osratech.com');
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryPassword')), 'good-password');
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryCode')), recoveryCodes.first);
       await tester.tap(find.byKey(const ValueKey('mfaRecoverySubmit')));
       await flush(tester);
       await tester.pumpAndSettle();
@@ -513,26 +450,21 @@ void main() {
       expect(await const FlutterSecureStorage().read(key: 'jwt'), isNull);
     });
 
-    testWidgets('a rejected recovery shows the single generic message',
-        (tester) async {
+    testWidgets('a rejected recovery shows the single generic message', (tester) async {
       final api = FakeApiClient(mfaRoutes(
         recover: (_) => const FakeHttpError(401, {'error': 'invalid_recovery'}),
       ));
       await pumpScreen(tester, const MfaRecoveryScreen(), api);
 
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaRecoveryEmail')), 'nobody@example.com');
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaRecoveryPassword')), 'wrong-password');
-      await tester.enterText(
-          find.byKey(const ValueKey('mfaRecoveryCode')), 'ZZZZ-ZZZZ-ZZZZ-ZZZZ');
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryEmail')), 'nobody@example.com');
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryPassword')), 'wrong-password');
+      await tester.enterText(find.byKey(const ValueKey('mfaRecoveryCode')), 'ZZZZ-ZZZZ-ZZZZ-ZZZZ');
       await tester.tap(find.byKey(const ValueKey('mfaRecoverySubmit')));
       await flush(tester);
       await tester.pumpAndSettle();
 
       expect(find.byType(MfaEnrollScreen), findsNothing);
-      expect(find.text('The email, password or recovery code is incorrect.'),
-          findsOneWidget);
+      expect(find.text('The email, password or recovery code is incorrect.'), findsOneWidget);
       // No invented detail: the screen never says which field was wrong.
       expect(find.textContaining('email is not registered'), findsNothing);
     });
@@ -544,31 +476,25 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('mfaRecoverySubmit')));
       await tester.pump();
 
-      expect(find.text('Fill in email, password and recovery code.'),
-          findsOneWidget);
+      expect(find.text('Fill in email, password and recovery code.'), findsOneWidget);
       expect(api.calls('POST', '/v1/auth/mfa/recover'), isEmpty);
       await tester.pump(const Duration(seconds: 5));
     });
 
-    testWidgets('an expired recovery token is named, not retried as a session',
-        (tester) async {
+    testWidgets('an expired recovery token is named, not retried as a session', (tester) async {
       final api = FakeApiClient(mfaRoutes(
         enroll: (_) => const FakeHttpError(401, {'error': 'unauthorized'}),
       ));
-      await pumpScreen(
-          tester, const MfaEnrollScreen(recoveryToken: 'expired'), api);
+      await pumpScreen(tester, const MfaEnrollScreen(recoveryToken: 'expired'), api);
 
-      expect(
-          find.text('This recovery session has ended. Start recovery again.'),
-          findsOneWidget);
+      expect(find.text('This recovery session has ended. Start recovery again.'), findsOneWidget);
       final call = api.calls('POST', '/v1/auth/mfa/enroll').single;
       expect(call.headers['Authorization'], 'Bearer expired');
     });
   });
 
   group('Arabic + RTL at 320x568 (no overflow)', () {
-    Future<void> pumpArabic(
-            WidgetTester tester, Widget home, FakeApiClient api) =>
+    Future<void> pumpArabic(WidgetTester tester, Widget home, FakeApiClient api) =>
         pumpScreen(
           tester,
           home,
@@ -581,8 +507,7 @@ void main() {
     void expectRtl(WidgetTester tester) {
       final scaffold = find.byType(Scaffold);
       expect(scaffold, findsWidgets);
-      expect(
-          Directionality.of(tester.element(scaffold.first)), TextDirection.rtl);
+      expect(Directionality.of(tester.element(scaffold.first)), TextDirection.rtl);
       expectNoOverflow(tester);
     }
 
@@ -597,8 +522,7 @@ void main() {
     });
 
     testWidgets('enrolment', (tester) async {
-      await pumpArabic(
-          tester, const MfaEnrollScreen(), FakeApiClient(mfaRoutes()));
+      await pumpArabic(tester, const MfaEnrollScreen(), FakeApiClient(mfaRoutes()));
       expect(find.text('إعداد التحقق بخطوتين'), findsOneWidget);
       expectRtl(tester);
     });
@@ -620,8 +544,7 @@ void main() {
     });
 
     testWidgets('recovery form', (tester) async {
-      await pumpArabic(
-          tester, const MfaRecoveryScreen(), FakeApiClient(mfaRoutes()));
+      await pumpArabic(tester, const MfaRecoveryScreen(), FakeApiClient(mfaRoutes()));
       expect(find.text('استرداد حسابك'), findsOneWidget);
       expectRtl(tester);
     });
@@ -629,17 +552,12 @@ void main() {
 
   group('MFA ARB key parity', () {
     Map<String, dynamic> readArb(String name) =>
-        jsonDecode(File('lib/l10n/$name').readAsStringSync())
-            as Map<String, dynamic>;
+        jsonDecode(File('lib/l10n/$name').readAsStringSync()) as Map<String, dynamic>;
 
-    Set<String> mfaKeys(Map<String, dynamic> arb) => {
-          for (final k in arb.keys)
-            if (k.startsWith('mfa') && !k.startsWith('@')) k
-        };
+    Set<String> mfaKeys(Map<String, dynamic> arb) =>
+        {for (final k in arb.keys) if (k.startsWith('mfa') && !k.startsWith('@')) k};
 
-    test(
-        'every MFA key exists, is non-empty and keeps its placeholders in Arabic',
-        () {
+    test('every MFA key exists, is non-empty and keeps its placeholders in Arabic', () {
       final en = readArb('app_en.arb');
       final ar = readArb('app_ar.arb');
       final keys = mfaKeys(en);
@@ -648,17 +566,10 @@ void main() {
 
       final placeholder = RegExp(r'\{([A-Za-z][A-Za-z0-9_]*)[,}]');
       for (final key in keys) {
-        expect((ar[key] as String?)?.trim(), isNotEmpty,
-            reason: 'app_ar.arb is empty for $key');
+        expect((ar[key] as String?)?.trim(), isNotEmpty, reason: 'app_ar.arb is empty for $key');
         expect(
-          {
-            for (final m in placeholder.allMatches(ar[key] as String))
-              m.group(1)!
-          },
-          {
-            for (final m in placeholder.allMatches(en[key] as String))
-              m.group(1)!
-          },
+          {for (final m in placeholder.allMatches(ar[key] as String)) m.group(1)!},
+          {for (final m in placeholder.allMatches(en[key] as String)) m.group(1)!},
           reason: 'placeholder mismatch for $key',
         );
       }
