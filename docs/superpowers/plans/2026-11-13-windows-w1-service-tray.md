@@ -17,7 +17,7 @@
 - W1 adds no plaintext-PIN path. The existing local config shape remains for compatibility, but PIN never crosses the pipe or network and is never logged. PBKDF2 migration is W1b, not this PR.
 - W2 DNS/firewall/proxy removal, W3 MSI/service-recovery/signing, W4 updater and #657 presentation remain separate. W1 publishes an unsigned artifact and does not claim production signing, installed-directory ACLs or publisher verification.
 - Do not start a service, pair a real family, lock a session, sound an alert or enable a hotkey on the development PC. Tests substitute every OS boundary.
-- `child_account_admin` is `granted` for the interactive administrator and `missing` for a Standard user. It is computed for the child/tray user, never SYSTEM. `capabilities.client.flavour` uses the existing `dev` enum; the header uses `agent-desktop/<version>+<build> (windows)`.
+- `child_account_admin` is `granted` for the interactive administrator and `missing` for a Standard user. It is computed for the child/tray user, never SYSTEM. The generic missing-grant list must not present the safe Standard setup as a fault; D5's administrator warning is the positive-report case. `capabilities.client.flavour` uses the existing `dev` enum; the header uses `agent-desktop/<version>+<build> (windows)`.
 - Branch only from current `main`, never force-push or merge. One PR for #623; run all relevant gates before marking it ready and enable auto-merge rather than merging directly. Label it `risk:R3` for pipe ACLs, OS-derived identity and process launch.
 
 **Claude's review notes (17:51Z, #623 comment 6860746931):**
@@ -287,3 +287,45 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - [x] Add the first-frame row, process gate and post-cleanup collision seam; run both desktop configurations and compile the real probe.
 - [x] On `verify/754-*` branches, plant each of t1 (owner), t2 (reparse), t3 (other writer) and t4 (`CreateNew` to `Create`) separately and link four red CI runs. Keep those branches out of the product PR and do not merge them.
 - [x] Re-run the exact product head with all cleanup markers, update the PR/ledger and request independent R3 verification. Never claim readiness from the author's green runs alone.
+
+### Task 14: Repair the composed hosts and pipe lifetime
+
+- Resolve each concrete pipe worker once from the real service/tray container, share it with `ITrayCommandSink`, and resolve the pairing coordinator after all transport registrations. The paired host and idempotent coordinator disposal are covered too.
+- Replace the one-shot client drain with full-duplex operation and reconnection after disconnects. `TrayPipeClient.ConnectAsync` owns exactly one fresh `hello` on every connection; the worker must not duplicate it. Quiet established connections do not hit the first-frame 15-second timeout.
+- Preserve SOS ahead of bounded ordinary traffic. Prove real composition, the production file-store registration and post-connect/quiet-connection behavior. Completed with 335/335 tests in both configurations.
+- [x] Commit tests separately from implementation and run both full desktop configurations.
+
+### Task 15: Acknowledge SOS delivery and retry failed posts
+
+- Return strict `sos_result { accepted: boolean }` from the service. Set the per-device successful-SOS timestamp only after `PostAlert` returns true. A recent successful alert answers a repeated event without a second POST; a failure does not suppress an immediate retry.
+- Keep one outstanding SOS, coalesce repeated presses, and retry failed/unacknowledged SOS without dropping it behind 32 ordinary messages. Serialize result replies through the one pipe writer.
+- Show success only after the accepted service result. Show Claude's retry wording for a failed result, with feedback isolated behind a test seam; never open a real toast or hotkey locally. Request Bureau review for the changed visible copy.
+- [x] Add fail-first service, protocol, client and feedback rows; run both configurations and request the wording review. Completed with 339/339 tests in both configurations; Bureau review remains a readiness gate.
+
+### Task 16: Merge restrictions and make restart/pipe handling resilient
+
+- Merge a stale session record with the current device restriction. After loading persisted state, start disconnected with a fresh grace period and no inherited connection/fallback alert episode. Explicit fallback recovery clears all recovered unreadable markers rather than reintroducing one through the merge.
+- Reuse a live co-located tray for the same session before launching a duplicate; derive the process from the OS through an injected discovery boundary.
+- Create pipes with `FirstPipeInstance`. Retain queued messages on create failure, continue other sessions, and always delay/back off after exceptions. Isolate session enumeration/token failures per session in both supervisor and fallback passes. Save-failure alerts are high, or critical when unreadable state survived restart, with the Bureau-approved title.
+- [x] Add fail-first stale-record, restored-grace, discovery, create-failure, other-session and timing rows; run both configurations. Completed with 350/350 tests in both configurations.
+
+### Task 17: Correct capability/API boundaries and parent CI coverage
+
+- Warn only for an administrator child, not for the safe Standard setup; report configured-but-not-yet-connected interactive features as `degraded`, never pairing-time `unavailable` solely because the pipe has not completed `hello`.
+- Accept `source: tray` and `child_account_admin` only for `agent-desktop`; retain existing reports for other platforms.
+- Keep the desktop-only grant out of the generic 13-grant parent fix list unless Claude specifies a separate approved warning projection. Do not add Arabic copy. Add `packages/shared-types/**` to parent workflow triggers and update its outside-input test.
+- [x] Run focused .NET/API tests RED, implement, then run full desktop/API/shared-types/parent and repository gates. Completed with 351/351 desktop tests in both configurations, API 911 passed/3 environment-gated skips, parent 637/637, clean analysis and shared-types build.
+
+### Task 18: Exercise the real pipe security and production composition
+
+- F1: drive identity refusal through `AcceptAsync`, then accept the genuine launched tray; deleting the identity verification must turn the test red.
+- F2: inspect the ACL of the actual created pipe and exercise a real same-user/session connection; replacing the session ACL with null must fail.
+- F3: resolve `FileDesktopRestrictionStore` from the real production registration, with an isolated path supplied through the test composition rather than replacing it with an in-memory fake.
+- [x] Run a real-worker loopback covering post-hello lock delivery, 20 seconds of quiet lifetime and messages queued after connect; execute no real service, installer or UI action locally. The real-client handshake exposed and removed a duplicate worker `hello`; both real-session tests share a cross-process pipe-name semaphore. Both full configurations pass 354/354.
+
+### Task 19: Re-verify and return #754 for independent R3 review
+
+- [ ] Append exact implementation and test results to the ledger, plan, ADR-0041, testing guide, roadmap, README and changelog. Preserve historical claims and explicitly supersede stale evidence.
+- [ ] Run both desktop configurations, API, shared-types build, parent suite, strict workflow lint, CI paths, no-PIN/service-account/docs-link guards, whitespace checks and the real CI-only SYSTEM probe. Confirm all three markers and cleanup on the exact new head; refresh the unsigned artifact.
+- [ ] Review the whole branch without substituting K3/DeepSeek for the requested K3.1 Pro reviewer. Fold current main without rebase and repeat affected checks.
+- [ ] Update the PR body and notify Claude immediately when each milestone completes. Restore readiness and auto-merge only after implementation, author gates and required Bureau review; obtain cross-family verification, Fable's R3 key and Ahmed's security/dependency disposition. Never merge directly.

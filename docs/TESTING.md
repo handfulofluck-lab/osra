@@ -484,16 +484,27 @@ hotkey as part of this build gate. The unsigned artifact has **not yet been inst
 clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
 pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 
-The W1 suite is **329 tests in each configuration**. It pins the launched PID and co-located image,
+The W1 suite is **354 tests in each configuration**. It pins the launched PID and co-located image,
 session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
 session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
 than relying on an outer timeout. A non-SYSTEM server is refused before `hello` with a direct five-second
-assertion, not a 90-second outer hang. The suite also replays current lock/pause/wind-down on reconnect,
-checks the 20-second fallback and one-alert episode through a fake WTS seam, retains post-connect writes,
-limits SOS to one POST per 60 seconds per device, and requires `source: tray` on desktop capability reports.
-The process-protection row uses a cross-process gate so concurrent verification lanes cannot kill each other's
-disposable child during pause/blocklist sweeps. Foreground usage remains self-reported by the tray until W2;
-the tests do not prove publisher signing or eliminate same-user code injection into a user-mode tray.
+assertion, not a 90-second outer hang. Real `AcceptAsync` rows reject an impostor and then accept the genuine
+client, inspect the ACL on the pipe actually created, and drive the real server/client workers through a
+post-`hello` lock, 20 quiet seconds and a post-connect ring. `TrayPipeClient.ConnectAsync` owns exactly one
+`hello`; the worker does not duplicate it. Both real-session pipe tests share the cross-process
+`Global\OSRA-TraySessionPipeTests` semaphore so concurrent lanes cannot own the same genuine pipe name.
+
+The suite also merges device restrictions over stale session records, starts a fresh disconnected grace
+period after restore, adopts a live co-located tray instead of duplicating it, and keeps pending commands and
+other sessions alive through create/token failures. It proves one coordinator/worker instance per host,
+idempotent coordinator disposal, first-instance pipe ownership and retry delays. SOS returns a strict
+`sos_result`; only a successful POST starts the 60-second window, a failure is retried without being dropped
+behind ordinary traffic, and the tray shows success only after an accepted result. Save failures are high,
+or critical when unreadable state survived restart. Desktop-only provenance/administrator fields are refused
+for phone reports; the safe Standard account is not a missing permission, and a configured tray waiting for
+`hello` reports interactive features as `degraded`, not `unavailable`. The process-protection row retains its
+separate cross-process gate for disposable children. Foreground usage remains self-reported by the tray until
+W2; the tests do not prove publisher signing or eliminate same-user code injection into a user-mode tray.
 
 The recovery cases pin protected directory and temporary-file ACL descriptors, rejection of an untrusted
 owner or explicit other writer, missing/corrupt state, immediate fail-closed fallback, one log/tamper alert
