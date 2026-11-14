@@ -48,8 +48,6 @@ public sealed class TrayPipeClientWorker : BackgroundService, ITrayCommandSink
             {
                 var session = Process.GetCurrentProcess().SessionId;
                 await using var connection = await _client.ConnectAsync(session, stoppingToken);
-                await TrayProtocol.WriteAsync(connection.Stream, new TrayMessage(TrayMessageKind.hello),
-                    TrayDirection.ToService, stoppingToken);
                 _state.IsConnected = true;
                 using var connectionStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 var incoming = ReadIncoming(connection, connectionStop.Token);

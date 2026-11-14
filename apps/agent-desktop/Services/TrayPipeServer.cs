@@ -51,13 +51,21 @@ public sealed class TrayPipeServer : ITrayServer
 
     public async Task<TrayPipeConnection> AcceptAsync(CancellationToken cancellationToken = default)
     {
-        await _stream.WaitForConnectionAsync(cancellationToken);
-        var clientPid = TrayClientIdentity.ClientProcessId(_stream);
-        _identity.Verify(clientPid, _sessionId, _userSid, _expectedPid, _expectedImagePath);
-        var hello = await TrayProtocol.ReadAsync(_stream, TrayDirection.ToService, cancellationToken: cancellationToken);
-        if (hello.Kind != TrayMessageKind.hello) throw new InvalidDataException("The first tray message must be hello.");
-        _accepted = true;
-        return new TrayPipeConnection(_stream, _sessionId, _userSid);
+        try
+        {
+            await _stream.WaitForConnectionAsync(cancellationToken);
+            var clientPid = TrayClientIdentity.ClientProcessId(_stream);
+            _identity.Verify(clientPid, _sessionId, _userSid, _expectedPid, _expectedImagePath);
+            var hello = await TrayProtocol.ReadAsync(_stream, TrayDirection.ToService, cancellationToken: cancellationToken);
+            if (hello.Kind != TrayMessageKind.hello) throw new InvalidDataException("The first tray message must be hello.");
+            _accepted = true;
+            return new TrayPipeConnection(_stream, _sessionId, _userSid);
+        }
+        catch
+        {
+            if (_stream.IsConnected) _stream.Disconnect();
+            throw;
+        }
     }
 
     public async ValueTask DisposeAsync()
