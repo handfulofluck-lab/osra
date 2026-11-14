@@ -15,6 +15,9 @@ final class FakeRingBackend: RingBackend {
     var stopCalls: [UUID] = []
     var authorizationCalls = 0
     var scheduleError: Error?
+    var stopError: Error?
+    var scheduledError: Error?
+    var scheduleGate: (() async -> Void)?
     private var continuation: AsyncStream<Set<UUID>>.Continuation?
 
     init(available: Bool = true, authorized: Bool = true) {
@@ -29,15 +32,20 @@ final class FakeRingBackend: RingBackend {
 
     func schedule(_ id: UUID) async throws {
         if let scheduleError { throw scheduleError }
+        if let scheduleGate { await scheduleGate() }
         scheduled.append(id)
     }
 
     func stop(_ id: UUID) async throws {
+        if let stopError { throw stopError }
         stopCalls.append(id)
         scheduled.removeAll { $0 == id }
     }
 
-    func scheduledIDs() async -> Set<UUID> { Set(scheduled) }
+    func scheduledIDs() async throws -> Set<UUID> {
+        if let scheduledError { throw scheduledError }
+        return Set(scheduled)
+    }
 
     func updates() async -> AsyncStream<Set<UUID>> {
         AsyncStream { continuation = $0 }
@@ -55,6 +63,7 @@ final class RingControllerTests: XCTestCase {
     private var reporter: RecordingRingReporter!
     private var wall = Date(timeIntervalSince1970: 1_000)
     private var uptime = 10.0
+    private var bootSession: TimeInterval = 1
 
     override func setUp() {
         super.setUp()
@@ -62,6 +71,7 @@ final class RingControllerTests: XCTestCase {
         store = InMemoryRingStore()
         history = InMemoryRingHistory()
         reporter = RecordingRingReporter()
+        bootSession = 1
         AgentIdentityStore.secrets = InMemorySecretStore()
         AgentIdentityStore.clear()
     }
@@ -70,13 +80,23 @@ final class RingControllerTests: XCTestCase {
         let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
         defaults?.removeObject(forKey: ShieldTapPolicy.requestTimesKey)
         defaults?.removeObject(forKey: RingAlertReporter.deliveredKey)
+        defaults?.removeObject(forKey: RingAlertReporter.pendingKey)
+        UserDefaultsRingStore().save(nil)
+        UserDefaultsRingHistory.clear()
+        ParentPinStore.clear()
         AgentIdentityStore.clear()
         super.tearDown()
     }
 
-    private func controller() -> RingController {
-        RingController(backend: backend, store: store, history: history, reporter: reporter, now: { self.wall },
-                       monotonic: { self.uptime })
+    private func controller(reporter: RingAlertReporting? = nil,
+                            sleep: ((TimeInterval) async throws -> Void)? = nil) -> RingController {
+        RingController(backend: backend, store: store, history: history, reporter: reporter ?? self.reporter,
+                       now: { self.wall }, monotonic: { self.uptime },
+                       bootSession: { self.bootSession }, sleep: sleep ?? { self.uptime += $0 })
+    }
+
+    private func flushTasks() async {
+        for _ in 0..<8 { await Task.yield() }
     }
 
     func testRingBelowIOS26ReturnsUnsupportedOS() async {
@@ -175,17 +195,23 @@ final class RecordingRingReporter: RingAlertReporting {
     var nextOutcome: RingReportOutcome?
     private(set) var calls: [(state: RingEventState, ringId: UUID, count: Int, afterRestart: Bool)] = []
     private var delivered = Set<String>()
+    private var pending = [RingPendingEvent]()
     var callCount: Int { calls.count }
+
+    func pendingEvents() -> [RingPendingEvent] { pending }
 
     func report(state: RingEventState, ringId: UUID, dismissalCount: Int,
                 afterRestart: Bool) async -> RingReportOutcome {
         let key = RingPolicy.dedupeKey(for: state, ringId: ringId, dismissalCount: dismissalCount)
         guard !delivered.contains(key) else { return .delivered }
+        let event = RingPendingEvent(state: state, ringId: ringId, dismissalCount: dismissalCount, afterRestart: afterRestart)
+        if !pending.contains(event) { pending.append(event) }
         calls.append((state, ringId, dismissalCount, afterRestart))
         if let nextOutcome { return nextOutcome }
         let status = statuses.count > 1 ? statuses.removeFirst() : statuses[0]
         guard status == 200 || status == 201 else { return .pending }
         delivered.insert(key)
+        pending.removeAll { $0 == event }
         return .delivered
     }
 }
@@ -483,6 +509,214 @@ extension RingControllerTests {
         XCTAssertEqual(reporter.callCount, 0)
         await controller.stop(.parentCommand, commandId: newer)
         XCTAssertNil(controller.state)
+        XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
+    }
+}
+
+
+@MainActor
+extension RingControllerTests {
+    struct TransportFailure: Error {}
+
+    private func pairForTransport() {
+        let base = PairingServerField.builtIn() ?? URL(string: "https://api.example.invalid")!
+        XCTAssertTrue(AgentIdentityStore.save(AgentIdentity(
+            apiBaseURL: base, deviceToken: "device-jwt", deviceId: "dev-1",
+            childId: "child-1", familyId: "fam-1", hmacSecret: "hmac")))
+    }
+
+    private func transportReporter(_ defaults: UserDefaults, status: Int,
+                                   requests: inout [URLRequest]) -> RingAlertReporter {
+        RingAlertReporter(defaults: defaults,
+                          reporter: AlertReporter(apiBaseURL: URL(string: "https://api.example.invalid")!, hmacSecret: "hmac"),
+                          sender: { request in
+            requests.append(request)
+            return (status, Data())
+        })
+    }
+
+    func testDeadlineStopsAt300WithoutProcessCall() async {
+        let controller = controller()
+        await controller.start(id)
+        uptime = 10
+        await flushTasks()
+        XCTAssertEqual(backend.stopCalls, [id])
+        XCTAssertEqual(reporter.calls.map(\.state), [.timedOut])
+        XCTAssertNil(controller.state)
+    }
+
+    func testDeadlineDoesNotStopAt299Point9() async {
+        let controller = controller(sleep: { self.uptime += min($0, 299.9) })
+        await controller.start(id)
+        uptime = 10
+        await flushTasks()
+        XCTAssertTrue(backend.stopCalls.isEmpty)
+        uptime = 309.9
+        await controller.resume()
+        await flushTasks()
+        XCTAssertEqual(backend.stopCalls, [id])
+    }
+
+    func testCancellationFailureIsFailedAndRetriedWithoutFalseDelivery() async {
+        let controller = controller()
+        await controller.start(id)
+        backend.stopError = TransportFailure()
+        let first = await controller.stop(.parentCommand)
+        XCTAssertEqual(first, .stopFailed)
+        XCTAssertEqual(reporter.callCount, 0)
+        XCTAssertEqual(store.load()?.stopSource, .parentCommand)
+        backend.stopError = nil
+        let retry = await controller.stop(.parentCommand)
+        XCTAssertNil(retry)
+        XCTAssertEqual(backend.stopCalls, [id])
+        XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
+        XCTAssertNil(controller.state)
+    }
+
+    func testReplacementCancellationFailureKeepsPreviousRing() async {
+        let controller = controller()
+        let newer = UUID()
+        await controller.start(id)
+        backend.stopError = TransportFailure()
+        let error = await controller.start(newer)
+        XCTAssertEqual(error, .scheduleFailed)
+        XCTAssertEqual(controller.state?.commandId, id)
+        XCTAssertEqual(backend.scheduled, [id])
+        backend.stopError = nil
+        let retry = await controller.start(newer)
+        XCTAssertNil(retry)
+        XCTAssertEqual(controller.state?.commandId, newer)
+        XCTAssertEqual(backend.scheduled, [newer])
+    }
+
+    func testReporterCreatedBeforePairingUsesCurrentIdentity() async {
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: AgentIdentityStore.suiteName))
+        var requests: [URLRequest] = []
+        let reporter = RingAlertReporter(defaults: defaults, sender: { request in
+            requests.append(request)
+            return (201, Data())
+        })
+        pairForTransport()
+        let result = await reporter.report(state: .pinStopped, ringId: id, dismissalCount: 0)
+        XCTAssertEqual(result, .delivered)
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests[0].url?.path, "/v1/alerts/internal")
+    }
+
+    func testPendingRestartAnswerKeepsAlarmScheduled() async {
+        reporter.statuses = [500]
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 0
+        bootSession = 2
+        await controller.resume()
+        XCTAssertNil(controller.state?.stopSource)
+        XCTAssertEqual(backend.stopCalls, [])
+        XCTAssertEqual(backend.scheduled, [id])
+        XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
+    }
+
+    func testChangedBootSessionIsRestartEvenWithGreaterUptime() async {
+        let controller = controller()
+        await controller.start(id)
+        wall = wall.addingTimeInterval(600)
+        uptime = 60
+        bootSession = 2
+        await controller.resume()
+        XCTAssertEqual(reporter.calls.map(\.afterRestart), [true])
+    }
+
+    func testOfflineDismissalsDrainEveryPendingEvent() async {
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: AgentIdentityStore.suiteName))
+        pairForTransport()
+        var statuses = [500, 500, 500, 200, 201, 200]
+        var requests: [URLRequest] = []
+        let reporter = RingAlertReporter(
+            defaults: defaults,
+            reporter: AlertReporter(apiBaseURL: URL(string: "https://api.example.invalid")!, hmacSecret: "hmac"),
+            sender: { request in
+                requests.append(request)
+                return (statuses.removeFirst(), Data())
+            })
+        let controller = controller(reporter: reporter)
+        await controller.start(id)
+        await controller.process(scheduledIDs: [])
+        await controller.process(scheduledIDs: [])
+        await controller.process(scheduledIDs: [])
+        XCTAssertEqual(reporter.pendingEvents().count, 3)
+        await controller.resume()
+        XCTAssertEqual(requests.count, 6)
+        let keys = requests.compactMap { try? JSONSerialization.jsonObject(with: $0.httpBody!) as? [String: Any] }
+            .map { $0["dedupeKey"] as! String }
+        XCTAssertEqual(keys.suffix(3), [
+            "ring:\(id.uuidString.lowercased()):child_dismissed:1",
+            "ring:\(id.uuidString.lowercased()):child_dismissed:2",
+            "ring:\(id.uuidString.lowercased()):child_dismissed:3",
+        ])
+        await controller.resume()
+        XCTAssertEqual(requests.count, 6)
+    }
+
+    func testDismissalCannotOverwriteStopAfterAwait() async {
+        let controller = controller()
+        await controller.start(id)
+        var release: (() -> Void)?
+        backend.scheduleGate = {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                release = { continuation.resume() }
+            }
+        }
+        let dismissal = Task { await controller.process(scheduledIDs: []) }
+        await Task.yield()
+        await controller.stop(.parentCommand)
+        release?()
+        await dismissal.value
+        XCTAssertNil(controller.state)
+        XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
+        XCTAssertEqual(backend.scheduled, [])
+    }
+
+    func testDeliveredEventIsNotRetriedAfterRecreatedReporter() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: AgentIdentityStore.suiteName))
+        pairForTransport()
+        for status in [200, 201] {
+            defaults.removeObject(forKey: RingAlertReporter.deliveredKey)
+            defaults.removeObject(forKey: RingAlertReporter.pendingKey)
+            backend = FakeRingBackend()
+            store = InMemoryRingStore()
+            var requests: [URLRequest] = []
+            let controller = controller(reporter: transportReporter(defaults, status: status, requests: &requests))
+            await controller.start(id)
+            await controller.process(scheduledIDs: [])
+            let recreated = controller(reporter: transportReporter(defaults, status: status, requests: &requests))
+            await recreated.resume()
+            XCTAssertEqual(requests.count, 1, "HTTP \(status) must not be sent again")
+        }
+    }
+
+    func testPINSetupIsOfferedBeforeTheGate() {
+        XCTAssertEqual(RingPINPresentation.resolve(isConfigured: false), .setup)
+        XCTAssertEqual(RingPINPresentation.resolve(isConfigured: true), .gate)
+    }
+
+    func testAlarmQueryFailureDoesNotCountDismissal() async {
+        let controller = controller()
+        await controller.start(id)
+        backend.scheduledError = TransportFailure()
+        await controller.resume()
+        XCTAssertEqual(controller.state?.dismissalCount, 0)
+        XCTAssertEqual(backend.scheduled, [id])
+        XCTAssertEqual(reporter.callCount, 0)
+    }
+
+    func testLiveStopWithoutTargetCancelsCurrentRing() async {
+        let controller = controller()
+        await controller.start(id)
+        let handler = LiveRingCommands(controller: controller)
+        let error = await handler.stopRing(targetId: nil)
+        XCTAssertNil(error)
+        XCTAssertEqual(backend.stopCalls, [id])
         XCTAssertEqual(reporter.calls.map(\.state), [.parentStopped])
     }
 }
