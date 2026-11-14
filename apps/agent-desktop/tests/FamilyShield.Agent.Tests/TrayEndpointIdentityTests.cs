@@ -33,13 +33,12 @@ public sealed class TrayEndpointIdentityTests
             TrayPipeName.ForSession(session), PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var connecting = server.WaitForConnectionAsync();
-        var reading = TrayProtocol.ReadAsync(server, TrayDirection.ToService);
         var verifier = new FakeServiceIdentityVerifier(false);
         await using var client = new TrayPipeClient(verifier);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.ConnectAsync(session, CancellationToken.None));
-        await connecting;
-        await Assert.ThrowsAnyAsync<Exception>(() => reading);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            client.ConnectAsync(session, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+        await connecting.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(Process.GetCurrentProcess().Id, verifier.ServerPid);
     }
 

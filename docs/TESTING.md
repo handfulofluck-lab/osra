@@ -487,10 +487,11 @@ pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 The W1 suite is **329 tests in each configuration**. It pins the launched PID and co-located image,
 session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
 session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
-than relying on an outer timeout. The suite also replays current lock/pause/wind-down on reconnect, checks
-the 20-second fallback and one-alert episode through a fake WTS seam, retains post-connect writes, limits
-SOS to one POST per 60 seconds per device, and requires `source: tray` on desktop capability reports. The
-process-protection row uses a cross-process gate so concurrent verification lanes cannot kill each other's
+than relying on an outer timeout. A non-SYSTEM server is refused before `hello` with a direct five-second
+assertion, not a 90-second outer hang. The suite also replays current lock/pause/wind-down on reconnect,
+checks the 20-second fallback and one-alert episode through a fake WTS seam, retains post-connect writes,
+limits SOS to one POST per 60 seconds per device, and requires `source: tray` on desktop capability reports.
+The process-protection row uses a cross-process gate so concurrent verification lanes cannot kill each other's
 disposable child during pause/blocklist sweeps. Foreground usage remains self-reported by the tray until W2;
 the tests do not prove publisher signing or eliminate same-user code injection into a user-mode tray.
 
@@ -498,7 +499,9 @@ The recovery cases pin protected directory and temporary-file ACL descriptors, r
 owner or explicit other writer, missing/corrupt state, immediate fail-closed fallback, one log/tamper alert
 per continuous save-failure episode, and global unlock for disconnected sessions. A standard-user test
 process cannot create or read files after the real SYSTEM/admin-only directory ACL is applied, so local
-tests do not claim to prove protected file creation. That boundary belongs to the real SYSTEM probe.
+tests do not claim to prove protected file creation. The two `UntrustedDirectory…` rows need an elevated
+runner to isolate the other-writer mutant: a standard-user owner can mask it. CI is the gate, and the real
+SYSTEM probe covers the individual trust branches.
 
 `tests/run-windows-service-pipe.ps1` is a separate CI-only boundary row. It hosts the production pipe in a
 CI-created SYSTEM service, verifies the native client and typed lock, then requires real store writes and a
