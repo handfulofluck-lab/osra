@@ -481,6 +481,11 @@ When a Bureau authors a user-visible PR itself, its line cites the maintainer's 
 7. **Unchanged:** release security gates #630 to #637 are signed `Security-signoff:` by Ahmed alone and only the
    maintainer overrides them in writing; K31, K31-Mac and Kimi do no AWS, store, secret or account work; Claude runs
    the after-merge check on every merge.
+   **One exception (Karim, 2026-11-14, #617 row 6878976334):** Kimi Code has the AWS API MCP server
+   (`aws-api-osra`, short-lived `osra-production` role sessions, no stored key of its own) as a **backup path,
+   used only when Karim asks Kimi directly**. Under it: infrastructure changes go through Terraform only (plan to a
+   file, read it, apply exactly that file), never the console or one-off API calls; no credential is printed,
+   copied or created. Everyday production work stays with the production-backend thread.
 
 **Honest limit, as in §6.4:** one shared account means the gate checks the name in a signature, not who typed it.
 Team collaboration sync audits each signature against the signer's own session; forging another member's name is a
