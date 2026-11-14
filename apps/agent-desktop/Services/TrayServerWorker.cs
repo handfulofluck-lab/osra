@@ -28,12 +28,17 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
     private readonly AgentConfig _config;
     private readonly TrayServerEvents _events;
     private readonly ITrayProcessRegistry? _processRegistry;
+    private readonly DesktopRestrictionState _restrictions;
+    private readonly IDesktopSessionFallback _fallback;
+    private readonly Func<DateTime> _clock;
     private readonly Dictionary<int, SessionSlot> _slots = new();
     private readonly object _gate = new();
 
     public TrayServerWorker(IInteractiveSessionSource sessions, ITrayServerFactory factory,
         ILogger<TrayServerWorker> log, ForegroundActivityAccumulator activity, ApiClient api,
-        AgentConfig config, TrayServerEvents events, ITrayProcessRegistry? processRegistry = null)
+        AgentConfig config, TrayServerEvents events, ITrayProcessRegistry? processRegistry = null,
+        DesktopRestrictionState? restrictions = null, IDesktopSessionFallback? fallback = null,
+        Func<DateTime>? clock = null)
     {
         _sessions = sessions;
         _factory = factory;
@@ -43,13 +48,20 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         _config = config;
         _events = events;
         _processRegistry = processRegistry;
+        _restrictions = restrictions ?? new DesktopRestrictionState();
+        _fallback = fallback ?? new WtsSessionFallback();
+        _clock = clock ?? (() => DateTime.UtcNow);
     }
 
     public Task SendAsync(TrayMessage message, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
-            foreach (var slot in _slots.Values) slot.Enqueue(message);
+            foreach (var slot in _slots.Values)
+            {
+                _restrictions.Observe(slot.SessionId, message, _clock());
+                slot.Enqueue(message);
+            }
         }
         return Task.CompletedTask;
     }
@@ -71,7 +83,19 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
                     existing.Dispose();
                     _slots.Remove(session.SessionId);
                 }
-                var slot = new SessionSlot(session, _factory.Create(session.SessionId, session.UserSid, expectedPid), HandleMessage, _log);
+                ITrayServer server;
+                try
+                {
+                    server = _factory.Create(session.SessionId, session.UserSid, expectedPid);
+                }
+                catch
+                {
+                    if (_restrictions.RecordPipeFailure(session.SessionId))
+                        _ = PostTamperAlert("tray_pipe_create_failed",
+                            "The tray pipe could not be created. OSRA Service will protect a restricted session if it stays unavailable.");
+                    throw;
+                }
+                var slot = new SessionSlot(session, server, HandleMessage, _log, _restrictions, _clock);
                 if (pending is not null)
                 {
                     foreach (var message in pending) slot.Enqueue(message);
@@ -99,8 +123,41 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             {
                 _log.LogError(ex, "Could not supervise a tray pipe session");
             }
+            await EnforceFallback(stoppingToken);
         }
     }
+
+    internal async Task EnforceFallback(CancellationToken cancellationToken = default)
+    {
+        foreach (var session in _sessions.List().Where(s => s.SessionId > 0 && s.IsActive))
+        {
+            if (!_restrictions.NeedsFallback(session.SessionId, _clock())) continue;
+            try
+            {
+                await _fallback.LockWorkstation(session.SessionId);
+                if (_restrictions.MarkFallback(session.SessionId, _clock()))
+                {
+                    await PostTamperAlert("tray_offline_fallback",
+                        "No verified tray was connected for 20 seconds during a restriction. OSRA Service locked the session.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Could not enforce the offline fallback for session {SessionId}", session.SessionId);
+            }
+        }
+    }
+
+    private Task PostTamperAlert(string type, string body) => _api.PostAlert(new AlertDto
+    {
+        DeviceId = _config.DeviceId,
+        ChildId = _config.ChildId,
+        Severity = "critical",
+        Category = "tamper",
+        Title = "Windows tray protection was interrupted",
+        Body = body,
+        Metadata = new Dictionary<string, object> { ["type"] = type },
+    });
 
     private async Task HandleMessage(int sessionId, TrayMessage message, CancellationToken cancellationToken)
     {
@@ -137,20 +194,26 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
         private readonly ITrayServer _server;
         private readonly Func<int, TrayMessage, CancellationToken, Task> _handle;
         private readonly ILogger<TrayServerWorker> _log;
+        private readonly DesktopRestrictionState _restrictions;
+        private readonly Func<DateTime> _clock;
         private readonly Queue<TrayMessage> _pending = new();
         private readonly object _gate = new();
         private readonly CancellationTokenSource _stop = new();
         private volatile bool _completed;
 
+        public int SessionId => _session.SessionId;
         public bool IsCompleted => _completed;
 
         public SessionSlot(InteractiveSession session, ITrayServer server,
-            Func<int, TrayMessage, CancellationToken, Task> handle, ILogger<TrayServerWorker> log)
+            Func<int, TrayMessage, CancellationToken, Task> handle, ILogger<TrayServerWorker> log,
+            DesktopRestrictionState? restrictions = null, Func<DateTime>? clock = null)
         {
             _session = session;
             _server = server;
             _handle = handle;
             _log = log;
+            _restrictions = restrictions ?? new DesktopRestrictionState();
+            _clock = clock ?? (() => DateTime.UtcNow);
         }
 
         public void Enqueue(TrayMessage message)
@@ -169,18 +232,13 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             try
             {
                 connection = await _server.AcceptAsync(linked.Token);
-                while (true)
-                {
-                    TrayMessage? pending;
-                    lock (_gate) pending = _pending.Count > 0 ? _pending.Dequeue() : null;
-                    if (pending is null) break;
-                    await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToTray, linked.Token);
-                }
-                while (true)
-                {
-                    var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToService, cancellationToken: linked.Token);
-                    await _handle(_session.SessionId, message, linked.Token);
-                }
+                _restrictions.MarkConnected(_session.SessionId, _clock());
+                foreach (var message in _restrictions.MessagesFor(_session.SessionId, _clock()))
+                    await TrayProtocol.WriteAsync(connection.Stream, message, TrayDirection.ToTray, linked.Token);
+                var incoming = ReadIncoming(connection, linked.Token);
+                var outgoing = WriteOutgoing(connection, linked.Token);
+                var completed = await Task.WhenAny(incoming, outgoing);
+                await completed;
             }
             catch (EndOfStreamException) { }
             catch (OperationCanceledException) { }
@@ -192,13 +250,43 @@ public sealed class TrayServerWorker : BackgroundService, ITrayCommandSink
             {
                 try
                 {
-                    if (connection is not null) await connection.DisposeAsync();
+                    _stop.Cancel();
+                    if (connection is not null)
+                    {
+                        _restrictions.MarkDisconnected(_session.SessionId, _clock());
+                        await connection.DisposeAsync();
+                    }
                     await _server.DisposeAsync();
                 }
                 finally
                 {
                     _completed = true;
                 }
+            }
+        }
+
+        private async Task ReadIncoming(TrayPipeConnection connection, CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToService, cancellationToken: cancellationToken);
+                await _handle(_session.SessionId, message, cancellationToken);
+            }
+        }
+
+        private async Task WriteOutgoing(TrayPipeConnection connection, CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                TrayMessage? pending;
+                lock (_gate) pending = _pending.Count > 0 ? _pending.Peek() : null;
+                if (pending is null)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+                    continue;
+                }
+                await TrayProtocol.WriteAsync(connection.Stream, pending, TrayDirection.ToTray, cancellationToken);
+                lock (_gate) _pending.Dequeue();
             }
         }
 

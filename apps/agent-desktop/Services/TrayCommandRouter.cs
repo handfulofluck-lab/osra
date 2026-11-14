@@ -48,7 +48,6 @@ public sealed class TrayUserActions
 
     internal Func<string, string, string, bool> ShowOverlay = LockOverlay.ShowIfPinned;
     internal Action HideOverlay = LockOverlay.Hide;
-    internal Action LockWorkstationAction = () => { };
     internal Action RingAction = Ring;
     internal Func<TimeSpan, CancellationToken, Task> Delay = Task.Delay;
     internal string? LastArmRefusal { get; private set; }
