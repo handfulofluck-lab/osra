@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The mark of docs/design/BRAND.md in the 108dp adaptive canvas: the 100-box of the master scaled by 0.72
+     and moved by 18, so it sits inside the 66dp safe zone. Ring: the parent. Dot: the child. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M72.72,54 A18.72,18.72 0 1 1 54,35.28"
+        android:strokeColor="@color/ic_app_ring"
+        android:strokeWidth="8.64"
+        android:strokeLineCap="round"/>
+    <path
+        android:fillColor="@color/ic_app_dot"
+        android:pathData="M61.848,40.752 a5.4,5.4 0 1,0 10.8,0 a5.4,5.4 0 1,0 -10.8,0"/>
+</vector>

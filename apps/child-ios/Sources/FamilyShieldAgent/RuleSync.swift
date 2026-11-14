@@ -35,6 +35,13 @@ public struct RuleSet: Decodable, Equatable {
         public var dailyLimitMinutes: Int?
     }
 
+    /// ADR-0037 PR B3: a rule on one of this phone's app groups, by the id the phone reported.
+    public struct AppGroupRule: Decodable, Equatable {
+        public var groupId: String
+        /// "block" (limits are PR C).
+        public var action: String
+    }
+
     public struct Routine: Decodable, Equatable {
         public var id: String?
         public var name: String
@@ -51,6 +58,8 @@ public struct RuleSet: Decodable, Equatable {
     public var appRules: [AppRule]
     public var routines: [Routine]
     public var alwaysAllowedApps: [String]
+    /// ADR-0037 PR B3: absent from a server before B3a, read as none.
+    public var appGroupRules: [AppGroupRule]?
     /// #475: the version the server bumps on every rule write. Absent from an older server, read as 1.
     public var rulesVersion: Int?
 
@@ -60,6 +69,12 @@ public struct RuleSet: Decodable, Equatable {
     /// Bundle identifiers the parent blocked outright (`action == "block"`).
     public var blockedBundleIdentifiers: [String] {
         appRules.filter { $0.action == "block" }.map(\.packageId)
+    }
+
+    /// ADR-0037 PR B3: the app groups the parent blocked from the parent app, lowercased (the phone makes the ids
+    /// with `UUID().uuidString`, upper case; the server may hand them back in either case).
+    public var blockedGroupIds: [String] {
+        Array(Set((appGroupRules ?? []).filter { $0.action == "block" }.map { $0.groupId.lowercased() })).sorted()
     }
 
     /// Bundle identifiers the parent explicitly allowed (`action == "allow"`).
@@ -98,6 +113,8 @@ public struct RuleSyncClient {
     public enum SyncError: Error, Equatable {
         case httpError(status: Int)
         case unusableResponse
+        /// #690: `401 device_revoked`, the parent removed this phone.
+        case deviceRevoked
     }
 
     public func fetch(for identity: AgentIdentity) async throws -> RuleSet {
@@ -108,6 +125,7 @@ public struct RuleSyncClient {
         request.timeoutInterval = 30
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if DeviceRevocation.isRevoked(status: status, body: data) { throw SyncError.deviceRevoked }
         // 428 means consent was withdrawn: the device must stop enforcing, which the caller does by clearing.
         guard status == 200 else { throw SyncError.httpError(status: status) }
         guard let rules = try? JSONDecoder().decode(RuleSet.self, from: data) else { throw SyncError.unusableResponse }
@@ -129,6 +147,7 @@ public enum RuleStore {
         static let unscheduled = "rules.unscheduledActivities"
         static let syncedAt = "rules.syncedAt"
         static let appliedRulesVersion = "rules.appliedVersion"
+        static let blockedGroupIds = "rules.blockedGroupIds"
     }
 
     /// One routine, with its days already in Foundation's weekday numbering.
@@ -151,6 +170,7 @@ public enum RuleStore {
         defaults.set(rules.screenTime.bedtimeEnd, forKey: Keys.bedtimeEnd)
         defaults.set(rules.webFilter.blockedDomains, forKey: Keys.blockedDomains)
         defaults.set(rules.webFilter.blockedCategories, forKey: Keys.blockedCategories)
+        defaults.set(rules.blockedGroupIds, forKey: Keys.blockedGroupIds)
         let schedules = rules.routines.map {
             RoutineSchedule(name: $0.name, startTime: $0.startTime, endTime: $0.endTime,
                             swiftWeekdays: $0.days.compactMap(Weekday.swiftWeekday(ruleDay:)),
@@ -166,11 +186,19 @@ public enum RuleStore {
         return (try? JSONDecoder().decode([RoutineSchedule].self, from: data)) ?? []
     }
 
+    /// #602: when the rules were last fetched and stored; nil before the first sync.
+    public static func syncedAt() -> Date? {
+        guard let defaults, defaults.object(forKey: Keys.syncedAt) != nil else { return nil }
+        return Date(timeIntervalSince1970: defaults.double(forKey: Keys.syncedAt))
+    }
+
     public static func allowedApps() -> [String] { defaults?.stringArray(forKey: Keys.allowedApps) ?? [] }
     public static func blockedApps() -> [String] { defaults?.stringArray(forKey: Keys.blockedApps) ?? [] }
     public static func bedtimeStart() -> String? { defaults?.string(forKey: Keys.bedtimeStart) }
     public static func bedtimeEnd() -> String? { defaults?.string(forKey: Keys.bedtimeEnd) }
     public static func alwaysAllowedApps() -> [String] { defaults?.stringArray(forKey: Keys.alwaysAllowedApps) ?? [] }
+    /// ADR-0037 PR B3: the groups blocked from the parent app, as of the last sync (kept when offline).
+    public static func blockedGroupIds() -> Set<String> { Set(defaults?.stringArray(forKey: Keys.blockedGroupIds) ?? []) }
 
     /// Records the bedtime or routine activities the system refused to monitor, in one place: the parent
     /// would otherwise believe they apply. Empty when everything was registered.
@@ -196,7 +224,7 @@ public enum RuleStore {
         guard let defaults else { return }
         for key in [Keys.blockedApps, Keys.allowedApps, Keys.alwaysAllowedApps, Keys.bedtimeStart, Keys.bedtimeEnd,
                     Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.unscheduled, Keys.syncedAt,
-                    Keys.appliedRulesVersion] {
+                    Keys.appliedRulesVersion, Keys.blockedGroupIds] {
             defaults.removeObject(forKey: key)
         }
     }
@@ -235,6 +263,14 @@ public enum ShieldPolicy: Equatable {
         guard routine.swiftWeekdays.contains(weekday) else { return .none }
         if !routine.allowedApps.isEmpty { return .allExcept(unique(everywhere + routine.allowedApps)) }
         return routine.blockedApps.isEmpty ? .none : .only(routine.blockedApps)
+    }
+
+    /// Whether every website is shielded too. "Everything except the allowed apps" has to include the web: the
+    /// app-category shield does not cover the built-in browser, so without this a child reached any site at
+    /// bedtime (child-escape run, iPhone 13, 13 Nov). The allowed apps stay usable; their web pages do not.
+    public var shieldsAllWeb: Bool {
+        if case .allExcept = self { return true }
+        return false
     }
 
     /// `decide` with the rules stored by the last sync.
@@ -287,7 +323,7 @@ public enum RuleSyncer {
 
     /// The real apply: Screen Time, where the frameworks exist; nil (nothing applied) elsewhere.
     public static var defaultApply: Apply? {
-        #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if os(iOS)
         return { try ScreenTimeController().applyRules($0) }
         #else
         return nil
@@ -320,10 +356,14 @@ public enum RuleSyncer {
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
             RuleStore.clear()
-            #if canImport(ManagedSettings) && canImport(FamilyControls) && canImport(DeviceActivity)
+            #if os(iOS)
             if enforce { ScreenTimeController().clearRules() }
             #endif
             return .consentWithdrawn
+        } catch RuleSyncClient.SyncError.deviceRevoked {
+            // #690: the parent removed this phone. Nothing stays paired or enforced; the app shows pairing.
+            DeviceRevocation.unpair()
+            return .notPaired
         } catch {
             return .failed(String(describing: error))
         }

@@ -147,7 +147,7 @@ environment before quoting them.
 | Flagged chat excerpts, activity events | 90 days | `services/api/src/lib/usageModel.ts:26-29,243,247,249` |
 | Daily app-usage totals | 365 days | `services/api/src/lib/usageModel.ts:45-48,245,251` |
 | Installed-app list, capability report | Replaced by each new report; deleted when the phone is unpaired or the child is erased | `services/api/src/routes/devices.ts:880-882,954-956`; `services/api/prisma/schema.prisma:281`; `services/api/src/lib/usageModel.ts:261` |
-| Alerts | **12 months** (decision 10 B), once #562 A lands. Until then, no expiry until the child is erased. | Not in `applyRetention` today (`services/api/src/lib/usageModel.ts:246-252`); erased at `:300` |
+| Alerts | **12 months** (decision 10 B) | Deleted at the 365-day window in `applyRetention` (`services/api/src/lib/usageModel.ts:271`); erased with the child at `:327` |
 | Everything of a family | Until the account is deleted (§2.1) | — |
 
 ## 6. Decisions, and what is still owed

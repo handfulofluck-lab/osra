@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The OSRA logo, "Embrace" (docs/design/BRAND.md, roadmap 3.20). Android 8+ masks this to the launcher's
+     shape; older launchers use the mipmap PNGs. Geometry and colours come from scripts/brand/render.mjs. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>

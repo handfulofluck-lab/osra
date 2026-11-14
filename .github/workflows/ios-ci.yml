@@ -4,6 +4,7 @@ on:
   # The three server files are the iOS agent's contract with the API (pairing, alerts, request signing):
   # a server change that breaks the iPhone agent turns red on its own PR (5.5 PR A2, #372).
   push:
+    branches: [main]
     paths:
       - 'apps/child-ios/**'
       - 'apps/parent-app/ios/**'
@@ -19,9 +20,9 @@ on:
       - 'services/api/src/routes/devices.ts'
       - 'services/api/src/routes/alerts.ts'
       - 'services/api/src/lib/internalAuth.ts'
-  # Nightly on main, whatever changed: the contract can also break through a dependency or an image.
+  # Weekly on main, whatever changed: the contract can also break through a dependency or an image.
   schedule:
-    - cron: '23 1 * * *'
+    - cron: '23 1 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -49,6 +50,61 @@ jobs:
         uses: actions/checkout@v4
       - name: Check bundle ids, app group and Keychain group
         run: python3 apps/child-ios/scripts/check-identifiers.py
+
+  macos-core:
+    name: Shared Swift package (macOS)
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select the newest Xcode on the image
+        run: |
+          XCODE="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release_candidate' | sort -V | tail -1)"
+          echo "Selecting $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          swift --version
+
+      - name: Build the shared package for macOS
+        working-directory: apps/child-ios
+        run: swift build
+
+      - name: Check portable tests remain discoverable on macOS
+        working-directory: apps/child-ios
+        run: |
+          swift test list > "$RUNNER_TEMP/macos-test-list.txt"
+          python3 - "$RUNNER_TEMP/macos-test-list.txt" <<'PY'
+          import pathlib
+          import sys
+
+          tests = {
+              line.strip()
+              for line in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+              if "/test" in line
+          }
+          required = {
+              "FamilyShieldAgentTests.PairingTests/testNormalizeAddsSchemeAndTrimsSlashes",
+              "FamilyShieldAgentTests.InternalSignerTests/testSignatureMatchesServerReferenceVector",
+              "FamilyShieldAgentTests.RuleSyncTests/testDecodesTheServerShapeAndPicksTheBlockedApps",
+              "FamilyShieldAgentTests.L10nTests/testEnglishAndArabicHaveTheSameKeysAndNoEmptyLine",
+              "FamilyShieldAgentTests.ShieldTextTests/testBedtimeAndARoutineEachNameTheirWindowAndEnd",
+          }
+          missing = sorted(required - tests)
+          if missing:
+              print("Portable tests missing on macOS:", *missing, sep="\n", file=sys.stderr)
+          if len(tests) != 223:
+              print(f"macOS test count changed: expected 223, discovered {len(tests)}", file=sys.stderr)
+          if missing or len(tests) != 223:
+              print("Discovered macOS test identifiers:", *sorted(tests), sep="\n", file=sys.stderr)
+              sys.exit(1)
+          print(f"macOS portable tests discovered: {len(tests)}; pairing, signer, rules and strings present")
+          PY
+
+      - name: Test the shared package on macOS
+        working-directory: apps/child-ios
+        run: swift test
 
   test-ios:
     name: Build & Test iOS Agent (Simulator + SwiftPM + app with extensions)
@@ -267,16 +323,17 @@ jobs:
             -scheme OSRAAgentIntegration \
             -destination "id=$DEVICE_ID" \
             -derivedDataPath .build/liveDerivedData 2>&1 | tee "$RUNNER_TEMP/live-tests.log"
-          # Loud, not green-by-default (#361): all ten cases ran and passed, none skipped (case 10 is #475).
+          # Loud, not green-by-default (#361): all eleven cases ran and passed, none skipped (case 10 is #475,
+          # case 11 the app groups of ADR-0037).
           COUNT='index($0, "Test Case") && index($0, "-[FamilyShieldAgentIntegrationTests.LiveAPITests test") && index($0, word " (") { n++ } END { print n + 0 }'
           PASSED="$(awk -v word=passed "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           SKIPPED="$(awk -v word=skipped "$COUNT" "$RUNNER_TEMP/live-tests.log")"
           echo "live API cases passed: $PASSED, skipped: $SKIPPED"
           cat "$RUNNER_TEMP/approve.log"
           wait "$APPROVER"
-          test "$PASSED" -eq 10 && test "$SKIPPED" -eq 0
+          test "$PASSED" -eq 11 && test "$SKIPPED" -eq 0
 
-      - name: The parent sees the alert, the location and the applied rules version (GET /v1/alerts, /v1/location/:childId/latest, /v1/family/children/:id)
+      - name: The parent sees the alert, the location, the applied rules version and the app group (GET /v1/alerts, /v1/location/:childId/latest, /v1/family/children/:id, /v1/devices)
         run: node apps/child-ios/scripts/live-api.mjs verify
 
       - name: API log on failure

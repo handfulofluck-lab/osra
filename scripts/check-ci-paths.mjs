@@ -24,7 +24,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SUITES = ["api.yml", "parent-app.yml", "child-android.yml", "agent-desktop.yml", "ai-engine.yml", "api-image.yml"];
+const SUITES = ["api.yml", "parent-app.yml", "child-android.yml", "agent-desktop.yml", "ai-engine.yml", "api-image.yml", "agent-macos.yml"];
 const REPO_TOKEN = /(?:^|[\s"'=(])((?:\.github|apps|packages|scripts|services)\/[A-Za-z0-9_.\/-]*[A-Za-z0-9_])/g;
 
 /** `paths:` lists under each event of the `on:` block, by event name. Only the shape these files use. */

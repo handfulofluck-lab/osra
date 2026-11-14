@@ -140,7 +140,7 @@ function publicPage(error?: Copy): string {
   const en = [
     h("Delete your OSRA account"),
     err(error?.en),
-    p("<strong>In the app:</strong> open OSRA, go to Settings, then Delete account. Enter your password, and your authenticator code if two-step sign-in is on, and confirm."),
+    p("<strong>In the app:</strong> open OSRA and, on the dashboard, tap the <strong>⋮</strong> menu at the top right, then <strong>Delete account</strong>. Enter your password, and your authenticator code if two-step sign-in is on, and confirm."),
     p("<strong>If you created the family</strong> (the owner), this deletes the whole family: every child's activity, locations, alerts, rules and linked phones, and every other parent's and guardian's access. <strong>If you joined someone else's family</strong>, it deletes only your own account; the family and the children stay."),
     p("<strong>What is kept:</strong> the IDs of signed-out sessions until those sessions would have expired (at most 8 days), encrypted database backups until they rotate out, and server logs, which hold IDs but no messages or content, until their retention ends. Everything else is deleted at once. There is no undo."),
     p("<strong>Without the app:</strong> enter your account's email. If an account uses it, we send a link that works once, for 30 minutes. The link asks for your password (and authenticator code) before anything is deleted."),
@@ -149,7 +149,7 @@ function publicPage(error?: Copy): string {
   const ar = [
     h("حذف حسابك في أسرة"),
     err(error?.ar),
-    p("<strong>من التطبيق:</strong> افتح أسرة، ثم الإعدادات، ثم حذف الحساب. أدخل كلمة المرور، ورمز تطبيق المصادقة إن كان التحقق بخطوتين مفعّلاً، ثم أكّد."),
+    p("<strong>من التطبيق:</strong> افتح تطبيق أسرة، ثم اضغط على قائمة ⋮ أعلى اليسار في لوحة التحكم، ثم اختر حذف الحساب. أدخل كلمة المرور، ورمز تطبيق المصادقة إذا كان التحقق بخطوتين مفعّلًا، ثم أكّد الحذف."),
     p("<strong>إن كنت أنت من أنشأ العائلة</strong> (المالك)، فسيُحذف كل شيء في العائلة: نشاط كل طفل ومواقعه وتنبيهاته وقواعده والهواتف المرتبطة، ووصول كل والد أو وصيّ آخر. <strong>وإن كنت قد انضممت إلى عائلة غيرك</strong>، فسيُحذف حسابك أنت فقط، وتبقى العائلة والأطفال."),
     p("<strong>ما يُحتفظ به:</strong> معرّفات الجلسات التي سُجّل الخروج منها حتى ينتهي وقتها (8 أيام على الأكثر)، والنسخ الاحتياطية المشفّرة لقاعدة البيانات حتى تُستبدل، وسجلات الخادم التي تحوي معرّفات دون أي رسائل أو محتوى حتى تنتهي مدة حفظها. ويُحذف كل ما عدا ذلك فوراً، ولا يمكن التراجع."),
     p("<strong>من دون التطبيق:</strong> أدخل البريد الإلكتروني لحسابك. إن كان هناك حساب يستخدمه، نرسل إليه رابطاً صالحاً لمرة واحدة ولمدة 30 دقيقة. يطلب الرابط كلمة المرور (ورمز المصادقة) قبل حذف أي شيء."),

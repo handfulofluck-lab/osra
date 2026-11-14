@@ -27,6 +27,8 @@ export function toApiRuleSet(row: Record<string, unknown>) {
     },
     appRules: row.appRules,
     routines: row.routines,
+    // ADR-0037 PR B3: rows from before the column read [] (the migration's default).
+    appGroupRules: (row.appGroupRules as unknown[]) ?? [],
     alwaysAllowedApps: row.alwaysAllowedApps,
     bonusMinutesToday: row.bonusMinutesToday,
     socialMonitoring: (row.socialMonitoring as Record<string, boolean>) ?? {},

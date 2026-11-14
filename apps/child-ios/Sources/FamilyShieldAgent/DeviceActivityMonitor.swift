@@ -137,12 +137,10 @@ struct AlertReporter {
         UserDefaults(suiteName: "group.com.osratech.child")?.string(forKey: "agent.deviceId")
     }
 
-    /// Reads the pairing API base URL from the shared app group, if any.
+    /// Reads the pairing API base URL from the shared app group, if any, and only when it is this build's
+    /// built-in server (#634 G1): an extension never posts to a server the app would refuse.
     static func pairedApiBaseURL() -> URL? {
-        guard let raw = UserDefaults(suiteName: "group.com.osratech.child")?
-            .string(forKey: "agent.apiBaseURL"), !raw.isEmpty
-        else { return nil }
-        return URL(string: raw)
+        AgentIdentityStore.storedServer()
     }
 
     /// Reads the pairing HMAC secret from the shared Keychain group (5.5 PR B), if any.
@@ -151,7 +149,7 @@ struct AlertReporter {
     }
 }
 
-#if canImport(DeviceActivity) && canImport(ManagedSettings)
+#if os(iOS)
 import DeviceActivity
 import ManagedSettings
 
@@ -176,11 +174,14 @@ open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
         let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         // The day the interval starts on decides, so an overnight routine is judged by its first day.
         let weekday = Calendar.current.component(.weekday, from: Date())
-        switch ShieldPolicy.current(activity: activity.rawValue, weekday: weekday) {
+        let policy = ShieldPolicy.current(activity: activity.rawValue, weekday: weekday)
+        switch policy {
         case .allExcept(let allowed):
             // Everything but the allowed apps. A bundle id with no token stays shielded: fails closed.
             let exceptions = Set(allowed.compactMap { Application(bundleIdentifier: $0).token })
             store.shield.applicationCategories = .all(except: exceptions)
+            // And every website: the app-category shield leaves the built-in browser open (ShieldPolicy.shieldsAllWeb).
+            if policy.shieldsAllWeb { store.shield.webDomainCategories = .all() }
         case .only(let blocked):
             let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: blocked)
             store.shield.applications = tokens.isEmpty ? nil : tokens

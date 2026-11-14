@@ -18,7 +18,11 @@ export interface Child { id: UUID; familyId: UUID; displayName: string; birthYea
 export interface Device { id: UUID; childId: UUID; platform: Platform; model: string;
   osVersion: string; status: DeviceStatus; batteryPct: number; lastSeen: ISODate; pushToken?: string; }
 export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
-  webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate; }
+  webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate;
+  /** ADR-0037 PR B3: iPhone app groups the parent blocks, by the id the phone reported. */
+  appGroupRules?: AppGroupRule[]; }
+/** ADR-0037 PR B3: a rule on an iPhone app group (`DeviceSetup.groups`). Only `block` for now; limits are PR C. */
+export interface AppGroupRule { groupId: UUID; action: "block"; }
 export interface ScreenTimeRule { dailyLimitMinutes: number; weekendLimitMinutes: number;
   bedtimeStart: string; bedtimeEnd: string;
   schoolHours: { start: string; end: string; days: number[] }; }
@@ -32,6 +36,21 @@ export interface LocationPing { deviceId: UUID; lat: number; lng: number;
   accuracyM: number; timestamp: ISODate; }
 export interface Geofence { id: UUID; childId: UUID; label: string; lat: number; lng: number;
   radiusM: number; notifyOnEnter: boolean; notifyOnExit: boolean; }
+/**
+ * The key names a sentence the PARENT APP owns, and the params fill its placeholders. An alert
+ * always carries the English `body` as a fallback for an app that does not know the key yet.
+ */
+export const ALERT_BODY_KEYS = [
+  "alertBodyDeviceSilent",
+  "alertBodyGeofenceEnter",
+  "alertBodyGeofenceExit",
+  "alertBodySearchFlagged",
+  "alertBodySocialConcern",
+  "alertBodyYouTubeFlagged",
+] as const;
+export type AlertBodyKey = typeof ALERT_BODY_KEYS[number];
+export type AlertBodyParams = Record<string, string | number>;
+
 export interface Alert { id: UUID; childId: UUID; deviceId?: UUID;
   severity: "info"|"warning"|"critical";
   category: "web_threat"|"app_blocked"|"screen_time_exceeded"|"geofence"|"sos"|

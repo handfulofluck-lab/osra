@@ -1,5 +1,5 @@
-/* Home-screen name (Karim, 11 Nov). Arabic wording pending Karim's approval. */
+/* Home-screen name (Karim, 11 Nov). */
 "CFBundleDisplayName" = "أسرة للأطفال";
-/* Location permission prompts (5.5 PR E). Arabic wording pending Karim's review, as in 3.1. */
-"NSLocationWhenInUseUsageDescription" = "يشارك OSRA موقع هذا الجهاز مع والديك، ليرياه على الخريطة ويتلقيا تنبيهات عن الأماكن التي حدداها.";
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "يشارك OSRA موقع هذا الجهاز مع والديك عندما يتغير موقعه بمسافة ملحوظة، حتى عندما يكون التطبيق مغلقًا، لتبقى الخريطة وتنبيهات الأماكن تعمل.";
+/* Location permission prompts (5.5 PR E). Approved by Karim, Bureau sheet 2026-11-12 11:20Z. */
+"NSLocationWhenInUseUsageDescription" = "يشارك تطبيق أسرة للأطفال موقع هذا الجهاز مع والدك أو والدتك، ليظهر على الخريطة في تطبيق الوالدين، ولإرسال تنبيه عند الوصول إلى الأماكن المحددة أو مغادرتها.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "يشارك تطبيق أسرة للأطفال موقع هذا الجهاز مع والدك أو والدتك كلما تغيّر الموقع بمسافة ملحوظة، حتى عندما يكون التطبيق مغلقًا، لتستمر الخريطة وتنبيهات الأماكن في العمل.";

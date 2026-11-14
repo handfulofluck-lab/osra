@@ -12,6 +12,7 @@ import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
 import 'features/onboarding/setup_child_screen.dart';
 import 'features/onboarding/setup_done_screen.dart';
+import 'features/onboarding/setup_monitoring_screen.dart';
 import 'features/onboarding/setup_pair_screen.dart';
 import 'features/onboarding/startup_screen.dart';
 import 'features/onboarding/welcome_screen.dart';
@@ -32,7 +33,7 @@ import 'providers/onboarding_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_theme.dart';
 
-const _setupRoutes = {'/welcome', '/sign-in', '/setup/child', '/setup/pair', '/setup/done'};
+const _setupRoutes = {'/welcome', '/sign-in', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
 
 bool _isSetupRoute(String location) => _setupRoutes.contains(location);
 
@@ -92,6 +93,12 @@ final router = GoRouter(
     GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen(onboarding: true)),
     GoRoute(path: '/setup/child', builder: (_, __) => const SetupChildScreen()),
     GoRoute(path: '/setup/pair', builder: (_, __) => const SetupPairScreen()),
+    // Play decision 14 A: the parent picks the monitored apps here, between pairing and the hand-over, so the
+    // first thing the family sees is a choice they made rather than a default.
+    GoRoute(
+      path: '/setup/monitoring',
+      builder: (_, s) => SetupMonitoringScreen(childId: s.uri.queryParameters['childId']),
+    ),
     GoRoute(path: '/setup/done', builder: (_, __) => const SetupDoneScreen()),
     GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
     GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),

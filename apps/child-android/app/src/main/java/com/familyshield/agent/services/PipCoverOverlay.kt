@@ -71,7 +71,8 @@ class PipCoverOverlay(private val context: Context) {
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
         PixelFormat.OPAQUE,
     ).apply {
-        gravity = Gravity.TOP or Gravity.START
+        // WindowBounds and x/y are physical screen coordinates; START would anchor x to the right in RTL.
+        gravity = Gravity.TOP or Gravity.LEFT
         x = target.left
         y = target.top
     }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rulesRoutes } from "../src/routes/rules.js";
+import { LAST_SEEN_REFRESH_MS } from "../src/lib/pollCadence.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -592,4 +593,65 @@ describe("device-token child scoping on rules reads", () => {
     await app.close();
   });
 
+});
+
+/**
+ * Issue #601: the parent app read the iPhone as offline while the API said online, because nothing but the
+ * heartbeat moved `lastSeen`. The rules fetch is the call an iOS agent makes every time it wakes
+ * (`apps/child-ios/Sources/FamilyShieldAgent/PairingView.swift:211`), so it is the one that proves liveness
+ * between heartbeats.
+ *
+ * Mutant: delete the `touchAgentLastSeen(user)` call from the route and the first row goes red (no write).
+ */
+describe("the rules fetch refreshes lastSeen (#601)", () => {
+  beforeEach(() => resetPrismaMock());
+
+  it("a device whose lastSeen is hours old gets it rewritten by the read", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    // The row as the telemetry upload left it four hours ago: an old clock, a stored report.
+    prismaMock.device.updateMany.mockResolvedValue({ count: 1 });
+
+    const before = Date.now();
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: deviceHeader(app) });
+    const after = Date.now();
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.device.updateMany).toHaveBeenCalledTimes(1);
+    const arg = prismaMock.device.updateMany.mock.calls[0][0];
+    expect(arg.where.id).toBe("dev-1");
+    // The poll's own guard, not a second throttle: two concurrent reads are one write, and a clock that is
+    // already fresh matches nothing, so the read stays a read.
+    expect(arg.where.lastSeen.lt.getTime()).toBeGreaterThanOrEqual(before - LAST_SEEN_REFRESH_MS);
+    expect(arg.where.lastSeen.lt.getTime()).toBeLessThanOrEqual(after - LAST_SEEN_REFRESH_MS);
+    expect(arg.data.lastSeen.getTime()).toBeGreaterThanOrEqual(before);
+    expect(arg.data.lastSeen.getTime()).toBeLessThanOrEqual(after);
+    // `status` stays the poll's, the upload's and the silence job's to write.
+    expect(arg.data).not.toHaveProperty("status");
+    await app.close();
+  });
+
+  it("a parent reading the same rules touches no device, however stale", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    // A parent opening the dashboard must not make the phone look alive.
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("a refused read (consent withdrawn) is not a liveness signal either", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.consentRecord.findFirst.mockResolvedValue(null);
+
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: deviceHeader(app) });
+    expect(res.statusCode).toBe(428);
+    expect(prismaMock.device.updateMany).not.toHaveBeenCalled();
+    await app.close();
+  });
 });

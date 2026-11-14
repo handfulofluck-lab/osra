@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.network.ApiService
@@ -29,7 +30,8 @@ class PackageAddedReceiver : BroadcastReceiver() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_PACKAGE_ADDED) return
+        // osra-security#8 F6: exported for the system's broadcast, so the one action only.
+        if (!BroadcastGate.accepts(Intent.ACTION_PACKAGE_ADDED, intent.action)) return
         val packageId = intent.data?.schemeSpecificPart ?: return
         val replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
         val entryPoint = EntryPointAccessors.fromApplication(context, WorkerEntryPoint::class.java)
@@ -56,6 +58,12 @@ class PackageAddedReceiver : BroadcastReceiver() {
         if (!InstallAlertPolicy.shouldAlert(packageId, replacing, context.packageName, last, System.currentTimeMillis())) {
             return
         }
+        // osra-security#8 F6: any app can send this receiver an explicit PACKAGE_ADDED; the parent is told only about
+        // a package PackageManager says is installed, and installed just now.
+        if (!BroadcastGate.genuineInstall(packageFacts(context, packageId), System.currentTimeMillis())) {
+            Log.w(TAG, "PACKAGE_ADDED for a package not installed just now; no alert")
+            return
+        }
         val appName = runCatching { appLabel(context, packageId) }.getOrDefault(packageId)
         val childId = settings.childId() ?: return
         runCatching {
@@ -74,6 +82,16 @@ class PackageAddedReceiver : BroadcastReceiver() {
             // NOTE: timestamp recorded only on success so a failed POST does not throttle retries.
             settings.recordInstallAlert(packageId, System.currentTimeMillis())
         }
+    }
+
+    @Suppress("DEPRECATION") // flag-based getPackageInfo is deprecated at 33 but valid ≥26
+    private fun packageFacts(context: Context, packageId: String): BroadcastGate.PackageFacts? = runCatching {
+        val info = context.packageManager.getPackageInfo(packageId, 0)
+        BroadcastGate.PackageFacts(firstInstallMs = info.firstInstallTime, lastUpdateMs = info.lastUpdateTime)
+    }.getOrNull()
+
+    private companion object {
+        const val TAG = "PackageAddedReceiver"
     }
 
     /** Resolves the human-readable app label; falls back to the package id on any failure. */

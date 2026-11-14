@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,9 +20,17 @@ import 'mfa_recovery_screen.dart';
 /// to Welcome and names the causes a non-engineer can fix (wrong password,
 /// unreachable server) instead of showing the API's raw code.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, this.onboarding = false});
+  const LoginScreen({super.key, this.onboarding = false, this.debug, this.builtIn});
 
   final bool onboarding;
+
+  /// Test seam: overrides [kDebugMode] for the server-field visibility check. Production leaves it null.
+  final bool? debug;
+
+  /// Test seam: overrides [kDefaultServerUrl] for the server-field lock/visibility check. Production
+  /// leaves it null. [_LoginScreenState._saveServer] does not read it: the effective server is never
+  /// driven by the widget.
+  final String? builtIn;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -65,6 +74,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   /// Validates and persists the server URL; null → inline error, abort submit.
   Future<String?> _saveServer() async {
+    // osra-security#8 F3: a build with the server built in uses it; the field is locked and never read.
+    final builtIn = builtInServerUrl();
+    if (builtIn != null) return builtIn;
     final url = normalizeServerUrl(_server.text);
     setState(() => _serverError = url == null ? context.l10n.invalidServer : null);
     if (url == null) return null;
@@ -110,6 +122,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _server.text = serverUrl;
     }
     final errorText = _formError ?? _authErrorText(l10n, auth.error);
+    final builtIn = widget.builtIn ?? kDefaultServerUrl;
+    final locked = isServerLocked(builtIn);
+    final showServer = showServerField(debug: widget.debug ?? kDebugMode, builtIn: builtIn);
     return Scaffold(
       appBar: widget.onboarding
           ? AppBar(
@@ -156,19 +171,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: AppSpace.xl),
                 ] else
                   const SizedBox(height: AppSpace.xl),
-                TextField(
-                  controller: _server,
-                  keyboardType: TextInputType.url,
-                  autofillHints: const [AutofillHints.url],
-                  onChanged: (_) => _serverTouched = true,
-                  decoration: InputDecoration(
-                    labelText: l10n.serverLabel,
-                    hintText: l10n.serverHint,
-                    errorText: _serverError,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                if (showServer) ...[
+                  TextField(
+                    key: const ValueKey('loginServerField'),
+                    controller: _server,
+                    // osra-security#8 F3: hidden in locked (store) builds; debug keeps it visible and locked.
+                    readOnly: locked,
+                    enabled: !locked,
+                    keyboardType: TextInputType.url,
+                    autofillHints: const [AutofillHints.url],
+                    onChanged: (_) => _serverTouched = true,
+                    decoration: InputDecoration(
+                      labelText: l10n.serverLabel,
+                      hintText: l10n.serverHint,
+                      errorText: _serverError,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpace.md),
+                  const SizedBox(height: AppSpace.md),
+                ],
                 if (showMfaNotice) ...[
                   Text(
                     l10n.mfaSessionNotice,

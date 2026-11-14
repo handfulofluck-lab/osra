@@ -51,6 +51,8 @@ public struct CommandClient {
     public enum CommandError: Error, Equatable {
         case httpError(status: Int)
         case unusableResponse
+        /// #690: `401 device_revoked`, the parent removed this phone.
+        case deviceRevoked
     }
 
     /// Claims the pending commands (`ack=1`: they come back until acked, as Android's ack-capable poll).
@@ -64,6 +66,7 @@ public struct CommandClient {
         request.timeoutInterval = 30
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if DeviceRevocation.isRevoked(status: status, body: data) { throw CommandError.deviceRevoked }
         guard status == 200 else { throw CommandError.httpError(status: status) }
         guard let commands = try? JSONDecoder().decode([DeviceCommand].self, from: data) else {
             throw CommandError.unusableResponse
@@ -111,6 +114,8 @@ public enum CommandDrainer {
         public var refused: [String] = []
         /// The poll answered 428: consent was withdrawn, and the rules were synced (and so cleared).
         public var consentWithdrawn = false
+        /// #690: the poll answered `device_revoked`; the phone was unpaired and nothing else ran.
+        public var deviceRevoked = false
         /// The poll said the server holds no push token, and the stored one was sent again (#383).
         public var pushTokenResent = false
     }
@@ -131,6 +136,10 @@ public enum CommandDrainer {
                 let resent = await PushTokenRegistrar.resendAfterServerCleared(session: tokenSession)
                 result.pushTokenResent = resent == .uploaded
             }
+        } catch CommandClient.CommandError.deviceRevoked {
+            DeviceRevocation.unpair()
+            result.deviceRevoked = true
+            return result
         } catch CommandClient.CommandError.httpError(status: 428) {
             // ADR-0008 §2b: monitoring is paused. The rules endpoint answers 428 too, which clears them.
             result.consentWithdrawn = true

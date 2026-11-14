@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>pin_wrong</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>رمز PIN غير صحيح. بقيت محاولة واحدة قبل الإيقاف المؤقت.</string>
+			<key>two</key>
+			<string>رمز PIN غير صحيح. بقيت محاولتان قبل الإيقاف المؤقت.</string>
+			<key>few</key>
+			<string>رمز PIN غير صحيح. بقيت %d محاولات قبل الإيقاف المؤقت.</string>
+			<key>other</key>
+			<string>رمز PIN غير صحيح. بقيت %d محاولات قبل الإيقاف المؤقت.</string>
+		</dict>
+	</dict>
+	<key>pin_locked</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>محاولات خاطئة كثيرة. حاول مرة أخرى بعد ثانية واحدة.</string>
+			<key>two</key>
+			<string>محاولات خاطئة كثيرة. حاول مرة أخرى بعد ثانيتين.</string>
+			<key>few</key>
+			<string>محاولات خاطئة كثيرة. حاول مرة أخرى بعد %d ثوانٍ.</string>
+			<key>many</key>
+			<string>محاولات خاطئة كثيرة. حاول مرة أخرى بعد %d ثانية.</string>
+			<key>other</key>
+			<string>محاولات خاطئة كثيرة. حاول مرة أخرى بعد %d ثانية.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

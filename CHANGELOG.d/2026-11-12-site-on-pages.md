@@ -1,0 +1,3 @@
+### Site — a hand-started workflow that publishes osratech.com on GitHub Pages (roadmap 5.2)
+
+AWS refused the CloudFront account verification on 12 Nov, so `infra/terraform/site` cannot serve the site. `site-pages.yml` publishes `site/` from main to GitHub Pages instead. It starts only by hand, with the word "publish" typed in; it runs the design gate first; and it leaves out `site/android/`, which stays private until the Full app's release gate is signed. Going live also needs Pages switched on in the repository settings and the apex records of osratech.com pointed at GitHub; neither is done by this change.

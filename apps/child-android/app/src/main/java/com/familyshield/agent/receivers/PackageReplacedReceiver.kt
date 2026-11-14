@@ -3,6 +3,7 @@ package com.familyshield.agent.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.network.ApiService
@@ -25,13 +26,14 @@ class PackageReplacedReceiver : BroadcastReceiver() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        // osra-security#8 F6: exported for the system's broadcast, so the one action only.
+        if (!BroadcastGate.accepts(Intent.ACTION_MY_PACKAGE_REPLACED, intent.action)) return
         val entryPoint = EntryPointAccessors.fromApplication(context, WorkerEntryPoint::class.java)
         // NOTE: goAsync keeps the broadcast alive for the (best-effort) network call.
         val pending = goAsync()
         scope.launch {
             try {
-                alert(entryPoint.apiService(), entryPoint.agentSettings())
+                alert(context, entryPoint.apiService(), entryPoint.agentSettings())
             } finally {
                 pending.finish()
             }
@@ -39,8 +41,13 @@ class PackageReplacedReceiver : BroadcastReceiver() {
     }
 
     /** Posts the tamper alert when the device is paired; errors are logged, never thrown. */
-    private suspend fun alert(api: ApiService, settings: AgentSettings) {
+    private suspend fun alert(context: Context, api: ApiService, settings: AgentSettings) {
         if (!settings.isPaired()) return
+        // osra-security#8 F6: only when our own package really was replaced just now, not on a sent intent.
+        if (!BroadcastGate.genuineSelfReplace(ownFacts(context), System.currentTimeMillis())) {
+            Log.w(TAG, "MY_PACKAGE_REPLACED without a recent update; no alert")
+            return
+        }
         val childId = settings.childId() ?: return
         runCatching {
             api.postInternalAlert(
@@ -55,5 +62,15 @@ class PackageReplacedReceiver : BroadcastReceiver() {
                 ),
             )
         }
+    }
+
+    @Suppress("DEPRECATION") // flag-based getPackageInfo is deprecated at 33 but valid ≥26
+    private fun ownFacts(context: Context): BroadcastGate.PackageFacts? = runCatching {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        BroadcastGate.PackageFacts(firstInstallMs = info.firstInstallTime, lastUpdateMs = info.lastUpdateTime)
+    }.getOrNull()
+
+    private companion object {
+        const val TAG = "PackageReplacedReceiver"
     }
 }

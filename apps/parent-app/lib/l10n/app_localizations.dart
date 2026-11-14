@@ -1070,6 +1070,12 @@ abstract class AppLocalizations {
   /// **'Accuracy ±{meters} m · {time}'**
   String accuracyLabel(int meters, String time);
 
+  /// No description provided for @accuracyShort.
+  ///
+  /// In en, this message translates to:
+  /// **'±{meters} m'**
+  String accuracyShort(int meters);
+
   /// No description provided for @mapPreview.
   ///
   /// In en, this message translates to:
@@ -2749,6 +2755,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count}h ago'**
   String relativeHoursAgo(int count);
+
+  /// No description provided for @alertTechnicalDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical details'**
+  String get alertTechnicalDetails;
+
+  /// No description provided for @relativeOverHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'more than {count}h ago'**
+  String relativeOverHoursAgo(int count);
 
   /// No description provided for @relativeDaysAgo.
   ///
@@ -4766,6 +4784,60 @@ abstract class AppLocalizations {
   /// **'Open OSRA to see the details.\nProtecting your family at all times.'**
   String get alertPushBodyGeneric;
 
+  /// #672: the SOS fix named with its coordinates and its age, one whole line per plural case (Arabic Language Bureau rule). The app wraps {coords} in LRI/PDI so the pair keeps its order in a right-to-left line.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Last location: {coords}, 1 min ago} other{Last location: {coords}, {n} min ago}}'**
+  String alertSosWhereMinutes(int n, String coords);
+
+  /// #672: the same line for a fix an hour or more old; hours round down and the line says «more than».
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Last location: {coords}, more than 1 hour ago} other{Last location: {coords}, more than {n} hours ago}}'**
+  String alertSosWhereHours(int n, String coords);
+
+  /// #672, UI/UX Bureau: the notification body. A location exists and is this old — no coordinates on a lock screen; a tap opens the alert.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Location from 1 min ago. Tap to see it on the map.} other{Location from {n} min ago. Tap to see it on the map.}}'**
+  String alertSosLocationMinutes(int n);
+
+  /// #672: the notification body for a fix an hour or more old; hours round down and the line says «more than».
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Location from more than 1 hour ago. Tap to see it on the map.} other{Location from more than {n} hours ago. Tap to see it on the map.}}'**
+  String alertSosLocationHours(int n);
+
+  /// #672, UI/UX Bureau: the detail line's accuracy clause, shown only when the fix carries one.
+  ///
+  /// In en, this message translates to:
+  /// **'accurate to about {m} m'**
+  String alertLocationAccuracy(int m);
+
+  /// #672, UI/UX Bureau: quiet action in the SOS alert's detail; copies five decimals, left to right.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy coordinates'**
+  String get alertCopyCoordinates;
+
+  /// #672: short confirmation after Copy coordinates.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinates copied'**
+  String get alertCoordinatesCopied;
+
+  /// #672, UI/UX Bureau: hands the fix to the phone's own maps app, for a build whose in-app map cannot draw.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Maps'**
+  String get alertOpenInMaps;
+
+  /// #672: the SOS alert's action that opens the family map on its fix.
+  ///
+  /// In en, this message translates to:
+  /// **'Show on map'**
+  String get alertShowOnMap;
+
   /// No description provided for @riskSelfHarm.
   ///
   /// In en, this message translates to:
@@ -5047,6 +5119,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Background app refresh'**
   String get grantBackgroundRefresh;
+
+  /// ADR-0037: heading over the iPhone's app groups on the child screen. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'App groups on this iPhone'**
+  String get appGroupsTitle;
+
+  /// ADR-0037: one line under the heading. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups are made on the child\'s iPhone, behind the parent PIN. Block one here and the iPhone shields its apps.'**
+  String get appGroupsBody;
+
+  /// ADR-0037: what one group holds, as counts only (the parent app never learns which apps). Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Apps {apps} · Categories {categories} · Websites {sites}'**
+  String appGroupsCounts(Object apps, Object categories, Object sites);
+
+  /// ADR-0037: label of the switch that blocks one app group. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get appGroupsBlock;
+
+  /// ADR-0037: snackbar when blocking or unblocking a group fails. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the change. Try again.'**
+  String get appGroupsSaveFailed;
+
+  /// No description provided for @setupMonitoringTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Which apps should OSRA watch for you?'**
+  String get setupMonitoringTitle;
+
+  /// No description provided for @setupMonitoringIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA checks messages in these apps for signs of bullying, grooming or self-harm, and tells you when it finds something. Tick the apps you want; you can change this any time in the rules.'**
+  String get setupMonitoringIntro;
+
+  /// No description provided for @setupMonitoringConsent.
+  ///
+  /// In en, this message translates to:
+  /// **'A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.'**
+  String get setupMonitoringConsent;
+
+  /// No description provided for @setupMonitoringContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get setupMonitoringContinue;
+
+  /// ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review.
+  ///
+  /// In en, this message translates to:
+  /// **'On the iPhone, this app is hidden instead of showing the OSRA screen.'**
+  String get appRuleHiddenOnIphone;
 }
 
 class _AppLocalizationsDelegate

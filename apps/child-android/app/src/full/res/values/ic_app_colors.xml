@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OSRA Kids Full (docs/design/BRAND.md §2): the same mark on dark, so a parent can tell the Full app
+         from the Play app on a home screen. ink (light), ok (dark) and warn (dark) of docs/design/tokens.json. -->
+    <color name="ic_app_background">#12211F</color>
+    <color name="ic_app_ring">#86D4BE</color>
+    <color name="ic_app_dot">#FFB454</color>
+</resources>

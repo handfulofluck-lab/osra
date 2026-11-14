@@ -626,6 +626,11 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String accuracyShort(int meters) {
+    return 'الدقة ±$meters م';
+  }
+
+  @override
   String get mapPreview => 'معاينة الخريطة';
 
   @override
@@ -1787,6 +1792,23 @@ class AppLocalizationsAr extends AppLocalizations {
       few: 'قبل $count ساعات',
       two: 'قبل ساعتين',
       one: 'قبل ساعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get alertTechnicalDetails => 'التفاصيل التقنية';
+
+  @override
+  String relativeOverHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'قبل أكثر من $count ساعة',
+      many: 'قبل أكثر من $count ساعة',
+      few: 'قبل أكثر من $count ساعات',
+      two: 'قبل أكثر من ساعتين',
+      one: 'قبل أكثر من ساعة',
     );
     return '$_temp0';
   }
@@ -3013,6 +3035,79 @@ class AppLocalizationsAr extends AppLocalizations {
       'افتح تطبيق أسرة لمشاهدة التفاصيل\nحماية لعائلتك بكل الأوقات';
 
   @override
+  String alertSosWhereMinutes(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'آخر موقع: $coords، قبل $n دقيقة',
+      many: 'آخر موقع: $coords، قبل $n دقيقة',
+      few: 'آخر موقع: $coords، قبل $n دقائق',
+      two: 'آخر موقع: $coords، قبل دقيقتين',
+      one: 'آخر موقع: $coords، قبل دقيقة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosWhereHours(int n, String coords) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'آخر موقع: $coords، قبل أكثر من $n ساعة',
+      many: 'آخر موقع: $coords، قبل أكثر من $n ساعة',
+      few: 'آخر موقع: $coords، قبل أكثر من $n ساعات',
+      two: 'آخر موقع: $coords، قبل أكثر من ساعتين',
+      one: 'آخر موقع: $coords، قبل أكثر من ساعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationMinutes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'سُجّل آخر موقع قبل $n دقيقة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل $n دقيقة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل $n دقائق. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل دقيقتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل دقيقة. اضغط لعرضه.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertSosLocationHours(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'سُجّل آخر موقع قبل أكثر من $n ساعة. اضغط لعرضه.',
+      many: 'سُجّل آخر موقع قبل أكثر من $n ساعة. اضغط لعرضه.',
+      few: 'سُجّل آخر موقع قبل أكثر من $n ساعات. اضغط لعرضه.',
+      two: 'سُجّل آخر موقع قبل أكثر من ساعتين. اضغط لعرضه.',
+      one: 'سُجّل آخر موقع قبل أكثر من ساعة. اضغط لعرضه.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String alertLocationAccuracy(int m) {
+    return 'الدقة: نحو $m م';
+  }
+
+  @override
+  String get alertCopyCoordinates => 'نسخ الإحداثيات';
+
+  @override
+  String get alertCoordinatesCopied => 'تم نسخ الإحداثيات';
+
+  @override
+  String get alertOpenInMaps => 'فتح في تطبيق الخرائط';
+
+  @override
+  String get alertShowOnMap => 'عرض على الخريطة';
+
+  @override
   String get riskSelfHarm => 'إيذاء النفس';
 
   @override
@@ -3061,12 +3156,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String phoneSetupReported(Object age) {
-    return 'تم البلاغ $age';
+    return 'آخر تحديث $age';
   }
 
   @override
   String phoneSetupStale(Object age) {
-    return 'آخر بلاغ $age — قد لا يكون الهاتف محدَّثًا بعد.';
+    return 'آخر تحديث $age — قد لا تكون بيانات الهاتف محدَّثة بعد.';
   }
 
   @override
@@ -3127,7 +3222,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantAccessibility => 'خدمة إمكانية الوصول';
 
   @override
-  String get grantUsageAccess => 'الوصول إلى الاستخدام';
+  String get grantUsageAccess => 'الوصول إلى بيانات الاستخدام';
 
   @override
   String get grantOverlay => 'العرض فوق التطبيقات الأخرى';
@@ -3161,4 +3256,40 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get grantBackgroundRefresh => 'تحديث التطبيقات في الخلفية';
+
+  @override
+  String get appGroupsTitle => 'مجموعات التطبيقات على آيفون الطفل';
+
+  @override
+  String get appGroupsBody =>
+      'تُنشأ المجموعات على آيفون الطفل باستخدام رمز PIN للوالدين. عند حظر مجموعة من هنا، تُحجب تطبيقاتها على آيفون الطفل.';
+
+  @override
+  String appGroupsCounts(Object apps, Object categories, Object sites) {
+    return 'التطبيقات: $apps · الفئات: $categories · المواقع: $sites';
+  }
+
+  @override
+  String get appGroupsBlock => 'حظر';
+
+  @override
+  String get appGroupsSaveFailed => 'تعذّر حفظ التغيير. حاول مرة أخرى.';
+
+  @override
+  String get setupMonitoringTitle => 'أي التطبيقات تريد أن يراقبها تطبيق أسرة؟';
+
+  @override
+  String get setupMonitoringIntro =>
+      'يفحص تطبيق أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمّر أو الاستدراج أو إيذاء النفس، وينبّهك عند رصد ما يثير القلق. اختر التطبيقات التي تريد مراقبتها، ويمكنك تغيير اختيارك في أي وقت من «القواعد».';
+
+  @override
+  String get setupMonitoringConsent =>
+      'يُحفظ المقتطف من الرسالة المثيرة للقلق لمدة 90 يومًا، ويُحفظ التنبيه لمدة 12 شهرًا. لا يُقرأ أي شيء من تطبيق لم تختره.';
+
+  @override
+  String get setupMonitoringContinue => 'متابعة';
+
+  @override
+  String get appRuleHiddenOnIphone =>
+      'على هواتف آيفون، يُخفى هذا التطبيق بدلًا من عرض شاشة الحظر.';
 }
