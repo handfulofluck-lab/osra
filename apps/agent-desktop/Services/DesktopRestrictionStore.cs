@@ -74,6 +74,7 @@ public sealed class FileDesktopRestrictionStore : IRestrictionStore
     {
         SecureDirectory();
         var temporary = _path + ".tmp";
+        File.Delete(temporary);
         var security = ProtectedFile();
         using (var stream = new FileInfo(temporary).Create(FileMode.CreateNew, FileSystemRights.FullControl,
                    FileShare.Read, bufferSize: 4096, FileOptions.SequentialScan, security))
