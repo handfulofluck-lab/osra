@@ -278,3 +278,12 @@ Claude ruled that all five areas in osra-security#22 belong in W1. Only service-
 - `unlock` and `resume` clear all session and device restrictions, including a session the fallback disconnected. A later sign-in cannot inherit an unlocked restriction.
 - [x] Write failing tests for insecure directories, ACLs, missing/corrupt state and disconnected-session unlock. Run them RED, implement minimally, then run the complete desktop suite and the real CI probe again.
 - [x] Update ADR-0041, the testing guide and the PR with the actual real-service result. Keep the artifact unsigned and keep W1b/W2/W3/W4 exclusions explicit.
+
+### Task 13: Close the remaining review evidence gaps (Fable p8, t1–t4 and process-lane stability)
+
+- A valid first frame other than `hello` is rejected and the connection closes, rather than hanging until the outer test timeout.
+- The process-protection test uses a cross-process gate so two verification lanes cannot terminate each other's disposable child while their pause/blocklist sweeps overlap.
+- The real SYSTEM probe covers both ordinary stale-temp recovery and a competing temp file created after stale cleanup. Production still creates the new file protected with `FileMode.CreateNew`; `Create` must fail the collision row.
+- [x] Add the first-frame row, process gate and post-cleanup collision seam; run both desktop configurations and compile the real probe.
+- [ ] On `verify/754-*` branches, plant each of t1 (owner), t2 (reparse), t3 (other writer) and t4 (`CreateNew` to `Create`) separately and link four red CI runs. Keep those branches out of the product PR and do not merge them.
+- [ ] Re-run the exact product head with all cleanup markers, update the PR/ledger and request independent R3 verification. Never claim readiness from the author's green runs alone.

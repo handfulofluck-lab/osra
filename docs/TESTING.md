@@ -484,12 +484,14 @@ hotkey as part of this build gate. The unsigned artifact has **not yet been inst
 clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
 pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
 
-The W1 suite is **328 tests in each configuration**. It pins the launched PID and co-located image,
+The W1 suite is **329 tests in each configuration**. It pins the launched PID and co-located image,
 session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
-session SIDs. It also replays the current lock/pause/wind-down on reconnect, checks the 20-second fallback
-and one-alert episode through a fake WTS seam, retains post-connect writes, limits SOS to one POST per
-60 seconds per device, and requires `source: tray` on desktop capability reports. Removing any of those
-checks must turn its corresponding test red. Foreground usage remains self-reported by the tray until W2;
+session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
+than relying on an outer timeout. The suite also replays current lock/pause/wind-down on reconnect, checks
+the 20-second fallback and one-alert episode through a fake WTS seam, retains post-connect writes, limits
+SOS to one POST per 60 seconds per device, and requires `source: tray` on desktop capability reports. The
+process-protection row uses a cross-process gate so concurrent verification lanes cannot kill each other's
+disposable child during pause/blocklist sweeps. Foreground usage remains self-reported by the tray until W2;
 the tests do not prove publisher signing or eliminate same-user code injection into a user-mode tray.
 
 The recovery cases pin protected directory and temporary-file ACL descriptors, rejection of an untrusted
@@ -501,14 +503,16 @@ tests do not claim to prove protected file creation. That boundary belongs to th
 `tests/run-windows-service-pipe.ps1` is a separate CI-only boundary row. It hosts the production pipe in a
 CI-created SYSTEM service, verifies the native client and typed lock, then requires real store writes and a
 reload, trusted directory ownership and protected ACLs, protected temporary-file creation, stale-temporary
-replacement, corrupt-state recovery and persisted global unlock. Separate fault fixtures cover an untrusted
-owner, a reparse point, another writer and an inherited ACL that must be rewritten. The service removes its
-protected fixtures before writing a result file only after all checks pass; the PowerShell harness requires
-that marker and cannot pass merely because the client connected. It removes the CI service and remaining
-files in `finally`, is never run on the development PC, and its helper is excluded from the uploaded artifact. Device restrictions re-arm every
-20-second grace period while no verified tray is connected, including a session that had no slot. Loading
-corrupt state leaves its bytes untouched until explicit fallback recovery writes known-good locked state;
-no separate audit quarantine is claimed. A green local suite alone does not prove the real Windows boundary.
+replacement, post-cleanup collision refusal, corrupt-state recovery and persisted global unlock. Separate
+fault fixtures cover an untrusted owner, a reparse point, another writer and an inherited ACL that must be
+rewritten. The service removes its protected fixtures before writing a result file only after all checks
+pass; the PowerShell harness requires that marker and cannot pass merely because the client connected. It
+also requires `OSRA_SERVICE_CLEANUP_PASS` after confirming the service and probe directory are gone. The
+helper is never run on the development PC and is excluded from the uploaded artifact. Device restrictions
+re-arm every 20-second grace period while no verified tray is connected, including a session that had no
+slot. Loading corrupt state leaves its bytes untouched until explicit fallback recovery writes known-good
+locked state; no separate audit quarantine is claimed. A green local suite alone does not prove the real
+Windows boundary.
 
 W1b's salted PIN hashing and W3's installed-directory ACLs, MSI/service recovery and signing are required
 before a build reaches outsiders. W2 DNS/firewall/browser-policy replacement and W4's signed updater are
