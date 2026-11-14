@@ -335,6 +335,10 @@ run "production_settings" {
     error_message = "backups and their off-site copies are deleted within 90 days (privacy policy)"
   }
   assert {
+    condition     = length(aws_cloudwatch_event_target.rds_key_danger) == 1 && strcontains(aws_cloudwatch_event_rule.rds_key_danger[0].event_pattern, "ScheduleKeyDeletion")
+    error_message = "a deletion or disable of the database key must alarm (#783 review)"
+  }
+  assert {
     condition     = length(aws_sns_topic_subscription.alarms_email_secondary) == 1
     error_message = "production alarms must reach a second address (#766 item 6)"
   }
